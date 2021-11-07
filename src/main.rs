@@ -10,13 +10,10 @@ pub struct GameFile {
 }
 
 impl GameFile {
-    pub fn new(file: &mut File) -> GameFile {
-        let mut all_bytes = Vec::new();
-
-        file.read_to_end(&mut all_bytes).unwrap();
+    pub fn new(bytes: Vec<u8>) -> GameFile {
         // initialize header as first $40 == 60 dec bytes
         GameFile {
-            header: Header::new(&all_bytes),
+            header: Header::new(&bytes),
         }
     }
 }
@@ -102,7 +99,11 @@ Interpreter and Version (v4): {:#06x}
 
 fn main() -> io::Result<()> {
     let mut f = File::open("./zork1/DATA/ZORK1.DAT")?;
-    let _g = GameFile::new(&mut f);
-    println!("Gamefile: {}", _g);
+    let mut all_bytes = Vec::new();
+
+    f.read_to_end(&mut all_bytes).unwrap();
+
+    let g = GameFile::new(all_bytes);
+    println!("Gamefile: {}", g);
     Ok(())
 }
