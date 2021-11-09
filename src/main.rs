@@ -1,6 +1,6 @@
+#[allow(unused_imports)]
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::ThreadRng;
-#[allow(unused_imports)]
 use rand::Rng;
 use std::fmt::Display;
 use std::fmt::Error;
@@ -36,6 +36,11 @@ impl<'a> GameFile<'a> {
         } else {
             None
         }
+    }
+
+    pub fn gen_unsigned_rand(&mut self) -> u16 {
+        // NOTE: This could probably be (u16::MAX +1) / 2
+        self.rng.gen_range(0..32768)
     }
 }
 
@@ -139,8 +144,12 @@ fn main() -> io::Result<()> {
 
     f.read_to_end(&mut all_bytes).unwrap();
 
-    let g = GameFile::new(&all_bytes, &mut rng);
+    let mut g = GameFile::new(&all_bytes, &mut rng);
     println!("Gamefile: {}", g);
+    for _i in 1..11 {
+        println!("random value: {}", g.gen_unsigned_rand());
+    }
+
     Ok(())
 }
 
