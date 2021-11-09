@@ -10,6 +10,7 @@ use std::io;
 use std::io::prelude::*;
 use std::marker::PhantomData;
 
+enum RandMode {
     Predictable,
     RandomUniform,
 }
