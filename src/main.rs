@@ -1,3 +1,7 @@
+use rand::distributions::{Distribution, Uniform};
+use rand::prelude::ThreadRng;
+#[allow(unused_imports)]
+use rand::Rng;
 use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
@@ -9,14 +13,16 @@ use std::marker::PhantomData;
 pub struct GameFile<'a> {
     bytes: PhantomData<&'a Vec<u8>>,
     header: Header,
+    rng: &'a mut ThreadRng,
 }
 
 impl<'a> GameFile<'a> {
-    pub fn new(bytes: &'a Vec<u8>) -> GameFile {
+    pub fn new(bytes: &'a Vec<u8>, rng: &'a mut ThreadRng) -> GameFile<'a> {
         // initialize header as first $40 == 60 dec bytes
         GameFile {
             header: Header::new(bytes),
             bytes: PhantomData,
+            rng: rng,
         }
     }
 
@@ -129,10 +135,11 @@ Base high: {:#06x}
 fn main() -> io::Result<()> {
     let mut f = File::open("./zork1/DATA/ZORK1.DAT")?;
     let mut all_bytes = Vec::new();
+    let mut rng = rand::thread_rng();
 
     f.read_to_end(&mut all_bytes).unwrap();
 
-    let g = GameFile::new(&all_bytes);
+    let g = GameFile::new(&all_bytes, &mut rng);
     println!("Gamefile: {}", g);
     Ok(())
 }
