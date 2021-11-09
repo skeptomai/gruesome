@@ -10,9 +10,22 @@ use std::io;
 use std::io::prelude::*;
 use std::marker::PhantomData;
 
+    Predictable,
+    RandomUniform,
+}
+
+#[derive(PartialEq)]
+enum Alphabets {
+    A0,
+    A1,
+    A2,
+}
+
 pub struct GameFile<'a> {
     bytes: PhantomData<&'a Vec<u8>>,
     header: Header,
+    rand_mode: RandMode,
+    current_alphabet: Alphabets,
     rng: &'a mut ThreadRng,
 }
 
@@ -23,6 +36,8 @@ impl<'a> GameFile<'a> {
             header: Header::new(bytes),
             bytes: PhantomData,
             rng: rng,
+            rand_mode: RandMode::RandomUniform,
+            current_alphabet: Alphabets::A0,
         }
     }
 
@@ -38,9 +53,35 @@ impl<'a> GameFile<'a> {
         }
     }
 
-    pub fn gen_unsigned_rand(&mut self) -> u16 {
+    fn gen_unsigned_rand(&mut self) -> u16 {
         // NOTE: This could probably be (u16::MAX +1) / 2
         self.rng.gen_range(0..32768)
+    }
+
+    fn change_alphabet(&mut self, zchar: u8) {
+        self.current_alphabet = match self.current_alphabet {
+            Alphabets::A0 => {
+                if zchar == 2 {
+                    Alphabets::A1
+                } else {
+                    Alphabets::A2
+                }
+            }
+            Alphabets::A1 => {
+                if zchar == 2 {
+                    Alphabets::A2
+                } else {
+                    Alphabets::A0
+                }
+            }
+            Alphabets::A2 => {
+                if zchar == 2 {
+                    Alphabets::A0
+                } else {
+                    Alphabets::A1
+                }
+            }
+        }
     }
 }
 
