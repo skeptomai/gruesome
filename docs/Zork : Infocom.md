@@ -28,6 +28,9 @@
 
 - [FROTZ interpreter / engine](https://gitlab.com/DavidGriffith/frotz)
 
+- [Ztools](http://www.ifarchive.org/indexes/if-archiveXinfocomXtoolsXztools.html)
+  - [Ztools on Github](https://github.com/SamB/ztools)
+
 ## Misc History
 
 - [The Digital Antequarian](https://www.filfre.net/2012/01/the-roots-of-infocom/)

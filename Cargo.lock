@@ -3,6 +3,15 @@
 version = 3
 
 [[package]]
+name = "bitreader"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9178181a7d44239c6c8eaafa8688558a2ab5fa04b8855381f2681e9591fb941b"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -23,6 +32,7 @@ dependencies = [
 name = "infocom"
 version = "0.1.0"
 dependencies = [
+ "bitreader",
  "rand",
 ]
 

@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+
+use bitreader::{BitReader, BitReaderError};
 #[allow(unused_imports)]
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::ThreadRng;
@@ -8,7 +11,6 @@ use std::fmt::Formatter;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
-use std::marker::PhantomData;
 
 enum RandMode {
     Predictable,
@@ -23,7 +25,6 @@ enum Alphabets {
 }
 
 pub struct GameFile<'a> {
-    bytes: PhantomData<&'a Vec<u8>>,
     header: Header,
     rand_mode: RandMode,
     current_alphabet: Alphabets,
@@ -35,14 +36,12 @@ impl<'a> GameFile<'a> {
         // initialize header as first $40 == 60 dec bytes
         GameFile {
             header: Header::new(bytes),
-            bytes: PhantomData,
             rng: rng,
             rand_mode: RandMode::RandomUniform,
             current_alphabet: Alphabets::A0,
         }
     }
 
-    #[allow(dead_code)]
     fn unpack_addr(paddr: u16, game_version: u8) -> Option<u16> {
         // TODO: fix for versions > 5
         if game_version > 0 && game_version < 4 {
@@ -62,21 +61,21 @@ impl<'a> GameFile<'a> {
     fn change_alphabet(&mut self, zchar: u8) {
         self.current_alphabet = match self.current_alphabet {
             Alphabets::A0 => {
-                if zchar == 2 {
+                if zchar == 4 {
                     Alphabets::A1
                 } else {
                     Alphabets::A2
                 }
             }
             Alphabets::A1 => {
-                if zchar == 2 {
+                if zchar == 4 {
                     Alphabets::A2
                 } else {
                     Alphabets::A0
                 }
             }
             Alphabets::A2 => {
-                if zchar == 2 {
+                if zchar == 4 {
                     Alphabets::A0
                 } else {
                     Alphabets::A1
@@ -84,11 +83,25 @@ impl<'a> GameFile<'a> {
             }
         }
     }
+
+    fn abbrev_string(abbrev_code: u8, abbrev_index: u8) -> u8 {
+        32 * (abbrev_code - 1) + abbrev_index
+    }
+
+    fn read_zchars(word: &[u8; 2]) -> Result<Vec<u8>, BitReaderError> {
+        let mut br = BitReader::new(word);
+        br.read_u8(1).unwrap();
+        let mut brv = vec![];
+        for _i in 0..2 {
+            brv.push(br.read_u8(5));
+        }
+        brv.into_iter().collect()
+    }
 }
 
 impl<'a> Display for GameFile<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "Gamefile header {}", self.header)
+        write!(f, "{}", self.header)
     }
 }
 
@@ -146,35 +159,34 @@ impl Display for Header {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
             f,
-            "Version is {}
-Full Release is { }.{}
-Length of file (3+): {},
-Checksum of file (3+): {:#06x},
-Standard revision number: {:#06x},
-Interpreter and Version (v4): {:#06x},
-Initial PC: {:#06x}
-
-Abbrev Table: {:#06x}
-Object Table: {:#06x},
-Global Variables: {:#06x},
-Base static / End Dynamic: {:#06x}
-Dictionary: {:#06x},
-Base high: {:#06x}
+            "
+Z-code version:           {}
+Interpreter flags:
+Release number:           {}
+Size of resident memory:  {:#06x}
+Start PC:                 {:#06x}
+Dictionary address:       {:#06x}
+Object table address:     {:#06x}
+Global variables address: {:#06x}
+Size of dynamic memory:   {:#06x}
+Game flags:               None
+Serial number:            {}
+Abbreviations address:    {:#06x}
+File size:                {:#06x}
+Checksum:                 {:#06x}
 ",
             self.version,
             self.release,
-            self.serial,
-            self.len_file,
-            self.checksum_file,
-            self.standard_revision_number,
-            self.interpreter_number_and_version,
+            self.base_high_mem,
             self.initial_pc,
-            self.abbrev_table,
+            self.dictionary,
             self.object_table,
             self.global_variables,
             self.base_static_mem,
-            self.dictionary,
-            self.base_high_mem,
+            self.serial,
+            self.abbrev_table,
+            self.len_file,
+            self.checksum_file,
         )
     }
 }
@@ -186,12 +198,13 @@ fn main() -> io::Result<()> {
 
     f.read_to_end(&mut all_bytes).unwrap();
 
-    let mut g = GameFile::new(&all_bytes, &mut rng);
-    println!("Gamefile: {}", g);
-    for _i in 1..11 {
-        println!("random value: {}", g.gen_unsigned_rand());
-    }
-
+    let g = GameFile::new(&all_bytes, &mut rng);
+    println!("{}", g);
+    /*
+       for _i in 1..11 {
+           println!("random value: {}", g.gen_unsigned_rand());
+       }
+    */
     Ok(())
 }
 
@@ -213,4 +226,13 @@ Static	00b48	grammar table
 High	01a0a	Z-code
         05d56	static strings
         06ae6	end of file
+*/
+
+/*
+ Z-char 6789abcdef0123456789abcdef
+current   --------------------------
+  A0      abcdefghijklmnopqrstuvwxyz
+  A1      ABCDEFGHIJKLMNOPQRSTUVWXYZ
+  A2       ^0123456789.,!?_#'"/\-:()
+          --------------------------
 */
