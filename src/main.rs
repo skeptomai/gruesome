@@ -5,12 +5,34 @@ use bitreader::{BitReader, BitReaderError};
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::ThreadRng;
 use rand::Rng;
+use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
+
+const MAX_PROPERTIES: u16 = 32;
+
+// NOTE: this is only up to v3
+#[repr(C, packed)]
+#[derive(Debug, Copy, Clone)]
+pub struct Zobject {
+    pub attributes: [u16; 2],
+    pub parent: u8,
+    pub next: u8,
+    pub child: u8,
+    pub property_offset: u16,
+}
+
+pub struct ZobjectPostV3 {
+    pub attributes: [u16; 3],
+    pub parent: u16,
+    pub next: u16,
+    pub child: u16,
+    pub property_offset: u16,
+}
 
 enum RandMode {
     Predictable,
@@ -24,22 +46,81 @@ enum Alphabets {
     A2,
 }
 
+#[derive(Debug)]
+pub struct GameMemoryMap {
+    pub header_addr: u16,
+    pub abbrev_strings: u16,
+    pub abbrev_table: u16,
+    pub property_defaults: u16,
+    pub object_table: u16,
+    pub global_variables: u16,
+}
+
+impl Display for GameMemoryMap {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(
+            f,
+            "
+            base\tend\tsize
+            {:#04x}\t{:#04x}\t{:#04x}     Story file header
+            {:#04x}\t{:#04x}\t{:#04x}     Abbreviation data
+            {:#04x}\t{:#04x}\t{:#04x}     Abbreviation pointer table
+            {:#04x}\t{:#04x}\t{:#04x}     Object table
+        ",
+            self.header_addr,
+            self.header_addr + 0x40 - 1,
+            self.header_addr + 0x40,
+            self.abbrev_strings,
+            self.abbrev_table - 1,
+            self.abbrev_table - self.abbrev_strings,
+            self.abbrev_table,
+            self.object_table - 1,
+            self.object_table - self.abbrev_table,
+            self.object_table,
+            self.global_variables - 1,
+            self.global_variables,
+        )
+    }
+}
+
 pub struct GameFile<'a> {
+    bytes: &'a [u8],
     header: Header,
     rand_mode: RandMode,
     current_alphabet: Alphabets,
     rng: &'a mut ThreadRng,
+    memory_map: GameMemoryMap,
 }
 
 impl<'a> GameFile<'a> {
     pub fn new(bytes: &'a Vec<u8>, rng: &'a mut ThreadRng) -> GameFile<'a> {
         // initialize header as first $40 == 60 dec bytes
-        GameFile {
-            header: Header::new(bytes),
+        let header = Header::new(bytes);
+        let memory_map: GameMemoryMap = GameMemoryMap {
+            header_addr: 0,
+            abbrev_strings: 0x40,
+            abbrev_table: header.abbrev_table,
+            property_defaults: header.object_table_addr,
+            object_table: header.object_table_addr,
+            global_variables: header.global_variables,
+        };
+        let g = GameFile {
+            bytes: &bytes,
+            header: header,
             rng: rng,
             rand_mode: RandMode::RandomUniform,
             current_alphabet: Alphabets::A0,
-        }
+            memory_map: memory_map,
+        };
+        g
+    }
+
+    fn object_table(&self) -> ObjectTable {
+        let properties = PropertyDefaults::new(&self.header, &self.bytes);
+        let object_table = ObjectTable {
+            properties: properties,
+        };
+        object_table
     }
 
     fn unpack_addr(paddr: u16, game_version: u8) -> Option<u16> {
@@ -101,7 +182,14 @@ impl<'a> GameFile<'a> {
 
 impl<'a> Display for GameFile<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "{}", self.header)
+        write!(
+            f,
+            "header:
+            {}
+            memory map:
+            {}",
+            self.header, self.memory_map
+        )
     }
 }
 
@@ -124,8 +212,64 @@ pub struct Header {
     pub standard_revision_number: u16,
     pub interpreter_number_and_version: u16,
     pub dictionary: u16,
-    pub object_table: u16,
+    pub object_table_addr: u16,
     pub global_variables: u16,
+}
+
+// In Versions 1 to 3, there are at most 255 objects, each having a 9-byte entry as follows
+#[derive(Debug)]
+pub struct ObjectTree {}
+
+pub struct PropertyDefaults<'a> {
+    pub prop_raw: &'a [u8], // 31 words in Versions 1-3. 63 words in Versions 4 or later.
+}
+
+impl<'a> Display for PropertyDefaults<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        //self.prop_raw.iter().map(|p|)
+        for i in 0..MAX_PROPERTIES - 1 {
+            write!(
+                f,
+                "{} ",
+                get_mem_addr(&self.prop_raw[(i * 2) as usize..], 2)
+            )
+            .unwrap();
+        }
+        Ok(())
+    }
+}
+
+impl<'a> PropertyDefaults<'a> {
+    pub fn new(header: &'a Header, bytes: &'a [u8]) -> PropertyDefaults<'a> {
+        PropertyDefaults {
+            prop_raw: &bytes[header.object_table_addr as usize
+                ..(header.object_table_addr + MAX_PROPERTIES * 2) as usize],
+        }
+    }
+
+    pub fn property(&self, index: usize) -> u16 {
+        //BUGBUG no range checking here [cb]
+        //BUGBUG this is just repeated code from get_mem_addr. Factor out to util
+        let ins_bytes = <[u8; 2]>::try_from(&self.prop_raw[index..index + 2]).unwrap();
+        let ins = u16::from_be_bytes(ins_bytes);
+        ins
+    }
+}
+
+pub struct ObjectTable<'a> {
+    pub properties: PropertyDefaults<'a>,
+}
+
+impl<'a> Display for ObjectTable<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(f, "Default Properties: ({})", self.properties)
+    }
+}
+
+impl<'a> ObjectTable<'a> {
+    pub fn get_properties(&self) -> &'a PropertyDefaults {
+        &self.properties
+    }
 }
 
 impl Header {
@@ -149,7 +293,7 @@ impl Header {
             standard_revision_number: get_mem_addr(bytes, 0x32),
             interpreter_number_and_version: get_mem_addr(bytes, 0x1e),
             dictionary: get_mem_addr(bytes, 0x08),
-            object_table: get_mem_addr(bytes, 0x0A),
+            object_table_addr: get_mem_addr(bytes, 0x0A),
             global_variables: get_mem_addr(bytes, 0x0C),
         }
     }
@@ -180,7 +324,7 @@ Checksum:                 {:#06x}
             self.base_high_mem,
             self.initial_pc,
             self.dictionary,
-            self.object_table,
+            self.object_table_addr,
             self.global_variables,
             self.base_static_mem,
             self.serial,
@@ -205,6 +349,8 @@ fn main() -> io::Result<()> {
            println!("random value: {}", g.gen_unsigned_rand());
        }
     */
+    let _ot = g.object_table();
+    println!("object table? {}", _ot);
     Ok(())
 }
 
