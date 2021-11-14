@@ -1,7 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_imports)]
 
 use bitreader::{BitReader, BitReaderError};
-#[allow(unused_imports)]
+use bitvec::prelude::*;
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::ThreadRng;
 use rand::Rng;
@@ -19,11 +20,54 @@ const MAX_PROPERTIES: u16 = 32;
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
 pub struct Zobject {
-    pub attributes: [u16; 2],
+    pub attribute_bits: [u8; 4],
     pub parent: u8,
     pub next: u8,
     pub child: u8,
-    pub property_offset: u16,
+    pub property_offset: [u8; 2],
+}
+
+impl Zobject {
+    pub fn new(bytes: &[u8]) -> Zobject {
+        let (_prefix, zobj, _suffix) = unsafe { bytes.align_to::<Zobject>() };
+        zobj[0].clone()
+    }
+
+    pub fn attributes(&self) -> Vec<u8> {
+        let mut attrs = vec![];
+        let mut index = 0;
+        for i in self.attribute_bits {
+            let mut mask = 0x80;
+
+            for _j in 0..8 {
+                let r = mask & i;
+                if r != 0 {
+                    attrs.push(index);
+                }
+                mask >>= 1;
+                index += 1;
+            }
+        }
+        attrs
+    }
+
+    pub fn properties_addr(&self) -> u16 {
+        u16::from_be_bytes(self.property_offset)
+    }
+}
+
+impl Display for Zobject {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(
+            f,
+            "Attributes: {:?}, Parent: {}, Next: {}, Child: {}, Properties Address {:#04x}",
+            self.attributes(),
+            self.parent,
+            self.next,
+            self.child,
+            self.properties_addr()
+        )
+    }
 }
 
 pub struct ZobjectPostV3 {
@@ -115,10 +159,16 @@ impl<'a> GameFile<'a> {
         g
     }
 
-    fn object_table(&self) -> ObjectTable {
-        let properties = PropertyDefaults::new(&self.header, &self.bytes);
+    fn default_properties(&self) -> PropertyDefaults {
+        let prop_raw = &self.bytes[self.header.object_table_addr as usize
+            ..(self.header.object_table_addr + MAX_PROPERTIES * 2) as usize];
+        PropertyDefaults { prop_raw: prop_raw }
+    }
+
+    fn objects(&self) -> ObjectTable {
         let object_table = ObjectTable {
-            properties: properties,
+            obj_raw: &self.bytes
+                [(self.header.object_table_addr + (MAX_PROPERTIES - 1) * 2) as usize..],
         };
         object_table
     }
@@ -226,7 +276,20 @@ pub struct PropertyDefaults<'a> {
 
 impl<'a> Display for PropertyDefaults<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        //self.prop_raw.iter().map(|p|)
+        for i in 0..MAX_PROPERTIES - 1 {
+            write!(
+                f,
+                "{} ",
+                get_mem_addr(&self.prop_raw[(i * 2) as usize..], 2)
+            )
+            .unwrap();
+        }
+        Ok(())
+    }
+}
+
+impl<'a> Debug for PropertyDefaults<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         for i in 0..MAX_PROPERTIES - 1 {
             write!(
                 f,
@@ -240,13 +303,6 @@ impl<'a> Display for PropertyDefaults<'a> {
 }
 
 impl<'a> PropertyDefaults<'a> {
-    pub fn new(header: &'a Header, bytes: &'a [u8]) -> PropertyDefaults<'a> {
-        PropertyDefaults {
-            prop_raw: &bytes[header.object_table_addr as usize
-                ..(header.object_table_addr + MAX_PROPERTIES * 2) as usize],
-        }
-    }
-
     pub fn property(&self, index: usize) -> u16 {
         //BUGBUG no range checking here [cb]
         //BUGBUG this is just repeated code from get_mem_addr. Factor out to util
@@ -257,18 +313,12 @@ impl<'a> PropertyDefaults<'a> {
 }
 
 pub struct ObjectTable<'a> {
-    pub properties: PropertyDefaults<'a>,
+    pub obj_raw: &'a [u8],
 }
 
 impl<'a> Display for ObjectTable<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "Default Properties: ({})", self.properties)
-    }
-}
-
-impl<'a> ObjectTable<'a> {
-    pub fn get_properties(&self) -> &'a PropertyDefaults {
-        &self.properties
+        write!(f, "fuck object table")
     }
 }
 
@@ -349,8 +399,13 @@ fn main() -> io::Result<()> {
            println!("random value: {}", g.gen_unsigned_rand());
        }
     */
-    let _ot = g.object_table();
+    let _ot = g.objects();
     println!("object table? {}", _ot);
+    println!("default properties {:?}", g.default_properties());
+    let _sz = std::mem::size_of::<Zobject>();
+    let _raw_object_bytes = &_ot.obj_raw[0.._sz];
+    let _zobj = Zobject::new(_raw_object_bytes);
+    println!("maybe an object? {}", _zobj);
     Ok(())
 }
 
