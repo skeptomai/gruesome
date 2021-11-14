@@ -98,6 +98,7 @@ pub struct GameMemoryMap {
     pub abbrev_table: u16,
     pub property_defaults: u16,
     pub object_table: u16,
+    pub properties_table: u16,
     pub global_variables: u16,
 }
 
@@ -111,18 +112,32 @@ impl Display for GameMemoryMap {
             {:#04x}\t{:#04x}\t{:#04x}     Abbreviation data
             {:#04x}\t{:#04x}\t{:#04x}     Abbreviation pointer table
             {:#04x}\t{:#04x}\t{:#04x}     Object table
+            {:#04x}\t{:#04x}\t{:#04x}     Properties data
+            {:#04x}\t{:#04x}\t{:#04x}     Global variables
         ",
+            // File header
             self.header_addr,
             self.header_addr + 0x40 - 1,
             self.header_addr + 0x40,
+            // Abbreviation data
             self.abbrev_strings,
             self.abbrev_table - 1,
             self.abbrev_table - self.abbrev_strings,
+            // Abbreviation pointer table
             self.abbrev_table,
             self.object_table - 1,
             self.object_table - self.abbrev_table,
+            // Object table
             self.object_table,
+            self.properties_table - 1,
+            self.properties_table - self.object_table,
+            // Properties table
+            self.properties_table,
             self.global_variables - 1,
+            self.global_variables - self.properties_table,
+            // Global variables
+            self.global_variables,
+            self.global_variables,
             self.global_variables,
         )
     }
@@ -141,15 +156,17 @@ impl<'a> GameFile<'a> {
     pub fn new(bytes: &'a Vec<u8>, rng: &'a mut ThreadRng) -> GameFile<'a> {
         // initialize header as first $40 == 60 dec bytes
         let header = Header::new(bytes);
+
         let memory_map: GameMemoryMap = GameMemoryMap {
             header_addr: 0,
             abbrev_strings: 0x40,
             abbrev_table: header.abbrev_table,
             property_defaults: header.object_table_addr,
             object_table: header.object_table_addr,
+            properties_table: 0,
             global_variables: header.global_variables,
         };
-        let g = GameFile {
+        let mut g = GameFile {
             bytes: &bytes,
             header: header,
             rng: rng,
@@ -157,6 +174,12 @@ impl<'a> GameFile<'a> {
             current_alphabet: Alphabets::A0,
             memory_map: memory_map,
         };
+
+        let _ot = g.objects();
+        let _raw_object_bytes = &_ot.obj_raw;
+        let _zobj = Zobject::new(_raw_object_bytes);
+        g.memory_map.properties_table = _zobj.properties_addr();
+
         g
     }
 
@@ -395,13 +418,6 @@ fn main() -> io::Result<()> {
 
     let g = GameFile::new(&all_bytes, &mut rng);
     println!("{}", g);
-
-    let _ot = g.objects();
-    println!("object table? {}", _ot);
-    println!("default properties {:?}", g.default_properties());
-    let _raw_object_bytes = &_ot.obj_raw;
-    let _zobj = Zobject::new(_raw_object_bytes);
-    println!("maybe an object? {}", _zobj);
     Ok(())
 }
 
