@@ -29,7 +29,8 @@ pub struct Zobject {
 
 impl Zobject {
     pub fn new(bytes: &[u8]) -> Zobject {
-        let (_prefix, zobj, _suffix) = unsafe { bytes.align_to::<Zobject>() };
+        let sz = std::mem::size_of::<Zobject>();
+        let (_prefix, zobj, _suffix) = unsafe { &bytes[0..sz].align_to::<Zobject>() };
         zobj[0].clone()
     }
 
@@ -159,13 +160,13 @@ impl<'a> GameFile<'a> {
         g
     }
 
-    fn default_properties(&self) -> PropertyDefaults {
+    pub fn default_properties(&self) -> PropertyDefaults {
         let prop_raw = &self.bytes[self.header.object_table_addr as usize
             ..(self.header.object_table_addr + MAX_PROPERTIES * 2) as usize];
         PropertyDefaults { prop_raw: prop_raw }
     }
 
-    fn objects(&self) -> ObjectTable {
+    pub fn objects(&self) -> ObjectTable {
         let object_table = ObjectTable {
             obj_raw: &self.bytes
                 [(self.header.object_table_addr + (MAX_PROPERTIES - 1) * 2) as usize..],
@@ -173,7 +174,7 @@ impl<'a> GameFile<'a> {
         object_table
     }
 
-    fn unpack_addr(paddr: u16, game_version: u8) -> Option<u16> {
+    pub fn unpack_addr(paddr: u16, game_version: u8) -> Option<u16> {
         // TODO: fix for versions > 5
         if game_version > 0 && game_version < 4 {
             Some(2 * paddr)
@@ -184,12 +185,12 @@ impl<'a> GameFile<'a> {
         }
     }
 
-    fn gen_unsigned_rand(&mut self) -> u16 {
+    pub fn gen_unsigned_rand(&mut self) -> u16 {
         // NOTE: This could probably be (u16::MAX +1) / 2
         self.rng.gen_range(0..32768)
     }
 
-    fn change_alphabet(&mut self, zchar: u8) {
+    pub fn change_alphabet(&mut self, zchar: u8) {
         self.current_alphabet = match self.current_alphabet {
             Alphabets::A0 => {
                 if zchar == 4 {
@@ -215,11 +216,11 @@ impl<'a> GameFile<'a> {
         }
     }
 
-    fn abbrev_string(abbrev_code: u8, abbrev_index: u8) -> u8 {
+    pub fn abbrev_string(abbrev_code: u8, abbrev_index: u8) -> u8 {
         32 * (abbrev_code - 1) + abbrev_index
     }
 
-    fn read_zchars(word: &[u8; 2]) -> Result<Vec<u8>, BitReaderError> {
+    pub fn read_zchars(word: &[u8; 2]) -> Result<Vec<u8>, BitReaderError> {
         let mut br = BitReader::new(word);
         br.read_u8(1).unwrap();
         let mut brv = vec![];
@@ -394,16 +395,11 @@ fn main() -> io::Result<()> {
 
     let g = GameFile::new(&all_bytes, &mut rng);
     println!("{}", g);
-    /*
-       for _i in 1..11 {
-           println!("random value: {}", g.gen_unsigned_rand());
-       }
-    */
+
     let _ot = g.objects();
     println!("object table? {}", _ot);
     println!("default properties {:?}", g.default_properties());
-    let _sz = std::mem::size_of::<Zobject>();
-    let _raw_object_bytes = &_ot.obj_raw[0.._sz];
+    let _raw_object_bytes = &_ot.obj_raw;
     let _zobj = Zobject::new(_raw_object_bytes);
     println!("maybe an object? {}", _zobj);
     Ok(())
