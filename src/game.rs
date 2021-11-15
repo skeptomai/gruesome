@@ -62,10 +62,10 @@ impl<'a> GameFile<'a> {
             memory_map: memory_map,
         };
 
-        let _ot = g.objects();
-        let _raw_object_bytes = &_ot.obj_raw;
-        let _zobj = Zobject::new(_raw_object_bytes);
-        g.memory_map.properties_table = _zobj.properties_addr();
+        // Get the base address of the objects
+        let raw_object_bytes = &g.bytes[g.memory_map.object_table as usize..];
+        let zobj = Zobject::new(raw_object_bytes);
+        g.memory_map.properties_table = zobj.properties_addr();
 
         g
     }
@@ -74,14 +74,6 @@ impl<'a> GameFile<'a> {
         let prop_raw = &self.bytes[self.memory_map.property_defaults as usize
             ..(self.memory_map.property_defaults + MAX_PROPERTIES * 2) as usize];
         PropertyDefaults { prop_raw: prop_raw }
-    }
-
-    pub fn objects(&self) -> ObjectTable {
-        let object_table = ObjectTable {
-            obj_raw: &self.bytes
-                [(self.header.object_table_addr + (MAX_PROPERTIES - 1) * 2) as usize..],
-        };
-        object_table
     }
 
     pub fn unpack_addr(paddr: u16, game_version: u8) -> Option<u16> {
