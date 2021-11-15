@@ -4,6 +4,7 @@
 use bitreader::{BitReader, BitReaderError};
 use bitvec::prelude::*;
 
+use std::env;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Error;
@@ -11,6 +12,7 @@ use std::fmt::Formatter;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
+use std::path::Path;
 
 mod zobject;
 use crate::zobject::Zobject;
@@ -22,7 +24,10 @@ mod property_defaults;
 use crate::property_defaults::PropertyDefaults;
 
 fn main() -> io::Result<()> {
-    let mut f = File::open("./zork1/DATA/ZORK1.DAT")?;
+    let args: Vec<String> = env::args().collect();
+    //let mut f = File::open("./zork1/DATA/ZORK1.DAT")?;
+    let path = Path::new(&args[1]);
+    let mut f = File::open(path)?;
     let mut all_bytes = Vec::new();
     let mut rng = rand::thread_rng();
 
