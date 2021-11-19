@@ -63,7 +63,21 @@ impl<'a> GameFile<'a> {
         let raw_object_bytes = &g.bytes[g.memory_map.object_table as usize..];
         let zobj = Zobject::new(raw_object_bytes);
         g.memory_map.properties_table = zobj.properties_addr();
-
+        let obj_table_size = g.memory_map.properties_table - g.memory_map.object_table;
+        let mut num_obj = obj_table_size / std::mem::size_of::<Zobject>() as u16;
+        println!(
+            "difference between object table addr and properties addr: {:#04x}, number of objects: {}", obj_table_size, num_obj
+            
+        );
+        
+        let mut base = 0;
+        while num_obj > 0 {
+            let _zobj = Zobject::new(&raw_object_bytes[base..base+std::mem::size_of::<Zobject>()]);
+            println!("zobj: {}", _zobj);
+            num_obj -=1;
+            base += std::mem::size_of::<Zobject>();
+        };
+        
         g
     }
 
