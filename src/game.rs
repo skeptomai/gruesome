@@ -6,15 +6,12 @@ use std::fmt::Error;
 use std::fmt::Formatter;
 
 use bitreader::{BitReader, BitReaderError};
-use bitvec::prelude::*;
 
-use rand::distributions::{Distribution, Uniform};
 use rand::prelude::ThreadRng;
 use rand::Rng;
 
 use crate::property_defaults::PropertyDefaults;
 use crate::zobject::Zobject;
-use crate::zobject::{ObjectTable, ObjectTree};
 
 pub const MAX_PROPERTIES: u16 = 32;
 

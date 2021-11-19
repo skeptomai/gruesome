@@ -1,27 +1,16 @@
 #![allow(dead_code)]
-#![allow(unused_imports)]
-
-use bitreader::{BitReader, BitReaderError};
-use bitvec::prelude::*;
 
 use std::env;
-use std::fmt::Debug;
-use std::fmt::Display;
-use std::fmt::Error;
-use std::fmt::Formatter;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 use std::path::Path;
 
-mod zobject;
-use crate::zobject::Zobject;
 mod game;
-use crate::game::{GameFile, GameMemoryMap};
+mod zobject;
+use crate::game::GameFile;
 mod header;
-use crate::header::Header;
 mod property_defaults;
-use crate::property_defaults::PropertyDefaults;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
