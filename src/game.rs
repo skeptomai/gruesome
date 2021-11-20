@@ -11,7 +11,7 @@ use rand::prelude::ThreadRng;
 use rand::Rng;
 
 use crate::property_defaults::PropertyDefaults;
-use crate::zobject::Zobject;
+use crate::zobject::{Zobject, ObjectTable};
 
 pub const MAX_PROPERTIES: u16 = 32;
 
@@ -34,6 +34,7 @@ pub struct GameFile<'a> {
     current_alphabet: Alphabets,
     rng: &'a mut ThreadRng,
     memory_map: GameMemoryMap,
+    object_table: Option<ObjectTable<'a>>
 }
 
 impl<'a> GameFile<'a> {
@@ -57,27 +58,17 @@ impl<'a> GameFile<'a> {
             rand_mode: RandMode::RandomUniform,
             current_alphabet: Alphabets::A0,
             memory_map: memory_map,
+            object_table: None
         };
 
         // Get the base address of the objects
+        // and use the properties addr from the first object to find the end of the object table
         let raw_object_bytes = &g.bytes[g.memory_map.object_table as usize..];
         let zobj = Zobject::new(raw_object_bytes);
         g.memory_map.properties_table = zobj.properties_addr();
         let obj_table_size = g.memory_map.properties_table - g.memory_map.object_table;
-        let mut num_obj = obj_table_size / std::mem::size_of::<Zobject>() as u16;
-        println!(
-            "difference between object table addr and properties addr: {:#04x}, number of objects: {}", obj_table_size, num_obj
-            
-        );
-        
-        let mut base = 0;
-        while num_obj > 0 {
-            let _zobj = Zobject::new(&raw_object_bytes[base..base+std::mem::size_of::<Zobject>()]);
-            println!("zobj: {}", _zobj);
-            num_obj -=1;
-            base += std::mem::size_of::<Zobject>();
-        };
-        
+        let num_obj = obj_table_size / std::mem::size_of::<Zobject>() as u16;
+        g.object_table = Some(ObjectTable::new(raw_object_bytes, num_obj));
         g
     }
 
@@ -151,9 +142,17 @@ impl<'a> Display for GameFile<'a> {
             "header:
             {}
             memory map:
-            {}",
+            {}
+            ",
             self.header, self.memory_map
-        )
+        ).and_then(|_| {
+            match &self.object_table {
+                Some(ot) => {
+                    write!(f, "{}", ot)
+                },
+                _ => write!(f, "no objects found")
+            }
+        })
     }
 }
 

@@ -7,13 +7,32 @@ use std::fmt::Formatter;
 #[derive(Debug)]
 pub struct ObjectTree {}
 
+#[derive(Debug)]
 pub struct ObjectTable<'a> {
-    pub obj_raw: &'a [u8],
+    obj_raw: &'a [u8],
+    pub objects: Vec<Zobject>,
+}
+
+impl<'a> ObjectTable<'a> {
+    pub fn new(obj_table_addr : &'a [u8], num_obj: u16) -> Self {
+        let mut base = 0;
+        let mut n = num_obj;
+        let mut objs = vec![];
+
+        while n > 0 {
+            let zobj = Zobject::new(&obj_table_addr[base..base+std::mem::size_of::<Zobject>()]);
+            objs.push(zobj);
+            n -=1;
+            base += std::mem::size_of::<Zobject>();
+        };
+
+        ObjectTable {obj_raw : obj_table_addr, objects: objs}
+    }
 }
 
 impl<'a> Display for ObjectTable<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "fuck object table")
+        write!(f, "objects: {:#?}", self.objects)
     }
 }
 
