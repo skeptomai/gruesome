@@ -32,7 +32,11 @@ impl<'a> ObjectTable<'a> {
 
 impl<'a> Display for ObjectTable<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "objects: {:#?}", self.objects)
+        writeln!(f, "objects:")?;
+        for o in &self.objects[..] {
+            writeln!(f, "{}", o)?;
+        }
+        Ok(())
     }
 }
 
@@ -44,7 +48,7 @@ pub struct Zobject {
     pub parent: u8,
     pub next: u8,
     pub child: u8,
-    pub property_offset: [u8; 2],
+    pub properties_offsets: [u8; 2],
 }
 
 impl Zobject {
@@ -73,7 +77,7 @@ impl Zobject {
     }
 
     pub fn properties_addr(&self) -> u16 {
-        u16::from_be_bytes(self.property_offset)
+        u16::from_be_bytes(self.properties_offsets)
     }
 }
 
@@ -81,12 +85,13 @@ impl Display for Zobject {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
             f,
-            "Attributes: {:?}, Parent: {}, Next: {}, Child: {}, Properties Address {:#04x}",
+            "Attributes: {:?}, Parent: {}, Next: {}, Child: {}, Properties Address {:#04x}, Properties Offsets: {:#?}",
             self.attributes(),
             self.parent,
             self.next,
             self.child,
-            self.properties_addr()
+            self.properties_addr(),
+            self.properties_offsets,
         )
     }
 }
