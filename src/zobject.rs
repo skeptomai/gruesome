@@ -95,26 +95,18 @@ impl Display for Zobject {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
                     f,
-        <<<<<<< HEAD
                     "
-            Attributes: {:?}, 
-            Parent: {}, Next: {}, Child: {}, 
-            Properties Address {:#04x},
-            Properties: {:?}
-            ",
-        =======
-                    "Attributes: {:?}, Parent: {}, Next: {}, Child: {}, Properties Address {:#04x}, Properties Offsets: {:#?}",
-        >>>>>>> 3964368e35b449d047f7daf9f400b549b6427fb9
+                    Attributes: {:?}, 
+                    Parent: {}, Next: {}, Child: {}, 
+                    Properties Address {:#04x},
+                    Properties: {:?}
+                    ",
                     self.attributes(),
                     self.parent,
                     self.next,
                     self.child,
                     self.properties_addr(),
-        <<<<<<< HEAD
-                    self.property_offset
-        =======
                     self.properties_offsets,
-        >>>>>>> 3964368e35b449d047f7daf9f400b549b6427fb9
                 )
     }
 }
