@@ -97,16 +97,16 @@ impl Display for Zobject {
                     f,
                     "
                     Attributes: {:?}, 
-                    Parent: {}, Next: {}, Child: {}, 
-                    Properties Address {:#04x},
-                    Properties: {:?}
+                    Parent object: {}, Sibling object: {}, Child object: {}, 
+                    Property Address {:#04x},
+                    Description: ,
+                    Properties: ,
                     ",
                     self.attributes(),
                     self.parent,
                     self.next,
                     self.child,
                     self.properties_addr(),
-                    self.properties_offsets,
                 )
     }
 }

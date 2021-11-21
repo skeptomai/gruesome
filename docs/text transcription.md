@@ -1,0 +1,29 @@
+## Stream of bytes starting at 0xbb8, the properties of the first object, which should be the text description
+
+```
+04 54 CE 5C 01 29 A6 CD 38 B2 46 DC 42 C2 42 B4
+```
+
+## First byte means 4 two byte words make up the text:
+
+```
+54 CE 5C 01 29 A6 CD 38
+```
+
+## Splitting them into 5 bit characters
+
+```
+0 10101 00110 01110 0 10111 00000 00001 0 01010 01101 00110 1 10011 01001 11000
+    p     a     i       r    <spc>  <abbrev 5>   h      a       n     d     s
+```
+
+## Character table for translation reference
+
+```
+Z-char    6789abcdef0123456789abcdef
+current   --------------------------
+  A0      abcdefghijklmnopqrstuvwxyz
+  A1      ABCDEFGHIJKLMNOPQRSTUVWXYZ
+  A2       ^0123456789.,!?_#'"/\-:()
+          --------------------------
+```          
