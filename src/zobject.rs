@@ -14,29 +14,37 @@ pub struct ObjectTable<'a> {
 }
 
 impl<'a> ObjectTable<'a> {
-    pub fn new(obj_table_addr : &'a [u8], num_obj: u16) -> Self {
+    pub fn new(obj_table_addr: &'a [u8], num_obj: u16) -> Self {
         let mut base = 0;
         let mut n = num_obj;
         let mut objs = vec![];
 
         while n > 0 {
-            let zobj = Zobject::new(&obj_table_addr[base..base+std::mem::size_of::<Zobject>()]);
+            let zobj = Zobject::new(&obj_table_addr[base..base + std::mem::size_of::<Zobject>()]);
             objs.push(zobj);
-            n -=1;
+            n -= 1;
             base += std::mem::size_of::<Zobject>();
-        };
+        }
 
-        ObjectTable {obj_raw : obj_table_addr, objects: objs}
+        ObjectTable {
+            obj_raw: obj_table_addr,
+            objects: objs,
+        }
     }
 }
 
 impl<'a> Display for ObjectTable<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         writeln!(f, "There are {} objects.", self.objects.len())?;
-        for (i,x) in self.objects.iter().enumerate() {
-            writeln!(f, "
+        for (i, x) in self.objects.iter().enumerate() {
+            writeln!(
+                f,
+                "
             {}:
-            {}", i+1, x )?;
+            {}",
+                i + 1,
+                x
+            )?;
         }
         Ok(())
     }
@@ -50,7 +58,7 @@ pub struct Zobject {
     pub parent: u8,
     pub next: u8,
     pub child: u8,
-    pub property_offset: [u8; 2],
+    pub properties_offsets: [u8; 2],
 }
 
 impl Zobject {
@@ -79,27 +87,35 @@ impl Zobject {
     }
 
     pub fn properties_addr(&self) -> u16 {
-        u16::from_be_bytes(self.property_offset)
+        u16::from_be_bytes(self.properties_offsets)
     }
 }
 
 impl Display for Zobject {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
-            f,
-            "
+                    f,
+        <<<<<<< HEAD
+                    "
             Attributes: {:?}, 
             Parent: {}, Next: {}, Child: {}, 
             Properties Address {:#04x},
             Properties: {:?}
             ",
-            self.attributes(),
-            self.parent,
-            self.next,
-            self.child,
-            self.properties_addr(),
-            self.property_offset
-        )
+        =======
+                    "Attributes: {:?}, Parent: {}, Next: {}, Child: {}, Properties Address {:#04x}, Properties Offsets: {:#?}",
+        >>>>>>> 3964368e35b449d047f7daf9f400b549b6427fb9
+                    self.attributes(),
+                    self.parent,
+                    self.next,
+                    self.child,
+                    self.properties_addr(),
+        <<<<<<< HEAD
+                    self.property_offset
+        =======
+                    self.properties_offsets,
+        >>>>>>> 3964368e35b449d047f7daf9f400b549b6427fb9
+                )
     }
 }
 
