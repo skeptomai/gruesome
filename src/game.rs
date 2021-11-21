@@ -139,9 +139,10 @@ impl<'a> Display for GameFile<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
             f,
-            "header:
+            "
+            Header:
             {}
-            memory map:
+            Memory map:
             {}
             ",
             self.header, self.memory_map

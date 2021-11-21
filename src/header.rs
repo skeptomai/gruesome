@@ -53,21 +53,21 @@ impl Display for Header {
         write!(
             f,
             "
-Z-code version:           {}
-Interpreter flags:
-Release number:           {}
-Size of resident memory:  {:#06x}
-Start PC:                 {:#06x}
-Dictionary address:       {:#06x}
-Object table address:     {:#06x}
-Global variables address: {:#06x}
-Size of dynamic memory:   {:#06x}
-Game flags:               None
-Serial number:            {}
-Abbreviations address:    {:#06x}
-File size:                {:#06x}
-Checksum:                 {:#06x}
-",
+            Z-code version:           {}
+            Interpreter flags:
+            Release number:           {}
+            Size of resident memory:  {:#06x}
+            Start PC:                 {:#06x}
+            Dictionary address:       {:#06x}
+            Object table address:     {:#06x}
+            Global variables address: {:#06x}
+            Size of dynamic memory:   {:#06x}
+            Game flags:               None
+            Serial number:            {}
+            Abbreviations address:    {:#06x}
+            File size:                {:#06x}
+            Checksum:                 {:#06x}
+            ",
             self.version,
             self.release,
             self.base_high_mem,

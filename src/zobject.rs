@@ -32,7 +32,13 @@ impl<'a> ObjectTable<'a> {
 
 impl<'a> Display for ObjectTable<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "objects: {:#?}", self.objects)
+        writeln!(f, "There are {} objects.", self.objects.len())?;
+        for (i,x) in self.objects.iter().enumerate() {
+            writeln!(f, "
+            {}:
+            {}", i+1, x )?;
+        }
+        Ok(())
     }
 }
 
@@ -81,12 +87,18 @@ impl Display for Zobject {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
             f,
-            "Attributes: {:?}, Parent: {}, Next: {}, Child: {}, Properties Address {:#04x}",
+            "
+            Attributes: {:?}, 
+            Parent: {}, Next: {}, Child: {}, 
+            Properties Address {:#04x},
+            Properties: {:?}
+            ",
             self.attributes(),
             self.parent,
             self.next,
             self.child,
-            self.properties_addr()
+            self.properties_addr(),
+            self.property_offset
         )
     }
 }
