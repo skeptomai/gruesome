@@ -14,7 +14,7 @@
 
 ```
 0 10101 00110 01110 0 10111 00000 00001 0 01010 01101 00110 1 10011 01001 11000
-    p     a     i       r    <spc>  <abbrev 5>   h      a       n     d     s
+    p     a     i       r    <spc>  <abbrev 32(1-1)+5 = 5>   h      a       n     d     s
 ```
 
 ## Character table for translation reference
@@ -26,4 +26,11 @@ current   --------------------------
   A1      ABCDEFGHIJKLMNOPQRSTUVWXYZ
   A2       ^0123456789.,!?_#'"/\-:()
           --------------------------
-```          
+```
+
+## Abbreviations Data
+```
+65 AA 80 A5 13 2D A8 05
+0 11001 01101 01010 1 00000 00101 00101 | 0 00100 11001 01101 1 01010 00000  | 00101
+    t     h     e     <spc> <pad> <pad>     <A1>    T     h       e   <spc>
+```    
