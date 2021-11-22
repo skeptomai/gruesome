@@ -116,7 +116,7 @@ impl Zobject {
         u16::from_be_bytes(self.properties_offsets)
     }
 
-    pub fn read_text(cs: &[u8]) -> String {
+    fn read_text(cs: &[u8]) -> String {
         let mut ss : Vec<u8> = vec![];
         let mut cp = 0;
         let mut is_in_abbrev = false;
@@ -180,7 +180,7 @@ impl Zobject {
         vec![0,1]
     }
 
-    pub fn read_zchars_from_word(word: &[u8; 2]) -> Result<PackedChars, BitReaderError> {
+    fn read_zchars_from_word(word: &[u8; 2]) -> Result<PackedChars, BitReaderError> {
         // start with a word
         let mut br = BitReader::new(word);
 
@@ -192,7 +192,11 @@ impl Zobject {
         }
         
         Ok(pc)
-    }    
+    }
+    
+    fn description(&self) -> String {
+        "fuck you, that's what".to_string()
+    }
 }
 
 impl Display for Zobject {
@@ -203,14 +207,15 @@ impl Display for Zobject {
                     Attributes: {:?}, 
                     Parent object: {}, Sibling object: {}, Child object: {}, 
                     Property Address {:#04x},
-                    Description: ,
-                    Properties: ,
+                    Description: '{}',
+                    Properties:
                     ",
                     self.attributes(),
                     self.parent,
                     self.next,
                     self.child,
                     self.properties_addr(),
+                    self.description()
                 )
     }
 }
