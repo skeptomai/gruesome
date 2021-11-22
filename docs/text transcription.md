@@ -33,4 +33,9 @@ current   --------------------------
 65 AA 80 A5 13 2D A8 05
 0 11001 01101 01010 1 00000 00101 00101 | 0 00100 11001 01101 1 01010 00000  | 00101
     t     h     e     <spc> <pad> <pad>     <A1>    T     h       e   <spc>
-```    
+```
+
+## State Machine
+at entry :  no state, read 2 bytes
+read 3 chars from 2 bytes, remove padding, append to string
+if top bit of first byte set, you are done. if not, loop to read

@@ -6,6 +6,9 @@ use std::io;
 use std::io::prelude::*;
 use std::path::Path;
 
+#[macro_use]
+extern crate lazy_static;
+
 mod game;
 mod zobject;
 use crate::game::GameFile;
