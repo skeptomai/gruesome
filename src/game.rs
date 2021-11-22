@@ -50,7 +50,6 @@ pub struct GameFile<'a> {
     bytes: &'a [u8],
     header: Header,
     rand_mode: RandMode,
-    current_alphabet: Alphabets,
     rng: &'a mut ThreadRng,
     memory_map: GameMemoryMap,
     object_table: Option<ObjectTable<'a>>
@@ -75,7 +74,6 @@ impl<'a> GameFile<'a> {
             header: header,
             rng: rng,
             rand_mode: RandMode::RandomUniform,
-            current_alphabet: Alphabets::A0,
             memory_map: memory_map,
             object_table: None
         };
@@ -113,43 +111,7 @@ impl<'a> GameFile<'a> {
         self.rng.gen_range(0..32768)
     }
 
-    pub fn change_alphabet(&mut self, c: Zchar) {
-        if c == 4 {
-            self.current_alphabet = Alphabets::A1;
-        } else if c==5 {
-            self.current_alphabet = Alphabets::A2;
-        } else {
-            self.current_alphabet = Alphabets::A0;
-        }
-    }
-
-    pub fn change_alphabet_prev3(&mut self, zchar: u8) {
-        self.current_alphabet = match self.current_alphabet {
-            Alphabets::A0 => {
-                if zchar == 4 {
-                    Alphabets::A1
-                } else {
-                    Alphabets::A2
-                }
-            }
-            Alphabets::A1 => {
-                if zchar == 4 {
-                    Alphabets::A2
-                } else {
-                    Alphabets::A0
-                }
-            }
-            Alphabets::A2 => {
-                if zchar == 4 {
-                    Alphabets::A0
-                } else {
-                    Alphabets::A1
-                }
-            }
-        }
-    }
-
-    pub fn read_text(&mut self, cs: &[u8]) -> String {
+    pub fn read_text(cs: &[u8]) -> String {
         let mut ss : Vec<u8> = vec![];
         let mut cp = 0;
         let mut is_in_abbrev = false;
