@@ -60,7 +60,14 @@ impl<'a> GameFile<'a> {
         let num_obj = obj_table_size / std::mem::size_of::<Zobject>() as u16;
         g.object_table = Some(ObjectTable::new(raw_object_bytes, num_obj));
 
-        println!("{}", read_text(&g.bytes[zobj.properties_addr() as usize..]).unwrap());
+        // add 1 to properties_table because it's the text length in bytes
+        // normally we don't use that to determine text length, but rely rather
+        // on the top bit of the last word being set. This byte allows you to skip
+        // over the prop header (object description) to the properties
+        println!("{}", read_text(&g.bytes, (g.memory_map.properties_table + 1) as usize,
+            g.memory_map.abbrev_strings as usize,
+            g.memory_map.abbrev_table as usize)
+            .unwrap());
         g
     }
 

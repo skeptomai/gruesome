@@ -3,6 +3,8 @@ use std::io;
 
 use bitreader::{BitReader, BitReaderError};
 
+use crate::game::get_mem_addr;
+
 type Zchar = u8;
 
 #[derive(Debug, Clone, Copy)]
@@ -28,20 +30,22 @@ lazy_static! {
     };
 }
 
-
-pub fn read_text(cs: &[u8]) -> Result<String, io::Error> {
+pub fn read_text(gbytes: &[u8], cso: usize, abso: usize, abto: usize) -> Result<String, io::Error> {
     let mut ss : Vec<u8> = vec![];
     let mut cp = 0;
     let mut is_in_abbrev = false;
     let mut abbrev_table = 0;
     let mut current_alphabet = Alphabets::A0;
-    let mut found_last = false;
+    
+    let cs = &gbytes[cso..];
+    let _abs = &gbytes[abso..];
+    let abt = &gbytes[abto..];
 
     // first byte tells us number of words
-    let len = &cs[0];
-    cp +=1;
+    //let len = &cs[0];
+    //cp +=1;
 
-    for _x in (0 .. *len).rev() {
+    loop {
         let next_chars = <[u8; 2]>::try_from(&cs[cp..cp+2]).unwrap();
         let pc = read_zchars_from_word(&next_chars).unwrap();
         cp+=2;
@@ -49,7 +53,11 @@ pub fn read_text(cs: &[u8]) -> Result<String, io::Error> {
         for c in pc.chars {
 
             if is_in_abbrev {
-                ss.append(&mut lookup_abbrev(abbrev_string_index(abbrev_table, c)));
+                let asi = abbrev_string_index(abbrev_table, c) as usize; // word address
+                println!("abbrev table {}, index {}, resulting offset: {}", abbrev_table, c, asi);
+                let abbrev_string_addr = (get_mem_addr(abt, asi) *2) as usize;
+                println!("addr? {:#04x}", abbrev_string_addr);
+                unsafe {ss.append(read_text(gbytes, abbrev_string_addr, abso, abto).unwrap().as_mut_vec())};
                 is_in_abbrev = false;
             } else {
                 match c {
@@ -73,7 +81,7 @@ pub fn read_text(cs: &[u8]) -> Result<String, io::Error> {
                     },                    
                     // current char is normal
                     // BUGBUG: is this guard statement correct? [cb]
-                    6 ..= 25 => {
+                    6 ..= 31 => {
                         ss.push(lookup_char(c, &current_alphabet))
                     },
                     _ => {
@@ -84,16 +92,12 @@ pub fn read_text(cs: &[u8]) -> Result<String, io::Error> {
         }
 
         
-        found_last = pc.last;
+        if pc.last {break}
     }
 
-    if !found_last {
-        Err(io::Error::new(io::ErrorKind::Other, "failed to find end of string!"))
-    } else {
-        match std::str::from_utf8(&ss) {
-            Ok(s) => Ok(s.to_string()),
-            Err(e) => Err(io::Error::new(io::ErrorKind::Other, e.to_string()))
-        }
+    match std::str::from_utf8(&ss) {
+        Ok(s) => Ok(s.to_string()),
+        Err(e) => Err(io::Error::new(io::ErrorKind::Other, e.to_string()))
     }
     
 }
@@ -104,7 +108,7 @@ fn lookup_char(c: u8, alphabet : &Alphabets) -> Zchar {
 }
 
 fn abbrev_string_index(abbrev_code: u8, abbrev_index: u8) -> u8 {
-    32 * (abbrev_code - 1) + abbrev_index
+    (32 * (abbrev_code - 1) + abbrev_index) * 2
 }
 
 fn lookup_abbrev(_abbrev_index: u8) -> Vec<u8> {

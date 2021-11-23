@@ -39,3 +39,8 @@ current   --------------------------
 at entry :  no state, read 2 bytes
 read 3 chars from 2 bytes, remove padding, append to string
 if top bit of first byte set, you are done. if not, loop to read
+
+D1 60 
+
+1 10100 01011 00000 
+    o     f    <spc>    
