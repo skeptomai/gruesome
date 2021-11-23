@@ -10,6 +10,7 @@ use rand::Rng;
 
 use crate::property_defaults::PropertyDefaults;
 use crate::zobject::{Zobject, ObjectTable};
+use crate::util::read_text;
 
 pub const MAX_PROPERTIES: u16 = 32;
 
@@ -58,6 +59,8 @@ impl<'a> GameFile<'a> {
         let obj_table_size = g.memory_map.properties_table - g.memory_map.object_table;
         let num_obj = obj_table_size / std::mem::size_of::<Zobject>() as u16;
         g.object_table = Some(ObjectTable::new(raw_object_bytes, num_obj));
+
+        println!("{}", read_text(&g.bytes[zobj.properties_addr() as usize..]).unwrap());
         g
     }
 
