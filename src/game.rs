@@ -59,17 +59,28 @@ impl<'a> GameFile<'a> {
         let obj_table_size = g.memory_map.properties_table - g.memory_map.object_table;
         let num_obj = obj_table_size / std::mem::size_of::<Zobject>() as u16;
         let object_table = Some(ObjectTable::new(raw_object_bytes, num_obj));
+        g.object_table = object_table;
 
+        println!("***** Abbreviations *****");
+        let mut abbrev_table_offset = g.memory_map.abbrev_table;
+        let mut si = 0;
+        loop {
+            let abbrev_string_addr = (get_mem_addr(&g.bytes, abbrev_table_offset as usize) *2) as usize;
+            println!("[{}] \"{}\"", si, read_text(g.bytes, abbrev_string_addr, abbrev_string_addr, abbrev_string_addr).unwrap());
+            si+=1;
+            abbrev_table_offset+=2;
+            if abbrev_table_offset >= g.memory_map.property_defaults {break}
+        }
+
+        println!("***** Objects *****");        
         // add 1 to properties_table because it's the text length in bytes
         // normally we don't use that to determine text length, but rely rather
         // on the top bit of the last word being set. This byte allows you to skip
         // over the prop header (object description) to the properties
-        for o in &object_table.as_ref().unwrap().objects {
+        for o in &g.object_table.as_ref().unwrap().objects {
             println!("{}", read_text(&g.bytes, (o.properties_addr() + 1) as usize, g.memory_map.abbrev_strings as usize,
             g.memory_map.abbrev_table as usize).unwrap());
         }
-
-        g.object_table = object_table;
 
         g
     }
