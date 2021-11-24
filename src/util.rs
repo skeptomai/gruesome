@@ -41,10 +41,6 @@ pub fn read_text(gbytes: &[u8], cso: usize, abso: usize, abto: usize) -> Result<
     let _abs = &gbytes[abso..];
     let abt = &gbytes[abto..];
 
-    // first byte tells us number of words
-    //let len = &cs[0];
-    //cp +=1;
-
     loop {
         let next_chars = <[u8; 2]>::try_from(&cs[cp..cp+2]).unwrap();
         let pc = read_zchars_from_word(&next_chars).unwrap();
@@ -54,9 +50,9 @@ pub fn read_text(gbytes: &[u8], cso: usize, abso: usize, abto: usize) -> Result<
 
             if is_in_abbrev {
                 let asi = abbrev_string_index(abbrev_table, c) as usize; // word address
-                println!("abbrev table {}, index {}, resulting offset: {}", abbrev_table, c, asi);
+                //println!("abbrev table {}, index {}, resulting offset: {}", abbrev_table, c, asi);
                 let abbrev_string_addr = (get_mem_addr(abt, asi) *2) as usize;
-                println!("addr? {:#04x}", abbrev_string_addr);
+                //println!("addr? {:#04x}", abbrev_string_addr);
                 unsafe {ss.append(read_text(gbytes, abbrev_string_addr, abso, abto).unwrap().as_mut_vec())};
                 is_in_abbrev = false;
             } else {
@@ -81,7 +77,8 @@ pub fn read_text(gbytes: &[u8], cso: usize, abso: usize, abto: usize) -> Result<
                     // current char is normal
                     // BUGBUG: is this guard statement correct? [cb]
                     6 ..= 31 => {
-                        ss.push(lookup_char(c, &current_alphabet))
+                        ss.push(lookup_char(c, &current_alphabet));
+                        current_alphabet = Alphabets::A0;
                     },
                     _ => {
                         panic!("text out of range! {}", c);
