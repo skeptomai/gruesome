@@ -68,7 +68,6 @@ pub fn read_text(gbytes: &[u8], cso: usize, abso: usize, abto: usize) -> Result<
                     // current char denotes an abbreviation table
                     // next char denotes the index
                     1 | 2 | 3 => {
-                        println!("found abbrev");
                         is_in_abbrev = true;
                         abbrev_table = c;
                     },

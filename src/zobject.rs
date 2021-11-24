@@ -49,7 +49,6 @@ impl<'a> Display for ObjectTable<'a> {
         Ok(())
     }
 }
-
 // NOTE: this is only up to v3
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]

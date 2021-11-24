@@ -58,16 +58,19 @@ impl<'a> GameFile<'a> {
         g.memory_map.properties_table = zobj.properties_addr();
         let obj_table_size = g.memory_map.properties_table - g.memory_map.object_table;
         let num_obj = obj_table_size / std::mem::size_of::<Zobject>() as u16;
-        g.object_table = Some(ObjectTable::new(raw_object_bytes, num_obj));
+        let object_table = Some(ObjectTable::new(raw_object_bytes, num_obj));
 
         // add 1 to properties_table because it's the text length in bytes
         // normally we don't use that to determine text length, but rely rather
         // on the top bit of the last word being set. This byte allows you to skip
         // over the prop header (object description) to the properties
-        println!("{}", read_text(&g.bytes, (g.memory_map.properties_table + 1) as usize,
-            g.memory_map.abbrev_strings as usize,
-            g.memory_map.abbrev_table as usize)
-            .unwrap());
+        for o in &object_table.as_ref().unwrap().objects {
+            println!("{}", read_text(&g.bytes, (o.properties_addr() + 1) as usize, g.memory_map.abbrev_strings as usize,
+            g.memory_map.abbrev_table as usize).unwrap());
+        }
+
+        g.object_table = object_table;
+
         g
     }
 
@@ -77,23 +80,10 @@ impl<'a> GameFile<'a> {
         PropertyDefaults { prop_raw: prop_raw }
     }
 
-    pub fn unpack_addr(paddr: u16, game_version: u8) -> Option<u16> {
-        // TODO: fix for versions > 5
-        if game_version > 0 && game_version < 4 {
-            Some(2 * paddr)
-        } else if game_version > 3 && game_version < 6 {
-            Some(4 * paddr)
-        } else {
-            None
-        }
-    }
-
     pub fn gen_unsigned_rand(&mut self) -> u16 {
         // NOTE: This could probably be (u16::MAX +1) / 2
         self.rng.gen_range(0..32768)
     }
-
-
 }
 
 impl<'a> Display for GameFile<'a> {
