@@ -52,7 +52,7 @@ impl<'a> Display for ObjectTable<'a> {
 // NOTE: this is only up to v3
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
-pub struct Zobject {
+pub struct InnerZobject {
     pub attribute_bits: [u8; 4],
     pub parent: u8,
     pub next: u8,
@@ -60,17 +60,22 @@ pub struct Zobject {
     pub properties_offsets: [u8; 2],
 }
 
+#[derive(Debug, Copy, Clone)]
+pub struct Zobject {
+    zobj : InnerZobject,
+}
+
 impl Zobject {
     pub fn new(bytes: &[u8]) -> Zobject {
-        let sz = std::mem::size_of::<Zobject>();
-        let (_prefix, zobj, _suffix) = unsafe { &bytes[0..sz].align_to::<Zobject>() };
-        zobj[0].clone()
+        let sz = std::mem::size_of::<InnerZobject>();
+        let (_prefix, zobj, _suffix) = unsafe { &bytes[0..sz].align_to::<InnerZobject>() };
+        Zobject{ zobj: zobj[0]}
     }
 
     pub fn attributes(&self) -> Vec<u8> {
         let mut attrs = vec![];
         let mut index = 0;
-        for i in self.attribute_bits {
+        for i in self.zobj.attribute_bits {
             let mut mask = 0x80;
 
             for _j in 0..8 {
@@ -86,7 +91,7 @@ impl Zobject {
     }
 
     pub fn properties_addr(&self) -> u16 {
-        u16::from_be_bytes(self.properties_offsets)
+        u16::from_be_bytes(self.zobj.properties_offsets)
     }
 
     fn description(&self) -> String {
@@ -106,9 +111,9 @@ impl Display for Zobject {
                     Properties:
                     ",
                     self.attributes(),
-                    self.parent,
-                    self.next,
-                    self.child,
+                    self.zobj.parent,
+                    self.zobj.next,
+                    self.zobj.child,
                     self.properties_addr(),
                     self.description()
                 )
