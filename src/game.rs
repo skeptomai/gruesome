@@ -9,7 +9,7 @@ use rand::prelude::ThreadRng;
 use rand::Rng;
 
 use crate::property_defaults::PropertyDefaults;
-use crate::zobject::{Zobject, ObjectTable};
+use crate::zobject::{InnerZobject, ObjectTable, Zobject};
 use crate::util::read_text;
 
 pub const MAX_PROPERTIES: u16 = 32;
@@ -20,11 +20,11 @@ enum RandMode {
 }
 
 pub struct GameFile<'a> {
-    bytes: &'a [u8],
+    pub bytes: &'a [u8],
     header: Header,
     rand_mode: RandMode,
     rng: &'a mut ThreadRng,
-    memory_map: GameMemoryMap,
+    pub memory_map: GameMemoryMap,
     object_table: Option<ObjectTable<'a>>
 }
 
@@ -54,11 +54,11 @@ impl<'a> GameFile<'a> {
         // Get the base address of the objects
         // and use the properties addr from the first object to find the end of the object table
         let raw_object_bytes = &g.bytes[g.memory_map.object_table as usize..];
-        let zobj = Zobject::new(raw_object_bytes);
+        let zobj = Zobject::new(&g, raw_object_bytes);
         g.memory_map.properties_table = zobj.properties_addr();
         let obj_table_size = g.memory_map.properties_table - g.memory_map.object_table;
-        let num_obj = obj_table_size / std::mem::size_of::<Zobject>() as u16;
-        let object_table = Some(ObjectTable::new(raw_object_bytes, num_obj));
+        let num_obj = obj_table_size / std::mem::size_of::<InnerZobject>() as u16;
+        let object_table = Some(ObjectTable::new(&g, raw_object_bytes, num_obj));
         g.object_table = object_table;
 
         g
@@ -79,6 +79,17 @@ impl<'a> GameFile<'a> {
 impl<'a> Display for GameFile<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
 
+        write!(
+            f,
+            "
+            Header:
+            {}
+            Memory map:
+            {}
+            ",
+            self.header, self.memory_map
+        )?;
+
         writeln!(f, "***** Abbreviations *****")?;
         let mut abbrev_table_offset = self.memory_map.abbrev_table;
         let mut si = 1;
@@ -90,36 +101,14 @@ impl<'a> Display for GameFile<'a> {
             if abbrev_table_offset >= self.memory_map.property_defaults {break}
         }
 
-        writeln!(f,"***** Objects *****")?;
-        // add 1 to properties_table because it's the text length in bytes
-        // normally we don't use that to determine text length, but rely rather
-        // on the top bit of the last word being set. This byte allows you to skip
-        // over the prop header (object description) to the properties
-        for (i,o) in self.object_table.as_ref().unwrap().objects.iter().enumerate() {
-            let description = if self.bytes[o.properties_addr() as usize] == 0 {"".to_string()}
-            else {read_text(&self.bytes, (o.properties_addr() + 1) as usize, 
-                self.memory_map.abbrev_strings as usize,
-                self.memory_map.abbrev_table as usize).unwrap()};
-            writeln!(f, "[{}] \"{}\"", i+1, description)?;
+        match &self.object_table {
+            Some(ot) => {
+                write!(f, "{}", ot)?;
+            },
+            _ => {write!(f, "no objects found")?;}
         }
 
-        write!(
-            f,
-            "
-            Header:
-            {}
-            Memory map:
-            {}
-            ",
-            self.header, self.memory_map
-        ).and_then(|_| {
-            match &self.object_table {
-                Some(ot) => {
-                    write!(f, "{}", ot)
-                },
-                _ => write!(f, "no objects found")
-            }
-        })
+        Ok(())
     }
 }
 
