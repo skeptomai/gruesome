@@ -9,7 +9,7 @@ use rand::prelude::ThreadRng;
 use rand::Rng;
 
 use crate::property_defaults::PropertyDefaults;
-use crate::zobject::{InnerZobject, ObjectTable, Zobject};
+use crate::zobject::{ObjectTable};
 use crate::util::read_text;
 
 pub const MAX_PROPERTIES: u16 = 32;
@@ -53,12 +53,7 @@ impl<'a> GameFile<'a> {
 
         // Get the base address of the objects
         // and use the properties addr from the first object to find the end of the object table
-        let raw_object_bytes = &g.bytes[g.memory_map.object_table as usize..];
-        let zobj = Zobject::new(&g, raw_object_bytes);
-        g.memory_map.properties_table = zobj.properties_addr();
-        let obj_table_size = g.memory_map.properties_table - g.memory_map.object_table;
-        let num_obj = obj_table_size / std::mem::size_of::<InnerZobject>() as u16;
-        let object_table = Some(ObjectTable::new(&g, raw_object_bytes, num_obj));
+        let object_table = Some(ObjectTable::new(&mut g));
         g.object_table = object_table;
 
         g

@@ -17,20 +17,28 @@ pub struct ObjectTable<'a> {
 }
 
 impl<'a> ObjectTable<'a> {
-    pub fn new(gfile: &GameFile, obj_table_addr: &'a [u8], num_obj: u16) -> Self {
+    pub fn new(gfile: &mut GameFile<'a>) -> Self {
+        // Get the base address of the objects
+        // and use the properties addr from the first object to find the end of the object table
+        let raw_object_bytes = &gfile.bytes[gfile.memory_map.object_table as usize..];
+        let zobj = Zobject::new(gfile, raw_object_bytes);
+        gfile.memory_map.properties_table = zobj.properties_addr();
+        let obj_table_size = gfile.memory_map.properties_table - gfile.memory_map.object_table;
+        let num_obj = obj_table_size / std::mem::size_of::<InnerZobject>() as u16;
+
         let mut base = 0;
         let mut n = num_obj;
         let mut objs = vec![];
 
         while n > 0 {
-            let zobj = Zobject::new(gfile, &obj_table_addr[base..base + std::mem::size_of::<InnerZobject>()]);
+            let zobj = Zobject::new(gfile, &raw_object_bytes[base..base + std::mem::size_of::<InnerZobject>()]);
             objs.push(zobj);
             n -= 1;
             base += std::mem::size_of::<InnerZobject>();
         }
 
         ObjectTable {
-            obj_raw: obj_table_addr,
+            obj_raw: raw_object_bytes,
             objects: objs,
         }
     }
@@ -109,14 +117,13 @@ impl Zobject {
 impl Display for Zobject {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
-                    f,
-                    "
-                    Attributes: {:?}, 
-                    Parent object: {}, Sibling object: {}, Child object: {}, 
-                    Property Address {:#04x},
-                    Description: '{}',
-                    Properties:
-                    ",
+                f,
+                "Attributes: {:?}, 
+            Parent object: {}, Sibling object: {}, Child object: {}, 
+            Property Address {:#04x},
+                Description: \"{}\",
+                Properties:
+                ",
                     self.attributes(),
                     self.zobj.parent,
                     self.zobj.next,
