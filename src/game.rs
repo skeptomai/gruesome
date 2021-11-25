@@ -53,7 +53,10 @@ impl<'a> GameFile<'a> {
 
         // Get the base address of the objects
         // and use the properties addr from the first object to find the end of the object table
-        let object_table = Some(ObjectTable::new(&mut g));
+        let ot = ObjectTable::new(&g);
+        g.memory_map.properties_table = ot.objects[0].properties_addr();        
+        let object_table = Some(ot);
+        
         g.object_table = object_table;
 
         g

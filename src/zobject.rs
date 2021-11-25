@@ -17,18 +17,18 @@ pub struct ObjectTable<'a> {
 }
 
 impl<'a> ObjectTable<'a> {
-    pub fn new(gfile: &mut GameFile<'a>) -> Self {
+    pub fn new(gfile: &GameFile<'a>) -> Self {
         // Get the base address of the objects
         // and use the properties addr from the first object to find the end of the object table
-        let raw_object_bytes = &gfile.bytes[gfile.memory_map.object_table as usize..];
-        let zobj = Zobject::new(gfile, raw_object_bytes);
-        gfile.memory_map.properties_table = zobj.properties_addr();
-        let obj_table_size = gfile.memory_map.properties_table - gfile.memory_map.object_table;
-        let num_obj = obj_table_size / std::mem::size_of::<InnerZobject>() as u16;
-
         let mut base = 0;
-        let mut n = num_obj;
         let mut objs = vec![];
+
+        let raw_object_bytes = &gfile.bytes[gfile.memory_map.object_table as usize..];
+        let zobj = Zobject::new(gfile, &raw_object_bytes[base..base + std::mem::size_of::<InnerZobject>()]);
+        let obj_table_size: usize = zobj.properties_addr() as usize - gfile.memory_map.object_table as usize;
+        let num_obj = obj_table_size / std::mem::size_of::<InnerZobject>() as usize;
+
+        let mut n = num_obj;
 
         while n > 0 {
             let zobj = Zobject::new(gfile, &raw_object_bytes[base..base + std::mem::size_of::<InnerZobject>()]);
