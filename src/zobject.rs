@@ -16,6 +16,8 @@ pub struct ObjectTable {
 }
 
 impl ObjectTable {
+    /// Create an object table from gamefile
+    /// which requires access to abbrevs, etc
     pub fn new(gfile: &GameFile) -> Self {
         // Get the base address of the objects
         // and use the properties addr from the first object to find the end of the object table
@@ -76,12 +78,15 @@ pub struct Zobject {
 }
 
 impl Zobject {
+    /// create a new Zobject by bitblt'ing into InnerZObject
     pub fn new(gfile: &GameFile, bytes: &[u8]) -> Zobject {
         let sz = std::mem::size_of::<InnerZobject>();
         let (_prefix, zobj, _suffix) = unsafe { &bytes[0..sz].align_to::<InnerZobject>() };
 
         let properties_addr = u16::from_be_bytes(zobj[0].properties_offsets) as usize;
+        // This next line checks for zero-length description
         let description = if gfile.bytes()[properties_addr] == 0 {"".to_string()}
+        // if we have a description, we read and expand abbrevs
         else {read_text(&gfile.bytes(), properties_addr + 1, 
             gfile.abbrev_strings() as usize,
             gfile.abbrev_table() as usize).unwrap()};
@@ -89,6 +94,7 @@ impl Zobject {
         Zobject{ zobj: zobj[0], description: description}
     }
 
+    /// return object's attributes
     pub fn attributes(&self) -> Vec<u8> {
         let mut attrs = vec![];
         let mut index = 0;
@@ -107,10 +113,13 @@ impl Zobject {
         attrs
     }
 
+    /// return properties offset from object's data
     pub fn properties_addr(&self) -> usize {
         u16::from_be_bytes(self.zobj.properties_offsets) as usize
     }
 
+    /// given a pointer to object memory, return its properties
+    /// used to find the end of the object table (where the properties begin)
     pub fn properties_addr_from_base(bytes: &[u8]) -> usize {
         let sz = std::mem::size_of::<InnerZobject>();
         let (_prefix, zobj, _suffix) = unsafe { &bytes[0..sz].align_to::<InnerZobject>() };

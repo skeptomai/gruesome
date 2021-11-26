@@ -1,3 +1,4 @@
+#![crate_name = "infocom"]
 #![allow(dead_code)]
 
 use std::env;
@@ -18,7 +19,6 @@ mod util;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
-    //let mut f = File::open("./zork1/DATA/ZORK1.DAT")?;
     let path = Path::new(&args[1]);
     let mut f = File::open(path)?;
     let mut all_bytes = Vec::new();

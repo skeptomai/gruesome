@@ -28,10 +28,13 @@ pub struct GameFile<'a> {
 }
 
 impl<'a> GameFile<'a> {
+    /// create new GameFile with the raw file bytes and a random entropy source
     pub fn new(bytes: &'a Vec<u8>, rng: &'a mut ThreadRng) -> GameFile<'a> {
         // initialize header as first $40 == 60 dec bytes
         let header = Header::new(bytes);
         let object_table_addr = header.object_table_addr + (MAX_PROPERTIES - 1) * 2;
+        // Get the base address of the objects
+        // and use the properties addr from the first object to find the end of the object table
         let properties_table = Zobject::properties_addr_from_base(&bytes[object_table_addr..]);
 
         let memory_map: GameMemoryMap = GameMemoryMap {
@@ -52,8 +55,6 @@ impl<'a> GameFile<'a> {
             object_table: None
         };
 
-        // Get the base address of the objects
-        // and use the properties addr from the first object to find the end of the object table
         let ot = ObjectTable::new(&g);
         let object_table = Some(ot);
 
