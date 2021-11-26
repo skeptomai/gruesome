@@ -9,7 +9,7 @@ use rand::prelude::ThreadRng;
 use rand::Rng;
 
 use crate::property_defaults::PropertyDefaults;
-use crate::zobject::{ObjectTable};
+use crate::zobject::{ObjectTable, Zobject};
 use crate::util::read_text;
 
 pub const MAX_PROPERTIES: usize = 32;
@@ -20,7 +20,6 @@ enum RandMode {
 }
 
 pub struct GameFile<'a> {
-    pub bytes: &'a [u8],
     header: Header,
     rand_mode: RandMode,
     rng: &'a mut ThreadRng,
@@ -32,6 +31,8 @@ impl<'a> GameFile<'a> {
     pub fn new(bytes: &'a Vec<u8>, rng: &'a mut ThreadRng) -> GameFile<'a> {
         // initialize header as first $40 == 60 dec bytes
         let header = Header::new(bytes);
+        let object_table_addr = header.object_table_addr + (MAX_PROPERTIES - 1) * 2;
+        let properties_table = Zobject::properties_addr_from_base(&bytes[object_table_addr..]);
 
         let memory_map: GameMemoryMap = GameMemoryMap {
             bytes: &bytes,
@@ -39,12 +40,11 @@ impl<'a> GameFile<'a> {
             abbrev_strings: 0x40,
             abbrev_table: header.abbrev_table,
             property_defaults: header.object_table_addr,
-            object_table: header.object_table_addr + (MAX_PROPERTIES - 1) * 2,
-            properties_table: 0,
+            object_table: object_table_addr,
+            properties_table: properties_table,
             global_variables: header.global_variables,
         };
         let mut g = GameFile {
-            bytes: &bytes,
             header: header,
             rng: rng,
             rand_mode: RandMode::RandomUniform,
@@ -55,16 +55,15 @@ impl<'a> GameFile<'a> {
         // Get the base address of the objects
         // and use the properties addr from the first object to find the end of the object table
         let ot = ObjectTable::new(&g);
-        g.memory_map.properties_table = ot.objects[0].properties_addr();        
         let object_table = Some(ot);
-        
+
         g.object_table = object_table;
 
         g
     }
 
     pub fn default_properties(&self) -> PropertyDefaults {
-        let prop_raw = &self.bytes[self.memory_map.property_defaults
+        let prop_raw = &self.bytes()[self.memory_map.property_defaults
             ..(self.memory_map.property_defaults + MAX_PROPERTIES * 2)];
         PropertyDefaults { prop_raw: prop_raw }
     }
@@ -84,6 +83,10 @@ impl<'a> GameFile<'a> {
 
     pub fn object_table(&self) -> usize {
         self.memory_map.object_table
+    }
+    
+    pub fn bytes(&self) -> &'a [u8] {
+        &self.memory_map.bytes[..]
     }
 }
 
@@ -105,8 +108,8 @@ impl<'a> Display for GameFile<'a> {
         let mut abbrev_table_offset = self.memory_map.abbrev_table;
         let mut si = 1;
         loop {
-            let abbrev_string_addr = (get_mem_addr(&self.bytes, abbrev_table_offset as usize) *2) as usize;
-            writeln!(f, "[{}] \"{}\"", si, read_text(self.bytes, abbrev_string_addr, abbrev_string_addr, abbrev_string_addr).unwrap())?;
+            let abbrev_string_addr = (get_mem_addr(&self.bytes(), abbrev_table_offset as usize) *2) as usize;
+            writeln!(f, "[{}] \"{}\"", si, read_text(self.bytes(), abbrev_string_addr, abbrev_string_addr, abbrev_string_addr).unwrap())?;
             si+=1;
             abbrev_table_offset+=2;
             if abbrev_table_offset >= self.memory_map.property_defaults {break}

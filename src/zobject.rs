@@ -23,9 +23,9 @@ impl<'a> ObjectTable<'a> {
         let mut base = 0;
         let mut objs = vec![];
 
-        let raw_object_bytes = &gfile.bytes[gfile.object_table() ..];
-        let zobj = Zobject::new(gfile, &raw_object_bytes[base..base + std::mem::size_of::<InnerZobject>()]);
-        let obj_table_size: usize = zobj.properties_addr() - gfile.object_table();
+        let raw_object_bytes = &gfile.bytes()[gfile.object_table() ..];
+        let prop_base = Zobject::properties_addr_from_base(raw_object_bytes);
+        let obj_table_size = prop_base - gfile.object_table();
         let num_obj = obj_table_size / std::mem::size_of::<InnerZobject>();
 
         let mut n = num_obj;
@@ -83,8 +83,8 @@ impl Zobject {
         let (_prefix, zobj, _suffix) = unsafe { &bytes[0..sz].align_to::<InnerZobject>() };
 
         let properties_addr = u16::from_be_bytes(zobj[0].properties_offsets) as usize;
-        let description = if gfile.bytes[properties_addr] == 0 {"".to_string()}
-        else {read_text(&gfile.bytes, properties_addr + 1, 
+        let description = if gfile.bytes()[properties_addr] == 0 {"".to_string()}
+        else {read_text(&gfile.bytes(), properties_addr + 1, 
             gfile.abbrev_strings() as usize,
             gfile.abbrev_table() as usize).unwrap()};
 
@@ -111,6 +111,13 @@ impl Zobject {
 
     pub fn properties_addr(&self) -> usize {
         u16::from_be_bytes(self.zobj.properties_offsets) as usize
+    }
+
+    pub fn properties_addr_from_base(bytes: &[u8]) -> usize {
+        let sz = std::mem::size_of::<InnerZobject>();
+        let (_prefix, zobj, _suffix) = unsafe { &bytes[0..sz].align_to::<InnerZobject>() };
+
+        u16::from_be_bytes(zobj[0].properties_offsets) as usize
     }
 }
 
