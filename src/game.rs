@@ -24,7 +24,7 @@ pub struct GameFile<'a> {
     header: Header,
     rand_mode: RandMode,
     rng: &'a mut ThreadRng,
-    pub memory_map: GameMemoryMap,
+    memory_map: GameMemoryMap<'a>,
     object_table: Option<ObjectTable<'a>>
 }
 
@@ -34,6 +34,7 @@ impl<'a> GameFile<'a> {
         let header = Header::new(bytes);
 
         let memory_map: GameMemoryMap = GameMemoryMap {
+            bytes: &bytes,
             header_addr: 0,
             abbrev_strings: 0x40,
             abbrev_table: header.abbrev_table,
@@ -129,7 +130,8 @@ pub fn get_mem_addr(addr: &[u8], counter: usize) -> usize {
 }
 
 #[derive(Debug)]
-pub struct GameMemoryMap {
+pub struct GameMemoryMap<'a> {
+    pub bytes: &'a [u8],    
     pub header_addr: usize,
     pub abbrev_strings: usize,
     pub abbrev_table: usize,
@@ -139,7 +141,7 @@ pub struct GameMemoryMap {
     pub global_variables: usize,
 }
 
-impl Display for GameMemoryMap {
+impl<'a> Display for GameMemoryMap<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
             f,
