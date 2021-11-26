@@ -23,10 +23,10 @@ impl<'a> ObjectTable<'a> {
         let mut base = 0;
         let mut objs = vec![];
 
-        let raw_object_bytes = &gfile.bytes[gfile.object_table() as usize..];
+        let raw_object_bytes = &gfile.bytes[gfile.object_table() ..];
         let zobj = Zobject::new(gfile, &raw_object_bytes[base..base + std::mem::size_of::<InnerZobject>()]);
-        let obj_table_size: usize = zobj.properties_addr() as usize - gfile.object_table() as usize;
-        let num_obj = obj_table_size / std::mem::size_of::<InnerZobject>() as usize;
+        let obj_table_size: usize = zobj.properties_addr() - gfile.object_table();
+        let num_obj = obj_table_size / std::mem::size_of::<InnerZobject>();
 
         let mut n = num_obj;
 
@@ -109,8 +109,8 @@ impl Zobject {
         attrs
     }
 
-    pub fn properties_addr(&self) -> u16 {
-        u16::from_be_bytes(self.zobj.properties_offsets)
+    pub fn properties_addr(&self) -> usize {
+        u16::from_be_bytes(self.zobj.properties_offsets) as usize
     }
 }
 

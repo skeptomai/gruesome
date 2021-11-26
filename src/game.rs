@@ -12,7 +12,7 @@ use crate::property_defaults::PropertyDefaults;
 use crate::zobject::{ObjectTable};
 use crate::util::read_text;
 
-pub const MAX_PROPERTIES: u16 = 32;
+pub const MAX_PROPERTIES: usize = 32;
 
 enum RandMode {
     Predictable,
@@ -63,8 +63,8 @@ impl<'a> GameFile<'a> {
     }
 
     pub fn default_properties(&self) -> PropertyDefaults {
-        let prop_raw = &self.bytes[self.memory_map.property_defaults as usize
-            ..(self.memory_map.property_defaults + MAX_PROPERTIES * 2) as usize];
+        let prop_raw = &self.bytes[self.memory_map.property_defaults
+            ..(self.memory_map.property_defaults + MAX_PROPERTIES * 2)];
         PropertyDefaults { prop_raw: prop_raw }
     }
 
@@ -73,15 +73,15 @@ impl<'a> GameFile<'a> {
         self.rng.gen_range(0..32768)
     }
 
-    pub fn abbrev_strings(&self) -> u16 {
+    pub fn abbrev_strings(&self) -> usize {
         self.memory_map.abbrev_strings
     }
 
-    pub fn abbrev_table(&self) -> u16 {
+    pub fn abbrev_table(&self) -> usize {
         self.memory_map.abbrev_table
     }
 
-    pub fn object_table(&self) -> u16 {
+    pub fn object_table(&self) -> usize {
         self.memory_map.object_table
     }
 }
@@ -122,21 +122,21 @@ impl<'a> Display for GameFile<'a> {
     }
 }
 
-pub fn get_mem_addr(addr: &[u8], counter: usize) -> u16 {
+pub fn get_mem_addr(addr: &[u8], counter: usize) -> usize {
     let ins_bytes = <[u8; 2]>::try_from(&addr[counter..counter + 2]).unwrap();
     let ins = u16::from_be_bytes(ins_bytes);
-    ins
+    ins as usize
 }
 
 #[derive(Debug)]
 pub struct GameMemoryMap {
-    pub header_addr: u16,
-    pub abbrev_strings: u16,
-    pub abbrev_table: u16,
-    pub property_defaults: u16,
-    pub object_table: u16,
-    pub properties_table: u16,
-    pub global_variables: u16,
+    pub header_addr: usize,
+    pub abbrev_strings: usize,
+    pub abbrev_table: usize,
+    pub property_defaults: usize,
+    pub object_table: usize,
+    pub properties_table: usize,
+    pub global_variables: usize,
 }
 
 impl Display for GameMemoryMap {
