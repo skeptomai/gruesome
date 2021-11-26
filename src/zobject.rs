@@ -12,7 +12,7 @@ pub struct ObjectTree {}
 
 #[derive(Debug)]
 pub struct ObjectTable {
-    pub objects: Vec<Zobject>,
+    objects: Vec<Zobject>,
 }
 
 impl ObjectTable {
@@ -46,8 +46,9 @@ impl ObjectTable {
 
 impl Display for ObjectTable {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        writeln!(f, "There are {} objects.", self.objects.len())?;
-        for (i, x) in self.objects.iter().enumerate() {
+        let iter = self.into_iter();
+        writeln!(f, "There are {} objects.", iter.len())?;
+        for (i, x) in iter.enumerate() {
             writeln!(
                 f,
                 "
@@ -60,6 +61,38 @@ impl Display for ObjectTable {
         Ok(())
     }
 }
+
+impl<'a> IntoIterator for &'a ObjectTable {
+    type Item = &'a Zobject;
+    type IntoIter = ZObjectIntoIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        ZObjectIntoIterator {
+            objects : self.objects.iter(),
+        }
+    }
+}
+
+pub struct ZObjectIntoIterator<'a> {
+    objects: std::slice::Iter<'a, Zobject>
+}
+
+impl<'a> Iterator for ZObjectIntoIterator<'a> {
+    type Item = &'a Zobject;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.objects.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.objects.size_hint()
+    }
+}
+
+impl<'a> ExactSizeIterator for ZObjectIntoIterator<'a> {
+
+}
+
 // NOTE: this is only up to v3
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
