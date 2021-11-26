@@ -72,6 +72,18 @@ impl<'a> GameFile<'a> {
         // NOTE: This could probably be (u16::MAX +1) / 2
         self.rng.gen_range(0..32768)
     }
+
+    pub fn abbrev_strings(&self) -> u16 {
+        self.memory_map.abbrev_strings
+    }
+
+    pub fn abbrev_table(&self) -> u16 {
+        self.memory_map.abbrev_table
+    }
+
+    pub fn object_table(&self) -> u16 {
+        self.memory_map.object_table
+    }
 }
 
 impl<'a> Display for GameFile<'a> {

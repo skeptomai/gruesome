@@ -23,9 +23,9 @@ impl<'a> ObjectTable<'a> {
         let mut base = 0;
         let mut objs = vec![];
 
-        let raw_object_bytes = &gfile.bytes[gfile.memory_map.object_table as usize..];
+        let raw_object_bytes = &gfile.bytes[gfile.object_table() as usize..];
         let zobj = Zobject::new(gfile, &raw_object_bytes[base..base + std::mem::size_of::<InnerZobject>()]);
-        let obj_table_size: usize = zobj.properties_addr() as usize - gfile.memory_map.object_table as usize;
+        let obj_table_size: usize = zobj.properties_addr() as usize - gfile.object_table() as usize;
         let num_obj = obj_table_size / std::mem::size_of::<InnerZobject>() as usize;
 
         let mut n = num_obj;
@@ -85,8 +85,8 @@ impl Zobject {
         let properties_addr = u16::from_be_bytes(zobj[0].properties_offsets) as usize;
         let description = if gfile.bytes[properties_addr] == 0 {"".to_string()}
         else {read_text(&gfile.bytes, properties_addr + 1, 
-            gfile.memory_map.abbrev_strings as usize,
-            gfile.memory_map.abbrev_table as usize).unwrap()};
+            gfile.abbrev_strings() as usize,
+            gfile.abbrev_table() as usize).unwrap()};
 
         Zobject{ zobj: zobj[0], description: description}
     }
