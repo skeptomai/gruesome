@@ -24,7 +24,7 @@ pub struct GameFile<'a> {
     rand_mode: RandMode,
     rng: &'a mut ThreadRng,
     memory_map: GameMemoryMap<'a>,
-    object_table: Option<ObjectTable<'a>>
+    object_table: Option<ObjectTable>
 }
 
 impl<'a> GameFile<'a> {

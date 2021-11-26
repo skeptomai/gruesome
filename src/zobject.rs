@@ -11,13 +11,12 @@ use crate::util::read_text;
 pub struct ObjectTree {}
 
 #[derive(Debug)]
-pub struct ObjectTable<'a> {
-    obj_raw: &'a [u8],
+pub struct ObjectTable {
     pub objects: Vec<Zobject>,
 }
 
-impl<'a> ObjectTable<'a> {
-    pub fn new(gfile: &GameFile<'a>) -> Self {
+impl ObjectTable {
+    pub fn new(gfile: &GameFile) -> Self {
         // Get the base address of the objects
         // and use the properties addr from the first object to find the end of the object table
         let mut base = 0;
@@ -38,13 +37,12 @@ impl<'a> ObjectTable<'a> {
         }
 
         ObjectTable {
-            obj_raw: raw_object_bytes,
             objects: objs,
         }
     }
 }
 
-impl<'a> Display for ObjectTable<'a> {
+impl Display for ObjectTable {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         writeln!(f, "There are {} objects.", self.objects.len())?;
         for (i, x) in self.objects.iter().enumerate() {
