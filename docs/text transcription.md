@@ -44,3 +44,20 @@ D1 60
 
 1 10100 01011 00000 
     o     f    <spc>    
+
+For the first object, B2 at 0bc1 should be the properties size byte
+B2 == 101 10010
+       5    18
+so, does that 5 mean there are 6 data bytes? From the doc :"32 times the number of data bytes minus one,"
+let's believe that.. so prop bytes would be
+46 DC 42 C2 42 B4.  That checks out with the ztools:
+Properties:
+              [18] 46 dc 42 c2 42 b4 
+              [16] 82 
+
+The next one:
+10 == 000 10000
+       1   16
+
+Which is one data byte, prop 16, data byte is 82.
+That also checks out!

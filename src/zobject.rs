@@ -108,6 +108,7 @@ pub struct InnerZobject {
 pub struct Zobject {
     zobj : InnerZobject,
     description : String,
+    properties : Vec<(u8, Vec<u8>)>
 }
 
 impl Zobject {
@@ -117,14 +118,33 @@ impl Zobject {
         let (_prefix, zobj, _suffix) = unsafe { &bytes[0..sz].align_to::<InnerZobject>() };
 
         let properties_addr = u16::from_be_bytes(zobj[0].properties_offsets) as usize;
+        let descr_byte_len : usize = gfile.bytes()[properties_addr] as usize;
         // This next line checks for zero-length description
-        let description = if gfile.bytes()[properties_addr] == 0 {"".to_string()}
+        let description = if descr_byte_len == 0 {"".to_string()}
         // if we have a description, we read and expand abbrevs
         else {read_text(&gfile.bytes(), properties_addr + 1, 
             gfile.abbrev_strings() as usize,
             gfile.abbrev_table() as usize).unwrap()};
 
-        Zobject{ zobj: zobj[0], description: description}
+        // also read properties into object, starting at 
+        // properties_addr + 1 for the byte denoting description len + the actual description len, which is in 2 byte words
+        let mut properties_base = properties_addr + 1 + descr_byte_len * 2;
+        let mut props = vec![];
+        loop {
+            let property_size_byte = gfile.bytes()[properties_base];
+            if property_size_byte == 0 {break} else {
+                let actual_size = (property_size_byte >> 5) + 1;
+                let property_index = property_size_byte & 0b00011111;
+                let mut prop_bytes = vec![];
+                for i in 0..actual_size {
+                    prop_bytes.push(gfile.bytes()[properties_base+1+i as usize]);
+                }
+                props.push((property_index, prop_bytes));                
+                properties_base += (actual_size +1) as usize;
+            }
+        }
+
+        Zobject{ zobj: zobj[0], description: description, properties: props}
     }
 
     /// return object's attributes
@@ -169,15 +189,23 @@ impl Display for Zobject {
             Parent object: {}, Sibling object: {}, Child object: {}, 
             Property Address {:#04x},
                 Description: \"{}\",
-                Properties:
                 ",
                     self.attributes(),
                     self.zobj.parent,
                     self.zobj.next,
                     self.zobj.child,
                     self.properties_addr(),
-                    self.description
-                )
+                    self.description,
+                )?;
+        write!(f,"Properties:")?;
+        for (k,v) in &self.properties {
+            write!(f, "
+                    [{}]: ", k)?;
+            for val in v {
+                write!(f, "{:02x} ", val)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -188,3 +216,15 @@ pub struct ZobjectPostV3 {
     pub child: u16,
     pub property_offset: u16,
 }
+
+/*
+1 2 3 4 5 6 7 8
+1: 32 * 1 - 1 = 31 or 32 * (1-1) = 0, no bits
+2: 32 * 2 -1 = 63 or 32 * (2-1) = 32, 5th bit
+3: 32 * 3 - = 95 or 32 * (3-1) = 64, 6th bit
+4: 32 * (4-1) = 96
+5: 32 * (5-1) = 128
+6: 32 * (6-1) = 160
+7: 32 * (7-1) = 192
+8: 32 * (8-1) = 224
+*/
