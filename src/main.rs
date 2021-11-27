@@ -15,7 +15,6 @@ mod zobject;
 use crate::game::GameFile;
 mod header;
 mod property_defaults;
-mod util;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();

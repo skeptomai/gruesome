@@ -14,7 +14,6 @@ use rand::Rng;
 
 use crate::property_defaults::PropertyDefaults;
 use crate::zobject::{ObjectTable, Zobject};
-use crate::util::read_text;
 
 pub const MAX_PROPERTIES: usize = 32;
 
@@ -207,7 +206,7 @@ impl<'a> Display for GameFile<'a> {
         let mut si = 1;
         loop {
             let abbrev_string_addr = (get_mem_addr(&self.bytes(), abbrev_table_offset as usize) *2) as usize;
-            writeln!(f, "[{}] \"{}\"", si, read_text(self.bytes(), abbrev_string_addr, abbrev_string_addr, abbrev_string_addr).unwrap())?;
+            writeln!(f, "[{}] \"{}\"", si, self.read_text(abbrev_string_addr).unwrap())?;
             si+=1;
             abbrev_table_offset+=2;
             if abbrev_table_offset >= self.memory_map.property_defaults {break}
