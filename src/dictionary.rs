@@ -30,7 +30,8 @@ impl Dictionary {
         for _i in 0..number_of_entries{
             let _dict_entry = &bytes[cur_pos..cur_pos+entry_length as usize];
             let word = g.read_text(cur_pos).expect("failed to read dict text");
-            words.push(DictionaryWord{word});
+            let data = bytes[cur_pos+4 as usize..cur_pos+entry_length as usize].to_vec();
+            words.push(DictionaryWord{word,data});
             cur_pos+=entry_length as usize;
         }
         Dictionary{n, input_codes, entry_length, number_of_entries, words}
@@ -49,7 +50,7 @@ impl Display for Dictionary {
         writeln!(f, "\n****** words ******")?;
         for (i,w) in self.words.iter().enumerate() {
             write!(f, "[{}]: {} ", i+1, w)?;
-            if (i+1) % 5 == 0 {writeln!(f, "")?};
+            if (i+1) % 3 == 0 {writeln!(f, "")?};
         }
         
         Ok(())
@@ -58,11 +59,11 @@ impl Display for Dictionary {
 #[derive(Debug, Clone)]
 pub struct DictionaryWord {
     pub word : String,
-    //   pub data_bytes : Vec<u8>,
+    pub data : Vec<u8>,
 }
 
 impl Display for DictionaryWord {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f,"{}", self.word)
+        write!(f,"{}, {:?}", self.word, self.data)
     }
 }
