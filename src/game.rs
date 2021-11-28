@@ -14,6 +14,7 @@ use rand::Rng;
 
 use crate::property_defaults::PropertyDefaults;
 use crate::zobject::{ObjectTable, Zobject};
+use crate::dictionary::Dictionary;
 
 pub const MAX_PROPERTIES: usize = 32;
 
@@ -52,7 +53,8 @@ pub struct GameFile<'a> {
     rand_mode: RandMode,
     rng: &'a mut ThreadRng,
     memory_map: GameMemoryMap<'a>,
-    object_table: Option<ObjectTable>
+    object_table: Option<ObjectTable>,
+    dictionary: Option<Dictionary>,
 }
 
 impl<'a> GameFile<'a> {
@@ -75,18 +77,24 @@ impl<'a> GameFile<'a> {
             properties_table: properties_table,
             global_variables: header.global_variables,
         };
+
         let mut g = GameFile {
             header: header,
             rng: rng,
             rand_mode: RandMode::RandomUniform,
             memory_map: memory_map,
-            object_table: None
+            object_table: None,
+            dictionary:  None,
         };
 
         let ot = ObjectTable::new(&g);
         let object_table = Some(ot);
 
         g.object_table = object_table;
+
+        let dict = Dictionary::new(&g);
+
+        g.dictionary = Some(dict);
 
         g
     }
@@ -170,6 +178,10 @@ impl<'a> GameFile<'a> {
         self.rng.gen_range(0..32768)
     }
 
+    pub fn header(&self) -> &Header {
+        &self.header
+    }
+
     pub fn abbrev_strings(&self) -> usize {
         self.memory_map.abbrev_strings
     }
@@ -217,6 +229,14 @@ impl<'a> Display for GameFile<'a> {
                 write!(f, "{}", ot)?;
             },
             _ => {write!(f, "no objects found")?;}
+        }
+
+        writeln!(f, "***** Dictionary *****")?;
+        match &self.dictionary {
+            Some(d) => {
+               write!(f,"{}", d)?;
+            },
+            _ => {write!(f,"no dictionary!")?;}
         }
 
         Ok(())
