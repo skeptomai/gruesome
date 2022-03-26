@@ -60,29 +60,35 @@ pub struct GameFile<'a> {
 impl<'a> GameFile<'a> {
     /// create new GameFile with the raw file bytes and a random entropy source
     pub fn new(bytes: &'a Vec<u8>, rng: &'a mut ThreadRng) -> GameFile<'a> {
+        let bytes = &bytes;
+        let header_addr = 0;
+        let abbrev_strings = 0x40;
         // initialize header as first $40 == 60 dec bytes
         let header = Header::new(bytes);
-        let object_table_addr = header.object_table_addr + (MAX_PROPERTIES - 1) * 2;
+        let abbrev_table = header.abbrev_table;
+        let property_defaults = header.object_table_addr;
+        let object_table = header.object_table_addr + (MAX_PROPERTIES - 1) * 2;
+        let global_variables = header.global_variables;
         // Get the base address of the objects
         // and use the properties addr from the first object to find the end of the object table
-        let properties_table = Zobject::properties_addr_from_base(&bytes[object_table_addr..]);
+        let properties_table = Zobject::properties_addr_from_base(&bytes[object_table..]);
 
         let memory_map: GameMemoryMap = GameMemoryMap {
-            bytes: &bytes,
-            header_addr: 0,
-            abbrev_strings: 0x40,
-            abbrev_table: header.abbrev_table,
-            property_defaults: header.object_table_addr,
-            object_table: object_table_addr,
-            properties_table: properties_table,
-            global_variables: header.global_variables,
+            bytes,
+            header_addr,
+            abbrev_strings,
+            abbrev_table,
+            property_defaults,
+            object_table,
+            properties_table,
+            global_variables,
         };
 
         let mut g = GameFile {
-            header: header,
-            rng: rng,
+            header,
+            rng,
             rand_mode: RandMode::RandomUniform,
-            memory_map: memory_map,
+            memory_map,
             object_table: None,
             dictionary:  None,
         };
