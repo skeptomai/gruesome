@@ -1,0 +1,29 @@
+* Zork / Infocom / Interactive Fiction
+
+** Game Sources
+- [[https://if.illuminion.de/infocom.html][Illumion]]
+- [[http://infocom.elsewhere.org/gallery/zork1/zork1.html][The Infocom Gallery]]
+- [[http://www.infocom-if.org/downloads/downloads.html][Infocom Downloads]]
+- [[https://github.com/historicalsource][Historical Sources on Github]]  
+- [[https://ifdb.org/][Interactive Fiction Database]]
+
+** Playing on Mac
+
+- [[https://www.youtube.com/watch?v=TXJji53Vr3Y][Play DOS games on M1 Mac]]
+- [[https://boxer.thec0de.com/][Boxer 64]]
+
+** Z Machine
+
+- [[https://en.wikipedia.org/wiki/Z-machine][Z Machine]]
+- [[http://inform-fiction.org/zmachine/standards/z1point0/appd.html][History of Z-Machine]]
+- [[http://inform-fiction.org/zmachine/standards/z1point0/appd.html][Z-Machine Standards Document]]
+- [[https://gitlab.com/DavidGriffith/frotz][FROTZ interpreter / engine]]
+- [[http://www.ifarchive.org/indexes/if-archiveXinfocomXtoolsXztools.html][Ztools]]
+  - [[https://github.com/SamB/ztools][Ztools on Github]]
+
+** Misc History
+
+- [[https://www.filfre.net/2012/01/the-roots-of-infocom/][The Digital Antequarian]]
+- [[https://www.ifarchive.org/][Interactive Fiction Archive]]
+
+
