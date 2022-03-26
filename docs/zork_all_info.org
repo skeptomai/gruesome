@@ -1,4 +1,5 @@
 
+#+begin_src 
 Story file is /Users/cb/Projects/infocom/zork1/DATA/ZORK1.DAT
 
     **** Story file header ****
@@ -3930,3 +3931,4 @@ action# pre-action-routine action-routine "verb..."
 [ 686] wrench  [ 687] writin  [ 688] xyzzy   [ 689] y       [ 690] yank    
 [ 691] yell    [ 692] yellow  [ 693] yes     [ 694] z       [ 695] zork    
 [ 696] zorkmi  [ 697] zzmgck  
+#+end_src
