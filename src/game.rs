@@ -237,7 +237,6 @@ impl<'a> Display for GameFile<'a> {
             _ => {write!(f, "no objects found")?;}
         }
 
-        writeln!(f, "***** Dictionary *****")?;
         match &self.dictionary {
             Some(d) => {
                write!(f,"{}", d)?;

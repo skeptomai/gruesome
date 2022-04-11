@@ -21,8 +21,13 @@ impl Dictionary {
         let n = bytes[cur_pos];
         cur_pos+=1;
         let input_codes = bytes[cur_pos..cur_pos+n as usize].to_vec();
+        /* from the doc:
+        The "entry length" is the length of each word's entry in the dictionary table. 
+        (It must be at least 4 in Versions 1 to 3, and at least 6 in later Versions.) 
+         */
         cur_pos+=n as usize;
         let entry_length = bytes[cur_pos];
+        assert!(entry_length>=4, "Word length must be at least 4 chars in versions 1 to 3, and at least 6 in later versions");
         cur_pos+=1;
         let number_of_entries = get_mem_addr(bytes, cur_pos);
         cur_pos+=2;
@@ -43,8 +48,8 @@ impl Display for Dictionary {
         writeln!(f, "\n***** Dictionary *****")?;
         writeln!(
             f,
-            "Number of separator / input codes: {}, word size: {}, word count: {}", self.n, self.entry_length, self.number_of_entries)?;
-        writeln!(f, "separators:")?;
+            "Number of separator / input codes: {}, \nword size: {}, word count: {}", self.n, self.entry_length, self.number_of_entries)?;
+        write!(f, "separators: ")?;
         for c in &self.input_codes {
             write!(f, "'{}' , ", *c as char)?;
         }
