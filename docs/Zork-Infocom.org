@@ -1,6 +1,7 @@
 * Zork / Infocom / Interactive Fiction
 
 ** Game Sources
+
 - [[https://if.illuminion.de/infocom.html][Illumion]]
 - [[http://infocom.elsewhere.org/gallery/zork1/zork1.html][The Infocom Gallery]]
 - [[http://www.infocom-if.org/downloads/downloads.html][Infocom Downloads]]
@@ -26,5 +27,6 @@
 
 - [[https://www.filfre.net/2012/01/the-roots-of-infocom/][The Digital Antequarian]]
 - [[https://www.ifarchive.org/][Interactive Fiction Archive]]
+- [[https://intfiction.org/][Interactive Fiction Community]]
 
 
