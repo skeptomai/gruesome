@@ -40,6 +40,7 @@ impl Dictionary {
 
 impl Display for Dictionary {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        writeln!(f, "\n***** Dictionary *****")?;
         writeln!(
             f,
             "Number of separator / input codes: {}, word size: {}, word count: {}", self.n, self.entry_length, self.number_of_entries)?;
@@ -47,7 +48,7 @@ impl Display for Dictionary {
         for c in &self.input_codes {
             write!(f, "'{}' , ", *c as char)?;
         }
-        writeln!(f, "\n****** words ******")?;
+        writeln!(f, "\n\n****** words ******")?;
         for (i,w) in self.words.iter().enumerate() {
             write!(f, "[{}]: {} ", i+1, w)?;
             if (i+1) % 3 == 0 {writeln!(f, "")?};
@@ -64,6 +65,7 @@ pub struct DictionaryWord {
 
 impl Display for DictionaryWord {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f,"{}, {:?}", self.word, self.data)
+        //write!(f,"{}, {:?}", self.word, self.data)
+        write!(f,"{}", self.word)
     }
 }
