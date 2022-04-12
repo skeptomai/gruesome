@@ -122,7 +122,7 @@ impl<'a> GameFile<'a> {
             cp+=2;
             
             for c in pc.chars {
-    
+
                 if is_in_abbrev {
                     let asi = abbrev_string_index(abbrev_table, c) as usize; // word address
                     //println!("abbrev table {}, index {}, resulting offset: {}", abbrev_table, c, asi);
@@ -219,7 +219,7 @@ impl<'a> Display for GameFile<'a> {
             self.header, self.memory_map
         )?;
 
-        writeln!(f, "***** Abbreviations *****")?;
+        writeln!(f, "\n***** Abbreviations *****")?;
         let mut abbrev_table_offset = self.memory_map.abbrev_table;
         let mut si = 1;
         loop {
@@ -237,7 +237,6 @@ impl<'a> Display for GameFile<'a> {
             _ => {write!(f, "no objects found")?;}
         }
 
-        writeln!(f, "***** Dictionary *****")?;
         match &self.dictionary {
             Some(d) => {
                write!(f,"{}", d)?;

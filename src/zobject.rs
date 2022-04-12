@@ -46,7 +46,7 @@ impl ObjectTable {
 impl Display for ObjectTable {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         let iter = self.into_iter();
-        writeln!(f, "There are {} objects.", iter.len())?;
+        writeln!(f, "\nThere are {} objects.", iter.len())?;
         for (i, x) in iter.enumerate() {
             writeln!(
                 f,

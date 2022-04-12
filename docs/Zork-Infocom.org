@@ -1,6 +1,7 @@
 * Zork / Infocom / Interactive Fiction
 
 ** Game Sources
+
 - [[https://if.illuminion.de/infocom.html][Illumion]]
 - [[http://infocom.elsewhere.org/gallery/zork1/zork1.html][The Infocom Gallery]]
 - [[http://www.infocom-if.org/downloads/downloads.html][Infocom Downloads]]
@@ -12,6 +13,7 @@
 - [[https://boxer.thec0de.com/][Boxer 64]]
 - [[https://www.youtube.com/watch?v=TXJji53Vr3Y][Play DOS games on M1 Mac]]
 - [[https://www.thezorklibrary.com/installguides/rtz-win-dosbox.html][Return to Zork - DosBox]]
+- [[https://dosbox-x.com/][DOSBox-X]]
 
 ** Z Machine
 
@@ -27,5 +29,6 @@
 
 - [[https://www.filfre.net/2012/01/the-roots-of-infocom/][The Digital Antequarian]]
 - [[https://www.ifarchive.org/][Interactive Fiction Archive]]
+- [[https://intfiction.org/][Interactive Fiction Community]]
 
 
