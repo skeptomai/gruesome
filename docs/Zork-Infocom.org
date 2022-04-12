@@ -29,5 +29,6 @@
 - [[https://www.filfre.net/2012/01/the-roots-of-infocom/][The Digital Antequarian]]
 - [[https://www.ifarchive.org/][Interactive Fiction Archive]]
 - [[https://intfiction.org/][Interactive Fiction Community]]
+- [[https://zork.fandom.com/wiki/Command_List][Zork Command List]]
 
 
