@@ -4,7 +4,6 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
-use std::collections::HashMap;
 
 use bitreader::{BitReader, BitReaderError};
 
@@ -16,47 +15,11 @@ use crate::zobject::{ObjectTable, Zobject};
 use crate::dictionary::Dictionary;
 use crate::util::read_text;
 use crate::util::get_mem_addr;
-
-pub const MAX_PROPERTIES: usize = 32;
-
-pub type Zchar = u8;
-
-#[derive(Debug, Clone, Copy)]
-pub struct PackedChars {
-    pub last : bool,
-    pub chars : [Zchar;3]
-}
-
-/*
-struct PackedCharsIter {
-
-}
-
-impl Iterator for PackedCharsIter {
-    type Item = &Zchar;
-
-    fn next(&mut self) -> Option<Self::Item>{
-        Some()
-    }
-}
- */
-
-#[derive(PartialEq, Eq, Hash)]
-pub enum Alphabets {
-    A0,
-    A1,
-    A2,
-}
-
-lazy_static! {
-    pub static ref ALPHABETMAP: HashMap<Alphabets, &'static str> = {
-        let mut m = HashMap::new();
-        m.insert(Alphabets::A0, "abcdefghijklmnopqrstuvwxyz");
-        m.insert(Alphabets::A1, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
-        m.insert(Alphabets::A2, " ^0123456789.,!?_#'\"/\\-:()");
-        m
-    };
-}
+use crate::util::MAX_PROPERTIES;
+use crate::util::Zchar;
+use crate::util::PackedChars;
+use crate::util::Alphabets;
+use crate::util::ALPHABETMAP;
 
 enum RandMode {
     Predictable,

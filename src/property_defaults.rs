@@ -4,7 +4,7 @@ use std::fmt::Error;
 use std::fmt::Formatter;
 
 use crate::util::get_mem_addr;
-use crate::game::MAX_PROPERTIES;
+use crate::util::MAX_PROPERTIES;
 
 pub struct PropertyDefaults<'a> {
     pub prop_raw: &'a [u8], // 31 words in Versions 1-3. 63 words in Versions 4 or later.
