@@ -28,26 +28,37 @@ pub type Zchar = u8;
 #[derive(Debug, Clone, Copy)]
 pub struct PackedChars {
     pub last : bool,
-    pub chars : [Zchar;3]
+    pub chars : [Zchar;3],
 }
 
-
-struct PackedCharsIter {
-
-}
-
-impl Iterator for PackedCharsIter {
-    type Item = &Zchar;
-
-    fn next(&mut self) -> Option<Self::Item>{
-        Some()
+impl PackedChars {
+    fn iter(&self) -> PackedCharsIter<'_> {
+        PackedCharsIter { chars: &self.chars }
     }
 }
 
-impl IntoIterator for PackedChars {
-    type Item = PackedChars
+
+pub struct PackedCharsIter<'a> {
+    chars: &'a [u8;3],
 }
 
+impl<'a> Iterator for PackedCharsIter<'a> {
+    type Item  = &'a u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Some(&self.chars[0])
+    }
+}
+
+impl<'a> IntoIterator for &'a PackedChars {
+    type Item = &'a u8;
+
+    type IntoIter  = PackedCharsIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
 
 pub fn read_text(g: &GameFile, cso: usize) -> Result<String, io::Error> {
     let mut ss : Vec<u8> = vec![];
