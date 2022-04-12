@@ -26,24 +26,24 @@ pub const MAX_PROPERTIES: usize = 32;
 pub type Zchar = u8;
 
 #[derive(Debug, Clone, Copy)]
-pub struct PackedChars<const U: usize> {
+pub struct UnpackedZChars<const U: usize> {
     pub last : bool,
     pub chars : [Zchar;U],
 }
 
-impl<const U: usize> PackedChars<U> {
-    fn iter(&self) -> PackedCharsIter<'_, U> {
-        PackedCharsIter { chars: &self.chars, pos: 0 }
+impl<const U: usize> UnpackedZChars<U> {
+    fn iter(&self) -> UnpackedZCharsIter<'_, U> {
+        UnpackedZCharsIter { chars: &self.chars, pos: 0 }
     }
 }
 
 
-pub struct PackedCharsIter<'a, const U: usize> {
+pub struct UnpackedZCharsIter<'a, const U: usize> {
     pos : usize,
     chars: &'a [u8;U],
 }
 
-impl<'a, const U: usize> Iterator for PackedCharsIter<'a, U> {
+impl<'a, const U: usize> Iterator for UnpackedZCharsIter<'a, U> {
     type Item  = &'a u8;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -58,10 +58,10 @@ impl<'a, const U: usize> Iterator for PackedCharsIter<'a, U> {
     }
 }
 
-impl<'a, const U: usize> IntoIterator for &'a PackedChars<U> {
+impl<'a, const U: usize> IntoIterator for &'a UnpackedZChars<U> {
     type Item = &'a u8;
 
-    type IntoIter  = PackedCharsIter<'a, U>;
+    type IntoIter  = UnpackedZCharsIter<'a, U>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -145,12 +145,12 @@ fn abbrev_string_index(abbrev_code: u8, abbrev_index: u8) -> u8 {
     (32 * (abbrev_code - 1) + abbrev_index) * 2
 }
 
-fn read_zchars_from_word(word: &[u8; 2]) -> Result<PackedChars<3>, BitReaderError> {
+fn read_zchars_from_word(word: &[u8; 2]) -> Result<UnpackedZChars<3>, BitReaderError> {
     // start with a word
     let mut br = BitReader::new(word);
 
     // lop off top bit as designator of 'last chars here'
-    let mut pc = PackedChars{last: br.read_u8(1)? == 1, chars: [0,0,0]};
+    let mut pc = UnpackedZChars{last: br.read_u8(1)? == 1, chars: [0,0,0]};
 
     for i in 0..3 {
         pc.chars[i] = br.read_u8(5)?;

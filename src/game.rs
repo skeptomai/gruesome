@@ -5,8 +5,6 @@ use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
 
-use bitreader::{BitReader, BitReaderError};
-
 use rand::prelude::ThreadRng;
 use rand::Rng;
 
@@ -16,10 +14,6 @@ use crate::dictionary::Dictionary;
 use crate::util::read_text;
 use crate::util::get_mem_addr;
 use crate::util::MAX_PROPERTIES;
-use crate::util::Zchar;
-use crate::util::PackedChars;
-use crate::util::Alphabets;
-use crate::util::ALPHABETMAP;
 
 enum RandMode {
     Predictable,
@@ -209,28 +203,5 @@ impl<'a> Display for GameMemoryMap<'a> {
             self.global_variables,
         )
     }
-}
-
-pub fn lookup_char(c: u8, alphabet : &Alphabets) -> Zchar {
-    // in the published tables, read char mappings start at index 6
-    ALPHABETMAP[alphabet].as_bytes()[(c as usize) - 6]
-}
-
-pub fn abbrev_string_index(abbrev_code: u8, abbrev_index: u8) -> u8 {
-    (32 * (abbrev_code - 1) + abbrev_index) * 2
-}
-
-pub fn read_zchars_from_word(word: &[u8; 2]) -> Result<PackedChars<3>, BitReaderError> {
-    // start with a word
-    let mut br = BitReader::new(word);
-
-    // lop off top bit as designator of 'last chars here'
-    let mut pc = PackedChars{last: br.read_u8(1)? == 1, chars: [0,0,0]};
-
-    for i in 0..3 {
-        pc.chars[i] = br.read_u8(5)?;
-    }
-    
-    Ok(pc)
 }
 
