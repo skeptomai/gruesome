@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, usize};
 use std::collections::HashMap;
 use bitreader::{BitReader, BitReaderError};
 use crate::game::GameFile;
@@ -26,34 +26,42 @@ pub const MAX_PROPERTIES: usize = 32;
 pub type Zchar = u8;
 
 #[derive(Debug, Clone, Copy)]
-pub struct PackedChars {
+pub struct PackedChars<const U: usize> {
     pub last : bool,
-    pub chars : [Zchar;3],
+    pub chars : [Zchar;U],
 }
 
-impl PackedChars {
-    fn iter(&self) -> PackedCharsIter<'_> {
-        PackedCharsIter { chars: &self.chars }
+impl<const U: usize> PackedChars<U> {
+    fn iter(&self) -> PackedCharsIter<'_, U> {
+        PackedCharsIter { chars: &self.chars, pos: 0 }
     }
 }
 
 
-pub struct PackedCharsIter<'a> {
-    chars: &'a [u8;3],
+pub struct PackedCharsIter<'a, const U: usize> {
+    pos : usize,
+    chars: &'a [u8;U],
 }
 
-impl<'a> Iterator for PackedCharsIter<'a> {
+impl<'a, const U: usize> Iterator for PackedCharsIter<'a, U> {
     type Item  = &'a u8;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Some(&self.chars[0])
+        if self.pos < U {
+            let cur_pos = self.pos;
+            self.pos = self.pos+1;
+            Some(&self.chars[cur_pos])
+        } else {
+            None
+        }
+        
     }
 }
 
-impl<'a> IntoIterator for &'a PackedChars {
+impl<'a, const U: usize> IntoIterator for &'a PackedChars<U> {
     type Item = &'a u8;
 
-    type IntoIter  = PackedCharsIter<'a>;
+    type IntoIter  = PackedCharsIter<'a, U>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -76,10 +84,10 @@ pub fn read_text(g: &GameFile, cso: usize) -> Result<String, io::Error> {
         let pc = crate::util::read_zchars_from_word(&next_chars).unwrap();
         cp+=2;
         
-        for c in pc.chars {
+        for c in &pc {
 
             if is_in_abbrev {
-                let asi = crate::util::abbrev_string_index(abbrev_table, c) as usize; // word address
+                let asi = crate::util::abbrev_string_index(abbrev_table, *c) as usize; // word address
                 //println!("abbrev table {}, index {}, resulting offset: {}", abbrev_table, c, asi);
                 let abbrev_string_addr = (get_mem_addr(abt, asi) *2) as usize;
                 //println!("addr? {:#04x}", abbrev_string_addr);
@@ -95,7 +103,7 @@ pub fn read_text(g: &GameFile, cso: usize) -> Result<String, io::Error> {
                     // next char denotes the index
                     1 | 2 | 3 => {
                         is_in_abbrev = true;
-                        abbrev_table = c;
+                        abbrev_table = *c;
                     },
                     // current char 'shifts' alphabet
                     4 => {
@@ -107,7 +115,7 @@ pub fn read_text(g: &GameFile, cso: usize) -> Result<String, io::Error> {
                     // current char is normal
                     // BUGBUG: is this guard statement correct? [cb]
                     6 ..= 31 => {
-                        ss.push(lookup_char(c, &current_alphabet));
+                        ss.push(lookup_char(*c, &current_alphabet));
                         current_alphabet = Alphabets::A0;
                     },
                     _ => {
@@ -137,7 +145,7 @@ fn abbrev_string_index(abbrev_code: u8, abbrev_index: u8) -> u8 {
     (32 * (abbrev_code - 1) + abbrev_index) * 2
 }
 
-fn read_zchars_from_word(word: &[u8; 2]) -> Result<PackedChars, BitReaderError> {
+fn read_zchars_from_word(word: &[u8; 2]) -> Result<PackedChars<3>, BitReaderError> {
     // start with a word
     let mut br = BitReader::new(word);
 

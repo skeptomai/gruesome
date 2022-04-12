@@ -220,7 +220,7 @@ pub fn abbrev_string_index(abbrev_code: u8, abbrev_index: u8) -> u8 {
     (32 * (abbrev_code - 1) + abbrev_index) * 2
 }
 
-pub fn read_zchars_from_word(word: &[u8; 2]) -> Result<PackedChars, BitReaderError> {
+pub fn read_zchars_from_word(word: &[u8; 2]) -> Result<PackedChars<3>, BitReaderError> {
     // start with a word
     let mut br = BitReader::new(word);
 
