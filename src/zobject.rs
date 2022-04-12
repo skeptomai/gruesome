@@ -4,6 +4,7 @@ use std::fmt::Error;
 use std::fmt::Formatter;
 
 use crate::game::GameFile;
+use crate::util::read_text;
 
 // In Versions 1 to 3, there are at most 255 objects, each having a 9-byte entry as follows
 #[derive(Debug)]
@@ -121,7 +122,7 @@ impl Zobject {
         // This next line checks for zero-length description
         let description = if descr_byte_len == 0 {"".to_string()}
         // if we have a description, we read and expand abbrevs
-        else {gfile.read_text(properties_addr + 1).unwrap()};
+        else {read_text(&gfile, properties_addr + 1).unwrap()};
 
         // also read properties into object, starting at 
         // properties_addr + 1 for the byte denoting description len + the actual description len, which is in 2 byte words

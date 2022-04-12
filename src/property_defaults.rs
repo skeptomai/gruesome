@@ -3,7 +3,7 @@ use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
 
-use crate::game::get_mem_addr;
+use crate::util::get_mem_addr;
 use crate::game::MAX_PROPERTIES;
 
 pub struct PropertyDefaults<'a> {
