@@ -1,9 +1,10 @@
 use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
-
 use crate::game::GameFile;
-use crate::game::get_mem_addr;
+use crate::util::get_mem_addr;
+use crate::util::read_text;
+
 
 #[derive(Debug, Clone)]
 pub struct Dictionary {
@@ -34,7 +35,7 @@ impl Dictionary {
         let mut words = vec![];
         for _i in 0..number_of_entries{
             let _dict_entry = &bytes[cur_pos..cur_pos+entry_length as usize];
-            let word = g.read_text(cur_pos).expect("failed to read dict text");
+            let word = read_text(g, cur_pos).expect("failed to read dict text");
             let data = bytes[cur_pos+4 as usize..cur_pos+entry_length as usize].to_vec();
             words.push(DictionaryWord{word,data});
             cur_pos+=entry_length as usize;

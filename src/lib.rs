@@ -9,6 +9,7 @@ mod zobject;
 mod header;
 mod property_defaults;
 mod dictionary;
+mod util;
 
 #[cfg(test)]
 mod tests {

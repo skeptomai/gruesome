@@ -20,7 +20,7 @@
                 }
             },
             "args": [
-                "./zork1/DATA/ZORK1.DAT"
+                "./resources/test/zork1/DATA/ZORK1.DAT"
             ],
             "cwd": "${workspaceFolder}"
         },
@@ -41,7 +41,27 @@
                 }
             },
             "args": [
-                "./zork1/DATA/ZORK1.DAT"
+                "./resources/test/zork1/DATA/ZORK1.DAT"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in lib 'infocom'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=infocom"
+                ],
+                "filter": {
+                    "name": "infocom",
+                    "kind": "lib"
+                }
+            },
+            "args": [
             ],
             "cwd": "${workspaceFolder}"
         }

@@ -12,6 +12,7 @@
 
 - [[https://boxer.thec0de.com/][Boxer 64]]
 - [[https://www.youtube.com/watch?v=TXJji53Vr3Y][Play DOS games on M1 Mac]]
+- [[https://www.thezorklibrary.com/installguides/rtz-win-dosbox.html][Return to Zork - DosBox]]
 - [[https://dosbox-x.com/][DOSBox-X]]
 
 ** Z Machine
