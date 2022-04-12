@@ -31,7 +31,7 @@ pub struct PackedChars {
     pub chars : [Zchar;3]
 }
 
-/*
+
 struct PackedCharsIter {
 
 }
@@ -43,7 +43,11 @@ impl Iterator for PackedCharsIter {
         Some()
     }
 }
- */
+
+impl IntoIterator for PackedChars {
+    type Item = PackedChars
+}
+
 
 pub fn read_text(g: &GameFile, cso: usize) -> Result<String, io::Error> {
     let mut ss : Vec<u8> = vec![];
