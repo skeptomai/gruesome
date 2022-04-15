@@ -169,13 +169,13 @@ impl<'a> Display for GameMemoryMap<'a> {
         write!(
             f,
             "
-            base\tend\tsize
-            {:#04x}\t{:#04x}\t{:#04x}     Story file header
-            {:#04x}\t{:#04x}\t{:#04x}     Abbreviation data
-            {:#04x}\t{:#04x}\t{:#04x}     Abbreviation pointer table
-            {:#04x}\t{:#04x}\t{:#04x}     Object table
-            {:#04x}\t{:#04x}\t{:#04x}     Properties data
-            {:#04x}\t{:#04x}\t{:#04x}     Global variables
+            base    end     size
+            {:#06x}\t{:#06x}\t{:#06x}     Story file header
+            {:#06x}\t{:#06x}\t{:#06x}     Abbreviation data
+            {:#06x}\t{:#06x}\t{:#06x}     Abbreviation pointer table
+            {:#06x}\t{:#06x}\t{:#06x}     Object table
+            {:#06x}\t{:#06x}\t{:#06x}     Properties data
+            {:#06x}\t{:#06x}\t{:#06x}     Global variables
         ",
             // File header
             self.header_addr,

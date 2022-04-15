@@ -34,7 +34,7 @@ mod tests {
         f.read_to_end(&mut all_bytes).unwrap();
 
         let g = GameFile::new(&all_bytes, &mut rng);
-        log::debug!("{}", g);
+        log::info!("{}", g);
         Ok(())
     }
 }
