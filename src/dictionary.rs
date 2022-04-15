@@ -1,11 +1,9 @@
-use std::fmt::Display;
-use std::fmt::Error;
-use std::fmt::Formatter;
-use crate::game::GameFile;
-use crate::util::get_mem_addr;
-use crate::util::read_text;
-
-
+use std::{
+    io, 
+    fmt::{Display,Error, Formatter}};
+use crate::{
+    game::GameFile, 
+    util::{get_mem_addr, ZTextReader, Alphabets, lookup_char, read_zchars_from_word}};
 #[derive(Debug, Clone)]
 pub struct Dictionary {
     pub n : u8,
@@ -35,7 +33,7 @@ impl Dictionary {
         let mut words = vec![];
         for _i in 0..number_of_entries{
             let _dict_entry = &bytes[cur_pos..cur_pos+entry_length as usize];
-            let word = read_text(g, cur_pos).expect("failed to read dict text");
+            let word = Dictionary::read_text(g, cur_pos).expect("failed to read dict text");
             let data = bytes[cur_pos+4 as usize..cur_pos+entry_length as usize].to_vec();
             words.push(DictionaryWord{word,data});
             cur_pos+=entry_length as usize;
@@ -73,5 +71,112 @@ impl Display for DictionaryWord {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         //write!(f,"{}, {:?}", self.word, self.data)
         write!(f,"{}", self.word)
+    }
+}
+
+impl ZTextReader for Dictionary {
+    fn read_text(g: &GameFile, cso: usize) -> Result<String, io::Error> {
+        let mut ss : Vec<u8> = vec![];
+        let mut cp = 0;
+        let mut is_in_abbrev = false;
+        let mut abbrev_table = 0;
+        let mut current_alphabet = Alphabets::A0;
+        
+        let cs = &g.bytes()[cso..];
+        let _abs = &g.bytes()[g.abbrev_strings()..];
+        let abt = &g.bytes()[g.abbrev_table()..];
+
+        let mut is_in_punctuation = false;
+        let mut is_in_ascii = false;
+        let mut ascii_value : Option<u32> = None;
+
+        loop {
+            let next_chars = <[u8; 2]>::try_from(&cs[cp..cp+2]).unwrap();
+            let pc = read_zchars_from_word(&next_chars).unwrap();
+
+            cp+=2;
+            
+            for c in &pc {
+                if is_in_ascii {
+                    println!("in ascii!");
+                    if ascii_value.is_none(){
+                        ascii_value = Some(*c as u32);
+                        println!("Set ascii_value to {:?}", ascii_value);
+                        continue;                        
+                    } else {
+                        ascii_value = Some((ascii_value.unwrap() << 5) + *c as u32);
+                        println!("c is {}, and ascii composed value is {:?}", c, ascii_value);
+                        current_alphabet = Alphabets::A0;
+                        is_in_ascii = false;
+                        is_in_punctuation = false;
+                        ss.push(ascii_value.unwrap().try_into().unwrap());
+                        continue;
+                    }
+                }
+
+                if is_in_punctuation {
+                    if *c == 6 {
+                        println!("setting ascii!");
+                        is_in_ascii = true;
+                        continue;
+                    }
+                }
+    
+                if is_in_abbrev {
+                    let asi = crate::util::abbrev_string_index(abbrev_table, *c) as usize; // word address
+                    println!("abbrev table {}, index {}, resulting offset: {}", abbrev_table, c, asi);
+                    let abbrev_string_addr = (get_mem_addr(abt, asi) *2) as usize;
+                    println!("addr? {:#04x}", abbrev_string_addr);
+                    unsafe {ss.append(Dictionary::read_text(g, abbrev_string_addr).unwrap().as_mut_vec())};
+                    is_in_abbrev = false;
+                } else {
+                    match c {
+                        // zero is a space
+                        0 => {
+                            ss.push(0x20); // char for space
+                        },
+                        // current char denotes an abbreviation table
+                        // next char denotes the index
+                        1 | 2 | 3 => {
+                            println!("abbrev coming!");
+                            is_in_abbrev = true;
+                            abbrev_table = *c;
+                        },
+                        // current char 'shifts' alphabet
+                        4 => {
+                            // upper case
+                            current_alphabet = Alphabets::A1;
+                        },
+                        5 => {
+                            // punctuation
+                            println!("punctuation coming!");
+                            current_alphabet = Alphabets::A2;
+                            is_in_punctuation = true;                            
+                        },  
+                        // current char is normal
+                        // BUGBUG: is this guard statement correct? [cb]
+                        6 ..= 31 => {
+                            ss.push(lookup_char(*c, &current_alphabet));
+                            is_in_punctuation = false;
+                            is_in_ascii = false;
+                            current_alphabet = Alphabets::A0;
+                        },
+                        _ => {
+                            panic!("text out of range! {}", c);
+                        }
+                    }
+                }
+            }
+    
+            
+            if pc.last {break}
+        }
+    
+        println!("emitting {:?}", &ss);
+        match std::str::from_utf8(&ss) {
+            Ok(s) => Ok(s.to_string()),
+            Err(e) => Err(io::Error::new(io::ErrorKind::Other, e.to_string()))
+        }
+        
     }
 }

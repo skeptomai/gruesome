@@ -11,9 +11,9 @@ use rand::Rng;
 use crate::property_defaults::PropertyDefaults;
 use crate::zobject::{ObjectTable, Zobject};
 use crate::dictionary::Dictionary;
-use crate::util::read_text;
 use crate::util::get_mem_addr;
 use crate::util::MAX_PROPERTIES;
+use crate::util::ZTextReader;
 
 enum RandMode {
     Predictable,
@@ -128,7 +128,7 @@ impl<'a> Display for GameFile<'a> {
         let mut si = 1;
         loop {
             let abbrev_string_addr = (get_mem_addr(&self.bytes(), abbrev_table_offset as usize) *2) as usize;
-            writeln!(f, "[{}] \"{}\"", si, read_text(&self, abbrev_string_addr).unwrap())?;
+            writeln!(f, "[{}] \"{}\"", si, Dictionary::read_text(&self, abbrev_string_addr).unwrap())?;
             si+=1;
             abbrev_table_offset+=2;
             if abbrev_table_offset >= self.memory_map.property_defaults {break}
