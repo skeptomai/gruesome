@@ -57,7 +57,7 @@ impl Display for Dictionary {
             write!(f, "[{}]: {} ", i+1, w)?;
             if (i+1) % 3 == 0 {writeln!(f, "")?};
         }
-        
+
         Ok(())
     }
 }

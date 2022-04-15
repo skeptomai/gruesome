@@ -54,7 +54,7 @@ impl<'a, const U: usize> Iterator for UnpackedZCharsIter<'a, U> {
         } else {
             None
         }
-        
+
     }
 }
 
@@ -68,8 +68,77 @@ impl<'a, const U: usize> IntoIterator for &'a UnpackedZChars<U> {
     }
 }
 
+<<<<<<< HEAD
 pub trait ZTextReader {
     fn read_text(g: &GameFile, cso: usize) -> Result<String, io::Error>;
+=======
+pub fn read_text(g: &GameFile, cso: usize) -> Result<String, io::Error> {
+    let mut ss : Vec<u8> = vec![];
+    let mut cp = 0;
+    let mut is_in_abbrev = false;
+    let mut abbrev_table = 0;
+    let mut current_alphabet = Alphabets::A0;
+
+    let cs = &g.bytes()[cso..];
+    let _abs = &g.bytes()[g.abbrev_strings()..];
+    let abt = &g.bytes()[g.abbrev_table()..];
+
+    loop {
+        let next_chars = <[u8; 2]>::try_from(&cs[cp..cp+2]).unwrap();
+        let pc = crate::util::read_zchars_from_word(&next_chars).unwrap();
+        cp+=2;
+
+        for c in &pc {
+
+            if is_in_abbrev {
+                let asi = crate::util::abbrev_string_index(abbrev_table, *c) as usize; // word address
+                //println!("abbrev table {}, index {}, resulting offset: {}", abbrev_table, c, asi);
+                let abbrev_string_addr = (get_mem_addr(abt, asi) *2) as usize;
+                //println!("addr? {:#04x}", abbrev_string_addr);
+                unsafe {ss.append(read_text(g, abbrev_string_addr).unwrap().as_mut_vec())};
+                is_in_abbrev = false;
+            } else {
+                match c {
+                    // zero is a space
+                    0 => {
+                        ss.push(0x20); // char for space
+                    }
+                    // current char denotes an abbreviation table
+                    // next char denotes the index
+                    1 | 2 | 3 => {
+                        is_in_abbrev = true;
+                        abbrev_table = *c;
+                    },
+                    // current char 'shifts' alphabet
+                    4 => {
+                        current_alphabet = Alphabets::A1;
+                    },
+                    5 => {
+                        current_alphabet = Alphabets::A2;
+                    },
+                    // current char is normal
+                    // BUGBUG: is this guard statement correct? [cb]
+                    6 ..= 31 => {
+                        ss.push(lookup_char(*c, &current_alphabet));
+                        current_alphabet = Alphabets::A0;
+                    },
+                    _ => {
+                        panic!("text out of range! {}", c);
+                    }
+                }
+            }
+        }
+
+
+        if pc.last {break}
+    }
+
+    match std::str::from_utf8(&ss) {
+        Ok(s) => Ok(s.to_string()),
+        Err(e) => Err(io::Error::new(io::ErrorKind::Other, e.to_string()))
+    }
+
+>>>>>>> d2c2fa3dbcedd736f51bd00f7b7003a50a2892c9
 }
 
 pub fn lookup_char(c: u8, alphabet : &Alphabets) -> crate::util::Zchar {
@@ -92,7 +161,7 @@ pub fn read_zchars_from_word(word: &[u8; 2]) -> Result<UnpackedZChars<3>, BitRea
     for i in 0..3 {
         pc.chars[i] = br.read_u8(5)?;
     }
-    
+
     Ok(pc)
 }
 
