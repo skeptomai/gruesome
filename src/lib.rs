@@ -19,11 +19,11 @@ mod tests {
     use std::io::prelude::*;
     use std::path::PathBuf;
     use crate::game::GameFile;
+    use test_log::test;
     use log;
-    
+
     #[test]
     fn read_zork1() -> io::Result<()> {
-        env_logger::init();
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         path.push("resources/test/zork1/DATA/ZORK1.DAT");
 
