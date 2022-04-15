@@ -82,7 +82,7 @@ pub fn abbrev_string_index(abbrev_code: u8, abbrev_index: u8) -> u8 {
 }
 
 pub fn read_zchars_from_word(word: &[u8; 2]) -> Result<UnpackedZChars<3>, BitReaderError> {
-    println!("zchars from word: [{:#04x}, {:#04x}]", word[0], word[1]);
+    log::debug!("zchars from word: [{:#04x}, {:#04x}]", word[0], word[1]);
     // start with a word
     let mut br = BitReader::new(word);
 

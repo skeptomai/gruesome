@@ -98,14 +98,14 @@ impl ZTextReader for Dictionary {
             
             for c in &pc {
                 if is_in_ascii {
-                    println!("in ascii!");
+                    log::debug!("in ascii!");
                     if ascii_value.is_none(){
                         ascii_value = Some(*c as u32);
-                        println!("Set ascii_value to {:?}", ascii_value);
+                        log::debug!("Set ascii_value to {:?}", ascii_value);
                         continue;                        
                     } else {
                         ascii_value = Some((ascii_value.unwrap() << 5) + *c as u32);
-                        println!("c is {}, and ascii composed value is {:?}", c, ascii_value);
+                        log::debug!("c is {}, and ascii composed value is {:?}", c, ascii_value);
                         current_alphabet = Alphabets::A0;
                         is_in_ascii = false;
                         is_in_punctuation = false;
@@ -116,7 +116,7 @@ impl ZTextReader for Dictionary {
 
                 if is_in_punctuation {
                     if *c == 6 {
-                        println!("setting ascii!");
+                        log::debug!("setting ascii!");
                         is_in_ascii = true;
                         continue;
                     }
@@ -124,9 +124,9 @@ impl ZTextReader for Dictionary {
     
                 if is_in_abbrev {
                     let asi = crate::util::abbrev_string_index(abbrev_table, *c) as usize; // word address
-                    println!("abbrev table {}, index {}, resulting offset: {}", abbrev_table, c, asi);
+                    log::debug!("abbrev table {}, index {}, resulting offset: {}", abbrev_table, c, asi);
                     let abbrev_string_addr = (get_mem_addr(abt, asi) *2) as usize;
-                    println!("addr? {:#04x}", abbrev_string_addr);
+                    log::debug!("addr? {:#04x}", abbrev_string_addr);
                     unsafe {ss.append(Dictionary::read_text(g, abbrev_string_addr).unwrap().as_mut_vec())};
                     is_in_abbrev = false;
                 } else {
@@ -138,7 +138,7 @@ impl ZTextReader for Dictionary {
                         // current char denotes an abbreviation table
                         // next char denotes the index
                         1 | 2 | 3 => {
-                            println!("abbrev coming!");
+                            log::debug!("abbrev coming!");
                             is_in_abbrev = true;
                             abbrev_table = *c;
                         },
@@ -149,7 +149,7 @@ impl ZTextReader for Dictionary {
                         },
                         5 => {
                             // punctuation
-                            println!("punctuation coming!");
+                            log::debug!("punctuation coming!");
                             current_alphabet = Alphabets::A2;
                             is_in_punctuation = true;                            
                         },  
@@ -172,7 +172,7 @@ impl ZTextReader for Dictionary {
             if pc.last {break}
         }
     
-        println!("emitting {:?}", &ss);
+        log::debug!("emitting {:?}", &ss);
         match std::str::from_utf8(&ss) {
             Ok(s) => Ok(s.to_string()),
             Err(e) => Err(io::Error::new(io::ErrorKind::Other, e.to_string()))
