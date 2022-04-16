@@ -10,6 +10,8 @@ mod header;
 mod property_defaults;
 mod dictionary;
 mod util;
+mod instruction;
+mod routine;
 
 #[cfg(test)]
 mod tests {
