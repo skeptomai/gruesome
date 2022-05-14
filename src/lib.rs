@@ -10,6 +10,8 @@ mod header;
 mod property_defaults;
 mod util;
 mod zobject;
+mod instruction;
+mod routine;
 
 #[cfg(test)]
 mod tests {
@@ -21,6 +23,9 @@ mod tests {
     use std::path::PathBuf;
 
     const DATAFILEPATH: &str = "resources/test/zork1/DATA/ZORK1.DAT";
+
+    use test_log::test;
+    use log;
 
     #[test]
     fn read_zork1() -> io::Result<()> {
@@ -34,7 +39,7 @@ mod tests {
         f.read_to_end(&mut all_bytes).unwrap();
 
         let g = GameFile::new(&all_bytes, &mut rng);
-        println!("{}", g);
+        log::info!("{}", g);
         Ok(())
     }
 }
