@@ -4,25 +4,28 @@
 #[macro_use]
 extern crate lazy_static;
 
+mod dictionary;
 mod game;
-mod zobject;
 mod header;
 mod property_defaults;
-mod dictionary;
 mod util;
+mod zobject;
 
 #[cfg(test)]
 mod tests {
+    use crate::game::GameFile;
     use std::env;
     use std::fs::File;
     use std::io;
     use std::io::prelude::*;
     use std::path::PathBuf;
-    use crate::game::GameFile;
+
+    const DATAFILEPATH: &str = "resources/test/zork1/DATA/ZORK1.DAT";
+
     #[test]
     fn read_zork1() -> io::Result<()> {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.push("resources/test/zork1/DATA/ZORK1.DAT");
+        path.push(DATAFILEPATH);
 
         let mut f = File::open(path)?;
         let mut all_bytes = Vec::new();
