@@ -5,7 +5,7 @@
 - [[https://if.illuminion.de/infocom.html][Illumion]]
 - [[http://infocom.elsewhere.org/gallery/zork1/zork1.html][The Infocom Gallery]]
 - [[http://www.infocom-if.org/downloads/downloads.html][Infocom Downloads]]
-- [[https://github.com/historicalsource][Historical Sources on Github]]  
+- [[https://github.com/historicalsource][Historical Sources on Github]]
 - [[https://ifdb.org/][Interactive Fiction Database]]
 
 ** Playing on Mac
@@ -19,7 +19,7 @@
 
 - [[https://en.wikipedia.org/wiki/Z-machine][Z Machine (Wikipedia)]]
 - [[http://inform-fiction.org/zmachine/standards/][Z-Machine Standards Documents]]
-  - [[http://inform-fiction.org/zmachine/standards/z1point0/appd.html][History of Z-Machine]]  
+  - [[http://inform-fiction.org/zmachine/standards/z1point0/appd.html][History of Z-Machine]]
 - [[https://gitlab.com/DavidGriffith/frotz][FROTZ interpreter / engine]]
 - [[http://www.ifarchive.org/indexes/if-archiveXinfocomXtoolsXztools.html][ifarchive / Ztools]]
   - [[https://github.com/SamB/ztools][Ztools on Github]]

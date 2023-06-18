@@ -4,6 +4,14 @@ use bitreader::{BitReader, BitReaderError};
 use crate::game::GameFile;
 
 
+///There are three possible alphabets: lower case, upper case, and number/symbol
+///
+///| Alphabet |   Z-char offset            |
+///|----------|----------------------------|
+///|          | 6789abcdef0123456789abcdef |
+///|  A0      | abcdefghijklmnopqrstuvwxyz |
+///|  A1      | ABCDEFGHIJKLMNOPQRSTUVWXYZ |
+///|  A2      | ^0123456789.,!?_#'"/\-:()  |
 #[derive(PartialEq, Eq, Hash)]
 pub enum Alphabets {
     A0,
@@ -25,6 +33,7 @@ pub const MAX_PROPERTIES: usize = 32;
 
 pub type Zchar = u8;
 
+/// ZChars are the Zork character type with bit packing
 #[derive(Debug, Clone, Copy)]
 pub struct UnpackedZChars<const U: usize> {
     pub last : bool,
@@ -32,12 +41,13 @@ pub struct UnpackedZChars<const U: usize> {
 }
 
 impl<const U: usize> UnpackedZChars<U> {
+    /// We can iterate over ZChars
     fn iter(&self) -> UnpackedZCharsIter<'_, U> {
         UnpackedZCharsIter { chars: &self.chars, pos: 0 }
     }
 }
 
-
+/// The actual ZChar iterator
 pub struct UnpackedZCharsIter<'a, const U: usize> {
     pos : usize,
     chars: &'a [u8;U],
@@ -45,7 +55,7 @@ pub struct UnpackedZCharsIter<'a, const U: usize> {
 
 impl<'a, const U: usize> Iterator for UnpackedZCharsIter<'a, U> {
     type Item  = &'a u8;
-
+    /// return the next ZChar in 'string'-like thing
     fn next(&mut self) -> Option<Self::Item> {
         if self.pos < U {
             let cur_pos = self.pos;
@@ -69,18 +79,22 @@ impl<'a, const U: usize> IntoIterator for &'a UnpackedZChars<U> {
 }
 
 pub trait ZTextReader {
+    /// Read a rust string from ZChar packed text
     fn read_text(g: &GameFile, cso: usize) -> Result<String, io::Error>;
 }
 
+/// Look up a char in the alphabet mapping
 pub fn lookup_char(c: u8, alphabet : &Alphabets) -> crate::util::Zchar {
     // in the published tables, read char mappings start at index 6
     ALPHABETMAP[alphabet].as_bytes()[(c as usize) - 6]
 }
 
+/// Find the abbreviated string index
 pub fn abbrev_string_index(abbrev_code: u8, abbrev_index: u8) -> u8 {
     (32 * (abbrev_code - 1) + abbrev_index) * 2
 }
 
+/// Read ZChars from packed word
 pub fn read_zchars_from_word(word: &[u8; 2]) -> Result<UnpackedZChars<3>, BitReaderError> {
     log::debug!("zchars from word: [{:#04x}, {:#04x}]", word[0], word[1]);
     // start with a word
@@ -96,6 +110,7 @@ pub fn read_zchars_from_word(word: &[u8; 2]) -> Result<UnpackedZChars<3>, BitRea
     Ok(pc)
 }
 
+/// get_mem_addr : TODO:  add notes
 pub fn get_mem_addr(addr: &[u8], counter: usize) -> usize {
     let ins_bytes = <[u8; 2]>::try_from(&addr[counter..counter + 2]).unwrap();
     let ins = u16::from_be_bytes(ins_bytes);

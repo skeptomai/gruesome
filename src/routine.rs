@@ -4,6 +4,7 @@ use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
 
+/// A Routine is an engine-executable section with local variables
 pub struct Routine {
     start_position: usize,
     // Header

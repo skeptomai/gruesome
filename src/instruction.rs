@@ -4,11 +4,11 @@ use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
 
-/* Each instruction has a form (long, short, extended or variable) and an
- operand count (0OP, 1OP, 2OP or VAR). If the top two bits of the opcode 
- are $$11 the form is variable; if $$10, the form is short. If the opcode 
- is 190 ($BE in hexadecimal) and the version is 5 or later, the form is 
- "extended". Otherwise, the form is "long". */
+/// Each instruction has a form (long, short, extended or variable) and an
+/// operand count (0OP, 1OP, 2OP or VAR). If the top two bits of the opcode 
+/// are $$11 the form is variable; if $$10, the form is short. If the opcode 
+/// is 190 ($BE in hexadecimal) and the version is 5 or later, the form is 
+/// "extended". Otherwise, the form is "long".
 pub struct Instruction<'a> {
     opcode : u16,
     operands_types: [u8;2],

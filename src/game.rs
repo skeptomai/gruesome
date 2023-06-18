@@ -15,11 +15,13 @@ use crate::util::get_mem_addr;
 use crate::util::MAX_PROPERTIES;
 use crate::util::ZTextReader;
 
+/// RandMode controls random generator behaviour. May be predictable for testing or truly random for gameplay
 enum RandMode {
     Predictable,
     RandomUniform,
 }
 
+/// GameFile is the main data structure for a single game instance
 pub struct GameFile<'a> {
     header: Header,
     rand_mode: RandMode,
@@ -77,39 +79,47 @@ impl<'a> GameFile<'a> {
         g
     }
 
+    /// default_properties creates PropertyDefault structure from memory maps property defaults
     pub fn default_properties(&self) -> PropertyDefaults {
         let prop_raw = &self.bytes()[self.memory_map.property_defaults
             ..(self.memory_map.property_defaults + MAX_PROPERTIES * 2)];
         PropertyDefaults { prop_raw: prop_raw }
     }
 
+    /// gen_unsigned_rand generates unsigned in range [0..32767]
     pub fn gen_unsigned_rand(&mut self) -> u16 {
         // NOTE: This could probably be (u16::MAX +1) / 2
         self.rng.gen_range(0..32768)
     }
 
+    /// header is an accessor that returns the game header
     pub fn header(&self) -> &Header {
         &self.header
     }
 
+    /// abbrev_strings is an accessor that returns the abbreviated strings
     pub fn abbrev_strings(&self) -> usize {
         self.memory_map.abbrev_strings
     }
 
+    /// abbrev_table is an accessor that returns the abbreviation table
     pub fn abbrev_table(&self) -> usize {
         self.memory_map.abbrev_table
     }
 
+    /// object_table is an accessor that returns the object table
     pub fn object_table(&self) -> usize {
         self.memory_map.object_table
     }
-    
+
+    /// bytes is an accessor that returns all the bytes in the memory map as [u8]
     pub fn bytes(&self) -> &'a [u8] {
         &self.memory_map.bytes[..]
     }
 }
 
 impl<'a> Display for GameFile<'a> {
+    /// formats the GameFile struct
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
 
         write!(
@@ -152,6 +162,7 @@ impl<'a> Display for GameFile<'a> {
     }
 }
 
+/// GameMemoryMap reflects the internal structure of a loaded game
 #[derive(Debug)]
 pub struct GameMemoryMap<'a> {
     pub bytes: &'a [u8],    
@@ -165,6 +176,7 @@ pub struct GameMemoryMap<'a> {
 }
 
 impl<'a> Display for GameMemoryMap<'a> {
+    /// formats the GameMemoryMap
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
             f,

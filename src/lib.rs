@@ -4,14 +4,14 @@
 #[macro_use]
 extern crate lazy_static;
 
-mod dictionary;
-mod game;
-mod header;
-mod property_defaults;
-mod util;
-mod zobject;
-mod instruction;
-mod routine;
+pub mod dictionary;
+pub mod game;
+pub mod header;
+pub mod property_defaults;
+pub mod util;
+pub mod zobject;
+pub mod instruction;
+pub mod routine;
 
 #[cfg(test)]
 mod tests {
@@ -62,13 +62,4 @@ Static	00b48	grammar table
 High	01a0a	Z-code
         05d56	static strings
         06ae6	end of file
-*/
-
-/*
- Z-char 6789abcdef0123456789abcdef
-current   --------------------------
-  A0      abcdefghijklmnopqrstuvwxyz
-  A1      ABCDEFGHIJKLMNOPQRSTUVWXYZ
-  A2       ^0123456789.,!?_#'"/\-:()
-          --------------------------
 */

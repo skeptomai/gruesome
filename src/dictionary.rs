@@ -4,6 +4,8 @@ use std::{
 use crate::{
     game::GameFile, 
     util::{get_mem_addr, ZTextReader, Alphabets, lookup_char, read_zchars_from_word}};
+
+/// Dictionary is a structure of words from the gamefile
 #[derive(Debug, Clone)]
 pub struct Dictionary {
     pub n : u8,
@@ -14,6 +16,7 @@ pub struct Dictionary {
 }
 
 impl Dictionary {
+    /// Creates a new dictionary of words read from the gamefile
     pub fn new(g : &GameFile) -> Dictionary {
         let mut cur_pos = g.header().dictionary;
         let bytes = g.bytes();
@@ -43,6 +46,7 @@ impl Dictionary {
 }
 
 impl Display for Dictionary {
+    /// formats a Dictionary of words for display
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         writeln!(f, "\n***** Dictionary *****")?;
         writeln!(
@@ -61,6 +65,8 @@ impl Display for Dictionary {
         Ok(())
     }
 }
+
+/// Single word as a string amongst all words from the gamefile
 #[derive(Debug, Clone)]
 pub struct DictionaryWord {
     pub word : String,
@@ -68,6 +74,7 @@ pub struct DictionaryWord {
 }
 
 impl Display for DictionaryWord {
+    /// formats a single word for display
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         //write!(f,"{}, {:?}", self.word, self.data)
         write!(f,"{}", self.word)
@@ -75,6 +82,7 @@ impl Display for DictionaryWord {
 }
 
 impl ZTextReader for Dictionary {
+    /// reads a text string from the dictionary
     fn read_text(g: &GameFile, cso: usize) -> Result<String, io::Error> {
         let mut ss : Vec<u8> = vec![];
         let mut cp = 0;
