@@ -110,7 +110,16 @@ pub fn read_zchars_from_word(word: &[u8; 2]) -> Result<UnpackedZChars<3>, BitRea
     Ok(pc)
 }
 
-/// get_mem_addr : TODO:  add notes
+///I believe this only works for Infocom versions 1,2 and 3 right now
+///A packed address specifies where a routine or string begins in high memory. Given a packed address P, the formula to obtain the corresponding byte address B is:
+///
+///| Packing     | Versions                            |
+///|-------------|-------------------------------------|
+///| 2P          | Versions 1, 2 and 3                 |
+///| 4P          | Versions 4 and 5                    |
+///| 4P + 8R_O   | Versions 6 and 7, for routine calls |
+///| 4P + 8S_O   | Versions 6 and 7, for print_paddr   |
+///| 8P          | Version 8                           |
 pub fn get_mem_addr(addr: &[u8], counter: usize) -> usize {
     let ins_bytes = <[u8; 2]>::try_from(&addr[counter..counter + 2]).unwrap();
     let ins = u16::from_be_bytes(ins_bytes);

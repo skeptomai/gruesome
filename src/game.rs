@@ -5,8 +5,10 @@ use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
 
-use rand::prelude::ThreadRng;
+use rand::RngCore;
+use rand::SeedableRng;
 use rand::Rng;
+use rand::rngs::StdRng;
 
 use crate::property_defaults::PropertyDefaults;
 use crate::zobject::{ObjectTable, Zobject};
@@ -16,16 +18,42 @@ use crate::util::MAX_PROPERTIES;
 use crate::util::ZTextReader;
 
 /// RandMode controls random generator behaviour. May be predictable for testing or truly random for gameplay
-enum RandMode {
+pub enum RandMode {
     Predictable,
     RandomUniform,
+}
+
+pub struct ZRand {
+    rng : Box<dyn RngCore>,
+    rand_mode : RandMode,
+}
+
+impl ZRand {
+    pub fn new(rm: RandMode) -> ZRand {
+        ZRand { rng: Box::new(rand::thread_rng()), rand_mode: rm }
+    }
+
+    pub fn new_uniform() -> ZRand {
+        ZRand::new(RandMode::RandomUniform)
+    }
+
+
+    pub fn new_predictable(seed: u64) -> ZRand {
+        ZRand {rng: Box::new(StdRng::seed_from_u64(seed)), rand_mode: RandMode::Predictable}
+    }
+
+    /// gen_unsigned_rand generates unsigned in range [0..32767]
+    pub fn gen_unsigned_rand(&mut self) -> u16 {
+        // NOTE: This could probably be (u16::MAX +1) / 2
+        self.rng.gen_range(0..32768)
+    }
 }
 
 /// GameFile is the main data structure for a single game instance
 pub struct GameFile<'a> {
     header: Header,
     rand_mode: RandMode,
-    rng: &'a mut ThreadRng,
+    rng: &'a mut ZRand,
     memory_map: GameMemoryMap<'a>,
     object_table: Option<ObjectTable>,
     dictionary: Option<Dictionary>,
@@ -33,7 +61,7 @@ pub struct GameFile<'a> {
 
 impl<'a> GameFile<'a> {
     /// create new GameFile with the raw file bytes and a random entropy source
-    pub fn new(bytes: &'a Vec<u8>, rng: &'a mut ThreadRng) -> GameFile<'a> {
+    pub fn new(bytes: &'a Vec<u8>, rng: &'a mut ZRand) -> GameFile<'a> {
         let bytes = &bytes;
         let header_addr = 0;
         let abbrev_strings = 0x40;
@@ -58,6 +86,7 @@ impl<'a> GameFile<'a> {
             global_variables,
         };
 
+        // BUGBUG: take RandMode into consideration.
         let mut g = GameFile {
             header,
             rng,
@@ -84,12 +113,6 @@ impl<'a> GameFile<'a> {
         let prop_raw = &self.bytes()[self.memory_map.property_defaults
             ..(self.memory_map.property_defaults + MAX_PROPERTIES * 2)];
         PropertyDefaults { prop_raw: prop_raw }
-    }
-
-    /// gen_unsigned_rand generates unsigned in range [0..32767]
-    pub fn gen_unsigned_rand(&mut self) -> u16 {
-        // NOTE: This could probably be (u16::MAX +1) / 2
-        self.rng.gen_range(0..32768)
     }
 
     /// header is an accessor that returns the game header

@@ -15,7 +15,7 @@ pub mod routine;
 
 #[cfg(test)]
 mod tests {
-    use crate::game::GameFile;
+    use crate::game::{GameFile, ZRand};
     use std::env;
     use std::fs::File;
     use std::io;
@@ -34,11 +34,10 @@ mod tests {
 
         let mut f = File::open(path)?;
         let mut all_bytes = Vec::new();
-        let mut rng = rand::thread_rng();
 
         f.read_to_end(&mut all_bytes).unwrap();
-
-        let g = GameFile::new(&all_bytes, &mut rng);
+        let mut zrg = ZRand::new_uniform();
+        let g = GameFile::new(&all_bytes, &mut zrg);
         log::info!("{}", g);
         Ok(())
     }
