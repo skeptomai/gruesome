@@ -1,5 +1,7 @@
 * Examining Zork and HHG
 
+** [[https://github.com/the-infocom-files][GitHub Sources]]
+
 ** Zork I file
 
 | Game   | Known Releases and Serial Numbers                                                      |
@@ -10,7 +12,9 @@
 Release number 0058 is 88
 Serial is  38 34 30 37 32 36 , which is 840726.  This agrees with 88.840726!
 
-** HHG file
+And there's a more recent release of [[https://github.com/the-infocom-files/zork1][Zork 1]].
+
+** Hitchhiker's Guide file
 
 | Game                                  | Known Releases and Serial Numbers          |
 |---------------------------------------+--------------------------------------------|
@@ -20,4 +24,4 @@ Release number (at byte 2) is 003c ? which in decimal is 60.
 3836 3130 3032 = 861002
 That would mean 60.861002
 Newer than known releases?
-
+Actually, found this release of [[https://github.com/the-infocom-files/hitchhiker][Hitchhiker]], 60.861002, is the *final* release!

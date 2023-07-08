@@ -2,6 +2,7 @@
 
 ** Game Sources
 
+- [[https://github.com/the-infocom-files][The Infocom Files]]
 - [[https://if.illuminion.de/infocom.html][Illumion]]
 - [[http://infocom.elsewhere.org/gallery/zork1/zork1.html][The Infocom Gallery]]
 - [[http://www.infocom-if.org/downloads/downloads.html][Infocom Downloads]]
