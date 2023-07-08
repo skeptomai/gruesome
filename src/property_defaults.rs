@@ -4,15 +4,15 @@ use std::fmt::Error;
 use std::fmt::Formatter;
 
 use crate::util::get_mem_addr;
-use crate::util::MAX_PROPERTIES;
+use crate::util::MAX_PROPERTIES_V3;
 
-pub struct PropertyDefaults<'a> {
-    pub prop_raw: &'a [u8], // 31 words in Versions 1-3. 63 words in Versions 4 or later.
+pub struct PropertyDefaults<'a, T, const N: usize> {
+    pub prop_raw: &'a [T; N], // 31 words in Versions 1-3. 63 words in Versions 4 or later.
 }
 
-impl<'a> Display for PropertyDefaults<'a> {
+impl<'a> Display for PropertyDefaults<'a, u8, MAX_PROPERTIES_V3> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        for i in 0..MAX_PROPERTIES - 1 {
+        for i in 0..MAX_PROPERTIES_V3 - 1 {
             write!(
                 f,
                 "{} ",
@@ -24,9 +24,9 @@ impl<'a> Display for PropertyDefaults<'a> {
     }
 }
 
-impl<'a> Debug for PropertyDefaults<'a> {
+impl<'a> Debug for PropertyDefaults<'a, u8, MAX_PROPERTIES_V3> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        for i in 0..MAX_PROPERTIES - 1 {
+        for i in 0..MAX_PROPERTIES_V3 - 1 {
             write!(
                 f,
                 "{} ",
@@ -38,7 +38,7 @@ impl<'a> Debug for PropertyDefaults<'a> {
     }
 }
 
-impl<'a> PropertyDefaults<'a> {
+impl<'a> PropertyDefaults<'a, u8, 32> {
     pub fn property(&self, index: usize) -> u16 {
         //BUGBUG no range checking here [cb]
         //BUGBUG this is just repeated code from get_mem_addr. Factor out to util

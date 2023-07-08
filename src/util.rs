@@ -29,7 +29,7 @@ lazy_static! {
     };
 }
 
-pub const MAX_PROPERTIES: usize = 32;
+pub const MAX_PROPERTIES_V3: usize = 31;
 
 pub type Zchar = u8;
 
@@ -92,6 +92,15 @@ pub fn lookup_char(c: u8, alphabet : &Alphabets) -> crate::util::Zchar {
 /// Find the abbreviated string index
 pub fn abbrev_string_index(abbrev_code: u8, abbrev_index: u8) -> u8 {
     (32 * (abbrev_code - 1) + abbrev_index) * 2
+}
+
+pub fn properties_size_by_version(version: u8) -> usize {
+    match version {
+        3 => MAX_PROPERTIES_V3,
+        _ => {
+            panic!("version out of range! {}", version);
+        }
+    }
 }
 
 /// Read ZChars from packed word

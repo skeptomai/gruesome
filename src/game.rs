@@ -1,21 +1,14 @@
+use std::fmt::{Debug, Display, Error, Formatter};
+
+use rand::{RngCore,SeedableRng,Rng,rngs::StdRng};
+
+use sub_array::SubArray;
+
 use crate::header::Header;
-
-use std::fmt::Debug;
-use std::fmt::Display;
-use std::fmt::Error;
-use std::fmt::Formatter;
-
-use rand::RngCore;
-use rand::SeedableRng;
-use rand::Rng;
-use rand::rngs::StdRng;
-
 use crate::property_defaults::PropertyDefaults;
 use crate::zobject::{ObjectTable, Zobject};
 use crate::dictionary::Dictionary;
-use crate::util::get_mem_addr;
-use crate::util::MAX_PROPERTIES;
-use crate::util::ZTextReader;
+use crate::util::{get_mem_addr, properties_size_by_version, ZTextReader, MAX_PROPERTIES_V3};
 
 /// RandMode controls random generator behaviour. May be predictable for testing or truly random for gameplay
 pub enum RandMode {
@@ -68,8 +61,14 @@ impl<'a> GameFile<'a> {
         // initialize header as first $40 == 60 dec bytes
         let header = Header::new(bytes);
         let abbrev_table = header.abbrev_table;
+        // top of the object table (from header) is actually where the default properties start. objects follow
+        // 12.2 Property defaults table
+        // The table begins with a block known as the property defaults table. This contains 31 words in Versions 1 to 3
+        // and 63 in Versions 4 and later. When the game attempts to read the value of property n for an object which 
+        // does not provide property n, the n-th entry in this table is the resulting value.        
         let property_defaults = header.object_table_addr;
-        let object_table = header.object_table_addr + (MAX_PROPERTIES - 1) * 2;
+        // It's an address, so the offset is also 
+        let object_table = header.object_table_addr + (properties_size_by_version(header.version)) * 2;
         let global_variables = header.global_variables;
         // Get the base address of the objects
         // and use the properties addr from the first object to find the end of the object table
@@ -109,9 +108,8 @@ impl<'a> GameFile<'a> {
     }
 
     /// default_properties creates PropertyDefault structure from memory maps property defaults
-    pub fn default_properties(&self) -> PropertyDefaults {
-        let prop_raw = &self.bytes()[self.memory_map.property_defaults
-            ..(self.memory_map.property_defaults + MAX_PROPERTIES * 2)];
+    pub fn default_properties(&self) -> PropertyDefaults<u8, MAX_PROPERTIES_V3> {
+        let prop_raw: &[u8; MAX_PROPERTIES_V3] = &self.bytes_sized(self.memory_map.property_defaults);
         PropertyDefaults { prop_raw: prop_raw }
     }
 
@@ -138,6 +136,12 @@ impl<'a> GameFile<'a> {
     /// bytes is an accessor that returns all the bytes in the memory map as [u8]
     pub fn bytes(&self) -> &'a [u8] {
         &self.memory_map.bytes[..]
+    }
+
+    pub fn bytes_sized<const N: usize>(&self, offset: usize) -> &'a [u8;N] {
+        log::debug!("calling bytes_sized");
+        let sub : &[u8; N] = &self.memory_map.bytes.sub_array_ref(offset);
+        &sub
     }
 }
 

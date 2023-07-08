@@ -165,6 +165,19 @@ impl Zobject {
         attrs
     }
 
+/*
+    12.4.1
+    In Versions 1 to 3, each property is stored as a block
+       size byte     the actual property data
+                    ---between 1 and 8 bytes--
+    where the size byte is arranged as 32 times the number of data bytes minus one, plus the property number. A property list is terminated by a size byte of 0. (It is otherwise illegal for a size byte to be a multiple of 32.)
+    12.4.2
+    In Versions 4 and later, a property block instead has the form
+       size and number       the actual property data
+      --1 or 2 bytes---     --between 1 and 64 bytes--
+    The property number occupies the bottom 6 bits of the first size byte.
+ */
+    
     /// return properties offset from object's data
     pub fn properties_addr(&self) -> usize {
         u16::from_be_bytes(self.zobj.properties_offsets) as usize
