@@ -31,7 +31,7 @@ impl Dictionary {
         let entry_length = bytes[cur_pos];
         assert!(entry_length>=4, "Word length must be at least 4 chars in versions 1 to 3, and at least 6 in later versions");
         cur_pos+=1;
-        let number_of_entries = get_mem_addr(bytes, cur_pos);
+        let number_of_entries = get_mem_addr(bytes, cur_pos).unwrap();
         cur_pos+=2;
         let mut words = vec![];
         for _i in 0..number_of_entries{
@@ -143,7 +143,7 @@ impl ZTextReader for Dictionary {
                 if is_in_abbrev {
                     let asi = crate::util::abbrev_string_index(abbrev_table, *c) as usize; // word address
                     log::debug!("abbrev table {}, index {}, resulting offset: {}", abbrev_table, c, asi);
-                    let abbrev_string_addr = (get_mem_addr(abt, asi) *2) as usize;
+                    let abbrev_string_addr = (get_mem_addr(abt, asi).unwrap() *2) as usize;
                     log::debug!("addr? {:#04x}", abbrev_string_addr);
                     unsafe {ss.append(Dictionary::read_text(g, abbrev_string_addr).unwrap().as_mut_vec())};
                     is_in_abbrev = false;

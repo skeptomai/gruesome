@@ -1,3 +1,4 @@
+use std::array::TryFromSliceError;
 use std::{io, usize};
 use std::collections::HashMap;
 use bitreader::{BitReader, BitReaderError};
@@ -129,10 +130,12 @@ pub fn read_zchars_from_word(word: &[u8; 2]) -> Result<UnpackedZChars<3>, BitRea
 ///| 4P + 8R_O   | Versions 6 and 7, for routine calls |
 ///| 4P + 8S_O   | Versions 6 and 7, for print_paddr   |
 ///| 8P          | Version 8                           |
-pub fn get_mem_addr(addr: &[u8], counter: usize) -> usize {
-    let ins_bytes = <[u8; 2]>::try_from(&addr[counter..counter + 2]).unwrap();
-    let ins = u16::from_be_bytes(ins_bytes);
-    ins as usize
+pub fn get_mem_addr(addr: &[u8], counter: usize) -> Result<usize, TryFromSliceError> {
+
+    match <[u8; 2]>::try_from(&addr[counter..counter + 2]){
+        Ok(u) => Ok(u16::from_be_bytes(u) as usize),
+        Err(error) => Err(error)
+    }
 }
 
 

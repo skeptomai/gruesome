@@ -33,17 +33,17 @@ impl Header {
                 }
                 serial
             }(),
-            base_high_mem: get_mem_addr(bytes, 4),
-            base_static_mem: get_mem_addr(bytes, 14),
-            initial_pc: get_mem_addr(bytes, 6),
-            abbrev_table: get_mem_addr(bytes, 0x18),
-            len_file: get_mem_addr(bytes, 0x1A) as usize * 2,
-            checksum_file: get_mem_addr(bytes, 0x1C),
-            standard_revision_number: get_mem_addr(bytes, 0x32),
-            interpreter_number_and_version: get_mem_addr(bytes, 0x1e),
-            dictionary: get_mem_addr(bytes, 0x08),
-            object_table_addr: get_mem_addr(bytes, 0x0A),
-            global_variables: get_mem_addr(bytes, 0x0C),
+            base_high_mem: get_mem_addr(bytes, 4).unwrap(),
+            base_static_mem: get_mem_addr(bytes, 14).unwrap(),
+            initial_pc: get_mem_addr(bytes, 6).unwrap(),
+            abbrev_table: get_mem_addr(bytes, 0x18).unwrap(),
+            len_file: get_mem_addr(bytes, 0x1A).unwrap() as usize * 2,
+            checksum_file: get_mem_addr(bytes, 0x1C).unwrap(),
+            standard_revision_number: get_mem_addr(bytes, 0x32).unwrap(),
+            interpreter_number_and_version: get_mem_addr(bytes, 0x1e).unwrap(),
+            dictionary: get_mem_addr(bytes, 0x08).unwrap(),
+            object_table_addr: get_mem_addr(bytes, 0x0A).unwrap(),
+            global_variables: get_mem_addr(bytes, 0x0C).unwrap(),
         }
     }
 }

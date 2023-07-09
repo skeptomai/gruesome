@@ -118,6 +118,10 @@ impl<'a> GameFile<'a> {
         &self.header
     }
 
+    pub fn version(&self) -> usize {
+        *(&self.header.version) as usize
+    }
+
     /// abbrev_strings is an accessor that returns the abbreviated strings
     pub fn abbrev_strings(&self) -> usize {
         self.memory_map.abbrev_strings
@@ -164,7 +168,7 @@ impl<'a> Display for GameFile<'a> {
         let mut abbrev_table_offset = self.memory_map.abbrev_table;
         let mut si = 1;
         loop {
-            let abbrev_string_addr = (get_mem_addr(&self.bytes(), abbrev_table_offset as usize) *2) as usize;
+            let abbrev_string_addr = (get_mem_addr(&self.bytes(), abbrev_table_offset as usize).unwrap() *2) as usize;
             writeln!(f, "[{}] \"{}\"", si, Dictionary::read_text(&self, abbrev_string_addr).unwrap())?;
             si+=1;
             abbrev_table_offset+=2;
