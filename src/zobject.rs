@@ -40,13 +40,13 @@ impl ObjectTable {
 
         // usual calculation of number of objects based on the number of bytes divided
         // by the size of each object struct
-        let mut n_obj = obj_table_size / std::mem::size_of::<InnerZobjectV3>();
+        let mut n_obj = obj_table_size / SIZE_OF_ZOBJ;
 
         while n_obj > 0 {
-            let zobj = Zobject::new(gfile, &raw_object_bytes[base..base + std::mem::size_of::<InnerZobjectV3>()]);
+            let zobj = Zobject::new(gfile, &raw_object_bytes[base..base + SIZE_OF_ZOBJ]);
             objs.push(zobj);
             n_obj -= 1;
-            base += std::mem::size_of::<InnerZobjectV3>();
+            base += SIZE_OF_ZOBJ;
         }
 
         ObjectTable {
@@ -115,6 +115,7 @@ pub struct InnerZobjectV3 {
     pub properties_offsets: [u8; 2],
 }
 
+const SIZE_OF_ZOBJ :usize = std::mem::size_of::<InnerZobjectV3>();
 #[derive(Debug)]
 pub struct Zobject {
     zobj : InnerZobjectV3,
@@ -122,12 +123,15 @@ pub struct Zobject {
     properties : Vec<(u8, Vec<u8>)>
 }
 
+
+fn inner_zobject_v3_from_bytes(bytes: &[u8]) -> &InnerZobjectV3 {
+    unsafe {std::mem::transmute::<&[u8; SIZE_OF_ZOBJ], &InnerZobjectV3>(bytes.try_into().unwrap()) }
+}
+
 impl Zobject {
     /// create a new Zobject by bitblt'ing into InnerZobjectV3
     pub fn new(gfile: &GameFile, bytes: &[u8]) -> Zobject {
-        const SZ : usize = core::mem::size_of::<InnerZobjectV3>();
-
-        let zobj = unsafe {std::mem::transmute::<&[u8; SZ], &InnerZobjectV3>(&bytes[0..SZ].try_into().unwrap())};
+        let zobj = inner_zobject_v3_from_bytes(&bytes[0..SIZE_OF_ZOBJ]);
 
         let properties_addr = u16::from_be_bytes(zobj.properties_offsets) as usize;
         let descr_byte_len : usize = gfile.bytes()[properties_addr] as usize;
@@ -203,10 +207,9 @@ impl Zobject {
     /// Each object in the object table has properties that follow in a properties table,
     /// so the number of objects is ((property table start) - (object table start)) / sizeof(object)
     pub fn properties_addr_from_base(bytes: &[u8]) -> usize {
-        let sz = std::mem::size_of::<InnerZobjectV3>();
-        let (_prefix, zobj, _suffix) = unsafe { &bytes[0..sz].align_to::<InnerZobjectV3>() };
+        let zobj = inner_zobject_v3_from_bytes(&bytes[0..SIZE_OF_ZOBJ]);        
 
-        u16::from_be_bytes(zobj[0].properties_offsets) as usize
+        u16::from_be_bytes(zobj.properties_offsets) as usize
     }
 }
 
