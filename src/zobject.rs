@@ -7,7 +7,10 @@ use crate::game::GameFile;
 use crate::dictionary::Dictionary;
 use crate::util::ZTextReader;
 
-// In Versions 1 to 3, there are at most 255 objects, each having a 9-byte entry as follows
+// 12.3.1
+// In Versions 1 to 3, there are at most 255 objects, each having a 9-byte entry as follows:
+//   the 32 attribute flags     parent     sibling     child   properties
+//   ---32 bits in 4 bytes---   ---3 bytes------------------  ---2 bytes--
 #[derive(Debug)]
 pub struct ObjectTree {}
 
@@ -25,18 +28,25 @@ impl ObjectTable {
         let mut base = 0;
         let mut objs = vec![];
 
-        let raw_object_bytes = &gfile.bytes()[gfile.object_table() ..];
-        let prop_base = Zobject::properties_addr_from_base(raw_object_bytes);
-        let obj_table_size = prop_base - gfile.object_table();
-        let num_obj = obj_table_size / std::mem::size_of::<InnerZobject>();
+        let object_table_offset = gfile.object_table();
+        let raw_object_bytes = &gfile.bytes()[object_table_offset ..];
 
-        let mut n = num_obj;
+        // Remarks
+        // The largest valid object number is not directly stored anywhere in the Z-machine. 
+        // Utility programs like Infodump deduce this number by assuming that, initially, 
+        // the object entries end where the first property table begins.        
+        let prop_base_offset = Zobject::properties_addr_from_base(raw_object_bytes);
+        let obj_table_size = prop_base_offset - object_table_offset;
 
-        while n > 0 {
-            let zobj = Zobject::new(gfile, &raw_object_bytes[base..base + std::mem::size_of::<InnerZobject>()]);
+        // usual calculation of number of objects based on the number of bytes divided
+        // by the size of each object struct
+        let mut n_obj = obj_table_size / std::mem::size_of::<InnerZobjectV3>();
+
+        while n_obj > 0 {
+            let zobj = Zobject::new(gfile, &raw_object_bytes[base..base + std::mem::size_of::<InnerZobjectV3>()]);
             objs.push(zobj);
-            n -= 1;
-            base += std::mem::size_of::<InnerZobject>();
+            n_obj -= 1;
+            base += std::mem::size_of::<InnerZobjectV3>();
         }
 
         ObjectTable {
@@ -97,7 +107,7 @@ impl<'a> ExactSizeIterator for ZObjectIntoIterator<'a> {
 // NOTE: this is only up to v3
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
-pub struct InnerZobject {
+pub struct InnerZobjectV3 {
     pub attribute_bits: [u8; 4],
     pub parent: u8,
     pub next: u8,
@@ -107,18 +117,19 @@ pub struct InnerZobject {
 
 #[derive(Debug)]
 pub struct Zobject {
-    zobj : InnerZobject,
+    zobj : InnerZobjectV3,
     description : String,
     properties : Vec<(u8, Vec<u8>)>
 }
 
 impl Zobject {
-    /// create a new Zobject by bitblt'ing into InnerZObject
+    /// create a new Zobject by bitblt'ing into InnerZobjectV3
     pub fn new(gfile: &GameFile, bytes: &[u8]) -> Zobject {
-        let sz = std::mem::size_of::<InnerZobject>();
-        let (_prefix, zobj, _suffix) = unsafe { &bytes[0..sz].align_to::<InnerZobject>() };
+        const SZ : usize = core::mem::size_of::<InnerZobjectV3>();
 
-        let properties_addr = u16::from_be_bytes(zobj[0].properties_offsets) as usize;
+        let zobj = unsafe {std::mem::transmute::<&[u8; SZ], &InnerZobjectV3>(&bytes[0..SZ].try_into().unwrap())};
+
+        let properties_addr = u16::from_be_bytes(zobj.properties_offsets) as usize;
         let descr_byte_len : usize = gfile.bytes()[properties_addr] as usize;
         // This next line checks for zero-length description
         let description = if descr_byte_len == 0 {"".to_string()}
@@ -131,6 +142,10 @@ impl Zobject {
         let mut props = vec![];
         loop {
             let property_size_byte = gfile.bytes()[properties_base];
+            // BUGBUG?
+            /*12.4.2.1.1
+                ***[1.0] A value of 0 as property data length (in the second byte) should be interpreted as a length of 64. 
+                (Inform can compile such properties.) */
             if property_size_byte == 0 {break} else {
                 let actual_size = (property_size_byte >> 5) + 1;
                 let property_index = property_size_byte & 0b00011111;
@@ -143,7 +158,7 @@ impl Zobject {
             }
         }
 
-        Zobject{ zobj: zobj[0], description: description, properties: props}
+        Zobject{ zobj: *zobj, description: description, properties: props}
     }
 
     /// return object's attributes
@@ -177,7 +192,7 @@ impl Zobject {
       --1 or 2 bytes---     --between 1 and 64 bytes--
     The property number occupies the bottom 6 bits of the first size byte.
  */
-    
+
     /// return properties offset from object's data
     pub fn properties_addr(&self) -> usize {
         u16::from_be_bytes(self.zobj.properties_offsets) as usize
@@ -185,9 +200,11 @@ impl Zobject {
 
     /// given a pointer to object memory, return its properties
     /// used to find the end of the object table (where the properties begin)
+    /// Each object in the object table has properties that follow in a properties table,
+    /// so the number of objects is ((property table start) - (object table start)) / sizeof(object)
     pub fn properties_addr_from_base(bytes: &[u8]) -> usize {
-        let sz = std::mem::size_of::<InnerZobject>();
-        let (_prefix, zobj, _suffix) = unsafe { &bytes[0..sz].align_to::<InnerZobject>() };
+        let sz = std::mem::size_of::<InnerZobjectV3>();
+        let (_prefix, zobj, _suffix) = unsafe { &bytes[0..sz].align_to::<InnerZobjectV3>() };
 
         u16::from_be_bytes(zobj[0].properties_offsets) as usize
     }
