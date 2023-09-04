@@ -6,16 +6,19 @@ extern crate lazy_static;
 
 pub mod dictionary;
 pub mod game;
+pub mod gamememorymap;
 pub mod header;
 pub mod property_defaults;
 pub mod util;
 pub mod zobject;
 pub mod instruction;
 pub mod routine;
+pub mod zrand;
 
 #[cfg(test)]
 mod tests {
-    use crate::game::{GameFile, ZRand};
+    use crate::game::GameFile;
+    use crate::zrand::ZRand;
     use std::env;
     use std::fs::File;
     use std::io;
@@ -32,12 +35,18 @@ mod tests {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         path.push(DATAFILEPATH);
 
+        // open file and read all bytes into vector
         let mut f = File::open(path)?;
         let mut all_bytes = Vec::new();
-
         f.read_to_end(&mut all_bytes).unwrap();
+
+        // create random generator
         let mut zrg = ZRand::new_uniform();
+
+        // Instantiate gamefile structure
         let g = GameFile::new(&all_bytes, &mut zrg);
+
+        // dump the game structure
         log::info!("{}", g);
         Ok(())
     }

@@ -11,7 +11,7 @@ use crate::util::ZTextReader;
 // In Versions 1 to 3, there are at most 255 objects, each having a 9-byte entry as follows:
 //   the 32 attribute flags     parent     sibling     child   properties
 //   ---32 bits in 4 bytes---   ---3 bytes------------------  ---2 bytes--
-#[derive(Debug)]
+#[derive(Debug,Clone, Copy)]
 pub struct ObjectTree {}
 
 #[derive(Debug)]
@@ -116,7 +116,7 @@ pub struct InnerZobjectV3 {
 }
 
 const SIZE_OF_ZOBJ :usize = std::mem::size_of::<InnerZobjectV3>();
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Zobject {
     zobj : InnerZobjectV3,
     description : String,
@@ -124,8 +124,8 @@ pub struct Zobject {
 }
 
 
-fn inner_zobject_v3_from_bytes(bytes: &[u8]) -> &InnerZobjectV3 {
-    unsafe {std::mem::transmute::<&[u8; SIZE_OF_ZOBJ], &InnerZobjectV3>(bytes.try_into().unwrap()) }
+fn inner_zobject_v3_from_bytes(bytes: &[u8]) -> InnerZobjectV3 {
+    unsafe {*std::mem::transmute::<&[u8; SIZE_OF_ZOBJ], &InnerZobjectV3>(bytes.try_into().unwrap()) }
 }
 
 impl Zobject {
@@ -162,7 +162,7 @@ impl Zobject {
             }
         }
 
-        Zobject{ zobj: *zobj, description: description, properties: props}
+        Zobject{ zobj: zobj, description: description, properties: props}
     }
 
     /// return object's attributes

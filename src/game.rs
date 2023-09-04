@@ -1,7 +1,4 @@
-use std::fmt::{Debug, Display, Error, Formatter};
-
-use rand::{RngCore,SeedableRng,Rng,rngs::StdRng};
-
+use std::fmt::{Display, Error, Formatter};
 use sub_array::SubArray;
 
 use crate::header::Header;
@@ -9,38 +6,8 @@ use crate::property_defaults::PropertyDefaults;
 use crate::zobject::{ObjectTable, Zobject};
 use crate::dictionary::Dictionary;
 use crate::util::{get_mem_addr, properties_size_by_version, ZTextReader, MAX_PROPERTIES_V3};
-
-/// RandMode controls random generator behaviour. May be predictable for testing or truly random for gameplay
-pub enum RandMode {
-    Predictable,
-    RandomUniform,
-}
-
-pub struct ZRand {
-    rng : Box<dyn RngCore>,
-    rand_mode : RandMode,
-}
-
-impl ZRand {
-    pub fn new(rm: RandMode) -> ZRand {
-        ZRand { rng: Box::new(rand::thread_rng()), rand_mode: rm }
-    }
-
-    pub fn new_uniform() -> ZRand {
-        ZRand::new(RandMode::RandomUniform)
-    }
-
-
-    pub fn new_predictable(seed: u64) -> ZRand {
-        ZRand {rng: Box::new(StdRng::seed_from_u64(seed)), rand_mode: RandMode::Predictable}
-    }
-
-    /// gen_unsigned_rand generates unsigned in range [0..32767]
-    pub fn gen_unsigned_rand(&mut self) -> u16 {
-        // NOTE: This could probably be (u16::MAX +1) / 2
-        self.rng.gen_range(0..32768)
-    }
-}
+use crate::zrand::{RandMode, ZRand};
+use crate::gamememorymap::GameMemoryMap;
 
 /// GameFile is the main data structure for a single game instance
 pub struct GameFile<'a> {
@@ -67,7 +34,7 @@ impl<'a> GameFile<'a> {
         // and 63 in Versions 4 and later. When the game attempts to read the value of property n for an object which 
         // does not provide property n, the n-th entry in this table is the resulting value.        
         let property_defaults = header.object_table_addr;
-        // It's an address, so the offset is also 
+        // It's an address, so the offset is also. Object tree starts after default properties
         let object_table = header.object_table_addr + (properties_size_by_version(header.version)) * 2;
         let global_variables = header.global_variables;
         // Get the base address of the objects
@@ -193,58 +160,5 @@ impl<'a> Display for GameFile<'a> {
     }
 }
 
-/// GameMemoryMap reflects the internal structure of a loaded game
-#[derive(Debug)]
-pub struct GameMemoryMap<'a> {
-    pub bytes: &'a [u8],    
-    pub header_addr: usize,
-    pub abbrev_strings: usize,
-    pub abbrev_table: usize,
-    pub property_defaults: usize,
-    pub object_table: usize,
-    pub properties_table: usize,
-    pub global_variables: usize,
-}
 
-impl<'a> Display for GameMemoryMap<'a> {
-    /// formats the GameMemoryMap
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(
-            f,
-            "
-            base    end     size
-            {:#06x}\t{:#06x}\t{:#06x}     Story file header
-            {:#06x}\t{:#06x}\t{:#06x}     Abbreviation data
-            {:#06x}\t{:#06x}\t{:#06x}     Abbreviation pointer table
-            {:#06x}\t{:#06x}\t{:#06x}     Object table
-            {:#06x}\t{:#06x}\t{:#06x}     Properties data
-            {:#06x}\t{:#06x}\t{:#06x}     Global variables
-        ",
-            // File header
-            self.header_addr,
-            self.header_addr + 0x40 - 1,
-            self.header_addr + 0x40,
-            // Abbreviation data
-            self.abbrev_strings,
-            self.abbrev_table - 1,
-            self.abbrev_table - self.abbrev_strings,
-            // Abbreviation pointer table
-            self.abbrev_table,
-            self.object_table - 1,
-            self.object_table - self.abbrev_table,
-            // Object table
-            self.object_table,
-            self.properties_table - 1,
-            self.properties_table - self.object_table,
-            // Properties table
-            self.properties_table,
-            self.global_variables - 1,
-            self.global_variables - self.properties_table,
-            // Global variables
-            self.global_variables,
-            self.global_variables,
-            self.global_variables,
-        )
-    }
-}
 
