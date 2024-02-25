@@ -25,6 +25,7 @@
 - [[http://www.ifarchive.org/indexes/if-archiveXinfocomXtoolsXztools.html][ifarchive / Ztools]]
   - [[https://github.com/SamB/ztools][Ztools on Github]]
   - [[https://gitlab.com/russotto/ztools][Ztools on Gitlab]]
+- [[https://github.com/heasm66/z-machine-standards-document_1_1][GitHub ZMachine docs]]
 
 ** Misc History
 
@@ -32,5 +33,5 @@
 - [[https://www.ifarchive.org/][Interactive Fiction Archive]]
 - [[https://intfiction.org/][Interactive Fiction Community]]
 - [[https://zork.fandom.com/wiki/Command_List][Zork Command List]]
-
+- [[https://www.ifwiki.org/Zork_I][IFWiki]]
 
