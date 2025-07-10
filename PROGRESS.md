@@ -3,15 +3,15 @@
 ## Overview
 This is a Z-machine interpreter written in Rust, targeting Infocom games starting with Zork I. The project implements the Z-machine virtual machine specification for running interactive fiction games.
 
-## Current Status: ~38% Complete
+## Current Status: ~50% Complete
 
 ### Implementation Statistics
 - **Total Instructions**: 83 opcodes across 4 categories
-- **Fully Implemented**: 31 instructions (37.3%)
+- **Fully Implemented**: 41 instructions (49.4%)
 - **Partially Implemented**: 1 instruction (1.2%)
-- **Stub Implementations**: 51 instructions (61.4%)
-- **Test Coverage**: 27 tests across 3 test modules
-- **Total Lines of Code**: ~3,400 lines
+- **Stub Implementations**: 41 instructions (49.4%)
+- **Test Coverage**: 36 tests across 4 test modules
+- **Total Lines of Code**: ~4,200 lines
 
 ## Detailed Implementation Status
 
@@ -36,16 +36,16 @@ This is a Z-machine interpreter written in Rust, targeting Infocom games startin
 | quit | ✅ | Terminate game |
 | new_line | ✅ | Print newline |
 
-### ✅ 1OP Instructions (50% Complete - 8/16)
+### ✅ 1OP Instructions (75% Complete - 12/16)
 | Instruction | Status | Description |
 |-------------|---------|-------------|
 | jz | ✅ | Jump if zero |
 | get_sibling | ✅ | Get object sibling, branch if exists |
 | get_child | ✅ | Get object child, branch if exists |
-| get_parent | ❌ | Get object parent (stub) |
+| get_parent | ✅ | Get object parent |
 | get_prop_len | ❌ | Get property length (stub) |
-| inc | ❌ | Increment variable (stub) |
-| dec | ❌ | Decrement variable (stub) |
+| inc | ✅ | Increment variable |
+| dec | ✅ | Decrement variable |
 | print_addr | ❌ | Print string at address (stub) |
 | call_1s | ❌ | Call routine, store result (stub) |
 | remove_obj | ❌ | Remove object from parent (stub) |
@@ -53,10 +53,10 @@ This is a Z-machine interpreter written in Rust, targeting Infocom games startin
 | ret | ✅ | Return value from routine |
 | jump | ✅ | Unconditional jump |
 | print_paddr | ❌ | Print string at packed address (stub) |
-| load | ❌ | Load variable (stub) |
+| load | ✅ | Load variable |
 | not | ✅ | Bitwise NOT |
 
-### ✅ 2OP Instructions (59% Complete - 16/27)
+### ✅ 2OP Instructions (67% Complete - 18/27)
 | Instruction | Status | Description |
 |-------------|---------|-------------|
 | je | ✅ | Jump if equal |
@@ -69,8 +69,8 @@ This is a Z-machine interpreter written in Rust, targeting Infocom games startin
 | or | ✅ | Bitwise OR |
 | and | ✅ | Bitwise AND |
 | test_attr | ✅ | Test object attribute |
-| set_attr | ❌ | Set object attribute (stub) |
-| clear_attr | ❌ | Clear object attribute (stub) |
+| set_attr | ✅ | Set object attribute |
+| clear_attr | ✅ | Clear object attribute |
 | store | ✅ | Store value in variable |
 | insert_obj | ❌ | Insert object into parent (stub) |
 | loadw | ✅ | Load word from memory |
@@ -88,31 +88,31 @@ This is a Z-machine interpreter written in Rust, targeting Infocom games startin
 | set_colour | ❌ | Set text colors (stub) |
 | throw | ❌ | Throw to catch frame (stub) |
 
-### 🟡 VAR Instructions (3% Complete - 1/32)
+### 🟡 VAR Instructions (13% Complete - 4/32)
 | Instruction | Status | Description |
 |-------------|---------|-------------|
 | call | ✅ | Call routine with arguments |
-| storew | ❌ | Store word in memory (stub) |
-| storeb | ❌ | Store byte in memory (stub) |
+| storew | ✅ | Store word in memory |
+| storeb | ✅ | Store byte in memory |
 | put_prop | ❌ | Set object property (stub) |
 | sread | ❌ | Read user input (stub) |
-| print_char | ❌ | Print character (stub) |
-| print_num | ❌ | Print number (stub) |
+| print_char | ✅ | Print character |
+| print_num | ✅ | Print number |
 | random | ❌ | Generate random number (stub) |
-| push | ❌ | Push to stack (stub) |
-| pull | ❌ | Pull from stack (stub) |
-| *...and 22 more stubs* | ❌ | Various I/O, display, and utility operations |
+| push | ✅ | Push to stack |
+| pull | ✅ | Pull from stack |
+| *...and 20 more stubs* | ❌ | Various I/O, display, and utility operations |
 
 ## Test Coverage Analysis
 
 ### ✅ Comprehensive Test Suites
 - **Call Tests** (7 tests): Subroutine calling, argument passing, return values
-- **Branch Tests** (18 tests): All branching instructions, control flow, object operations  
+- **Branch Tests** (18 tests): All branching instructions, control flow, object operations
+- **Instruction Tests** (9 tests): Variable operations, stack, memory, attributes, text output
 - **Integration Tests** (2 tests): Real game file loading and execution
 
 ### 🟡 Testing Gaps
 - **Arithmetic Operations**: No tests for ADD, SUB, MUL, DIV, MOD
-- **Memory Operations**: Missing STOREW, STOREB tests
 - **Text Processing**: No PRINT, string handling tests
 - **I/O Operations**: Missing input/output stream tests
 - **Property System**: No object property manipulation tests

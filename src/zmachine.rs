@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::{self, Write};
 use crate::game::GameFile;
 use crate::instruction::{Instruction, OperandType, OperandCount};
-use crate::util::get_mem_addr;
+use crate::util::{get_mem_addr, ZTextReader};
 
 pub struct ZMachine<'a> {
     pub game: &'a GameFile<'a>,
@@ -254,7 +254,9 @@ impl<'a> ZMachine<'a> {
 
     fn op_print(&mut self) -> Result<(), String> {
         // Print immediate string following instruction
-        println!("PRINT: [immediate string not implemented]");
+        let (text, length) = self.read_zstring_inline()?;
+        print!("{}", text);
+        io::stdout().flush().unwrap();
         Ok(())
     }
 
@@ -320,28 +322,94 @@ impl<'a> ZMachine<'a> {
         self.handle_branch(condition)
     }
 
-    fn op_get_parent(&mut self, operand: u16) -> Result<(), String> {
-        println!("GET_PARENT: object {} (not implemented)", operand);
-        Ok(())
+    pub fn op_get_parent(&mut self, operand: u16) -> Result<(), String> {
+        let obj_num = operand;
+        let parent = self.get_object_parent(obj_num)?;
+        
+        // Store the parent object number (LOAD-style instruction)
+        self.store_variable(0, parent)
     }
 
-    fn op_get_prop_len(&mut self, operand: u16) -> Result<(), String> {
-        println!("GET_PROP_LEN: property {} (not implemented)", operand);
-        Ok(())
+    pub fn op_get_prop_len(&mut self, operand: u16) -> Result<(), String> {
+        let prop_addr = operand as usize;
+        
+        if prop_addr == 0 {
+            // GET_PROP_LEN 0 returns 0
+            self.store_variable(0, 0)?;
+            return Ok(());
+        }
+        
+        if prop_addr >= self.memory.len() {
+            return Err("Property address out of bounds".to_string());
+        }
+        
+        // The property address points to the property data
+        // The size byte is immediately before the data
+        if prop_addr == 0 {
+            return Err("Invalid property address".to_string());
+        }
+        
+        let size_byte = self.memory[prop_addr - 1];
+        
+        if size_byte == 0 {
+            return Err("Invalid property size byte".to_string());
+        }
+        
+        // Extract size from upper 3 bits (v1-3 format)
+        let property_size = (size_byte >> 5) + 1;
+        
+        self.store_variable(0, property_size as u16)
     }
 
-    fn op_inc(&mut self, operand: u16) -> Result<(), String> {
-        println!("INC: variable {} (not implemented)", operand);
-        Ok(())
+    pub fn op_inc(&mut self, operand: u16) -> Result<(), String> {
+        let var_num = operand as u8;
+        
+        // Get current value of variable
+        let current_value = if var_num == 0 {
+            if self.stack.is_empty() {
+                return Err("Stack underflow in inc".to_string());
+            }
+            self.stack.pop().unwrap()
+        } else if var_num <= 15 {
+            self.local_vars[(var_num - 1) as usize]
+        } else {
+            self.global_vars.get(&var_num).copied().unwrap_or(0)
+        };
+        
+        // Increment the value
+        let new_value = (current_value as i16).wrapping_add(1) as u16;
+        
+        // Store the incremented value back
+        self.store_variable(var_num, new_value)
     }
 
-    fn op_dec(&mut self, operand: u16) -> Result<(), String> {
-        println!("DEC: variable {} (not implemented)", operand);
-        Ok(())
+    pub fn op_dec(&mut self, operand: u16) -> Result<(), String> {
+        let var_num = operand as u8;
+        
+        // Get current value of variable
+        let current_value = if var_num == 0 {
+            if self.stack.is_empty() {
+                return Err("Stack underflow in dec".to_string());
+            }
+            self.stack.pop().unwrap()
+        } else if var_num <= 15 {
+            self.local_vars[(var_num - 1) as usize]
+        } else {
+            self.global_vars.get(&var_num).copied().unwrap_or(0)
+        };
+        
+        // Decrement the value
+        let new_value = (current_value as i16).wrapping_sub(1) as u16;
+        
+        // Store the decremented value back
+        self.store_variable(var_num, new_value)
     }
 
-    fn op_print_addr(&mut self, operand: u16) -> Result<(), String> {
-        println!("PRINT_ADDR: {} (not implemented)", operand);
+    pub fn op_print_addr(&mut self, operand: u16) -> Result<(), String> {
+        // Print string at given byte address
+        let (text, _) = self.read_zstring_at_address(operand as usize)?;
+        print!("{}", text);
+        io::stdout().flush().unwrap();
         Ok(())
     }
 
@@ -355,8 +423,24 @@ impl<'a> ZMachine<'a> {
         Ok(())
     }
 
-    fn op_print_obj(&mut self, operand: u16) -> Result<(), String> {
-        println!("PRINT_OBJ: object {} (not implemented)", operand);
+    pub fn op_print_obj(&mut self, operand: u16) -> Result<(), String> {
+        // Print object name (stored in property table)
+        if operand == 0 {
+            return Err("Cannot print name of object 0".to_string());
+        }
+        
+        let obj_addr = self.get_object_addr(operand)?;
+        if obj_addr + 8 >= self.memory.len() {
+            return Err("Object table access out of bounds".to_string());
+        }
+        
+        // Get properties address from object
+        let properties_addr = ((self.memory[obj_addr + 7] as u16) << 8) | (self.memory[obj_addr + 8] as u16);
+        
+        // Object name is stored at the properties address
+        let (name, _) = self.read_zstring_at_address(properties_addr as usize)?;
+        print!("{}", name);
+        io::stdout().flush().unwrap();
         Ok(())
     }
 
@@ -371,14 +455,32 @@ impl<'a> ZMachine<'a> {
         Ok(())
     }
 
-    fn op_print_paddr(&mut self, operand: u16) -> Result<(), String> {
-        println!("PRINT_PADDR: {} (not implemented)", operand);
+    pub fn op_print_paddr(&mut self, operand: u16) -> Result<(), String> {
+        // Print string at given packed address
+        let byte_addr = self.convert_packed_address(operand);
+        let (text, _) = self.read_zstring_at_address(byte_addr)?;
+        print!("{}", text);
+        io::stdout().flush().unwrap();
         Ok(())
     }
 
-    fn op_load(&mut self, operand: u16) -> Result<(), String> {
-        println!("LOAD: variable {} (not implemented)", operand);
-        Ok(())
+    pub fn op_load(&mut self, operand: u16) -> Result<(), String> {
+        let var_num = operand as u8;
+        
+        // Get value of variable
+        let value = if var_num == 0 {
+            if self.stack.is_empty() {
+                return Err("Stack underflow in load".to_string());
+            }
+            self.stack[self.stack.len() - 1]  // Peek at top without popping
+        } else if var_num <= 15 {
+            self.local_vars[(var_num - 1) as usize]
+        } else {
+            self.global_vars.get(&var_num).copied().unwrap_or(0)
+        };
+        
+        // Store the loaded value on the stack (result of LOAD instruction)
+        self.store_variable(0, value)
     }
 
     fn op_not(&mut self, operand: u16) -> Result<(), String> {
@@ -494,13 +596,57 @@ impl<'a> ZMachine<'a> {
         self.handle_branch(condition)
     }
 
-    fn op_set_attr(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
-        println!("SET_ATTR: obj {} attr {} (not implemented)", operand1, operand2);
+    pub fn op_set_attr(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
+        let obj_num = operand1;
+        let attr_num = operand2;
+        
+        if obj_num == 0 {
+            return Ok(()); // Setting attributes on object 0 is a no-op
+        }
+        
+        if attr_num >= 32 {
+            return Err("Attribute number must be 0-31".to_string());
+        }
+        
+        let obj_addr = self.get_object_addr(obj_num)?;
+        if obj_addr + 3 >= self.memory.len() {
+            return Err("Object table access out of bounds".to_string());
+        }
+        
+        // Attributes are stored in first 4 bytes of object
+        let byte_index = (attr_num / 8) as usize;
+        let bit_index = 7 - (attr_num % 8);
+        
+        // Set the bit
+        self.memory[obj_addr + byte_index] |= 1 << bit_index;
+        
         Ok(())
     }
 
-    fn op_clear_attr(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
-        println!("CLEAR_ATTR: obj {} attr {} (not implemented)", operand1, operand2);
+    pub fn op_clear_attr(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
+        let obj_num = operand1;
+        let attr_num = operand2;
+        
+        if obj_num == 0 {
+            return Ok(()); // Clearing attributes on object 0 is a no-op
+        }
+        
+        if attr_num >= 32 {
+            return Err("Attribute number must be 0-31".to_string());
+        }
+        
+        let obj_addr = self.get_object_addr(obj_num)?;
+        if obj_addr + 3 >= self.memory.len() {
+            return Err("Object table access out of bounds".to_string());
+        }
+        
+        // Attributes are stored in first 4 bytes of object
+        let byte_index = (attr_num / 8) as usize;
+        let bit_index = 7 - (attr_num % 8);
+        
+        // Clear the bit
+        self.memory[obj_addr + byte_index] &= !(1 << bit_index);
+        
         Ok(())
     }
 
@@ -513,7 +659,7 @@ impl<'a> ZMachine<'a> {
         Ok(())
     }
 
-    fn op_loadw(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
+    pub fn op_loadw(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
         let addr = operand1 as usize + (operand2 as usize * 2);
         if addr + 1 < self.memory.len() {
             let value = ((self.memory[addr] as u16) << 8) | (self.memory[addr + 1] as u16);
@@ -522,7 +668,7 @@ impl<'a> ZMachine<'a> {
         Ok(())
     }
 
-    fn op_loadb(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
+    pub fn op_loadb(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
         let addr = operand1 as usize + operand2 as usize;
         if addr < self.memory.len() {
             let value = self.memory[addr] as u16;
@@ -531,19 +677,143 @@ impl<'a> ZMachine<'a> {
         Ok(())
     }
 
-    fn op_get_prop(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
-        println!("GET_PROP: obj {} prop {} (not implemented)", operand1, operand2);
-        Ok(())
+    pub fn op_get_prop(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
+        let obj_num = operand1;
+        let prop_num = operand2 as u8;
+        
+        if obj_num == 0 {
+            return Err("Cannot get property of object 0".to_string());
+        }
+        
+        if prop_num == 0 || prop_num > 31 {
+            return Err("Property number must be 1-31".to_string());
+        }
+        
+        // Try to find the property on the object
+        match self.find_property(obj_num, prop_num)? {
+            Some((prop_data_addr, prop_size)) => {
+                // Property found - read its value
+                let value = match prop_size {
+                    1 => {
+                        // 1-byte property
+                        if prop_data_addr >= self.memory.len() {
+                            return Err("Property data out of bounds".to_string());
+                        }
+                        self.memory[prop_data_addr] as u16
+                    },
+                    2 => {
+                        // 2-byte property (big-endian)
+                        if prop_data_addr + 1 >= self.memory.len() {
+                            return Err("Property data out of bounds".to_string());
+                        }
+                        ((self.memory[prop_data_addr] as u16) << 8) | (self.memory[prop_data_addr + 1] as u16)
+                    },
+                    _ => {
+                        return Err(format!("GET_PROP can only read 1 or 2 byte properties, found {} bytes", prop_size));
+                    }
+                };
+                
+                self.store_variable(0, value)
+            },
+            None => {
+                // Property not found - return default value
+                let default_value = self.get_property_default(prop_num)?;
+                self.store_variable(0, default_value)
+            }
+        }
     }
 
-    fn op_get_prop_addr(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
-        println!("GET_PROP_ADDR: obj {} prop {} (not implemented)", operand1, operand2);
-        Ok(())
+    pub fn op_get_prop_addr(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
+        let obj_num = operand1;
+        let prop_num = operand2 as u8;
+        
+        if obj_num == 0 {
+            // GET_PROP_ADDR of object 0 returns 0
+            self.store_variable(0, 0)?;
+            return Ok(());
+        }
+        
+        if prop_num == 0 || prop_num > 31 {
+            return Err("Property number must be 1-31".to_string());
+        }
+        
+        // Try to find the property on the object
+        match self.find_property(obj_num, prop_num)? {
+            Some((prop_data_addr, _prop_size)) => {
+                // Property found - return its data address
+                self.store_variable(0, prop_data_addr as u16)
+            },
+            None => {
+                // Property not found - return 0
+                self.store_variable(0, 0)
+            }
+        }
     }
 
-    fn op_get_next_prop(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
-        println!("GET_NEXT_PROP: obj {} prop {} (not implemented)", operand1, operand2);
-        Ok(())
+    pub fn op_get_next_prop(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
+        let obj_num = operand1;
+        let prop_num = operand2 as u8;
+        
+        if obj_num == 0 {
+            return Err("Cannot get next property of object 0".to_string());
+        }
+        
+        let props_addr = self.get_object_properties_addr(obj_num)?;
+        
+        if props_addr >= self.memory.len() {
+            return Err("Property table address out of bounds".to_string());
+        }
+        
+        // Skip object description - first byte is description length in words
+        let desc_len = self.memory[props_addr] as usize;
+        let mut cursor = props_addr + 1 + (desc_len * 2);
+        
+        if prop_num == 0 {
+            // Return first property number
+            if cursor < self.memory.len() {
+                let size_byte = self.memory[cursor];
+                if size_byte != 0 {
+                    let first_prop_num = size_byte & 0x1F;
+                    self.store_variable(0, first_prop_num as u16)?;
+                    return Ok(());
+                }
+            }
+            // No properties
+            self.store_variable(0, 0)?;
+            return Ok(());
+        }
+        
+        // Search for the specified property, then return the next one
+        let mut found_target = false;
+        
+        while cursor < self.memory.len() {
+            let size_byte = self.memory[cursor];
+            
+            if size_byte == 0 {
+                // End of property list
+                break;
+            }
+            
+            let property_num = size_byte & 0x1F;
+            let property_size = (size_byte >> 5) + 1;
+            
+            if found_target {
+                // Return this property number (the one after the target)
+                self.store_variable(0, property_num as u16)?;
+                return Ok(());
+            }
+            
+            if property_num == prop_num {
+                // Found the target property
+                found_target = true;
+            }
+            
+            // Move to next property
+            cursor += 1 + property_size as usize;
+        }
+        
+        // Target property was last or not found - return 0
+        self.store_variable(0, 0)
     }
 
     fn op_add(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
@@ -668,33 +938,183 @@ impl<'a> ZMachine<'a> {
         Ok(())
     }
 
-    fn op_storew(&mut self) -> Result<(), String> {
-        println!("STOREW: (not implemented)");
+    pub fn op_storew(&mut self) -> Result<(), String> {
+        // STOREW takes 3 operands: array-address, word-index, value
+        if self.operands_buffer.len() < 3 {
+            return Err("STOREW instruction missing operands".to_string());
+        }
+        
+        let array_addr = self.operands_buffer[0] as usize;
+        let word_index = self.operands_buffer[1] as usize;
+        let value = self.operands_buffer[2];
+        
+        let byte_addr = array_addr + (word_index * 2);
+        
+        if byte_addr + 1 >= self.memory.len() {
+            return Err("STOREW address out of bounds".to_string());
+        }
+        
+        // Store word in big-endian format
+        self.memory[byte_addr] = (value >> 8) as u8;
+        self.memory[byte_addr + 1] = (value & 0xFF) as u8;
+        
         Ok(())
     }
 
-    fn op_storeb(&mut self) -> Result<(), String> {
-        println!("STOREB: (not implemented)");
+    pub fn op_storeb(&mut self) -> Result<(), String> {
+        // STOREB takes 3 operands: array-address, byte-index, value
+        if self.operands_buffer.len() < 3 {
+            return Err("STOREB instruction missing operands".to_string());
+        }
+        
+        let array_addr = self.operands_buffer[0] as usize;
+        let byte_index = self.operands_buffer[1] as usize;
+        let value = self.operands_buffer[2];
+        
+        let byte_addr = array_addr + byte_index;
+        
+        if byte_addr >= self.memory.len() {
+            return Err("STOREB address out of bounds".to_string());
+        }
+        
+        // Store byte (only low 8 bits of value)
+        self.memory[byte_addr] = (value & 0xFF) as u8;
+        
         Ok(())
     }
 
-    fn op_put_prop(&mut self) -> Result<(), String> {
-        println!("PUT_PROP: (not implemented)");
-        Ok(())
+    pub fn op_put_prop(&mut self) -> Result<(), String> {
+        // PUT_PROP takes 3 operands: object, property, value
+        if self.operands_buffer.len() < 3 {
+            return Err("PUT_PROP instruction missing operands".to_string());
+        }
+        
+        let obj_num = self.operands_buffer[0];
+        let prop_num = self.operands_buffer[1] as u8;
+        let value = self.operands_buffer[2];
+        
+        if obj_num == 0 {
+            return Err("Cannot set property of object 0".to_string());
+        }
+        
+        if prop_num == 0 || prop_num > 31 {
+            return Err("Property number must be 1-31".to_string());
+        }
+        
+        // Find the property on the object
+        match self.find_property(obj_num, prop_num)? {
+            Some((prop_data_addr, prop_size)) => {
+                // Property found - write the new value
+                match prop_size {
+                    1 => {
+                        // 1-byte property - store low byte only
+                        if prop_data_addr >= self.memory.len() {
+                            return Err("Property data out of bounds".to_string());
+                        }
+                        self.memory[prop_data_addr] = (value & 0xFF) as u8;
+                    },
+                    2 => {
+                        // 2-byte property (big-endian)
+                        if prop_data_addr + 1 >= self.memory.len() {
+                            return Err("Property data out of bounds".to_string());
+                        }
+                        self.memory[prop_data_addr] = (value >> 8) as u8;     // High byte
+                        self.memory[prop_data_addr + 1] = (value & 0xFF) as u8; // Low byte
+                    },
+                    _ => {
+                        return Err(format!("PUT_PROP can only write 1 or 2 byte properties, found {} bytes", prop_size));
+                    }
+                }
+                Ok(())
+            },
+            None => {
+                Err(format!("Object {} does not have property {}", obj_num, prop_num))
+            }
+        }
     }
 
     fn op_sread(&mut self) -> Result<(), String> {
-        println!("SREAD: (not implemented)");
+        // SREAD takes 2 operands: text-buffer address, parse-buffer address
+        if self.operands_buffer.len() < 2 {
+            return Err("SREAD instruction missing operands".to_string());
+        }
+        
+        let text_buffer = self.operands_buffer[0] as usize;
+        let parse_buffer = self.operands_buffer[1] as usize;
+        
+        if text_buffer >= self.memory.len() || parse_buffer >= self.memory.len() {
+            return Err("SREAD buffer address out of bounds".to_string());
+        }
+        
+        // Read max input length from first byte of text buffer
+        let max_len = self.memory[text_buffer] as usize;
+        
+        // Read input from user
+        print!("> ");
+        io::stdout().flush().unwrap();
+        
+        let mut input = String::new();
+        match io::stdin().read_line(&mut input) {
+            Ok(_) => {
+                // Remove trailing newline
+                input = input.trim_end().to_string();
+                
+                // Convert to lowercase (Z-machine convention)
+                input = input.to_lowercase();
+                
+                // Truncate to max length
+                if input.len() > max_len {
+                    input.truncate(max_len);
+                }
+                
+                // Store input length in second byte
+                self.memory[text_buffer + 1] = input.len() as u8;
+                
+                // Store input characters starting at third byte
+                for (i, ch) in input.chars().enumerate() {
+                    if text_buffer + 2 + i < self.memory.len() {
+                        self.memory[text_buffer + 2 + i] = ch as u8;
+                    }
+                }
+                
+                // TODO: Parse input into words and store in parse buffer
+                // For now, just mark parse buffer as empty
+                self.memory[parse_buffer] = 0; // No words parsed
+                
+                Ok(())
+            }
+            Err(_) => Err("Failed to read input".to_string()),
+        }
+    }
+
+    pub fn op_print_char(&mut self) -> Result<(), String> {
+        // PRINT_CHAR takes one operand (the character code to print)
+        if self.operands_buffer.is_empty() {
+            return Err("PRINT_CHAR instruction missing operand".to_string());
+        }
+        
+        let char_code = self.operands_buffer[0];
+        
+        // Convert to char and print (basic ASCII for now)
+        if char_code <= 255 {
+            let ch = char_code as u8 as char;
+            print!("{}", ch);
+            io::stdout().flush().unwrap_or(());
+        }
+        
         Ok(())
     }
 
-    fn op_print_char(&mut self) -> Result<(), String> {
-        println!("PRINT_CHAR: (not implemented)");
-        Ok(())
-    }
-
-    fn op_print_num(&mut self) -> Result<(), String> {
-        println!("PRINT_NUM: (not implemented)");
+    pub fn op_print_num(&mut self) -> Result<(), String> {
+        // PRINT_NUM takes one operand (the signed number to print)
+        if self.operands_buffer.is_empty() {
+            return Err("PRINT_NUM instruction missing operand".to_string());
+        }
+        
+        let number = self.operands_buffer[0] as i16;  // Treat as signed
+        print!("{}", number);
+        io::stdout().flush().unwrap_or(());
+        
         Ok(())
     }
 
@@ -703,14 +1123,31 @@ impl<'a> ZMachine<'a> {
         Ok(())
     }
 
-    fn op_push(&mut self) -> Result<(), String> {
-        println!("PUSH: (not implemented)");
+    pub fn op_push(&mut self) -> Result<(), String> {
+        // PUSH takes one operand (the value to push)
+        if self.operands_buffer.is_empty() {
+            return Err("PUSH instruction missing operand".to_string());
+        }
+        
+        let value = self.operands_buffer[0];
+        self.stack.push(value);
         Ok(())
     }
 
-    fn op_pull(&mut self) -> Result<(), String> {
-        println!("PULL: (not implemented)");
-        Ok(())
+    pub fn op_pull(&mut self) -> Result<(), String> {
+        // PULL takes one operand (the variable to store the popped value)
+        if self.operands_buffer.is_empty() {
+            return Err("PULL instruction missing operand".to_string());
+        }
+        
+        if self.stack.is_empty() {
+            return Err("Stack underflow in pull".to_string());
+        }
+        
+        let value = self.stack.pop().unwrap();
+        let var_num = self.operands_buffer[0] as u8;
+        
+        self.store_variable(var_num, value)
     }
 
     fn op_split_window(&mut self) -> Result<(), String> {
@@ -981,5 +1418,136 @@ impl<'a> ZMachine<'a> {
         let byte_value = self.memory[obj_addr + byte_index];
         
         Ok((byte_value & (1 << bit_index)) != 0)
+    }
+
+    // Helper methods for property table access
+    fn get_object_properties_addr(&self, obj_num: u16) -> Result<usize, String> {
+        if obj_num == 0 {
+            return Err("Object number 0 is invalid".to_string());
+        }
+        
+        let obj_addr = self.get_object_addr(obj_num)?;
+        if obj_addr + 8 >= self.memory.len() {
+            return Err("Object table access out of bounds".to_string());
+        }
+        
+        // Properties address is stored in bytes 7-8 of object (big-endian)
+        let props_addr = ((self.memory[obj_addr + 7] as u16) << 8) | (self.memory[obj_addr + 8] as u16);
+        Ok(props_addr as usize)
+    }
+    
+    fn find_property(&self, obj_num: u16, prop_num: u8) -> Result<Option<(usize, u8)>, String> {
+        let props_addr = self.get_object_properties_addr(obj_num)?;
+        
+        if props_addr >= self.memory.len() {
+            return Err("Property table address out of bounds".to_string());
+        }
+        
+        // Skip object description - first byte is description length in words
+        let desc_len = self.memory[props_addr] as usize;
+        let mut cursor = props_addr + 1 + (desc_len * 2);
+        
+        // Search through properties
+        while cursor < self.memory.len() {
+            let size_byte = self.memory[cursor];
+            
+            if size_byte == 0 {
+                // End of property list
+                break;
+            }
+            
+            // Extract property number and size (v1-3 format)
+            let property_num = size_byte & 0x1F;  // Lower 5 bits
+            let property_size = (size_byte >> 5) + 1;  // Upper 3 bits + 1
+            
+            if property_num == prop_num {
+                // Found the property
+                return Ok(Some((cursor + 1, property_size)));  // Return data address and size
+            }
+            
+            // Move to next property
+            cursor += 1 + property_size as usize;
+        }
+        
+        // Property not found
+        Ok(None)
+    }
+    
+    fn get_property_default(&self, prop_num: u8) -> Result<u16, String> {
+        if prop_num == 0 || prop_num > 31 {
+            return Err("Property number must be 1-31".to_string());
+        }
+        
+        // Property defaults table starts after header
+        let prop_defaults_addr = ((self.memory[10] as u16) << 8) | (self.memory[11] as u16);
+        let default_addr = (prop_defaults_addr as usize) + ((prop_num - 1) as usize * 2);
+        
+        if default_addr + 1 >= self.memory.len() {
+            return Err("Property defaults table access out of bounds".to_string());
+        }
+        
+        // Read default value (big-endian)
+        let default_value = ((self.memory[default_addr] as u16) << 8) | (self.memory[default_addr + 1] as u16);
+        Ok(default_value)
+    }
+    
+    // Helper methods for string processing
+    pub fn read_zstring_at_address(&self, addr: usize) -> Result<(String, usize), String> {
+        use crate::dictionary::Dictionary;
+        
+        if addr >= self.memory.len() {
+            return Err("String address out of bounds".to_string());
+        }
+        
+        // Use the existing ZTextReader implementation
+        match Dictionary::read_text(self.game, addr) {
+            Ok(text) => {
+                // Calculate string length by finding the terminating word
+                let mut cursor = addr;
+                let mut length = 0;
+                
+                while cursor + 1 < self.memory.len() {
+                    let word = ((self.memory[cursor] as u16) << 8) | (self.memory[cursor + 1] as u16);
+                    cursor += 2;
+                    length += 2;
+                    
+                    // High bit set means this is the last word
+                    if (word & 0x8000) != 0 {
+                        break;
+                    }
+                }
+                
+                Ok((text, length))
+            },
+            Err(e) => Err(format!("Failed to read Z-string: {}", e))
+        }
+    }
+    
+    pub fn read_zstring_inline(&mut self) -> Result<(String, usize), String> {
+        // Read Z-string starting at current PC
+        let (text, length) = self.read_zstring_at_address(self.pc)?;
+        
+        // Advance PC past the string
+        self.pc += length;
+        
+        Ok((text, length))
+    }
+    
+    pub fn convert_packed_address(&self, packed_addr: u16) -> usize {
+        // Convert packed address to byte address based on Z-machine version
+        let version = if self.memory.len() > 0 { self.memory[0] } else { 3 };
+        
+        match version {
+            1 | 2 | 3 => (packed_addr as usize) * 2,
+            4 | 5 => (packed_addr as usize) * 4,
+            6 | 7 | 8 => {
+                // Version 6+ uses routine/string base addresses
+                let base_high = if self.memory.len() > 29 { 
+                    ((self.memory[28] as usize) << 8) | (self.memory[29] as usize)
+                } else { 0 };
+                (packed_addr as usize) * 4 + base_high
+            },
+            _ => (packed_addr as usize) * 2, // Default to v1-3 behavior
+        }
     }
 }

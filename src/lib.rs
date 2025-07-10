@@ -23,6 +23,15 @@ mod call_tests;
 mod branch_tests;
 
 #[cfg(test)]
+mod instruction_tests;
+
+#[cfg(test)]
+mod property_tests;
+
+#[cfg(test)]
+mod string_tests;
+
+#[cfg(test)]
 mod tests {
     use crate::game::GameFile;
     use crate::zrand::ZRand;
