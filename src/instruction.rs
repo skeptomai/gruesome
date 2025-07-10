@@ -4,29 +4,289 @@ use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
 
-/// Each instruction has a form (long, short, extended or variable) and an
-/// operand count (0OP, 1OP, 2OP or VAR). If the top two bits of the opcode 
-/// are $$11 the form is variable; if $$10, the form is short. If the opcode 
-/// is 190 ($BE in hexadecimal) and the version is 5 or later, the form is 
-/// "extended". Otherwise, the form is "long".
-pub struct Instruction<'a> {
-    opcode : u16,
-    operands_types: [u8;2],
-    operands : [u8;16],
-    store_variable: u8,
-    branch_offset: [u8;2],
-    text: &'a str,
+use crate::util::get_mem_addr;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum InstructionForm {
+    Long,
+    Short,
+    Variable,
+    Extended,
 }
 
-impl<'a> Instruction<'a> {
-    fn is_short(&self) {}    
-    fn is_long(&self) {}
-    fn is_extended(&self) {}
-    fn is_variable(&self) {}
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OperandType {
+    LargeConstant,   // 00: 2-byte constant
+    SmallConstant,   // 01: 1-byte constant  
+    Variable,        // 10: variable reference
+    Omitted,         // 11: operand omitted
 }
 
-impl<'a> Display for Instruction<'a> {
-    fn fmt(&self, _f: &mut Formatter<'_>) -> Result<(), Error> {
-        Ok(())
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OperandCount {
+    Op0,  // 0OP
+    Op1,  // 1OP
+    Op2,  // 2OP
+    Var,  // VAR
+}
+
+#[derive(Debug, Clone)]
+pub struct Operand {
+    pub operand_type: OperandType,
+    pub value: u16,
+}
+
+#[derive(Debug, Clone)]
+pub struct Instruction {
+    pub opcode: u8,
+    pub form: InstructionForm,
+    pub operand_count: OperandCount,
+    pub operands: Vec<Operand>,
+    pub store_variable: Option<u8>,
+    pub branch_offset: Option<i16>,
+    pub text: Option<String>,
+    pub length: usize,  // Total instruction length in bytes
+}
+
+impl Instruction {
+    pub fn decode(memory: &[u8], pc: usize) -> Result<Instruction, String> {
+        if pc >= memory.len() {
+            return Err("PC out of bounds".to_string());
+        }
+
+        let opcode_byte = memory[pc];
+        let mut cursor = pc + 1;
+
+        // Determine instruction form
+        let form = match opcode_byte & 0xC0 {
+            0xC0 => InstructionForm::Variable,  // 11xxxxxx
+            0x80 => InstructionForm::Short,     // 10xxxxxx
+            _ => {
+                if opcode_byte == 0xBE {
+                    InstructionForm::Extended
+                } else {
+                    InstructionForm::Long           // 0xxxxxxx or 01xxxxxx
+                }
+            }
+        };
+
+        let (opcode, operand_count, operand_types) = match form {
+            InstructionForm::Long => {
+                let opcode = opcode_byte & 0x1F;
+                let operand_count = OperandCount::Op2;
+                let operand_types = vec![
+                    if opcode_byte & 0x40 != 0 { OperandType::Variable } else { OperandType::SmallConstant },
+                    if opcode_byte & 0x20 != 0 { OperandType::Variable } else { OperandType::SmallConstant },
+                ];
+                (opcode, operand_count, operand_types)
+            },
+            InstructionForm::Short => {
+                let opcode = opcode_byte & 0x0F;
+                let operand_type = match (opcode_byte & 0x30) >> 4 {
+                    0b00 => OperandType::LargeConstant,
+                    0b01 => OperandType::SmallConstant,
+                    0b10 => OperandType::Variable,
+                    0b11 => OperandType::Omitted,
+                    _ => unreachable!(),
+                };
+                let operand_count = if operand_type == OperandType::Omitted { 
+                    OperandCount::Op0 
+                } else { 
+                    OperandCount::Op1 
+                };
+                (opcode, operand_count, vec![operand_type])
+            },
+            InstructionForm::Variable => {
+                let opcode = opcode_byte & 0x1F;
+                let operand_count = if opcode_byte & 0x20 != 0 { OperandCount::Var } else { OperandCount::Op2 };
+                
+                // Read operand types from next byte
+                if cursor >= memory.len() {
+                    return Err("Missing operand types byte".to_string());
+                }
+                let types_byte = memory[cursor];
+                cursor += 1;
+
+                let operand_types = vec![
+                    Self::decode_operand_type((types_byte & 0xC0) >> 6),
+                    Self::decode_operand_type((types_byte & 0x30) >> 4),
+                    Self::decode_operand_type((types_byte & 0x0C) >> 2),
+                    Self::decode_operand_type(types_byte & 0x03),
+                ];
+
+                (opcode, operand_count, operand_types)
+            },
+            InstructionForm::Extended => {
+                if cursor >= memory.len() {
+                    return Err("Missing extended opcode".to_string());
+                }
+                let opcode = memory[cursor];
+                cursor += 1;
+
+                // Read operand types from next byte
+                if cursor >= memory.len() {
+                    return Err("Missing operand types byte".to_string());
+                }
+                let types_byte = memory[cursor];
+                cursor += 1;
+
+                let operand_types = vec![
+                    Self::decode_operand_type((types_byte & 0xC0) >> 6),
+                    Self::decode_operand_type((types_byte & 0x30) >> 4),
+                    Self::decode_operand_type((types_byte & 0x0C) >> 2),
+                    Self::decode_operand_type(types_byte & 0x03),
+                ];
+
+                (opcode, OperandCount::Var, operand_types)
+            }
+        };
+
+        // Read operands
+        let mut operands = Vec::new();
+        for &operand_type in &operand_types {
+            if operand_type == OperandType::Omitted {
+                break;
+            }
+
+            let operand = match operand_type {
+                OperandType::LargeConstant => {
+                    if cursor + 1 >= memory.len() {
+                        return Err("Missing large constant operand".to_string());
+                    }
+                    let value = ((memory[cursor] as u16) << 8) | (memory[cursor + 1] as u16);
+                    cursor += 2;
+                    Operand { operand_type, value }
+                },
+                OperandType::SmallConstant => {
+                    if cursor >= memory.len() {
+                        return Err("Missing small constant operand".to_string());
+                    }
+                    let value = memory[cursor] as u16;
+                    cursor += 1;
+                    Operand { operand_type, value }
+                },
+                OperandType::Variable => {
+                    if cursor >= memory.len() {
+                        return Err("Missing variable operand".to_string());
+                    }
+                    let value = memory[cursor] as u16;
+                    cursor += 1;
+                    Operand { operand_type, value }
+                },
+                OperandType::Omitted => break,
+            };
+            operands.push(operand);
+        }
+
+        // Check if this is a branch instruction and read branch offset
+        let mut branch_offset = None;
+        if Self::is_branch_instruction(opcode, &operand_count) {
+            if cursor >= memory.len() {
+                return Err("Missing branch offset".to_string());
+            }
+            
+            let branch_byte = memory[cursor];
+            cursor += 1;
+            
+            // Bit 7 = branch condition (0 = branch on false, 1 = branch on true)
+            // Bit 6 = 0 means 2-byte offset, 1 means 1-byte offset
+            let branch_on_true = (branch_byte & 0x80) != 0;
+            let single_byte = (branch_byte & 0x40) != 0;
+            
+            let offset = if single_byte {
+                // 6-bit signed offset (-64 to +63)
+                let raw_offset = (branch_byte & 0x3F) as i8;
+                if raw_offset > 63 {
+                    (raw_offset as i16) - 128  // Convert to proper signed value
+                } else {
+                    raw_offset as i16
+                }
+            } else {
+                // 14-bit signed offset 
+                if cursor >= memory.len() {
+                    return Err("Missing second branch offset byte".to_string());
+                }
+                let second_byte = memory[cursor];
+                cursor += 1;
+                
+                let raw_offset = (((branch_byte & 0x3F) as u16) << 8) | (second_byte as u16);
+                // Convert 14-bit unsigned to signed
+                if raw_offset > 8191 {  // 2^13 - 1
+                    (raw_offset as i16) - 16384  // 2^14
+                } else {
+                    raw_offset as i16
+                }
+            };
+            
+            // Store branch info (combine condition and offset)
+            branch_offset = Some(if branch_on_true { offset } else { -offset - 1 });
+        }
+
+        let length = cursor - pc;
+
+        Ok(Instruction {
+            opcode,
+            form,
+            operand_count,
+            operands,
+            store_variable: None,  // Will be set by execution engine if needed
+            branch_offset,
+            text: None,           // Will be set by execution engine if needed
+            length,
+        })
+    }
+
+    fn decode_operand_type(bits: u8) -> OperandType {
+        match bits {
+            0b00 => OperandType::LargeConstant,
+            0b01 => OperandType::SmallConstant,
+            0b10 => OperandType::Variable,
+            0b11 => OperandType::Omitted,
+            _ => unreachable!(),
+        }
+    }
+
+    fn is_branch_instruction(opcode: u8, operand_count: &OperandCount) -> bool {
+        match operand_count {
+            OperandCount::Op0 => {
+                // 0OP branch instructions
+                matches!(opcode, 0x05 | 0x06 | 0x0D | 0x0E | 0x0F)  // save, restore, verify, piracy, etc.
+            },
+            OperandCount::Op1 => {
+                // 1OP branch instructions  
+                matches!(opcode, 0x00 | 0x01 | 0x02)  // jz, get_sibling, get_child
+            },
+            OperandCount::Op2 => {
+                // 2OP branch instructions
+                matches!(opcode, 0x01 | 0x02 | 0x03 | 0x04 | 0x05 | 0x06 | 0x07 | 0x0A)  // je, jl, jg, dec_chk, inc_chk, jin, test, test_attr
+            },
+            OperandCount::Var => {
+                // VAR branch instructions
+                matches!(opcode, 0x17 | 0x1F)  // scan_table, check_arg_count
+            },
+        }
+    }
+
+    pub fn is_short(&self) -> bool {
+        self.form == InstructionForm::Short
+    }
+    
+    pub fn is_long(&self) -> bool {
+        self.form == InstructionForm::Long
+    }
+    
+    pub fn is_extended(&self) -> bool {
+        self.form == InstructionForm::Extended
+    }
+    
+    pub fn is_variable(&self) -> bool {
+        self.form == InstructionForm::Variable
+    }
+}
+
+impl Display for Instruction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(f, "Opcode: {:#04x}, Form: {:?}, Count: {:?}, Operands: {:?}", 
+               self.opcode, self.form, self.operand_count, self.operands)
     }
 }

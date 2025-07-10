@@ -14,6 +14,13 @@ pub mod zobject;
 pub mod instruction;
 pub mod routine;
 pub mod zrand;
+pub mod zmachine;
+
+#[cfg(test)]
+mod call_tests;
+
+#[cfg(test)]
+mod branch_tests;
 
 #[cfg(test)]
 mod tests {
@@ -48,6 +55,49 @@ mod tests {
 
         // dump the game structure
         log::info!("{}", g);
+        Ok(())
+    }
+
+    #[test]
+    fn test_zmachine_execution() -> io::Result<()> {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push(DATAFILEPATH);
+
+        // open file and read all bytes into vector
+        let mut f = File::open(path)?;
+        let mut all_bytes = Vec::new();
+        f.read_to_end(&mut all_bytes).unwrap();
+
+        // create random generator
+        let mut zrg = ZRand::new_uniform();
+
+        // Instantiate gamefile structure
+        let g = GameFile::new(&all_bytes, &mut zrg);
+
+        // Create Z-Machine and run a few instructions
+        let mut zmachine = crate::zmachine::ZMachine::new(&g);
+        
+        // Run just a few instructions to test
+        for _i in 0..10 {
+            if !zmachine.running {
+                break;
+            }
+            match crate::instruction::Instruction::decode(&g.bytes(), zmachine.pc) {
+                Ok(instruction) => {
+                    log::info!("PC: {:#06x} - {}", zmachine.pc, instruction);
+                    zmachine.pc += instruction.length;
+                    if let Err(e) = zmachine.execute_instruction(instruction) {
+                        log::error!("Execution error: {}", e);
+                        break;
+                    }
+                }
+                Err(e) => {
+                    log::error!("Decode error: {}", e);
+                    break;
+                }
+            }
+        }
+
         Ok(())
     }
 }
