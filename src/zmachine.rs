@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{self, Write, Read};
+use std::io::{self, Write, Read, stdin, stdout, BufRead};
 use std::fs::File;
 use std::path::Path;
 use crate::game::GameFile;
@@ -11,6 +11,21 @@ use crate::util::{get_mem_addr, ZTextReader};
 struct ParsedWord {
     text: String,
     position: usize, // Position in original text
+}
+
+// Window management structures
+#[derive(Debug, Clone)]
+pub struct Window {
+    pub id: u16,
+    pub top: u16,      // Top row (1-based)
+    pub left: u16,     // Left column (1-based)
+    pub height: u16,   // Height in rows
+    pub width: u16,    // Width in columns
+    pub cursor_row: u16, // Current cursor row (1-based)
+    pub cursor_col: u16, // Current cursor column (1-based)
+    pub text_style: u16, // Current text style flags
+    pub wrap: bool,      // Text wrapping enabled
+    pub scrolling: bool, // Scrolling enabled
 }
 
 pub struct ZMachine<'a> {
@@ -25,6 +40,19 @@ pub struct ZMachine<'a> {
     pub operands_buffer: Vec<u16>,  // Buffer for current instruction operands
     pub current_branch_offset: Option<i16>,  // Branch offset for current instruction
     pub random_seed: u32,  // Simple random number generator seed
+    
+    // I/O Stream management
+    pub output_streams: Vec<u16>,  // Active output streams (1=screen, 2=transcript, 3=memory, 4=command)
+    pub input_stream: u16,         // Active input stream (0=keyboard, 1=file)
+    pub transcript_file: Option<File>,  // Transcript file for stream 2
+    pub memory_stream_addr: Option<u16>,  // Memory address for stream 3
+    pub memory_stream_data: Vec<u8>,      // Buffer for memory stream data
+    
+    // Window management
+    pub windows: Vec<Window>,      // All available windows
+    pub current_window: u16,       // Currently active window ID
+    pub screen_height: u16,        // Screen height in rows
+    pub screen_width: u16,         // Screen width in columns
 }
 
 // Save file format structure
@@ -68,7 +96,51 @@ impl<'a> ZMachine<'a> {
             operands_buffer: Vec::new(),
             current_branch_offset: None,
             random_seed: 12345, // Default seed
+            
+            // Initialize I/O streams
+            output_streams: vec![1], // Screen output enabled by default
+            input_stream: 0,         // Keyboard input by default
+            transcript_file: None,
+            memory_stream_addr: None,
+            memory_stream_data: Vec::new(),
+            
+            // Initialize window system
+            windows: Self::create_default_windows(),
+            current_window: 0,       // Start with lower window (main window)
+            screen_height: 24,       // Default screen size
+            screen_width: 80,
         }
+    }
+
+    fn create_default_windows() -> Vec<Window> {
+        vec![
+            // Window 0: Lower window (main text window)
+            Window {
+                id: 0,
+                top: 1,
+                left: 1,
+                height: 24,  // Full screen initially
+                width: 80,
+                cursor_row: 1,
+                cursor_col: 1,
+                text_style: 0,  // Normal text
+                wrap: true,     // Wrapping enabled
+                scrolling: true, // Scrolling enabled
+            },
+            // Window 1: Upper window (status line)
+            Window {
+                id: 1,
+                top: 1,
+                left: 1,
+                height: 0,   // Initially no height (not split)
+                width: 80,
+                cursor_row: 1,
+                cursor_col: 1,
+                text_style: 0,
+                wrap: false,  // No wrapping in status line
+                scrolling: false, // No scrolling in status line
+            },
+        ]
     }
 
     pub fn run(&mut self) -> Result<(), String> {
@@ -634,9 +706,8 @@ impl<'a> ZMachine<'a> {
 
     fn op_print(&mut self) -> Result<(), String> {
         // Print immediate string following instruction
-        let (text, length) = self.read_zstring_inline()?;
-        print!("{}", text);
-        io::stdout().flush().unwrap();
+        let (text, _length) = self.read_zstring_inline()?;
+        self.write_output(&text)?;
         Ok(())
     }
 
@@ -788,8 +859,7 @@ impl<'a> ZMachine<'a> {
     pub fn op_print_addr(&mut self, operand: u16) -> Result<(), String> {
         // Print string at given byte address
         let (text, _) = self.read_zstring_at_address(operand as usize)?;
-        print!("{}", text);
-        io::stdout().flush().unwrap();
+        self.write_output(&text)?;
         Ok(())
     }
 
@@ -1562,8 +1632,7 @@ impl<'a> ZMachine<'a> {
         // Convert to char and print (basic ASCII for now)
         if char_code <= 255 {
             let ch = char_code as u8 as char;
-            print!("{}", ch);
-            io::stdout().flush().unwrap_or(());
+            self.write_output(&ch.to_string())?;
         }
         
         Ok(())
@@ -1576,8 +1645,7 @@ impl<'a> ZMachine<'a> {
         }
         
         let number = self.operands_buffer[0] as i16;  // Treat as signed
-        print!("{}", number);
-        io::stdout().flush().unwrap_or(());
+        self.write_output(&number.to_string())?;
         
         Ok(())
     }
@@ -1645,12 +1713,90 @@ impl<'a> ZMachine<'a> {
     }
 
     fn op_split_window(&mut self) -> Result<(), String> {
-        println!("SPLIT_WINDOW: (not implemented)");
+        // SPLIT_WINDOW splits the screen into upper and lower windows
+        // Operand 1: lines - number of lines for upper window (0 = unsplit)
+        
+        if self.operands_buffer.is_empty() {
+            return Err("SPLIT_WINDOW instruction missing operand".to_string());
+        }
+        
+        let lines = self.operands_buffer[0];
+        
+        if lines == 0 {
+            // Unsplit screen - upper window has no height
+            if let Some(upper_window) = self.windows.get_mut(1) {
+                upper_window.height = 0;
+            }
+            
+            // Lower window takes full screen
+            if let Some(lower_window) = self.windows.get_mut(0) {
+                lower_window.top = 1;
+                lower_window.height = self.screen_height;
+            }
+            
+            // Switch to lower window
+            self.current_window = 0;
+        } else {
+            // Split screen
+            let upper_lines = std::cmp::min(lines, self.screen_height - 1);
+            let lower_lines = self.screen_height - upper_lines;
+            
+            // Upper window (status line)
+            if let Some(upper_window) = self.windows.get_mut(1) {
+                upper_window.top = 1;
+                upper_window.height = upper_lines;
+                upper_window.width = self.screen_width;
+                upper_window.cursor_row = 1;
+                upper_window.cursor_col = 1;
+            }
+            
+            // Lower window (main text)
+            if let Some(lower_window) = self.windows.get_mut(0) {
+                lower_window.top = upper_lines + 1;
+                lower_window.height = lower_lines;
+                lower_window.width = self.screen_width;
+                // Don't reset cursor position in lower window
+            }
+            
+            // Clear upper window when splitting
+            self.clear_window(1)?;
+        }
+        
         Ok(())
     }
 
     fn op_set_window(&mut self) -> Result<(), String> {
-        println!("SET_WINDOW: (not implemented)");
+        // SET_WINDOW selects which window to use for output
+        // Operand 1: window number (0 = lower, 1 = upper)
+        
+        if self.operands_buffer.is_empty() {
+            return Err("SET_WINDOW instruction missing operand".to_string());
+        }
+        
+        let window_num = self.operands_buffer[0];
+        
+        match window_num {
+            0 => {
+                // Lower window (main text window)
+                self.current_window = 0;
+            }
+            1 => {
+                // Upper window (status line)
+                // Check if upper window has been split
+                if let Some(upper_window) = self.windows.get(1) {
+                    if upper_window.height > 0 {
+                        self.current_window = 1;
+                    } else {
+                        // Upper window not split, stay in lower window
+                        self.current_window = 0;
+                    }
+                }
+            }
+            _ => {
+                return Err(format!("SET_WINDOW: invalid window number {}", window_num));
+            }
+        }
+        
         Ok(())
     }
 
@@ -1660,42 +1806,310 @@ impl<'a> ZMachine<'a> {
     }
 
     fn op_erase_window(&mut self) -> Result<(), String> {
-        println!("ERASE_WINDOW: (not implemented)");
+        // ERASE_WINDOW clears a window
+        // Operand 1: window number (0 = lower, 1 = upper, -1 = entire screen, -2 = entire screen and unsplit)
+        
+        if self.operands_buffer.is_empty() {
+            return Err("ERASE_WINDOW instruction missing operand".to_string());
+        }
+        
+        let window_spec = self.operands_buffer[0] as i16;
+        
+        match window_spec {
+            0 => {
+                // Clear lower window
+                self.clear_window(0)?;
+            }
+            1 => {
+                // Clear upper window
+                self.clear_window(1)?;
+            }
+            -1 => {
+                // Clear entire screen
+                self.clear_screen()?;
+            }
+            -2 => {
+                // Clear entire screen and unsplit
+                self.clear_screen()?;
+                self.op_split_window_internal(0)?; // Unsplit
+            }
+            _ => {
+                return Err(format!("ERASE_WINDOW: invalid window specification {}", window_spec));
+            }
+        }
+        
         Ok(())
     }
 
     fn op_erase_line(&mut self) -> Result<(), String> {
-        println!("ERASE_LINE: (not implemented)");
+        // ERASE_LINE clears the current line from cursor position to end of line
+        // Operand 1: value (1 = clear from cursor to end of line, other values reserved)
+        
+        let value = if !self.operands_buffer.is_empty() {
+            self.operands_buffer[0]
+        } else {
+            1 // Default value
+        };
+        
+        match value {
+            1 => {
+                // Clear from cursor to end of line in current window
+                self.clear_line_from_cursor()?;
+            }
+            _ => {
+                // Other values are reserved/implementation-specific
+                // For now, just treat as clear to end of line
+                self.clear_line_from_cursor()?;
+            }
+        }
+        
         Ok(())
     }
 
     fn op_set_cursor(&mut self) -> Result<(), String> {
-        println!("SET_CURSOR: (not implemented)");
+        // SET_CURSOR positions cursor in current window
+        // Operand 1: row (1-based)
+        // Operand 2: column (1-based)
+        
+        if self.operands_buffer.len() < 2 {
+            return Err("SET_CURSOR instruction missing operands".to_string());
+        }
+        
+        let row = self.operands_buffer[0];
+        let col = self.operands_buffer[1];
+        
+        // Validate coordinates
+        if row == 0 || col == 0 {
+            return Err("SET_CURSOR: invalid cursor position (1-based)".to_string());
+        }
+        
+        // Set cursor position in current window
+        if let Some(window) = self.windows.get_mut(self.current_window as usize) {
+            // Clamp to window boundaries
+            let max_row = window.height;
+            let max_col = window.width;
+            
+            window.cursor_row = std::cmp::min(row, max_row);
+            window.cursor_col = std::cmp::min(col, max_col);
+            
+            // Store values to avoid borrowing issues
+            let cursor_row = window.cursor_row;
+            let cursor_col = window.cursor_col;
+            
+            // Send cursor positioning escape sequence for terminal
+            let _ = window; // End the borrow
+            self.position_cursor(cursor_row, cursor_col)?;
+        } else {
+            return Err("SET_CURSOR: invalid current window".to_string());
+        }
+        
         Ok(())
     }
 
     fn op_get_cursor(&mut self) -> Result<(), String> {
-        println!("GET_CURSOR: (not implemented)");
+        // GET_CURSOR stores cursor position in a table
+        // Operand 1: table address (2 words: row, column)
+        
+        if self.operands_buffer.is_empty() {
+            return Err("GET_CURSOR instruction missing operand".to_string());
+        }
+        
+        let table_addr = self.operands_buffer[0] as usize;
+        
+        if table_addr + 3 >= self.memory.len() {
+            return Err("GET_CURSOR: table address out of bounds".to_string());
+        }
+        
+        // Get cursor position from current window
+        if let Some(window) = self.windows.get(self.current_window as usize) {
+            let row = window.cursor_row;
+            let col = window.cursor_col;
+            
+            // Store as 2-byte words in memory
+            self.memory[table_addr] = (row >> 8) as u8;
+            self.memory[table_addr + 1] = row as u8;
+            self.memory[table_addr + 2] = (col >> 8) as u8;
+            self.memory[table_addr + 3] = col as u8;
+        } else {
+            return Err("GET_CURSOR: invalid current window".to_string());
+        }
+        
         Ok(())
     }
 
     fn op_set_text_style(&mut self) -> Result<(), String> {
-        println!("SET_TEXT_STYLE: (not implemented)");
+        // SET_TEXT_STYLE sets text formatting style
+        // Operand 1: style flags (bit 0=reverse, bit 1=bold, bit 2=italic, bit 3=fixed-width)
+        
+        if self.operands_buffer.is_empty() {
+            return Err("SET_TEXT_STYLE instruction missing operand".to_string());
+        }
+        
+        let style = self.operands_buffer[0];
+        
+        // Update current window's text style
+        if let Some(window) = self.windows.get_mut(self.current_window as usize) {
+            window.text_style = style;
+            
+            // Apply terminal formatting escape sequences
+            self.apply_text_style(style)?;
+        } else {
+            return Err("SET_TEXT_STYLE: invalid current window".to_string());
+        }
+        
         Ok(())
     }
 
     fn op_buffer_mode(&mut self) -> Result<(), String> {
-        println!("BUFFER_MODE: (not implemented)");
+        // BUFFER_MODE controls output buffering
+        // Operand 1: flag (0=disable buffering, 1=enable buffering)
+        
+        if self.operands_buffer.is_empty() {
+            return Err("BUFFER_MODE instruction missing operand".to_string());
+        }
+        
+        let flag = self.operands_buffer[0];
+        
+        match flag {
+            0 => {
+                // Disable buffering - flush output immediately
+                stdout().flush().map_err(|e| format!("BUFFER_MODE flush error: {}", e))?;
+                // Note: In a full implementation, this would also set a flag to flush after each output
+            }
+            1 => {
+                // Enable buffering - output is buffered until flushed
+                // This is typically the default behavior
+            }
+            _ => {
+                return Err(format!("BUFFER_MODE: invalid flag {}", flag));
+            }
+        }
+        
         Ok(())
     }
 
     fn op_output_stream(&mut self) -> Result<(), String> {
-        println!("OUTPUT_STREAM: (not implemented)");
+        // OUTPUT_STREAM manages output streams
+        // Operand 1: stream number (positive to enable, negative to disable)
+        // Operand 2: table address (for stream 3 only), optional
+        
+        if self.operands_buffer.is_empty() {
+            return Err("OUTPUT_STREAM instruction missing operand".to_string());
+        }
+        
+        let stream_spec = self.operands_buffer[0] as i16;
+        let stream_num = stream_spec.abs() as u16;
+        let enable = stream_spec > 0;
+        
+        match stream_num {
+            1 => {
+                // Screen output
+                if enable {
+                    if !self.output_streams.contains(&1) {
+                        self.output_streams.push(1);
+                    }
+                } else {
+                    self.output_streams.retain(|&x| x != 1);
+                }
+            }
+            2 => {
+                // Transcript output
+                if enable {
+                    if !self.output_streams.contains(&2) {
+                        self.output_streams.push(2);
+                        // TODO: Open transcript file
+                    }
+                } else {
+                    self.output_streams.retain(|&x| x != 2);
+                    // TODO: Close transcript file
+                }
+            }
+            3 => {
+                // Memory output
+                if enable {
+                    if self.operands_buffer.len() < 2 {
+                        return Err("OUTPUT_STREAM 3 requires table address".to_string());
+                    }
+                    let table_addr = self.operands_buffer[1];
+                    if !self.output_streams.contains(&3) {
+                        self.output_streams.push(3);
+                        self.memory_stream_addr = Some(table_addr);
+                        self.memory_stream_data.clear();
+                    }
+                } else {
+                    if self.output_streams.contains(&3) {
+                        self.output_streams.retain(|&x| x != 3);
+                        // Write collected data to memory
+                        self.flush_memory_stream()?;
+                    }
+                }
+            }
+            4 => {
+                // Command output (not commonly used)
+                if enable {
+                    if !self.output_streams.contains(&4) {
+                        self.output_streams.push(4);
+                    }
+                } else {
+                    self.output_streams.retain(|&x| x != 4);
+                }
+            }
+            _ => {
+                return Err(format!("OUTPUT_STREAM: invalid stream number {}", stream_num));
+            }
+        }
+        
+        Ok(())
+    }
+    
+    fn flush_memory_stream(&mut self) -> Result<(), String> {
+        // Write memory stream data to the specified address
+        if let Some(addr) = self.memory_stream_addr {
+            let addr = addr as usize;
+            if addr + 2 + self.memory_stream_data.len() > self.memory.len() {
+                return Err("OUTPUT_STREAM: memory stream overflow".to_string());
+            }
+            
+            // Write length as 2-byte word
+            let length = self.memory_stream_data.len() as u16;
+            self.memory[addr] = (length >> 8) as u8;
+            self.memory[addr + 1] = length as u8;
+            
+            // Write data
+            for (i, &byte) in self.memory_stream_data.iter().enumerate() {
+                self.memory[addr + 2 + i] = byte;
+            }
+            
+            self.memory_stream_addr = None;
+            self.memory_stream_data.clear();
+        }
         Ok(())
     }
 
     fn op_input_stream(&mut self) -> Result<(), String> {
-        println!("INPUT_STREAM: (not implemented)");
+        // INPUT_STREAM selects input stream
+        // Operand 1: stream number (0=keyboard, 1=file)
+        
+        if self.operands_buffer.is_empty() {
+            return Err("INPUT_STREAM instruction missing operand".to_string());
+        }
+        
+        let stream_num = self.operands_buffer[0];
+        
+        match stream_num {
+            0 => {
+                // Keyboard input
+                self.input_stream = 0;
+            }
+            1 => {
+                // File input (not implemented yet)
+                return Err("INPUT_STREAM from file not implemented".to_string());
+            }
+            _ => {
+                return Err(format!("INPUT_STREAM: invalid stream number {}", stream_num));
+            }
+        }
+        
         Ok(())
     }
 
@@ -1705,12 +2119,260 @@ impl<'a> ZMachine<'a> {
     }
 
     fn op_read_char(&mut self) -> Result<(), String> {
-        println!("READ_CHAR: (not implemented)");
+        // READ_CHAR reads a single character from input
+        // Operand 1: input device (1=keyboard, 2=file), default 1
+        // Operand 2: time (timeout in tenths of seconds), optional
+        // Operand 3: routine (timeout routine), optional
+        
+        let device = if !self.operands_buffer.is_empty() {
+            self.operands_buffer[0]
+        } else {
+            1 // Default to keyboard
+        };
+        
+        let timeout = if self.operands_buffer.len() >= 2 {
+            self.operands_buffer[1]
+        } else {
+            0 // No timeout
+        };
+        
+        let _timeout_routine = if self.operands_buffer.len() >= 3 {
+            self.operands_buffer[2]
+        } else {
+            0 // No timeout routine
+        };
+        
+        let char_code = match device {
+            1 => {
+                // Keyboard input
+                if timeout > 0 {
+                    // TODO: Implement timed input
+                    // For now, just do regular input
+                    self.read_char_from_keyboard()?
+                } else {
+                    self.read_char_from_keyboard()?
+                }
+            }
+            2 => {
+                // File input (not implemented yet)
+                return Err("READ_CHAR from file not implemented".to_string());
+            }
+            _ => {
+                return Err("READ_CHAR: invalid input device".to_string());
+            }
+        };
+        
+        // Store the character code in the specified variable
+        self.stack.push(char_code);
+        Ok(())
+    }
+    
+    fn read_char_from_keyboard(&mut self) -> Result<u16, String> {
+        // Read a single character from stdin
+        let mut buffer = String::new();
+        match stdin().read_line(&mut buffer) {
+            Ok(_) => {
+                // Get the first character or return 0 if empty
+                let char_code = buffer.chars().next().unwrap_or('\0') as u16;
+                Ok(char_code)
+            }
+            Err(e) => Err(format!("READ_CHAR input error: {}", e))
+        }
+    }
+    
+    // Window management helper methods
+    fn clear_window(&mut self, window_id: u16) -> Result<(), String> {
+        let (height, top, left) = if let Some(window) = self.windows.get_mut(window_id as usize) {
+            // Reset cursor to top-left of window
+            window.cursor_row = 1;
+            window.cursor_col = 1;
+            
+            // Store values to avoid borrowing issues
+            (window.height, window.top, window.left)
+        } else {
+            return Ok(()); // Window doesn't exist, silently succeed
+        };
+        
+        // Send clear commands to terminal
+        if height > 0 {
+            for row in 0..height {
+                // Position cursor at start of each line in window
+                self.position_cursor(top + row, left)?;
+                // Clear to end of line
+                print!("\x1b[K");
+            }
+            
+            // Position cursor back at window top-left
+            self.position_cursor(top, left)?;
+        }
+        
+        Ok(())
+    }
+    
+    fn clear_screen(&mut self) -> Result<(), String> {
+        // Clear entire screen
+        print!("\x1b[2J\x1b[H");
+        stdout().flush().map_err(|e| format!("Clear screen error: {}", e))?;
+        
+        // Reset all window cursors
+        for window in &mut self.windows {
+            if window.height > 0 {
+                window.cursor_row = 1;
+                window.cursor_col = 1;
+            }
+        }
+        
+        Ok(())
+    }
+    
+    fn clear_line_from_cursor(&mut self) -> Result<(), String> {
+        // Clear from cursor to end of line
+        print!("\x1b[K");
+        stdout().flush().map_err(|e| format!("Clear line error: {}", e))?;
+        Ok(())
+    }
+    
+    fn position_cursor(&mut self, row: u16, col: u16) -> Result<(), String> {
+        // Send ANSI escape sequence to position cursor
+        print!("\x1b[{};{}H", row, col);
+        stdout().flush().map_err(|e| format!("Position cursor error: {}", e))?;
+        Ok(())
+    }
+    
+    fn apply_text_style(&mut self, style: u16) -> Result<(), String> {
+        // Apply ANSI text formatting
+        let mut escape_seq = String::from("\x1b[0m"); // Reset first
+        
+        if style & 1 != 0 {
+            escape_seq.push_str("\x1b[7m"); // Reverse video
+        }
+        if style & 2 != 0 {
+            escape_seq.push_str("\x1b[1m"); // Bold
+        }
+        if style & 4 != 0 {
+            escape_seq.push_str("\x1b[3m"); // Italic
+        }
+        if style & 8 != 0 {
+            // Fixed-width font (no specific ANSI code, just note it)
+        }
+        
+        print!("{}", escape_seq);
+        stdout().flush().map_err(|e| format!("Text style error: {}", e))?;
+        Ok(())
+    }
+    
+    fn op_split_window_internal(&mut self, lines: u16) -> Result<(), String> {
+        // Internal version of split_window for use by other operations
+        let old_operands = self.operands_buffer.clone();
+        self.operands_buffer = vec![lines];
+        let result = self.op_split_window();
+        self.operands_buffer = old_operands;
+        result
+    }
+    
+    fn write_output(&mut self, text: &str) -> Result<(), String> {
+        // Write text to all active output streams
+        for &stream in &self.output_streams.clone() {
+            match stream {
+                1 => {
+                    // Screen output
+                    print!("{}", text);
+                    stdout().flush().map_err(|e| format!("Screen output error: {}", e))?;
+                }
+                2 => {
+                    // Transcript output
+                    // TODO: Write to transcript file
+                }
+                3 => {
+                    // Memory output
+                    for ch in text.chars() {
+                        self.memory_stream_data.push(ch as u8);
+                    }
+                }
+                4 => {
+                    // Command output
+                    // TODO: Write to command file
+                }
+                _ => {}
+            }
+        }
         Ok(())
     }
 
     fn op_scan_table(&mut self) -> Result<(), String> {
-        println!("SCAN_TABLE: (not implemented)");
+        // SCAN_TABLE takes 4 operands and branches on result:
+        // 1. x - value to search for
+        // 2. table - table address  
+        // 3. len - table length (number of entries)
+        // 4. form - entry form (optional, default 0x82)
+        //   - Bits 0-6: entry length in bytes
+        //   - Bit 7: if set, compare only low byte of value
+        
+        if self.operands_buffer.len() < 3 {
+            return Err("SCAN_TABLE instruction missing operands".to_string());
+        }
+        
+        let search_value = self.operands_buffer[0];
+        let table_addr = self.operands_buffer[1] as usize;
+        let table_len = self.operands_buffer[2] as usize;
+        let form = if self.operands_buffer.len() >= 4 {
+            self.operands_buffer[3] as u8
+        } else {
+            0x82 // Default: 2-byte entries, compare full word
+        };
+        
+        if table_addr >= self.memory.len() {
+            return Err("SCAN_TABLE table address out of bounds".to_string());
+        }
+        
+        let entry_length = (form & 0x7F) as usize; // Bits 0-6
+        let compare_byte_only = (form & 0x80) != 0; // Bit 7
+        
+        if entry_length == 0 {
+            return Err("SCAN_TABLE entry length cannot be zero".to_string());
+        }
+        
+        // Search through the table
+        for i in 0..table_len {
+            let entry_addr = table_addr + (i * entry_length);
+            
+            if entry_addr + entry_length > self.memory.len() {
+                break; // Stop if entry would exceed memory bounds
+            }
+            
+            let found = if compare_byte_only {
+                // Compare only low byte
+                let entry_value = self.memory[entry_addr] as u16;
+                let search_low_byte = search_value & 0xFF;
+                entry_value == search_low_byte
+            } else {
+                // Compare full word (assuming big-endian storage)
+                let entry_value = if entry_length >= 2 {
+                    ((self.memory[entry_addr] as u16) << 8) | (self.memory[entry_addr + 1] as u16)
+                } else {
+                    self.memory[entry_addr] as u16
+                };
+                entry_value == search_value
+            };
+            
+            if found {
+                // Found the value - store the address and branch true
+                self.store_variable(0, entry_addr as u16)?; // Store address on stack
+                
+                if let Some(_) = self.current_branch_offset {
+                    self.handle_branch(true)?;
+                }
+                return Ok(());
+            }
+        }
+        
+        // Not found - store 0 and branch false
+        self.store_variable(0, 0)?; // Store 0 on stack
+        
+        if let Some(_) = self.current_branch_offset {
+            self.handle_branch(false)?;
+        }
+        
         Ok(())
     }
 
@@ -1943,12 +2605,142 @@ impl<'a> ZMachine<'a> {
     }
 
     fn op_copy_table(&mut self) -> Result<(), String> {
-        println!("COPY_TABLE: (not implemented)");
+        // COPY_TABLE takes 3 operands:
+        // 1. first - source address
+        // 2. second - destination address  
+        // 3. size - number of bytes to copy (can be negative)
+        
+        if self.operands_buffer.len() < 3 {
+            return Err("COPY_TABLE instruction missing operands".to_string());
+        }
+        
+        let first = self.operands_buffer[0] as usize;
+        let second = self.operands_buffer[1] as usize;
+        let size = self.operands_buffer[2] as i16; // Signed for direction handling
+        
+        if size == 0 {
+            // Zero size: fill destination with zeros
+            if second >= self.memory.len() {
+                return Err("COPY_TABLE destination address out of bounds".to_string());
+            }
+            
+            let fill_size = first; // When size=0, first operand is the number of bytes to zero
+            for i in 0..fill_size {
+                if second + i < self.memory.len() {
+                    self.memory[second + i] = 0;
+                } else {
+                    break; // Stop if we reach memory bounds
+                }
+            }
+            return Ok(());
+        }
+        
+        let abs_size = size.abs() as usize;
+        
+        // Validate addresses
+        if first >= self.memory.len() || second >= self.memory.len() {
+            return Err("COPY_TABLE address out of bounds".to_string());
+        }
+        
+        if first + abs_size > self.memory.len() || second + abs_size > self.memory.len() {
+            return Err("COPY_TABLE operation would exceed memory bounds".to_string());
+        }
+        
+        if size > 0 {
+            // Forward copy (normal case)
+            // Use a temporary buffer to handle overlapping regions safely
+            let mut temp_buffer = Vec::with_capacity(abs_size);
+            
+            // Read source data into temporary buffer
+            for i in 0..abs_size {
+                temp_buffer.push(self.memory[first + i]);
+            }
+            
+            // Write from temporary buffer to destination
+            for (i, &byte) in temp_buffer.iter().enumerate() {
+                self.memory[second + i] = byte;
+            }
+        } else {
+            // Backward copy (size < 0)
+            // Copy from end to beginning to handle overlapping regions
+            for i in (0..abs_size).rev() {
+                self.memory[second + i] = self.memory[first + i];
+            }
+        }
+        
         Ok(())
     }
 
     fn op_print_table(&mut self) -> Result<(), String> {
-        println!("PRINT_TABLE: (not implemented)");
+        // PRINT_TABLE takes 4 operands:
+        // 1. zscii-text - address of ZSCII text table
+        // 2. width - width of each row (in characters)
+        // 3. height - number of rows (optional, default 1)
+        // 4. skip - characters to skip between rows (optional, default 0)
+        
+        if self.operands_buffer.len() < 2 {
+            return Err("PRINT_TABLE instruction missing operands".to_string());
+        }
+        
+        let text_addr = self.operands_buffer[0] as usize;
+        let width = self.operands_buffer[1] as usize;
+        let height = if self.operands_buffer.len() >= 3 {
+            self.operands_buffer[2] as usize
+        } else {
+            1 // Default to 1 row
+        };
+        let skip = if self.operands_buffer.len() >= 4 {
+            self.operands_buffer[3] as usize
+        } else {
+            0 // Default to no skip
+        };
+        
+        if text_addr >= self.memory.len() {
+            return Err("PRINT_TABLE text address out of bounds".to_string());
+        }
+        
+        if width == 0 {
+            return Err("PRINT_TABLE width cannot be zero".to_string());
+        }
+        
+        let mut current_addr = text_addr;
+        
+        for row in 0..height {
+            // Print characters for this row
+            for _col in 0..width {
+                if current_addr < self.memory.len() {
+                    let ch = self.memory[current_addr] as char;
+                    
+                    // Only print printable characters (ZSCII)
+                    if ch >= ' ' && ch <= '~' {
+                        print!("{}", ch);
+                    } else if ch == '\n' || ch == '\r' {
+                        // Handle newlines
+                        print!("{}", ch);
+                    } else {
+                        // For other characters, print a space
+                        print!(" ");
+                    }
+                    
+                    current_addr += 1;
+                } else {
+                    // If we run out of memory, print spaces
+                    print!(" ");
+                }
+            }
+            
+            // Add newline after each row (except the last one if height > 1)
+            if height > 1 && row < height - 1 {
+                println!();
+            }
+            
+            // Skip additional characters between rows
+            current_addr += skip;
+        }
+        
+        // Flush output
+        io::stdout().flush().unwrap();
+        
         Ok(())
     }
 
