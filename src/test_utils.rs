@@ -250,14 +250,24 @@ impl MockZMachine {
         self.memory[parse_buffer + 1] = words_to_store as u8;
         
         // Store each word
+        let mut text_pos = 0;
         for (i, word) in words.iter().take(words_to_store).enumerate() {
             let entry_offset = parse_buffer + 2 + (i * 4);
             
             if entry_offset + 3 < self.memory.len() {
                 self.memory[entry_offset] = word.len() as u8;        // word length
-                self.memory[entry_offset + 1] = 2 + i as u8;         // position in buffer
-                self.memory[entry_offset + 2] = 0;                   // dict addr high (not found)
-                self.memory[entry_offset + 3] = 0;                   // dict addr low (not found)
+                // Find the actual position of this word in the original text
+                let word_start = input_text.find(word).unwrap_or(0);
+                self.memory[entry_offset + 1] = (2 + word_start) as u8; // position in text buffer
+                
+                // Look up word in dictionary
+                let dict_addr = match self.lookup_word_in_dictionary(word) {
+                    Ok(addr) => addr,
+                    Err(_) => 0,
+                };
+                
+                self.memory[entry_offset + 2] = (dict_addr >> 8) as u8;   // dict addr high
+                self.memory[entry_offset + 3] = (dict_addr & 0xFF) as u8; // dict addr low
             }
         }
         
@@ -818,5 +828,133 @@ impl MockZMachine {
         }
         
         Ok(())
+    }
+    
+    pub fn lookup_word_in_dictionary(&self, word: &str) -> Result<u16, String> {
+        // Get dictionary address from memory (header at offset 8-9)
+        let dict_addr = ((self.memory[8] as u16) << 8) | (self.memory[9] as u16);
+        
+        if dict_addr == 0 {
+            return Ok(0); // No dictionary
+        }
+        
+        // Read dictionary header
+        let mut pos = dict_addr as usize;
+        
+        if pos >= self.memory.len() {
+            return Err("Dictionary address out of bounds".to_string());
+        }
+        
+        // Skip separator characters
+        let n_separators = self.memory[pos] as usize;
+        pos += 1 + n_separators;
+        
+        if pos >= self.memory.len() {
+            return Ok(0);
+        }
+        
+        // Read entry length
+        let entry_length = self.memory[pos] as usize;
+        pos += 1;
+        
+        if pos + 1 >= self.memory.len() {
+            return Ok(0);
+        }
+        
+        // Read number of entries
+        let num_entries = ((self.memory[pos] as u16) << 8) | (self.memory[pos + 1] as u16);
+        pos += 2;
+        
+        // Normalize input word (convert to lowercase, truncate to 6 chars for v1-3)
+        let normalized_word = word.to_lowercase();
+        let truncated_word = if normalized_word.len() > 6 {
+            &normalized_word[..6]
+        } else {
+            &normalized_word
+        };
+        
+        // Search through dictionary entries
+        for i in 0..num_entries {
+            let entry_addr = pos + (i as usize * entry_length);
+            
+            if entry_addr + 4 > self.memory.len() {
+                continue;
+            }
+            
+            // Read the encoded word (first 4 bytes in v1-3)
+            let encoded_bytes = &self.memory[entry_addr..entry_addr + 4];
+            
+            // Decode the dictionary entry to compare
+            match self.decode_dictionary_entry(encoded_bytes) {
+                Ok(dict_word) => {
+                    // Compare normalized versions
+                    let normalized_dict_word = dict_word.to_lowercase();
+                    if normalized_dict_word == truncated_word {
+                        return Ok(entry_addr as u16);
+                    }
+                }
+                Err(_) => continue, // Skip entries that can't be decoded
+            }
+        }
+        
+        Ok(0) // Not found in dictionary
+    }
+    
+    pub fn decode_dictionary_entry(&self, encoded_bytes: &[u8]) -> Result<String, String> {
+        // Decode a dictionary entry from its encoded form
+        
+        if encoded_bytes.len() < 4 {
+            return Err("Dictionary entry too short".to_string());
+        }
+        
+        let mut result = String::new();
+        let mut pos = 0;
+        
+        // Process pairs of bytes (words)
+        while pos + 1 < encoded_bytes.len() {
+            let word = ((encoded_bytes[pos] as u16) << 8) | (encoded_bytes[pos + 1] as u16);
+            
+            // Extract three 5-bit Z-characters from the 16-bit word
+            let z1 = ((word >> 10) & 0x1F) as u8;
+            let z2 = ((word >> 5) & 0x1F) as u8; 
+            let z3 = (word & 0x1F) as u8;
+            
+            
+            // Convert Z-characters to text
+            for zchar in [z1, z2, z3] {
+                match zchar {
+                    0 => result.push(' '),
+                    1..=3 => {
+                        // Abbreviations - skip for now in dictionary lookup
+                        // Real implementation would need to expand abbreviations
+                    }
+                    4 => {
+                        // Shift to alphabet A1 (uppercase) - skip for now
+                    }
+                    5 => {
+                        // Shift to alphabet A2 (punctuation) - skip for now  
+                    }
+                    6..=31 => {
+                        // Regular characters from alphabet A0 (lowercase)
+                        // Z-characters 6-31 map to 'a'-'z' (26 letters)
+                        if zchar >= 6 && zchar <= 31 {
+                            let ch = (b'a' + (zchar - 6)) as char;
+                            result.push(ch);
+                        }
+                    }
+                    _ => {} // Invalid Z-character
+                }
+            }
+            
+            pos += 2;
+            
+            // Check if this is the last word (bit 15 set)
+            if (word & 0x8000) != 0 {
+                break;
+            }
+        }
+        
+        // Trim trailing null characters and spaces
+        Ok(result.trim_end_matches(|c| c == ' ' || c == '\0').to_string())
     }
 }

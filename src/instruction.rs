@@ -178,6 +178,16 @@ impl Instruction {
             operands.push(operand);
         }
 
+        // Check if this is a store instruction and read store variable
+        let mut store_variable = None;
+        if Self::is_store_instruction(opcode, &operand_count) {
+            if cursor >= memory.len() {
+                return Err("Missing store variable".to_string());
+            }
+            store_variable = Some(memory[cursor]);
+            cursor += 1;
+        }
+
         // Check if this is a branch instruction and read branch offset
         let mut branch_offset = None;
         if Self::is_branch_instruction(opcode, &operand_count) {
@@ -229,7 +239,7 @@ impl Instruction {
             form,
             operand_count,
             operands,
-            store_variable: None,  // Will be set by execution engine if needed
+            store_variable,
             branch_offset,
             text: None,           // Will be set by execution engine if needed
             length,
@@ -263,6 +273,27 @@ impl Instruction {
             OperandCount::Var => {
                 // VAR branch instructions
                 matches!(opcode, 0x17 | 0x1F)  // scan_table, check_arg_count
+            },
+        }
+    }
+
+    fn is_store_instruction(opcode: u8, operand_count: &OperandCount) -> bool {
+        match operand_count {
+            OperandCount::Op0 => {
+                // 0OP store instructions
+                matches!(opcode, 0x09)  // catch
+            },
+            OperandCount::Op1 => {
+                // 1OP store instructions
+                matches!(opcode, 0x01 | 0x02 | 0x03 | 0x04 | 0x08 | 0x0E | 0x0F)  // get_sibling, get_child, get_parent, get_prop_len, call_1s, load, not
+            },
+            OperandCount::Op2 => {
+                // 2OP store instructions
+                matches!(opcode, 0x08 | 0x09 | 0x0F | 0x10 | 0x11 | 0x12 | 0x13 | 0x14 | 0x15 | 0x16 | 0x17 | 0x18 | 0x19)  // or, and, loadw, loadb, get_prop, get_prop_addr, get_next_prop, add, sub, mul, div, mod, call_2s
+            },
+            OperandCount::Var => {
+                // VAR store instructions
+                matches!(opcode, 0x00 | 0x07 | 0x0C | 0x19 | 0x1A)  // call, random, call_vs2, call_vn2, call_vs
             },
         }
     }

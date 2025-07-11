@@ -41,7 +41,7 @@ mod tests {
         
         // Check second word "north"
         assert_eq!(zmachine.memory[parse_buffer + 6], 5);  // length
-        assert_eq!(zmachine.memory[parse_buffer + 7], 3);  // position
+        assert_eq!(zmachine.memory[parse_buffer + 7], 5);  // position
         assert_eq!(zmachine.memory[parse_buffer + 8], 0);  // dict addr high (not found)
         assert_eq!(zmachine.memory[parse_buffer + 9], 0);  // dict addr low (not found)
     }

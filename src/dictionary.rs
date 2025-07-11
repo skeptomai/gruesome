@@ -98,13 +98,27 @@ impl ZTextReader for Dictionary {
         let mut is_in_ascii = false;
         let mut ascii_value : Option<u32> = None;
 
+        let mut loop_count = 0;
         loop {
+            if cp + 2 > cs.len() {
+                break;
+            }
             let next_chars = <[u8; 2]>::try_from(&cs[cp..cp+2]).unwrap();
             let pc = read_zchars_from_word(&next_chars).unwrap();
 
             cp+=2;
+            loop_count += 1;
+            
+            // Safety check to prevent infinite loops
+            if loop_count > 100 {
+                break;
+            }
             
             for c in &pc {
+                // Safety check for string length to prevent runaway text generation
+                if ss.len() > 500 {
+                    break;
+                }
 
                 /* Checking lead-in for 10 bit ascii value
                  We get here by having read char 06 from Alphabet 2 (punctuation)
@@ -145,7 +159,25 @@ impl ZTextReader for Dictionary {
                     log::debug!("abbrev table {}, index {}, resulting offset: {}", abbrev_table, c, asi);
                     let abbrev_string_addr = (get_mem_addr(abt, asi).unwrap() *2) as usize;
                     log::debug!("addr? {:#04x}", abbrev_string_addr);
-                    unsafe {ss.append(Dictionary::read_text(g, abbrev_string_addr).unwrap().as_mut_vec())};
+                    
+                    // Safety check to prevent infinite recursion
+                    if abbrev_string_addr == cso {
+                        is_in_abbrev = false;
+                        continue;
+                    }
+                    
+                    match Dictionary::read_text(g, abbrev_string_addr) {
+                        Ok(abbrev_text) => {
+                            if abbrev_text.len() < 100 {  // Safety check for abbrev length
+                                for byte in abbrev_text.bytes() {
+                                    ss.push(byte);
+                                }
+                            }
+                        },
+                        Err(_) => {
+                            // Failed to read abbreviation - skip it
+                        }
+                    }
                     is_in_abbrev = false;
                 } else {
                     match c {

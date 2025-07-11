@@ -51,6 +51,9 @@ mod io_advanced_tests;
 mod window_tests;
 
 #[cfg(test)]
+mod dictionary_tests;
+
+#[cfg(test)]
 mod tests {
     use crate::game::GameFile;
     use crate::zrand::ZRand;
