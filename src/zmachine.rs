@@ -98,7 +98,7 @@ impl<'a> ZMachine<'a> {
             loop_detection_counter: 0,
             operands_buffer: Vec::new(),
             current_branch_offset: None,
-            current_store_variable: 0,
+            current_store_variable: 255,
             random_seed: 12345, // Default seed
             
             // Initialize I/O streams
@@ -180,11 +180,6 @@ impl<'a> ZMachine<'a> {
             
             let instruction = Instruction::decode(&self.memory, self.pc)?;
             
-            // Debug instructions around SREAD
-            if self.loop_detection_counter < 20 || (self.loop_detection_counter > 50000 && self.loop_detection_counter < 50010) {
-                eprintln!("DEBUG: Executing instruction #{} at PC {:#x}: opcode={:#x}, form={:?}", 
-                         self.loop_detection_counter, self.pc, instruction.opcode, instruction.form);
-            }
             
             self.pc += instruction.length;
             self.execute_instruction(instruction)?;
@@ -205,7 +200,8 @@ impl<'a> ZMachine<'a> {
         }
         
         // Store the store_variable field for instructions that need it
-        self.current_store_variable = instruction.store_variable.unwrap_or(0);
+        self.current_store_variable = instruction.store_variable.unwrap_or(255); // 255 = no store variable
+        
         
         match instruction.operand_count {
             OperandCount::Op0 => self.execute_0op(instruction),
@@ -409,12 +405,18 @@ impl<'a> ZMachine<'a> {
     }
 
     fn store_variable(&mut self, var: u8, value: u16) -> Result<(), String> {
+        if var == 255 {
+            // No store variable - don't store anything
+            return Ok(());
+        }
         if var == 125 || var == 126 {
+            // These are special addresses for dynamic buffer handling
+            // For now, treat them as regular global variables
         }
         if var == 0 {
             // Stack
-            if self.stack.len() > 100000 {
-                eprintln!("Stack overflow at PC {:#x}, call stack size: {}", self.pc, self.call_stack.len());
+            if self.stack.len() > 1000 {
+                eprintln!("Stack overflow at PC {:#x}, call stack size: {}, instruction causing overflow was likely an infinite loop", self.pc, self.call_stack.len());
                 return Err("Stack overflow - too many items on stack".to_string());
             }
             self.stack.push(value);
@@ -1708,7 +1710,6 @@ impl<'a> ZMachine<'a> {
         // Reset loop detection counter since we're about to get user input
         self.loop_detection_counter = 0;
         
-        eprintln!("DEBUG: SREAD called at PC {:#x}, stack size: {}", self.pc, self.stack.len());
         
         if self.operands_buffer.len() < 2 {
             return Err("SREAD instruction missing operands".to_string());
