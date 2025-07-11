@@ -38,6 +38,7 @@ fn test_inc_instruction() {
         running: true,
         operands_buffer: vec![1], // INC local variable 1
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     let result = zmachine.op_inc(1);
@@ -64,6 +65,7 @@ fn test_dec_instruction() {
         running: true,
         operands_buffer: vec![1], // DEC local variable 1
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     let result = zmachine.op_dec(1);
@@ -90,6 +92,7 @@ fn test_load_instruction() {
         running: true,
         operands_buffer: vec![1], // LOAD local variable 1
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     let result = zmachine.op_load(1);
@@ -117,6 +120,7 @@ fn test_push_pull_operations() {
         running: true,
         operands_buffer: vec![123], // PUSH value 123
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     // Test PUSH
@@ -152,6 +156,7 @@ fn test_storew_loadw_operations() {
         running: true,
         operands_buffer: vec![0x1500, 2, 0x1234], // STOREW array_addr=0x1500, index=2, value=0x1234
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     // Test STOREW
@@ -190,6 +195,7 @@ fn test_storeb_loadb_operations() {
         running: true,
         operands_buffer: vec![0x1600, 5, 0xAB], // STOREB array_addr=0x1600, index=5, value=0xAB
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     // Test STOREB
@@ -240,6 +246,7 @@ fn test_set_clear_attr_operations() {
         running: true,
         operands_buffer: vec![1, 0], // SET_ATTR object 1, attribute 0
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     // Test SET_ATTR
@@ -288,6 +295,7 @@ fn test_get_parent_instruction() {
         running: true,
         operands_buffer: vec![1], // GET_PARENT of object 1
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     let result = zmachine.op_get_parent(1);
@@ -315,6 +323,7 @@ fn test_global_variable_operations() {
         running: true,
         operands_buffer: vec![20], // INC global variable 20
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     // Set initial value for global variable 20

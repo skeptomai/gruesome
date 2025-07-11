@@ -17,6 +17,9 @@ pub mod zrand;
 pub mod zmachine;
 
 #[cfg(test)]
+pub mod test_utils;
+
+#[cfg(test)]
 mod call_tests;
 
 #[cfg(test)]
@@ -30,6 +33,9 @@ mod property_tests;
 
 #[cfg(test)]
 mod string_tests;
+
+#[cfg(test)]
+mod io_tests;
 
 #[cfg(test)]
 mod tests {

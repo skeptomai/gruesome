@@ -95,6 +95,7 @@ fn test_get_prop_existing_property() {
         running: true,
         operands_buffer: vec![],
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     // Test GET_PROP object 1, property 5 (should return 0x1234)
@@ -129,6 +130,7 @@ fn test_get_prop_default_value() {
         running: true,
         operands_buffer: vec![],
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     // Test GET_PROP object 1, property 1 (not on object, should return default)
@@ -163,6 +165,7 @@ fn test_put_prop_operation() {
         running: true,
         operands_buffer: vec![1, 5, 0x9999], // Object 1, Property 5, New value 0x9999
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     // Test PUT_PROP object 1, property 5, value 0x9999
@@ -206,6 +209,7 @@ fn test_get_prop_addr_operation() {
         running: true,
         operands_buffer: vec![],
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     // Test GET_PROP_ADDR object 1, property 5
@@ -252,6 +256,7 @@ fn test_get_prop_len_operation() {
         running: true,
         operands_buffer: vec![],
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     // Test GET_PROP_LEN for property 5 (2-byte property at 0x0202)
@@ -295,6 +300,7 @@ fn test_get_next_prop_operation() {
         running: true,
         operands_buffer: vec![],
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     // Test GET_NEXT_PROP object 1, property 0 (should return first property)
@@ -356,6 +362,7 @@ fn test_put_prop_nonexistent_property() {
         running: true,
         operands_buffer: vec![1, 31, 0x1111], // Object 1, Property 31 (doesn't exist), Value 0x1111
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     // Test PUT_PROP on non-existent property (should fail)
@@ -380,6 +387,7 @@ fn test_property_error_conditions() {
         running: true,
         operands_buffer: vec![],
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     // Test GET_PROP with object 0
@@ -396,4 +404,337 @@ fn test_property_error_conditions() {
     // Test GET_NEXT_PROP with object 0
     let result = zmachine.op_get_next_prop(0, 5);
     assert!(result.is_err());
+}
+
+// Object manipulation tests
+fn setup_object_test_memory() -> Vec<u8> {
+    let mut memory = vec![0u8; 0x4000];
+    memory[0] = 3; // Version 3
+    
+    // Set up header - object table at 0x0200 (after property defaults)
+    memory[10] = 0x01; // High byte
+    memory[11] = 0x00; // Low byte = 0x100 for property defaults
+    
+    // Property defaults table at 0x0100 (31 words = 62 bytes)
+    // Ends at 0x013E, so object table starts at 0x013E
+    
+    // Object table layout (9 bytes per object in v1-3):
+    // Object 1 at 0x013E: attributes(4) + parent(1) + sibling(2) + child(3) + props(0x0300)
+    let obj1_addr = 0x013E;
+    memory[obj1_addr + 4] = 0; // parent = 0 (none)
+    memory[obj1_addr + 5] = 2; // sibling = object 2 
+    memory[obj1_addr + 6] = 0; // child = 0 (none)
+    memory[obj1_addr + 7] = 0x03; // properties high byte
+    memory[obj1_addr + 8] = 0x00; // properties low byte
+    
+    // Object 2 at 0x0147: attributes(4) + parent(0) + sibling(3) + child(0) + props(0x0310)
+    let obj2_addr = 0x0147;
+    memory[obj2_addr + 4] = 0; // parent = 0 (none)
+    memory[obj2_addr + 5] = 3; // sibling = object 3
+    memory[obj2_addr + 6] = 0; // child = 0 (none) 
+    memory[obj2_addr + 7] = 0x03; // properties high byte
+    memory[obj2_addr + 8] = 0x10; // properties low byte
+    
+    // Object 3 at 0x0150: attributes(4) + parent(0) + sibling(0) + child(0) + props(0x0320)
+    let obj3_addr = 0x0150;
+    memory[obj3_addr + 4] = 0; // parent = 0 (none)
+    memory[obj3_addr + 5] = 0; // sibling = 0 (none)
+    memory[obj3_addr + 6] = 0; // child = 0 (none)
+    memory[obj3_addr + 7] = 0x03; // properties high byte  
+    memory[obj3_addr + 8] = 0x20; // properties low byte
+    
+    // Object 4 at 0x0159: attributes(4) + parent(0) + sibling(0) + child(0) + props(0x0330)
+    let obj4_addr = 0x0159;
+    memory[obj4_addr + 4] = 0; // parent = 0 (none)
+    memory[obj4_addr + 5] = 0; // sibling = 0 (none)
+    memory[obj4_addr + 6] = 0; // child = 0 (none) 
+    memory[obj4_addr + 7] = 0x03; // properties high byte
+    memory[obj4_addr + 8] = 0x30; // properties low byte
+    
+    // Set up minimal property tables (just description length 0)
+    memory[0x0300] = 0; // Object 1 description length
+    memory[0x0310] = 0; // Object 2 description length
+    memory[0x0320] = 0; // Object 3 description length
+    memory[0x0330] = 0; // Object 4 description length
+    
+    memory
+}
+
+#[test]
+fn test_remove_obj_basic() {
+    let memory = setup_object_test_memory();
+    let mock_game = MockGameFile::new(memory.clone());
+    
+    let mut zmachine = ZMachine {
+        game: unsafe { std::mem::transmute(&mock_game) },
+        memory,
+        pc: 0x1000,
+        stack: Vec::new(),
+        call_stack: Vec::new(),
+        global_vars: HashMap::new(),
+        local_vars: [0; 15],
+        running: true,
+        operands_buffer: vec![],
+        current_branch_offset: None,
+        random_seed: 0,
+    };
+    
+    // Initially object 2 has parent 0
+    assert_eq!(zmachine.get_object_parent(2).unwrap(), 0);
+    
+    // Remove object 2 (which has no parent - should be no-op)
+    let result = zmachine.op_remove_obj(2);
+    assert!(result.is_ok());
+    assert_eq!(zmachine.get_object_parent(2).unwrap(), 0);
+}
+
+#[test]
+fn test_insert_obj_basic() {
+    let memory = setup_object_test_memory();
+    let mock_game = MockGameFile::new(memory.clone());
+    
+    let mut zmachine = ZMachine {
+        game: unsafe { std::mem::transmute(&mock_game) },
+        memory,
+        pc: 0x1000,
+        stack: Vec::new(),
+        call_stack: Vec::new(),
+        global_vars: HashMap::new(),
+        local_vars: [0; 15],
+        running: true,
+        operands_buffer: vec![],
+        current_branch_offset: None,
+        random_seed: 0,
+    };
+    
+    // Insert object 2 into object 1
+    let result = zmachine.op_insert_obj(2, 1);
+    assert!(result.is_ok());
+    
+    // Check that object 2 now has parent 1
+    assert_eq!(zmachine.get_object_parent(2).unwrap(), 1);
+    
+    // Check that object 1 now has child 2  
+    assert_eq!(zmachine.get_object_child(1).unwrap(), 2);
+    
+    // Check that object 2 has no siblings (since it was the first/only child)
+    assert_eq!(zmachine.get_object_sibling(2).unwrap(), 0);
+}
+
+#[test]
+fn test_insert_multiple_children() {
+    let memory = setup_object_test_memory();
+    let mock_game = MockGameFile::new(memory.clone());
+    
+    let mut zmachine = ZMachine {
+        game: unsafe { std::mem::transmute(&mock_game) },
+        memory,
+        pc: 0x1000,
+        stack: Vec::new(),
+        call_stack: Vec::new(),
+        global_vars: HashMap::new(),
+        local_vars: [0; 15],
+        running: true,
+        operands_buffer: vec![],
+        current_branch_offset: None,
+        random_seed: 0,
+    };
+    
+    // Insert object 2 into object 1
+    let result = zmachine.op_insert_obj(2, 1);
+    assert!(result.is_ok());
+    
+    // Insert object 3 into object 1 (should become new first child)
+    let result = zmachine.op_insert_obj(3, 1);
+    assert!(result.is_ok());
+    
+    // Check that object 1's first child is now 3
+    assert_eq!(zmachine.get_object_child(1).unwrap(), 3);
+    
+    // Check that object 3's sibling is 2
+    assert_eq!(zmachine.get_object_sibling(3).unwrap(), 2);
+    
+    // Check that object 2 has no sibling (it's the last)
+    assert_eq!(zmachine.get_object_sibling(2).unwrap(), 0);
+    
+    // Check both objects have parent 1
+    assert_eq!(zmachine.get_object_parent(2).unwrap(), 1);
+    assert_eq!(zmachine.get_object_parent(3).unwrap(), 1);
+}
+
+#[test]
+fn test_remove_from_sibling_chain() {
+    let memory = setup_object_test_memory();
+    let mock_game = MockGameFile::new(memory.clone());
+    
+    let mut zmachine = ZMachine {
+        game: unsafe { std::mem::transmute(&mock_game) },
+        memory,
+        pc: 0x1000,
+        stack: Vec::new(),
+        call_stack: Vec::new(),
+        global_vars: HashMap::new(),
+        local_vars: [0; 15],
+        running: true,
+        operands_buffer: vec![],
+        current_branch_offset: None,
+        random_seed: 0,
+    };
+    
+    // Set up: Insert 2, 3, 4 into object 1
+    zmachine.op_insert_obj(2, 1).unwrap();
+    zmachine.op_insert_obj(3, 1).unwrap();
+    zmachine.op_insert_obj(4, 1).unwrap();
+    
+    // Object 1 should have child chain: 4 -> 3 -> 2
+    assert_eq!(zmachine.get_object_child(1).unwrap(), 4);
+    assert_eq!(zmachine.get_object_sibling(4).unwrap(), 3);
+    assert_eq!(zmachine.get_object_sibling(3).unwrap(), 2);
+    assert_eq!(zmachine.get_object_sibling(2).unwrap(), 0);
+    
+    // Remove object 3 from the middle
+    let result = zmachine.op_remove_obj(3);
+    assert!(result.is_ok());
+    
+    // Check that 3 is removed from chain: 4 -> 2
+    assert_eq!(zmachine.get_object_child(1).unwrap(), 4);
+    assert_eq!(zmachine.get_object_sibling(4).unwrap(), 2);
+    assert_eq!(zmachine.get_object_sibling(2).unwrap(), 0);
+    
+    // Check that object 3 has no parent or sibling
+    assert_eq!(zmachine.get_object_parent(3).unwrap(), 0);
+    assert_eq!(zmachine.get_object_sibling(3).unwrap(), 0);
+}
+
+#[test]
+fn test_remove_first_child() {
+    let memory = setup_object_test_memory();
+    let mock_game = MockGameFile::new(memory.clone());
+    
+    let mut zmachine = ZMachine {
+        game: unsafe { std::mem::transmute(&mock_game) },
+        memory,
+        pc: 0x1000,
+        stack: Vec::new(),
+        call_stack: Vec::new(),
+        global_vars: HashMap::new(),
+        local_vars: [0; 15],
+        running: true,
+        operands_buffer: vec![],
+        current_branch_offset: None,
+        random_seed: 0,
+    };
+    
+    // Set up: Insert 2, 3 into object 1
+    zmachine.op_insert_obj(2, 1).unwrap();
+    zmachine.op_insert_obj(3, 1).unwrap();
+    
+    // Object 1 should have child chain: 3 -> 2
+    assert_eq!(zmachine.get_object_child(1).unwrap(), 3);
+    assert_eq!(zmachine.get_object_sibling(3).unwrap(), 2);
+    
+    // Remove object 3 (first child)
+    let result = zmachine.op_remove_obj(3);
+    assert!(result.is_ok());
+    
+    // Check that object 1's child is now 2
+    assert_eq!(zmachine.get_object_child(1).unwrap(), 2);
+    assert_eq!(zmachine.get_object_sibling(2).unwrap(), 0);
+    
+    // Check that object 3 has no parent
+    assert_eq!(zmachine.get_object_parent(3).unwrap(), 0);
+}
+
+#[test]
+fn test_insert_obj_edge_cases() {
+    let memory = setup_object_test_memory();
+    let mock_game = MockGameFile::new(memory.clone());
+    
+    let mut zmachine = ZMachine {
+        game: unsafe { std::mem::transmute(&mock_game) },
+        memory,
+        pc: 0x1000,
+        stack: Vec::new(),
+        call_stack: Vec::new(),
+        global_vars: HashMap::new(),
+        local_vars: [0; 15],
+        running: true,
+        operands_buffer: vec![],
+        current_branch_offset: None,
+        random_seed: 0,
+    };
+    
+    // Test inserting object 0 (should be no-op)
+    let result = zmachine.op_insert_obj(0, 1);
+    assert!(result.is_ok());
+    assert_eq!(zmachine.get_object_child(1).unwrap(), 0);
+    
+    // Test inserting into object 0 (should be no-op)
+    let result = zmachine.op_insert_obj(1, 0);
+    assert!(result.is_ok());
+    assert_eq!(zmachine.get_object_parent(1).unwrap(), 0);
+}
+
+#[test]
+fn test_remove_obj_edge_cases() {
+    let memory = setup_object_test_memory();
+    let mock_game = MockGameFile::new(memory.clone());
+    
+    let mut zmachine = ZMachine {
+        game: unsafe { std::mem::transmute(&mock_game) },
+        memory,
+        pc: 0x1000,
+        stack: Vec::new(),
+        call_stack: Vec::new(),
+        global_vars: HashMap::new(),
+        local_vars: [0; 15],
+        running: true,
+        operands_buffer: vec![],
+        current_branch_offset: None,
+        random_seed: 0,
+    };
+    
+    // Test removing object 0 (should be no-op)
+    let result = zmachine.op_remove_obj(0);
+    assert!(result.is_ok());
+    
+    // Test removing object with no parent (should be no-op)
+    let result = zmachine.op_remove_obj(1);
+    assert!(result.is_ok());
+    assert_eq!(zmachine.get_object_parent(1).unwrap(), 0);
+}
+
+#[test]
+fn test_move_object_between_parents() {
+    let memory = setup_object_test_memory();
+    let mock_game = MockGameFile::new(memory.clone());
+    
+    let mut zmachine = ZMachine {
+        game: unsafe { std::mem::transmute(&mock_game) },
+        memory,
+        pc: 0x1000,
+        stack: Vec::new(),
+        call_stack: Vec::new(),
+        global_vars: HashMap::new(),
+        local_vars: [0; 15],
+        running: true,
+        operands_buffer: vec![],
+        current_branch_offset: None,
+        random_seed: 0,
+    };
+    
+    // Insert object 3 into object 1
+    zmachine.op_insert_obj(3, 1).unwrap();
+    assert_eq!(zmachine.get_object_parent(3).unwrap(), 1);
+    assert_eq!(zmachine.get_object_child(1).unwrap(), 3);
+    
+    // Move object 3 from object 1 to object 2
+    zmachine.op_insert_obj(3, 2).unwrap();
+    
+    // Check that object 3 is now child of object 2
+    assert_eq!(zmachine.get_object_parent(3).unwrap(), 2);
+    assert_eq!(zmachine.get_object_child(2).unwrap(), 3);
+    
+    // Check that object 1 no longer has children
+    assert_eq!(zmachine.get_object_child(1).unwrap(), 0);
 }

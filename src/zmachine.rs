@@ -1,5 +1,7 @@
 use std::collections::HashMap;
-use std::io::{self, Write};
+use std::io::{self, Write, Read};
+use std::fs::File;
+use std::path::Path;
 use crate::game::GameFile;
 use crate::instruction::{Instruction, OperandType, OperandCount};
 use crate::util::{get_mem_addr, ZTextReader};
@@ -15,7 +17,24 @@ pub struct ZMachine<'a> {
     pub running: bool,
     pub operands_buffer: Vec<u16>,  // Buffer for current instruction operands
     pub current_branch_offset: Option<i16>,  // Branch offset for current instruction
+    pub random_seed: u32,  // Simple random number generator seed
 }
+
+// Save file format structure
+#[derive(Debug)]
+struct SaveFileHeader {
+    version: u32,           // Save file format version
+    game_version: u8,       // Z-machine version from game file
+    pc: u32,               // Program counter
+    stack_size: u32,       // Size of stack
+    call_stack_size: u32,  // Size of call stack
+    global_vars_size: u32, // Number of global variables
+    dynamic_mem_size: u32, // Size of dynamic memory
+    random_seed: u32,      // Random seed
+}
+
+const SAVE_FILE_VERSION: u32 = 1;
+const SAVE_FILE_MAGIC: &[u8] = b"ZSAV";
 
 #[derive(Debug, Clone)]
 pub struct CallFrame {
@@ -41,6 +60,7 @@ impl<'a> ZMachine<'a> {
             running: true,
             operands_buffer: Vec::new(),
             current_branch_offset: None,
+            random_seed: 12345, // Default seed
         }
     }
 
@@ -87,10 +107,14 @@ impl<'a> ZMachine<'a> {
             0x01 => self.op_rfalse(),
             0x02 => self.op_print(),
             0x03 => self.op_print_ret(),
+            0x05 => self.op_save(),
+            0x06 => self.op_restore(),
+            0x07 => self.op_restart(),
             0x08 => self.op_ret_popped(),
             0x09 => self.op_catch(),
             0x0A => self.op_quit(),
             0x0B => self.op_new_line(),
+            0x0D => self.op_verify(),
             _ => Err(format!("Unknown 0OP instruction: {:#04x}", instruction.opcode)),
         }
     }
@@ -250,6 +274,355 @@ impl<'a> ZMachine<'a> {
 
     fn op_rfalse(&mut self) -> Result<(), String> {
         self.return_from_routine(0)
+    }
+
+    pub fn op_save(&mut self) -> Result<(), String> {
+        // SAVE instruction - saves game state to file
+        let save_path = "game.sav";
+        
+        match self.save_to_file(save_path) {
+            Ok(_) => {
+                println!("SAVE: Game state saved to {}", save_path);
+                
+                // In Z-machine, SAVE branches on success/failure
+                if let Some(_) = self.current_branch_offset {
+                    self.handle_branch(true)?; // Branch on success
+                }
+                Ok(())
+            }
+            Err(e) => {
+                println!("SAVE: Failed to save game state: {}", e);
+                
+                if let Some(_) = self.current_branch_offset {
+                    self.handle_branch(false)?; // Branch on failure
+                }
+                Ok(())
+            }
+        }
+    }
+    
+    fn save_to_file(&self, path: &str) -> Result<(), String> {
+        let mut file = File::create(path).map_err(|e| format!("Failed to create save file: {}", e))?;
+        
+        // Write magic bytes
+        file.write_all(SAVE_FILE_MAGIC).map_err(|e| format!("Failed to write magic: {}", e))?;
+        
+        // Prepare header
+        let dynamic_mem_size = self.game.header().base_static_mem;
+        let header = SaveFileHeader {
+            version: SAVE_FILE_VERSION,
+            game_version: self.game.header().version,
+            pc: self.pc as u32,
+            stack_size: self.stack.len() as u32,
+            call_stack_size: self.call_stack.len() as u32,
+            global_vars_size: self.global_vars.len() as u32,
+            dynamic_mem_size: dynamic_mem_size as u32,
+            random_seed: self.random_seed,
+        };
+        
+        // Write header
+        self.write_header(&mut file, &header)?;
+        
+        // Write dynamic memory (only the part that can change)
+        let dynamic_memory = &self.memory[0..dynamic_mem_size.min(self.memory.len())];
+        file.write_all(dynamic_memory).map_err(|e| format!("Failed to write dynamic memory: {}", e))?;
+        
+        // Write stack
+        for &value in &self.stack {
+            file.write_all(&value.to_le_bytes()).map_err(|e| format!("Failed to write stack: {}", e))?;
+        }
+        
+        // Write call stack
+        for frame in &self.call_stack {
+            file.write_all(&(frame.return_pc as u32).to_le_bytes()).map_err(|e| format!("Failed to write call frame: {}", e))?;
+            file.write_all(&frame.num_locals.to_le_bytes()).map_err(|e| format!("Failed to write call frame: {}", e))?;
+            file.write_all(&frame.result_var.unwrap_or(0).to_le_bytes()).map_err(|e| format!("Failed to write call frame: {}", e))?;
+            
+            // Write local variables
+            for &var in &frame.local_vars {
+                file.write_all(&var.to_le_bytes()).map_err(|e| format!("Failed to write local vars: {}", e))?;
+            }
+        }
+        
+        // Write global variables
+        for (&key, &value) in &self.global_vars {
+            file.write_all(&key.to_le_bytes()).map_err(|e| format!("Failed to write global vars: {}", e))?;
+            file.write_all(&value.to_le_bytes()).map_err(|e| format!("Failed to write global vars: {}", e))?;
+        }
+        
+        // Write current local variables
+        for &var in &self.local_vars {
+            file.write_all(&var.to_le_bytes()).map_err(|e| format!("Failed to write local vars: {}", e))?;
+        }
+        
+        file.flush().map_err(|e| format!("Failed to flush save file: {}", e))?;
+        Ok(())
+    }
+    
+    fn write_header(&self, file: &mut File, header: &SaveFileHeader) -> Result<(), String> {
+        file.write_all(&header.version.to_le_bytes()).map_err(|e| format!("Failed to write header: {}", e))?;
+        file.write_all(&header.game_version.to_le_bytes()).map_err(|e| format!("Failed to write header: {}", e))?;
+        file.write_all(&header.pc.to_le_bytes()).map_err(|e| format!("Failed to write header: {}", e))?;
+        file.write_all(&header.stack_size.to_le_bytes()).map_err(|e| format!("Failed to write header: {}", e))?;
+        file.write_all(&header.call_stack_size.to_le_bytes()).map_err(|e| format!("Failed to write header: {}", e))?;
+        file.write_all(&header.global_vars_size.to_le_bytes()).map_err(|e| format!("Failed to write header: {}", e))?;
+        file.write_all(&header.dynamic_mem_size.to_le_bytes()).map_err(|e| format!("Failed to write header: {}", e))?;
+        file.write_all(&header.random_seed.to_le_bytes()).map_err(|e| format!("Failed to write header: {}", e))?;
+        Ok(())
+    }
+    
+    pub fn op_restore(&mut self) -> Result<(), String> {
+        // RESTORE instruction - restores game state from file
+        let save_path = "game.sav";
+        
+        match self.restore_from_file(save_path) {
+            Ok(_) => {
+                println!("RESTORE: Game state restored from {}", save_path);
+                
+                // In Z-machine, RESTORE branches on success/failure
+                if let Some(_) = self.current_branch_offset {
+                    self.handle_branch(true)?; // Branch on success
+                }
+                Ok(())
+            }
+            Err(e) => {
+                println!("RESTORE: Failed to restore game state: {}", e);
+                
+                if let Some(_) = self.current_branch_offset {
+                    self.handle_branch(false)?; // Branch on failure
+                }
+                Ok(())
+            }
+        }
+    }
+    
+    fn restore_from_file(&mut self, path: &str) -> Result<(), String> {
+        if !Path::new(path).exists() {
+            return Err("Save file not found".to_string());
+        }
+        
+        let mut file = File::open(path).map_err(|e| format!("Failed to open save file: {}", e))?;
+        
+        // Read and verify magic bytes
+        let mut magic = [0u8; 4];
+        file.read_exact(&mut magic).map_err(|e| format!("Failed to read magic: {}", e))?;
+        if magic != SAVE_FILE_MAGIC {
+            return Err("Invalid save file format".to_string());
+        }
+        
+        // Read header
+        let header = self.read_header(&mut file)?;
+        
+        // Verify compatibility
+        if header.version != SAVE_FILE_VERSION {
+            return Err(format!("Unsupported save file version: {}", header.version));
+        }
+        
+        if header.game_version != self.game.header().version {
+            return Err("Save file is for a different game version".to_string());
+        }
+        
+        // Restore dynamic memory
+        let dynamic_mem_size = header.dynamic_mem_size as usize;
+        if dynamic_mem_size > self.memory.len() {
+            return Err("Save file dynamic memory size exceeds current memory".to_string());
+        }
+        
+        file.read_exact(&mut self.memory[0..dynamic_mem_size])
+            .map_err(|e| format!("Failed to read dynamic memory: {}", e))?;
+        
+        // Restore stack
+        self.stack.clear();
+        for _ in 0..header.stack_size {
+            let mut bytes = [0u8; 2];
+            file.read_exact(&mut bytes).map_err(|e| format!("Failed to read stack: {}", e))?;
+            self.stack.push(u16::from_le_bytes(bytes));
+        }
+        
+        // Restore call stack
+        self.call_stack.clear();
+        for _ in 0..header.call_stack_size {
+            let mut return_pc_bytes = [0u8; 4];
+            file.read_exact(&mut return_pc_bytes).map_err(|e| format!("Failed to read call frame: {}", e))?;
+            let return_pc = u32::from_le_bytes(return_pc_bytes) as usize;
+            
+            let mut num_locals_bytes = [0u8; 1];
+            file.read_exact(&mut num_locals_bytes).map_err(|e| format!("Failed to read call frame: {}", e))?;
+            let num_locals = num_locals_bytes[0];
+            
+            let mut result_var_bytes = [0u8; 1];
+            file.read_exact(&mut result_var_bytes).map_err(|e| format!("Failed to read call frame: {}", e))?;
+            let result_var = if result_var_bytes[0] == 0 { None } else { Some(result_var_bytes[0]) };
+            
+            let mut local_vars = [0u16; 15];
+            for i in 0..15 {
+                let mut bytes = [0u8; 2];
+                file.read_exact(&mut bytes).map_err(|e| format!("Failed to read local vars: {}", e))?;
+                local_vars[i] = u16::from_le_bytes(bytes);
+            }
+            
+            self.call_stack.push(CallFrame {
+                return_pc,
+                local_vars,
+                num_locals,
+                result_var,
+            });
+        }
+        
+        // Restore global variables
+        self.global_vars.clear();
+        for _ in 0..header.global_vars_size {
+            let mut key_bytes = [0u8; 1];
+            file.read_exact(&mut key_bytes).map_err(|e| format!("Failed to read global vars: {}", e))?;
+            let key = key_bytes[0];
+            
+            let mut value_bytes = [0u8; 2];
+            file.read_exact(&mut value_bytes).map_err(|e| format!("Failed to read global vars: {}", e))?;
+            let value = u16::from_le_bytes(value_bytes);
+            
+            self.global_vars.insert(key, value);
+        }
+        
+        // Restore current local variables
+        for i in 0..15 {
+            let mut bytes = [0u8; 2];
+            file.read_exact(&mut bytes).map_err(|e| format!("Failed to read local vars: {}", e))?;
+            self.local_vars[i] = u16::from_le_bytes(bytes);
+        }
+        
+        // Restore other state
+        self.pc = header.pc as usize;
+        self.random_seed = header.random_seed;
+        
+        Ok(())
+    }
+    
+    fn read_header(&self, file: &mut File) -> Result<SaveFileHeader, String> {
+        let mut version_bytes = [0u8; 4];
+        file.read_exact(&mut version_bytes).map_err(|e| format!("Failed to read header: {}", e))?;
+        let version = u32::from_le_bytes(version_bytes);
+        
+        let mut game_version_bytes = [0u8; 1];
+        file.read_exact(&mut game_version_bytes).map_err(|e| format!("Failed to read header: {}", e))?;
+        let game_version = game_version_bytes[0];
+        
+        let mut pc_bytes = [0u8; 4];
+        file.read_exact(&mut pc_bytes).map_err(|e| format!("Failed to read header: {}", e))?;
+        let pc = u32::from_le_bytes(pc_bytes);
+        
+        let mut stack_size_bytes = [0u8; 4];
+        file.read_exact(&mut stack_size_bytes).map_err(|e| format!("Failed to read header: {}", e))?;
+        let stack_size = u32::from_le_bytes(stack_size_bytes);
+        
+        let mut call_stack_size_bytes = [0u8; 4];
+        file.read_exact(&mut call_stack_size_bytes).map_err(|e| format!("Failed to read header: {}", e))?;
+        let call_stack_size = u32::from_le_bytes(call_stack_size_bytes);
+        
+        let mut global_vars_size_bytes = [0u8; 4];
+        file.read_exact(&mut global_vars_size_bytes).map_err(|e| format!("Failed to read header: {}", e))?;
+        let global_vars_size = u32::from_le_bytes(global_vars_size_bytes);
+        
+        let mut dynamic_mem_size_bytes = [0u8; 4];
+        file.read_exact(&mut dynamic_mem_size_bytes).map_err(|e| format!("Failed to read header: {}", e))?;
+        let dynamic_mem_size = u32::from_le_bytes(dynamic_mem_size_bytes);
+        
+        let mut random_seed_bytes = [0u8; 4];
+        file.read_exact(&mut random_seed_bytes).map_err(|e| format!("Failed to read header: {}", e))?;
+        let random_seed = u32::from_le_bytes(random_seed_bytes);
+        
+        Ok(SaveFileHeader {
+            version,
+            game_version,
+            pc,
+            stack_size,
+            call_stack_size,
+            global_vars_size,
+            dynamic_mem_size,
+            random_seed,
+        })
+    }
+    
+    pub fn op_restart(&mut self) -> Result<(), String> {
+        // RESTART instruction - restarts the game
+        println!("RESTART: Restarting game");
+        
+        // Reset Z-machine state to initial conditions
+        self.pc = self.game.header().initial_pc;
+        self.stack.clear();
+        self.call_stack.clear();
+        self.global_vars.clear();
+        self.local_vars = [0; 15];
+        self.random_seed = 12345;
+        
+        // Reset dynamic memory to initial state
+        let initial_memory = self.game.bytes().to_vec();
+        let dynamic_end = self.game.header().base_static_mem;
+        
+        for i in 0..dynamic_end.min(self.memory.len()) {
+            self.memory[i] = initial_memory[i];
+        }
+        
+        Ok(())
+    }
+    
+    pub fn op_verify(&mut self) -> Result<(), String> {
+        // VERIFY instruction - checks game file integrity
+        match self.verify_game_file() {
+            Ok(true) => {
+                println!("VERIFY: Game file verified successfully");
+                
+                // In Z-machine, VERIFY branches on success/failure
+                if let Some(_) = self.current_branch_offset {
+                    self.handle_branch(true)?; // Branch on success
+                }
+                Ok(())
+            }
+            Ok(false) => {
+                println!("VERIFY: Game file verification failed");
+                
+                if let Some(_) = self.current_branch_offset {
+                    self.handle_branch(false)?; // Branch on failure
+                }
+                Ok(())
+            }
+            Err(e) => {
+                println!("VERIFY: Error during verification: {}", e);
+                
+                if let Some(_) = self.current_branch_offset {
+                    self.handle_branch(false)?; // Branch on failure
+                }
+                Ok(())
+            }
+        }
+    }
+    
+    fn verify_game_file(&self) -> Result<bool, String> {
+        // Get the expected checksum from the header
+        let expected_checksum = self.game.header().checksum_file;
+        
+        // Calculate actual checksum of the file
+        let actual_checksum = self.calculate_checksum()?;
+        
+        // Compare checksums
+        Ok(expected_checksum == actual_checksum)
+    }
+    
+    fn calculate_checksum(&self) -> Result<usize, String> {
+        // Z-machine checksum is calculated over the entire file except the checksum field itself
+        // The checksum field is at offset 0x1C in the header
+        
+        let file_bytes = self.game.bytes();
+        let mut checksum: u32 = 0;
+        
+        // Sum all bytes except the checksum field (bytes 0x1C and 0x1D)
+        for (i, &byte) in file_bytes.iter().enumerate() {
+            if i != 0x1C && i != 0x1D {
+                checksum = checksum.wrapping_add(byte as u32);
+            }
+        }
+        
+        // The checksum is the low 16 bits
+        Ok((checksum & 0xFFFF) as usize)
     }
 
     fn op_print(&mut self) -> Result<(), String> {
@@ -413,13 +786,58 @@ impl<'a> ZMachine<'a> {
         Ok(())
     }
 
-    fn op_call_1s(&mut self, operand: u16) -> Result<(), String> {
-        println!("CALL_1S: routine {} (not implemented)", operand);
-        Ok(())
+    pub fn op_call_1s(&mut self, operand: u16) -> Result<(), String> {
+        // CALL_1S: Call routine with 1 argument, store result
+        let routine_addr = operand;
+        
+        // Set up operands buffer for the generic call implementation
+        self.operands_buffer = vec![routine_addr];
+        
+        // Call the generic call implementation
+        self.op_call()
     }
 
-    fn op_remove_obj(&mut self, operand: u16) -> Result<(), String> {
-        println!("REMOVE_OBJ: object {} (not implemented)", operand);
+    pub fn op_remove_obj(&mut self, operand: u16) -> Result<(), String> {
+        let obj_num = operand;
+        
+        if obj_num == 0 {
+            return Ok(()); // Removing object 0 is a no-op
+        }
+        
+        // Get current parent of the object
+        let current_parent = self.get_object_parent(obj_num)?;
+        
+        if current_parent == 0 {
+            return Ok(()); // Object has no parent, nothing to do
+        }
+        
+        // Remove object from parent's child list
+        // Need to update sibling chain
+        let obj_sibling = self.get_object_sibling(obj_num)?;
+        let parent_child = self.get_object_child(current_parent)?;
+        
+        if parent_child == obj_num {
+            // Object is the first child - set parent's child to object's sibling
+            self.set_object_child(current_parent, obj_sibling)?;
+        } else {
+            // Object is not the first child - find previous sibling and update its sibling pointer
+            let mut current = parent_child;
+            
+            while current != 0 {
+                let next_sibling = self.get_object_sibling(current)?;
+                if next_sibling == obj_num {
+                    // Found the previous sibling - update its sibling pointer
+                    self.set_object_sibling(current, obj_sibling)?;
+                    break;
+                }
+                current = next_sibling;
+            }
+        }
+        
+        // Clear the object's parent and sibling
+        self.set_object_parent(obj_num, 0)?;
+        self.set_object_sibling(obj_num, 0)?;
+        
         Ok(())
     }
 
@@ -654,8 +1072,33 @@ impl<'a> ZMachine<'a> {
         self.store_variable(operand1 as u8, operand2)
     }
 
-    fn op_insert_obj(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
-        println!("INSERT_OBJ: obj {} into obj {} (not implemented)", operand1, operand2);
+    pub fn op_insert_obj(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
+        let obj_num = operand1;
+        let dest_parent = operand2;
+        
+        if obj_num == 0 {
+            return Ok(()); // Inserting object 0 is a no-op
+        }
+        
+        if dest_parent == 0 {
+            return Ok(()); // Inserting into object 0 is a no-op
+        }
+        
+        // First, remove the object from its current parent
+        self.op_remove_obj(obj_num)?;
+        
+        // Get the current first child of the destination parent
+        let current_first_child = self.get_object_child(dest_parent)?;
+        
+        // Set the object as the new first child of the destination parent
+        self.set_object_child(dest_parent, obj_num)?;
+        
+        // Set the object's parent to the destination parent
+        self.set_object_parent(obj_num, dest_parent)?;
+        
+        // Set the object's sibling to the previous first child
+        self.set_object_sibling(obj_num, current_first_child)?;
+        
         Ok(())
     }
 
@@ -1118,9 +1561,39 @@ impl<'a> ZMachine<'a> {
         Ok(())
     }
 
-    fn op_random(&mut self) -> Result<(), String> {
-        println!("RANDOM: (not implemented)");
-        Ok(())
+    pub fn op_random(&mut self) -> Result<(), String> {
+        // RANDOM takes one operand (range)
+        if self.operands_buffer.is_empty() {
+            return Err("RANDOM instruction missing operand".to_string());
+        }
+        
+        let range = self.operands_buffer[0] as i16;
+        
+        let result = if range > 0 {
+            // Positive range: return random number from 1 to range
+            let random_value = self.generate_random();
+            1 + (random_value % (range as u32)) as u16
+        } else if range < 0 {
+            // Negative range: seed the generator with abs(range)
+            self.random_seed = (-range) as u32;
+            0
+        } else {
+            // Range 0: seed with unpredictable value
+            self.random_seed = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as u32;
+            0
+        };
+        
+        self.store_variable(0, result)
+    }
+    
+    fn generate_random(&mut self) -> u32 {
+        // Simple linear congruential generator
+        // Using constants from Numerical Recipes
+        self.random_seed = (self.random_seed.wrapping_mul(1664525).wrapping_add(1013904223)) & 0x7FFFFFFF;
+        self.random_seed
     }
 
     pub fn op_push(&mut self) -> Result<(), String> {
@@ -1260,13 +1733,107 @@ impl<'a> ZMachine<'a> {
         Ok(())
     }
 
-    fn op_call_2s(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
-        println!("CALL_2S: routine {} arg {} (not implemented)", operand1, operand2);
-        Ok(())
+    pub fn op_call_2s(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
+        // CALL_2S: Call routine with 2 arguments, store result
+        let routine_addr = operand1;
+        let arg1 = operand2;
+        
+        // Set up operands buffer for the generic call implementation
+        self.operands_buffer = vec![routine_addr, arg1];
+        
+        // Call the generic call implementation
+        self.op_call()
     }
 
-    fn op_call_2n(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
-        println!("CALL_2N: routine {} arg {} (not implemented)", operand1, operand2);
+    pub fn op_call_2n(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
+        // CALL_2N: Call routine with 2 arguments, no result stored
+        let routine_addr = operand1;
+        let arg1 = operand2;
+        
+        if routine_addr == 0 {
+            // Call to routine 0 - just return without storing result
+            return Ok(());
+        }
+        
+        // Set up operands buffer for the generic call implementation
+        self.operands_buffer = vec![routine_addr, arg1];
+        
+        // Perform the call but don't store the result
+        // We need to temporarily modify how the call works
+        let old_call_stack_len = self.call_stack.len();
+        
+        // Set up the call frame to not store result
+        if let Err(e) = self.setup_call_frame(routine_addr, &[arg1], None) {
+            return Err(e);
+        }
+        
+        Ok(())
+    }
+    
+    fn setup_call_frame(&mut self, routine_addr: u16, args: &[u16], result_var: Option<u8>) -> Result<(), String> {
+        // Convert packed address to byte address
+        let version = if self.memory.len() > 0 { self.memory[0] } else { 3 };
+        let byte_addr = match version {
+            1 | 2 | 3 => (routine_addr as usize) * 2,
+            4 | 5 => (routine_addr as usize) * 4,
+            6 | 7 | 8 => {
+                let base_high = if self.memory.len() > 5 { 
+                    ((self.memory[4] as usize) << 8) | (self.memory[5] as usize)
+                } else { 0 };
+                (routine_addr as usize) * 4 + base_high
+            },
+            _ => return Err("Unsupported Z-Machine version".to_string()),
+        };
+        
+        if byte_addr >= self.memory.len() {
+            return Err(format!("Routine address out of bounds: {:#06x}", byte_addr));
+        }
+        
+        // Read routine header
+        let num_locals = self.memory[byte_addr];
+        if num_locals > 15 {
+            return Err(format!("Too many local variables in routine: {}", num_locals));
+        }
+        
+        let mut routine_pc = byte_addr + 1;
+        let mut local_defaults = [0u16; 15];
+        
+        // In versions 1-4, read default values for locals
+        if version <= 4 {
+            for i in 0..(num_locals as usize) {
+                if routine_pc + 1 >= self.memory.len() {
+                    return Err("Routine header truncated".to_string());
+                }
+                local_defaults[i] = ((self.memory[routine_pc] as u16) << 8) | (self.memory[routine_pc + 1] as u16);
+                routine_pc += 2;
+            }
+        }
+        
+        // Save current call frame
+        let call_frame = CallFrame {
+            return_pc: self.pc,
+            local_vars: self.local_vars,
+            num_locals: num_locals,
+            result_var: result_var,
+        };
+        self.call_stack.push(call_frame);
+        
+        // Set up new locals with defaults
+        self.local_vars = local_defaults;
+        
+        // Pass arguments to local variables
+        for (i, &arg_value) in args.iter().enumerate() {
+            if i < num_locals as usize {
+                self.local_vars[i] = arg_value;
+            }
+        }
+        
+        // Jump to routine code
+        self.pc = routine_pc;
+        
+        println!("CALL: Calling routine at {:#06x} with {} locals, {} args", 
+                byte_addr, num_locals, args.len());
+        
         Ok(())
     }
 
@@ -1489,6 +2056,49 @@ impl<'a> ZMachine<'a> {
         // Read default value (big-endian)
         let default_value = ((self.memory[default_addr] as u16) << 8) | (self.memory[default_addr + 1] as u16);
         Ok(default_value)
+    }
+    
+    // Helper methods for setting object relationships
+    fn set_object_parent(&mut self, obj_num: u16, parent: u16) -> Result<(), String> {
+        if obj_num == 0 {
+            return Err("Cannot set parent of object 0".to_string());
+        }
+        
+        let obj_addr = self.get_object_addr(obj_num)?;
+        if obj_addr + 4 >= self.memory.len() {
+            return Err("Object table access out of bounds".to_string());
+        }
+        
+        self.memory[obj_addr + 4] = parent as u8;
+        Ok(())
+    }
+    
+    fn set_object_sibling(&mut self, obj_num: u16, sibling: u16) -> Result<(), String> {
+        if obj_num == 0 {
+            return Err("Cannot set sibling of object 0".to_string());
+        }
+        
+        let obj_addr = self.get_object_addr(obj_num)?;
+        if obj_addr + 5 >= self.memory.len() {
+            return Err("Object table access out of bounds".to_string());
+        }
+        
+        self.memory[obj_addr + 5] = sibling as u8;
+        Ok(())
+    }
+    
+    fn set_object_child(&mut self, obj_num: u16, child: u16) -> Result<(), String> {
+        if obj_num == 0 {
+            return Err("Cannot set child of object 0".to_string());
+        }
+        
+        let obj_addr = self.get_object_addr(obj_num)?;
+        if obj_addr + 6 >= self.memory.len() {
+            return Err("Object table access out of bounds".to_string());
+        }
+        
+        self.memory[obj_addr + 6] = child as u8;
+        Ok(())
     }
     
     // Helper methods for string processing

@@ -38,6 +38,7 @@ fn test_je_branch_true() {
         running: true,
         operands_buffer: vec![42, 42], // Two equal operands
         current_branch_offset: Some(10), // Branch on true, offset 10
+        random_seed: 0,
     };
     
     let initial_pc = zmachine.pc;
@@ -69,6 +70,7 @@ fn test_je_branch_false() {
         running: true,
         operands_buffer: vec![42, 99], // Two different operands
         current_branch_offset: Some(10), // Branch on true, offset 10
+        random_seed: 0,
     };
     
     let initial_pc = zmachine.pc;
@@ -97,6 +99,7 @@ fn test_jz_branch_true() {
         running: true,
         operands_buffer: vec![0], // Zero operand
         current_branch_offset: Some(5), // Branch on true, offset 5
+        random_seed: 0,
     };
     
     let initial_pc = zmachine.pc;
@@ -125,6 +128,7 @@ fn test_jl_branch_true() {
         running: true,
         operands_buffer: vec![5, 10], // 5 < 10
         current_branch_offset: Some(8), // Branch on true, offset 8
+        random_seed: 0,
     };
     
     let initial_pc = zmachine.pc;
@@ -153,6 +157,7 @@ fn test_jg_branch_false() {
         running: true,
         operands_buffer: vec![5, 10], // 5 not > 10
         current_branch_offset: Some(8), // Branch on true, offset 8
+        random_seed: 0,
     };
     
     let initial_pc = zmachine.pc;
@@ -181,6 +186,7 @@ fn test_branch_rfalse() {
         running: true,
         operands_buffer: vec![42, 42], // Equal operands
         current_branch_offset: Some(0), // Branch offset 0 = rfalse
+        random_seed: 0,
     };
     
     // Add a call frame to return from
@@ -217,6 +223,7 @@ fn test_branch_rtrue() {
         running: true,
         operands_buffer: vec![42, 42], // Equal operands
         current_branch_offset: Some(1), // Branch offset 1 = rtrue
+        random_seed: 0,
     };
     
     // Add a call frame to return from
@@ -253,6 +260,7 @@ fn test_branch_negative_offset() {
         running: true,
         operands_buffer: vec![42, 42], // Equal operands
         current_branch_offset: Some(-5), // Branch on false (encoded as negative)
+        random_seed: 0,
     };
     
     let initial_pc = zmachine.pc;
@@ -282,6 +290,7 @@ fn test_test_instruction_branch() {
         running: true,
         operands_buffer: vec![0b11110000, 0b00110000], // Test bits
         current_branch_offset: Some(7), // Branch on true, offset 7
+        random_seed: 0,
     };
     
     let initial_pc = zmachine.pc;
@@ -311,6 +320,7 @@ fn test_dec_chk_branch_true() {
         running: true,
         operands_buffer: vec![1, 5], // dec var 1, check if < 5
         current_branch_offset: Some(12), // Branch on true, offset 12
+        random_seed: 0,
     };
     
     let initial_pc = zmachine.pc;
@@ -342,6 +352,7 @@ fn test_dec_chk_branch_false() {
         running: true,
         operands_buffer: vec![1, 5], // dec var 1, check if < 5
         current_branch_offset: Some(8), // Branch on true, offset 8
+        random_seed: 0,
     };
     
     let initial_pc = zmachine.pc;
@@ -373,6 +384,7 @@ fn test_inc_chk_branch_true() {
         running: true,
         operands_buffer: vec![1, 3], // inc var 1, check if > 3
         current_branch_offset: Some(6), // Branch on true, offset 6
+        random_seed: 0,
     };
     
     let initial_pc = zmachine.pc;
@@ -404,6 +416,7 @@ fn test_inc_chk_with_global_variable() {
         running: true,
         operands_buffer: vec![16, 10], // inc global var 16, check if > 10
         current_branch_offset: Some(4), // Branch on true, offset 4
+        random_seed: 0,
     };
     
     // Set global variable 16 to 10
@@ -463,6 +476,7 @@ fn test_object_operations_setup() {
         running: true,
         operands_buffer: vec![],
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     // Test object relationships
@@ -505,6 +519,7 @@ fn test_jin_instruction() {
         running: true,
         operands_buffer: vec![1, 2], // Check if object 1 is in object 2
         current_branch_offset: Some(5), // Branch on true, offset 5
+        random_seed: 0,
     };
     
     let initial_pc = zmachine.pc;
@@ -545,6 +560,7 @@ fn test_test_attr_instruction() {
         running: true,
         operands_buffer: vec![1, 0], // Test attribute 0 on object 1
         current_branch_offset: Some(3), // Branch on true, offset 3
+        random_seed: 0,
     };
     
     let initial_pc = zmachine.pc;
@@ -584,6 +600,7 @@ fn test_get_sibling_instruction() {
         running: true,
         operands_buffer: vec![1], // Get sibling of object 1
         current_branch_offset: Some(7), // Branch on true, offset 7
+        random_seed: 0,
     };
     
     let initial_pc = zmachine.pc;
@@ -626,6 +643,7 @@ fn test_get_child_no_branch() {
         running: true,
         operands_buffer: vec![1], // Get child of object 1
         current_branch_offset: Some(4), // Branch on true, offset 4
+        random_seed: 0,
     };
     
     let initial_pc = zmachine.pc;

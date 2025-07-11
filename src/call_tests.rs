@@ -38,6 +38,7 @@ fn test_call_routine_zero() {
         running: true,
         operands_buffer: vec![0], // CALL 0
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     let result = zmachine.op_call();
@@ -74,6 +75,7 @@ fn test_call_simple_routine() {
         running: true,
         operands_buffer: vec![0x1000], // CALL routine (packed address)
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     let initial_pc = zmachine.pc;
@@ -123,6 +125,7 @@ fn test_call_with_arguments() {
         running: true,
         operands_buffer: vec![0x1000, 100, 200], // CALL routine arg1 arg2
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     let result = zmachine.op_call();
@@ -156,6 +159,7 @@ fn test_call_return_sequence() {
         running: true,
         operands_buffer: vec![0x1000], // CALL routine
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     let initial_pc = zmachine.pc;
@@ -200,6 +204,7 @@ fn test_call_invalid_routine_address() {
         running: true,
         operands_buffer: vec![0xFFFF], // Invalid address
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     let result = zmachine.op_call();
@@ -228,6 +233,7 @@ fn test_call_too_many_locals() {
         running: true,
         operands_buffer: vec![0x1000], // CALL routine
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     let result = zmachine.op_call();
@@ -258,6 +264,7 @@ fn test_call_address_conversion_v3() {
         running: true,
         operands_buffer: vec![0x1000], // Packed address 0x1000
         current_branch_offset: None,
+        random_seed: 0,
     };
     
     let result = zmachine.op_call();
