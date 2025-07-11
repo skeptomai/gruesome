@@ -38,6 +38,9 @@ mod string_tests;
 mod io_tests;
 
 #[cfg(test)]
+mod text_processing_tests;
+
+#[cfg(test)]
 mod tests {
     use crate::game::GameFile;
     use crate::zrand::ZRand;

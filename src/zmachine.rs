@@ -6,6 +6,13 @@ use crate::game::GameFile;
 use crate::instruction::{Instruction, OperandType, OperandCount};
 use crate::util::{get_mem_addr, ZTextReader};
 
+// Helper structure for parsed words
+#[derive(Debug, Clone)]
+struct ParsedWord {
+    text: String,
+    position: usize, // Position in original text
+}
+
 pub struct ZMachine<'a> {
     pub game: &'a GameFile<'a>,
     pub memory: Vec<u8>,
@@ -1520,9 +1527,23 @@ impl<'a> ZMachine<'a> {
                     }
                 }
                 
-                // TODO: Parse input into words and store in parse buffer
-                // For now, just mark parse buffer as empty
-                self.memory[parse_buffer] = 0; // No words parsed
+                // Parse input into words using TOKENISE functionality
+                // Set up operands for tokenise operation
+                let old_operands = self.operands_buffer.clone();
+                self.operands_buffer = vec![text_buffer as u16, parse_buffer as u16];
+                
+                // Call tokenise to parse the input
+                match self.op_tokenise() {
+                    Ok(_) => {
+                        // Restore original operands
+                        self.operands_buffer = old_operands;
+                    }
+                    Err(e) => {
+                        // Restore original operands and propagate error
+                        self.operands_buffer = old_operands;
+                        return Err(format!("Failed to parse input: {}", e));
+                    }
+                }
                 
                 Ok(())
             }
@@ -1709,13 +1730,216 @@ impl<'a> ZMachine<'a> {
     }
 
     fn op_tokenise(&mut self) -> Result<(), String> {
-        println!("TOKENISE: (not implemented)");
+        // TOKENISE takes 2-4 operands:
+        // 1. text-buffer address (required)
+        // 2. parse-buffer address (required) 
+        // 3. dictionary address (optional, default to game dictionary)
+        // 4. flag (optional, default to false)
+        
+        if self.operands_buffer.len() < 2 {
+            return Err("TOKENISE instruction missing operands".to_string());
+        }
+        
+        let text_buffer = self.operands_buffer[0] as usize;
+        let parse_buffer = self.operands_buffer[1] as usize;
+        
+        if text_buffer >= self.memory.len() || parse_buffer >= self.memory.len() {
+            return Err("TOKENISE buffer address out of bounds".to_string());
+        }
+        
+        // Get the input text from the text buffer
+        let input_length = self.memory[text_buffer + 1] as usize;
+        let mut input_text = String::new();
+        
+        for i in 0..input_length {
+            if text_buffer + 2 + i < self.memory.len() {
+                input_text.push(self.memory[text_buffer + 2 + i] as char);
+            }
+        }
+        
+        // Parse the input text into words
+        let words = self.parse_input_text(&input_text)?;
+        
+        // Get maximum number of words that can be stored in parse buffer
+        let max_words = self.memory[parse_buffer] as usize;
+        
+        // Store the number of words found (up to max_words)
+        let words_to_store = std::cmp::min(words.len(), max_words);
+        self.memory[parse_buffer + 1] = words_to_store as u8;
+        
+        // Store each word in the parse buffer
+        // Format: [word_length][word_start_offset][dictionary_address_high][dictionary_address_low]
+        for (i, word) in words.iter().take(words_to_store).enumerate() {
+            let entry_offset = parse_buffer + 2 + (i * 4);
+            
+            if entry_offset + 3 < self.memory.len() {
+                // Store word length
+                self.memory[entry_offset] = word.text.len() as u8;
+                
+                // Store word start position in text buffer (relative to text start)
+                self.memory[entry_offset + 1] = (word.position + 2) as u8; // +2 for buffer header
+                
+                // Look up word in dictionary
+                let dict_addr = self.lookup_word_in_dictionary(&word.text)?;
+                
+                // Store dictionary address (big-endian)
+                self.memory[entry_offset + 2] = (dict_addr >> 8) as u8;
+                self.memory[entry_offset + 3] = (dict_addr & 0xFF) as u8;
+            }
+        }
+        
         Ok(())
     }
 
     fn op_encode_text(&mut self) -> Result<(), String> {
-        println!("ENCODE_TEXT: (not implemented)");
+        // ENCODE_TEXT takes 4 operands:
+        // 1. text-buffer address (zscii text to encode)
+        // 2. length of text to encode 
+        // 3. start position within text buffer
+        // 4. coded-text address (where to store encoded result)
+        
+        if self.operands_buffer.len() < 4 {
+            return Err("ENCODE_TEXT instruction missing operands".to_string());
+        }
+        
+        let text_buffer = self.operands_buffer[0] as usize;
+        let length = self.operands_buffer[1] as usize;
+        let start_pos = self.operands_buffer[2] as usize;
+        let coded_text_addr = self.operands_buffer[3] as usize;
+        
+        if text_buffer >= self.memory.len() || coded_text_addr >= self.memory.len() {
+            return Err("ENCODE_TEXT buffer address out of bounds".to_string());
+        }
+        
+        // Extract the text to encode
+        let mut text_to_encode = String::new();
+        for i in 0..length {
+            let addr = text_buffer + start_pos + i;
+            if addr < self.memory.len() {
+                text_to_encode.push(self.memory[addr] as char);
+            } else {
+                break;
+            }
+        }
+        
+        // Encode the text to Z-characters
+        let encoded_words = self.encode_text_to_zchars(&text_to_encode)?;
+        
+        // Store the encoded words at the specified address
+        for (i, word) in encoded_words.iter().enumerate() {
+            let addr = coded_text_addr + (i * 2);
+            if addr + 1 < self.memory.len() {
+                self.memory[addr] = (word >> 8) as u8;     // High byte
+                self.memory[addr + 1] = (word & 0xFF) as u8; // Low byte
+            }
+        }
+        
         Ok(())
+    }
+    
+    fn parse_input_text(&self, input: &str) -> Result<Vec<ParsedWord>, String> {
+        let mut words = Vec::new();
+        let mut current_word = String::new();
+        let mut word_start = 0;
+        let mut in_word = false;
+        
+        for (i, ch) in input.chars().enumerate() {
+            if ch.is_alphabetic() || ch == '\'' {
+                if !in_word {
+                    word_start = i;
+                    in_word = true;
+                    current_word.clear();
+                }
+                current_word.push(ch);
+            } else {
+                if in_word {
+                    // End of word
+                    if !current_word.is_empty() {
+                        words.push(ParsedWord {
+                            text: current_word.to_lowercase(),
+                            position: word_start,
+                        });
+                    }
+                    current_word.clear();
+                    in_word = false;
+                }
+            }
+        }
+        
+        // Handle word at end of input
+        if in_word && !current_word.is_empty() {
+            words.push(ParsedWord {
+                text: current_word.to_lowercase(),
+                position: word_start,
+            });
+        }
+        
+        Ok(words)
+    }
+    
+    fn lookup_word_in_dictionary(&self, word: &str) -> Result<u16, String> {
+        // For now, return 0 for words not found in dictionary
+        // A real implementation would search through the game's dictionary
+        
+        // TODO: Implement actual dictionary lookup
+        // This would involve:
+        // 1. Encoding the word using the same algorithm as the dictionary
+        // 2. Searching through the dictionary entries
+        // 3. Returning the dictionary address if found, or 0 if not found
+        
+        Ok(0) // Not found in dictionary
+    }
+    
+    fn encode_text_to_zchars(&self, text: &str) -> Result<Vec<u16>, String> {
+        // Convert text to Z-characters (5-bit packed format)
+        // This is a simplified implementation
+        
+        let mut result = Vec::new();
+        let mut chars = text.chars().peekable();
+        
+        while chars.peek().is_some() {
+            let mut word = 0u16;
+            let mut shift = 10; // Start with highest 5-bit group
+            
+            for _ in 0..3 { // Pack 3 characters per word
+                if let Some(ch) = chars.next() {
+                    let zchar = self.char_to_zchar(ch);
+                    word |= (zchar as u16) << shift;
+                }
+                shift -= 5;
+            }
+            
+            // Set the end bit if this is the last word
+            if chars.peek().is_none() {
+                word |= 0x8000; // Set highest bit
+            }
+            
+            result.push(word);
+        }
+        
+        // Ensure we have at least one word, even for empty text
+        if result.is_empty() {
+            result.push(0x8000); // Empty word with end bit set
+        }
+        
+        Ok(result)
+    }
+    
+    fn char_to_zchar(&self, ch: char) -> u8 {
+        // Convert a character to a Z-character (5-bit value)
+        // This is a simplified mapping
+        
+        match ch {
+            'a'..='z' => (ch as u8) - b'a' + 6,  // a-z maps to 6-31
+            'A'..='Z' => (ch as u8) - b'A' + 6,  // A-Z maps to 6-31 (same as lowercase)
+            ' ' => 0,
+            '0'..='9' => (ch as u8) - b'0' + 8,  // Numbers in A2 alphabet
+            '.' => 18, // Period in A2 alphabet
+            ',' => 19, // Comma in A2 alphabet
+            '!' => 20, // Exclamation in A2 alphabet
+            '?' => 21, // Question mark in A2 alphabet
+            _ => 0,    // Unknown characters map to space
+        }
     }
 
     fn op_copy_table(&mut self) -> Result<(), String> {

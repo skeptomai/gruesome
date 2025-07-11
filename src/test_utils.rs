@@ -188,4 +188,77 @@ impl MockZMachine {
         println!("VERIFY: Mock verify operation");
         Ok(())
     }
+
+    pub fn op_tokenise(&mut self) -> Result<(), String> {
+        // Mock TOKENISE operation
+        // For testing, just parse simple space-separated words
+        if self.operands_buffer.len() < 2 {
+            return Err("TOKENISE instruction missing operands".to_string());
+        }
+        
+        let text_buffer = self.operands_buffer[0] as usize;
+        let parse_buffer = self.operands_buffer[1] as usize;
+        
+        if text_buffer >= self.memory.len() || parse_buffer >= self.memory.len() {
+            return Err("TOKENISE buffer address out of bounds".to_string());
+        }
+        
+        // Get input text from buffer
+        let input_length = self.memory[text_buffer + 1] as usize;
+        let mut input_text = String::new();
+        
+        for i in 0..input_length {
+            if text_buffer + 2 + i < self.memory.len() {
+                input_text.push(self.memory[text_buffer + 2 + i] as char);
+            }
+        }
+        
+        // Simple word parsing (split by spaces)
+        let words: Vec<&str> = input_text.split_whitespace().collect();
+        
+        // Get maximum number of words that can be stored
+        let max_words = self.memory[parse_buffer] as usize;
+        let words_to_store = std::cmp::min(words.len(), max_words);
+        
+        // Store number of words found
+        self.memory[parse_buffer + 1] = words_to_store as u8;
+        
+        // Store each word
+        for (i, word) in words.iter().take(words_to_store).enumerate() {
+            let entry_offset = parse_buffer + 2 + (i * 4);
+            
+            if entry_offset + 3 < self.memory.len() {
+                self.memory[entry_offset] = word.len() as u8;        // word length
+                self.memory[entry_offset + 1] = 2 + i as u8;         // position in buffer
+                self.memory[entry_offset + 2] = 0;                   // dict addr high (not found)
+                self.memory[entry_offset + 3] = 0;                   // dict addr low (not found)
+            }
+        }
+        
+        Ok(())
+    }
+
+    pub fn op_encode_text(&mut self) -> Result<(), String> {
+        // Mock ENCODE_TEXT operation
+        if self.operands_buffer.len() < 4 {
+            return Err("ENCODE_TEXT instruction missing operands".to_string());
+        }
+        
+        let text_buffer = self.operands_buffer[0] as usize;
+        let length = self.operands_buffer[1] as usize;
+        let start_pos = self.operands_buffer[2] as usize;
+        let coded_text_addr = self.operands_buffer[3] as usize;
+        
+        if text_buffer >= self.memory.len() || coded_text_addr >= self.memory.len() {
+            return Err("ENCODE_TEXT buffer address out of bounds".to_string());
+        }
+        
+        // Mock encoding: just store length as first word
+        if coded_text_addr + 1 < self.memory.len() {
+            self.memory[coded_text_addr] = 0x80;  // Mock encoded word with end bit
+            self.memory[coded_text_addr + 1] = length as u8;
+        }
+        
+        Ok(())
+    }
 }
