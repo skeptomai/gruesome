@@ -1,5 +1,4 @@
-
-use rand::{RngCore,SeedableRng,Rng,rngs::StdRng};
+use rand::{rngs::StdRng, Rng, RngCore, SeedableRng};
 
 /// RandMode controls random generator behaviour. May be predictable for testing or truly random for gameplay
 pub enum RandMode {
@@ -8,22 +7,27 @@ pub enum RandMode {
 }
 
 pub struct ZRand {
-    rng : Box<dyn RngCore>,
-    rand_mode : RandMode,
+    rng: Box<dyn RngCore>,
+    rand_mode: RandMode,
 }
 
 impl ZRand {
     pub fn new(rm: RandMode) -> ZRand {
-        ZRand { rng: Box::new(rand::thread_rng()), rand_mode: rm }
+        ZRand {
+            rng: Box::new(rand::thread_rng()),
+            rand_mode: rm,
+        }
     }
 
     pub fn new_uniform() -> ZRand {
         ZRand::new(RandMode::RandomUniform)
     }
 
-
     pub fn new_predictable(seed: u64) -> ZRand {
-        ZRand {rng: Box::new(StdRng::seed_from_u64(seed)), rand_mode: RandMode::Predictable}
+        ZRand {
+            rng: Box::new(StdRng::seed_from_u64(seed)),
+            rand_mode: RandMode::Predictable,
+        }
     }
 
     /// gen_unsigned_rand generates unsigned in range [0..32767]

@@ -1,13 +1,13 @@
 use std::fmt::{Display, Error, Formatter};
 use sub_array::SubArray;
 
+use crate::dictionary::Dictionary;
+use crate::gamememorymap::GameMemoryMap;
 use crate::header::Header;
 use crate::property_defaults::PropertyDefaults;
-use crate::zobject::{ObjectTable, Zobject};
-use crate::dictionary::Dictionary;
 use crate::util::{get_mem_addr, properties_size_by_version, ZTextReader, MAX_PROPERTIES_V3};
+use crate::zobject::{ObjectTable, Zobject};
 use crate::zrand::{RandMode, ZRand};
-use crate::gamememorymap::GameMemoryMap;
 
 /// GameFile is the main data structure for a single game instance
 pub struct GameFile<'a> {
@@ -31,11 +31,12 @@ impl<'a> GameFile<'a> {
         // top of the object table (from header) is actually where the default properties start. objects follow
         // 12.2 Property defaults table
         // The table begins with a block known as the property defaults table. This contains 31 words in Versions 1 to 3
-        // and 63 in Versions 4 and later. When the game attempts to read the value of property n for an object which 
-        // does not provide property n, the n-th entry in this table is the resulting value.        
+        // and 63 in Versions 4 and later. When the game attempts to read the value of property n for an object which
+        // does not provide property n, the n-th entry in this table is the resulting value.
         let property_defaults = header.object_table_addr;
         // It's an address, so the offset is also. Object tree starts after default properties
-        let object_table = header.object_table_addr + (properties_size_by_version(header.version)) * 2;
+        let object_table =
+            header.object_table_addr + (properties_size_by_version(header.version)) * 2;
         let global_variables = header.global_variables;
         // Get the base address of the objects
         // and use the properties addr from the first object to find the end of the object table
@@ -59,7 +60,7 @@ impl<'a> GameFile<'a> {
             rand_mode: RandMode::RandomUniform,
             memory_map,
             object_table: None,
-            dictionary:  None,
+            dictionary: None,
         };
 
         let ot = ObjectTable::new(&g);
@@ -76,7 +77,8 @@ impl<'a> GameFile<'a> {
 
     /// default_properties creates PropertyDefault structure from memory maps property defaults
     pub fn default_properties(&self) -> PropertyDefaults<u8, MAX_PROPERTIES_V3> {
-        let prop_raw: &[u8; MAX_PROPERTIES_V3] = &self.bytes_sized(self.memory_map.property_defaults);
+        let prop_raw: &[u8; MAX_PROPERTIES_V3] =
+            &self.bytes_sized(self.memory_map.property_defaults);
         PropertyDefaults { prop_raw: prop_raw }
     }
 
@@ -104,14 +106,19 @@ impl<'a> GameFile<'a> {
         self.memory_map.object_table
     }
 
+    /// Get a reference to the object table if it exists
+    pub fn get_object_table(&self) -> Option<&ObjectTable> {
+        self.object_table.as_ref()
+    }
+
     /// bytes is an accessor that returns all the bytes in the memory map as [u8]
     pub fn bytes(&self) -> &'a [u8] {
         &self.memory_map.bytes[..]
     }
 
-    pub fn bytes_sized<const N: usize>(&self, offset: usize) -> &'a [u8;N] {
+    pub fn bytes_sized<const N: usize>(&self, offset: usize) -> &'a [u8; N] {
         log::debug!("calling bytes_sized");
-        let sub : &[u8; N] = &self.memory_map.bytes.sub_array_ref(offset);
+        let sub: &[u8; N] = &self.memory_map.bytes.sub_array_ref(offset);
         &sub
     }
 }
@@ -119,7 +126,6 @@ impl<'a> GameFile<'a> {
 impl<'a> Display for GameFile<'a> {
     /// formats the GameFile struct
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-
         write!(
             f,
             "
@@ -135,30 +141,39 @@ impl<'a> Display for GameFile<'a> {
         let mut abbrev_table_offset = self.memory_map.abbrev_table;
         let mut si = 1;
         loop {
-            let abbrev_string_addr = (get_mem_addr(&self.bytes(), abbrev_table_offset as usize).unwrap() *2) as usize;
-            writeln!(f, "[{}] \"{}\"", si, Dictionary::read_text(&self, abbrev_string_addr).unwrap())?;
-            si+=1;
-            abbrev_table_offset+=2;
-            if abbrev_table_offset >= self.memory_map.property_defaults {break}
+            let abbrev_string_addr =
+                (get_mem_addr(&self.bytes(), abbrev_table_offset as usize).unwrap() * 2) as usize;
+            writeln!(
+                f,
+                "[{}] \"{}\"",
+                si,
+                Dictionary::read_text(&self, abbrev_string_addr).unwrap()
+            )?;
+            si += 1;
+            abbrev_table_offset += 2;
+            if abbrev_table_offset >= self.memory_map.property_defaults {
+                break;
+            }
         }
 
         match &self.object_table {
             Some(ot) => {
                 write!(f, "{}", ot)?;
-            },
-            _ => {write!(f, "no objects found")?;}
+            }
+            _ => {
+                write!(f, "no objects found")?;
+            }
         }
 
         match &self.dictionary {
             Some(d) => {
-               write!(f,"{}", d)?;
-            },
-            _ => {write!(f,"no dictionary!")?;}
+                write!(f, "{}", d)?;
+            }
+            _ => {
+                write!(f, "no dictionary!")?;
+            }
         }
 
         Ok(())
     }
 }
-
-
-

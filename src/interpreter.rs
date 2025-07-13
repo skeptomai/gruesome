@@ -54,6 +54,80 @@ impl Interpreter {
     }
 
     /// Run the interpreter with an optional instruction limit
+    /// Dump current game state for debugging
+    fn dump_game_state(&self, context: &str) {
+        debug!("=== GAME STATE DUMP: {} ===", context);
+        
+        // Current location (global variable 0)
+        if let Ok(location) = self.vm.read_variable(16) { // Global 0 = variable 16
+            debug!("Current location (G00): {}", location);
+        }
+        
+        // Player object (often stored in a global, commonly G01 or G02)
+        for i in 0..5 {
+            if let Ok(value) = self.vm.read_variable(16 + i) {
+                debug!("Global {:02}: {}", i, value);
+            }
+        }
+        
+        // Check attributes of current location
+        if let Ok(location) = self.vm.read_variable(16) {
+            if location > 0 && location < 256 {
+                debug!("=== Location {} attributes ===", location);
+                for attr in 0..32 {
+                    if let Ok(has_attr) = self.vm.test_attribute(location, attr) {
+                        if has_attr {
+                            debug!("  Location {} has attribute {} ({})", location, attr, 
+                                   match attr {
+                                       2 => "LIGHT",
+                                       6 => "VISITED?", 
+                                       8 => "LIT?",
+                                       9 => "CONTAINER?",
+                                       20 => "ROOM?",
+                                       _ => "UNKNOWN"
+                                   });
+                        }
+                    }
+                }
+                
+                // Specifically check common light attributes
+                for light_attr in [2, 8, 15] {
+                    if let Ok(has_light) = self.vm.test_attribute(location, light_attr) {
+                        debug!("  Location {} light check attr {}: {}", location, light_attr, has_light);
+                    }
+                }
+            }
+        }
+        
+        // Check player object (assume it's object 4 based on insert_obj we saw)
+        let player_obj = 4;
+        debug!("=== Player object {} attributes ===", player_obj);
+        for attr in 0..32 {
+            if let Ok(has_attr) = self.vm.test_attribute(player_obj, attr) {
+                if has_attr {
+                    debug!("  Player {} has attribute {}", player_obj, attr);
+                }
+            }
+        }
+        
+        // Check for objects that might be light sources (commonly have attribute 2 or 12)
+        debug!("=== Checking for light sources ===");
+        for obj in 1..50 {
+            if let Ok(has_light_attr) = self.vm.test_attribute(obj, 2) {
+                if has_light_attr {
+                    debug!("  Object {} has light attribute 2", obj);
+                }
+            }
+            if let Ok(has_light_attr) = self.vm.test_attribute(obj, 12) {
+                if has_light_attr {
+                    debug!("  Object {} has light attribute 12", obj);
+                }
+            }
+        }
+        
+        debug!("=== END GAME STATE DUMP ===");
+    }
+
     pub fn run_with_limit(&mut self, max_instructions: Option<u64>) -> Result<(), String> {
         info!("Starting Z-Machine interpreter...");
         info!("Initial PC: {:05x}", self.vm.pc);
@@ -82,6 +156,11 @@ impl Interpreter {
                     "{:05x}: {} (form={:?}, opcode={:02x})",
                     pc, instruction, instruction.form, instruction.opcode
                 );
+            }
+            
+            // Dump game state after serial number printing (around PC 0x06fb5-0x06fc0)
+            if pc >= 0x06fb5 && pc <= 0x06fc0 {
+                self.dump_game_state(&format!("after serial number at PC {:05x}", pc));
             }
 
             // TODO: Fix the instruction sequence misalignment properly
@@ -716,8 +795,8 @@ impl Interpreter {
                 // storew
                 if operands.len() < 3 {
                     return Err(format!(
-                        "storew requires 3 operands, got {}",
-                        operands.len()
+                        "storew at PC {:05x} requires 3 operands, got {} (operands: {:?}) - instruction form: {:?}, opcode: {:02x}, operand_count: {:?}",
+                        self.vm.pc, operands.len(), operands, inst.form, inst.opcode, inst.operand_count
                     ));
                 }
                 let addr = operands[0] as u32 + (operands[1] as u32 * 2);

@@ -1,9 +1,8 @@
-use std::array::TryFromSliceError;
-use std::{io, usize};
-use std::collections::HashMap;
-use bitreader::{BitReader, BitReaderError};
 use crate::game::GameFile;
-
+use bitreader::{BitReader, BitReaderError};
+use std::array::TryFromSliceError;
+use std::collections::HashMap;
+use std::{io, usize};
 
 ///There are three possible alphabets: lower case, upper case, and number/symbol
 ///
@@ -37,42 +36,44 @@ pub type Zchar = u8;
 /// ZChars are the Zork character type with bit packing
 #[derive(Debug, Clone, Copy)]
 pub struct UnpackedZChars<const U: usize> {
-    pub last : bool,
-    pub chars : [Zchar;U],
+    pub last: bool,
+    pub chars: [Zchar; U],
 }
 
 impl<const U: usize> UnpackedZChars<U> {
     /// We can iterate over ZChars
     fn iter(&self) -> UnpackedZCharsIter<'_, U> {
-        UnpackedZCharsIter { chars: &self.chars, pos: 0 }
+        UnpackedZCharsIter {
+            chars: &self.chars,
+            pos: 0,
+        }
     }
 }
 
 /// The actual ZChar iterator
 pub struct UnpackedZCharsIter<'a, const U: usize> {
-    pos : usize,
-    chars: &'a [u8;U],
+    pos: usize,
+    chars: &'a [u8; U],
 }
 
 impl<'a, const U: usize> Iterator for UnpackedZCharsIter<'a, U> {
-    type Item  = &'a u8;
+    type Item = &'a u8;
     /// return the next ZChar in 'string'-like thing
     fn next(&mut self) -> Option<Self::Item> {
         if self.pos < U {
             let cur_pos = self.pos;
-            self.pos = self.pos+1;
+            self.pos = self.pos + 1;
             Some(&self.chars[cur_pos])
         } else {
             None
         }
-
     }
 }
 
 impl<'a, const U: usize> IntoIterator for &'a UnpackedZChars<U> {
     type Item = &'a u8;
 
-    type IntoIter  = UnpackedZCharsIter<'a, U>;
+    type IntoIter = UnpackedZCharsIter<'a, U>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -85,7 +86,7 @@ pub trait ZTextReader {
 }
 
 /// Look up a char in the alphabet mapping
-pub fn lookup_char(c: u8, alphabet : &Alphabets) -> crate::util::Zchar {
+pub fn lookup_char(c: u8, alphabet: &Alphabets) -> crate::util::Zchar {
     // in the published tables, read char mappings start at index 6
     ALPHABETMAP[alphabet].as_bytes()[(c as usize) - 6]
 }
@@ -111,7 +112,10 @@ pub fn read_zchars_from_word(word: &[u8; 2]) -> Result<UnpackedZChars<3>, BitRea
     let mut br = BitReader::new(word);
 
     // lop off top bit as designator of 'last chars here'
-    let mut pc = UnpackedZChars{last: br.read_u8(1)? == 1, chars: [0,0,0]};
+    let mut pc = UnpackedZChars {
+        last: br.read_u8(1)? == 1,
+        chars: [0, 0, 0],
+    };
 
     for i in 0..3 {
         pc.chars[i] = br.read_u8(5)?;
@@ -131,10 +135,8 @@ pub fn read_zchars_from_word(word: &[u8; 2]) -> Result<UnpackedZChars<3>, BitRea
 ///| 4P + 8S_O   | Versions 6 and 7, for print_paddr   |
 ///| 8P          | Version 8                           |
 pub fn get_mem_addr(addr: &[u8], counter: usize) -> Result<usize, TryFromSliceError> {
-    match <[u8; 2]>::try_from(&addr[counter..counter + 2]){
+    match <[u8; 2]>::try_from(&addr[counter..counter + 2]) {
         Ok(u) => Ok(u16::from_be_bytes(u) as usize),
-        Err(error) => Err(error)
+        Err(error) => Err(error),
     }
 }
-
-

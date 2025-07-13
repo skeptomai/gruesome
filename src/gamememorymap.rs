@@ -3,7 +3,7 @@ use std::fmt::{Display, Error, Formatter};
 /// GameMemoryMap reflects the internal structure of a loaded game
 #[derive(Debug)]
 pub struct GameMemoryMap<'a> {
-    pub bytes: &'a [u8],    
+    pub bytes: &'a [u8],
     pub header_addr: usize,
     pub abbrev_strings: usize,
     pub abbrev_table: usize,

@@ -114,6 +114,7 @@ impl Instruction {
             || addr == 0x08cb0
             || addr == 0x08cb4
             || addr == 0x08cbc
+            || addr == 0x05953
             || (opcode_byte >> 6 < 2 && (opcode_byte & 0x1F) == 0)
         {
             debug!("=== INSTRUCTION DEBUG at {:05x} ===", addr);

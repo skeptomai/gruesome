@@ -9,13 +9,10 @@ pub struct Routine {
     start_position: usize,
     // Header
     num_local_variables: u8,
-    local_variables : [u8;16],
-    
+    local_variables: [u8; 16],
 }
 
-impl Routine {
-
-}
+impl Routine {}
 
 impl Display for Routine {
     fn fmt(&self, _f: &mut Formatter<'_>) -> Result<(), Error> {
