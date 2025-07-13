@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
+use log::info;
 
 use crate::util::get_mem_addr;
 
@@ -36,7 +37,7 @@ pub struct Operand {
     pub value: u16,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Instruction {
     pub opcode: u8,
     pub form: InstructionForm,
@@ -49,6 +50,115 @@ pub struct Instruction {
 }
 
 impl Instruction {
+    fn get_opcode_name(opcode: u8, operand_count: &OperandCount) -> &'static str {
+        match operand_count {
+            OperandCount::Op0 => match opcode {
+                0x00 => "rtrue",
+                0x01 => "rfalse",
+                0x02 => "print",
+                0x03 => "print_ret",
+                0x04 => "nop",
+                0x05 => "save",
+                0x06 => "restore",
+                0x07 => "restart",
+                0x08 => "ret_popped",
+                0x09 => "catch",
+                0x0A => "quit",
+                0x0B => "new_line",
+                0x0C => "show_status",
+                0x0D => "verify",
+                0x0E => "extended",
+                0x0F => "piracy",
+                _ => "unknown_0op",
+            },
+            OperandCount::Op1 => match opcode {
+                0x00 => "jz",
+                0x01 => "get_sibling",
+                0x02 => "get_child",
+                0x03 => "get_parent",
+                0x04 => "get_prop_len",
+                0x05 => "inc",
+                0x06 => "dec",
+                0x07 => "print_addr",
+                0x08 => "call_1s",
+                0x09 => "remove_obj",
+                0x0A => "print_obj",
+                0x0B => "ret",
+                0x0C => "jump",
+                0x0D => "print_paddr",
+                0x0E => "load",
+                0x0F => "not",
+                _ => "unknown_1op",
+            },
+            OperandCount::Op2 => match opcode {
+                0x01 => "je",
+                0x02 => "jl",
+                0x03 => "jg",
+                0x04 => "dec_chk",
+                0x05 => "inc_chk",
+                0x06 => "jin",
+                0x07 => "test",
+                0x08 => "or",
+                0x09 => "and",
+                0x0A => "test_attr",
+                0x0B => "set_attr",
+                0x0C => "clear_attr",
+                0x0D => "store",
+                0x0E => "insert_obj",
+                0x0F => "loadw",
+                0x10 => "loadb",
+                0x11 => "get_prop",
+                0x12 => "get_prop_addr",
+                0x13 => "get_next_prop",
+                0x14 => "add",
+                0x15 => "sub",
+                0x16 => "mul",
+                0x17 => "div",
+                0x18 => "mod",
+                0x19 => "call_2s",
+                0x1A => "call_2n",
+                0x1B => "set_colour",
+                0x1C => "throw",
+                _ => "unknown_2op",
+            },
+            OperandCount::Var => match opcode {
+                0x00 => "call",
+                0x01 => "storew",
+                0x02 => "storeb",
+                0x03 => "put_prop",
+                0x04 => "sread",
+                0x05 => "print_char",
+                0x06 => "print_num",
+                0x07 => "random",
+                0x08 => "push",
+                0x09 => "pull",
+                0x0A => "split_window",
+                0x0B => "set_window",
+                0x0C => "call_vs2",
+                0x0D => "erase_window",
+                0x0E => "erase_line",
+                0x0F => "set_cursor",
+                0x10 => "get_cursor",
+                0x11 => "set_text_style",
+                0x12 => "buffer_mode",
+                0x13 => "output_stream",
+                0x14 => "input_stream",
+                0x15 => "sound_effect",
+                0x16 => "read_char",
+                0x17 => "scan_table",
+                0x18 => "not_v4",
+                0x19 => "call_vn",
+                0x1A => "call_vn2",
+                0x1B => "tokenise",
+                0x1C => "encode_text",
+                0x1D => "copy_table",
+                0x1E => "print_table",
+                0x1F => "check_arg_count",
+                _ => "unknown_var",
+            },
+        }
+    }
+
     pub fn decode(memory: &[u8], pc: usize) -> Result<Instruction, String> {
         if pc >= memory.len() {
             return Err("PC out of bounds".to_string());
@@ -204,10 +314,11 @@ impl Instruction {
             let single_byte = (branch_byte & 0x40) != 0;
             
             let offset = if single_byte {
-                // 6-bit signed offset (-64 to +63)
-                let raw_offset = (branch_byte & 0x3F) as i8;
-                if raw_offset > 63 {
-                    (raw_offset as i16) - 128  // Convert to proper signed value
+                // 6-bit signed offset 
+                let raw_offset = branch_byte & 0x3F;
+                // Sign extend from 6 bits
+                if raw_offset & 0x20 != 0 {
+                    (raw_offset as i16) | (-64i16)  // Sign extend
                 } else {
                     raw_offset as i16
                 }
@@ -234,7 +345,7 @@ impl Instruction {
 
         let length = cursor - pc;
 
-        Ok(Instruction {
+        let instruction = Instruction {
             opcode,
             form,
             operand_count,
@@ -243,7 +354,10 @@ impl Instruction {
             branch_offset,
             text: None,           // Will be set by execution engine if needed
             length,
-        })
+        };
+
+
+        Ok(instruction)
     }
 
     fn decode_operand_type(bits: u8) -> OperandType {
@@ -315,9 +429,53 @@ impl Instruction {
     }
 }
 
+impl Debug for Instruction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        let opcode_name = Self::get_opcode_name(self.opcode, &self.operand_count);
+        write!(
+            f,
+            "name: {} (opcode={:#04x}, form={:?}, operand_count={:?}, operands={:?}, store_var={:?}, branch={:?})",
+            opcode_name,
+            self.opcode,
+            self.form,
+            self.operand_count,
+            self.operands,
+            self.store_variable,
+            self.branch_offset
+        )
+    }
+}
+
 impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "Opcode: {:#04x}, Form: {:?}, Count: {:?}, Operands: {:?}", 
-               self.opcode, self.form, self.operand_count, self.operands)
+        let opcode_name = Self::get_opcode_name(self.opcode, &self.operand_count);
+        write!(f, "{}", opcode_name)?;
+        
+        // Show operands in a more readable format
+        if !self.operands.is_empty() {
+            write!(f, " ")?;
+            for (i, operand) in self.operands.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                match operand.operand_type {
+                    OperandType::Variable => write!(f, "var{}", operand.value)?,
+                    OperandType::SmallConstant | OperandType::LargeConstant => write!(f, "#{}", operand.value)?,
+                    OperandType::Omitted => write!(f, "_")?,
+                }
+            }
+        }
+        
+        // Show store variable if present
+        if let Some(var) = self.store_variable {
+            write!(f, " -> var{}", var)?;
+        }
+        
+        // Show branch offset if present
+        if let Some(offset) = self.branch_offset {
+            write!(f, " ?{}", offset)?;
+        }
+        
+        Ok(())
     }
 }

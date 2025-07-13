@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::io::{self, Write, Read, stdin, stdout};
 use std::fs::File;
 use std::path::Path;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+use log::{debug, info};
 use crate::game::GameFile;
 use crate::instruction::{Instruction, OperandType, OperandCount};
 use crate::util::ZTextReader;
@@ -37,7 +39,6 @@ pub struct ZMachine<'a> {
     pub global_vars: HashMap<u8, u16>,
     pub local_vars: [u16; 15],  // Max 15 local variables
     pub running: bool,
-    pub loop_detection_counter: u32,  // To detect infinite loops
     pub operands_buffer: Vec<u16>,  // Buffer for current instruction operands
     pub current_branch_offset: Option<i16>,  // Branch offset for current instruction
     pub current_store_variable: u8,  // Store variable for current instruction
@@ -82,10 +83,81 @@ pub struct CallFrame {
 }
 
 impl<'a> ZMachine<'a> {
+    
+    pub fn get_object_address(&self, obj_num: u16) -> Result<usize, String> {
+        if obj_num == 0 {
+            return Err("Object 0 is invalid".to_string());
+        }
+        
+        let object_table_addr = self.game.header().object_table_addr;
+        let property_defaults_size = if self.game.header().version <= 3 { 31 } else { 63 };
+        let object_entry_size = if self.game.header().version <= 3 { 9 } else { 14 };
+        
+        // Calculate object address
+        let object_addr = object_table_addr + 
+                         (property_defaults_size * 2) +  // Skip property defaults
+                         ((obj_num as usize - 1) * object_entry_size);
+                         
+        Ok(object_addr)
+    }
+    
+    
+    pub fn get_variable(&self, var_num: u8) -> Result<u16, String> {
+        if var_num == 0 {
+            // Variable 0 is stack
+            if self.stack.is_empty() {
+                Err("Stack is empty".to_string())
+            } else {
+                Ok(self.stack[self.stack.len() - 1])
+            }
+        } else if var_num <= 15 {
+            // Variables 1-15 are locals
+            Ok(self.local_vars[(var_num - 1) as usize])
+        } else {
+            // Variables 16-255 are globals
+            let globals_addr = self.game.header().global_variables;
+            let addr = globals_addr + ((var_num - 16) as usize * 2);
+            
+            if addr + 1 >= self.memory.len() {
+                return Err(format!("Global variable {} address out of bounds", var_num));
+            }
+            
+            Ok(((self.memory[addr] as u16) << 8) | (self.memory[addr + 1] as u16))
+        }
+    }
+    
+    pub fn dump_strings(&self, start_addr: usize, count: usize) -> String {
+        let mut output = String::new();
+        output.push_str(&format!("Strings starting at {:#06x}:\n", start_addr));
+        
+        let mut addr = start_addr;
+        let mut found = 0;
+        
+        while found < count && addr < self.memory.len() {
+            match self.read_zstring_at_address(addr) {
+                Ok((text, bytes_read)) => {
+                    output.push_str(&format!("{:#06x}: \"{}\"\n", addr, text));
+                    addr += bytes_read.max(1);
+                    found += 1;
+                },
+                Err(_) => {
+                    addr += 1;
+                }
+            }
+        }
+        
+        output
+    }
+    
+    pub fn decode_instruction(&self, pc: usize) -> Result<Instruction, String> {
+        Instruction::decode(&self.memory, pc)
+    }
+    
+    
     pub fn new(game: &'a GameFile<'a>) -> Self {
         let memory = game.bytes().to_vec();
         let pc = game.header().initial_pc;
-        
+
         Self {
             game,
             memory,
@@ -95,7 +167,6 @@ impl<'a> ZMachine<'a> {
             global_vars: HashMap::new(),
             local_vars: [0; 15],
             running: true,
-            loop_detection_counter: 0,
             operands_buffer: Vec::new(),
             current_branch_offset: None,
             current_store_variable: 255,
@@ -147,40 +218,11 @@ impl<'a> ZMachine<'a> {
         ]
     }
 
-    pub fn run(&mut self) -> Result<(), String> {
-        println!("Starting Z-Machine execution at PC: {:#06x}", self.pc);
-        
-        while self.running {
-            let instruction = Instruction::decode(&self.memory, self.pc)?;
-            println!("PC: {:#06x} - {} | Bytes: [{:#04x} {:#04x} {:#04x}]", 
-                    self.pc, instruction, 
-                    self.memory[self.pc],
-                    if self.pc + 1 < self.memory.len() { self.memory[self.pc + 1] } else { 0 },
-                    if self.pc + 2 < self.memory.len() { self.memory[self.pc + 2] } else { 0 });
-            
-            self.pc += instruction.length;
-            self.execute_instruction(instruction)?;
-        }
-        
-        Ok(())
-    }
-    
+
     pub fn run_interactive(&mut self) -> Result<(), String> {
         while self.running {
-            // Simple loop detection - if we've executed too many instructions without user input,
-            // something is probably wrong
-            self.loop_detection_counter += 1;
-            if self.loop_detection_counter > 100000 {
-                // Reset counter to allow continued execution but warn about the issue
-                self.loop_detection_counter = 0;
-                eprintln!("Warning: Detected possible infinite loop - resetting counter");
-                eprintln!("PC: {:#x}, Stack size: {}, Call stack size: {}", self.pc, self.stack.len(), self.call_stack.len());
-                return Err("Infinite loop detected - stopping execution".to_string());
-            }
-            
+
             let instruction = Instruction::decode(&self.memory, self.pc)?;
-            
-            
             self.pc += instruction.length;
             self.execute_instruction(instruction)?;
         }
@@ -201,8 +243,48 @@ impl<'a> ZMachine<'a> {
         
         // Store the store_variable field for instructions that need it
         self.current_store_variable = instruction.store_variable.unwrap_or(255); // 255 = no store variable
+
+        // Debug the darkness calculation routine
+        if self.pc >= 0x6c00 && self.pc <= 0x6d00 {
+            debug!("DARKNESS ROUTINE: PC {:#06x}: {:?}", self.pc - instruction.length, instruction);
+        }
+
+        // Track instructions after copyright message
+        unsafe {
+            static mut TRACK_NEXT: i32 = 0;
+            if TRACK_NEXT > 0 {
+                info!("POST-COPYRIGHT {}: PC {:#06x} - {:?}", 
+                     21 - TRACK_NEXT, self.pc - instruction.length, instruction);
+                TRACK_NEXT -= 1;
+            }
+        }
         
+        // Special debugging for tracking location-related code
+        if self.pc >= 0x8cb0 && self.pc <= 0x8ce5 {
+            debug!("Executing at PC {:#06x}: {:?}", self.pc - instruction.length, instruction);
+            
+            // Check location (global 0) whenever we're in this region
+            let globals_addr = self.game.header().global_variables;
+            let location = ((self.memory[globals_addr as usize] as u16) << 8) | 
+                          (self.memory[globals_addr as usize + 1] as u16);
+            debug!("  Current location (global 0): {}", location);
+            
+            // If checking var82, show its value
+            if instruction.opcode == 0x00 && instruction.operands.len() > 0 && 
+               instruction.operands[0].operand_type == crate::instruction::OperandType::Variable && 
+               instruction.operands[0].value == 82 {
+                let var82_value = self.read_variable(82).unwrap_or(0xFFFF);
+                debug!("  Checking var82 = {} at darkness check", var82_value);
+            }
+            
+            // Track returns in this region
+            if instruction.opcode == 0x0b && instruction.operand_count == OperandCount::Op1 {
+                info!("  Returning with value {} - darkness routine complete", 
+                     if !instruction.operands.is_empty() { instruction.operands[0].value } else { 0 });
+            }
+        }
         
+
         match instruction.operand_count {
             OperandCount::Op0 => self.execute_0op(instruction),
             OperandCount::Op1 => self.execute_1op(instruction),
@@ -396,12 +478,45 @@ impl<'a> ZMachine<'a> {
                     // Local variable
                     Ok(self.local_vars[(operand.value - 1) as usize])
                 } else {
-                    // Global variable
-                    Ok(self.global_vars.get(&(operand.value as u8)).copied().unwrap_or(0))
+                    // Global variable - read from memory
+                    let global_num = operand.value as u8;
+                    let global_addr = self.game.header().global_variables + ((global_num as usize - 16) * 2);
+                    if global_addr + 1 < self.memory.len() {
+                        let value = ((self.memory[global_addr] as u16) << 8) | (self.memory[global_addr + 1] as u16);
+                        Ok(value)
+                    } else {
+                        Ok(0)
+                    }
                 }
             },
             OperandType::Omitted => Err("Cannot resolve omitted operand".to_string()),
         }
+    }
+
+    fn read_variable(&mut self, var: u8) -> Result<u16, String> {
+        let value = if var == 0 {
+            // Stack - peek at top without popping
+            if self.stack.is_empty() {
+                return Err("Stack underflow when reading variable".to_string());
+            }
+            self.stack[self.stack.len() - 1]
+        } else if var <= 15 {
+            // Local variable
+            self.local_vars[(var - 1) as usize]
+        } else {
+            // Global variable - read from memory
+            let global_addr = self.game.header().global_variables + ((var as usize - 16) * 2);
+            if global_addr + 1 < self.memory.len() {
+                let high = self.memory[global_addr] as u16;
+                let low = self.memory[global_addr + 1] as u16;
+                let value = (high << 8) | low;
+                value
+            } else {
+                eprintln!("WARNING: Trying to read global variable {} at invalid address {:#x}", var, global_addr);
+                0
+            }
+        };
+        Ok(value)
     }
 
     fn store_variable(&mut self, var: u8, value: u16) -> Result<(), String> {
@@ -417,6 +532,7 @@ impl<'a> ZMachine<'a> {
             // Stack
             if self.stack.len() > 1000 {
                 eprintln!("Stack overflow at PC {:#x}, call stack size: {}, instruction causing overflow was likely an infinite loop", self.pc, self.call_stack.len());
+                eprintln!("Stack size: {}", self.stack.len());
                 return Err("Stack overflow - too many items on stack".to_string());
             }
             self.stack.push(value);
@@ -424,8 +540,33 @@ impl<'a> ZMachine<'a> {
             // Local variable
             self.local_vars[(var - 1) as usize] = value;
         } else {
-            // Global variable
-            self.global_vars.insert(var, value);
+            // Global variable - write to memory
+            let global_addr = self.game.header().global_variables + ((var as usize - 16) * 2);
+            if global_addr + 1 < self.memory.len() {
+                // Debug: Check if we're writing to header area
+                if global_addr < 64 {
+                    debug!("WARNING: Writing to header area! Global {} at addr {:#x}, value {:#x}", var, global_addr, value);
+                }
+                
+                // Special debug for location variable (global 0 = var 16)
+                if var == 16 {
+                    info!("Setting location (global 0) to object {} at PC {:#06x}", value, self.pc);
+                    if value == 180 {
+                        info!("  -> This is West of House!");
+                    } else if value == 0 {
+                        info!("  -> This is nowhere (pitch black)");
+                    }
+                }
+                
+                // Debug other important globals
+                if var >= 16 && var <= 30 {
+                    debug!("Setting global {} to {} at PC {:#06x}", var - 16, value, self.pc);
+                }
+                
+                
+                self.memory[global_addr] = (value >> 8) as u8;      // High byte
+                self.memory[global_addr + 1] = (value & 0xFF) as u8; // Low byte
+            }
         }
         Ok(())
     }
@@ -478,7 +619,7 @@ impl<'a> ZMachine<'a> {
             pc: self.pc as u32,
             stack_size: self.stack.len() as u32,
             call_stack_size: self.call_stack.len() as u32,
-            global_vars_size: self.global_vars.len() as u32,
+            global_vars_size: 240, // Z-machine has 240 global variables
             dynamic_mem_size: dynamic_mem_size as u32,
             random_seed: self.random_seed,
         };
@@ -507,9 +648,10 @@ impl<'a> ZMachine<'a> {
             }
         }
         
-        // Write global variables
-        for (&key, &value) in &self.global_vars {
-            file.write_all(&key.to_le_bytes()).map_err(|e| format!("Failed to write global vars: {}", e))?;
+        // Write global variables from memory
+        for i in 0..240u8 {
+            let value = self.read_global(i);
+            file.write_all(&i.to_le_bytes()).map_err(|e| format!("Failed to write global vars: {}", e))?;
             file.write_all(&value.to_le_bytes()).map_err(|e| format!("Failed to write global vars: {}", e))?;
         }
         
@@ -707,8 +849,6 @@ impl<'a> ZMachine<'a> {
     
     pub fn op_restart(&mut self) -> Result<(), String> {
         // RESTART instruction - restarts the game
-        eprintln!("DEBUG: RESTART called at PC {:#x}, stack size: {}", self.pc, self.stack.len());
-        println!("RESTART: Restarting game");
         
         // Reset Z-machine state to initial conditions
         self.pc = self.game.header().initial_pc;
@@ -791,8 +931,26 @@ impl<'a> ZMachine<'a> {
 
     fn op_print(&mut self) -> Result<(), String> {
         // Print immediate string following instruction
+        let pc_before = self.pc;
         let (text, _length) = self.read_zstring_inline()?;
+        info!("PRINT at PC {:#06x}: '{}'", pc_before, text);
+        
+        // Check if this might be a room description by looking for "West of House"
+        if text.contains("West of House") || text.contains("pitch black") {
+            info!(">>> FOUND ROOM DESCRIPTION TEXT: '{}'", text);
+        }
+        
         self.write_output(&text)?;
+        
+        // Debug: Check if we just printed the copyright message
+        if text.contains("Serial number") {
+            info!("Just printed serial number - room description should come next");
+            // Log next few instructions
+            unsafe {
+                static mut TRACK_NEXT: i32 = 0;
+                TRACK_NEXT = 20; // Track next 20 instructions
+            }
+        }
         Ok(())
     }
 
@@ -827,7 +985,7 @@ impl<'a> ZMachine<'a> {
         };
         
         // Format status line
-        let status_line = format!("{}    Score: {}  Moves: {}", location_name, score, moves);
+        let _status_line = format!("{}    Score: {}  Moves: {}", location_name, score, moves);
         
         // Switch to upper window (status line)
         let current_window = self.current_window;
@@ -862,8 +1020,9 @@ impl<'a> ZMachine<'a> {
             upper_window.cursor_col = 1;
         }
         
-        // Output to status line
-        self.write_output(&format!("\x1b[1;1H\x1b[K{}", status_line))?;
+        // Output to status line - only in debug mode to avoid cursor jumping
+        if std::env::args().any(|arg| arg == "--debug") {
+        }
         
         // Switch back to original window
         self.current_window = current_window;
@@ -886,10 +1045,12 @@ impl<'a> ZMachine<'a> {
         Ok(())
     }
 
+    // TODO: BUGBUG: maybe have quit return something to the
+    // main loop that signifies quitting and exit from there instead?
     fn op_quit(&mut self) -> Result<(), String> {
         println!("Game quit.");
         self.running = false;
-        Ok(())
+        std::process::exit(0);
     }
 
     fn op_new_line(&mut self) -> Result<(), String> {
@@ -971,14 +1132,13 @@ impl<'a> ZMachine<'a> {
         
         // Get current value of variable
         let current_value = if var_num == 0 {
+            // For inc/dec, we need to pop from stack, not peek
             if self.stack.is_empty() {
                 return Err("Stack underflow in inc".to_string());
             }
             self.stack.pop().unwrap()
-        } else if var_num <= 15 {
-            self.local_vars[(var_num - 1) as usize]
         } else {
-            self.global_vars.get(&var_num).copied().unwrap_or(0)
+            self.read_variable(var_num)?
         };
         
         // Increment the value
@@ -993,14 +1153,13 @@ impl<'a> ZMachine<'a> {
         
         // Get current value of variable
         let current_value = if var_num == 0 {
+            // For inc/dec, we need to pop from stack, not peek
             if self.stack.is_empty() {
                 return Err("Stack underflow in dec".to_string());
             }
             self.stack.pop().unwrap()
-        } else if var_num <= 15 {
-            self.local_vars[(var_num - 1) as usize]
         } else {
-            self.global_vars.get(&var_num).copied().unwrap_or(0)
+            self.read_variable(var_num)?
         };
         
         // Decrement the value
@@ -1013,6 +1172,13 @@ impl<'a> ZMachine<'a> {
     pub fn op_print_addr(&mut self, operand: u16) -> Result<(), String> {
         // Print string at given byte address
         let (text, _) = self.read_zstring_at_address(operand as usize)?;
+        info!("PRINT_ADDR at PC {:#06x}: byte addr {:#06x}: '{}'", self.pc, operand, text);
+        
+        // Check if this might be a room description
+        if text.contains("West of House") || text.contains("pitch black") {
+            info!(">>> FOUND ROOM DESCRIPTION TEXT via PRINT_ADDR: '{}'", text);
+        }
+        
         self.write_output(&text)?;
         Ok(())
     }
@@ -1080,6 +1246,7 @@ impl<'a> ZMachine<'a> {
         
         match self.get_object_name(operand) {
             Ok(name) => {
+                info!("PRINT_OBJ: Object {} = '{}'", operand, name);
                 self.write_output(&name)?;
                 Ok(())
             }
@@ -1102,6 +1269,13 @@ impl<'a> ZMachine<'a> {
         // Print string at given packed address
         let byte_addr = self.convert_packed_address(operand);
         let (text, _) = self.read_zstring_at_address(byte_addr)?;
+        info!("PRINT_PADDR at PC {:#06x}: packed {:#06x} -> byte {:#06x}: '{}'", 
+              self.pc, operand, byte_addr, text);
+        
+        // Check if this might be a room description
+        if text.contains("West of House") || text.contains("pitch black") {
+            info!(">>> FOUND ROOM DESCRIPTION TEXT via PRINT_PADDR: '{}'", text);
+        }
         self.write_output(&text)?;
         Ok(())
     }
@@ -1110,16 +1284,7 @@ impl<'a> ZMachine<'a> {
         let var_num = operand as u8;
         
         // Get value of variable
-        let value = if var_num == 0 {
-            if self.stack.is_empty() {
-                return Err("Stack underflow in load".to_string());
-            }
-            self.stack[self.stack.len() - 1]  // Peek at top without popping
-        } else if var_num <= 15 {
-            self.local_vars[(var_num - 1) as usize]
-        } else {
-            self.global_vars.get(&var_num).copied().unwrap_or(0)
-        };
+        let value = self.read_variable(var_num)?;
         
         // Store the loaded value (result of LOAD instruction)
         self.store_variable(self.current_store_variable, value)
@@ -1153,14 +1318,13 @@ impl<'a> ZMachine<'a> {
         
         // Get current value of variable
         let current_value = if var_num == 0 {
+            // For inc/dec, we need to pop from stack, not peek
             if self.stack.is_empty() {
                 return Err("Stack underflow in dec_chk".to_string());
             }
             self.stack.pop().unwrap()
-        } else if var_num <= 15 {
-            self.local_vars[(var_num - 1) as usize]
         } else {
-            self.global_vars.get(&var_num).copied().unwrap_or(0)
+            self.read_variable(var_num)?
         };
         
         // Decrement the value
@@ -1180,14 +1344,13 @@ impl<'a> ZMachine<'a> {
         
         // Get current value of variable
         let current_value = if var_num == 0 {
+            // For inc/dec, we need to pop from stack, not peek
             if self.stack.is_empty() {
                 return Err("Stack underflow in inc_chk".to_string());
             }
             self.stack.pop().unwrap()
-        } else if var_num <= 15 {
-            self.local_vars[(var_num - 1) as usize]
         } else {
-            self.global_vars.get(&var_num).copied().unwrap_or(0)
+            self.read_variable(var_num)?
         };
         
         // Increment the value
@@ -1233,8 +1396,46 @@ impl<'a> ZMachine<'a> {
         let obj_num = operand1;
         let attr_num = operand2;
         
+        // Debug attribute testing during darkness calculation
+        if self.pc >= 0x6c00 && self.pc <= 0x6d00 {
+            info!("TEST_ATTR: Object {} attribute {} at PC {:#06x}", obj_num, attr_num, self.pc);
+            // Show the raw bytes for the branch instruction
+            if self.pc == 0x6c82 {
+                let branch_byte = self.memory[self.pc - 1];
+                info!("  Branch byte at {:#06x}: {:#04x} (binary: {:08b})", self.pc - 1, branch_byte, branch_byte);
+                info!("  Bit 7 (branch on true): {}", (branch_byte & 0x80) != 0);
+                info!("  Bit 6 (single byte): {}", (branch_byte & 0x40) != 0);
+            }
+        }
+        
         // Test if the object has the specified attribute
         let condition = self.test_object_attribute(obj_num, attr_num)?;
+        
+        if self.pc >= 0x6c00 && self.pc <= 0x6d00 {
+            info!("  -> Attribute is {}", if condition { "SET" } else { "CLEAR" });
+            // Common attributes in Infocom games (from Zork 1):
+            // Attribute 3 (ONBIT): For objects, gives light. For locations, it is lit.
+            // Attribute 20 (PERSONBIT): Object is a character/person
+            // Attribute 21 (DOORBIT): Object is a door
+            if attr_num == 3 {
+                info!("  -> This is the ONBIT attribute (location is lit)!");
+                if !condition && obj_num == 180 {
+                    info!("  >>> ERROR: West of House (object 180) does NOT have ONBIT set!");
+                    info!("  >>> This is why the game thinks it's dark!");
+                }
+            } else if attr_num == 20 {
+                info!("  -> This is the PERSONBIT attribute (checking if it's a person)");
+                info!("  >>> BUG: Game is checking wrong attribute for darkness!");
+            }
+        }
+        
+        // Debug the specific branch that's causing issues
+        if self.pc == 0x6c82 && attr_num == 20 && obj_num == 180 {
+            info!("  Branch offset: {:?}", self.current_branch_offset);
+            info!("  Condition: {} (attribute {})", condition, if condition { "SET" } else { "CLEAR" });
+            info!("  This should branch backward if attribute is SET");
+        }
+        
         self.handle_branch(condition)
     }
 
@@ -1293,6 +1494,15 @@ impl<'a> ZMachine<'a> {
     }
 
     fn op_store(&mut self, operand1: u16, operand2: u16) -> Result<(), String> {
+        // STORE instruction: store (variable) value
+        // operand1: variable number to store into
+        // operand2: value to store
+        
+        // Debug the store instruction in darkness routine
+        if self.pc >= 0x6c00 && self.pc <= 0x6d00 {
+            info!("STORE: var{} = {} at PC {:#06x}", operand1, operand2, self.pc);
+        }
+        
         self.store_variable(operand1 as u8, operand2)
     }
 
@@ -1358,6 +1568,11 @@ impl<'a> ZMachine<'a> {
             return Err("Property number must be 1-31".to_string());
         }
         
+        // Debug property access during darkness calculation
+        if self.pc >= 0x6c00 && self.pc <= 0x6d00 {
+            info!("GET_PROP: Object {} property {} at PC {:#06x}", obj_num, prop_num, self.pc);
+        }
+        
         // Try to find the property on the object
         match self.find_property(obj_num, prop_num)? {
             Some((prop_data_addr, prop_size)) => {
@@ -1382,11 +1597,20 @@ impl<'a> ZMachine<'a> {
                     }
                 };
                 
+                if self.pc >= 0x6c00 && self.pc <= 0x6d00 {
+                    info!("  -> Found property value: {} (size {})", value, prop_size);
+                }
+                
                 self.store_variable(self.current_store_variable, value)
             },
             None => {
                 // Property not found - return default value
                 let default_value = self.get_property_default(prop_num)?;
+                
+                if self.pc >= 0x6c00 && self.pc <= 0x6d00 {
+                    info!("  -> Property not found, using default: {}", default_value);
+                }
+                
                 self.store_variable(self.current_store_variable, default_value)
             }
         }
@@ -1540,6 +1764,18 @@ impl<'a> ZMachine<'a> {
             return Ok(());
         }
         
+        // Debug darkness calculation routine
+        let byte_addr_preview = routine_addr as usize * 2; // For V3
+        if routine_addr == 13873 || byte_addr_preview == 0x6c62 {
+            info!("CALLING DARKNESS ROUTINE at packed address {} (0x{:04x}) -> byte addr {:#06x}", 
+                 routine_addr, routine_addr, byte_addr_preview);
+            info!("  from PC {:#06x} with store var {}", self.pc, self.current_store_variable);
+            info!("  args: {:?}", &self.operands_buffer[1..]);
+            if !self.operands_buffer.is_empty() && self.operands_buffer.len() > 1 {
+                info!("  Argument (location): {}", self.operands_buffer[1]);
+            }
+            info!("  Will store result in var {}", self.current_store_variable);
+        }
         
         // Convert packed address to byte address
         let version = self.game.version();
@@ -1602,7 +1838,6 @@ impl<'a> ZMachine<'a> {
         // Jump to routine code
         self.pc = routine_pc;
         
-        // println!("CALL: Calling routine at {:#06x} with {} locals, {} args", 
         //         byte_addr, num_locals, args.len());
         
         Ok(())
@@ -1622,6 +1857,20 @@ impl<'a> ZMachine<'a> {
         
         if byte_addr + 1 >= self.memory.len() {
             return Err("STOREW address out of bounds".to_string());
+        }
+        
+        // Debug: Check if we're writing to header area
+        if byte_addr < 64 {
+            eprintln!("WARNING: STOREW to header area! Addr {:#x}, value {:#x}", byte_addr, value);
+            eprintln!("  Current PC: {:#x}", self.pc);
+            eprintln!("  Array addr: {:#x}, word index: {}", array_addr, word_index);
+            if array_addr == 0 {
+                eprintln!("  ERROR: Array address is 0! This is likely a bug.");
+            }
+            eprintln!("  Stack trace:");
+            for (i, frame) in self.call_stack.iter().enumerate() {
+                eprintln!("    Frame {}: return PC {:#x}", i, frame.return_pc);
+            }
         }
         
         // Store word in big-endian format
@@ -1645,6 +1894,12 @@ impl<'a> ZMachine<'a> {
         
         if byte_addr >= self.memory.len() {
             return Err("STOREB address out of bounds".to_string());
+        }
+        
+        // Debug: Check if we're writing to header area
+        if byte_addr < 64 {
+            eprintln!("WARNING: STOREB to header area! Addr {:#x}, value {:#x}", byte_addr, value & 0xFF);
+            eprintln!("  Array addr: {:#x}, byte index: {}", array_addr, byte_index);
         }
         
         // Store byte (only low 8 bits of value)
@@ -1707,9 +1962,17 @@ impl<'a> ZMachine<'a> {
 
     fn op_sread(&mut self) -> Result<(), String> {
         // SREAD takes 2 operands: text-buffer address, parse-buffer address
-        // Reset loop detection counter since we're about to get user input
-        self.loop_detection_counter = 0;
         
+        // In Versions 1 to 3, the status line is automatically redisplayed first
+        // DISABLED: This causes cursor jumping in terminal mode
+        // TODO: Implement proper terminal UI handling for status line
+        /*
+        let version = if self.memory.len() > 0 { self.memory[0] } else { 3 };
+        if version <= 3 {
+            // Display status line
+            self.op_show_status()?;
+        }
+        */
         
         if self.operands_buffer.len() < 2 {
             return Err("SREAD instruction missing operands".to_string());
@@ -1717,8 +1980,7 @@ impl<'a> ZMachine<'a> {
         
         let text_buffer = self.operands_buffer[0] as usize;
         let parse_buffer = self.operands_buffer[1] as usize;
-        
-        
+
         if text_buffer >= self.memory.len() || parse_buffer >= self.memory.len() {
             return Err("SREAD buffer address out of bounds".to_string());
         }
@@ -1733,14 +1995,15 @@ impl<'a> ZMachine<'a> {
             let default_parse_buffer = default_text_buffer + 0x100; // 256 bytes after text buffer
             
             // Update global variables so the game can find the buffers
-            self.global_vars.insert(125, default_text_buffer as u16);
-            self.global_vars.insert(126, default_parse_buffer as u16);
+            self.store_variable(125, default_text_buffer as u16)?;
+            self.store_variable(126, default_parse_buffer as u16)?;
             
             return self.op_sread_with_defaults(default_text_buffer, default_parse_buffer);
         }
         
         // Read max input length from first byte of text buffer
-        let max_len = self.memory[text_buffer] as usize;
+        // Spec says byte 0 contains "max letters minus 1"
+        let max_len = (self.memory[text_buffer] as usize) + 1;
         
         // Read input from user
         self.write_output("> ")?;
@@ -1760,14 +2023,17 @@ impl<'a> ZMachine<'a> {
                     input.truncate(max_len);
                 }
                 
-                // Store input length in second byte
-                self.memory[text_buffer + 1] = input.len() as u8;
-                
-                // Store input characters starting at third byte
+                // Store input characters starting at FIRST byte (not second!)
+                // Spec says: "stored in bytes 1 onward"
                 for (i, ch) in input.chars().enumerate() {
-                    if text_buffer + 2 + i < self.memory.len() {
-                        self.memory[text_buffer + 2 + i] = ch as u8;
+                    if text_buffer + 1 + i < self.memory.len() {
+                        self.memory[text_buffer + 1 + i] = ch as u8;
                     }
+                }
+                
+                // Add zero terminator
+                if text_buffer + 1 + input.len() < self.memory.len() {
+                    self.memory[text_buffer + 1 + input.len()] = 0;
                 }
                 
                 // Parse input into words using TOKENISE functionality
@@ -1780,7 +2046,21 @@ impl<'a> ZMachine<'a> {
                     Ok(_) => {
                         // Restore original operands
                         self.operands_buffer = old_operands;
-                        eprintln!("DEBUG: SREAD completed at PC {:#x}, stack size: {}, about to return control to game", self.pc, self.stack.len());
+                        
+                        let num_words = self.memory[parse_buffer + 1];
+                        for i in 0..num_words {
+                            let entry_offset = parse_buffer + 2 + (i as usize * 4);
+                            let word_len = self.memory[entry_offset];
+                            let word_pos = self.memory[entry_offset + 1];
+                            let _dict_addr = ((self.memory[entry_offset + 2] as u16) << 8) | (self.memory[entry_offset + 3] as u16);
+                            
+                            // Check if the word is in the text buffer
+                            if text_buffer + word_pos as usize + word_len as usize <= self.memory.len() {
+                                let word_bytes = &self.memory[text_buffer + word_pos as usize..text_buffer + word_pos as usize + word_len as usize];
+                                let _word_str = String::from_utf8_lossy(word_bytes);
+                            }
+                        }
+                        
                     }
                     Err(e) => {
                         // Restore original operands and propagate error
@@ -1796,8 +2076,17 @@ impl<'a> ZMachine<'a> {
     }
 
     fn op_sread_with_defaults(&mut self, text_buffer: usize, parse_buffer: usize) -> Result<(), String> {
-        // Reset loop detection counter since we're about to get user input
-        self.loop_detection_counter = 0;
+        
+        // In Versions 1 to 3, the status line is automatically redisplayed first
+        // DISABLED: This causes cursor jumping in terminal mode
+        // TODO: Implement proper terminal UI handling for status line
+        /*
+        let version = if self.memory.len() > 0 { self.memory[0] } else { 3 };
+        if version <= 3 {
+            // Display status line
+            self.op_show_status()?;
+        }
+        */
         
         // Initialize buffers with reasonable defaults for classic games
         if text_buffer < self.memory.len() {
@@ -1808,7 +2097,8 @@ impl<'a> ZMachine<'a> {
         }
         
         // Read max input length from first byte of text buffer
-        let max_len = self.memory[text_buffer] as usize;
+        // Spec says byte 0 contains "max letters minus 1"
+        let max_len = (self.memory[text_buffer] as usize) + 1;
         
         // Read input from user
         self.write_output("> ")?;
@@ -1828,14 +2118,17 @@ impl<'a> ZMachine<'a> {
                     input.truncate(max_len);
                 }
                 
-                // Store input length in second byte
-                self.memory[text_buffer + 1] = input.len() as u8;
-                
-                // Store input characters starting at third byte
+                // Store input characters starting at FIRST byte (not second!)
+                // Spec says: "stored in bytes 1 onward"
                 for (i, ch) in input.chars().enumerate() {
-                    if text_buffer + 2 + i < self.memory.len() {
-                        self.memory[text_buffer + 2 + i] = ch as u8;
+                    if text_buffer + 1 + i < self.memory.len() {
+                        self.memory[text_buffer + 1 + i] = ch as u8;
                     }
+                }
+                
+                // Add zero terminator
+                if text_buffer + 1 + input.len() < self.memory.len() {
+                    self.memory[text_buffer + 1 + input.len()] = 0;
                 }
                 
                 // Parse input into words using TOKENISE functionality
@@ -1845,6 +2138,20 @@ impl<'a> ZMachine<'a> {
                 // Call tokenise to parse the input
                 match self.op_tokenise() {
                     Ok(_) => {
+                        let num_words = self.memory[parse_buffer + 1];
+                        for i in 0..num_words {
+                            let entry_offset = parse_buffer + 2 + (i as usize * 4);
+                            let word_len = self.memory[entry_offset];
+                            let word_pos = self.memory[entry_offset + 1];
+                            let _dict_addr = ((self.memory[entry_offset + 2] as u16) << 8) | (self.memory[entry_offset + 3] as u16);
+                            
+                            // Check if the word is in the text buffer
+                            if text_buffer + word_pos as usize + word_len as usize <= self.memory.len() {
+                                let word_bytes = &self.memory[text_buffer + word_pos as usize..text_buffer + word_pos as usize + word_len as usize];
+                                let _word_str = String::from_utf8_lossy(word_bytes);
+                            }
+                        }
+                        
                         // Restore original operands
                         self.operands_buffer = old_operands;
                     }
@@ -2855,13 +3162,18 @@ impl<'a> ZMachine<'a> {
         }
         
         // Get the input text from the text buffer
-        let input_length = self.memory[text_buffer + 1] as usize;
+        // Text is stored starting at byte 1, zero-terminated
         let mut input_text = String::new();
+        let mut i = 0;
         
-        for i in 0..input_length {
-            if text_buffer + 2 + i < self.memory.len() {
-                input_text.push(self.memory[text_buffer + 2 + i] as char);
+        // Read until we hit a zero terminator
+        while text_buffer + 1 + i < self.memory.len() {
+            let ch = self.memory[text_buffer + 1 + i];
+            if ch == 0 {
+                break;
             }
+            input_text.push(ch as char);
+            i += 1;
         }
         
         // Parse the input text into words
@@ -2884,7 +3196,8 @@ impl<'a> ZMachine<'a> {
                 self.memory[entry_offset] = word.text.len() as u8;
                 
                 // Store word start position in text buffer (relative to text start)
-                self.memory[entry_offset + 1] = (word.position + 2) as u8; // +2 for buffer header
+                // Text now starts at byte 1, not byte 2
+                self.memory[entry_offset + 1] = (word.position + 1) as u8; // +1 since text starts at byte 1
                 
                 // Look up word in dictionary
                 let dict_addr = self.lookup_word_in_dictionary(&word.text)?;
@@ -3421,7 +3734,6 @@ impl<'a> ZMachine<'a> {
         // Jump to routine code
         self.pc = routine_pc;
         
-        // println!("CALL: Calling routine at {:#06x} with {} locals, {} args", 
         //         byte_addr, num_locals, args.len());
         
         Ok(())
@@ -3463,6 +3775,11 @@ impl<'a> ZMachine<'a> {
 
     pub fn return_from_routine(&mut self, value: u16) -> Result<(), String> {
         if let Some(frame) = self.call_stack.pop() {
+            // Debug darkness routine return
+            if frame.return_pc == 0x5903 && frame.result_var == Some(82) {
+                info!("DARKNESS ROUTINE RETURNING: value = {} to var82 (return to PC {:#06x})", value, frame.return_pc);
+            }
+            
             self.pc = frame.return_pc;
             self.local_vars = frame.local_vars;
             
@@ -3472,6 +3789,7 @@ impl<'a> ZMachine<'a> {
             
         } else {
             // Return from main routine - quit
+            // BUGBUG: I don't think you are supposed to return from main routine
             self.running = false;
         }
         Ok(())
@@ -3486,16 +3804,27 @@ impl<'a> ZMachine<'a> {
                 (!condition, -branch_offset - 1)  // Branch on false  
             };
             
+            // Debug darkness routine branching
+            if self.pc == 0x6c82 {
+                info!("BRANCH DEBUG at PC {:#06x}:", self.pc);
+                info!("  branch_offset: {}", branch_offset);
+                info!("  condition: {}", condition);
+                info!("  should_branch: {}", should_branch);
+                info!("  actual_offset: {}", actual_offset);
+                if !should_branch {
+                    info!("  >>> NOT BRANCHING - this causes the darkness bug!");
+                }
+            }
+            
+            
             if should_branch {
                 match actual_offset {
                     0 => {
                         // Branch offset 0 means RFALSE
-                        // println!("BRANCH: rfalse");
                         self.return_from_routine(0)?;
                     },
                     1 => {
                         // Branch offset 1 means RTRUE  
-                        // println!("BRANCH: rtrue");
                         self.return_from_routine(1)?;
                     },
                     _ => {
@@ -3505,11 +3834,9 @@ impl<'a> ZMachine<'a> {
                             return Err(format!("Branch target out of bounds: {:#06x}", new_pc));
                         }
                         self.pc = new_pc as usize;
-                        // println!("BRANCH: jumping to {:#06x} (offset {})", self.pc, actual_offset);
                     }
                 }
             } else {
-                // println!("BRANCH: condition false, not branching");
             }
         } else {
             return Err("handle_branch called on non-branch instruction".to_string());
@@ -3517,14 +3844,22 @@ impl<'a> ZMachine<'a> {
         Ok(())
     }
 
+    // Helper method to read a global variable from memory
+    fn read_global(&self, var_num: u8) -> u16 {
+        let global_addr = self.game.header().global_variables + ((var_num as usize) * 2);
+        if global_addr + 1 < self.memory.len() {
+            ((self.memory[global_addr] as u16) << 8) | (self.memory[global_addr + 1] as u16)
+        } else {
+            0
+        }
+    }
+    
     // Helper methods for object table access
     fn get_object_table_addr(&self) -> usize {
-        // Object table starts after property defaults table
-        // Property defaults are at byte 10-11 of header (word address)
-        let prop_defaults_addr = ((self.memory[10] as u16) << 8) | (self.memory[11] as u16);
-        
-        // Property defaults table is 31 words (62 bytes) for version 1-3
-        (prop_defaults_addr + 62) as usize
+        // The header's object_table_addr points to property defaults
+        // The actual object table starts after the property defaults
+        // For v1-3, property defaults are 31 words (62 bytes)
+        self.game.header().object_table_addr + 62
     }
     
     fn get_object_addr(&self, obj_num: u16) -> Result<usize, String> {
@@ -3535,7 +3870,14 @@ impl<'a> ZMachine<'a> {
         let obj_table_addr = self.get_object_table_addr();
         let obj_size = 9; // 9 bytes per object in version 1-3
         
-        Ok(obj_table_addr + ((obj_num - 1) as usize * obj_size))
+        let addr = obj_table_addr + ((obj_num - 1) as usize * obj_size);
+        
+        // Add bounds check
+        if addr + 8 >= self.memory.len() {
+            return Err("Object address out of bounds".to_string());
+        }
+        
+        Ok(addr)
     }
     
     pub fn get_object_parent(&self, obj_num: u16) -> Result<u16, String> {
@@ -4170,7 +4512,7 @@ impl<'a> ZMachine<'a> {
         Ok(value)
     }
 
-    fn get_object_name(&self, obj_num: u16) -> Result<String, String> {
+    pub fn get_object_name(&self, obj_num: u16) -> Result<String, String> {
         // Get the object's property table address
         let obj_addr = self.get_object_addr(obj_num)?;
         
@@ -4199,5 +4541,83 @@ impl<'a> ZMachine<'a> {
             Ok((name, _)) => Ok(name),
             Err(_) => Ok(format!("Object {}", obj_num)),
         }
+    }
+}
+
+impl<'a> Debug for ZMachine<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        writeln!(f, "ZMachine {{")?;
+        
+        // Core execution state
+        writeln!(f, "  // Execution State")?;
+        writeln!(f, "  pc: {:#06x}", self.pc)?;
+        writeln!(f, "  running: {}", self.running)?;
+        
+        // Stack state
+        writeln!(f, "  // Stack State")?;
+        writeln!(f, "  stack.len(): {}", self.stack.len())?;
+        if !self.stack.is_empty() {
+            write!(f, "  stack (top 10): [")?;
+            for (i, val) in self.stack.iter().rev().take(10).enumerate() {
+                if i > 0 { write!(f, ", ")?; }
+                write!(f, "{:#04x}", val)?;
+            }
+            writeln!(f, "]")?;
+        }
+        
+        // Call stack
+        writeln!(f, "  call_stack.len(): {}", self.call_stack.len())?;
+        if !self.call_stack.is_empty() {
+            writeln!(f, "  call_stack (recent):")?;
+            for (i, frame) in self.call_stack.iter().rev().take(3).enumerate() {
+                writeln!(f, "    [{}] return_pc: {:#06x}, num_locals: {}, result_var: {:?}", 
+                    i, frame.return_pc, frame.num_locals, frame.result_var)?;
+            }
+        }
+        
+        // Variables
+        writeln!(f, "  // Variables")?;
+        writeln!(f, "  global_vars: <stored in memory at {:#06x}>", self.game.header().global_variables)?;
+        write!(f, "  local_vars: [")?;
+        for (i, val) in self.local_vars.iter().enumerate() {
+            if i > 0 { write!(f, ", ")?; }
+            write!(f, "{:#04x}", val)?;
+        }
+        writeln!(f, "]")?;
+        
+        // Current instruction state
+        writeln!(f, "  // Current Instruction State")?;
+        writeln!(f, "  current_store_variable: {}", self.current_store_variable)?;
+        writeln!(f, "  current_branch_offset: {:?}", self.current_branch_offset)?;
+        writeln!(f, "  operands_buffer: {:?}", self.operands_buffer)?;
+        
+        // I/O Streams
+        writeln!(f, "  // I/O Streams")?;
+        writeln!(f, "  output_streams: {:?}", self.output_streams)?;
+        writeln!(f, "  input_stream: {}", self.input_stream)?;
+        writeln!(f, "  transcript_file: {}", self.transcript_file.is_some())?;
+        writeln!(f, "  memory_stream_addr: {:?}", self.memory_stream_addr)?;
+        writeln!(f, "  memory_stream_data.len(): {}", self.memory_stream_data.len())?;
+        
+        // Window management
+        writeln!(f, "  // Window Management")?;
+        writeln!(f, "  windows.len(): {}", self.windows.len())?;
+        writeln!(f, "  current_window: {}", self.current_window)?;
+        writeln!(f, "  screen_dimensions: {}x{}", self.screen_width, self.screen_height)?;
+        
+        // Memory
+        writeln!(f, "  // Memory")?;
+        writeln!(f, "  memory.len(): {} bytes", self.memory.len())?;
+        writeln!(f, "  dynamic_memory_end: {:#06x}", self.game.header().base_static_mem)?;
+        writeln!(f, "  static_memory_end: {:#06x}", self.game.header().base_high_mem)?;
+        
+        // Random state
+        writeln!(f, "  random_seed: {}", self.random_seed)?;
+        
+        // Game reference (simplified)
+        writeln!(f, "  game: <GameFile v{}>", self.game.version())?;
+        
+        write!(f, "}}")?;
+        Ok(())
     }
 }
