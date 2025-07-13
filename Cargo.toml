@@ -7,6 +7,10 @@ edition = "2021"
 name = "zmachine"
 path = "src/main.rs"
 
+[[example]]
+name = "disassemble"
+path = "examples/disassemble.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]

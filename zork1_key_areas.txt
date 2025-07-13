@@ -1,0 +1,62 @@
+Key Areas Disassembly
+====================
+
+=== Darkness Check Area (0x8cb0-0x8cd0) ===
+0x8cb0: 7f 02 a0                 unknown_2op var2, var160
+0x8cb3: 52 71 b2 08              get_prop_addr var113, #178 -> var8
+0x8cb7: 81 16 ae 65 0d 00        get_sibling #5806 -> var101 ?-3329
+0x8cbd: f1 19 10 96 45 a0 51     set_text_style #4246, #69, var160, #81
+0x8cc4: 59 b2 00 22              call_2s var178, #0 -> var34
+0x8cc8: 05 d1 3a 0a 47           inc_chk #209, #58 ?-2632
+0x8ccd: c0 05 62 25 46 65 53 00  unknown_2op #25125, #18021, #83, #0
+
+=== LIT? Call Area (0x58f0-0x5910) ===
+0x58f0: 0d 70 00                 store #112, #0
+0x58f3: a3 7f 00                 get_parent var127 -> var0
+0x58f6: 4a 00 1b c5              test_attr var0, #27 ?5
+0x58fa: a3 7f 10                 get_parent var127 -> var16
+0x58fd: e0 2f 36 31 10 52        call #13873, var16 -> var82
+0x5903: a0 56 43                 jz var86 ?-4
+0x5906: bb                       new_line
+0x5907: b2                       print
+0x5908: 14 c1 f8 a5              add #193, #248 -> var165
+0x590c: e4 af 7d 7e              sread var125, var126
+
+=== LIT? Routine (0x6c62-0x6d00) ===
+0x6c62: 04 00 00 00 01           dec_chk #0, #0 ?-2
+0x6c67: 00 00 00                 unknown_2op #0, #0
+0x6c6a: 00 a0 58                 unknown_2op #160, #88
+0x6c6d: c6 61 7f 90 c1 0d 6b 14  jin #127, var144, #49421, #107 ?-5166
+0x6c76: 03 10 2d 10 01           jg #16, #45 ?-4098
+0x6c7b: a0 02 cc                 jz var2 ?12
+0x6c7e: 4a 01 14 48              test_attr var1, #20 ?-9
+0x6c82: 0d 04 01                 store #4, #1
+0x6c85: 8c 00 3e                 jump #62
+0x6c88: e1 a7 63 61 00           storew var99, var97, #0
+0x6c8d: 2d 85 63                 store #133, var99
+0x6c90: cd 4f 6c ff ff           store #108, #65535
+0x6c95: 61 03 01 5a              je var3, var1 ?-27
+0x6c99: e0 25 35 0f 7f 01 01 00  call #13583, var127, #1, #1 -> var0
+0x6ca1: 61 7f 90 ce              je var127, var144 ?14
+0x6ca5: 66 90 01 4a              jin var144, var1 ?-11
+0x6ca9: e0 25 35 0f 90 01 01 00  call #13583, var144, #1, #1 -> var0
+0x6cb1: e0 25 35 0f 01 01 01 00  call #13583, var1, #1, #1 -> var0
+0x6cb9: 6f 85 61 00              loadw var133, var97 -> var0
+0x6cbd: 43 00 00 45              jg var0, #0 ?-6
+0x6cc1: 0d 04 01                 store #4, #1
+0x6cc4: 2d 10 03                 store #16, var3
+0x6cc7: 0d 6b 00                 store #107, #0
+0x6cca: ab 04                    ret var4
+0x6ccc: 01 00 00 a0 78           je #0, #0 ?-8072
+0x6cd1: 50 4f 74 06              loadb var79, #116 -> var6
+0x6cd5: 01 4f 01 00 00           je #79, #1 ?-1
+0x6cda: c1 8f 00 43 cc 48        je var0, #17356 ?-9
+0x6ce0: b2                       print
+0x6ce1: 80 a5 aa 86 b0           jz #42410 ?1712
+0x6ce6: 4f 74 07 00              loadw var116, #7 -> var0
+0x6cea: e0 29 31 77 01 00 00 00  call #12663, var1, var0, #0 -> var0
+0x6cf2: b8                       ret_popped
+0x6cf3: 00 01 00                 unknown_2op #1, #0
+0x6cf6: 00 a0 78                 unknown_2op #160, #120
+0x6cf9: 50 4f 74 08              loadb var79, #116 -> var8
+0x6cfd: 01 4f 01 00 00           je #79, #1 ?-1

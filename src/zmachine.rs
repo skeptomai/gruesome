@@ -153,10 +153,321 @@ impl<'a> ZMachine<'a> {
         Instruction::decode(&self.memory, pc)
     }
     
+    fn print_debug_strings(&self, instruction: &Instruction) {
+        use crate::instruction::{OperandCount, OperandType};
+        
+        // Check for string-related opcodes
+        let opcode_name = match instruction.operand_count {
+            OperandCount::Op0 => match instruction.opcode {
+                0x02 => Some("print"),
+                0x03 => Some("print_ret"),
+                _ => None,
+            },
+            OperandCount::Op1 => match instruction.opcode {
+                0x07 => Some("print_addr"),
+                0x0A => Some("print_obj"),
+                0x0D => Some("print_paddr"),
+                _ => None,
+            },
+            OperandCount::Var => None,
+            _ => None,
+        };
+        
+        if let Some(name) = opcode_name {
+            match name {
+                "print_addr" | "print_paddr" => {
+                    if !instruction.operands.is_empty() {
+                        let addr = if name == "print_paddr" {
+                            // Packed address - convert to byte address
+                            let packed_addr = instruction.operands[0].value as usize;
+                            match self.game.version() {
+                                1..=3 => packed_addr * 2,
+                                4..=5 => packed_addr * 4,
+                                6..=7 => (packed_addr * 4) + (8 * ((self.memory[0x28] as usize) << 8 | (self.memory[0x29] as usize))),
+                                8 => packed_addr * 8,
+                                _ => packed_addr * 2,
+                            }
+                        } else {
+                            instruction.operands[0].value as usize
+                        };
+                        
+                        if let Ok((text, _)) = self.read_zstring_at_address(addr) {
+                            debug!("  STRING: \"{}\"", text);
+                        }
+                    }
+                },
+                "print_obj" => {
+                    if !instruction.operands.is_empty() {
+                        let obj_num = instruction.operands[0].value;
+                        if let Ok(name) = self.get_object_name(obj_num) {
+                            debug!("  OBJECT {}: \"{}\"", obj_num, name);
+                        }
+                    }
+                },
+                _ => {}
+            }
+        }
+        
+        // Also check for variables that might contain string addresses (only log at trace level to reduce noise)
+        for (_i, operand) in instruction.operands.iter().enumerate() {
+            if operand.operand_type == OperandType::Variable && operand.value > 0 {
+                if let Ok(var_value) = self.read_variable_debug(operand.value as u8) {
+                    // Much more conservative string detection
+                    if self.is_likely_string_address(var_value as usize) {
+                        if let Ok((text, _)) = self.read_zstring_at_address(var_value as usize) {
+                            // Only show if it's a reasonable string
+                            if self.is_reasonable_string(&text) {
+                                log::trace!("  VAR{} ({}): might be string \"{}\"", operand.value, var_value, text);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    fn read_variable_debug(&self, var: u8) -> Result<u16, String> {
+        if var == 0 {
+            if self.stack.is_empty() {
+                return Ok(0);
+            }
+            Ok(self.stack[self.stack.len() - 1])
+        } else if var <= 15 {
+            Ok(self.local_vars[(var - 1) as usize])
+        } else {
+            let global_addr = self.game.header().global_variables + ((var as usize - 16) * 2);
+            if global_addr + 1 < self.memory.len() {
+                Ok(((self.memory[global_addr] as u16) << 8) | (self.memory[global_addr + 1] as u16))
+            } else {
+                Ok(0)
+            }
+        }
+    }
+    
+    fn is_likely_string_address(&self, addr: usize) -> bool {
+        // Only consider addresses in reasonable ranges
+        if addr < 0x100 || addr >= self.memory.len() - 10 {
+            return false;
+        }
+        
+        // String should be in static or high memory
+        let base_static = self.game.header().base_static_mem as usize;
+        let base_high = self.game.header().base_high_mem as usize;
+        
+        // Must be in static memory (strings) or high memory (code with embedded strings)
+        addr >= base_static || addr >= base_high
+    }
+    
+    fn is_reasonable_string(&self, text: &str) -> bool {
+        // Must be between 3 and 50 characters for debug display
+        if text.len() < 3 || text.len() > 50 {
+            return false;
+        }
+        
+        // Must contain mostly printable ASCII characters
+        let printable_count = text.chars().filter(|c| c.is_ascii_graphic() || *c == ' ').count();
+        let printable_ratio = printable_count as f32 / text.len() as f32;
+        
+        // At least 80% printable characters
+        printable_ratio >= 0.8
+    }
+    
+    fn format_instruction_disassembly(&self, instruction: &Instruction, pc: usize) -> String {
+        use crate::instruction::{OperandCount, OperandType};
+        
+        let opcode_name = match instruction.operand_count {
+            OperandCount::Op0 => match instruction.opcode {
+                0x00 => "rtrue",
+                0x01 => "rfalse", 
+                0x02 => "print",
+                0x03 => "print_ret",
+                0x04 => "nop",
+                0x05 => "save",
+                0x06 => "restore",
+                0x07 => "restart",
+                0x08 => "ret_popped",
+                0x09 => "catch",
+                0x0A => "quit",
+                0x0B => "new_line",
+                0x0C => "show_status",
+                0x0D => "verify",
+                0x0E => "extended",
+                0x0F => "piracy",
+                _ => "unknown_0op",
+            },
+            OperandCount::Op1 => match instruction.opcode {
+                0x00 => "jz",
+                0x01 => "get_sibling",
+                0x02 => "get_child", 
+                0x03 => "get_parent",
+                0x04 => "get_prop_len",
+                0x05 => "inc",
+                0x06 => "dec",
+                0x07 => "print_addr",
+                0x08 => "call_1s",
+                0x09 => "remove_obj",
+                0x0A => "print_obj",
+                0x0B => "ret",
+                0x0C => "jump",
+                0x0D => "print_paddr",
+                0x0E => "load",
+                0x0F => "not",
+                _ => "unknown_1op",
+            },
+            OperandCount::Op2 => match instruction.opcode {
+                0x01 => "je",
+                0x02 => "jl", 
+                0x03 => "jg",
+                0x04 => "dec_chk",
+                0x05 => "inc_chk",
+                0x06 => "jin",
+                0x07 => "test",
+                0x08 => "or",
+                0x09 => "and",
+                0x0A => "test_attr",
+                0x0B => "set_attr",
+                0x0C => "clear_attr",
+                0x0D => "store",
+                0x0E => "insert_obj",
+                0x0F => "loadw",
+                0x10 => "loadb",
+                0x11 => "get_prop",
+                0x12 => "get_prop_addr",
+                0x13 => "get_next_prop",
+                0x14 => "add",
+                0x15 => "sub", 
+                0x16 => "mul",
+                0x17 => "div",
+                0x18 => "mod",
+                0x19 => "call_2s",
+                0x1A => "call_2n",
+                0x1B => "set_colour",
+                0x1C => "throw",
+                _ => "unknown_2op",
+            },
+            OperandCount::Var => match instruction.opcode {
+                0x00 => "call",
+                0x01 => "storew",
+                0x02 => "storeb", 
+                0x03 => "put_prop",
+                0x04 => "sread",
+                0x05 => "print_char",
+                0x06 => "print_num",
+                0x07 => "random",
+                0x08 => "push",
+                0x09 => "pull",
+                0x0A => "split_window",
+                0x0B => "set_window",
+                0x0C => "call_vs2",
+                0x0D => "erase_window",
+                0x0E => "erase_line",
+                0x0F => "set_cursor",
+                0x10 => "get_cursor",
+                0x11 => "set_text_style",
+                0x12 => "buffer_mode",
+                0x13 => "output_stream",
+                0x14 => "input_stream",
+                0x15 => "sound_effect",
+                0x16 => "read_char",
+                0x17 => "scan_table",
+                0x18 => "not_v4",
+                0x19 => "call_vn",
+                0x1A => "call_vn2",
+                0x1B => "tokenise",
+                0x1C => "encode_text",
+                0x1D => "copy_table",
+                0x1E => "print_table",
+                0x1F => "check_arg_count",
+                _ => "unknown_var",
+            },
+        };
+        
+        let mut result = format!("{:#06x}: {}", pc, opcode_name);
+        
+        // Format operands
+        for (i, operand) in instruction.operands.iter().enumerate() {
+            if i == 0 {
+                result.push(' ');
+            } else {
+                result.push_str(" ");
+            }
+            
+            match operand.operand_type {
+                OperandType::LargeConstant | OperandType::SmallConstant => {
+                    result.push_str(&format!("#{}", operand.value));
+                },
+                OperandType::Variable => {
+                    if operand.value == 0 {
+                        result.push_str("sp");
+                    } else if operand.value <= 15 {
+                        result.push_str(&format!("local{}", operand.value));
+                    } else {
+                        result.push_str(&format!("g{:02x}", operand.value - 16));
+                    }
+                },
+                OperandType::Omitted => {
+                    result.push_str("_");
+                },
+            }
+        }
+        
+        // Add store variable if present
+        if let Some(store_var) = instruction.store_variable {
+            result.push_str(" -> ");
+            if store_var == 0 {
+                result.push_str("sp");
+            } else if store_var <= 15 {
+                result.push_str(&format!("local{}", store_var));
+            } else {
+                result.push_str(&format!("g{:02x}", store_var - 16));
+            }
+        }
+        
+        // Add branch offset if present
+        if let Some(offset) = instruction.branch_offset {
+            if offset == 0 {
+                result.push_str(" ?rfalse");
+            } else if offset == 1 {
+                result.push_str(" ?rtrue"); 
+            } else {
+                let target = (pc as i32 + instruction.length as i32 + offset as i32 - 2) as usize;
+                result.push_str(&format!(" ?{:#06x}", target));
+            }
+        }
+        
+        result
+    }
+    
     
     pub fn new(game: &'a GameFile<'a>) -> Self {
         let memory = game.bytes().to_vec();
         let pc = game.header().initial_pc;
+        
+        // Debug dump of game header at startup
+        debug!("=== GAME HEADER ===");
+        debug!("Version: {}", game.header().version);
+        debug!("Release: {}", game.header().release);
+        debug!("Serial: {}", game.header().serial);
+        debug!("Initial PC: {:#06x}", game.header().initial_pc);
+        debug!("Dictionary: {:#06x}", game.header().dictionary);
+        debug!("Object table: {:#06x}", game.header().object_table_addr);
+        debug!("Global variables: {:#06x}", game.header().global_variables);
+        debug!("Base of static memory: {:#06x}", game.header().base_static_mem);
+        debug!("Base of high memory: {:#06x}", game.header().base_high_mem);
+        debug!("Abbreviations table: {:#06x}", game.header().abbrev_table);
+        debug!("File length: {}", game.header().len_file);
+        debug!("File checksum: {:#04x}", game.header().checksum_file);
+        debug!("Memory size: {:#06x} bytes", memory.len());
+        debug!("");
+        debug!("=== FINDING INITIAL INSTRUCTION ===");
+        debug!("According to Z-Machine spec section 5.5:");
+        debug!("In versions 1-5, the word at $06 contains the byte address of the first instruction.");
+        debug!("In version 6, the word at $06 contains the packed address of the main routine.");
+        debug!("This game is version {}, so we use byte address directly.", game.header().version);
+        debug!("Reading bytes $06-$07: {:#04x} {:#04x}", memory[6], memory[7]);
+        debug!("Initial PC = {:#06x} (from header.initial_pc)", pc);
+        debug!("First instruction will be decoded at PC {:#06x}", pc);
+        debug!("=================");
 
         Self {
             game,
@@ -223,6 +534,21 @@ impl<'a> ZMachine<'a> {
         while self.running {
 
             let instruction = Instruction::decode(&self.memory, self.pc)?;
+            
+            // Debug output and single stepping
+            debug!("{}", self.format_instruction_disassembly(&instruction, self.pc));
+            
+            // Try to decode strings for certain opcodes
+            self.print_debug_strings(&instruction);
+            // print!("Press Enter to continue (or 'q' to quit): ");
+            // io::stdout().flush().unwrap();
+
+            // let mut input = String::new();
+            // io::stdin().read_line(&mut input).unwrap();
+            // if input.trim().to_lowercase() == "q" {
+            //     break;
+            // }
+
             self.pc += instruction.length;
             self.execute_instruction(instruction)?;
         }
@@ -244,10 +570,6 @@ impl<'a> ZMachine<'a> {
         // Store the store_variable field for instructions that need it
         self.current_store_variable = instruction.store_variable.unwrap_or(255); // 255 = no store variable
 
-        // Debug the darkness calculation routine
-        if self.pc >= 0x6c00 && self.pc <= 0x6d00 {
-            debug!("DARKNESS ROUTINE: PC {:#06x}: {:?}", self.pc - instruction.length, instruction);
-        }
 
         // Track instructions after copyright message
         unsafe {
@@ -269,19 +591,6 @@ impl<'a> ZMachine<'a> {
                           (self.memory[globals_addr as usize + 1] as u16);
             debug!("  Current location (global 0): {}", location);
             
-            // If checking var82, show its value
-            if instruction.opcode == 0x00 && instruction.operands.len() > 0 && 
-               instruction.operands[0].operand_type == crate::instruction::OperandType::Variable && 
-               instruction.operands[0].value == 82 {
-                let var82_value = self.read_variable(82).unwrap_or(0xFFFF);
-                debug!("  Checking var82 = {} at darkness check", var82_value);
-            }
-            
-            // Track returns in this region
-            if instruction.opcode == 0x0b && instruction.operand_count == OperandCount::Op1 {
-                info!("  Returning with value {} - darkness routine complete", 
-                     if !instruction.operands.is_empty() { instruction.operands[0].value } else { 0 });
-            }
         }
         
 
@@ -936,8 +1245,7 @@ impl<'a> ZMachine<'a> {
         info!("PRINT at PC {:#06x}: '{}'", pc_before, text);
         
         // Check if this might be a room description by looking for "West of House"
-        if text.contains("West of House") || text.contains("pitch black") {
-            info!(">>> FOUND ROOM DESCRIPTION TEXT: '{}'", text);
+        if text.contains("West of House") {
         }
         
         self.write_output(&text)?;
@@ -1175,7 +1483,7 @@ impl<'a> ZMachine<'a> {
         info!("PRINT_ADDR at PC {:#06x}: byte addr {:#06x}: '{}'", self.pc, operand, text);
         
         // Check if this might be a room description
-        if text.contains("West of House") || text.contains("pitch black") {
+        if text.contains("West of House") {
             info!(">>> FOUND ROOM DESCRIPTION TEXT via PRINT_ADDR: '{}'", text);
         }
         
@@ -1273,7 +1581,7 @@ impl<'a> ZMachine<'a> {
               self.pc, operand, byte_addr, text);
         
         // Check if this might be a room description
-        if text.contains("West of House") || text.contains("pitch black") {
+        if text.contains("West of House") {
             info!(">>> FOUND ROOM DESCRIPTION TEXT via PRINT_PADDR: '{}'", text);
         }
         self.write_output(&text)?;
@@ -1396,45 +1704,8 @@ impl<'a> ZMachine<'a> {
         let obj_num = operand1;
         let attr_num = operand2;
         
-        // Debug attribute testing during darkness calculation
-        if self.pc >= 0x6c00 && self.pc <= 0x6d00 {
-            info!("TEST_ATTR: Object {} attribute {} at PC {:#06x}", obj_num, attr_num, self.pc);
-            // Show the raw bytes for the branch instruction
-            if self.pc == 0x6c82 {
-                let branch_byte = self.memory[self.pc - 1];
-                info!("  Branch byte at {:#06x}: {:#04x} (binary: {:08b})", self.pc - 1, branch_byte, branch_byte);
-                info!("  Bit 7 (branch on true): {}", (branch_byte & 0x80) != 0);
-                info!("  Bit 6 (single byte): {}", (branch_byte & 0x40) != 0);
-            }
-        }
-        
         // Test if the object has the specified attribute
         let condition = self.test_object_attribute(obj_num, attr_num)?;
-        
-        if self.pc >= 0x6c00 && self.pc <= 0x6d00 {
-            info!("  -> Attribute is {}", if condition { "SET" } else { "CLEAR" });
-            // Common attributes in Infocom games (from Zork 1):
-            // Attribute 3 (ONBIT): For objects, gives light. For locations, it is lit.
-            // Attribute 20 (PERSONBIT): Object is a character/person
-            // Attribute 21 (DOORBIT): Object is a door
-            if attr_num == 3 {
-                info!("  -> This is the ONBIT attribute (location is lit)!");
-                if !condition && obj_num == 180 {
-                    info!("  >>> ERROR: West of House (object 180) does NOT have ONBIT set!");
-                    info!("  >>> This is why the game thinks it's dark!");
-                }
-            } else if attr_num == 20 {
-                info!("  -> This is the PERSONBIT attribute (checking if it's a person)");
-                info!("  >>> BUG: Game is checking wrong attribute for darkness!");
-            }
-        }
-        
-        // Debug the specific branch that's causing issues
-        if self.pc == 0x6c82 && attr_num == 20 && obj_num == 180 {
-            info!("  Branch offset: {:?}", self.current_branch_offset);
-            info!("  Condition: {} (attribute {})", condition, if condition { "SET" } else { "CLEAR" });
-            info!("  This should branch backward if attribute is SET");
-        }
         
         self.handle_branch(condition)
     }
@@ -1497,11 +1768,6 @@ impl<'a> ZMachine<'a> {
         // STORE instruction: store (variable) value
         // operand1: variable number to store into
         // operand2: value to store
-        
-        // Debug the store instruction in darkness routine
-        if self.pc >= 0x6c00 && self.pc <= 0x6d00 {
-            info!("STORE: var{} = {} at PC {:#06x}", operand1, operand2, self.pc);
-        }
         
         self.store_variable(operand1 as u8, operand2)
     }
@@ -1762,19 +2028,6 @@ impl<'a> ZMachine<'a> {
             // Call to routine 0 returns 0
             self.store_variable(self.current_store_variable, 0)?; // Store 0 in the specified variable
             return Ok(());
-        }
-        
-        // Debug darkness calculation routine
-        let byte_addr_preview = routine_addr as usize * 2; // For V3
-        if routine_addr == 13873 || byte_addr_preview == 0x6c62 {
-            info!("CALLING DARKNESS ROUTINE at packed address {} (0x{:04x}) -> byte addr {:#06x}", 
-                 routine_addr, routine_addr, byte_addr_preview);
-            info!("  from PC {:#06x} with store var {}", self.pc, self.current_store_variable);
-            info!("  args: {:?}", &self.operands_buffer[1..]);
-            if !self.operands_buffer.is_empty() && self.operands_buffer.len() > 1 {
-                info!("  Argument (location): {}", self.operands_buffer[1]);
-            }
-            info!("  Will store result in var {}", self.current_store_variable);
         }
         
         // Convert packed address to byte address
@@ -3775,11 +4028,6 @@ impl<'a> ZMachine<'a> {
 
     pub fn return_from_routine(&mut self, value: u16) -> Result<(), String> {
         if let Some(frame) = self.call_stack.pop() {
-            // Debug darkness routine return
-            if frame.return_pc == 0x5903 && frame.result_var == Some(82) {
-                info!("DARKNESS ROUTINE RETURNING: value = {} to var82 (return to PC {:#06x})", value, frame.return_pc);
-            }
-            
             self.pc = frame.return_pc;
             self.local_vars = frame.local_vars;
             
@@ -3797,24 +4045,22 @@ impl<'a> ZMachine<'a> {
 
     fn handle_branch(&mut self, condition: bool) -> Result<(), String> {
         if let Some(branch_offset) = self.current_branch_offset {
-            // Decode branch condition from offset sign (see instruction decoder)
-            let (should_branch, actual_offset) = if branch_offset >= 0 {
-                (condition, branch_offset)  // Branch on true
+            // The instruction decoder encodes the branch type in the sign:
+            // - Positive offset: branch on TRUE
+            // - Negative offset: branch on FALSE (offset is negated and -1)
+            // So we need to decode this encoding
+            let (branch_on_true, actual_offset) = if branch_offset >= 0 {
+                (true, branch_offset)
             } else {
-                (!condition, -branch_offset - 1)  // Branch on false  
+                (false, -branch_offset - 1)
             };
             
-            // Debug darkness routine branching
-            if self.pc == 0x6c82 {
-                info!("BRANCH DEBUG at PC {:#06x}:", self.pc);
-                info!("  branch_offset: {}", branch_offset);
-                info!("  condition: {}", condition);
-                info!("  should_branch: {}", should_branch);
-                info!("  actual_offset: {}", actual_offset);
-                if !should_branch {
-                    info!("  >>> NOT BRANCHING - this causes the darkness bug!");
-                }
-            }
+            // Determine if we should branch based on condition and branch type
+            let should_branch = if branch_on_true {
+                condition  // Branch if condition is true
+            } else {
+                !condition  // Branch if condition is false
+            };
             
             
             if should_branch {
@@ -3934,11 +4180,55 @@ impl<'a> ZMachine<'a> {
         }
         
         // Attributes are stored in first 4 bytes of object
+        // According to spec: "attribute 0 is stored in bit 7 of the first byte,
+        // attribute 31 is stored in bit 0 of the fourth"
         let byte_index = (attr_num / 8) as usize;
         let bit_index = 7 - (attr_num % 8);
         let byte_value = self.memory[obj_addr + byte_index];
         
         Ok((byte_value & (1 << bit_index)) != 0)
+    }
+    
+    pub fn debug_dump_object(&self, obj_num: u16) -> Result<(), String> {
+        if obj_num == 0 {
+            return Err("Object 0 is invalid".to_string());
+        }
+        
+        let obj_addr = self.get_object_addr(obj_num)?;
+        info!("=== Object {} Debug Dump ===", obj_num);
+        info!("Object address: {:#06x}", obj_addr);
+        
+        // Dump raw bytes
+        info!("Raw object bytes:");
+        for i in 0..9 {
+            info!("  Byte {}: {:#04x}", i, self.memory[obj_addr + i]);
+        }
+        
+        // Parse object structure
+        let attr_bytes = &self.memory[obj_addr..obj_addr + 4];
+        let parent = self.memory[obj_addr + 4];
+        let sibling = self.memory[obj_addr + 5]; 
+        let child = self.memory[obj_addr + 6];
+        let prop_addr = ((self.memory[obj_addr + 7] as u16) << 8) | (self.memory[obj_addr + 8] as u16);
+        
+        info!("Object structure:");
+        info!("  Attributes: {:02x} {:02x} {:02x} {:02x}", attr_bytes[0], attr_bytes[1], attr_bytes[2], attr_bytes[3]);
+        info!("  Parent: {}", parent);
+        info!("  Sibling: {}", sibling);
+        info!("  Child: {}", child);
+        info!("  Properties address: {:#06x}", prop_addr);
+        
+        // List set attributes
+        info!("Set attributes:");
+        for i in 0..32 {
+            let byte_idx = (i / 8) as usize;
+            let bit_idx = 7 - (i % 8);
+            if (attr_bytes[byte_idx] & (1 << bit_idx)) != 0 {
+                info!("  Attribute {}", i);
+            }
+        }
+        
+        Ok(())
     }
 
     // Helper methods for property table access
@@ -4089,7 +4379,6 @@ impl<'a> ZMachine<'a> {
                     
                     // Safety check to prevent infinite loops
                     if length > 200 {
-                        eprintln!("WARNING: String length exceeded 200 bytes at address {:#x}", addr);
                         break;
                     }
                 }

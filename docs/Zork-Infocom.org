@@ -8,6 +8,7 @@
 - [[http://www.infocom-if.org/downloads/downloads.html][Infocom Downloads]]
 - [[https://github.com/historicalsource][Historical Sources on Github]]
 - [[https://ifdb.org/][Interactive Fiction Database]]
+- [[https://eblong.com/infocom/][EBLong Game Files]]
 
 ** Playing on Mac
 
@@ -26,6 +27,7 @@
   - [[https://github.com/SamB/ztools][Ztools on Github]]
   - [[https://gitlab.com/russotto/ztools][Ztools on Gitlab]]
 - [[https://github.com/heasm66/z-machine-standards-document_1_1][GitHub ZMachine docs]]
+- [[https://github.com/jeffnyman/zifmia][ZIFMia interpreter tester]]
 
 ** Misc History
 
@@ -34,4 +36,3 @@
 - [[https://intfiction.org/][Interactive Fiction Community]]
 - [[https://zork.fandom.com/wiki/Command_List][Zork Command List]]
 - [[https://www.ifwiki.org/Zork_I][IFWiki]]
-

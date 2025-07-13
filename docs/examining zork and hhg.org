@@ -25,3 +25,34 @@ Release number (at byte 2) is 003c ? which in decimal is 60.
 That would mean 60.861002
 Newer than known releases?
 Actually, found this release of [[https://github.com/the-infocom-files/hitchhiker][Hitchhiker]], 60.861002, is the *final* release!
+
+** debugging with Claude
+
+Let me use hexdump to look at the header bytes directly:
+
+⏺ Bash(hexdump -C resources/test/zork1/DATA/ZORK1.DAT | head -3)
+  ⎿  00000000  03 00 00 58 4e 37 4f 05  3b 21 02 b0 22 71 2e 53  |...XN7O.;!.."q.S|
+     00000010  00 00 38 34 30 37 32 36  01 f0 a5 c6 a1 29 00 00  |..840726.....)..|
+     00000020  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+
+⏺ From the header bytes, I can decode:
+  - Byte 0 (0x00): 03 = Z-machine version 3
+  - Bytes 2-3 (0x02-0x03): 00 58 = Release 88 (0x0058 in hex = 88 decimal)
+  - Bytes 18-23 (0x12-0x17): 38 34 30 37 32 36 = Serial "840726" (July 26, 1984)
+
+  But the game displays "Revision 2" not "Release 88". Let me check if the game is printing its own hardcoded revision string:
+
+⏺ Bash(strings resources/test/zork1/DATA/ZORK1.DAT | grep -i "revision" | head -5)
+  ⎿  (No content)
+
+⏺ The "Revision 2" text is being printed by the game's Z-code, not from the header. The game is displaying its own internal revision
+  number, which is different from the release number in the header.
+
+  So to answer your questions:
+  1. Z-machine version: 3 (from byte 0 of the header)
+  2. Release number: 88 (from bytes 2-3 of the header)
+  3. Serial number: 840726 (from bytes 18-23)
+  4. "Revision 2": This is hardcoded in the game's Z-code and printed as part of the game's intro text
+
+  The Z-machine version (3) determines which features and opcodes are available. The release number (88) is the actual release/build
+  number. The "Revision 2" shown in the game is likely Infocom's internal revision numbering for the game content itself.

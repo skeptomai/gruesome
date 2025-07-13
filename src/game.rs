@@ -1,4 +1,4 @@
-use std::fmt::{Display, Error, Formatter};
+use std::fmt::{Debug, Display, Error, Formatter};
 use sub_array::SubArray;
 
 use crate::header::Header;
@@ -113,6 +113,48 @@ impl<'a> GameFile<'a> {
         log::debug!("calling bytes_sized");
         let sub : &[u8; N] = &self.memory_map.bytes.sub_array_ref(offset);
         &sub
+    }
+}
+
+impl<'a> Debug for GameFile<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        let rand_mode_str = match self.rand_mode {
+            RandMode::Predictable => "Predictable",
+            RandMode::RandomUniform => "RandomUniform",
+        };
+        
+        // Since not all fields implement Debug, we'll format them manually
+        writeln!(f, "GameFile {{")?;
+        writeln!(f, "  header: {{")?;
+        writeln!(f, "    version: {}", self.header.version)?;
+        writeln!(f, "    release: {}", self.header.release)?;
+        writeln!(f, "    serial: {}", self.header.serial)?;
+        writeln!(f, "    initial_pc: {:#06x}", self.header.initial_pc)?;
+        writeln!(f, "    dictionary: {:#06x}", self.header.dictionary)?;
+        writeln!(f, "    object_table_addr: {:#06x}", self.header.object_table_addr)?;
+        writeln!(f, "    global_variables: {:#06x}", self.header.global_variables)?;
+        writeln!(f, "    base_static_mem: {:#06x}", self.header.base_static_mem)?;
+        writeln!(f, "    base_high_mem: {:#06x}", self.header.base_high_mem)?;
+        writeln!(f, "    abbrev_table: {:#06x}", self.header.abbrev_table)?;
+        writeln!(f, "    len_file: {}", self.header.len_file)?;
+        writeln!(f, "    checksum_file: {:#04x}", self.header.checksum_file)?;
+        writeln!(f, "  }}")?;
+        writeln!(f, "  rand_mode: {}", rand_mode_str)?;
+        writeln!(f, "  memory_map: {{")?;
+        writeln!(f, "    bytes.len(): {}", self.memory_map.bytes.len())?;
+        writeln!(f, "    header_addr: {:#06x}", self.memory_map.header_addr)?;
+        writeln!(f, "    abbrev_strings: {:#06x}", self.memory_map.abbrev_strings)?;
+        writeln!(f, "    abbrev_table: {:#06x}", self.memory_map.abbrev_table)?;
+        writeln!(f, "    property_defaults: {:#06x}", self.memory_map.property_defaults)?;
+        writeln!(f, "    object_table: {:#06x}", self.memory_map.object_table)?;
+        writeln!(f, "    properties_table: {:#06x}", self.memory_map.properties_table)?;
+        writeln!(f, "    global_variables: {:#06x}", self.memory_map.global_variables)?;
+        writeln!(f, "  }}")?;
+        writeln!(f, "  object_table: {}", if self.object_table.is_some() { "Some(...)" } else { "None" })?;
+        writeln!(f, "  dictionary: {}", if self.dictionary.is_some() { "Some(...)" } else { "None" })?;
+        write!(f, "}}")?;
+        
+        Ok(())
     }
 }
 

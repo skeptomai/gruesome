@@ -1,5 +1,4 @@
 // Test utilities for creating mock ZMachine instances without GameFile complexity
-use crate::zmachine::ZMachine;
 use std::collections::HashMap;
 
 pub struct MockZMachine {
@@ -250,7 +249,6 @@ impl MockZMachine {
         self.memory[parse_buffer + 1] = words_to_store as u8;
         
         // Store each word
-        let mut text_pos = 0;
         for (i, word) in words.iter().take(words_to_store).enumerate() {
             let entry_offset = parse_buffer + 2 + (i * 4);
             
@@ -282,7 +280,6 @@ impl MockZMachine {
         
         let text_buffer = self.operands_buffer[0] as usize;
         let length = self.operands_buffer[1] as usize;
-        let start_pos = self.operands_buffer[2] as usize;
         let coded_text_addr = self.operands_buffer[3] as usize;
         
         if text_buffer >= self.memory.len() || coded_text_addr >= self.memory.len() {

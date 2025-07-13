@@ -1,0 +1,584 @@
+   Compiling infocom v0.1.0 (/Users/cb/Projects/infocom)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.52s
+     Running `target/debug/zmachine resources/test/zork1/DATA/ZORK1.DAT`
+Z-Machine Interpreter
+Loading game: "resources/test/zork1/DATA/ZORK1.DAT"
+Game loaded successfully:
+  Version: 3
+  Initial PC: 0x4f05
+
+DEBUG: Initial PC is 0x4f05
+First few instructions:
+  0x4f05: call #10809, #32784, #65535 -> var0
+  0x4f0e: storew var0, #0, #1
+  0x4f13: call #10809, #32892, #65535 -> var0
+  0x4f1c: call #10809, #33008, #65535 -> var0
+  0x4f25: storew var0, #0, #1
+
+Game State at Startup:
+  Global 0 (Location): 0 (object 0)
+  Global 1 (Score): 0 (object 0)
+  Global 2 (Moves): 0 (object 0)
+
+Object 180 is confirmed to be 'West of House'
+But location (global 0) is 0 - this is the issue!
+
+Running game with location debugging enabled...
+
+Executing first 500 instructions to trace startup...
+
+0: PC 0x4f05 | Location before: 0 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 10809 }, Operand { operand_type: LargeConstant, value: 32784 }, Operand { operand_type: LargeConstant, value: 65535 }], store_var=Some(0), branch=None)
+
+1: PC 0x5479 | Location before: 0 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 10819 }, Operand { operand_type: Variable, value: 1 }], store_var=Some(3), branch=None)
+
+2: PC 0x5491 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 148 }, Operand { operand_type: SmallConstant, value: 180 }], store_var=Some(3), branch=None)
+
+3: PC 0x5495 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 148 }, Operand { operand_type: Variable, value: 146 }], store_var=Some(4), branch=None)
+
+4: PC 0x5499 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: Variable, value: 3 }], store_var=None, branch=Some(-25))
+
+5: PC 0x549d | Location before: 0 | name: sub (opcode=0x15, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 146 }, Operand { operand_type: SmallConstant, value: 6 }], store_var=Some(146), branch=None)
+
+6: PC 0x54a1 | Location before: 0 | name: jz (opcode=0x00, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 2 }], store_var=None, branch=Some(6))
+
+7: PC 0x54a8 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 148 }, Operand { operand_type: Variable, value: 146 }], store_var=Some(5), branch=None)
+
+8: PC 0x54ac | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 5 }, Operand { operand_type: SmallConstant, value: 2 }, Operand { operand_type: Variable, value: 1 }], store_var=None, branch=None)
+
+9: PC 0x54b1 | Location before: 0 | name: ret (opcode=0x0b, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 5 }], store_var=None, branch=None)
+
+10: PC 0x547f | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 3 }, Operand { operand_type: SmallConstant, value: 1 }, Operand { operand_type: Variable, value: 2 }], store_var=None, branch=None)
+
+11: PC 0x5484 | Location before: 0 | name: ret (opcode=0x0b, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 3 }], store_var=None, branch=None)
+
+12: PC 0x4f0e | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 0 }, Operand { operand_type: SmallConstant, value: 0 }, Operand { operand_type: SmallConstant, value: 1 }], store_var=None, branch=None)
+
+13: PC 0x4f13 | Location before: 0 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 10809 }, Operand { operand_type: LargeConstant, value: 32892 }, Operand { operand_type: LargeConstant, value: 65535 }], store_var=Some(0), branch=None)
+
+14: PC 0x5479 | Location before: 0 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 10819 }, Operand { operand_type: Variable, value: 1 }], store_var=Some(3), branch=None)
+
+15: PC 0x5491 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 148 }, Operand { operand_type: SmallConstant, value: 180 }], store_var=Some(3), branch=None)
+
+16: PC 0x5495 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 148 }, Operand { operand_type: Variable, value: 146 }], store_var=Some(4), branch=None)
+
+17: PC 0x5499 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: Variable, value: 3 }], store_var=None, branch=Some(-25))
+
+18: PC 0x54b3 | Location before: 0 | name: loadw (opcode=0x0f, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 2 }], store_var=Some(0), branch=None)
+
+19: PC 0x54b7 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 0 }, Operand { operand_type: Variable, value: 1 }], store_var=None, branch=Some(-5))
+
+20: PC 0x54bd | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 6 }], store_var=Some(4), branch=None)
+
+21: PC 0x54c1 | Location before: 0 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65495 }], store_var=None, branch=None)
+
+22: PC 0x5499 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: Variable, value: 3 }], store_var=None, branch=Some(-25))
+
+23: PC 0x549d | Location before: 0 | name: sub (opcode=0x15, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 146 }, Operand { operand_type: SmallConstant, value: 6 }], store_var=Some(146), branch=None)
+
+24: PC 0x54a1 | Location before: 0 | name: jz (opcode=0x00, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 2 }], store_var=None, branch=Some(6))
+
+25: PC 0x54a8 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 148 }, Operand { operand_type: Variable, value: 146 }], store_var=Some(5), branch=None)
+
+26: PC 0x54ac | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 5 }, Operand { operand_type: SmallConstant, value: 2 }, Operand { operand_type: Variable, value: 1 }], store_var=None, branch=None)
+
+27: PC 0x54b1 | Location before: 0 | name: ret (opcode=0x0b, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 5 }], store_var=None, branch=None)
+
+28: PC 0x547f | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 3 }, Operand { operand_type: SmallConstant, value: 1 }, Operand { operand_type: Variable, value: 2 }], store_var=None, branch=None)
+
+29: PC 0x5484 | Location before: 0 | name: ret (opcode=0x0b, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 3 }], store_var=None, branch=None)
+
+30: PC 0x4f1c | Location before: 0 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 10809 }, Operand { operand_type: LargeConstant, value: 33008 }, Operand { operand_type: LargeConstant, value: 65535 }], store_var=Some(0), branch=None)
+
+31: PC 0x5479 | Location before: 0 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 10819 }, Operand { operand_type: Variable, value: 1 }], store_var=Some(3), branch=None)
+
+32: PC 0x5491 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 148 }, Operand { operand_type: SmallConstant, value: 180 }], store_var=Some(3), branch=None)
+
+33: PC 0x5495 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 148 }, Operand { operand_type: Variable, value: 146 }], store_var=Some(4), branch=None)
+
+34: PC 0x5499 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: Variable, value: 3 }], store_var=None, branch=Some(-25))
+
+35: PC 0x54b3 | Location before: 0 | name: loadw (opcode=0x0f, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 2 }], store_var=Some(0), branch=None)
+
+36: PC 0x54b7 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 0 }, Operand { operand_type: Variable, value: 1 }], store_var=None, branch=Some(-5))
+
+37: PC 0x54bd | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 6 }], store_var=Some(4), branch=None)
+
+38: PC 0x54c1 | Location before: 0 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65495 }], store_var=None, branch=None)
+
+39: PC 0x5499 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: Variable, value: 3 }], store_var=None, branch=Some(-25))
+
+40: PC 0x54b3 | Location before: 0 | name: loadw (opcode=0x0f, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 2 }], store_var=Some(0), branch=None)
+
+41: PC 0x54b7 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 0 }, Operand { operand_type: Variable, value: 1 }], store_var=None, branch=Some(-5))
+
+42: PC 0x54bd | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 6 }], store_var=Some(4), branch=None)
+
+43: PC 0x54c1 | Location before: 0 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65495 }], store_var=None, branch=None)
+
+44: PC 0x5499 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: Variable, value: 3 }], store_var=None, branch=Some(-25))
+
+45: PC 0x549d | Location before: 0 | name: sub (opcode=0x15, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 146 }, Operand { operand_type: SmallConstant, value: 6 }], store_var=Some(146), branch=None)
+
+46: PC 0x54a1 | Location before: 0 | name: jz (opcode=0x00, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 2 }], store_var=None, branch=Some(6))
+
+47: PC 0x54a8 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 148 }, Operand { operand_type: Variable, value: 146 }], store_var=Some(5), branch=None)
+
+48: PC 0x54ac | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 5 }, Operand { operand_type: SmallConstant, value: 2 }, Operand { operand_type: Variable, value: 1 }], store_var=None, branch=None)
+
+49: PC 0x54b1 | Location before: 0 | name: ret (opcode=0x0b, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 5 }], store_var=None, branch=None)
+
+50: PC 0x547f | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 3 }, Operand { operand_type: SmallConstant, value: 1 }, Operand { operand_type: Variable, value: 2 }], store_var=None, branch=None)
+
+51: PC 0x5484 | Location before: 0 | name: ret (opcode=0x0b, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 3 }], store_var=None, branch=None)
+
+52: PC 0x4f25 | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 0 }, Operand { operand_type: SmallConstant, value: 0 }, Operand { operand_type: SmallConstant, value: 1 }], store_var=None, branch=None)
+
+53: PC 0x4f2a | Location before: 0 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 10809 }, Operand { operand_type: LargeConstant, value: 28522 }, Operand { operand_type: SmallConstant, value: 40 }], store_var=Some(0), branch=None)
+
+54: PC 0x5479 | Location before: 0 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 10819 }, Operand { operand_type: Variable, value: 1 }], store_var=Some(3), branch=None)
+
+55: PC 0x5491 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 148 }, Operand { operand_type: SmallConstant, value: 180 }], store_var=Some(3), branch=None)
+
+56: PC 0x5495 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 148 }, Operand { operand_type: Variable, value: 146 }], store_var=Some(4), branch=None)
+
+57: PC 0x5499 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: Variable, value: 3 }], store_var=None, branch=Some(-25))
+
+58: PC 0x54b3 | Location before: 0 | name: loadw (opcode=0x0f, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 2 }], store_var=Some(0), branch=None)
+
+59: PC 0x54b7 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 0 }, Operand { operand_type: Variable, value: 1 }], store_var=None, branch=Some(-5))
+
+60: PC 0x54bd | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 6 }], store_var=Some(4), branch=None)
+
+61: PC 0x54c1 | Location before: 0 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65495 }], store_var=None, branch=None)
+
+62: PC 0x5499 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: Variable, value: 3 }], store_var=None, branch=Some(-25))
+
+63: PC 0x54b3 | Location before: 0 | name: loadw (opcode=0x0f, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 2 }], store_var=Some(0), branch=None)
+
+64: PC 0x54b7 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 0 }, Operand { operand_type: Variable, value: 1 }], store_var=None, branch=Some(-5))
+
+65: PC 0x54bd | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 6 }], store_var=Some(4), branch=None)
+
+66: PC 0x54c1 | Location before: 0 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65495 }], store_var=None, branch=None)
+
+67: PC 0x5499 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: Variable, value: 3 }], store_var=None, branch=Some(-25))
+
+68: PC 0x54b3 | Location before: 0 | name: loadw (opcode=0x0f, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 2 }], store_var=Some(0), branch=None)
+
+69: PC 0x54b7 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 0 }, Operand { operand_type: Variable, value: 1 }], store_var=None, branch=Some(-5))
+
+70: PC 0x54bd | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 6 }], store_var=Some(4), branch=None)
+
+71: PC 0x54c1 | Location before: 0 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65495 }], store_var=None, branch=None)
+
+72: PC 0x5499 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: Variable, value: 3 }], store_var=None, branch=Some(-25))
+
+73: PC 0x549d | Location before: 0 | name: sub (opcode=0x15, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 146 }, Operand { operand_type: SmallConstant, value: 6 }], store_var=Some(146), branch=None)
+
+74: PC 0x54a1 | Location before: 0 | name: jz (opcode=0x00, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 2 }], store_var=None, branch=Some(6))
+
+75: PC 0x54a8 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 148 }, Operand { operand_type: Variable, value: 146 }], store_var=Some(5), branch=None)
+
+76: PC 0x54ac | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 5 }, Operand { operand_type: SmallConstant, value: 2 }, Operand { operand_type: Variable, value: 1 }], store_var=None, branch=None)
+
+77: PC 0x54b1 | Location before: 0 | name: ret (opcode=0x0b, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 5 }], store_var=None, branch=None)
+
+78: PC 0x547f | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 3 }, Operand { operand_type: SmallConstant, value: 1 }, Operand { operand_type: Variable, value: 2 }], store_var=None, branch=None)
+
+79: PC 0x5484 | Location before: 0 | name: ret (opcode=0x0b, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 3 }], store_var=None, branch=None)
+
+80: PC 0x4f32 | Location before: 0 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 10809 }, Operand { operand_type: LargeConstant, value: 28501 }, Operand { operand_type: SmallConstant, value: 200 }], store_var=Some(0), branch=None)
+
+81: PC 0x5479 | Location before: 0 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 10819 }, Operand { operand_type: Variable, value: 1 }], store_var=Some(3), branch=None)
+
+82: PC 0x5491 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 148 }, Operand { operand_type: SmallConstant, value: 180 }], store_var=Some(3), branch=None)
+
+83: PC 0x5495 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 148 }, Operand { operand_type: Variable, value: 146 }], store_var=Some(4), branch=None)
+
+84: PC 0x5499 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: Variable, value: 3 }], store_var=None, branch=Some(-25))
+
+85: PC 0x54b3 | Location before: 0 | name: loadw (opcode=0x0f, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 2 }], store_var=Some(0), branch=None)
+
+86: PC 0x54b7 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 0 }, Operand { operand_type: Variable, value: 1 }], store_var=None, branch=Some(-5))
+
+87: PC 0x54bd | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 6 }], store_var=Some(4), branch=None)
+
+88: PC 0x54c1 | Location before: 0 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65495 }], store_var=None, branch=None)
+
+89: PC 0x5499 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: Variable, value: 3 }], store_var=None, branch=Some(-25))
+
+90: PC 0x54b3 | Location before: 0 | name: loadw (opcode=0x0f, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 2 }], store_var=Some(0), branch=None)
+
+91: PC 0x54b7 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 0 }, Operand { operand_type: Variable, value: 1 }], store_var=None, branch=Some(-5))
+
+92: PC 0x54bd | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 6 }], store_var=Some(4), branch=None)
+
+93: PC 0x54c1 | Location before: 0 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65495 }], store_var=None, branch=None)
+
+94: PC 0x5499 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: Variable, value: 3 }], store_var=None, branch=Some(-25))
+
+95: PC 0x54b3 | Location before: 0 | name: loadw (opcode=0x0f, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 2 }], store_var=Some(0), branch=None)
+
+96: PC 0x54b7 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 0 }, Operand { operand_type: Variable, value: 1 }], store_var=None, branch=Some(-5))
+
+97: PC 0x54bd | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 6 }], store_var=Some(4), branch=None)
+
+98: PC 0x54c1 | Location before: 0 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65495 }], store_var=None, branch=None)
+
+99: PC 0x5499 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: Variable, value: 3 }], store_var=None, branch=Some(-25))
+
+100: PC 0x54b3 | Location before: 0 | name: loadw (opcode=0x0f, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 2 }], store_var=Some(0), branch=None)
+
+101: PC 0x54b7 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 0 }, Operand { operand_type: Variable, value: 1 }], store_var=None, branch=Some(-5))
+
+102: PC 0x54bd | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: SmallConstant, value: 6 }], store_var=Some(4), branch=None)
+
+103: PC 0x54c1 | Location before: 0 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65495 }], store_var=None, branch=None)
+
+104: PC 0x5499 | Location before: 0 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 4 }, Operand { operand_type: Variable, value: 3 }], store_var=None, branch=Some(-25))
+
+105: PC 0x549d | Location before: 0 | name: sub (opcode=0x15, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 146 }, Operand { operand_type: SmallConstant, value: 6 }], store_var=Some(146), branch=None)
+
+106: PC 0x54a1 | Location before: 0 | name: jz (opcode=0x00, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 2 }], store_var=None, branch=Some(6))
+
+107: PC 0x54a8 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 148 }, Operand { operand_type: Variable, value: 146 }], store_var=Some(5), branch=None)
+
+108: PC 0x54ac | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 5 }, Operand { operand_type: SmallConstant, value: 2 }, Operand { operand_type: Variable, value: 1 }], store_var=None, branch=None)
+
+109: PC 0x54b1 | Location before: 0 | name: ret (opcode=0x0b, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 5 }], store_var=None, branch=None)
+
+110: PC 0x547f | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 3 }, Operand { operand_type: SmallConstant, value: 1 }, Operand { operand_type: Variable, value: 2 }], store_var=None, branch=None)
+
+111: PC 0x5484 | Location before: 0 | name: ret (opcode=0x0b, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 3 }], store_var=None, branch=None)
+
+112: PC 0x4f3a | Location before: 0 | name: put_prop (opcode=0x03, form=Variable, operand_count=Var, operands=[Operand { operand_type: SmallConstant, value: 156 }, Operand { operand_type: SmallConstant, value: 6 }, Operand { operand_type: SmallConstant, value: 4 }], store_var=None, branch=None)
+
+113: PC 0x4f3f | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 32 }, Operand { operand_type: SmallConstant, value: 2 }], store_var=Some(0), branch=None)
+
+114: PC 0x4f43 | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 26 }, Operand { operand_type: SmallConstant, value: 1 }, Operand { operand_type: Variable, value: 0 }], store_var=None, branch=None)
+
+115: PC 0x4f48 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 32 }, Operand { operand_type: SmallConstant, value: 4 }], store_var=Some(0), branch=None)
+
+116: PC 0x4f4c | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 26 }, Operand { operand_type: SmallConstant, value: 2 }, Operand { operand_type: Variable, value: 0 }], store_var=None, branch=None)
+
+117: PC 0x4f51 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 30 }, Operand { operand_type: SmallConstant, value: 2 }], store_var=Some(0), branch=None)
+
+118: PC 0x4f55 | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 25 }, Operand { operand_type: SmallConstant, value: 2 }, Operand { operand_type: Variable, value: 0 }], store_var=None, branch=None)
+
+119: PC 0x4f5a | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 30 }, Operand { operand_type: SmallConstant, value: 4 }], store_var=Some(0), branch=None)
+
+120: PC 0x4f5e | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 25 }, Operand { operand_type: SmallConstant, value: 3 }, Operand { operand_type: Variable, value: 0 }], store_var=None, branch=None)
+
+121: PC 0x4f63 | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 29 }, Operand { operand_type: SmallConstant, value: 2 }], store_var=Some(0), branch=None)
+
+122: PC 0x4f67 | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 24 }, Operand { operand_type: SmallConstant, value: 1 }, Operand { operand_type: Variable, value: 0 }], store_var=None, branch=None)
+
+123: PC 0x4f6c | Location before: 0 | name: add (opcode=0x14, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 28 }, Operand { operand_type: SmallConstant, value: 2 }], store_var=Some(0), branch=None)
+
+124: PC 0x4f70 | Location before: 0 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 24 }, Operand { operand_type: SmallConstant, value: 3 }, Operand { operand_type: Variable, value: 0 }], store_var=None, branch=None)
+
+125: PC 0x4f75 | Location before: 0 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 16 }, Operand { operand_type: SmallConstant, value: 180 }], store_var=None, branch=None)
+DEBUG: Setting location (global 0) to object 180 at PC 0x4f78
+  -> This is West of House!
+  Call stack depth: 0
+  >>> LOCATION CHANGED from 0 to 180!
+
+126: PC 0x4f78 | Location before: 180 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 19096 }, Operand { operand_type: SmallConstant, value: 160 }], store_var=Some(0), branch=None)
+
+127: PC 0x9533 | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 123 }, Operand { operand_type: Variable, value: 1 }], store_var=None, branch=None)
+
+128: PC 0x9536 | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 122 }, Operand { operand_type: Variable, value: 16 }], store_var=None, branch=None)
+
+129: PC 0x9539 | Location before: 180 | name: ret (opcode=0x0b, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 122 }], store_var=None, branch=None)
+
+130: PC 0x4f7e | Location before: 180 | name: test_attr (opcode=0x0a, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 16 }, Operand { operand_type: SmallConstant, value: 3 }], store_var=None, branch=Some(8))
+
+131: PC 0x4f82 | Location before: 180 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 14192 }], store_var=Some(0), branch=None)
+
+132: PC 0x6ee3 | Location before: 180 | name: print (opcode=0x02, form=Short, operand_count=Op0, operands=[], store_var=None, branch=None)
+ZORK I: The Great Underground Empire
+Copyright (c) 1981, 1982, 1983 Infocom, Inc. 
+133: PC 0x6f28 | Location before: 180 | name: print (opcode=0x02, form=Short, operand_count=Op0, operands=[], store_var=None, branch=None)
+All rights reserved.
+134: PC 0x6f39 | Location before: 180 | name: new_line (opcode=0x0b, form=Short, operand_count=Op0, operands=[], store_var=None, branch=None)
+
+
+135: PC 0x6f3a | Location before: 180 | name: loadb (opcode=0x10, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 0 }, Operand { operand_type: SmallConstant, value: 1 }], store_var=Some(0), branch=None)
+
+136: PC 0x6f3e | Location before: 180 | name: and (opcode=0x09, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 0 }, Operand { operand_type: SmallConstant, value: 8 }], store_var=Some(0), branch=None)
+
+137: PC 0x6f42 | Location before: 180 | name: jz (opcode=0x00, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 0 }], store_var=None, branch=Some(26))
+
+138: PC 0x6f5d | Location before: 180 | name: print (opcode=0x02, form=Short, operand_count=Op0, operands=[], store_var=None, branch=None)
+ZORK is a registered trademark of Infocom, Inc.
+Revision 
+139: PC 0x6f88 | Location before: 180 | name: loadw (opcode=0x0f, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 0 }, Operand { operand_type: SmallConstant, value: 1 }], store_var=Some(0), branch=None)
+
+140: PC 0x6f8c | Location before: 180 | name: and (opcode=0x09, form=Variable, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 0 }, Operand { operand_type: LargeConstant, value: 2047 }], store_var=Some(0), branch=None)
+
+141: PC 0x6f92 | Location before: 180 | name: print_num (opcode=0x06, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 0 }], store_var=None, branch=None)
+88
+142: PC 0x6f95 | Location before: 180 | name: print (opcode=0x02, form=Short, operand_count=Op0, operands=[], store_var=None, branch=None)
+ / Serial number 
+143: PC 0x6fa4 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 1 }, Operand { operand_type: SmallConstant, value: 23 }], store_var=None, branch=Some(-6))
+
+144: PC 0x6fab | Location before: 180 | name: loadb (opcode=0x10, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 0 }, Operand { operand_type: Variable, value: 1 }], store_var=Some(0), branch=None)
+
+145: PC 0x6faf | Location before: 180 | name: print_char (opcode=0x05, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 0 }], store_var=None, branch=None)
+8
+146: PC 0x6fb2 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65521 }], store_var=None, branch=None)
+
+147: PC 0x6fa4 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 1 }, Operand { operand_type: SmallConstant, value: 23 }], store_var=None, branch=Some(-6))
+
+148: PC 0x6fab | Location before: 180 | name: loadb (opcode=0x10, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 0 }, Operand { operand_type: Variable, value: 1 }], store_var=Some(0), branch=None)
+
+149: PC 0x6faf | Location before: 180 | name: print_char (opcode=0x05, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 0 }], store_var=None, branch=None)
+4
+150: PC 0x6fb2 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65521 }], store_var=None, branch=None)
+
+151: PC 0x6fa4 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 1 }, Operand { operand_type: SmallConstant, value: 23 }], store_var=None, branch=Some(-6))
+
+152: PC 0x6fab | Location before: 180 | name: loadb (opcode=0x10, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 0 }, Operand { operand_type: Variable, value: 1 }], store_var=Some(0), branch=None)
+
+153: PC 0x6faf | Location before: 180 | name: print_char (opcode=0x05, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 0 }], store_var=None, branch=None)
+0
+154: PC 0x6fb2 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65521 }], store_var=None, branch=None)
+
+155: PC 0x6fa4 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 1 }, Operand { operand_type: SmallConstant, value: 23 }], store_var=None, branch=Some(-6))
+
+156: PC 0x6fab | Location before: 180 | name: loadb (opcode=0x10, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 0 }, Operand { operand_type: Variable, value: 1 }], store_var=Some(0), branch=None)
+
+157: PC 0x6faf | Location before: 180 | name: print_char (opcode=0x05, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 0 }], store_var=None, branch=None)
+7
+158: PC 0x6fb2 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65521 }], store_var=None, branch=None)
+
+159: PC 0x6fa4 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 1 }, Operand { operand_type: SmallConstant, value: 23 }], store_var=None, branch=Some(-6))
+
+160: PC 0x6fab | Location before: 180 | name: loadb (opcode=0x10, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 0 }, Operand { operand_type: Variable, value: 1 }], store_var=Some(0), branch=None)
+
+161: PC 0x6faf | Location before: 180 | name: print_char (opcode=0x05, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 0 }], store_var=None, branch=None)
+2
+162: PC 0x6fb2 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65521 }], store_var=None, branch=None)
+
+163: PC 0x6fa4 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 1 }, Operand { operand_type: SmallConstant, value: 23 }], store_var=None, branch=Some(-6))
+
+164: PC 0x6fab | Location before: 180 | name: loadb (opcode=0x10, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 0 }, Operand { operand_type: Variable, value: 1 }], store_var=Some(0), branch=None)
+
+165: PC 0x6faf | Location before: 180 | name: print_char (opcode=0x05, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 0 }], store_var=None, branch=None)
+6
+166: PC 0x6fb2 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65521 }], store_var=None, branch=None)
+
+167: PC 0x6fa4 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 1 }, Operand { operand_type: SmallConstant, value: 23 }], store_var=None, branch=Some(-6))
+
+168: PC 0x6fa8 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 12 }], store_var=None, branch=None)
+
+169: PC 0x6fb5 | Location before: 180 | name: new_line (opcode=0x0b, form=Short, operand_count=Op0, operands=[], store_var=None, branch=None)
+
+
+170: PC 0x6fb6 | Location before: 180 | name: rtrue (opcode=0x00, form=Short, operand_count=Op0, operands=[], store_var=None, branch=None)
+
+171: PC 0x4f87 | Location before: 180 | name: new_line (opcode=0x0b, form=Short, operand_count=Op0, operands=[], store_var=None, branch=None)
+
+
+172: PC 0x4f88 | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 82 }, Operand { operand_type: SmallConstant, value: 1 }], store_var=None, branch=None)
+
+173: PC 0x4f8b | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 127 }, Operand { operand_type: SmallConstant, value: 4 }], store_var=None, branch=None)
+
+174: PC 0x4f8e | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 144 }, Operand { operand_type: Variable, value: 127 }], store_var=None, branch=None)
+
+175: PC 0x4f91 | Location before: 180 | name: insert_obj (opcode=0x0e, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 127 }, Operand { operand_type: Variable, value: 16 }], store_var=None, branch=None)
+
+176: PC 0x4f94 | Location before: 180 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 16130 }], store_var=Some(0), branch=None)
+
+177: PC 0x7e05 | Location before: 180 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 17997 }, Operand { operand_type: SmallConstant, value: 1 }], store_var=Some(0), branch=None)
+
+178: PC 0x8ca3 | Location before: 180 | name: jz (opcode=0x00, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 1 }], store_var=None, branch=Some(8))
+
+179: PC 0x8ca6 | Location before: 180 | name: push (opcode=0x08, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 1 }], store_var=None, branch=None)
+
+180: PC 0x8ca9 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 5 }], store_var=None, branch=None)
+
+181: PC 0x8caf | Location before: 180 | name: pull (opcode=0x09, form=Variable, operand_count=Var, operands=[Operand { operand_type: SmallConstant, value: 2 }], store_var=None, branch=None)
+DEBUG: Executing at PC 0x8caf: name: pull (opcode=0x09, form=Variable, operand_count=Var, operands=[Operand { operand_type: SmallConstant, value: 2 }], store_var=None, branch=None)
+  Current location (global 0): 180
+
+182: PC 0x8cb2 | Location before: 180 | name: jz (opcode=0x00, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 82 }], store_var=None, branch=Some(14))
+DEBUG: Executing at PC 0x8cb2: name: jz (opcode=0x00, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 82 }], store_var=None, branch=Some(14))
+  Current location (global 0): 180
+  Checking var82 = 1 (0 means pitch black message)
+  var82 is global 66 - might be a light/lamp flag?
+
+183: PC 0x8cb5 | Location before: 180 | name: print (opcode=0x02, form=Short, operand_count=Op0, operands=[], store_var=None, branch=None)
+DEBUG: Executing at PC 0x8cb5: name: print (opcode=0x02, form=Short, operand_count=Op0, operands=[], store_var=None, branch=None)
+  Current location (global 0): 180
+It is pitch black.
+184: PC 0x8cc2 | Location before: 180 | name: jz (opcode=0x00, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 81 }], store_var=None, branch=Some(-26))
+DEBUG: Executing at PC 0x8cc2: name: jz (opcode=0x00, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 81 }], store_var=None, branch=Some(-26))
+  Current location (global 0): 180
+
+185: PC 0x8cc5 | Location before: 180 | name: print (opcode=0x02, form=Short, operand_count=Op0, operands=[], store_var=None, branch=None)
+DEBUG: Executing at PC 0x8cc5: name: print (opcode=0x02, form=Short, operand_count=Op0, operands=[], store_var=None, branch=None)
+  Current location (global 0): 180
+ You are likely to be eaten by a grue.
+186: PC 0x8cdc | Location before: 180 | name: new_line (opcode=0x0b, form=Short, operand_count=Op0, operands=[], store_var=None, branch=None)
+
+
+187: PC 0x8cdd | Location before: 180 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 10344 }], store_var=Some(0), branch=None)
+
+188: PC 0x50d5 | Location before: 180 | name: rfalse (opcode=0x01, form=Short, operand_count=Op0, operands=[], store_var=None, branch=None)
+
+189: PC 0x8ce2 | Location before: 180 | name: ret (opcode=0x0b, form=Short, operand_count=Op1, operands=[Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+190: PC 0x7e0b | Location before: 180 | name: jz (opcode=0x00, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 0 }], store_var=None, branch=Some(0))
+
+191: PC 0x4f99 | Location before: 180 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 10901 }], store_var=Some(0), branch=None)
+
+192: PC 0x553f | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 4 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+193: PC 0x5542 | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 5 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+194: PC 0x5545 | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 8 }, Operand { operand_type: SmallConstant, value: 1 }], store_var=None, branch=None)
+
+195: PC 0x5548 | Location before: 180 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 11328 }], store_var=Some(143), branch=None)
+
+196: PC 0x5897 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 11 }, Operand { operand_type: SmallConstant, value: 9 }], store_var=None, branch=Some(-6))
+
+197: PC 0x589e | Location before: 180 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 116 }, Operand { operand_type: Variable, value: 11 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+198: PC 0x58a3 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65523 }], store_var=None, branch=None)
+
+199: PC 0x5897 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 11 }, Operand { operand_type: SmallConstant, value: 9 }], store_var=None, branch=Some(-6))
+
+200: PC 0x589e | Location before: 180 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 116 }, Operand { operand_type: Variable, value: 11 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+201: PC 0x58a3 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65523 }], store_var=None, branch=None)
+
+202: PC 0x5897 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 11 }, Operand { operand_type: SmallConstant, value: 9 }], store_var=None, branch=Some(-6))
+
+203: PC 0x589e | Location before: 180 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 116 }, Operand { operand_type: Variable, value: 11 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+204: PC 0x58a3 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65523 }], store_var=None, branch=None)
+
+205: PC 0x5897 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 11 }, Operand { operand_type: SmallConstant, value: 9 }], store_var=None, branch=Some(-6))
+
+206: PC 0x589e | Location before: 180 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 116 }, Operand { operand_type: Variable, value: 11 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+207: PC 0x58a3 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65523 }], store_var=None, branch=None)
+
+208: PC 0x5897 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 11 }, Operand { operand_type: SmallConstant, value: 9 }], store_var=None, branch=Some(-6))
+
+209: PC 0x589e | Location before: 180 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 116 }, Operand { operand_type: Variable, value: 11 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+210: PC 0x58a3 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65523 }], store_var=None, branch=None)
+
+211: PC 0x5897 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 11 }, Operand { operand_type: SmallConstant, value: 9 }], store_var=None, branch=Some(-6))
+
+212: PC 0x589e | Location before: 180 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 116 }, Operand { operand_type: Variable, value: 11 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+213: PC 0x58a3 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65523 }], store_var=None, branch=None)
+
+214: PC 0x5897 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 11 }, Operand { operand_type: SmallConstant, value: 9 }], store_var=None, branch=Some(-6))
+
+215: PC 0x589e | Location before: 180 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 116 }, Operand { operand_type: Variable, value: 11 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+216: PC 0x58a3 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65523 }], store_var=None, branch=None)
+
+217: PC 0x5897 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 11 }, Operand { operand_type: SmallConstant, value: 9 }], store_var=None, branch=Some(-6))
+
+218: PC 0x589e | Location before: 180 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 116 }, Operand { operand_type: Variable, value: 11 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+219: PC 0x58a3 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65523 }], store_var=None, branch=None)
+
+220: PC 0x5897 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 11 }, Operand { operand_type: SmallConstant, value: 9 }], store_var=None, branch=Some(-6))
+
+221: PC 0x589e | Location before: 180 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 116 }, Operand { operand_type: Variable, value: 11 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+222: PC 0x58a3 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65523 }], store_var=None, branch=None)
+
+223: PC 0x5897 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 11 }, Operand { operand_type: SmallConstant, value: 9 }], store_var=None, branch=Some(-6))
+
+224: PC 0x589e | Location before: 180 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 116 }, Operand { operand_type: Variable, value: 11 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+225: PC 0x58a3 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 65523 }], store_var=None, branch=None)
+
+226: PC 0x5897 | Location before: 180 | name: inc_chk (opcode=0x05, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 11 }, Operand { operand_type: SmallConstant, value: 9 }], store_var=None, branch=Some(-6))
+
+227: PC 0x589b | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 10 }], store_var=None, branch=None)
+
+228: PC 0x58a6 | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 104 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+229: PC 0x58a9 | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 120 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+230: PC 0x58ac | Location before: 180 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 102 }, Operand { operand_type: Variable, value: 97 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+231: PC 0x58b1 | Location before: 180 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 101 }, Operand { operand_type: Variable, value: 97 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+232: PC 0x58b6 | Location before: 180 | name: storew (opcode=0x01, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 100 }, Operand { operand_type: Variable, value: 97 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+233: PC 0x58bb | Location before: 180 | name: jz (opcode=0x00, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 112 }], store_var=None, branch=Some(-26))
+
+234: PC 0x58be | Location before: 180 | name: je (opcode=0x01, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 127 }, Operand { operand_type: Variable, value: 144 }], store_var=None, branch=Some(21))
+
+235: PC 0x58d5 | Location before: 180 | name: jz (opcode=0x00, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 124 }], store_var=None, branch=Some(23))
+
+236: PC 0x58ed | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 127 }, Operand { operand_type: Variable, value: 144 }], store_var=None, branch=None)
+
+237: PC 0x58f0 | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 112 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+238: PC 0x58f3 | Location before: 180 | name: get_parent (opcode=0x03, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 127 }], store_var=Some(0), branch=None)
+
+239: PC 0x58f6 | Location before: 180 | name: test_attr (opcode=0x0a, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 0 }, Operand { operand_type: SmallConstant, value: 27 }], store_var=None, branch=Some(5))
+
+240: PC 0x58fa | Location before: 180 | name: get_parent (opcode=0x03, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 127 }], store_var=Some(16), branch=None)
+DEBUG: Instruction at PC 0x58fa will store to location (var 16)
+DEBUG: Setting location (global 0) to object 180 at PC 0x58fd
+  -> This is West of House!
+  Call stack depth: 2
+    Frame 0: return PC 0x4f9e
+    Frame 1: return PC 0x554d
+
+241: PC 0x58fd | Location before: 180 | name: call (opcode=0x00, form=Variable, operand_count=Var, operands=[Operand { operand_type: LargeConstant, value: 13873 }, Operand { operand_type: Variable, value: 16 }], store_var=Some(82), branch=None)
+
+242: PC 0x6c6b | Location before: 180 | name: jz (opcode=0x00, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 88 }], store_var=None, branch=Some(6))
+
+243: PC 0x6c72 | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 107 }, Operand { operand_type: SmallConstant, value: 20 }], store_var=None, branch=None)
+
+244: PC 0x6c75 | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 3 }, Operand { operand_type: Variable, value: 16 }], store_var=None, branch=None)
+
+245: PC 0x6c78 | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 16 }, Operand { operand_type: Variable, value: 1 }], store_var=None, branch=None)
+DEBUG: Setting location (global 0) to object 180 at PC 0x6c7b
+  -> This is West of House!
+  Call stack depth: 3
+    Frame 0: return PC 0x4f9e
+    Frame 1: return PC 0x554d
+    Frame 2: return PC 0x5903
+
+246: PC 0x6c7b | Location before: 180 | name: jz (opcode=0x00, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 2 }], store_var=None, branch=Some(12))
+
+247: PC 0x6c7e | Location before: 180 | name: test_attr (opcode=0x0a, form=Long, operand_count=Op2, operands=[Operand { operand_type: Variable, value: 1 }, Operand { operand_type: SmallConstant, value: 20 }], store_var=None, branch=Some(-9))
+
+248: PC 0x6c82 | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 4 }, Operand { operand_type: SmallConstant, value: 1 }], store_var=None, branch=None)
+
+249: PC 0x6c85 | Location before: 180 | name: jump (opcode=0x0c, form=Short, operand_count=Op1, operands=[Operand { operand_type: LargeConstant, value: 62 }], store_var=None, branch=None)
+
+250: PC 0x6cc4 | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 16 }, Operand { operand_type: Variable, value: 3 }], store_var=None, branch=None)
+DEBUG: Setting location (global 0) to object 180 at PC 0x6cc7
+  -> This is West of House!
+  Call stack depth: 3
+    Frame 0: return PC 0x4f9e
+    Frame 1: return PC 0x554d
+    Frame 2: return PC 0x5903
+
+251: PC 0x6cc7 | Location before: 180 | name: store (opcode=0x0d, form=Long, operand_count=Op2, operands=[Operand { operand_type: SmallConstant, value: 107 }, Operand { operand_type: SmallConstant, value: 0 }], store_var=None, branch=None)
+
+252: PC 0x6cca | Location before: 180 | name: ret (opcode=0x0b, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 4 }], store_var=None, branch=None)
+
+253: PC 0x5903 | Location before: 180 | name: jz (opcode=0x00, form=Short, operand_count=Op1, operands=[Operand { operand_type: Variable, value: 86 }], store_var=None, branch=Some(-4))
+
+254: PC 0x5906 | Location before: 180 | name: new_line (opcode=0x0b, form=Short, operand_count=Op0, operands=[], store_var=None, branch=None)
+
+
+255: PC 0x5907 | Location before: 180 | name: print (opcode=0x02, form=Short, operand_count=Op0, operands=[], store_var=None, branch=None)
+>
+256: PC 0x590c | Location before: 180 | name: sread (opcode=0x04, form=Variable, operand_count=Var, operands=[Operand { operand_type: Variable, value: 125 }, Operand { operand_type: Variable, value: 126 }], store_var=None, branch=None)
+> 

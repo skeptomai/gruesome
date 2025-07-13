@@ -106,7 +106,7 @@ pub fn properties_size_by_version(version: u8) -> usize {
 
 /// Read ZChars from packed word
 pub fn read_zchars_from_word(word: &[u8; 2]) -> Result<UnpackedZChars<3>, BitReaderError> {
-    log::debug!("zchars from word: [{:#04x}, {:#04x}]", word[0], word[1]);
+    log::trace!("zchars from word: [{:#04x}, {:#04x}]", word[0], word[1]);
     // start with a word
     let mut br = BitReader::new(word);
 

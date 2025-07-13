@@ -4,7 +4,7 @@ mod tests {
 
     #[test]
     fn test_mock_string_operations() {
-        let mut zmachine = MockZMachine::new();
+        let zmachine = MockZMachine::new();
         
         // Test that basic string operations are mockable
         // For now, just test that the structure exists
@@ -20,8 +20,8 @@ mod tests {
         
         // Test packed address conversion for version 3
         // Version 3: packed address * 2 = byte address
-        let packed = 0x200;
-        let expected_byte_addr = 0x400; // 2 * 0x200
+        let _packed = 0x200;
+        let _expected_byte_addr = 0x400; // 2 * 0x200
         
         // For now, just verify the version is set correctly
         assert_eq!(zmachine.memory[0], 3);

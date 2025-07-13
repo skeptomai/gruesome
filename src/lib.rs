@@ -5,6 +5,7 @@
 extern crate lazy_static;
 
 pub mod dictionary;
+pub mod disassembler;
 pub mod game;
 pub mod gamememorymap;
 pub mod header;
@@ -52,6 +53,9 @@ mod window_tests;
 
 #[cfg(test)]
 mod dictionary_tests;
+
+#[cfg(test)]
+mod disassembler_tests;
 
 #[cfg(test)]
 mod tests {
