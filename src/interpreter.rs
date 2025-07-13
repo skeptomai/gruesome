@@ -1,0 +1,1145 @@
+use crate::instruction::{Instruction, OperandType};
+use crate::text;
+use crate::vm::{CallFrame, VM};
+use log::{debug, info};
+use std::io::{self, Write};
+
+/// Result of executing an instruction
+#[derive(Debug, Clone)]
+pub enum ExecutionResult {
+    /// Continue execution normally
+    Continue,
+    /// Branch taken, PC already updated
+    Branched,
+    /// Routine called, PC updated
+    Called,
+    /// Routine returned
+    Returned(u16),
+    /// Game should quit
+    Quit,
+    /// Game completed successfully
+    GameOver,
+    /// Execution error
+    Error(String),
+}
+
+/// The main Z-Machine interpreter
+pub struct Interpreter {
+    /// The VM state
+    pub vm: VM,
+    /// Enable debug output
+    pub debug: bool,
+    /// Instruction count for debugging
+    instruction_count: u64,
+}
+
+impl Interpreter {
+    /// Create a new interpreter
+    pub fn new(vm: VM) -> Self {
+        Interpreter {
+            vm,
+            debug: false,
+            instruction_count: 0,
+        }
+    }
+
+    /// Enable or disable debug mode
+    pub fn set_debug(&mut self, debug: bool) {
+        self.debug = debug;
+    }
+
+    /// Run the interpreter
+    pub fn run(&mut self) -> Result<(), String> {
+        self.run_with_limit(None)
+    }
+
+    /// Run the interpreter with an optional instruction limit
+    pub fn run_with_limit(&mut self, max_instructions: Option<u64>) -> Result<(), String> {
+        info!("Starting Z-Machine interpreter...");
+        info!("Initial PC: {:05x}", self.vm.pc);
+
+        loop {
+            // Fetch and decode instruction
+            let pc = self.vm.pc;
+            let instruction = match Instruction::decode(
+                &self.vm.game.memory,
+                pc as usize,
+                self.vm.game.header.version,
+            ) {
+                Ok(inst) => inst,
+                Err(e) => {
+                    return Err(format!("Failed to decode instruction at {:05x}: {}", pc, e));
+                }
+            };
+
+            // Log all instructions when we're near the problematic area or at start
+            if self.debug
+                || pc >= 0x06f70 && pc <= 0x07000
+                || pc >= 0x08cb0 && pc <= 0x08cc0
+                || pc >= 0x4f00 && pc <= 0x5000
+            {
+                debug!(
+                    "{:05x}: {} (form={:?}, opcode={:02x})",
+                    pc, instruction, instruction.form, instruction.opcode
+                );
+            }
+
+            // TODO: Fix the instruction sequence misalignment properly
+
+            // Advance PC past the instruction
+            let old_pc = self.vm.pc;
+            self.vm.pc += instruction.size as u32;
+
+            // Debug PC advancement in problematic area
+            if old_pc >= 0x06f88 && old_pc <= 0x06f94 {
+                debug!(
+                    "PC advanced from {:05x} to {:05x} (instruction size: {})",
+                    old_pc, self.vm.pc, instruction.size
+                );
+            }
+
+            // TODO: Find root cause of instruction sequence misalignment
+
+            // Execute the instruction
+            match self.execute_instruction(&instruction)? {
+                ExecutionResult::Continue => {
+                    // Normal execution, PC already advanced
+                }
+                ExecutionResult::Branched => {
+                    // Branch taken, PC was updated by branch logic
+                }
+                ExecutionResult::Called => {
+                    // Routine called, PC was updated
+                }
+                ExecutionResult::Returned(_value) => {
+                    // Return value already handled by do_return
+                }
+                ExecutionResult::Quit | ExecutionResult::GameOver => {
+                    info!("Game ended.");
+                    return Ok(());
+                }
+                ExecutionResult::Error(e) => {
+                    return Err(format!("Execution error at {:05x}: {}", pc, e));
+                }
+            }
+
+            self.instruction_count += 1;
+
+            // Check instruction limit
+            if let Some(limit) = max_instructions {
+                if self.instruction_count >= limit {
+                    info!("Reached instruction limit of {}", limit);
+                    return Ok(());
+                }
+            }
+
+            // Safety check for runaway execution
+            if self.instruction_count > 1_000_000 {
+                return Err("Instruction limit exceeded".to_string());
+            }
+        }
+    }
+
+    /// Execute a single instruction
+    pub fn execute_instruction(&mut self, inst: &Instruction) -> Result<ExecutionResult, String> {
+        // Get operand values
+        let operands = self.resolve_operands(inst)?;
+
+        // Debug problematic variables
+        if let Some(store_var) = inst.store_var {
+            if store_var >= 0x01 && store_var <= 0x0F {
+                let frame = self
+                    .vm
+                    .call_stack
+                    .last()
+                    .ok_or("No active routine for local variable access")?;
+                if store_var as usize > frame.num_locals as usize {
+                    let pc = self.vm.pc - inst.size as u32;
+                    debug!("Instruction at {:05x}: {} trying to store to V{:02x} but routine only has {} locals", 
+                           pc, inst, store_var, frame.num_locals);
+                    debug!(
+                        "Call stack depth: {}, routine started at PC {:05x}",
+                        self.vm.call_stack.len(),
+                        frame.return_pc
+                    );
+                }
+            }
+        }
+
+        // Check operands that read from local variables
+        for (i, &operand) in inst.operands.iter().enumerate() {
+            if inst.operand_types[i] == crate::instruction::OperandType::Variable {
+                let var_num = operand as u8;
+                if var_num >= 0x01 && var_num <= 0x0F {
+                    let frame = self
+                        .vm
+                        .call_stack
+                        .last()
+                        .ok_or("No active routine for local variable access")?;
+                    if var_num as usize > frame.num_locals as usize {
+                        let pc = self.vm.pc - inst.size as u32;
+                        debug!("Instruction at {:05x}: {} trying to read from V{:02x} but routine only has {} locals", 
+                               pc, inst, var_num, frame.num_locals);
+                    }
+                }
+            }
+        }
+
+        match inst.form {
+            crate::instruction::InstructionForm::Short => match inst.operand_count {
+                crate::instruction::OperandCount::OP0 => self.execute_0op(inst),
+                crate::instruction::OperandCount::OP1 => self.execute_1op(inst, operands[0]),
+                _ => Err(format!(
+                    "Invalid operand count for short form: {:?}",
+                    inst.operand_count
+                )),
+            },
+            crate::instruction::InstructionForm::Long => {
+                self.execute_2op(inst, operands[0], operands[1])
+            }
+            crate::instruction::InstructionForm::Variable => self.execute_var(inst, &operands),
+            crate::instruction::InstructionForm::Extended => self.execute_ext(inst, &operands),
+        }
+    }
+
+    /// Resolve operand values (handle variables vs constants)
+    fn resolve_operands(&mut self, inst: &Instruction) -> Result<Vec<u16>, String> {
+        let mut values = Vec::new();
+
+        for (i, &operand) in inst.operands.iter().enumerate() {
+            let value = match inst.operand_types[i] {
+                OperandType::Variable => {
+                    // Read from variable
+                    let var_num = operand as u8;
+                    if var_num == 0 {
+                        // Variable 0 means pop from stack when used as operand
+                        self.vm.pop()?
+                    } else {
+                        self.vm.read_variable(var_num)?
+                    }
+                }
+                _ => {
+                    // Use literal value
+                    operand
+                }
+            };
+            values.push(value);
+        }
+
+        Ok(values)
+    }
+
+    /// Execute 0OP instructions
+    fn execute_0op(&mut self, inst: &Instruction) -> Result<ExecutionResult, String> {
+        match inst.opcode {
+            0x00 => {
+                // rtrue
+                self.do_return(1)
+            }
+            0x01 => {
+                // rfalse
+                self.do_return(0)
+            }
+            0x02 => {
+                // print (literal string)
+                if let Some(ref text) = inst.text {
+                    if text.contains("cannot") || text.contains("anymore") {
+                        debug!(
+                            "print: text='{}' at PC {:05x}",
+                            text,
+                            self.vm.pc - inst.size as u32
+                        );
+                    }
+                    print!("{}", text);
+                    io::stdout().flush().ok();
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x03 => {
+                // print_ret
+                if let Some(ref text) = inst.text {
+                    println!("{}", text);
+                }
+                self.do_return(1)
+            }
+            0x04 => {
+                // nop
+                Ok(ExecutionResult::Continue)
+            }
+            0x08 => {
+                // ret_popped
+                let value = self.vm.pop()?;
+                self.do_return(value)
+            }
+            0x09 => {
+                // pop (V1-4) / catch (V5+)
+                if self.vm.game.header.version <= 4 {
+                    self.vm.pop()?;
+                    Ok(ExecutionResult::Continue)
+                } else {
+                    // catch: store call stack depth
+                    if let Some(store_var) = inst.store_var {
+                        let depth = self.vm.call_depth() as u16;
+                        self.vm.write_variable(store_var, depth)?;
+                    }
+                    Ok(ExecutionResult::Continue)
+                }
+            }
+            0x0A => {
+                // quit
+                Ok(ExecutionResult::Quit)
+            }
+            0x0B => {
+                // new_line
+                println!();
+                Ok(ExecutionResult::Continue)
+            }
+            0x0F => {
+                // piracy
+                // Copy protection check - return true for legitimate copy
+                self.do_branch(inst, true)
+            }
+            _ => Err(format!(
+                "Unimplemented 0OP instruction: {:02x}",
+                inst.opcode
+            )),
+        }
+    }
+
+    /// Execute 1OP instructions
+    fn execute_1op(&mut self, inst: &Instruction, operand: u16) -> Result<ExecutionResult, String> {
+        match inst.opcode {
+            0x00 => {
+                // jz
+                let condition = operand == 0;
+                self.do_branch(inst, condition)
+            }
+            0x05 => {
+                // inc
+                let var_num = inst.operands[0] as u8;
+                let value = self.vm.read_variable(var_num)?;
+                self.vm.write_variable(var_num, value.wrapping_add(1))?;
+                Ok(ExecutionResult::Continue)
+            }
+            0x06 => {
+                // dec
+                let var_num = inst.operands[0] as u8;
+                let value = self.vm.read_variable(var_num)?;
+                self.vm.write_variable(var_num, value.wrapping_sub(1))?;
+                Ok(ExecutionResult::Continue)
+            }
+            0x0B => {
+                // ret
+                self.do_return(operand)
+            }
+            0x0C => {
+                // jump
+                // Jump is a signed offset from the instruction after the branch data
+                let offset = operand as i16;
+                let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
+                self.vm.pc = new_pc;
+                Ok(ExecutionResult::Branched)
+            }
+            0x0D => {
+                // print_paddr
+                // Print string at packed address
+                let abbrev_addr = self.vm.game.header.abbrev_table as usize;
+                match text::decode_string_at_packed_addr(
+                    &self.vm.game.memory,
+                    operand as u16,
+                    self.vm.game.header.version,
+                    abbrev_addr,
+                ) {
+                    Ok(string) => {
+                        print!("{}", string);
+                        io::stdout().flush().ok();
+                    }
+                    Err(e) => {
+                        debug!("Failed to decode string at {:04x}: {}", operand, e);
+                    }
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x0E => {
+                // load
+                if inst.operand_types[0] != OperandType::Variable {
+                    return Err("load requires variable operand".to_string());
+                }
+                let var_num = inst.operands[0] as u8;
+                let value = self.vm.read_variable(var_num)?;
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, value)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x0F => {
+                // not (V1-4) / call_1n (V5+)
+                if self.vm.game.header.version <= 4 {
+                    // Bitwise NOT
+                    if let Some(store_var) = inst.store_var {
+                        self.vm.write_variable(store_var, !operand)?;
+                    }
+                } else {
+                    // call_1n: call with no return value
+                    self.do_call(operand, &[], None)?;
+                    return Ok(ExecutionResult::Called);
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x01 => {
+                // get_sibling
+                let sibling = self.vm.get_sibling(operand)?;
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, sibling as u16)?;
+                }
+                self.do_branch(inst, sibling != 0)
+            }
+            0x02 => {
+                // get_child
+                let child = self.vm.get_child(operand)?;
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, child as u16)?;
+                }
+                self.do_branch(inst, child != 0)
+            }
+            0x03 => {
+                // get_parent
+                debug!(
+                    "get_parent: obj_num={} at PC {:05x}",
+                    operand,
+                    self.vm.pc - inst.size as u32
+                );
+                let parent = self.vm.get_parent(operand)?;
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, parent as u16)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x08 => {
+                // call_1s
+                self.do_call(operand, &[], inst.store_var)?;
+                Ok(ExecutionResult::Called)
+            }
+            _ => Err(format!(
+                "Unimplemented 1OP instruction: {:02x}",
+                inst.opcode
+            )),
+        }
+    }
+
+    /// Execute 2OP instructions
+    fn execute_2op(
+        &mut self,
+        inst: &Instruction,
+        op1: u16,
+        op2: u16,
+    ) -> Result<ExecutionResult, String> {
+        match inst.opcode {
+            0x00 => {
+                // 2OP:0x00 is not defined in the Z-Machine spec
+                // This might be data being executed as code
+                let pc = self.vm.pc - inst.size as u32;
+                debug!("WARNING: Invalid 2OP:0x00 at PC {:05x} with operands {:04x}, {:04x} - treating as NOP", 
+                       pc, op1, op2);
+                Ok(ExecutionResult::Continue)
+            }
+            0x01 => {
+                // je
+                let condition = op1 == op2;
+                self.do_branch(inst, condition)
+            }
+            0x02 => {
+                // jl
+                let condition = (op1 as i16) < (op2 as i16);
+                self.do_branch(inst, condition)
+            }
+            0x03 => {
+                // jg
+                let condition = (op1 as i16) > (op2 as i16);
+                self.do_branch(inst, condition)
+            }
+            0x04 => {
+                // dec_chk
+                let var_num = inst.operands[0] as u8;
+                let value = self.vm.read_variable(var_num)?;
+                let new_value = value.wrapping_sub(1);
+                self.vm.write_variable(var_num, new_value)?;
+                let condition = (new_value as i16) < (op2 as i16);
+                self.do_branch(inst, condition)
+            }
+            0x05 => {
+                // inc_chk
+                let var_num = inst.operands[0] as u8;
+                let value = self.vm.read_variable(var_num)?;
+                let new_value = value.wrapping_add(1);
+                self.vm.write_variable(var_num, new_value)?;
+                let condition = (new_value as i16) > (op2 as i16);
+                self.do_branch(inst, condition)
+            }
+            0x06 => {
+                // jin
+                // Check if obj1 is inside obj2 (obj1's parent is obj2)
+                let parent = self.vm.get_parent(op1)?;
+                let condition = parent == op2 as u8;
+                self.do_branch(inst, condition)
+            }
+            0x07 => {
+                // test
+                // Bitwise AND and test if all bits in op2 are set in op1
+                let result = (op1 & op2) == op2;
+                let current_pc = self.vm.pc - inst.size as u32;
+
+                if current_pc >= 0x06f70 && current_pc <= 0x06fa0 {
+                    debug!(
+                        "test at {:05x}: {:04x} & {:04x} == {:04x}? {}",
+                        current_pc, op1, op2, op2, result
+                    );
+                }
+                self.do_branch(inst, result)
+            }
+            0x08 => {
+                // or
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, op1 | op2)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x09 => {
+                // and
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, op1 & op2)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x0A => {
+                // test_attr
+                let obj_num = op1;
+                let attr_num = op2 as u8;
+                let mut result = self.vm.test_attribute(obj_num, attr_num)?;
+                let current_pc = self.vm.pc - inst.size as u32;
+
+                // Let's follow the natural flow
+                if current_pc == 0x4f7e {
+                    debug!(
+                        "test_attr at {:05x}: obj={}, attr={}, result={}",
+                        current_pc, obj_num, attr_num, result
+                    );
+                }
+
+                self.do_branch(inst, result)
+            }
+            0x0B => {
+                // set_attr
+                let obj_num = op1;
+                let attr_num = op2 as u8;
+                self.vm.set_attribute(obj_num, attr_num, true)?;
+                Ok(ExecutionResult::Continue)
+            }
+            0x0C => {
+                // clear_attr
+                let obj_num = op1;
+                let attr_num = op2 as u8;
+                if attr_num > 31 {
+                    debug!(
+                        "clear_attr: obj={}, attr={} at PC {:05x}",
+                        obj_num,
+                        attr_num,
+                        self.vm.pc - inst.size as u32
+                    );
+                }
+                self.vm.set_attribute(obj_num, attr_num, false)?;
+                Ok(ExecutionResult::Continue)
+            }
+            0x0D => {
+                // store
+                // Use raw operand for variable number (destination)
+                let var_num = inst.operands[0] as u8;
+                if var_num == 0x10 {
+                    debug!(
+                        "Setting location (global 0) to object {} at PC {:05x}",
+                        op2,
+                        self.vm.pc - inst.size as u32
+                    );
+                    if op2 == 180 {
+                        debug!("  -> This is West of House!");
+                    }
+                }
+                self.vm.write_variable(var_num, op2)?;
+                Ok(ExecutionResult::Continue)
+            }
+            0x0E => {
+                // insert_obj
+                debug!(
+                    "insert_obj: obj={}, dest={} at PC {:05x}",
+                    op1,
+                    op2,
+                    self.vm.pc - inst.size as u32
+                );
+                self.vm.insert_object(op1, op2)?;
+                Ok(ExecutionResult::Continue)
+            }
+            0x0F => {
+                // loadw
+                let addr = op1 as u32 + (op2 as u32 * 2);
+                let value = self.vm.read_word(addr);
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, value)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x10 => {
+                // loadb
+                let addr = op1 as u32 + op2 as u32;
+                let value = self.vm.read_byte(addr) as u16;
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, value)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x11 => {
+                // get_prop
+                let obj_num = op1;
+                let prop_num = op2 as u8;
+                let value = self.vm.get_property(obj_num, prop_num)?;
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, value)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x12 => {
+                // get_prop_addr
+                let obj_num = op1;
+                let prop_num = op2 as u8;
+                let addr = self.vm.get_property_addr(obj_num, prop_num)? as u16;
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, addr)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x13 => {
+                // add
+                if let Some(store_var) = inst.store_var {
+                    let result = (op1 as i16).wrapping_add(op2 as i16) as u16;
+                    self.vm.write_variable(store_var, result)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x14 => {
+                // sub
+                if let Some(store_var) = inst.store_var {
+                    let result = (op1 as i16).wrapping_sub(op2 as i16) as u16;
+                    self.vm.write_variable(store_var, result)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x15 => {
+                // mul
+                if let Some(store_var) = inst.store_var {
+                    let result = (op1 as i16).wrapping_mul(op2 as i16) as u16;
+                    self.vm.write_variable(store_var, result)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x16 => {
+                // div
+                if op2 == 0 {
+                    return Err("Division by zero".to_string());
+                }
+                if let Some(store_var) = inst.store_var {
+                    let result = (op1 as i16) / (op2 as i16);
+                    self.vm.write_variable(store_var, result as u16)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x17 => {
+                // mod
+                if op2 == 0 {
+                    return Err("Modulo by zero".to_string());
+                }
+                if let Some(store_var) = inst.store_var {
+                    let result = (op1 as i16) % (op2 as i16);
+                    self.vm.write_variable(store_var, result as u16)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x1F => {
+                // Undocumented 2OP:0x1F instruction
+                // Found in some Infocom games but not in the standard
+                // Appears to store a result
+                let pc = self.vm.pc - inst.size as u32;
+                debug!(
+                    "WARNING: Undocumented 2OP:1F at PC {:05x} with operands {:04x}, {:04x}",
+                    pc, op1, op2
+                );
+                // Store 0 for now
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, 0)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            _ => {
+                let pc = self.vm.pc - inst.size as u32;
+                debug!(
+                    "Unimplemented 2OP instruction: {:02x} at PC {:05x}, form={:?}",
+                    inst.opcode, pc, inst.form
+                );
+                Err(format!(
+                    "Unimplemented 2OP instruction: {:02x}",
+                    inst.opcode
+                ))
+            }
+        }
+    }
+
+    /// Execute VAR instructions
+    fn execute_var(
+        &mut self,
+        inst: &Instruction,
+        operands: &[u16],
+    ) -> Result<ExecutionResult, String> {
+        match inst.opcode {
+            0x00 => {
+                // call
+                if operands.is_empty() {
+                    return Err("call requires at least one operand".to_string());
+                }
+                let routine_addr = operands[0];
+                let args = &operands[1..];
+                debug!(
+                    "Call to {:04x} with store_var = {:?}",
+                    routine_addr, inst.store_var
+                );
+                self.do_call(routine_addr, args, inst.store_var)?;
+                Ok(ExecutionResult::Called)
+            }
+            0x01 => {
+                // storew
+                if operands.len() < 3 {
+                    return Err(format!(
+                        "storew requires 3 operands, got {}",
+                        operands.len()
+                    ));
+                }
+                let addr = operands[0] as u32 + (operands[1] as u32 * 2);
+                self.vm.write_word(addr, operands[2])?;
+                Ok(ExecutionResult::Continue)
+            }
+            0x02 => {
+                // storeb
+                if operands.len() < 3 {
+                    return Err("storeb requires 3 operands".to_string());
+                }
+                let addr = operands[0] as u32 + operands[1] as u32;
+                self.vm.write_byte(addr, operands[2] as u8)?;
+                Ok(ExecutionResult::Continue)
+            }
+            0x03 => {
+                // put_prop
+                if operands.len() < 3 {
+                    return Err("put_prop requires 3 operands".to_string());
+                }
+                let obj_num = operands[0];
+                let prop_num = operands[1] as u8;
+                let value = operands[2];
+                self.vm.put_property(obj_num, prop_num, value)?;
+                Ok(ExecutionResult::Continue)
+            }
+            0x04 => {
+                // sread (V1-4)
+                // For now, simulate a simple input
+                if operands.len() < 2 {
+                    return Err("sread requires at least 2 operands".to_string());
+                }
+                let text_buffer = operands[0] as u32;
+                let parse_buffer = operands[1] as u32;
+
+                // Simple command - just "look"
+                let input = b"look";
+
+                // Write input to text buffer
+                // Text buffer format: max_len, actual_len, characters...
+                let max_len = self.vm.read_byte(text_buffer);
+                let input_len = input.len().min(max_len as usize - 1);
+
+                self.vm.write_byte(text_buffer + 1, input_len as u8)?;
+                for (i, &ch) in input.iter().take(input_len).enumerate() {
+                    self.vm.write_byte(text_buffer + 2 + i as u32, ch)?;
+                }
+
+                // Simple parsing - just put one word in parse buffer
+                // Parse buffer format: max_words, actual_words, [word_data]
+                // Word data: [addr_in_text, word_len, dict_entry_addr]
+                let max_words = self.vm.read_byte(parse_buffer);
+                if max_words > 0 {
+                    self.vm.write_byte(parse_buffer + 1, 1)?; // 1 word
+                                                              // Word 1 data: starts at text+2, length 4, dict entry 0 (unknown)
+                    self.vm
+                        .write_byte(parse_buffer + 2, (text_buffer + 2) as u8)?; // addr low
+                    self.vm
+                        .write_byte(parse_buffer + 3, ((text_buffer + 2) >> 8) as u8)?; // addr high
+                    self.vm.write_byte(parse_buffer + 4, 4)?; // length
+                    self.vm.write_byte(parse_buffer + 5, 0)?; // dict entry low
+                    self.vm.write_byte(parse_buffer + 6, 0)?; // dict entry high
+                }
+
+                let pc = self.vm.pc - inst.size as u32;
+                debug!("sread at PC {:05x}: text_buffer={:04x}, parse_buffer={:04x} - returning 'look'", pc, text_buffer, parse_buffer);
+                Ok(ExecutionResult::Continue)
+            }
+            0x05 => {
+                // print_char
+                if !operands.is_empty() {
+                    let ch = operands[0] as u8 as char;
+                    if operands[0] > 127 || operands[0] == 63 {
+                        // 63 is '?'
+                        debug!(
+                            "print_char: value={} (0x{:02x}) char='{}' at PC {:05x}",
+                            operands[0],
+                            operands[0],
+                            ch,
+                            self.vm.pc - inst.size as u32
+                        );
+                    }
+                    print!("{}", ch);
+                    io::stdout().flush().ok();
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x06 => {
+                // print_num
+                if !operands.is_empty() {
+                    print!("{}", operands[0] as i16);
+                    io::stdout().flush().ok();
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x08 => {
+                // push
+                if !operands.is_empty() {
+                    self.vm.push(operands[0])?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x09 => {
+                // pull
+                if !inst.operands.is_empty() {
+                    let current_pc = self.vm.pc - inst.size as u32;
+                    if current_pc >= 0x06f70 && current_pc <= 0x06fa0 {
+                        debug!(
+                            "pull at {:05x}: stack depth before pop: {}",
+                            current_pc,
+                            self.vm.stack.len()
+                        );
+                    }
+                    let value = self.vm.pop()?;
+                    // Use the raw operand value, not the resolved one
+                    // (Variable 0 as destination means V00, not pop)
+                    let var_num = inst.operands[0] as u8;
+                    if current_pc >= 0x06f70 && current_pc <= 0x06fa0 {
+                        debug!(
+                            "pull at {:05x}: storing popped value {:04x} into V{:02x}",
+                            current_pc, value, var_num
+                        );
+                    }
+                    self.vm.write_variable(var_num, value)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x0A => {
+                // split_window (V3+)
+                // For now, ignore window splitting
+                if !operands.is_empty() {
+                    debug!("split_window: lines={}", operands[0]);
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x0D => {
+                // erase_window (V4+) or unknown in V3
+                // In V3, this opcode is not documented
+                // Some V3 games might use it as a NOP or for other purposes
+                let pc = self.vm.pc - inst.size as u32;
+                debug!("VAR:0x0D at PC {:05x} - treating as NOP for V3", pc);
+                Ok(ExecutionResult::Continue)
+            }
+            0x13 => {
+                // output_stream
+                if !operands.is_empty() {
+                    let stream_num = operands[0] as i16;
+                    // For now, we only support stream 1 (screen output)
+                    // Stream 1 is always on by default
+                    // Positive numbers enable streams, negative disable
+                    if stream_num.abs() != 1 {
+                        debug!("Unsupported output stream: {}", stream_num);
+                    }
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x1B => {
+                // tokenise (V5+) or unknown in V3
+                // In V3, this opcode is not documented
+                // Some V3 games might use it as a NOP
+                let pc = self.vm.pc - inst.size as u32;
+                debug!("VAR:0x1B at PC {:05x} - treating as NOP for V3", pc);
+                Ok(ExecutionResult::Continue)
+            }
+            _ => {
+                let pc = self.vm.pc - inst.size as u32;
+                debug!(
+                    "Unimplemented VAR instruction: {:02x} at PC {:05x}",
+                    inst.opcode, pc
+                );
+                Err(format!(
+                    "Unimplemented VAR instruction: {:02x}",
+                    inst.opcode
+                ))
+            }
+        }
+    }
+
+    /// Execute EXT instructions
+    fn execute_ext(
+        &mut self,
+        _inst: &Instruction,
+        _operands: &[u16],
+    ) -> Result<ExecutionResult, String> {
+        Err("Extended instructions not yet implemented".to_string())
+    }
+
+    /// Handle branching
+    fn do_branch(
+        &mut self,
+        inst: &Instruction,
+        condition: bool,
+    ) -> Result<ExecutionResult, String> {
+        if let Some(ref branch) = inst.branch {
+            let should_branch = condition == branch.on_true;
+
+            if should_branch {
+                match branch.offset {
+                    0 => return self.do_return(0), // rfalse
+                    1 => return self.do_return(1), // rtrue
+                    offset => {
+                        // Jump is relative to instruction after branch data
+                        let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
+                        if self.vm.pc >= 0x06f70 && self.vm.pc <= 0x06fa0
+                            || self.vm.pc >= 0x4f70 && self.vm.pc <= 0x5000
+                        {
+                            debug!(
+                                "Branch from {:05x} with offset {} to {:05x}",
+                                self.vm.pc, offset, new_pc
+                            );
+                        }
+                        self.vm.pc = new_pc;
+                        return Ok(ExecutionResult::Branched);
+                    }
+                }
+            }
+        }
+        Ok(ExecutionResult::Continue)
+    }
+
+    /// Handle routine calls
+    fn do_call(
+        &mut self,
+        packed_addr: u16,
+        args: &[u16],
+        return_store: Option<u8>,
+    ) -> Result<(), String> {
+        // Special case: calling address 0 returns false
+        if packed_addr == 0 {
+            if let Some(var) = return_store {
+                self.vm.write_variable(var, 0)?;
+            }
+            return Ok(());
+        }
+
+        // Unpack the address
+        let addr = self.unpack_routine_address(packed_addr) as u32;
+
+        // Save current state
+        let frame = CallFrame {
+            return_pc: self.vm.pc,
+            return_store,
+            num_locals: 0, // Will be set when we read routine header
+            locals: [0; 16],
+            stack_base: self.vm.stack.len(),
+        };
+        debug!(
+            "Creating call frame with return_store={:?}, stack_base={}",
+            return_store,
+            self.vm.stack.len()
+        );
+
+        // Read routine header
+        let mut num_locals = self.vm.read_byte(addr) as usize;
+        if num_locals > 15 {
+            debug!(
+                "Routine at {:05x} claims {} locals - clamping to 15",
+                addr, num_locals
+            );
+            // Some games have corrupt headers or use this byte for other purposes
+            // Clamp to 15 locals for V3
+            num_locals = 15;
+        }
+
+        let mut new_frame = frame;
+        new_frame.num_locals = num_locals as u8;
+
+        // Set PC to start of routine code
+        self.vm.pc = addr + 1;
+
+        // Initialize locals
+        if self.vm.game.header.version <= 4 {
+            // V1-4: Read initial values from routine header
+            for i in 0..num_locals {
+                let value = self.vm.read_word(self.vm.pc);
+                new_frame.locals[i] = value;
+                self.vm.pc += 2;
+            }
+        } else {
+            // V5+: Initialize to zero, except for arguments
+            for i in 0..num_locals.min(args.len()) {
+                new_frame.locals[i] = args[i];
+            }
+        }
+
+        // Push the call frame
+        self.vm.call_stack.push(new_frame);
+
+        Ok(())
+    }
+
+    /// Handle routine returns
+    fn do_return(&mut self, value: u16) -> Result<ExecutionResult, String> {
+        // Pop the call frame
+        let frame = self
+            .vm
+            .call_stack
+            .pop()
+            .ok_or("Return with empty call stack")?;
+
+        debug!(
+            "Returning from routine: value={}, return_pc={:05x}",
+            value, frame.return_pc
+        );
+
+        // Restore PC
+        self.vm.pc = frame.return_pc;
+
+        // Restore stack
+        debug!(
+            "Stack before truncate: len={}, base={}",
+            self.vm.stack.len(),
+            frame.stack_base
+        );
+        self.vm.stack.truncate(frame.stack_base);
+
+        // Store return value if needed
+        if let Some(var) = frame.return_store {
+            debug!("Storing return value {} to variable {}", value, var);
+            self.vm.write_variable(var, value)?;
+            debug!("Stack len after store: {}", self.vm.stack.len());
+        }
+
+        // Check if we're back at main
+        if self.vm.call_stack.is_empty() {
+            return Ok(ExecutionResult::GameOver);
+        }
+
+        Ok(ExecutionResult::Returned(value))
+    }
+
+    /// Unpack a routine address based on version
+    fn unpack_routine_address(&self, packed: u16) -> usize {
+        match self.vm.game.header.version {
+            1..=3 => (packed as usize) * 2,
+            4..=5 => (packed as usize) * 4,
+            6..=7 => {
+                // Would need to handle routine offset from header
+                (packed as usize) * 4
+            }
+            8 => (packed as usize) * 8,
+            _ => (packed as usize) * 2,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vm::Game;
+
+    fn create_test_interpreter() -> Interpreter {
+        let mut memory = vec![0u8; 0x10000];
+
+        // Set up header
+        memory[0x00] = 3; // Version 3
+        memory[0x04] = 0x10; // High memory at 0x1000
+        memory[0x05] = 0x00;
+        memory[0x06] = 0x50; // Initial PC at 0x5000
+        memory[0x07] = 0x00;
+        memory[0x0c] = 0x01; // Global table at 0x0100
+        memory[0x0d] = 0x00;
+        memory[0x0e] = 0x02; // Static memory at 0x0200
+        memory[0x0f] = 0x00;
+
+        // Add a simple program at 0x5000: push 42, pop, quit
+        memory[0x5000] = 0xE8; // VAR:OP1 push
+        memory[0x5001] = 0x7F; // Operand types: small constant (01), then omitted
+        memory[0x5002] = 0x2A; // Value: 42
+
+        memory[0x5003] = 0xB9; // 0OP pop
+
+        memory[0x5004] = 0xBA; // 0OP quit
+
+        let game = Game::from_memory(memory).unwrap();
+        let vm = VM::new(game);
+        Interpreter::new(vm)
+    }
+
+    #[test]
+    fn test_simple_execution() {
+        let mut interp = create_test_interpreter();
+
+        // Execute push instruction
+        let inst = Instruction::decode(&interp.vm.game.memory, 0x5000, 3).unwrap();
+        interp.vm.pc = 0x5003; // Advance past instruction
+        let result = interp.execute_instruction(&inst).unwrap();
+        assert!(matches!(result, ExecutionResult::Continue));
+        assert_eq!(interp.vm.stack.len(), 1);
+        assert_eq!(interp.vm.stack[0], 42);
+
+        // Execute pop instruction
+        let inst = Instruction::decode(&interp.vm.game.memory, 0x5003, 3).unwrap();
+        interp.vm.pc = 0x5004;
+        let result = interp.execute_instruction(&inst).unwrap();
+        assert!(matches!(result, ExecutionResult::Continue));
+        assert_eq!(interp.vm.stack.len(), 0);
+
+        // Execute quit instruction
+        let inst = Instruction::decode(&interp.vm.game.memory, 0x5004, 3).unwrap();
+        let result = interp.execute_instruction(&inst).unwrap();
+        assert!(matches!(result, ExecutionResult::Quit));
+    }
+
+    #[test]
+    fn test_arithmetic() {
+        let mut interp = create_test_interpreter();
+
+        // Test add instruction - use a global variable for storage
+        let memory = vec![
+            0x14, // Long form, add, both small constants (00 01 0100)
+            0x0A, // Constant 10
+            0x20, // Constant 32
+            0x10, // Store to global variable 0x10
+        ];
+
+        let inst = Instruction::decode(&memory, 0, 3).unwrap();
+        // Set PC past the instruction (simulating that it was fetched)
+        interp.vm.pc = inst.size as u32;
+        let result = interp.execute_instruction(&inst).unwrap();
+        assert!(matches!(result, ExecutionResult::Continue));
+        // Check that global variable 0x10 now contains 42
+        assert_eq!(interp.vm.read_global(0x10).unwrap(), 42);
+    }
+}
