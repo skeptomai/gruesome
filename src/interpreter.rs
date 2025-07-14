@@ -90,10 +90,17 @@ impl Interpreter {
                     }
                 }
                 
-                // Specifically check common light attributes
-                for light_attr in [2, 8, 15] {
+                // Specifically check common light attributes including ONBIT (likely attr 3)
+                for light_attr in [2, 3, 8, 15] {
                     if let Ok(has_light) = self.vm.test_attribute(location, light_attr) {
-                        debug!("  Location {} light check attr {}: {}", location, light_attr, has_light);
+                        debug!("  Location {} light check attr {} ({}): {}", location, light_attr,
+                               match light_attr {
+                                   3 => "ONBIT?",
+                                   2 => "LIGHT", 
+                                   8 => "LIT",
+                                   15 => "PROVIDE_LIGHT",
+                                   _ => "UNKNOWN"
+                               }, has_light);
                     }
                 }
             }
@@ -110,18 +117,25 @@ impl Interpreter {
             }
         }
         
-        // Check for objects that might be light sources (commonly have attribute 2 or 12)
+        // Check for objects that might be light sources or have lighting attributes
         debug!("=== Checking for light sources ===");
         for obj in 1..50 {
-            if let Ok(has_light_attr) = self.vm.test_attribute(obj, 2) {
-                if has_light_attr {
-                    debug!("  Object {} has light attribute 2", obj);
+            for light_attr in [2, 8, 12, 15] {
+                if let Ok(has_light_attr) = self.vm.test_attribute(obj, light_attr) {
+                    if has_light_attr {
+                        debug!("  Object {} has light attribute {}", obj, light_attr);
+                    }
                 }
             }
-            if let Ok(has_light_attr) = self.vm.test_attribute(obj, 12) {
-                if has_light_attr {
-                    debug!("  Object {} has light attribute 12", obj);
-                }
+        }
+        
+        // Check what happens if we manually set a light attribute on West of House
+        debug!("=== Attempting to set light attribute on West of House ===");
+        if let Ok(location) = self.vm.read_variable(16) {
+            if location == 180 {
+                debug!("  West of House (180) currently has no light attributes");
+                debug!("  In a working game, this location should be naturally lit");
+                debug!("  This suggests the lighting check may use a different mechanism");
             }
         }
         
@@ -391,6 +405,22 @@ impl Interpreter {
             0x00 => {
                 // jz
                 let condition = operand == 0;
+                let current_pc = self.vm.pc - inst.size as u32;
+                
+                // Debug logging for critical checks
+                if current_pc == 0x8d51 {  // The JZ that checks LIT in DescribeObjects
+                    debug!(
+                        "JZ at PC {:05x}: checking if value {} is zero, condition = {}",
+                        current_pc, operand, condition
+                    );
+                    // Also check what variable was loaded if this is checking a variable
+                    if let Some(var_num) = inst.operands.get(0) {
+                        if *var_num == 0x52 {  // If checking global 0x52 (LIT)
+                            debug!("  -> This is checking LIT global (0x52)");
+                        }
+                    }
+                }
+                
                 self.do_branch(inst, condition)
             }
             0x05 => {
@@ -498,6 +528,48 @@ impl Interpreter {
                 // call_1s
                 self.do_call(operand, &[], inst.store_var)?;
                 Ok(ExecutionResult::Called)
+            }
+            0x0A => {
+                // print_obj - print short name of object
+                let obj_num = operand;
+                if obj_num == 0 {
+                    // Object 0 means no object - print nothing
+                    return Ok(ExecutionResult::Continue);
+                }
+                if obj_num > 255 {
+                    return Err(format!("Invalid object number for print_obj: {}", obj_num));
+                }
+                
+                // Get object table base
+                let obj_table_addr = self.vm.game.header.object_table_addr as usize;
+                let property_defaults = obj_table_addr;
+                let obj_tree_base = property_defaults + 31 * 2; // 31 default properties, 2 bytes each
+                
+                // Calculate object entry address (9 bytes per object in V3)
+                let obj_addr = obj_tree_base + ((obj_num - 1) as usize * 9);
+                
+                // Get property table address (last 2 bytes of object entry)
+                let prop_table_addr = self.vm.read_word((obj_addr + 7) as u32) as usize;
+                
+                // The first byte is the text-length of the short name
+                let text_len = self.vm.game.memory[prop_table_addr] as usize;
+                
+                if text_len > 0 {
+                    // Decode the object name (stored as Z-string)
+                    let name_addr = prop_table_addr + 1;
+                    let abbrev_addr = self.vm.game.header.abbrev_table as usize;
+                    match text::decode_string(&self.vm.game.memory, name_addr, abbrev_addr) {
+                        Ok((name, _)) => {
+                            print!("{}", name);
+                            io::stdout().flush().ok();
+                        }
+                        Err(e) => {
+                            debug!("Failed to decode object name: {}", e);
+                        }
+                    }
+                }
+                
+                Ok(ExecutionResult::Continue)
             }
             _ => Err(format!(
                 "Unimplemented 1OP instruction: {:02x}",
@@ -633,16 +705,27 @@ impl Interpreter {
                 // store
                 // Use raw operand for variable number (destination)
                 let var_num = inst.operands[0] as u8;
+                let current_pc = self.vm.pc - inst.size as u32;
+                
                 if var_num == 0x10 {
                     debug!(
                         "Setting location (global 0) to object {} at PC {:05x}",
                         op2,
-                        self.vm.pc - inst.size as u32
+                        current_pc
                     );
                     if op2 == 180 {
                         debug!("  -> This is West of House!");
                     }
                 }
+                
+                // Special debugging for LIT variable
+                if var_num == 0x52 {
+                    debug!(
+                        "STORE instruction at PC {:05x}: setting global 0x{:02x} (LIT) to {}",
+                        current_pc, var_num, op2
+                    );
+                }
+                
                 self.vm.write_variable(var_num, op2)?;
                 Ok(ExecutionResult::Continue)
             }
@@ -744,16 +827,17 @@ impl Interpreter {
             0x1F => {
                 // Undocumented 2OP:0x1F instruction
                 // Found in some Infocom games but not in the standard
-                // Appears to store a result
+                // Based on analysis, this appears to be a logical shift instruction
                 let pc = self.vm.pc - inst.size as u32;
                 debug!(
                     "WARNING: Undocumented 2OP:1F at PC {:05x} with operands {:04x}, {:04x}",
                     pc, op1, op2
                 );
-                // Store 0 for now
-                if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, 0)?;
-                }
+                
+                // Don't store anything - we don't know what this instruction does
+                // Storing 0 was causing bugs (e.g., clearing the LIT variable)
+                debug!("  -> Treating as NOP, not storing any result");
+                
                 Ok(ExecutionResult::Continue)
             }
             _ => {

@@ -174,7 +174,15 @@ impl VM {
         }
         let offset = ((var - 0x10) as u32) * 2;
         let addr = self.globals_addr as u32 + offset;
-        Ok(self.read_word(addr))
+        let value = self.read_word(addr);
+        
+        // Debug logging for critical globals
+        if var == 0x52 {  // LIT variable
+            debug!("Reading global 0x{:02x} (LIT) from addr 0x{:04x} = 0x{:04x} ({}) at PC {:05x}", 
+                   var, addr, value, value, self.pc);
+        }
+        
+        Ok(value)
     }
 
     /// Write a global variable (0x10-0xFF)
@@ -184,12 +192,20 @@ impl VM {
         }
         let offset = ((var - 0x10) as u32) * 2;
         let addr = self.globals_addr as u32 + offset;
+        
+        // Debug logging for critical globals
+        if var == 0x52 {  // LIT variable
+            let old_value = self.read_word(addr);
+            debug!("Writing global 0x{:02x} (LIT) at addr 0x{:04x}: {} -> {} at PC {:05x}", 
+                   var, addr, old_value, value, self.pc);
+        }
+        
         self.write_word(addr, value)
     }
 
     /// Read a variable (0x00 = stack, 0x01-0x0F = local, 0x10-0xFF = global)
     pub fn read_variable(&self, var: u8) -> Result<u16, String> {
-        match var {
+        let result = match var {
             0x00 => self.peek(),
             0x01..=0x0F => {
                 // Local variable
@@ -206,7 +222,15 @@ impl VM {
                 Ok(frame.locals[index])
             }
             _ => self.read_global(var),
+        };
+        
+        // Debug logging for critical variable reads
+        if var == 0x52 && self.pc >= 0x8d50 && self.pc <= 0x8d60 {
+            debug!("read_variable(0x{:02x}) at PC {:05x} returning value: {:?}", 
+                   var, self.pc, result);
         }
+        
+        result
     }
 
     /// Write a variable (0x00 = stack, 0x01-0x0F = local, 0x10-0xFF = global)

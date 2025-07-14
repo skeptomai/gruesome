@@ -14,3 +14,39 @@ log = "*"
 env_logger = "*"
 test-log = "*"
 sub-array = "*"
+
+[[bin]]
+name = "disassemble_routine"
+path = "src/bin/disassemble_routine.rs"
+
+[[bin]]
+name = "trace_lighting_fail"
+path = "src/bin/trace_lighting_fail.rs"
+
+[[bin]]
+name = "trace_fail_path"
+path = "src/bin/trace_fail_path.rs"
+
+[[bin]]
+name = "trace_lighting_failure"
+path = "src/bin/trace_lighting_failure.rs"
+
+[[bin]]
+name = "find_darkness_message"
+path = "src/bin/find_darkness_message.rs"
+
+[[bin]]
+name = "analyze_lighting"
+path = "src/bin/analyze_lighting.rs"
+
+[[bin]]
+name = "trace_darkness"
+path = "src/bin/trace_darkness.rs"
+
+[[bin]]
+name = "decode_darkness_string"
+path = "src/bin/decode_darkness_string.rs"
+
+[[bin]]
+name = "find_darkness_handler"
+path = "src/bin/find_darkness_handler.rs"
