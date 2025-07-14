@@ -290,7 +290,28 @@ impl Interpreter {
             crate::instruction::InstructionForm::Long => {
                 self.execute_2op(inst, operands[0], operands[1])
             }
-            crate::instruction::InstructionForm::Variable => self.execute_var(inst, &operands),
+            crate::instruction::InstructionForm::Variable => {
+                // Variable form can encode 2OP instructions when operand_count is OP2
+                match inst.operand_count {
+                    crate::instruction::OperandCount::OP2 => {
+                        // This is a 2OP instruction in Variable form
+                        if operands.len() >= 2 {
+                            self.execute_2op(inst, operands[0], operands[1])
+                        } else if operands.is_empty() && inst.opcode == 0x09 {
+                            // Special case: Variable 2OP AND with no operands
+                            // This appears in some games - treat as AND 0, 0
+                            debug!("Variable 2OP AND with no operands at PC {:05x} - using 0, 0", 
+                                   self.vm.pc - inst.size as u32);
+                            self.execute_2op(inst, 0, 0)
+                        } else {
+                            let pc = self.vm.pc - inst.size as u32;
+                            Err(format!("Variable 2OP instruction at PC {:05x} requires 2 operands, got {} - opcode: {:02x}", 
+                                       pc, operands.len(), inst.opcode))
+                        }
+                    }
+                    _ => self.execute_var(inst, &operands),
+                }
+            }
             crate::instruction::InstructionForm::Extended => self.execute_ext(inst, &operands),
         }
     }
@@ -878,9 +899,15 @@ impl Interpreter {
             0x01 => {
                 // storew
                 if operands.len() < 3 {
+                    // For Variable form with OP2, this might be 2OP:21 (storew) not VAR:01
+                    if inst.form == crate::instruction::InstructionForm::Variable && inst.operand_count == crate::instruction::OperandCount::OP2 {
+                        // This is actually 2OP:21 (storew) in Variable form
+                        debug!("Note: Variable form storew with OP2 at PC {:05x} - this is 2OP:21 in Variable form", 
+                               self.vm.pc - inst.size as u32);
+                    }
                     return Err(format!(
                         "storew at PC {:05x} requires 3 operands, got {} (operands: {:?}) - instruction form: {:?}, opcode: {:02x}, operand_count: {:?}",
-                        self.vm.pc, operands.len(), operands, inst.form, inst.opcode, inst.operand_count
+                        self.vm.pc - inst.size as u32, operands.len(), operands, inst.form, inst.opcode, inst.operand_count
                     ));
                 }
                 let addr = operands[0] as u32 + (operands[1] as u32 * 2);
@@ -1034,6 +1061,16 @@ impl Interpreter {
                     if stream_num.abs() != 1 {
                         debug!("Unsupported output stream: {}", stream_num);
                     }
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x0F => {
+                // set_cursor (V4+) - ignore in V3
+                if self.vm.game.header.version >= 4 {
+                    // Would set cursor position here
+                    debug!("set_cursor called but not implemented");
+                } else {
+                    debug!("set_cursor called in V3 game - ignoring");
                 }
                 Ok(ExecutionResult::Continue)
             }
