@@ -345,7 +345,9 @@ pub fn get_expected_operand_count(
             } else {
                 // For opcodes 0x00-0x1F, check operand_count to distinguish 2OP vs VAR
                 if operand_count == OperandCount::OP2 {
-                    Some(2)
+                    // Variable 2OP forms can actually have more than 2 operands!
+                    // The operand types byte determines the actual count
+                    None
                 } else {
                     // True VAR opcodes
                 match opcode {
