@@ -278,33 +278,27 @@ impl VM {
             return Err(format!("Invalid object number: {}", obj_num));
         }
 
-        // First check default properties
+        // Search in object's property table first
+        let prop_addr = self.get_property_addr(obj_num, prop_num)?;
+        if prop_addr != 0 {
+            // Property found in object - read its value
+            let size_byte = self.game.memory[prop_addr - 1];
+            let prop_size = ((size_byte >> 5) & 0x07) + 1;
+
+            if prop_size == 1 {
+                return Ok(self.read_byte(prop_addr as u32) as u16);
+            } else {
+                return Ok(self.read_word(prop_addr as u32));
+            }
+        }
+
+        // Property not found in object, return default
         if prop_num > 0 && prop_num <= 31 {
             let obj_table_addr = self.game.header.object_table_addr as usize;
             let default_addr = obj_table_addr + ((prop_num - 1) as usize * 2);
-            return Ok(self.read_word(default_addr as u32));
-        }
-
-        // Search in object's property table
-        let prop_addr = self.get_property_addr(obj_num, prop_num)?;
-        if prop_addr == 0 {
-            // Property not found, return default
-            if prop_num > 0 && prop_num <= 31 {
-                let obj_table_addr = self.game.header.object_table_addr as usize;
-                let default_addr = obj_table_addr + ((prop_num - 1) as usize * 2);
-                return Ok(self.read_word(default_addr as u32));
-            }
-            return Ok(0);
-        }
-
-        // Get property size
-        let size_byte = self.game.memory[prop_addr - 1];
-        let prop_size = ((size_byte >> 5) & 0x07) + 1;
-
-        if prop_size == 1 {
-            Ok(self.read_byte(prop_addr as u32) as u16)
+            Ok(self.read_word(default_addr as u32))
         } else {
-            Ok(self.read_word(prop_addr as u32))
+            Ok(0)
         }
     }
 

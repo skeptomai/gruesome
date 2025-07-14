@@ -208,7 +208,7 @@ impl Interpreter {
                     // Return value already handled by do_return
                 }
                 ExecutionResult::Quit | ExecutionResult::GameOver => {
-                    info!("Game ended.");
+                    println!("Game ended normally.");
                     return Ok(());
                 }
                 ExecutionResult::Error(e) => {
@@ -401,6 +401,8 @@ impl Interpreter {
             }
             0x0A => {
                 // quit
+                debug!("QUIT instruction executed at PC {:05x}", 
+                       self.vm.pc - inst.size as u32);
                 Ok(ExecutionResult::Quit)
             }
             0x0B => {
@@ -559,6 +561,55 @@ impl Interpreter {
                 }
                 Ok(ExecutionResult::Continue)
             }
+            0x04 => {
+                // get_prop_len - temporarily return a simple value to test
+                debug!(
+                    "get_prop_len: prop_addr={:04x} at PC {:05x}",
+                    operand,
+                    self.vm.pc - inst.size as u32
+                );
+                
+                // For now, just return 0 for null addresses, 2 for others
+                let prop_len = if operand == 0 { 0 } else { 2 };
+                
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, prop_len)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x07 => {
+                // print_addr
+                // Print string at unpacked address
+                let addr = operand as usize;
+                let abbrev_addr = self.vm.game.header.abbrev_table as usize;
+                debug!(
+                    "print_addr: addr={:04x} at PC {:05x}",
+                    addr,
+                    self.vm.pc - inst.size as u32
+                );
+                
+                match text::decode_string(&self.vm.game.memory, addr, abbrev_addr) {
+                    Ok((string, _)) => {
+                        print!("{}", string);
+                        io::stdout().flush().ok();
+                    }
+                    Err(e) => {
+                        debug!("Failed to decode string at {:04x}: {}", addr, e);
+                    }
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x09 => {
+                // remove_obj
+                let obj_num = operand;
+                debug!(
+                    "remove_obj: obj_num={} at PC {:05x}",
+                    obj_num,
+                    self.vm.pc - inst.size as u32
+                );
+                self.vm.remove_object(obj_num)?;
+                Ok(ExecutionResult::Continue)
+            }
             0x08 => {
                 // call_1s
                 self.do_call(operand, &[], inst.store_var)?;
@@ -701,7 +752,7 @@ impl Interpreter {
                 // test_attr
                 let obj_num = op1;
                 let attr_num = op2 as u8;
-                let mut result = self.vm.test_attribute(obj_num, attr_num)?;
+                let result = self.vm.test_attribute(obj_num, attr_num)?;
                 let current_pc = self.vm.pc - inst.size as u32;
 
                 // Let's follow the natural flow
@@ -798,6 +849,8 @@ impl Interpreter {
                 let obj_num = op1;
                 let prop_num = op2 as u8;
                 let value = self.vm.get_property(obj_num, prop_num)?;
+                
+                
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, value)?;
                 }
@@ -985,8 +1038,8 @@ impl Interpreter {
                 io::stdin().read_line(&mut input)
                     .map_err(|e| format!("Error reading input: {}", e))?;
                 
-                // Trim newline and convert to uppercase for Z-Machine
-                input = input.trim().to_uppercase();
+                // Trim newline - Z-Machine uses lowercase
+                input = input.trim().to_lowercase();
                 
                 // Limit input to max_len - 1 (leaving room for length byte)
                 let input_bytes = input.as_bytes();
@@ -999,32 +1052,27 @@ impl Interpreter {
                     self.vm.write_byte(text_buffer + 2 + i as u32, ch)?;
                 }
 
-                // Simple parsing - just put one word in parse buffer for now
-                // Parse buffer format: max_words, actual_words, [word_data]
-                // Word data: [addr_in_text, word_len, dict_entry_addr]
-                let max_words = self.vm.read_byte(parse_buffer);
-                if max_words > 0 && !input.is_empty() {
-                    // Find first word
-                    let first_word_end = input.find(' ').unwrap_or(input.len());
-                    let word_len = first_word_end.min(255) as u8;
-                    
-                    self.vm.write_byte(parse_buffer + 1, 1)?; // 1 word
-                    // Word 1 data: starts at text+2, length of first word, dict entry 0 (unknown)
-                    self.vm
-                        .write_byte(parse_buffer + 2, (text_buffer + 2) as u8)?; // addr low
-                    self.vm
-                        .write_byte(parse_buffer + 3, ((text_buffer + 2) >> 8) as u8)?; // addr high
-                    self.vm.write_byte(parse_buffer + 4, word_len)?; // length
-                    self.vm.write_byte(parse_buffer + 5, 0)?; // dict entry low
-                    self.vm.write_byte(parse_buffer + 6, 0)?; // dict entry high
-                } else if max_words > 0 {
-                    // Empty input
-                    self.vm.write_byte(parse_buffer + 1, 0)?; // 0 words
-                }
+                // Parse the text buffer using proper dictionary lookup
+                self.vm.parse_text(text_buffer, parse_buffer)?;
 
                 let pc = self.vm.pc - inst.size as u32;
+                // Debug removed for cleaner output
                 debug!("sread at PC {:05x}: text_buffer={:04x}, parse_buffer={:04x} - input: '{}'", 
                     pc, text_buffer, parse_buffer, input);
+                
+                // Debug: Show what's in the parse buffer
+                if self.debug {
+                    let word_count = self.vm.read_byte(parse_buffer + 1);
+                    debug!("  Parse buffer word count: {}", word_count);
+                    for i in 0..word_count {
+                        let offset = parse_buffer + 2 + (i as u32 * 4);
+                        let dict_addr = self.vm.read_word(offset);
+                        let word_len = self.vm.read_byte(offset + 2);
+                        let text_pos = self.vm.read_byte(offset + 3);
+                        debug!("    Word {}: dict_addr=0x{:04x}, len={}, pos={}", 
+                               i, dict_addr, word_len, text_pos);
+                    }
+                }
                 Ok(ExecutionResult::Continue)
             }
             0x05 => {
@@ -1051,6 +1099,26 @@ impl Interpreter {
                 if !operands.is_empty() {
                     print!("{}", operands[0] as i16);
                     io::stdout().flush().ok();
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x07 => {
+                // random
+                if !operands.is_empty() {
+                    let range = operands[0] as i16;
+                    let result = if range <= 0 {
+                        // Negative or zero = seed the random number generator
+                        // For now, just return 0
+                        0
+                    } else {
+                        // Return a value from 1 to range inclusive
+                        // For simplicity, use a predictable value for now
+                        1
+                    };
+                    
+                    if let Some(store_var) = inst.store_var {
+                        self.vm.write_variable(store_var, result as u16)?;
+                    }
                 }
                 Ok(ExecutionResult::Continue)
             }
@@ -1215,6 +1283,10 @@ impl Interpreter {
 
         // Unpack the address
         let addr = self.unpack_routine_address(packed_addr) as u32;
+        
+        if self.debug {
+            debug!("CALL to 0x{:05x} with args: {:?}", addr, args);
+        }
 
         // Save current state
         let frame = CallFrame {
