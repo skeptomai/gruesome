@@ -1,0 +1,42 @@
+Main routine 4f04, 0 locals ()
+
+ 4f05:  e0 03 2a 39 80 10 ff ff 00 
+                               CALL            5472 (#8010,#ffff) -> -(SP)
+ 4f0e:  e1 97 00 00 01          STOREW          (SP)+,#00,#01
+ 4f13:  e0 03 2a 39 80 7c ff ff 00 
+                               CALL            5472 (#807c,#ffff) -> -(SP)
+ 4f1c:  e0 03 2a 39 80 f0 ff ff 00 
+                               CALL            5472 (#80f0,#ffff) -> -(SP)
+ 4f25:  e1 97 00 00 01          STOREW          (SP)+,#00,#01
+ 4f2a:  e0 07 2a 39 6f 6a 28 00 CALL            5472 (#6f6a,#28) -> -(SP)
+ 4f32:  e0 07 2a 39 6f 55 c8 00 CALL            5472 (#6f55,#c8) -> -(SP)
+ 4f3a:  e3 57 9c 06 04          PUT_PROP        "magic boat",#06,#04
+ 4f3f:  54 20 02 00             ADD             G10,#02 -> -(SP)
+ 4f43:  e1 9b 1a 01 00          STOREW          G0a,#01,(SP)+
+ 4f48:  54 20 04 00             ADD             G10,#04 -> -(SP)
+ 4f4c:  e1 9b 1a 02 00          STOREW          G0a,#02,(SP)+
+ 4f51:  54 1e 02 00             ADD             G0e,#02 -> -(SP)
+ 4f55:  e1 9b 19 02 00          STOREW          G09,#02,(SP)+
+ 4f5a:  54 1e 04 00             ADD             G0e,#04 -> -(SP)
+ 4f5e:  e1 9b 19 03 00          STOREW          G09,#03,(SP)+
+ 4f63:  54 1d 02 00             ADD             G0d,#02 -> -(SP)
+ 4f67:  e1 9b 18 01 00          STOREW          G08,#01,(SP)+
+ 4f6c:  54 1c 02 00             ADD             G0c,#02 -> -(SP)
+ 4f70:  e1 9b 18 03 00          STOREW          G08,#03,(SP)+
+ 4f75:  0d 10 b4                STORE           G00,#b4
+ 4f78:  e0 1f 4a 98 a0 00       CALL            9530 (#a0) -> -(SP)
+ 4f7e:  4a 10 03 c8             TEST_ATTR       G00,#03 [TRUE] 4f88
+ 4f82:  e0 3f 37 70 00          CALL            6ee0 -> -(SP)
+ 4f87:  bb                      NEW_LINE        
+ 4f88:  0d 52 01                STORE           G42,#01
+ 4f8b:  0d 7f 04                STORE           G6f,#04
+ 4f8e:  2d 90 7f                STORE           G80,G6f
+ 4f91:  6e 7f 10                INSERT_OBJ      G6f,G00
+ 4f94:  e0 3f 3f 02 00          CALL            7e04 -> -(SP)
+ 4f99:  e0 3f 2a 95 00          CALL            552a -> -(SP)
+ 4f9e:  8c ff 66                JUMP            4f05
+
+Key addresses:
+- 0x3f02 packed = 0x7e04 unpacked (0x3f02 * 2)
+- 0x2a95 packed = 0x552a unpacked
+- Code starts at 0x4e38

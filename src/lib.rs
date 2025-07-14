@@ -4,6 +4,7 @@
 #[macro_use]
 extern crate lazy_static;
 
+pub mod debugger;
 pub mod dictionary;
 pub mod disassembler;
 pub mod game;

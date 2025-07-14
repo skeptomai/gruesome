@@ -211,7 +211,7 @@ pub fn stores_result(
                 } else {
                     // True VAR opcodes
                     match opcode {
-                        0x00 | 0x07 | 0x08 | 0x16 | 0x17 => true, // call, random, push, read_char, scan_table
+                        0x00 | 0x07 | 0x16 | 0x17 => true, // call, random, read_char, scan_table
                         _ => false,
                     }
                 }

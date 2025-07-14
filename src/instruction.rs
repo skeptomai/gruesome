@@ -313,17 +313,10 @@ impl Instruction {
 
             let on_true = (first_byte & 0x80) != 0;
             let offset_val = if (first_byte & 0x40) != 0 {
-                // Short form: 6-bit signed offset  
-                let val = (first_byte & 0x3F) as i16;
-                // For 6-bit signed: bit 5 is sign bit, range is -32 to +31
-                if val > 31 {
-                    // Convert from 6-bit two's complement to 16-bit
-                    val - 64
-                } else {
-                    val
-                }
+                // Short form: 6-bit unsigned offset (bit 6 = 1), range 0-63
+                (first_byte & 0x3F) as i16
             } else {
-                // Long form: 14-bit signed offset
+                // Long form: 14-bit signed offset (bit 6 = 0)
                 if offset >= memory.len() {
                     return Err("Branch offset second byte out of bounds".to_string());
                 }

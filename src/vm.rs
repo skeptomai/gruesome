@@ -409,6 +409,64 @@ impl VM {
         }
     }
 
+    /// Get the next property number after a given property
+    pub fn get_next_property(&self, obj_num: u16, prop_num: u8) -> Result<u8, String> {
+        if obj_num == 0 {
+            return Ok(0); // Object 0 has no properties
+        }
+        if obj_num > 255 {
+            return Err(format!("Invalid object number: {}", obj_num));
+        }
+
+        // Get object table base
+        let obj_table_addr = self.game.header.object_table_addr as usize;
+        let property_defaults = obj_table_addr;
+        let obj_tree_base = property_defaults + 31 * 2; // 31 default properties, 2 bytes each
+
+        // Calculate object entry address (9 bytes per object in V3)
+        let obj_addr = obj_tree_base + ((obj_num - 1) as usize * 9);
+
+        // Get property table address (last 2 bytes of object entry)
+        let prop_table_addr = self.read_word((obj_addr + 7) as u32) as usize;
+
+        // Skip the description byte length
+        let desc_len = self.game.memory[prop_table_addr] as usize;
+        let mut prop_addr = prop_table_addr + 1 + desc_len * 2;
+
+        // If prop_num is 0, return the first property
+        if prop_num == 0 {
+            let size_byte = self.game.memory[prop_addr];
+            if size_byte == 0 {
+                return Ok(0); // No properties
+            }
+            return Ok(size_byte & 0x1F);
+        }
+
+        // Search for the given property, then return the next one
+        loop {
+            let size_byte = self.game.memory[prop_addr];
+            if size_byte == 0 {
+                return Ok(0); // End of properties
+            }
+
+            let prop_id = size_byte & 0x1F;
+            let prop_size = ((size_byte >> 5) & 0x07) + 1;
+
+            if prop_id == prop_num {
+                // Found the property, now get the next one
+                prop_addr += 1 + prop_size as usize;
+                let next_size_byte = self.game.memory[prop_addr];
+                if next_size_byte == 0 {
+                    return Ok(0); // No next property
+                }
+                return Ok(next_size_byte & 0x1F);
+            }
+
+            // Move to next property
+            prop_addr += 1 + prop_size as usize;
+        }
+    }
+
     /// Test if an object has a specific attribute
     pub fn test_attribute(&self, obj_num: u16, attr_num: u8) -> Result<bool, String> {
         if obj_num == 0 {

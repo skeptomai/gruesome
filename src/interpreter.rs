@@ -410,8 +410,22 @@ impl Interpreter {
             }
             0x0F => {
                 // piracy
-                // Copy protection check - return true for legitimate copy
-                self.do_branch(inst, true)
+                // Copy protection check - interpreters should be "gullible and unconditionally branch"
+                // This means always take the branch regardless of the branch condition
+                if let Some(ref branch) = inst.branch {
+                    match branch.offset {
+                        0 => return self.do_return(0), // rfalse
+                        1 => return self.do_return(1), // rtrue
+                        offset => {
+                            // Jump is relative to instruction after branch data
+                            let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
+                            self.vm.pc = new_pc;
+                            return Ok(ExecutionResult::Branched);
+                        }
+                    }
+                } else {
+                    return Err("piracy instruction without branch info".to_string());
+                }
             }
             _ => Err(format!(
                 "Unimplemented 0OP instruction: {:02x}",
@@ -800,6 +814,16 @@ impl Interpreter {
                 Ok(ExecutionResult::Continue)
             }
             0x13 => {
+                // get_next_prop
+                let obj_num = op1;
+                let prop_num = op2 as u8;
+                let next_prop = self.vm.get_next_property(obj_num, prop_num)? as u16;
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, next_prop)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x14 => {
                 // add
                 if let Some(store_var) = inst.store_var {
                     let result = (op1 as i16).wrapping_add(op2 as i16) as u16;
@@ -807,7 +831,7 @@ impl Interpreter {
                 }
                 Ok(ExecutionResult::Continue)
             }
-            0x14 => {
+            0x15 => {
                 // sub
                 if let Some(store_var) = inst.store_var {
                     let result = (op1 as i16).wrapping_sub(op2 as i16) as u16;
@@ -815,7 +839,7 @@ impl Interpreter {
                 }
                 Ok(ExecutionResult::Continue)
             }
-            0x15 => {
+            0x16 => {
                 // mul
                 if let Some(store_var) = inst.store_var {
                     let result = (op1 as i16).wrapping_mul(op2 as i16) as u16;
@@ -823,7 +847,7 @@ impl Interpreter {
                 }
                 Ok(ExecutionResult::Continue)
             }
-            0x16 => {
+            0x17 => {
                 // div
                 if op2 == 0 {
                     return Err("Division by zero".to_string());
@@ -834,7 +858,7 @@ impl Interpreter {
                 }
                 Ok(ExecutionResult::Continue)
             }
-            0x17 => {
+            0x18 => {
                 // mod
                 if op2 == 0 {
                     return Err("Modulo by zero".to_string());
@@ -844,6 +868,13 @@ impl Interpreter {
                     self.vm.write_variable(store_var, result as u16)?;
                 }
                 Ok(ExecutionResult::Continue)
+            }
+            0x19 => {
+                // call_2s
+                let routine_addr = op1;
+                let arg = op2;
+                self.do_call(routine_addr, &[arg], inst.store_var)?;
+                Ok(ExecutionResult::Called)
             }
             0x1F => {
                 // Undocumented 2OP:0x1F instruction
@@ -1141,6 +1172,15 @@ impl Interpreter {
                     offset => {
                         // Jump is relative to instruction after branch data
                         let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
+                        
+                        // Add specific debug for the problematic branch
+                        if self.vm.pc >= 0x08cc0 && self.vm.pc <= 0x08cd0 {
+                            debug!(
+                                "Branch at PC {:05x}: offset={} ({:04x}), new_pc={:05x}",
+                                self.vm.pc, offset, offset as u16, new_pc
+                            );
+                        }
+                        
                         if self.vm.pc >= 0x06f70 && self.vm.pc <= 0x06fa0
                             || self.vm.pc >= 0x4f70 && self.vm.pc <= 0x5000
                         {
@@ -1215,6 +1255,14 @@ impl Interpreter {
                 let value = self.vm.read_word(self.vm.pc);
                 new_frame.locals[i] = value;
                 self.vm.pc += 2;
+            }
+            
+            // CRITICAL: Arguments overwrite the first N locals in V1-4
+            // This is the key part that was missing!
+            for (i, &arg) in args.iter().enumerate() {
+                if i < num_locals {
+                    new_frame.locals[i] = arg;
+                }
             }
         } else {
             // V5+: Initialize to zero, except for arguments
