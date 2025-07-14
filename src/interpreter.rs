@@ -936,44 +936,64 @@ impl Interpreter {
             }
             0x04 => {
                 // sread (V1-4)
-                // For now, simulate a simple input
+                // Proper implementation that reads from stdin
                 if operands.len() < 2 {
                     return Err("sread requires at least 2 operands".to_string());
                 }
                 let text_buffer = operands[0] as u32;
                 let parse_buffer = operands[1] as u32;
 
-                // Simple command - just "look"
-                let input = b"look";
+                // Get max length from text buffer
+                let max_len = self.vm.read_byte(text_buffer);
+                
+                // Read input from user
+                print!("> ");
+                io::stdout().flush().ok();
+                
+                let mut input = String::new();
+                io::stdin().read_line(&mut input)
+                    .map_err(|e| format!("Error reading input: {}", e))?;
+                
+                // Trim newline and convert to uppercase for Z-Machine
+                input = input.trim().to_uppercase();
+                
+                // Limit input to max_len - 1 (leaving room for length byte)
+                let input_bytes = input.as_bytes();
+                let input_len = input_bytes.len().min(max_len as usize - 1);
 
                 // Write input to text buffer
                 // Text buffer format: max_len, actual_len, characters...
-                let max_len = self.vm.read_byte(text_buffer);
-                let input_len = input.len().min(max_len as usize - 1);
-
                 self.vm.write_byte(text_buffer + 1, input_len as u8)?;
-                for (i, &ch) in input.iter().take(input_len).enumerate() {
+                for (i, &ch) in input_bytes.iter().take(input_len).enumerate() {
                     self.vm.write_byte(text_buffer + 2 + i as u32, ch)?;
                 }
 
-                // Simple parsing - just put one word in parse buffer
+                // Simple parsing - just put one word in parse buffer for now
                 // Parse buffer format: max_words, actual_words, [word_data]
                 // Word data: [addr_in_text, word_len, dict_entry_addr]
                 let max_words = self.vm.read_byte(parse_buffer);
-                if max_words > 0 {
+                if max_words > 0 && !input.is_empty() {
+                    // Find first word
+                    let first_word_end = input.find(' ').unwrap_or(input.len());
+                    let word_len = first_word_end.min(255) as u8;
+                    
                     self.vm.write_byte(parse_buffer + 1, 1)?; // 1 word
-                                                              // Word 1 data: starts at text+2, length 4, dict entry 0 (unknown)
+                    // Word 1 data: starts at text+2, length of first word, dict entry 0 (unknown)
                     self.vm
                         .write_byte(parse_buffer + 2, (text_buffer + 2) as u8)?; // addr low
                     self.vm
                         .write_byte(parse_buffer + 3, ((text_buffer + 2) >> 8) as u8)?; // addr high
-                    self.vm.write_byte(parse_buffer + 4, 4)?; // length
+                    self.vm.write_byte(parse_buffer + 4, word_len)?; // length
                     self.vm.write_byte(parse_buffer + 5, 0)?; // dict entry low
                     self.vm.write_byte(parse_buffer + 6, 0)?; // dict entry high
+                } else if max_words > 0 {
+                    // Empty input
+                    self.vm.write_byte(parse_buffer + 1, 0)?; // 0 words
                 }
 
                 let pc = self.vm.pc - inst.size as u32;
-                debug!("sread at PC {:05x}: text_buffer={:04x}, parse_buffer={:04x} - returning 'look'", pc, text_buffer, parse_buffer);
+                debug!("sread at PC {:05x}: text_buffer={:04x}, parse_buffer={:04x} - input: '{}'", 
+                    pc, text_buffer, parse_buffer, input);
                 Ok(ExecutionResult::Continue)
             }
             0x05 => {
