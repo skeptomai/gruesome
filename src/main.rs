@@ -1,5 +1,6 @@
 use infocom::interpreter::Interpreter;
 use infocom::vm::{Game, VM};
+use log::{info, debug};
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
@@ -19,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let game_path = &args[1];
 
     // Load the game file
-    println!("Loading Z-Machine game: {}", game_path);
+    debug!("Loading Z-Machine game: {}", game_path);
     let mut file = File::open(game_path)?;
     let mut game_data = Vec::new();
     file.read_to_end(&mut game_data)?;
@@ -29,15 +30,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let vm = VM::new(game);
     let mut interpreter = Interpreter::new(vm);
 
-    println!("Z-Machine Interpreter v0.1.0");
-    println!("Game version: {}", interpreter.vm.game.header.version);
-    log::info!("Initial PC: {:04x}", interpreter.vm.game.header.initial_pc);
-    println!("Starting game...\n");
+    debug!("Z-Machine Interpreter v0.1.0");
+    debug!("Game version: {}", interpreter.vm.game.header.version);
+    info!("Initial PC: {:04x}", interpreter.vm.game.header.initial_pc);
+    debug!("Starting game...\n");
 
     // Run the interpreter with a limit to avoid crashes
     match interpreter.run_with_limit(Some(500000)) {
         Ok(()) => {
-            println!("\nGame ended normally.");
+            debug!("\nGame ended normally.");
         }
         Err(e) => {
             eprintln!("\nError during execution: {}", e);
