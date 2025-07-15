@@ -125,3 +125,24 @@ If the game shows messages like "You are already standing, I think" or "Only bat
 - Improper branch logic in early instructions
 
 The fix is to remove workarounds and ensure proper instruction execution from PC 0x4f05.
+
+## Important Zork I Object Information
+
+### Object 4 (ADVENTURER / "cretin")
+- This is a stub object that moves around the map
+- Printed name: "cretin"
+- Property 17 (ACTION): 00 00 (no function)
+- This object represents the player's physical presence in game locations
+
+### Object 5 (ME / "you")
+- A global object which is always in scope
+- Commands referring to ME hit this object, rather than ADVENTURER
+- Property 17 (ACTION): 29 5c (has a valid action handler function)
+- Because of this, parser messages mostly refer to you as "you", even though the ADVENTURER's printed name is "cretin"
+
+### Key Insight
+The game uses two separate objects for the player:
+- Object 4 (ADVENTURER) for physical location tracking
+- Object 5 (ME) for command processing and parser interactions
+
+When processing commands, especially those with dictionary type 0x32 (like 'w'), the game checks property 17 (action handler) of objects. If object 4 is used instead of object 5, it will fail because object 4 has no action handler.

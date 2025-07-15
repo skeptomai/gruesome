@@ -6,14 +6,15 @@ This table contains known routine addresses and their names discovered through d
 
 | Address | Name | Description |
 |---------|------|-------------|
-| 0x4f05 | MAIN | Main entry point (skipping intro) |
-| 0x4f82 | INTRO | Introduction sequence |
-| 0x50a8 | PERFORM | Main action performer |
+| 0x4f05 | MAIN | Main entry point - initializes game and calls V-VERSION |
+| 0x50a8 | (Unknown) | Previously thought to be PERFORM |
+| 0x6ee0 | V-VERSION | Prints copyright/version info (called from MAIN at 0x4f82) |
 | 0x51f0 | GOTO | Changes current location (G0/HERE) |
-| 0x552a | WEST-HOUSE | West of House room handler |
-| 0x5880 | FOREST-ROOM | Forest room handler |
+| 0x552a | MAIN-LOOP | Main loop that calls PERFORM and other routines |
+| 0x577c | PERFORM | Main command processing routine - checks property 17 |
+| 0x5880 | PARSER | Command parser - called by MAIN-LOOP |
 | 0x590c | INPUT-LOOP | Main input loop (contains SREAD) |
-| 0x5c40 | PARSER | Command parser |
+| 0x5c40 | (Unknown-5c40) | Previously thought to be PARSER |
 | 0x6f76 | V-WALK | Walk/movement verb handler |
 | 0x7086 | LIT? | Check if location is lit |
 | 0x7e04 | DESCRIBE-ROOM | Room description routine |
@@ -33,7 +34,9 @@ This table contains known routine addresses and their names discovered through d
 | G56 | PRSO | Direct object |
 | G57 | PRSI | Indirect object |
 | G72 | ACT | Current action/verb |
-| G76 | P-WALK-DIR | Walking direction |
+| G76 | P-WALK-DIR | Walking direction (e.g., 0x1d=29 for 'w') |
+| G78 | (Action code) | Used by PERFORM (e.g., 0x89=137 for certain actions) |
+| G6f (V7f) | (Actor/Player) | Contains object 4 (ADVENTURER) |
 
 ## Important Objects
 
@@ -109,6 +112,36 @@ This table contains known routine addresses and their names discovered through d
 | 2 | zorkmid |
 | 4 | cretin |
 | 5 | you |
+
+## Detailed Routine Information
+
+### 0x552a - MAIN-LOOP
+The main game loop that processes commands.
+- First calls PARSER (0x5880) to parse the command
+- Loads parsed words from G55/G56 buffers
+- When G78=0x89 (137), calls PERFORM (0x577c) with arguments (G78, G76)
+- For 'w' command: G76=0x1d (29), which matches the data byte from dictionary entry
+
+### 0x577c - PERFORM
+The main command processing routine. Handles executing parsed commands.
+- Takes parameters: L00=action code (e.g. 0x89), L01=direct object/direction (e.g. 0x1d for 'w')
+- Stores parameters: L04=G78, L05=G76, L06=G77
+- Checks property 17 (action handler) of object in G6f (variable 0x7f = object 4)
+- Falls back to checking parent's property 17
+- Continues with other checks if those fail
+
+### 0x5880 - PARSER
+The command parser routine.
+- Called by MAIN-LOOP at the start of each command cycle
+- Parses user input and sets up global variables
+- Returns result in G7f
+
+### 0x6ee0 - V-VERSION
+Action routine for "version" command.
+- Called from MAIN at 0x4f82 during initialization
+- Prints "ZORK I: The Great Underground Empire"
+- Prints copyright notice
+- Prints revision and serial number from header
 
 ## Notes
 

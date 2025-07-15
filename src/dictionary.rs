@@ -1,5 +1,6 @@
 /// Dictionary lookup for Z-Machine V3
 use crate::vm::VM;
+use log::debug;
 
 /// Encode a word for dictionary lookup (V3)
 fn encode_word_v3(word: &str) -> (u16, u16) {
@@ -68,7 +69,21 @@ impl VM {
             } else if search_word1 > dict_word1 || (search_word1 == dict_word1 && search_word2 > dict_word2) {
                 low = mid + 1;
             } else {
-                // Found\!
+                // Found!
+                debug!("Dictionary lookup found '{}' at {:04x}", word, addr);
+                
+                // Check the dictionary entry type
+                let type_byte = self.read_byte(addr + 4);
+                let byte5 = self.read_byte(addr + 5);
+                let byte6 = self.read_byte(addr + 6);
+                
+                debug!("  Dictionary entry: type={:02x}, data={:02x} {:02x}", 
+                       type_byte, byte5, byte6);
+                
+                if type_byte == 0x32 {
+                    debug!("  *** WARNING: Type 0x32 dictionary entry - special handling needed! ***");
+                }
+                
                 return addr as u16;
             }
         }
@@ -107,6 +122,9 @@ impl VM {
             
             // Look up word in dictionary
             let dict_addr = self.lookup_dictionary(word);
+            
+            // Log what we're storing in the parse buffer
+            debug!("Storing word '{}' in parse buffer: dict_addr={:04x}", word, dict_addr);
             
             // Write parse entry (V3 format)
             let entry_offset = parse_buffer + 2 + (i * 4) as u32;

@@ -18,13 +18,14 @@ impl RoutineNames {
         
         // Main routines
         names.insert(0x4f05, "MAIN");
-        names.insert(0x4f82, "INTRO");
-        names.insert(0x50a8, "PERFORM");
+        names.insert(0x50a8, "(Unknown-50a8)");
+        names.insert(0x6ee0, "V-VERSION");
         names.insert(0x51f0, "GOTO");
-        names.insert(0x552a, "WEST-HOUSE");
-        names.insert(0x5880, "FOREST-ROOM");
+        names.insert(0x552a, "MAIN-LOOP");
+        names.insert(0x577c, "PERFORM");
+        names.insert(0x5880, "PARSER");
         names.insert(0x590c, "INPUT-LOOP");
-        names.insert(0x5c40, "PARSER");
+        names.insert(0x5c40, "(Unknown-5c40)");
         names.insert(0x6f76, "V-WALK");
         names.insert(0x7086, "LIT?");
         names.insert(0x7e04, "DESCRIBE-ROOM");
@@ -38,10 +39,43 @@ impl RoutineNames {
         self.names.get(&addr).copied()
     }
     
+    /// Get the routine that contains the given address
+    pub fn get_routine_containing(&self, addr: u32) -> Option<(u32, &'static str)> {
+        // Find the highest routine address that's less than or equal to addr
+        let mut best_match: Option<(u32, &'static str)> = None;
+        
+        for (&routine_addr, &name) in &self.names {
+            if routine_addr <= addr {
+                if let Some((best_addr, _)) = best_match {
+                    if routine_addr > best_addr {
+                        best_match = Some((routine_addr, name));
+                    }
+                } else {
+                    best_match = Some((routine_addr, name));
+                }
+            }
+        }
+        
+        // Only return if the address is reasonably close (within 1000 bytes)
+        if let Some((routine_addr, name)) = best_match {
+            if addr - routine_addr < 1000 {
+                return Some((routine_addr, name));
+            }
+        }
+        
+        None
+    }
+    
     /// Format an address with its name if known
     pub fn format_address(&self, addr: u32) -> String {
         if let Some(name) = self.get_name(addr) {
             format!("{:04x} ({})", addr, name)
+        } else if let Some((routine_addr, name)) = self.get_routine_containing(addr) {
+            if routine_addr == addr {
+                format!("{:04x} ({})", addr, name)
+            } else {
+                format!("{:04x} (in {})", addr, name)
+            }
         } else {
             format!("{:04x}", addr)
         }
@@ -51,11 +85,13 @@ impl RoutineNames {
 /// Global variable names
 pub fn get_global_name(var_num: u8) -> Option<&'static str> {
     match var_num {
-        0x10 => Some("HERE"),
-        0x38 => Some("PRSO"),  // G56
-        0x39 => Some("PRSI"),  // G57
-        0x48 => Some("ACT"),   // G72
-        0x4c => Some("P-WALK-DIR"), // G76
+        0x10 => Some("HERE"),       // G00 -> V10
+        0x48 => Some("PRSO"),       // G38 -> V48  
+        0x49 => Some("PRSI"),       // G39 -> V49
+        0x58 => Some("ACT"),        // G48 -> V58
+        0x5c => Some("P-WALK-DIR"), // G4c -> V5c
+        0x5e => Some("(Action-code)"), // G4e -> V5e
+        0x7f => Some("(Actor/Player)"), // G6f -> V7f
         _ => None,
     }
 }

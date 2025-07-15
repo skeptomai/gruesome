@@ -34,6 +34,10 @@ pub struct Interpreter {
     instruction_count: u64,
     /// Routine names for debugging
     routine_names: RoutineNames,
+    /// Enable single-step debugging
+    pub single_step: bool,
+    /// PC range for single-stepping (start, end)
+    pub step_range: Option<(u32, u32)>,
 }
 
 impl Interpreter {
@@ -44,12 +48,94 @@ impl Interpreter {
             debug: false,
             instruction_count: 0,
             routine_names: RoutineNames::new(),
+            single_step: false,
+            step_range: None,
         }
     }
 
     /// Enable or disable debug mode
     pub fn set_debug(&mut self, debug: bool) {
         self.debug = debug;
+    }
+    
+    /// Enable single-step debugging for a PC range
+    pub fn enable_single_step(&mut self, start: u32, end: u32) {
+        self.single_step = true;
+        self.step_range = Some((start, end));
+        
+        // Show what routines are in this range
+        println!("\n=== Single-step debugging enabled ===");
+        println!("PC range: 0x{:04x} - 0x{:04x}", start, end);
+        
+        // Find routines in this range
+        let mut routines_in_range = Vec::new();
+        for addr in start..=end {
+            if let Some(name) = self.routine_names.get_name(addr) {
+                routines_in_range.push((addr, name));
+            }
+        }
+        
+        if !routines_in_range.is_empty() {
+            println!("Routines in range:");
+            for (addr, name) in routines_in_range {
+                println!("  0x{:04x}: {}", addr, name);
+            }
+        }
+        println!();
+    }
+    
+    /// Dump memory state for debugging
+    fn dump_memory_state(&self) {
+        println!("\n=== Memory State ===");
+        
+        // Show where we are
+        let current_pc_info = if let Some((routine_addr, name)) = self.routine_names.get_routine_containing(self.vm.pc) {
+            let offset = self.vm.pc - routine_addr;
+            format!("0x{:05x} (in {}+0x{:02x})", self.vm.pc, name, offset)
+        } else {
+            format!("0x{:05x}", self.vm.pc)
+        };
+        println!("Current PC: {}", current_pc_info);
+        
+        if let Some(frame) = self.vm.call_stack.last() {
+            println!("Will return to: {}", self.routine_names.format_address(frame.return_pc));
+        }
+        
+        // Dump some key globals with names
+        println!("\nKey globals:");
+        for i in [0, 0x48, 0x4c, 0x4e, 0x6f, 0x7f] {
+            if let Ok(val) = self.vm.read_global(i) {
+                let name = crate::debug_symbols::get_global_name(i + 0x10)
+                    .unwrap_or("");
+                if !name.is_empty() {
+                    println!("  G{:02x} {}: {} (0x{:04x})", i, name, val, val);
+                } else {
+                    println!("  G{:02x}: {} (0x{:04x})", i, val, val);
+                }
+            }
+        }
+        
+        // Dump stack
+        println!("\nStack (top 5):");
+        for i in 0..5.min(self.vm.stack.len()) {
+            let idx = self.vm.stack.len() - 1 - i;
+            println!("  [{}]: {} (0x{:04x})", i, self.vm.stack[idx], self.vm.stack[idx]);
+        }
+        
+        // Current call frame info
+        if let Some(frame) = self.vm.call_stack.last() {
+            println!("\nCurrent call frame:");
+            println!("  Return PC: {}", self.routine_names.format_address(frame.return_pc));
+            println!("  Locals: {:?}", frame.locals);
+        }
+        
+        // Show call stack
+        println!("\nCall stack:");
+        for (i, frame) in self.vm.call_stack.iter().rev().enumerate() {
+            println!("  [{}] Return to: {}", i, self.routine_names.format_address(frame.return_pc));
+        }
+        
+        println!();
     }
 
     /// Run the interpreter
@@ -164,8 +250,69 @@ impl Interpreter {
                 }
             };
 
-            // Log all instructions when we're near the problematic area or at start
-            if self.debug
+            // Check if we should single-step this instruction
+            let should_step = self.single_step && match self.step_range {
+                Some((start, end)) => pc >= start && pc <= end,
+                None => true,
+            };
+            
+            // Log instruction for debugging
+            if should_step {
+                // Print the instruction details (using println for interactive debugging)
+                // Show current routine if known
+                let routine_info = if let Some((routine_addr, name)) = self.routine_names.get_routine_containing(pc) {
+                    let offset = pc - routine_addr;
+                    if offset == 0 {
+                        format!(" (start of {})", name)
+                    } else {
+                        format!(" (in {}+0x{:02x})", name, offset)
+                    }
+                } else {
+                    String::new()
+                };
+                println!("\n[{:05x}] {}{}", pc, instruction, routine_info);
+                println!("  Opcode: 0x{:02x}, Form: {:?}", instruction.opcode, instruction.form);
+                if !instruction.operands.is_empty() {
+                    print!("  Operands:");
+                    for (i, (op_type, value)) in instruction.operand_types.iter()
+                        .zip(instruction.operands.iter())
+                        .enumerate() 
+                    {
+                        print!(" [{}] ", i);
+                        match op_type {
+                            crate::instruction::OperandType::Variable => {
+                                if *value <= 0xFF {
+                                    let var_val = self.vm.read_variable(*value as u8).unwrap_or(0xFFFF);
+                                    print!("V{:02x}={} (0x{:04x})", value, var_val, var_val);
+                                } else {
+                                    print!("V{:04x}=<invalid>", value);
+                                }
+                            }
+                            _ => print!("#{:04x}", value),
+                        }
+                    }
+                    println!();
+                }
+                if let Some(store) = instruction.store_var {
+                    println!("  Store to: V{:02x}", store);
+                }
+                if let Some(branch) = &instruction.branch {
+                    println!("  Branch: offset={}, on_true={}", branch.offset, branch.on_true);
+                }
+                
+                // Wait for user input
+                print!("  Press Enter to continue (or 'q' to quit, 'm' for memory dump)... ");
+                io::stdout().flush().ok();
+                
+                let mut input = String::new();
+                io::stdin().read_line(&mut input).ok();
+                
+                if input.trim() == "q" {
+                    return Err("User quit".to_string());
+                } else if input.trim() == "m" {
+                    self.dump_memory_state();
+                }
+            } else if self.debug
                 || pc >= 0x06f70 && pc <= 0x07000
                 || pc >= 0x08cb0 && pc <= 0x08cc0
                 || pc >= 0x4f00 && pc <= 0x5000
@@ -345,13 +492,22 @@ impl Interpreter {
             0x02 => {
                 // print (literal string)
                 if let Some(ref text) = inst.text {
-                    if text.contains("cannot") || text.contains("anymore") {
+                    // Always log print instructions when debugging 'w' issue
+                    if text.contains("can you attack") || text.contains("spirit") {
                         debug!(
-                            "print: text='{}' at PC {:05x}",
-                            text,
-                            self.vm.pc - inst.size as u32
+                            "*** FOUND GARBAGE TEXT: print at PC {:05x}: '{}'",
+                            self.vm.pc - inst.size as u32,
+                            text
                         );
                     }
+                    // Log first part of all print strings for debugging
+                    let preview = if text.len() > 40 {
+                        format!("{}...", &text[..40])
+                    } else {
+                        text.clone()
+                    };
+                    debug!("print at PC {:05x}: '{}'", self.vm.pc - inst.size as u32, preview);
+                    
                     print!("{}", text);
                     io::stdout().flush().ok();
                 }
@@ -478,6 +634,11 @@ impl Interpreter {
                 let pc = self.vm.pc - inst.size as u32;
                 debug!("print_paddr at {:05x}: operand={:04x}", pc, operand);
                 
+                // Check if this might be the problematic address
+                if operand == 0xa11d || operand == 0x1da1 {
+                    debug!("*** WARNING: print_paddr with suspicious address {:04x} ***", operand);
+                }
+                
                 let abbrev_addr = self.vm.game.header.abbrev_table as usize;
                 match text::decode_string_at_packed_addr(
                     &self.vm.game.memory,
@@ -576,6 +737,12 @@ impl Interpreter {
                     addr,
                     self.vm.pc - inst.size as u32
                 );
+                
+                // Check if this might be related to our bug
+                if addr == 0xa11d || addr == 0x1da1 {
+                    debug!("*** WARNING: print_addr with suspicious address {:04x} ***", addr);
+                    debug!("*** This might be the source of the 'w' garbage text! ***");
+                }
                 
                 match text::decode_string(&self.vm.game.memory, addr, abbrev_addr) {
                     Ok((string, _)) => {
