@@ -524,6 +524,50 @@ impl Interpreter {
                 // nop
                 Ok(ExecutionResult::Continue)
             }
+            0x05 => {
+                // save (V1-3: branch on success, V4+: store result)
+                if self.vm.game.header.version <= 3 {
+                    // For now, just print a message and branch (pretend save succeeded)
+                    println!("\n[Save game feature not yet implemented]");
+                    println!("[Pretending save succeeded for now]");
+                    
+                    // Branch on success
+                    if let Some(ref branch) = inst.branch {
+                        // For V1-3, save branches if successful
+                        if branch.on_true {
+                            self.do_branch(inst, true)
+                        } else {
+                            self.do_branch(inst, false)
+                        }
+                    } else {
+                        Err("save instruction without branch info".to_string())
+                    }
+                } else {
+                    // V4+: store result (0=fail, 1=success, 2=restored)
+                    // For now, just store 0 (failed)
+                    if let Some(store_var) = inst.store_var {
+                        self.vm.write_variable(store_var, 0)?;
+                    }
+                    Ok(ExecutionResult::Continue)
+                }
+            }
+            0x06 => {
+                // restore (V1-3: branch on success, V4+: store result)
+                if self.vm.game.header.version <= 3 {
+                    // For now, just print a message and don't branch (pretend restore failed)
+                    println!("\n[Restore game feature not yet implemented]");
+                    println!("[Pretending restore failed for now]");
+                    
+                    // Don't branch (failed)
+                    Ok(ExecutionResult::Continue)
+                } else {
+                    // V4+: store result (0=fail, or doesn't return on success)
+                    if let Some(store_var) = inst.store_var {
+                        self.vm.write_variable(store_var, 0)?;
+                    }
+                    Ok(ExecutionResult::Continue)
+                }
+            }
             0x08 => {
                 // ret_popped
                 let value = self.vm.pop()?;
