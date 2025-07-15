@@ -1,11 +1,11 @@
 use std::fmt::{Display, Error, Formatter};
 use sub_array::SubArray;
 
-use crate::dictionary::Dictionary;
+// use crate::dictionary::Dictionary;
 use crate::gamememorymap::GameMemoryMap;
 use crate::header::Header;
 use crate::property_defaults::PropertyDefaults;
-use crate::util::{get_mem_addr, properties_size_by_version, ZTextReader, MAX_PROPERTIES_V3};
+use crate::util::{get_mem_addr, properties_size_by_version, MAX_PROPERTIES_V3};
 use crate::zobject::{ObjectTable, Zobject};
 use crate::zrand::{RandMode, ZRand};
 
@@ -16,7 +16,7 @@ pub struct GameFile<'a> {
     rng: &'a mut ZRand,
     memory_map: GameMemoryMap<'a>,
     object_table: Option<ObjectTable>,
-    dictionary: Option<Dictionary>,
+    // dictionary: Option<Dictionary>,
 }
 
 impl<'a> GameFile<'a> {
@@ -60,7 +60,7 @@ impl<'a> GameFile<'a> {
             rand_mode: RandMode::RandomUniform,
             memory_map,
             object_table: None,
-            dictionary: None,
+            // dictionary: None,
         };
 
         let ot = ObjectTable::new(&g);
@@ -68,9 +68,9 @@ impl<'a> GameFile<'a> {
 
         g.object_table = object_table;
 
-        let dict = Dictionary::new(&g);
+        // let dict = Dictionary::new(&g);
 
-        g.dictionary = Some(dict);
+        // g.dictionary = Some(dict);
 
         g
     }
@@ -141,13 +141,13 @@ impl<'a> Display for GameFile<'a> {
         let mut abbrev_table_offset = self.memory_map.abbrev_table;
         let mut si = 1;
         loop {
-            let abbrev_string_addr =
+            let _abbrev_string_addr =
                 (get_mem_addr(&self.bytes(), abbrev_table_offset as usize).unwrap() * 2) as usize;
             writeln!(
                 f,
                 "[{}] \"{}\"",
                 si,
-                Dictionary::read_text(&self, abbrev_string_addr).unwrap()
+                "ABBREV_TEXT".to_string() // Temporary placeholder
             )?;
             si += 1;
             abbrev_table_offset += 2;
@@ -165,14 +165,14 @@ impl<'a> Display for GameFile<'a> {
             }
         }
 
-        match &self.dictionary {
-            Some(d) => {
-                write!(f, "{}", d)?;
-            }
-            _ => {
-                write!(f, "no dictionary!")?;
-            }
-        }
+        // match &self.dictionary {
+        //     Some(d) => {
+        //         write!(f, "{}", d)?;
+        //     }
+        //     _ => {
+        //         write!(f, "no dictionary!")?;
+        //     }
+        // }
 
         Ok(())
     }

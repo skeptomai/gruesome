@@ -1,7 +1,6 @@
 use crate::instruction::Instruction;
 use crate::interpreter::Interpreter;
 use crate::vm::VM;
-use std::collections::HashMap;
 use std::io::{self, Write};
 
 /// A debugger for step-by-step execution and disassembly

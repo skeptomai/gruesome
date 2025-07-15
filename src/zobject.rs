@@ -4,9 +4,8 @@ use std::fmt::Display;
 use std::fmt::Error;
 use std::fmt::Formatter;
 
-use crate::dictionary::Dictionary;
+// use crate::dictionary::Dictionary;
 use crate::game::GameFile;
-use crate::util::ZTextReader;
 
 // 12.3.1
 // In Versions 1 to 3, there are at most 255 objects, each having a 9-byte entry as follows:
@@ -163,7 +162,7 @@ impl Zobject {
         }
         // if we have a description, we read and expand abbrevs
         else {
-            Dictionary::read_text(&gfile, properties_addr + 1).unwrap()
+            "OBJECT_DESC".to_string() // Temporary placeholder
         };
 
         // also read properties into object, starting at

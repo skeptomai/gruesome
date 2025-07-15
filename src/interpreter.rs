@@ -207,8 +207,12 @@ impl Interpreter {
                 ExecutionResult::Returned(_value) => {
                     // Return value already handled by do_return
                 }
-                ExecutionResult::Quit | ExecutionResult::GameOver => {
-                    println!("Game ended normally.");
+                ExecutionResult::Quit => {
+                    // Quit opcode executed - exit the entire program immediately
+                    std::process::exit(0);
+                }
+                ExecutionResult::GameOver => {
+                    // Game over - return normally
                     return Ok(());
                 }
                 ExecutionResult::Error(e) => {
@@ -295,7 +299,18 @@ impl Interpreter {
                 match inst.operand_count {
                     crate::instruction::OperandCount::OP2 => {
                         // This is a 2OP instruction in Variable form
-                        if operands.len() >= 2 {
+                        // Special handling for je (opcode 0x01) which can have 2-4 operands
+                        if inst.opcode == 0x01 && operands.len() >= 2 {
+                            // je - compare first operand against all others
+                            let mut condition = false;
+                            for i in 1..operands.len() {
+                                if operands[0] == operands[i] {
+                                    condition = true;
+                                    break;
+                                }
+                            }
+                            self.do_branch(inst, condition)
+                        } else if operands.len() >= 2 {
                             self.execute_2op(inst, operands[0], operands[1])
                         } else if operands.is_empty() && inst.opcode == 0x09 {
                             // Special case: Variable 2OP AND with no operands
@@ -401,8 +416,6 @@ impl Interpreter {
             }
             0x0A => {
                 // quit
-                debug!("QUIT instruction executed at PC {:05x}", 
-                       self.vm.pc - inst.size as u32);
                 Ok(ExecutionResult::Quit)
             }
             0x0B => {
@@ -974,8 +987,8 @@ impl Interpreter {
                 let routine_addr = operands[0];
                 let args = &operands[1..];
                 debug!(
-                    "Call to {:04x} with store_var = {:?}",
-                    routine_addr, inst.store_var
+                    "Call to packed address 0x{:04x} (unpacked: 0x{:05x}) with store_var = {:?}",
+                    routine_addr, self.unpack_routine_address(routine_addr as u16) as u32, inst.store_var
                 );
                 self.do_call(routine_addr, args, inst.store_var)?;
                 Ok(ExecutionResult::Called)
@@ -1031,7 +1044,7 @@ impl Interpreter {
                 let max_len = self.vm.read_byte(text_buffer);
                 
                 // Read input from user
-                print!("> ");
+                // Note: The game prints its own prompt, we don't need to add one
                 io::stdout().flush().ok();
                 
                 let mut input = String::new();

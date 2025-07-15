@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Z-Machine Interpreter v0.1.0");
     println!("Game version: {}", interpreter.vm.game.header.version);
-    println!("Initial PC: {:04x}", interpreter.vm.game.header.initial_pc);
+    log::info!("Initial PC: {:04x}", interpreter.vm.game.header.initial_pc);
     println!("Starting game...\n");
 
     // Run the interpreter with a limit to avoid crashes
