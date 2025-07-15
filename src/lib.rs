@@ -20,6 +20,7 @@ pub mod util;
 pub mod vm;
 pub mod zobject;
 pub mod zrand;
+pub mod debug_symbols;
 
 #[cfg(test)]
 mod test_execution;

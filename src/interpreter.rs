@@ -1,4 +1,5 @@
 use crate::instruction::{Instruction, OperandType};
+use crate::debug_symbols::RoutineNames;
 use crate::text;
 use crate::vm::{CallFrame, VM};
 use log::{debug, info};
@@ -31,6 +32,8 @@ pub struct Interpreter {
     pub debug: bool,
     /// Instruction count for debugging
     instruction_count: u64,
+    /// Routine names for debugging
+    routine_names: RoutineNames,
 }
 
 impl Interpreter {
@@ -40,6 +43,7 @@ impl Interpreter {
             vm,
             debug: false,
             instruction_count: 0,
+            routine_names: RoutineNames::new(),
         }
     }
 
@@ -301,7 +305,7 @@ impl Interpreter {
     }
 
     /// Resolve operand values (handle variables vs constants)
-    fn resolve_operands(&mut self, inst: &Instruction) -> Result<Vec<u16>, String> {
+    pub fn resolve_operands(&mut self, inst: &Instruction) -> Result<Vec<u16>, String> {
         let mut values = Vec::new();
 
         for (i, &operand) in inst.operands.iter().enumerate() {
@@ -471,6 +475,9 @@ impl Interpreter {
             0x0D => {
                 // print_paddr
                 // Print string at packed address
+                let pc = self.vm.pc - inst.size as u32;
+                debug!("print_paddr at {:05x}: operand={:04x}", pc, operand);
+                
                 let abbrev_addr = self.vm.game.header.abbrev_table as usize;
                 match text::decode_string_at_packed_addr(
                     &self.vm.game.memory,
@@ -1004,9 +1011,10 @@ impl Interpreter {
                 }
                 let routine_addr = operands[0];
                 let args = &operands[1..];
+                let unpacked_addr = self.unpack_routine_address(routine_addr as u16) as u32;
                 debug!(
-                    "Call to packed address 0x{:04x} (unpacked: 0x{:05x}) with store_var = {:?}",
-                    routine_addr, self.unpack_routine_address(routine_addr as u16) as u32, inst.store_var
+                    "Call to packed address 0x{:04x} (unpacked: {}) with store_var = {:?}",
+                    routine_addr, self.routine_names.format_address(unpacked_addr), inst.store_var
                 );
                 self.do_call(routine_addr, args, inst.store_var)?;
                 Ok(ExecutionResult::Called)

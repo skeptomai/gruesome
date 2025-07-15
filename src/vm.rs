@@ -310,6 +310,13 @@ impl VM {
         if obj_num > 255 {
             return Err(format!("Invalid object number: {}", obj_num));
         }
+        
+        debug!("get_property_addr: obj={}, prop={}", obj_num, prop_num);
+        
+        // Special debug for the problematic case
+        if obj_num == 16 && prop_num == 29 {
+            debug!("*** DEBUGGING: Object 16, Property 29 ***");
+        }
 
         // Get object table base
         let obj_table_addr = self.game.header.object_table_addr as usize;
