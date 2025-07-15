@@ -712,15 +712,25 @@ impl Interpreter {
                 Ok(ExecutionResult::Continue)
             }
             0x04 => {
-                // get_prop_len - temporarily return a simple value to test
+                // get_prop_len - get the length of a property given its data address
                 debug!(
                     "get_prop_len: prop_addr={:04x} at PC {:05x}",
                     operand,
                     self.vm.pc - inst.size as u32
                 );
                 
-                // For now, just return 0 for null addresses, 2 for others
-                let prop_len = if operand == 0 { 0 } else { 2 };
+                let prop_len = if operand == 0 {
+                    0
+                } else {
+                    // In Z-Machine v3, the size byte is immediately before the property data
+                    // The size byte encodes: top 3 bits = size-1, bottom 5 bits = property number
+                    let size_byte_addr = (operand as u32).saturating_sub(1);
+                    let size_byte = self.vm.read_byte(size_byte_addr);
+                    let size = ((size_byte >> 5) & 0x07) + 1;
+                    debug!("  Size byte at {:04x}: {:02x}, property size: {}", 
+                           size_byte_addr, size_byte, size);
+                    size as u16
+                };
                 
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, prop_len)?;

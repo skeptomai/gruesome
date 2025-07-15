@@ -93,6 +93,14 @@ rustfmt src/*.rs
 cargo fmt
 ```
 
+## NULL Call Handling
+
+The interpreter correctly handles calls to address 0x0000 according to the Z-Machine specification:
+- In `do_call()` function in interpreter.rs, there's a special check: `if packed_addr == 0`
+- When calling address 0, it returns 0 (false) without executing any code
+- This is NOT the source of the "w can you attack a spirit..." garbage text
+- The garbage text comes from elsewhere in the execution flow after PERFORM returns
+
 ## Critical Game Execution Requirements
 
 **IMPORTANT**: The Zork I game must follow the proper execution path to display correctly. Do NOT use workarounds or hacks that skip instructions.

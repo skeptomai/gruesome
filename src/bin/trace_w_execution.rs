@@ -24,47 +24,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Let's check if 0xa1 (161) is a valid object number
     println!("Checking if 0xa1 (161) is a valid object:");
-    if let Some(obj_table) = vm.game.get_object_table() {
-        if let Ok(addr) = obj_table.get_object_addr(0xa1) {
-            println!("  Object 161 exists at address: {:04x}", addr);
-            
-            // Get object details
-            if let Ok(parent) = obj_table.get_parent(0xa1) {
-                println!("  Parent: {}", parent);
-            }
-            
-            // Check if it has property 0x1d (29)
-            if let Ok(prop_addr) = obj_table.get_prop_addr(0xa1, 0x1d) {
-                println!("  Has property 29 at address: {:04x}", prop_addr);
-                
-                // Read property data
-                if let Ok(prop_data) = obj_table.get_prop_data(0xa1, 0x1d) {
-                    print!("  Property 29 data: ");
-                    for byte in prop_data {
-                        print!("{:02x} ", byte);
-                    }
-                    println!();
-                }
-            } else {
-                println!("  Does NOT have property 29");
-            }
-        } else {
-            println!("  Object 161 does NOT exist");
-        }
-    }
     
-    // Let's check what the garbage text might be
+    // We can't easily check if object 161 exists without the GameFile structure
+    // Let's just check what's in memory at possible locations
+    
+    // Let's search for the garbage text "can you attack a spirit with material objects?"
     println!("\n=== Looking for the garbage text source ===");
     
     // The user reported "w can you attack a spirit with material objects?"
     // This sounds like it might be from reading the wrong text
     
-    // When dictionary type 0x32 is processed incorrectly, it might:
-    // 1. Use bytes 5-6 as a text address (0xa11d)
-    // 2. Use byte 5 as object and byte 6 as property
-    // 3. Something else entirely
-    
-    // Let's check what text is near common addresses
     println!("\nChecking for text patterns in memory:");
     
     // Search for "attack" which appeared in the garbage
@@ -77,6 +46,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                vm.game.memory[addr+4] == b'c' &&
                vm.game.memory[addr+5] == b'k' {
                 println!("\nFound 'attack' at {:04x}:", addr);
+                // Show context
+                print!("  Context: ");
+                for i in 0..60 {
+                    if addr + i < vm.game.memory.len() {
+                        let byte = vm.game.memory[addr + i];
+                        if byte >= 32 && byte <= 126 {
+                            print!("{}", byte as char);
+                        } else {
+                            print!(".");
+                        }
+                    }
+                }
+                println!();
+            }
+        }
+    }
+    
+    // Also search for "spirit" which appeared in the garbage
+    for addr in 0x4000..0x10000 {
+        if addr + 6 < vm.game.memory.len() {
+            if vm.game.memory[addr] == b's' &&
+               vm.game.memory[addr+1] == b'p' &&
+               vm.game.memory[addr+2] == b'i' &&
+               vm.game.memory[addr+3] == b'r' &&
+               vm.game.memory[addr+4] == b'i' &&
+               vm.game.memory[addr+5] == b't' {
+                println!("\nFound 'spirit' at {:04x}:", addr);
                 // Show context
                 print!("  Context: ");
                 for i in 0..60 {
@@ -117,6 +113,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("and using bytes 5-6 as an action number, which for 'w' gives 0xa11d");
     println!("This large number might be used as an index into an action table,");
     println!("causing it to read garbage from memory.");
+    
+    // Let's check what happens if we interpret 0xa11d as a memory address
+    let addr = 0xa11d;
+    if addr < vm.game.memory.len() {
+        println!("\n=== Memory at address 0xa11d ===");
+        print!("  Text: ");
+        for i in 0..40 {
+            if addr + i < vm.game.memory.len() {
+                let byte = vm.game.memory[addr + i];
+                if byte >= 32 && byte <= 126 {
+                    print!("{}", byte as char);
+                } else {
+                    print!(".");
+                }
+            }
+        }
+        println!();
+    }
     
     Ok(())
 }
