@@ -277,34 +277,21 @@ impl Interpreter {
                 self.execute_2op(inst, operands[0], operands[1])
             }
             crate::instruction::InstructionForm::Variable => {
-                // Variable form can encode 2OP instructions when operand_count is OP2
                 match inst.operand_count {
                     crate::instruction::OperandCount::OP2 => {
-                        // This is a 2OP instruction in Variable form
-                        // Special handling for je (opcode 0x01) which can have 2-4 operands
-                        if inst.opcode == 0x01 && operands.len() >= 2 {
-                            // je - compare first operand against all others
-                            let mut condition = false;
-                            for i in 1..operands.len() {
-                                if operands[0] == operands[i] {
-                                    condition = true;
-                                    break;
-                                }
-                            }
-                            self.do_branch(inst, condition)
-                        } else if operands.len() >= 2 {
-                            self.execute_2op(inst, operands[0], operands[1])
-                        } else if operands.is_empty() && inst.opcode == 0x09 {
-                            // Special case: Variable 2OP AND with no operands
-                            // This appears in some games - treat as AND 0, 0
-                            debug!("Variable 2OP AND with no operands at PC {:05x} - using 0, 0", 
-                                   self.vm.pc - inst.size as u32);
-                            self.execute_2op(inst, 0, 0)
-                        } else {
-                            let pc = self.vm.pc - inst.size as u32;
-                            Err(format!("Variable 2OP instruction at PC {:05x} requires 2 operands, got {} - opcode: {:02x}", 
-                                       pc, operands.len(), inst.opcode))
-                        }
+                        // IMPORTANT: Variable form 2OP instructions
+                        // ==========================================
+                        // When a 2OP instruction is encoded in Variable form (as opposed to Long form),
+                        // the actual number of operands is determined by the operand types byte(s),
+                        // NOT by the "2OP" designation. The "2OP" here means the instruction uses
+                        // opcodes 0-31 from the 2OP instruction set, not that it has exactly 2 operands.
+                        //
+                        // Most 2OP instructions only use 2 operands even in Variable form, but some
+                        // (notably 'je') can use up to 4 operands as specified in the Z-Machine spec.
+                        //
+                        // From the spec: "je a b c d ?(label)" - Jump if a equals any of b, c, or d
+                        
+                        self.execute_2op_variable(inst, &operands)
                     }
                     _ => self.execute_var(inst, &operands),
                 }
@@ -950,6 +937,55 @@ impl Interpreter {
                     "Unimplemented 2OP instruction: {:02x}",
                     inst.opcode
                 ))
+            }
+        }
+    }
+
+    /// Execute 2OP instructions in Variable form
+    /// 
+    /// This method handles 2OP instructions that are encoded in Variable form,
+    /// which may have more than 2 operands. The actual operand count is determined
+    /// by the operand types byte(s) in the instruction encoding.
+    fn execute_2op_variable(
+        &mut self,
+        inst: &Instruction,
+        operands: &[u16],
+    ) -> Result<ExecutionResult, String> {
+        // Handle edge cases first
+        if operands.is_empty() && inst.opcode == 0x09 {
+            // Special case: Variable 2OP AND with no operands
+            // This appears in some games - treat as AND 0, 0
+            debug!("Variable 2OP AND with no operands at PC {:05x} - using 0, 0", 
+                   self.vm.pc - inst.size as u32);
+            return self.execute_2op(inst, 0, 0);
+        }
+        
+        // Most 2OP instructions require at least 2 operands
+        if operands.len() < 2 {
+            let pc = self.vm.pc - inst.size as u32;
+            return Err(format!("Variable 2OP instruction at PC {:05x} requires at least 2 operands, got {} - opcode: {:02x}", 
+                               pc, operands.len(), inst.opcode));
+        }
+
+        // Handle each 2OP instruction based on its specific requirements
+        match inst.opcode {
+            0x01 => {
+                // je - Jump if Equal (can have 2-4 operands)
+                // From the spec: "je a b c d ?(label)"
+                // Jump if a is equal to any of the subsequent operands (b, c, or d)
+                let mut condition = false;
+                for i in 1..operands.len() {
+                    if operands[0] == operands[i] {
+                        condition = true;
+                        break;
+                    }
+                }
+                self.do_branch(inst, condition)
+            }
+            _ => {
+                // All other 2OP instructions use exactly 2 operands
+                // Even in Variable form, they ignore any extra operands
+                self.execute_2op(inst, operands[0], operands[1])
             }
         }
     }
