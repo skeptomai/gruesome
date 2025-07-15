@@ -172,26 +172,8 @@ impl Interpreter {
                 );
             }
             
-            // Dump game state after serial number printing (around PC 0x06fb5-0x06fc0)
-            if pc >= 0x06fb5 && pc <= 0x06fc0 {
-                self.dump_game_state(&format!("after serial number at PC {:05x}", pc));
-            }
-
-            // TODO: Fix the instruction sequence misalignment properly
-
             // Advance PC past the instruction
-            let old_pc = self.vm.pc;
             self.vm.pc += instruction.size as u32;
-
-            // Debug PC advancement in problematic area
-            if old_pc >= 0x06f88 && old_pc <= 0x06f94 {
-                debug!(
-                    "PC advanced from {:05x} to {:05x} (instruction size: {})",
-                    old_pc, self.vm.pc, instruction.size
-                );
-            }
-
-            // TODO: Find root cause of instruction sequence misalignment
 
             // Execute the instruction
             match self.execute_instruction(&instruction)? {

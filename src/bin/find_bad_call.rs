@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("At end of DESCRIBE-ROOM (0x8d32)");
             
             // Enable single stepping
-            debugger.single_step(true);
+            debugger.set_single_step(true);
             
             // Track calls
             let mut step_count = 0;
