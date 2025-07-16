@@ -21,6 +21,7 @@ pub mod vm;
 pub mod zobject;
 pub mod zrand;
 pub mod debug_symbols;
+pub mod quetzal;
 
 #[cfg(test)]
 mod test_execution;

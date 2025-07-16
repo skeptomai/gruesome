@@ -29,6 +29,8 @@ pub struct Game {
     pub memory: Vec<u8>,
     /// The parsed header
     pub header: Header,
+    /// Original memory for save game compression
+    pub original_memory: Option<Vec<u8>>,
 }
 
 impl Game {
@@ -38,8 +40,11 @@ impl Game {
             return Err("Game file too small for header".to_string());
         }
         let header = Header::new(&memory);
+        
+        // Keep a copy of the original memory for save games
+        let original_memory = Some(memory.clone());
 
-        Ok(Game { memory, header })
+        Ok(Game { memory, header, original_memory })
     }
 }
 

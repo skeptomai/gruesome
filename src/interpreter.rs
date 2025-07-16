@@ -527,18 +527,22 @@ impl Interpreter {
             0x05 => {
                 // save (V1-3: branch on success, V4+: store result)
                 if self.vm.game.header.version <= 3 {
-                    // For now, just print a message and branch (pretend save succeeded)
-                    println!("\n[Save game feature not yet implemented]");
-                    println!("[Pretending save succeeded for now]");
+                    // Try to save the game
+                    let save_result = match crate::quetzal::save::save_game(&self.vm) {
+                        Ok(()) => {
+                            debug!("Save game succeeded");
+                            true
+                        }
+                        Err(e) => {
+                            println!("\n[Save failed: {}]", e);
+                            false
+                        }
+                    };
                     
                     // Branch on success
                     if let Some(ref branch) = inst.branch {
                         // For V1-3, save branches if successful
-                        if branch.on_true {
-                            self.do_branch(inst, true)
-                        } else {
-                            self.do_branch(inst, false)
-                        }
+                        self.do_branch(inst, save_result)
                     } else {
                         Err("save instruction without branch info".to_string())
                     }
@@ -554,14 +558,33 @@ impl Interpreter {
             0x06 => {
                 // restore (V1-3: branch on success, V4+: store result)
                 if self.vm.game.header.version <= 3 {
-                    // For now, just print a message and don't branch (pretend restore failed)
-                    println!("\n[Restore game feature not yet implemented]");
-                    println!("[Pretending restore failed for now]");
+                    // Try to restore the game
+                    let restore_result = match crate::quetzal::restore::restore_game(&mut self.vm) {
+                        Ok(()) => {
+                            debug!("Restore game succeeded");
+                            // V1-3: On successful restore, execution continues from saved PC
+                            // But we need to handle the branch first
+                            true
+                        }
+                        Err(e) => {
+                            println!("\n[Restore failed: {}]", e);
+                            false
+                        }
+                    };
                     
-                    // Don't branch (failed)
-                    Ok(ExecutionResult::Continue)
+                    // Branch on success
+                    if let Some(ref branch) = inst.branch {
+                        self.do_branch(inst, restore_result)
+                    } else if restore_result {
+                        // Successful restore but no branch info - just continue from restored state
+                        Ok(ExecutionResult::Continue)
+                    } else {
+                        // Failed restore, no branch - continue normally
+                        Ok(ExecutionResult::Continue)
+                    }
                 } else {
                     // V4+: store result (0=fail, or doesn't return on success)
+                    // Note: In V4+, successful restore doesn't return here
                     if let Some(store_var) = inst.store_var {
                         self.vm.write_variable(store_var, 0)?;
                     }
