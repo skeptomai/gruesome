@@ -212,7 +212,7 @@ impl StksChunk {
             
             let local_count = (flags & 0x0F) as usize;
             let has_result_var = (flags & 0x10) != 0;
-            let arg_count = ((flags >> 5) & 0x03) as usize;
+            let _arg_count = ((flags >> 5) & 0x03) as usize;
             
             // Read result variable if present
             let return_store = if has_result_var {

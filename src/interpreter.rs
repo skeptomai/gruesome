@@ -540,7 +540,7 @@ impl Interpreter {
                     };
                     
                     // Branch on success
-                    if let Some(ref branch) = inst.branch {
+                    if let Some(ref _branch) = inst.branch {
                         // For V1-3, save branches if successful
                         self.do_branch(inst, save_result)
                     } else {
@@ -573,7 +573,7 @@ impl Interpreter {
                     };
                     
                     // Branch on success
-                    if let Some(ref branch) = inst.branch {
+                    if let Some(ref _branch) = inst.branch {
                         self.do_branch(inst, restore_result)
                     } else if restore_result {
                         // Successful restore but no branch info - just continue from restored state
