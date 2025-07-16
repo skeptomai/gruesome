@@ -174,11 +174,39 @@ When processing commands, especially those with dictionary type 0x32 (like 'w'),
 
 ### 2. Character Input (read_char opcode)
 - **Current Status**: NOT IMPLEMENTED
-- **Impact**: Some game features may not work
-- **What's needed**:
-  - Implement single character input without echo
-  - Handle timeout parameter for timed input
-  - Return character code or 0 on timeout
+- **Impact**: Required for v4+ games with real-time elements and menus
+- **Note**: Zork I (v3) does NOT use read_char - it's a v4+ feature
+
+#### Implementation Challenges:
+1. **Cross-platform terminal control**: Different OSes handle raw input differently
+2. **Character encoding**: Must return proper ZSCII codes
+3. **Special keys**: Arrow keys, function keys need mapping
+4. **Timeout handling**: Async input with interrupts
+5. **Raw terminal mode**: Disable line buffering, no echo, immediate return
+
+#### Technical Requirements:
+```rust
+// What read_char needs:
+1. Raw terminal mode (disable line buffering)
+2. No echo (don't show the character typed)
+3. Immediate return (don't wait for Enter)
+4. Optional timeout support
+5. ZSCII character mapping
+```
+
+#### Games That Use read_char (v4+):
+- **Border Zone** (v5): Real-time spy thriller with timed sequences
+- **Arthur** (v6): Menu-driven interface
+- **Journey** (v6): Graphical adventure with menus
+- **Sherlock** (v5): Character-based menu navigation
+- **Bureaucracy** (v4): Real-time elements
+
+#### Use Cases:
+- Real-time games (like Border Zone with its real-time train sequences)
+- Menu navigation (arrow keys, Y/N prompts)
+- Games with special controls (function keys, etc.)
+- Timed puzzles where each keystroke matters
+- Immediate responses without Enter key
 
 ### 3. Sound Effects
 - **Current Status**: IMPLEMENTED ✓
