@@ -159,18 +159,70 @@ When processing commands, especially those with dictionary type 0x32 (like 'w'),
 
 ### 1. Timed Interrupts (Critical Missing Feature)
 - **Current Status**: NOT IMPLEMENTED
-- **Impact**: Lantern never burns out, match lasts forever, candles don't diminish
-- **What's needed**:
-  - Update `sread` to accept 4 operands (text_buffer, parse_buffer, time, routine)
-  - Implement async input with timeout capability
-  - Call interrupt routine every `time` tenths of a second
-  - Handle routine return value (true = terminate input, false = continue)
-  - Track multiple active timers
-- **Affected game elements**:
-  - Lantern (should burn out after ~300 turns)
-  - Match (should extinguish quickly)
-  - Candles (should burn down over time)
-  - Troll combat (should get impatient if player delays)
+- **Impact**: **71% of Zork I sread calls use timers** - this breaks core gameplay mechanics
+- **Zork I Timer Analysis**:
+  - 15 out of 21 sread instructions use 4 operands (text_buffer, parse_buffer, time, routine)
+  - Timer values range from 0 to 42,271 tenths of seconds (0 to 70+ minutes)
+  - Each timer calls different interrupt routines for various game mechanics
+  - Examples: 0x1f58 uses 70-minute timeout, 0x011e uses 7.8-second timeout
+
+#### Implementation Requirements:
+
+**1. Multi-threaded/Async Input System:**
+```rust
+// Need to handle simultaneously:
+// - User input from stdin
+// - Timer interrupts every time/10 seconds  
+// - Routine calls that can modify game state
+// - Routine return values that terminate input
+```
+
+**2. Extended sread Implementation:**
+```rust
+0x04 => {
+    // sread with optional timer support
+    let text_buffer = operands[0];
+    let parse_buffer = operands[1];
+    
+    if operands.len() >= 4 {
+        let time = operands[2];      // tenths of seconds
+        let routine = operands[3];   // interrupt routine address
+        
+        if time > 0 && routine > 0 {
+            // Use timed input with interrupts
+            return self.sread_with_timer(text_buffer, parse_buffer, time, routine);
+        }
+    }
+    
+    // Fall back to regular input
+    self.sread_basic(text_buffer, parse_buffer)
+}
+```
+
+**3. Timer Interrupt Handler:**
+```rust
+fn handle_timer_interrupt(&mut self, routine_addr: u16) -> Result<bool, String> {
+    // Call the interrupt routine
+    // If routine returns true: terminate input immediately
+    // If routine returns false: continue waiting for input
+    // Routine can modify game state (decrement counters, etc.)
+}
+```
+
+**4. Technical Challenges:**
+- **Async I/O**: Read from stdin while handling timer interrupts
+- **Game State Mutations**: Interrupt routines modify VM state during input
+- **Cross-platform Timing**: Precise timing across different operating systems
+- **Input Termination**: Clean termination when routine returns true
+
+**5. Real Gameplay Impact:**
+- **Lantern countdown**: Without timers, lantern never burns out (infinite light)
+- **Match mechanics**: Matches last forever instead of burning out quickly
+- **Candles**: Don't diminish over time
+- **Troll combat**: Troll waits indefinitely instead of getting impatient
+- **General pacing**: Many timed elements completely broken
+
+**6. Priority**: This is the **most critical missing feature** for authentic Zork I gameplay
 
 ### 2. Character Input (read_char opcode)
 - **Current Status**: NOT IMPLEMENTED
