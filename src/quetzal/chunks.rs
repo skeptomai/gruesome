@@ -122,14 +122,9 @@ impl StksChunk {
     pub fn from_vm(vm: &VM) -> Self {
         let mut data = Vec::new();
         
-        // For each call frame (skip the first dummy frame if it exists)
-        let frames_to_save = if vm.call_stack.len() > 1 {
-            &vm.call_stack[1..]
-        } else {
-            &vm.call_stack[..]
-        };
-        
-        for (frame_idx, frame) in frames_to_save.iter().enumerate() {
+        // Save all call frames, including the dummy frame
+        // This preserves the stack structure correctly
+        for (frame_idx, frame) in vm.call_stack.iter().enumerate() {
             // Return PC (3 bytes packed address)
             let pc_bytes = (frame.return_pc as u32).to_be_bytes();
             data.push(pc_bytes[1]);
@@ -161,12 +156,16 @@ impl StksChunk {
             // Evaluation stack count (2 bytes)
             // Calculate stack size for this frame
             let next_frame_idx = frame_idx + 1;
-            let stack_end = if next_frame_idx < frames_to_save.len() {
-                frames_to_save[next_frame_idx].stack_base
+            let stack_end = if next_frame_idx < vm.call_stack.len() {
+                vm.call_stack[next_frame_idx].stack_base
             } else {
                 vm.stack.len()
             };
-            let stack_size = stack_end - frame.stack_base;
+            let stack_size = if stack_end >= frame.stack_base {
+                stack_end - frame.stack_base
+            } else {
+                0 // Shouldn't happen, but be safe
+            };
             data.extend_from_slice(&(stack_size as u16).to_be_bytes());
             
             // Local variables (2 bytes each)
@@ -192,18 +191,6 @@ impl StksChunk {
     pub fn restore_to_vm(&self, vm: &mut VM) -> Result<(), String> {
         vm.call_stack.clear();
         vm.stack.clear();
-        
-        // Add initial dummy frame for v1-5
-        if vm.game.header.version <= 5 {
-            let main_frame = CallFrame {
-                return_pc: 0,
-                return_store: None,
-                num_locals: 0,
-                locals: [0; 16],
-                stack_base: 0,
-            };
-            vm.call_stack.push(main_frame);
-        }
         
         let mut offset = 0;
         let data = &self.data;

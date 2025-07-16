@@ -107,14 +107,11 @@ impl RestoreGame {
         stks.restore_to_vm(vm)?;
         debug!("Restored {} call frames", vm.call_stack.len());
         
-        // Restore PC from the top frame's return address
-        // (The current routine's PC is not explicitly saved)
-        if let Some(frame) = vm.call_stack.first() {
-            // In a real implementation, we'd need to track the current PC
-            // For now, we'll use a simple approach
-            vm.pc = frame.return_pc;
-            debug!("Restored PC to 0x{:05x}", vm.pc);
-        }
+        // In Z-Machine v1-3, restore continues from where the restore 
+        // instruction was called, NOT from where save was called.
+        // The PC should not be changed by restore - it will be set by
+        // the interpreter after the restore instruction completes.
+        debug!("Restore complete - PC will continue from restore instruction");
         
         info!("Game restored successfully");
         Ok(())
@@ -122,10 +119,28 @@ impl RestoreGame {
     
     /// Load from a prompt-selected file
     pub fn load_with_prompt() -> Result<Self, String> {
-        // For now, use a default filename
-        // In a full implementation, this would prompt the user
-        let filename = "game.sav";
-        let path = Path::new(filename);
+        use std::io::{self, Write};
+        
+        print!("Enter save filename: ");
+        io::stdout().flush().map_err(|e| format!("Failed to flush stdout: {}", e))?;
+        
+        let mut filename = String::new();
+        io::stdin().read_line(&mut filename)
+            .map_err(|e| format!("Failed to read filename: {}", e))?;
+        
+        let filename = filename.trim();
+        if filename.is_empty() {
+            return Err("No filename provided".to_string());
+        }
+        
+        // Add .sav extension if not present
+        let filename = if filename.ends_with(".sav") || filename.ends_with(".qzl") {
+            filename.to_string()
+        } else {
+            format!("{}.sav", filename)
+        };
+        
+        let path = Path::new(&filename);
         
         println!("Loading game from '{}'...", filename);
         RestoreGame::from_file(path)
