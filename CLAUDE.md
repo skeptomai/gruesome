@@ -154,3 +154,65 @@ The game uses two separate objects for the player:
 - Object 5 (ME) for command processing and parser interactions
 
 When processing commands, especially those with dictionary type 0x32 (like 'w'), the game checks property 17 (action handler) of objects. If object 4 is used instead of object 5, it will fail because object 4 has no action handler.
+
+## TODO: Remaining Features to Implement
+
+### 1. Timed Interrupts (Critical Missing Feature)
+- **Current Status**: NOT IMPLEMENTED
+- **Impact**: Lantern never burns out, match lasts forever, candles don't diminish
+- **What's needed**:
+  - Update `sread` to accept 4 operands (text_buffer, parse_buffer, time, routine)
+  - Implement async input with timeout capability
+  - Call interrupt routine every `time` tenths of a second
+  - Handle routine return value (true = terminate input, false = continue)
+  - Track multiple active timers
+- **Affected game elements**:
+  - Lantern (should burn out after ~300 turns)
+  - Match (should extinguish quickly)
+  - Candles (should burn down over time)
+  - Troll combat (should get impatient if player delays)
+
+### 2. Character Input (read_char opcode)
+- **Current Status**: NOT IMPLEMENTED
+- **Impact**: Some game features may not work
+- **What's needed**:
+  - Implement single character input without echo
+  - Handle timeout parameter for timed input
+  - Return character code or 0 on timeout
+
+### 3. Sound Effects
+- **Current Status**: IMPLEMENTED ✓
+- **Impact**: Minor - only beeps in v3
+- **Implementation**:
+  - sound_effect opcode (VAR:0x15) implemented
+  - Supports bleeps 1 and 2 using terminal bell character (\x07)
+  - Safely ignores other sound numbers (for The Lurking Horror compatibility)
+  - Note: Zork I doesn't use sound effects, only The Lurking Horror v3 does
+
+### 4. Display Opcodes
+- **Current Status**: Partially implemented
+- **Missing**:
+  - set_text_style
+  - buffer_mode
+  - erase_line
+  - set_cursor (stubbed)
+  - get_cursor
+  - split_window (stubbed)
+
+## Completed Features
+
+✓ Core Z-Machine execution (opcodes, stack, variables)
+✓ Object system with properties and attributes
+✓ Parser and dictionary lookup
+✓ Text encoding/decoding with abbreviations
+✓ Save/Restore with Quetzal format
+✓ Random number generation
+✓ Branch instructions
+✓ Routine calls and returns
+✓ Global and local variables
+✓ Property get/set operations
+✓ Stack operations
+
+## Current State Summary
+
+The interpreter is fully playable for most of Zork I. The main limitation is the lack of timed interrupts, which makes the game easier than intended (infinite light sources) but doesn't break core gameplay. Save/restore works correctly with the standard Quetzal format, and random events (combat, thief movement) now function properly.

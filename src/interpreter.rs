@@ -1481,6 +1481,30 @@ impl Interpreter {
                 }
                 Ok(ExecutionResult::Continue)
             }
+            0x15 => {
+                // sound_effect - V3 only supports bleeps
+                // Format: sound_effect number effect volume routine
+                // For v3: number 1 or 2 are bleeps, no repeats, no callbacks
+                
+                if operands.is_empty() {
+                    // No operands - beep if possible
+                    print!("\x07");
+                    io::stdout().flush().ok();
+                } else {
+                    let number = operands[0];
+                    
+                    if number == 1 || number == 2 {
+                        // Built-in bleeps (1 = high, 2 = low)
+                        // On terminal, both just use bell character
+                        print!("\x07");
+                        io::stdout().flush().ok();
+                    }
+                    // For v3, ignore other sound numbers and effects
+                    // The Lurking Horror would use numbers 3+ for real sounds
+                }
+                
+                Ok(ExecutionResult::Continue)
+            }
             0x1B => {
                 // tokenise (V5+) or unknown in V3
                 // In V3, this opcode is not documented
