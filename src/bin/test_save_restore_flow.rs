@@ -1,6 +1,6 @@
-use infocom::vm::{Game, VM};
-use infocom::interpreter::{Interpreter, ExecutionResult};
-use infocom::instruction::Instruction;
+use gruesome::vm::{Game, VM};
+use gruesome::interpreter::{Interpreter, ExecutionResult};
+use gruesome::instruction::Instruction;
 use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let pc = interpreter.vm.pc;
         let inst = Instruction::decode(&interpreter.vm.game.memory, pc as usize, 3)?;
         
-        if inst.opcode == 0x04 && matches!(inst.operand_count, infocom::instruction::OperandCount::VAR) {
+        if inst.opcode == 0x04 && matches!(inst.operand_count, gruesome::instruction::OperandCount::VAR) {
             println!("Reached first prompt at PC 0x{:05x}", pc);
             break;
         }
@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nSimulating SAVE command...");
     
     // Manually create save file with a test name
-    let save = infocom::quetzal::save::SaveGame::from_vm(&interpreter.vm)?;
+    let save = gruesome::quetzal::save::SaveGame::from_vm(&interpreter.vm)?;
     save.save_to_file(std::path::Path::new("test_flow.sav"))?;
     println!("Save completed to test_flow.sav");
     
@@ -70,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Fresh VM now at PC 0x{:05x}", interpreter2.vm.pc);
     
     // Restore
-    let restore = infocom::quetzal::restore::RestoreGame::from_file(std::path::Path::new("test_flow.sav"))?;
+    let restore = gruesome::quetzal::restore::RestoreGame::from_file(std::path::Path::new("test_flow.sav"))?;
     restore.restore_to_vm(&mut interpreter2.vm)?;
     
     println!("\nVM state after restore:");

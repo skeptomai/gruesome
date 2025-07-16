@@ -1,5 +1,5 @@
-use infocom::vm::Game;
-use infocom::disassembler::Disassembler;
+use gruesome::vm::Game;
+use gruesome::disassembler::Disassembler;
 use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

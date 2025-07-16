@@ -1,6 +1,6 @@
-use infocom::vm::{Game, VM};
-use infocom::interpreter::{Interpreter, ExecutionResult};
-use infocom::instruction::Instruction;
+use gruesome::vm::{Game, VM};
+use gruesome::interpreter::{Interpreter, ExecutionResult};
+use gruesome::instruction::Instruction;
 use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

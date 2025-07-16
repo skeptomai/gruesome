@@ -1,5 +1,5 @@
-use infocom::interpreter::Interpreter;
-use infocom::vm::{Game, VM};
+use gruesome::interpreter::Interpreter;
+use gruesome::vm::{Game, VM};
 use log::{info, debug};
 use std::env;
 use std::fs::File;

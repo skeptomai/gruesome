@@ -1,6 +1,6 @@
-use infocom::vm::{Game, VM};
-use infocom::interpreter::{Interpreter, ExecutionResult};
-use infocom::instruction::Instruction;
+use gruesome::vm::{Game, VM};
+use gruesome::interpreter::{Interpreter, ExecutionResult};
+use gruesome::instruction::Instruction;
 use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -60,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn save_and_analyze(vm: &VM, filename: &str) -> Result<(), Box<dyn std::error::Error>> {
     // Create save game
-    let save = infocom::quetzal::save::SaveGame::from_vm(vm)?;
+    let save = gruesome::quetzal::save::SaveGame::from_vm(vm)?;
     let path = std::path::Path::new(filename);
     save.save_to_file(path)?;
     

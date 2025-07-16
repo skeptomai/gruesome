@@ -1,7 +1,7 @@
-use infocom::vm::{Game, VM};
-use infocom::interpreter::Interpreter;
-use infocom::instruction::Instruction;
-use infocom::disassembler::Disassembler;
+use gruesome::vm::{Game, VM};
+use gruesome::interpreter::Interpreter;
+use gruesome::instruction::Instruction;
+use gruesome::disassembler::Disassembler;
 use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut found_timed = false;
     for addr in 0x5000..0x10000 {
         if let Ok((inst, _)) = disasm.disassemble_instruction(addr as u32) {
-            if inst.opcode == 0x04 && inst.operand_count == infocom::instruction::OperandCount::VAR {
+            if inst.opcode == 0x04 && inst.operand_count == gruesome::instruction::OperandCount::VAR {
                 if inst.operands.len() >= 4 {
                     println!("  Found at 0x{:04x}: sread with {} operands", addr, inst.operands.len());
                     found_timed = true;

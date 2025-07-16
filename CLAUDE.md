@@ -42,17 +42,17 @@ if let Some(obj_table) = game.get_object_table() {
 
 Example output:
 ```
-[DEBUG infocom::zobject] === Object #1 ===
-[DEBUG infocom::zobject]   Attributes: [14, 28]
-[DEBUG infocom::zobject]   Set attributes: [4, 5, 6, 11, 12, 13]
-[DEBUG infocom::zobject]   Parent: 247
-[DEBUG infocom::zobject]   Sibling: 2
-[DEBUG infocom::zobject]   Child: 0
-[DEBUG infocom::zobject]   Description: "pair of hands"
-[DEBUG infocom::zobject]   Properties address: 0x0bb8
-[DEBUG infocom::zobject]   Properties:
-[DEBUG infocom::zobject]     Property 18: [70, 220, 66, 194, 66, 180] (len=6)
-[DEBUG infocom::zobject]     Property 16: [130] (len=1)
+[DEBUG gruesome::zobject] === Object #1 ===
+[DEBUG gruesome::zobject]   Attributes: [14, 28]
+[DEBUG gruesome::zobject]   Set attributes: [4, 5, 6, 11, 12, 13]
+[DEBUG gruesome::zobject]   Parent: 247
+[DEBUG gruesome::zobject]   Sibling: 2
+[DEBUG gruesome::zobject]   Child: 0
+[DEBUG gruesome::zobject]   Description: "pair of hands"
+[DEBUG gruesome::zobject]   Properties address: 0x0bb8
+[DEBUG gruesome::zobject]   Properties:
+[DEBUG gruesome::zobject]     Property 18: [70, 220, 66, 194, 66, 180] (len=6)
+[DEBUG gruesome::zobject]     Property 16: [130] (len=1)
 ```
 
 ## Project Structure

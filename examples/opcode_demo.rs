@@ -1,4 +1,4 @@
-use infocom::instruction::Instruction;
+use gruesome::instruction::Instruction;
 
 fn main() {
     println!("Z-Machine Opcode Mapping Demo for Version 3");

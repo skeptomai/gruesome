@@ -1,5 +1,5 @@
-use infocom::vm::{Game, VM};
-use infocom::interpreter::Interpreter;
+use gruesome::vm::{Game, VM};
+use gruesome::interpreter::Interpreter;
 use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Testing Quetzal save/restore functionality...\n");
     
     // Create a save game directly
-    match infocom::quetzal::save::save_game(&vm) {
+    match gruesome::quetzal::save::save_game(&vm) {
         Ok(()) => println!("Save completed successfully!"),
         Err(e) => println!("Save failed: {}", e),
     }
@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         
         // Try to restore
         let mut vm2 = vm;
-        match infocom::quetzal::restore::restore_game(&mut vm2) {
+        match gruesome::quetzal::restore::restore_game(&mut vm2) {
             Ok(()) => println!("Restore completed successfully!"),
             Err(e) => println!("Restore failed: {}", e),
         }

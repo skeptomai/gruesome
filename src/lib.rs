@@ -1,4 +1,4 @@
-#![crate_name = "infocom"]
+#![crate_name = "gruesome"]
 #![allow(dead_code)]
 
 #[macro_use]

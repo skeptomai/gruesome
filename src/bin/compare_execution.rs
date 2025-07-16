@@ -1,5 +1,5 @@
-use infocom::vm::{Game, VM};
-use infocom::disassembler::Disassembler;
+use gruesome::vm::{Game, VM};
+use gruesome::disassembler::Disassembler;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let game_path = "resources/test/zork1/DATA/ZORK1.DAT";
@@ -36,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("This routine seems to be a property handler.");
     println!("When called with V02=2, it loads and prints from an address.\n");
     
-    for i in 0..15 {
+    for _i in 0..15 {
         match disasm.disassemble_instruction(addr) {
             Ok((inst, text)) => {
                 println!("{:05x}: {}", addr, text);

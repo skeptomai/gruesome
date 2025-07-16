@@ -1,4 +1,4 @@
-# Infocom Z-Machine Interpreter
+# Gruesome
 
 A Rust implementation of the Z-Machine virtual machine for playing classic Infocom text adventure games, with a focus on Zork I compatibility.
 
@@ -32,8 +32,8 @@ This project implements a Z-Machine interpreter capable of running Infocom's tex
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/skeptomai/infocom.git
-cd infocom
+git clone https://github.com/skeptomai/gruesome.git
+cd gruesome
 ```
 
 2. Place your game file (e.g., ZORK1.DAT) in `resources/test/zork1/DATA/`
