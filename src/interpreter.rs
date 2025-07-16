@@ -1390,17 +1390,22 @@ impl Interpreter {
                 if !operands.is_empty() {
                     let range = operands[0] as i16;
                     let result = if range <= 0 {
-                        // Negative or zero = seed the random number generator
-                        // For now, just return 0
+                        // Negative = seed the RNG with |range|
+                        // Zero = seed with random value
+                        // For now, we're using thread_rng which doesn't need seeding
+                        debug!("Random seed requested: {}", range);
                         0
                     } else {
                         // Return a value from 1 to range inclusive
-                        // For simplicity, use a predictable value for now
-                        1
+                        use rand::Rng;
+                        let mut rng = rand::thread_rng();
+                        let value = rng.gen_range(1..=range as u16);
+                        debug!("Random({}) = {}", range, value);
+                        value
                     };
                     
                     if let Some(store_var) = inst.store_var {
-                        self.vm.write_variable(store_var, result as u16)?;
+                        self.vm.write_variable(store_var, result)?;
                     }
                 }
                 Ok(ExecutionResult::Continue)
