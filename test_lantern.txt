@@ -1,0 +1,17 @@
+open mailbox
+read leaflet
+south
+east
+open window
+west
+west
+north
+take lantern
+turn on lantern
+inventory
+wait
+wait
+wait
+inventory
+quit
+y

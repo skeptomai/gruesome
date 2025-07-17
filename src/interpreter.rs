@@ -851,6 +851,14 @@ impl Interpreter {
             0x0A => {
                 // print_obj - print short name of object
                 let obj_num = operand;
+                let pc = self.vm.pc - inst.size as u32;
+                debug!("print_obj: object #{} at PC 0x{:04x}", obj_num, pc);
+                
+                // Special debugging for the leaves issue
+                if pc >= 0x6300 && pc <= 0x6400 {
+                    info!("*** print_obj in error message area: object #{} at PC 0x{:04x}", obj_num, pc);
+                }
+                
                 if obj_num == 0 {
                     // Object 0 means no object - print nothing
                     return Ok(ExecutionResult::Continue);
@@ -879,6 +887,10 @@ impl Interpreter {
                     let abbrev_addr = self.vm.game.header.abbrev_table as usize;
                     match text::decode_string(&self.vm.game.memory, name_addr, abbrev_addr) {
                         Ok((name, _)) => {
+                            if obj_num == 144 {
+                                debug!("Object 144 (leaves) name: '{}' (len={})", name, name.len());
+                                debug!("  Name bytes: {:?}", name.as_bytes());
+                            }
                             print!("{}", name);
                             io::stdout().flush().ok();
                         }
@@ -929,16 +941,33 @@ impl Interpreter {
                 self.do_branch(inst, condition)
             }
             0x04 => {
-                // dec_chk
+                // dec_chk - decrement variable and branch if less than value
+                // IMPORTANT: The first operand is ALWAYS a variable number, never a value
+                // This is different from most 2OP instructions
                 let var_num = inst.operands[0] as u8;
                 let value = self.vm.read_variable(var_num)?;
                 let new_value = value.wrapping_sub(1);
                 self.vm.write_variable(var_num, new_value)?;
+                
+                let pc = self.vm.pc - inst.size as u32;
+                if pc == 0x5fdf {
+                    debug!("dec_chk at 0x5fdf: value={} -> new_value={}, comparing with {}", 
+                           value, new_value, op2);
+                }
+                
                 let condition = (new_value as i16) < (op2 as i16);
+                
+                if pc == 0x5fdf && value == 1 {
+                    debug!("  new_value as i16 = {}, op2 as i16 = {}, condition = {}", 
+                           new_value as i16, op2 as i16, condition);
+                }
+                
                 self.do_branch(inst, condition)
             }
             0x05 => {
-                // inc_chk
+                // inc_chk - increment variable and branch if greater than value
+                // IMPORTANT: The first operand is ALWAYS a variable number, never a value
+                // This is different from most 2OP instructions
                 let var_num = inst.operands[0] as u8;
                 let value = self.vm.read_variable(var_num)?;
                 let new_value = value.wrapping_add(1);
@@ -1072,6 +1101,26 @@ impl Interpreter {
                 // loadb
                 let addr = op1 as u32 + op2 as u32;
                 let value = self.vm.read_byte(addr) as u16;
+                
+                // Debug the leaves issue
+                let pc = self.vm.pc - inst.size as u32;
+                if pc == 0x6345 || pc == 0x6349 {
+                    info!("loadb at 0x{:04x}: base=0x{:04x}, offset={}, addr=0x{:04x}, value={}",
+                          pc, op1, op2, addr, value);
+                    // Also show what V01 points to
+                    if op1 == 1 { // If using V01
+                        if let Ok(v01) = self.vm.read_variable(1) {
+                            info!("  V01 = 0x{:04x}", v01);
+                            // Show parse buffer entry
+                            for i in 0..4 {
+                                let byte = self.vm.read_byte(v01 as u32 + i);
+                                info!("    V01+{} = 0x{:02x}", i, byte);
+                            }
+                        }
+                    }
+                }
+                
+                
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, value)?;
                 }
@@ -1302,13 +1351,29 @@ impl Interpreter {
                 Ok(ExecutionResult::Continue)
             }
             0x04 => {
-                // sread (V1-4)
+                // sread (V1-4) with timer support (V3+)
                 // Proper implementation that reads from stdin
                 if operands.len() < 2 {
                     return Err("sread requires at least 2 operands".to_string());
                 }
                 let text_buffer = operands[0] as u32;
                 let parse_buffer = operands[1] as u32;
+                
+                // Debug: Show all operands
+                debug!("sread at PC 0x{:04x} with {} operands", self.vm.pc - inst.size as u32, operands.len());
+                for (i, op) in operands.iter().enumerate() {
+                    debug!("  operand[{}] = 0x{:04x}", i, op);
+                }
+                
+                // Check for timer parameters (V3+)
+                let has_timer = operands.len() >= 4 && operands[2] > 0 && operands[3] > 0;
+                let time = if operands.len() > 2 { operands[2] } else { 0 };
+                let routine = if operands.len() > 3 { operands[3] } else { 0 };
+                
+                if has_timer {
+                    info!("SREAD WITH TIMER: time={} ({}s), routine=0x{:04x}", 
+                          time, time as f32 / 10.0, routine);
+                }
 
                 // Get max length from text buffer
                 let max_len = self.vm.read_byte(text_buffer);
@@ -1320,6 +1385,16 @@ impl Interpreter {
                 let mut input = String::new();
                 io::stdin().read_line(&mut input)
                     .map_err(|e| format!("Error reading input: {}", e))?;
+                
+                // Simplified timer handling: simulate timer firing once after input
+                if has_timer {
+                    debug!("Simulating timer interrupt after input");
+                    // Call the timer routine once
+                    let result = self.call_timer_routine(routine)?;
+                    debug!("Timer routine returned: {}", result);
+                    // For now, ignore the result (don't terminate input)
+                    // In a full implementation, if result is true, we'd terminate input
+                }
                 
                 // Trim newline - Z-Machine uses lowercase
                 input = input.trim().to_lowercase();
@@ -1337,6 +1412,39 @@ impl Interpreter {
 
                 // Parse the text buffer using proper dictionary lookup
                 self.vm.parse_text(text_buffer, parse_buffer)?;
+                
+                // Debug: Show the actual text in the buffer
+                let text_len = self.vm.read_byte(text_buffer + 1);
+                debug!("Text buffer contents (len={}):", text_len);
+                for i in 0..text_len {
+                    let ch = self.vm.read_byte(text_buffer + 2 + i as u32);
+                    debug!("  [{}] = 0x{:02x} '{}'", i, ch, ch as char);
+                }
+                
+                // Extra debug: dump the exact parse buffer contents
+                if input.contains("leaves") {
+                    info!("*** Parse buffer dump at 0x{:04x}:", parse_buffer);
+                    for i in 0..16 {
+                        let byte = self.vm.read_byte(parse_buffer + i);
+                        info!("  +{}: 0x{:02x}", i, byte);
+                    }
+                    // Interpret the second word entry
+                    let word2_addr = self.vm.read_word(parse_buffer + 6);
+                    let word2_len = self.vm.read_byte(parse_buffer + 8);
+                    let word2_pos = self.vm.read_byte(parse_buffer + 9);
+                    info!("  Word 2: addr=0x{:04x}, len={}, pos={}", word2_addr, word2_len, word2_pos);
+                }
+                
+                // Special check for leaves
+                if input.contains("leaves") {
+                    info!("*** Special debug for 'leaves' issue ***");
+                    info!("Input string: '{}'", input);
+                    info!("Text buffer contents at 0x{:04x}:", text_buffer);
+                    for i in 0..20 {
+                        let ch = self.vm.read_byte(text_buffer + i as u32);
+                        info!("  +{}: 0x{:02x} '{}'", i, ch, if ch >= 32 && ch < 127 { ch as char } else { '.' });
+                    }
+                }
 
                 let pc = self.vm.pc - inst.size as u32;
                 // Debug removed for cleaner output
@@ -1344,16 +1452,30 @@ impl Interpreter {
                     pc, text_buffer, parse_buffer, input);
                 
                 // Debug: Show what's in the parse buffer
-                if self.debug {
-                    let word_count = self.vm.read_byte(parse_buffer + 1);
-                    debug!("  Parse buffer word count: {}", word_count);
-                    for i in 0..word_count {
-                        let offset = parse_buffer + 2 + (i as u32 * 4);
-                        let dict_addr = self.vm.read_word(offset);
-                        let word_len = self.vm.read_byte(offset + 2);
-                        let text_pos = self.vm.read_byte(offset + 3);
-                        debug!("    Word {}: dict_addr=0x{:04x}, len={}, pos={}", 
-                               i, dict_addr, word_len, text_pos);
+                let word_count = self.vm.read_byte(parse_buffer + 1);
+                debug!("  Parse buffer word count: {}", word_count);
+                for i in 0..word_count {
+                    let offset = parse_buffer + 2 + (i as u32 * 4);
+                    let dict_addr = self.vm.read_word(offset);
+                    let word_len = self.vm.read_byte(offset + 2);
+                    let text_pos = self.vm.read_byte(offset + 3);
+                    debug!("    Word {}: dict_addr=0x{:04x}, len={}, pos={}", 
+                           i, dict_addr, word_len, text_pos);
+                    
+                    // Special check for leaves
+                    if input.contains("leaves") && i == 1 {
+                        info!("*** 'leaves' parse entry: dict_addr=0x{:04x}, len={}, pos={}", 
+                              dict_addr, word_len, text_pos);
+                        if word_len != 6 {
+                            info!("*** ERROR: 'leaves' has wrong length! Expected 6, got {}", word_len);
+                        }
+                        // Check actual characters at this position
+                        info!("*** Characters at text buffer position {}:", text_pos);
+                        for j in 0..8 {
+                            let ch = self.vm.read_byte(text_buffer + 2 + text_pos as u32 + j);
+                            info!("      pos {}: 0x{:02x} '{}'", text_pos + j as u8, ch, 
+                                  if ch >= 32 && ch < 127 { ch as char } else { '.' });
+                        }
                     }
                 }
                 Ok(ExecutionResult::Continue)
@@ -1362,6 +1484,13 @@ impl Interpreter {
                 // print_char
                 if !operands.is_empty() {
                     let ch = operands[0] as u8 as char;
+                    let pc = self.vm.pc - inst.size as u32;
+                    
+                    // Debug all print_char in error area
+                    if pc >= 0x6300 && pc <= 0x6400 {
+                        info!("print_char at 0x{:04x}: '{}' (0x{:02x})", pc, ch, operands[0]);
+                    }
+                    
                     if operands[0] > 127 || operands[0] == 63 {
                         // 63 is '?'
                         debug!(
@@ -1579,6 +1708,64 @@ impl Interpreter {
     }
 
     /// Handle routine calls
+    /// Call a timer routine and execute it to completion
+    fn call_timer_routine(&mut self, routine_addr: u16) -> Result<bool, String> {
+        debug!("Calling timer routine at 0x{:04x}", routine_addr);
+        
+        // Save current PC and call depth
+        let _saved_pc = self.vm.pc;
+        let saved_call_depth = self.vm.call_depth();
+        
+        // Call routine with 0 args, store result in temp variable (stack)
+        self.do_call(routine_addr, &[], Some(0))?;
+        
+        // Execute until routine returns (when call depth returns to saved level)
+        let mut return_value = 0;
+        let mut instruction_count = 0;
+        const MAX_TIMER_INSTRUCTIONS: u64 = 10000; // Safety limit
+        
+        while self.vm.call_depth() > saved_call_depth {
+            instruction_count += 1;
+            if instruction_count > MAX_TIMER_INSTRUCTIONS {
+                return Err("Timer routine exceeded instruction limit".to_string());
+            }
+            
+            // Fetch and decode instruction
+            let pc = self.vm.pc;
+            let inst = match Instruction::decode(&self.vm.game.memory, pc as usize, self.vm.game.header.version) {
+                Ok(inst) => inst,
+                Err(e) => return Err(format!("Error decoding instruction at {:05x}: {}", pc, e)),
+            };
+            
+            // Update PC
+            self.vm.pc += inst.size as u32;
+            
+            // Execute instruction
+            match self.execute_instruction(&inst)? {
+                ExecutionResult::Returned(value) => {
+                    return_value = value;
+                    if self.vm.call_depth() <= saved_call_depth {
+                        break;
+                    }
+                }
+                ExecutionResult::Quit | ExecutionResult::GameOver => {
+                    return Err("Timer routine tried to quit/end game".to_string());
+                }
+                _ => {
+                    // Continue executing
+                }
+            }
+        }
+        
+        // Pop the return value from stack (since we stored to var 0)
+        let _ = self.vm.pop();
+        
+        debug!("Timer routine returned: {}", return_value);
+        
+        // Return true if routine wants to terminate input
+        Ok(return_value != 0)
+    }
+
     fn do_call(
         &mut self,
         packed_addr: u16,
@@ -1655,6 +1842,7 @@ impl Interpreter {
             }
         }
 
+        
         // Push the call frame
         self.vm.call_stack.push(new_frame);
 

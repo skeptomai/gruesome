@@ -1,0 +1,4 @@
+look
+inventory  
+quit
+y

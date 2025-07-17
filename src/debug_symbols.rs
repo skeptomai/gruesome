@@ -18,6 +18,8 @@ impl RoutineNames {
         
         // Main routines
         names.insert(0x4f05, "MAIN");
+        names.insert(0x4fd9, "NOT-HERE-OBJECT-F");
+        names.insert(0x508e, "NOT-HERE-PRINT");
         names.insert(0x50a8, "(Unknown-50a8)");
         names.insert(0x6ee0, "V-VERSION");
         names.insert(0x51f0, "GOTO");
@@ -26,10 +28,12 @@ impl RoutineNames {
         names.insert(0x5880, "PARSER");
         names.insert(0x590c, "INPUT-LOOP");
         names.insert(0x5c40, "(Unknown-5c40)");
+        names.insert(0x6301, "BUFFER-PRINT");
         names.insert(0x6f76, "V-WALK");
         names.insert(0x7086, "LIT?");
         names.insert(0x7e04, "DESCRIBE-ROOM");
         names.insert(0x8c9a, "DESCRIBE-OBJECTS");
+        names.insert(0x5fda, "WORD-PRINT");
         
         RoutineNames { names }
     }

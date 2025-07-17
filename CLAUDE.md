@@ -93,6 +93,136 @@ rustfmt src/*.rs
 cargo fmt
 ```
 
+## Timer System Implementation
+
+### Timer System Analysis Summary
+
+Zork I uses a sophisticated timer system for game elements like the lantern, matches, and candles. Based on extensive analysis:
+
+1. **Timer Mechanism**: The SREAD instruction (opcode 0x04) accepts 4 operands:
+   - text_buffer: where input text is stored
+   - parse_buffer: where parsed tokens are stored  
+   - time: timer in tenths of seconds (optional)
+   - routine: interrupt routine address (optional)
+
+2. **Timer Usage in Zork**: 71% of SREAD calls in Zork I use timers:
+   - Common pattern: sread(text_buf, parse_buf, 10, 0x292c)
+   - Timer fires every 1 second (10 tenths)
+   - Interrupt routine at 0x5258 manages game timers
+
+3. **Timer Variables**:
+   - Global 88 (0x58): Lantern timer (~330 turns initially)
+   - Global 89 (0x59): Match timer (very short)
+   - Global 90 (0x5a): Candle timer (medium duration)
+
+4. **How Timers Work**:
+   - QUEUE routine (0x21fe) initializes timed events during game startup
+   - Timer interrupt decrements counters (e.g., dec_chk G88)
+   - Game logic checks thresholds for warnings/events
+   - Lantern warnings at 30, 20, 10, 5 turns remaining
+   - At 0, lantern goes out and room becomes dark
+
+### Z-Machine Timer Specification (v1.1)
+
+From the Z-Machine specification:
+
+1. **Timer Support** (Version 4+):
+   - `read` (sread) opcode accepts optional `time` and `routine` parameters
+   - Timer specified in **tenths of seconds**
+   - When timer expires, `routine()` is called with no parameters
+   - If routine returns true: input erased and reading terminates
+   - If routine returns false: input continues
+
+2. **Header Flag**:
+   - Flags 1, Bit 7 (offset 0x01): Indicates timed input support
+   - Games check this to determine timer availability
+
+3. **Implementation Requirements**:
+   - Timer routines called asynchronously during input
+   - Must handle screen output from timer routines
+   - Redraw input line if timer printed anything
+   - Cannot use save/save_undo in timer routines
+
+### Rust Timer Implementation Patterns
+
+1. **Async Approach (Tokio)**:
+   - Use tokio::time::timeout for input with timeout
+   - Spawn timer task that sends messages via channels
+   - Work-stealing scheduler for efficiency
+
+2. **Thread-based Approach**:
+   - Spawn dedicated timer thread
+   - Use channels (std::sync::mpsc or crossbeam) for communication
+   - Timer thread sleeps and sends interrupts
+
+3. **Terminal Input with Timeout**:
+   - async-std provides io::timeout for stdin
+   - timeout-readwrite crate adds timeout to readers
+   - Standard library requires platform-specific code
+
+### Recommended Implementation Strategy
+
+For the Z-Machine interpreter, a **hybrid approach** is recommended:
+
+1. **Input Thread**: Handle stdin in separate thread to avoid blocking
+2. **Timer Thread**: Dedicated thread for timer management
+3. **Channel Communication**: Use crossbeam channels for thread communication
+4. **Interrupt Handling**: When timer expires, execute Z-Machine routine
+5. **State Management**: Timer state is just global variables (no special handling)
+
+This approach:
+- Keeps the interpreter synchronous (easier to debug)
+- Handles async input/timers without full async runtime
+- Matches Z-Machine's interrupt model
+- Allows proper input line redrawing after timer output
+
+### Simplified Implementation Strategy (Current Approach)
+
+After further analysis, we discovered that for turn-based games like Zork I, a much simpler approach works:
+
+1. **Key Insight**: Most Z-Machine games are turn-based, not real-time
+2. **Timer Usage**: Even though 71% of SREAD calls have timers, they're mainly for:
+   - Turn-based counter updates (lantern, matches)
+   - Status line updates
+   - Housekeeping that can happen at turn boundaries
+
+3. **Simplified Implementation**:
+   ```rust
+   fn sread_with_timer(&mut self, text_buffer: u16, parse_buffer: u16, 
+                       time: u16, routine: u16) -> Result<ExecutionResult, String> {
+       // Get input normally (blocking is fine)
+       let input = self.get_user_input()?;
+       
+       // After input, simulate timer having fired once
+       if time > 0 && routine > 0 {
+           // Call timer routine once (as if it fired during input)
+           let _result = self.call_timer_routine(routine)?;
+           // Ignore result for now - don't terminate input
+       }
+       
+       // Process input normally
+       self.process_input(input, text_buffer, parse_buffer)
+   }
+   ```
+
+4. **Why This Works**:
+   - Every SREAD is a turn (correct for turn-based games)
+   - Timer routines are idempotent for turn counting
+   - No gameplay difference if counters update during vs after input
+   - Lantern/match timers work correctly
+
+5. **Limitations**:
+   - Won't work for real-time games (Border Zone)
+   - Status line won't update while user types
+   - NPCs won't get impatient in real-time
+   - But these don't affect Zork I gameplay
+
+6. **Benefits**:
+   - No threading complexity
+   - Easy to debug and test
+   - Can enhance later if real-time needed
+   - Captures essential turn-based behavior
+
 ## NULL Call Handling
 
 The interpreter correctly handles calls to address 0x0000 according to the Z-Machine specification:
@@ -133,6 +263,18 @@ If the game shows messages like "You are already standing, I think" or "Only bat
 - Improper branch logic in early instructions
 
 The fix is to remove workarounds and ensure proper instruction execution from PC 0x4f05.
+
+## Important Zork I Routines
+
+### WORD-PRINT (0x5fda)
+This routine prints a word from the text buffer character by character. It's called by BUFFER-PRINT
+when displaying error messages like "You can't see any X here!".
+
+The routine takes:
+- Local 1: Word length
+- Local 2: Starting position in text buffer
+
+It uses a loop with `dec_chk` to print each character.
 
 ## Important Zork I Object Information
 

@@ -129,8 +129,17 @@ impl VM {
             // Write parse entry (V3 format)
             let entry_offset = parse_buffer + 2 + (i * 4) as u32;
             self.write_word(entry_offset, dict_addr)?;                    // Dictionary address
+            
+            // Special debug for leaves
+            if *word == "leaves" {
+                debug!("Writing parse entry for 'leaves': len={}, pos={}", word.len(), text_offset + 2);
+            }
+            
             self.write_byte(entry_offset + 2, word.len() as u8)?;        // Word length
-            self.write_byte(entry_offset + 3, (text_offset + 1) as u8)?; // Position (1-based)
+            // The position is the byte offset in the text buffer where the word starts
+            // text_offset is 0-based in the text string
+            // The text starts at buffer+2, so buffer offset = text_offset + 2
+            self.write_byte(entry_offset + 3, (text_offset + 2) as u8)?; // Byte offset in buffer
             
             // Advance text offset
             text_offset += word.len();

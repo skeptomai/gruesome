@@ -7,6 +7,8 @@ This table contains known routine addresses and their names discovered through d
 | Address | Name | Description |
 |---------|------|-------------|
 | 0x4f05 | MAIN | Main entry point - initializes game and calls V-VERSION |
+| 0x4fd9 | NOT-HERE-OBJECT-F | Prints "You can't see any X here!" error message |
+| 0x508e | NOT-HERE-PRINT | Called by NOT-HERE-OBJECT-F, calls BUFFER-PRINT |
 | 0x50a8 | (Unknown) | Previously thought to be PERFORM |
 | 0x6ee0 | V-VERSION | Prints copyright/version info (called from MAIN at 0x4f82) |
 | 0x51f0 | GOTO | Changes current location (G0/HERE) |
@@ -15,8 +17,10 @@ This table contains known routine addresses and their names discovered through d
 | 0x5880 | PARSER | Command parser - called by MAIN-LOOP |
 | 0x590c | INPUT-LOOP | Main input loop (contains SREAD) |
 | 0x5c40 | (Unknown-5c40) | Previously thought to be PARSER |
+| 0x6301 | BUFFER-PRINT | Prints space then calls WORD-PRINT for parsed words |
 | 0x6f76 | V-WALK | Walk/movement verb handler |
 | 0x7086 | LIT? | Check if location is lit |
+| 0x5fda | WORD-PRINT | Prints a word from parse buffer character by character |
 | 0x7e04 | DESCRIBE-ROOM | Room description routine |
 | 0x8c9a | DESCRIBE-OBJECTS | Describe objects in location |
 
@@ -135,6 +139,30 @@ The command parser routine.
 - Called by MAIN-LOOP at the start of each command cycle
 - Parses user input and sets up global variables
 - Returns result in G7f
+
+### 0x4fd9 - NOT-HERE-OBJECT-F
+Error handler for accessing objects that aren't present.
+- Prints "You can't see any"
+- Calls NOT-HERE-PRINT to print the object name
+- Prints " here!" to complete the message
+
+### 0x508e - NOT-HERE-PRINT  
+Helper routine that prints object names in error messages.
+- Called by NOT-HERE-OBJECT-F
+- Calls BUFFER-PRINT to print parsed words from the input
+
+### 0x5fda - WORD-PRINT
+Prints a word from the text buffer character by character.
+- Takes L01 = word length, L02 = text buffer position
+- Called by BUFFER-PRINT for error messages like "You can't see any X here!"
+- Uses V7d as text buffer base address
+- Loops using dec_chk to print exactly L01 characters
+
+### 0x6301 - BUFFER-PRINT
+Prints words from the parse buffer.
+- Prints a space character
+- Loads word information from parse buffer
+- Calls WORD-PRINT to print the actual word
 
 ### 0x6ee0 - V-VERSION
 Action routine for "version" command.

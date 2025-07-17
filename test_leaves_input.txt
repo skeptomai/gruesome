@@ -1,0 +1,7 @@
+wait
+wait
+wait
+look
+go west
+move leaves
+quit
