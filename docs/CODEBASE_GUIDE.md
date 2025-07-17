@@ -247,7 +247,7 @@ debug!("Calling routine at {:04x} with {} args", addr, args.len());
 
 - **Z-Machine Spec**: Version 1.1 is the definitive reference
 - **CLAUDE.md**: Project-specific implementation notes
-- **ROUTINE_ADDRESSES.md**: Known routine documentation
+- **docs/ROUTINE_ADDRESSES.md**: Known routine documentation
 - **Test files**: `src/bin/test_*.rs` show component usage
 - **Git history**: Shows how bugs were fixed
 

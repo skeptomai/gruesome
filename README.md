@@ -66,7 +66,7 @@ For developers new to the project:
 - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Complete system architecture with diagrams
 - **[CODEBASE_GUIDE.md](docs/CODEBASE_GUIDE.md)** - Detailed guide for new contributors
 - **[QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md)** - Quick reference for common tasks
-- **[ROUTINE_ADDRESSES.md](ROUTINE_ADDRESSES.md)** - Known Zork I routine documentation
+- **[ROUTINE_ADDRESSES.md](docs/ROUTINE_ADDRESSES.md)** - Known Zork I routine documentation
 - **[CLAUDE.md](CLAUDE.md)** - Implementation notes and guidelines
 
 ## Architecture Overview

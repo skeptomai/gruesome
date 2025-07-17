@@ -353,7 +353,7 @@ The `src/bin/` directory contains numerous debugging tools:
 
 ### 3. Known Routines
 
-Major routines documented in `ROUTINE_ADDRESSES.md`:
+Major routines documented in `docs/ROUTINE_ADDRESSES.md`:
 - MAIN (0x4f05): Entry point
 - PARSER (0x5880): Command parser
 - PERFORM (0x577c): Action handler
