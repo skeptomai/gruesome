@@ -17,7 +17,7 @@ This project implements a Z-Machine interpreter capable of running Infocom's tex
 
 ### Known Limitations
 
-- ⚠️ **No timed interrupts** - Lantern/match timers don't expire (makes game easier)
+- ⚠️ **Simplified timer support** - Timer routines execute after input only (lantern still works)
 - ⚠️ **Limited display opcodes** - Basic text output only
 - ⚠️ **v3 games only** - Later versions not yet supported
 
@@ -59,7 +59,17 @@ cargo build --release
 cargo run --release
 ```
 
-## Architecture
+## Documentation
+
+For developers new to the project:
+
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Complete system architecture with diagrams
+- **[CODEBASE_GUIDE.md](docs/CODEBASE_GUIDE.md)** - Detailed guide for new contributors
+- **[QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md)** - Quick reference for common tasks
+- **[ROUTINE_ADDRESSES.md](ROUTINE_ADDRESSES.md)** - Known Zork I routine documentation
+- **[CLAUDE.md](CLAUDE.md)** - Implementation notes and guidelines
+
+## Architecture Overview
 
 The interpreter is structured as follows:
 
@@ -70,6 +80,8 @@ The interpreter is structured as follows:
 - **Object System** (`zobject.rs`) - Z-Machine object tree
 - **Text** (`text.rs`) - ZSCII encoding/decoding
 - **Save/Restore** (`quetzal/`) - Quetzal save format implementation
+
+See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed architecture information.
 
 ## Development
 
@@ -95,7 +107,7 @@ Contributions are welcome! Key areas for improvement:
 3. **Version support** - Extend beyond v3 to support more games
 4. **Performance** - Optimize hot paths in the interpreter
 
-See [CLAUDE.md](CLAUDE.md) for detailed development guidelines and TODOs.
+See [CODEBASE_GUIDE.md](docs/CODEBASE_GUIDE.md) for getting started and [CLAUDE.md](CLAUDE.md) for implementation notes.
 
 ## Technical Details
 
