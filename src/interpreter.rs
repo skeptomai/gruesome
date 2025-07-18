@@ -253,6 +253,11 @@ impl Interpreter {
         info!("Starting Z-Machine interpreter...");
         info!("Initial PC: {:05x}", self.vm.pc);
 
+        // Clear the screen at game start for a clean display
+        if let Some(ref mut display) = self.display {
+            display.clear_screen()?;
+        }
+
         loop {
             // Fetch and decode instruction
             let pc = self.vm.pc;

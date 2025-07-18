@@ -45,6 +45,17 @@ impl Display {
         })
     }
     
+    /// Clear the entire screen and position cursor at top
+    pub fn clear_screen(&mut self) -> Result<(), String> {
+        execute!(
+            io::stdout(),
+            Clear(ClearType::All),
+            MoveTo(0, 0)
+        ).map_err(|e| format!("Failed to clear screen: {}", e))?;
+        io::stdout().flush().ok();
+        Ok(())
+    }
+    
     /// Split the screen into upper and lower windows
     /// 
     /// The upper window is used for the status line in v3 games
