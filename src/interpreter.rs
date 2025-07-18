@@ -2,6 +2,7 @@ use crate::instruction::{Instruction, OperandType};
 use crate::debug_symbols::RoutineNames;
 use crate::text;
 use crate::timed_input::TimedInput;
+use crate::display::Display;
 use crate::vm::{CallFrame, VM};
 use log::{debug, info};
 use std::io::{self, Write};
@@ -41,11 +42,22 @@ pub struct Interpreter {
     pub step_range: Option<(u32, u32)>,
     /// Timed input handler
     timed_input: TimedInput,
+    /// Display manager
+    display: Option<Display>,
 }
 
 impl Interpreter {
     /// Create a new interpreter
     pub fn new(vm: VM) -> Self {
+        // Try to initialize display, but continue without it if it fails
+        let display = match Display::new() {
+            Ok(d) => Some(d),
+            Err(e) => {
+                debug!("Failed to initialize display: {}", e);
+                None
+            }
+        };
+        
         Interpreter {
             vm,
             debug: false,
@@ -54,6 +66,7 @@ impl Interpreter {
             single_step: false,
             step_range: None,
             timed_input: TimedInput::new(),
+            display,
         }
     }
 
@@ -512,15 +525,24 @@ impl Interpreter {
                     };
                     debug!("print at PC {:05x}: '{}'", self.vm.pc - inst.size as u32, preview);
                     
-                    print!("{}", text);
-                    io::stdout().flush().ok();
+                    if let Some(ref mut display) = self.display {
+                        display.print(text).ok();
+                    } else {
+                        print!("{}", text);
+                        io::stdout().flush().ok();
+                    }
                 }
                 Ok(ExecutionResult::Continue)
             }
             0x03 => {
                 // print_ret
                 if let Some(ref text) = inst.text {
-                    println!("{}", text);
+                    if let Some(ref mut display) = self.display {
+                        display.print(text).ok();
+                        display.print("\n").ok();
+                    } else {
+                        println!("{}", text);
+                    }
                 }
                 self.do_return(1)
             }
@@ -620,7 +642,36 @@ impl Interpreter {
             }
             0x0B => {
                 // new_line
-                println!();
+                if let Some(ref mut display) = self.display {
+                    display.print("\n").ok();
+                } else {
+                    println!();
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x0C => {
+                // show_status (V3 only)
+                if self.vm.game.header.version == 3 {
+                    debug!("show_status called");
+                    
+                    // Get location name from G16 (player's location in v3)
+                    let location_obj = self.vm.read_global(16)?; // G16 contains player location in v3
+                    let location_name = if location_obj > 0 {
+                        self.get_object_name(location_obj)?
+                    } else {
+                        "Unknown".to_string()
+                    };
+                    
+                    // Get score and moves from globals (G17 and G18 in v3)
+                    let score = self.vm.read_global(17)? as i16;
+                    let moves = self.vm.read_global(18)?;
+                    
+                    if let Some(ref mut display) = self.display {
+                        display.show_status(&location_name, score, moves)?;
+                    } else {
+                        debug!("No display available for show_status");
+                    }
+                }
                 Ok(ExecutionResult::Continue)
             }
             0x0F => {
@@ -1379,6 +1430,28 @@ impl Interpreter {
                           time, time as f32 / 10.0, routine);
                 }
 
+                // In v3 games, automatically update status line before input
+                if self.vm.game.header.version == 3 {
+                    // Get all data before borrowing display mutably
+                    // In v3: G16 = player location, G17 = score, G18 = moves
+                    let location_obj = self.vm.read_global(16)?;
+                    let location_name = self.get_object_name(location_obj)?;
+                    let score = self.vm.read_global(17)? as i16;
+                    let moves = self.vm.read_global(18)?;
+                    
+                    // Now update display
+                    if let Some(ref mut display) = self.display {
+                        // Create status window if not already created
+                        display.split_window(1)?;
+                        
+                        // Update status line
+                        display.show_status(&location_name, score, moves)?;
+                        
+                        debug!("Auto-updated status line: location='{}', score={}, moves={}", 
+                              location_name, score, moves);
+                    }
+                }
+
                 // Get max length from text buffer
                 let max_len = self.vm.read_byte(text_buffer);
                 
@@ -1524,16 +1597,25 @@ impl Interpreter {
                             self.vm.pc - inst.size as u32
                         );
                     }
-                    print!("{}", ch);
-                    io::stdout().flush().ok();
+                    if let Some(ref mut display) = self.display {
+                        display.print_char(ch).ok();
+                    } else {
+                        print!("{}", ch);
+                        io::stdout().flush().ok();
+                    }
                 }
                 Ok(ExecutionResult::Continue)
             }
             0x06 => {
                 // print_num
                 if !operands.is_empty() {
-                    print!("{}", operands[0] as i16);
-                    io::stdout().flush().ok();
+                    let num_str = format!("{}", operands[0] as i16);
+                    if let Some(ref mut display) = self.display {
+                        display.print(&num_str).ok();
+                    } else {
+                        print!("{}", num_str);
+                        io::stdout().flush().ok();
+                    }
                 }
                 Ok(ExecutionResult::Continue)
             }
@@ -1596,9 +1678,15 @@ impl Interpreter {
             }
             0x0A => {
                 // split_window (V3+)
-                // For now, ignore window splitting
                 if !operands.is_empty() {
-                    debug!("split_window: lines={}", operands[0]);
+                    let lines = operands[0];
+                    debug!("split_window: lines={}", lines);
+                    
+                    if let Some(ref mut display) = self.display {
+                        display.split_window(lines)?;
+                    } else {
+                        debug!("No display available for split_window");
+                    }
                 }
                 Ok(ExecutionResult::Continue)
             }
@@ -1801,6 +1889,46 @@ impl Interpreter {
         // For now, delegate to timed_input's character reading
         // This will need to be implemented in timed_input.rs
         self.timed_input.read_char_with_timeout_callback(time_tenths, routine_addr, timer_callback)
+    }
+    
+    /// Get the name of an object
+    fn get_object_name(&self, obj_num: u16) -> Result<String, String> {
+        if obj_num == 0 || obj_num > 255 {
+            return Ok("".to_string());
+        }
+        
+        // Calculate object address
+        let obj_table_addr = self.vm.game.header.object_table_addr as usize;
+        let property_defaults = obj_table_addr;
+        let obj_tree_base = property_defaults + 31 * 2;
+        let obj_addr = obj_tree_base + ((obj_num - 1) as usize * 9);
+        
+        if obj_addr + 9 > self.vm.game.memory.len() {
+            return Err(format!("Object {} address out of bounds", obj_num));
+        }
+        
+        // Get property table address
+        let prop_table_addr = ((self.vm.game.memory[obj_addr + 7] as u16) << 8) 
+                            | self.vm.game.memory[obj_addr + 8] as u16;
+        
+        if prop_table_addr == 0 || prop_table_addr as usize >= self.vm.game.memory.len() {
+            return Ok("".to_string());
+        }
+        
+        // First byte is text length in words
+        let text_len = self.vm.game.memory[prop_table_addr as usize] as usize;
+        if text_len == 0 {
+            return Ok("".to_string());
+        }
+        
+        // Decode the object name
+        let name_addr = prop_table_addr as usize + 1;
+        let abbrev_addr = self.vm.game.header.abbrev_table as usize;
+        
+        match text::decode_string(&self.vm.game.memory, name_addr, abbrev_addr) {
+            Ok((name, _)) => Ok(name),
+            Err(e) => Err(format!("Failed to decode object name: {}", e)),
+        }
     }
     
     /// Handle routine calls
