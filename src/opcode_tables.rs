@@ -247,6 +247,7 @@ fn stores_result_2op(opcode: u8) -> bool {
         0x0F..=0x13 => true, // loadw, loadb, get_prop, get_prop_addr, get_next_prop
         0x14..=0x18 => true, // add, sub, mul, div, mod
         0x19 => true,        // call_2s
+        0x1C => true,        // not (v1-v3 only)
         0x1F => true,        // undocumented - appears to store result
         _ => false,
     }
