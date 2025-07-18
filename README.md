@@ -17,10 +17,12 @@ This project implements a Z-Machine interpreter capable of running Infocom's tex
 - ✅ **Timer support** - Turn-based timers for v3, real-time infrastructure ready for v4+
 - ✅ **Non-blocking I/O** - True event-driven input using OS-level notifications
 - ✅ **read_char support** - Single character input with timers (v4+)
+- ✅ **Status line** - Fully functional status line with automatic updates (v3)
+- ✅ **Display opcodes** - split_window and show_status implemented
 
 ### Known Limitations
 
-- ⚠️ **Limited display opcodes** - split_window, set_cursor, etc. not implemented
+- ⚠️ **Some display opcodes** - set_cursor, set_text_style, etc. not implemented
 - ⚠️ **v3 games primarily** - Basic v4+ support (SREAD/read_char work)
 - ⚠️ **No sound support** - sound_effect plays beep only
 - ⚠️ **No graphics** - Text-only implementation
@@ -88,6 +90,7 @@ The interpreter is structured as follows:
 - **Text** (`text.rs`) - ZSCII encoding/decoding with packed addresses
 - **Dictionary** (`dictionary.rs`) - Word parsing and lookup
 - **Timed Input** (`timed_input.rs`) - Non-blocking I/O with timer support
+- **Display** (`display.rs`) - Cross-platform terminal control and status line
 - **Save/Restore** (`quetzal/`) - Quetzal save format implementation
 
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed architecture information.
@@ -111,12 +114,12 @@ RUST_LOG=debug cargo run
 
 Contributions are welcome! Key areas for improvement:
 
-1. **Display opcodes** - split_window, set_cursor, set_text_style, etc.
+1. **More display opcodes** - set_cursor, set_text_style, erase_line, etc.
 2. **Version support** - Full v4/v5/v6 support (v7/v8 are rare)
 3. **Sound support** - Implement proper sound_effect for games like Lurking Horror
-4. **Status line** - Implement proper status line handling
-5. **Performance** - Optimize hot paths in the interpreter
-6. **More games** - Test with other Infocom titles
+4. **Performance** - Optimize hot paths in the interpreter
+5. **More games** - Test with other Infocom titles
+6. **Unicode support** - Z-Machine v5+ Unicode handling
 
 See [CODEBASE_GUIDE.md](docs/CODEBASE_GUIDE.md) for getting started and [CLAUDE.md](CLAUDE.md) for implementation notes.
 
@@ -131,6 +134,8 @@ This implementation follows the Z-Machine Standards Document 1.1. Notable featur
 - Real non-blocking I/O using OS-level event notification (epoll/kqueue/IOCP)
 - Timer callbacks for both SREAD and read_char opcodes
 - Turn-based timer support for v3 games, real-time ready for v4+
+- Cross-platform status line using crossterm (Windows/macOS/Linux/WSL)
+- Automatic status line updates before each input in v3 games
 
 ## License
 
