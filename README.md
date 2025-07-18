@@ -8,9 +8,9 @@ This project implements a Z-Machine interpreter capable of running Infocom's tex
 
 ### Current Status
 
-- ✅ **Fully playable** - Zork I runs from start to finish
+- ✅ **Fully playable** - Multiple Infocom games run perfectly
 - ✅ **Save/Restore** - Full Quetzal format support with compression
-- ✅ **Core Z-Machine v3** - All essential opcodes implemented
+- ✅ **Core Z-Machine v3** - All essential opcodes implemented including undocumented ones
 - ✅ **Object system** - Complete with properties and attributes
 - ✅ **Parser** - Dictionary lookup and text parsing
 - ✅ **Random events** - Combat and NPC movement work correctly
@@ -18,11 +18,21 @@ This project implements a Z-Machine interpreter capable of running Infocom's tex
 - ✅ **Non-blocking I/O** - True event-driven input using OS-level notifications
 - ✅ **read_char support** - Single character input with timers (v4+)
 - ✅ **Status line** - Fully functional status line with automatic updates (v3)
-- ✅ **Display opcodes** - split_window and show_status implemented
+- ✅ **Display opcodes** - split_window, show_status, and set_text_style implemented
+
+### Tested and Working Games
+
+The following Infocom v3 games have been tested and work correctly:
+
+- **Zork I: The Great Underground Empire** - The classic that started it all
+- **Deadline** - Mystery game with complex character movements and timed events
+- **Enchanter** - First of the magic trilogy with spell system
+- **The Hitchhiker's Guide to the Galaxy** - Douglas Adams' sci-fi comedy
+- **Suspended** - Unique multi-robot perspective game
 
 ### Known Limitations
 
-- ⚠️ **Some display opcodes** - set_cursor, set_text_style, etc. not implemented
+- ⚠️ **Some display opcodes** - set_cursor, erase_line, etc. not implemented
 - ⚠️ **v3 games primarily** - Basic v4+ support (SREAD/read_char work)
 - ⚠️ **No sound support** - sound_effect plays beep only
 - ⚠️ **No graphics** - Text-only implementation
@@ -114,12 +124,14 @@ RUST_LOG=debug cargo run
 
 Contributions are welcome! Key areas for improvement:
 
-1. **More display opcodes** - set_cursor, set_text_style, erase_line, etc.
+1. **More display opcodes** - set_cursor, erase_line, erase_window, etc.
 2. **Version support** - Full v4/v5/v6 support (v7/v8 are rare)
 3. **Sound support** - Implement proper sound_effect for games like Lurking Horror
 4. **Performance** - Optimize hot paths in the interpreter
 5. **More games** - Test with other Infocom titles
 6. **Unicode support** - Z-Machine v5+ Unicode handling
+7. **Buffer mode** - Implement proper output buffering
+8. **Undo support** - Implement save_undo/restore_undo for v5+ games
 
 See [CODEBASE_GUIDE.md](docs/CODEBASE_GUIDE.md) for getting started and [CLAUDE.md](CLAUDE.md) for implementation notes.
 
@@ -128,14 +140,16 @@ See [CODEBASE_GUIDE.md](docs/CODEBASE_GUIDE.md) for getting started and [CLAUDE.
 This implementation follows the Z-Machine Standards Document 1.1. Notable features:
 
 - Discovers and handles undocumented opcode 0x1F (see [undocumented_opcode_0x1f.md](undocumented_opcode_0x1f.md))
+- Implements 2OP:0x1C (not) for v1-v3 games (moved to VAR:143 in v5+)
 - Implements proper Quetzal save format with XOR-RLE compression
 - Handles both Variable and Long forms of 2OP instructions
-- Supports the full Z-Machine v3 instruction set
+- Supports the full Z-Machine v3 instruction set including all store operations
 - Real non-blocking I/O using OS-level event notification (epoll/kqueue/IOCP)
 - Timer callbacks for both SREAD and read_char opcodes
 - Turn-based timer support for v3 games, real-time ready for v4+
 - Cross-platform status line using crossterm (Windows/macOS/Linux/WSL)
 - Automatic status line updates before each input in v3 games
+- Proper text styling (bold, reverse video) for game titles and emphasis
 
 ## License
 
