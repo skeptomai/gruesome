@@ -1,0 +1,25 @@
+Testing Instructions for Interruptible Input
+============================================
+
+1. Run the game with debug logging:
+   RUST_LOG=debug ./target/debug/gruesome resources/test/zork1/DATA/ZORK1.DAT
+
+2. Look for these key messages in the debug output:
+   - "read_line_with_timer called: time=0 tenths (0s), routine=0x0000"
+   - "Terminal input detected - using interruptible path (no interrupts yet)"
+   - "Entering interruptible input mode (currently blocking)"
+   - "✓ Raw mode supported - real interrupts possible" (or the ✗ version)
+
+3. Type a few commands and verify each one goes through the timer-based path:
+   - "look"
+   - "inventory"
+   - "quit"
+   - "y"
+
+4. Expected behavior:
+   - Game should work exactly as before (blocking input)
+   - All input should go through read_line_with_timer()
+   - Debug logs should confirm the interruptible path is being used
+   - No actual interruptions should occur (time=0, routine=0x0000)
+
+This confirms the infrastructure is in place for future timer implementation.

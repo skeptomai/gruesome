@@ -22,6 +22,7 @@ pub mod zobject;
 pub mod zrand;
 pub mod debug_symbols;
 pub mod quetzal;
+pub mod timed_input;
 
 #[cfg(test)]
 mod test_execution;

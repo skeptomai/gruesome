@@ -1,6 +1,7 @@
 use crate::instruction::{Instruction, OperandType};
 use crate::debug_symbols::RoutineNames;
 use crate::text;
+use crate::timed_input::TimedInput;
 use crate::vm::{CallFrame, VM};
 use log::{debug, info};
 use std::io::{self, Write};
@@ -38,6 +39,8 @@ pub struct Interpreter {
     pub single_step: bool,
     /// PC range for single-stepping (start, end)
     pub step_range: Option<(u32, u32)>,
+    /// Timed input handler
+    timed_input: TimedInput,
 }
 
 impl Interpreter {
@@ -50,6 +53,7 @@ impl Interpreter {
             routine_names: RoutineNames::new(),
             single_step: false,
             step_range: None,
+            timed_input: TimedInput::new(),
         }
     }
 
@@ -1382,22 +1386,24 @@ impl Interpreter {
                 // Note: The game prints its own prompt, we don't need to add one
                 io::stdout().flush().ok();
                 
-                let mut input = String::new();
-                io::stdin().read_line(&mut input)
-                    .map_err(|e| format!("Error reading input: {}", e))?;
+                // ALWAYS use the timer-based input path for testing
+                // This ensures we're testing the interruptible infrastructure
+                let (input, was_terminated) = self.timed_input.read_line_with_timer(time, routine)
+                    .map_err(|e| format!("Error reading timed input: {}", e))?;
                 
-                // Simplified timer handling: simulate timer firing once after input
+                // Only simulate timer firing if there actually was a timer
                 if has_timer {
                     debug!("Simulating timer interrupt after input");
-                    // Call the timer routine once
                     let result = self.call_timer_routine(routine)?;
                     debug!("Timer routine returned: {}", result);
-                    // For now, ignore the result (don't terminate input)
-                    // In a full implementation, if result is true, we'd terminate input
                 }
                 
-                // Trim newline - Z-Machine uses lowercase
-                input = input.trim().to_lowercase();
+                if was_terminated {
+                    debug!("Input was terminated by timer (not implemented yet)");
+                }
+                
+                // Convert to lowercase - Z-Machine convention
+                let input = input.to_lowercase();
                 
                 // Limit input to max_len - 1 (leaving room for length byte)
                 let input_bytes = input.as_bytes();

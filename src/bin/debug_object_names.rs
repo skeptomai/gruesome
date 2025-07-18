@@ -1,5 +1,4 @@
 use gruesome::vm::Game;
-use gruesome::zobject::ObjectTable;
 use gruesome::text;
 use std::io::Read;
 
@@ -11,13 +10,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     f.read_to_end(&mut memory)?;
     
     let game = Game::from_memory(memory)?;
-    let obj_table = ObjectTable::new(&game);
     
     println!("=== Searching for 'leaves' object ===\n");
     
     // Search all objects for ones containing "leave"
     for obj_num in 1..=255 {
-        if let Ok(name) = obj_table.get_object_name(obj_num) {
+        // Get object name directly from memory
+        let obj_table_addr = game.header.object_table_addr as usize;
+        let property_defaults = obj_table_addr;
+        let obj_tree_base = property_defaults + 31 * 2;
+        let obj_addr = obj_tree_base + ((obj_num - 1) as usize * 9);
+        
+        if obj_addr + 9 > game.memory.len() {
+            continue;
+        }
+        
+        let prop_table_addr = game.memory[(obj_addr + 7)..(obj_addr + 9)]
+            .iter()
+            .fold(0, |acc, &b| (acc << 8) | b as usize);
+            
+        if prop_table_addr == 0 || prop_table_addr >= game.memory.len() {
+            continue;
+        }
+        
+        // Decode object name
+        let text_len = game.memory[prop_table_addr] as usize;
+        if text_len > 0 {
+            let name_addr = prop_table_addr + 1;
+            let abbrev_addr = game.header.abbrev_table as usize;
+            if let Ok((name, _)) = text::decode_string(&game.memory, name_addr, abbrev_addr) {
             if name.to_lowercase().contains("leave") {
                 println!("Object {}: \"{}\"", obj_num, name);
                 
