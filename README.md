@@ -14,12 +14,16 @@ This project implements a Z-Machine interpreter capable of running Infocom's tex
 - ✅ **Object system** - Complete with properties and attributes
 - ✅ **Parser** - Dictionary lookup and text parsing
 - ✅ **Random events** - Combat and NPC movement work correctly
+- ✅ **Timer support** - Turn-based timers for v3, real-time infrastructure ready for v4+
+- ✅ **Non-blocking I/O** - True event-driven input using OS-level notifications
+- ✅ **read_char support** - Single character input with timers (v4+)
 
 ### Known Limitations
 
-- ⚠️ **Simplified timer support** - Timer routines execute after input only (lantern still works)
-- ⚠️ **Limited display opcodes** - Basic text output only
-- ⚠️ **v3 games only** - Later versions not yet supported
+- ⚠️ **Limited display opcodes** - split_window, set_cursor, etc. not implemented
+- ⚠️ **v3 games primarily** - Basic v4+ support (SREAD/read_char work)
+- ⚠️ **No sound support** - sound_effect plays beep only
+- ⚠️ **No graphics** - Text-only implementation
 
 ## Quick Start
 
@@ -66,6 +70,9 @@ For developers new to the project:
 - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Complete system architecture with diagrams
 - **[CODEBASE_GUIDE.md](docs/CODEBASE_GUIDE.md)** - Detailed guide for new contributors
 - **[QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md)** - Quick reference for common tasks
+- **[TIMER_IMPLEMENTATION.md](docs/TIMER_IMPLEMENTATION.md)** - Timer and real-time support details
+- **[NONBLOCKING_IO.md](docs/NONBLOCKING_IO.md)** - Non-blocking I/O architecture
+- **[READ_CHAR_IMPLEMENTATION.md](docs/READ_CHAR_IMPLEMENTATION.md)** - Character input implementation
 - **[ROUTINE_ADDRESSES.md](docs/ROUTINE_ADDRESSES.md)** - Known Zork I routine documentation
 - **[CLAUDE.md](CLAUDE.md)** - Implementation notes and guidelines
 
@@ -78,7 +85,9 @@ The interpreter is structured as follows:
 - **Instruction** (`instruction.rs`) - Instruction decoding
 - **Game** (`game.rs`) - Game file loading and memory management
 - **Object System** (`zobject.rs`) - Z-Machine object tree
-- **Text** (`text.rs`) - ZSCII encoding/decoding
+- **Text** (`text.rs`) - ZSCII encoding/decoding with packed addresses
+- **Dictionary** (`dictionary.rs`) - Word parsing and lookup
+- **Timed Input** (`timed_input.rs`) - Non-blocking I/O with timer support
 - **Save/Restore** (`quetzal/`) - Quetzal save format implementation
 
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed architecture information.
@@ -102,10 +111,12 @@ RUST_LOG=debug cargo run
 
 Contributions are welcome! Key areas for improvement:
 
-1. **Timed interrupts** - Implement timer support for authentic gameplay
-2. **Display opcodes** - Add missing display functionality
-3. **Version support** - Extend beyond v3 to support more games
-4. **Performance** - Optimize hot paths in the interpreter
+1. **Display opcodes** - split_window, set_cursor, set_text_style, etc.
+2. **Version support** - Full v4/v5/v6 support (v7/v8 are rare)
+3. **Sound support** - Implement proper sound_effect for games like Lurking Horror
+4. **Status line** - Implement proper status line handling
+5. **Performance** - Optimize hot paths in the interpreter
+6. **More games** - Test with other Infocom titles
 
 See [CODEBASE_GUIDE.md](docs/CODEBASE_GUIDE.md) for getting started and [CLAUDE.md](CLAUDE.md) for implementation notes.
 
@@ -117,6 +128,9 @@ This implementation follows the Z-Machine Standards Document 1.1. Notable featur
 - Implements proper Quetzal save format with XOR-RLE compression
 - Handles both Variable and Long forms of 2OP instructions
 - Supports the full Z-Machine v3 instruction set
+- Real non-blocking I/O using OS-level event notification (epoll/kqueue/IOCP)
+- Timer callbacks for both SREAD and read_char opcodes
+- Turn-based timer support for v3 games, real-time ready for v4+
 
 ## License
 
