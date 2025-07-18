@@ -253,9 +253,24 @@ impl Interpreter {
         info!("Starting Z-Machine interpreter...");
         info!("Initial PC: {:05x}", self.vm.pc);
 
-        // Clear the screen at game start for a clean display
-        if let Some(ref mut display) = self.display {
-            display.clear_screen()?;
+        // Set up initial display for v3 games
+        if self.vm.game.header.version == 3 {
+            if let Some(ref mut display) = self.display {
+                // Clear screen
+                display.clear_screen()?;
+                
+                // Create status window (1 line)
+                display.split_window(1)?;
+                
+                // Position cursor below status line for game output
+                print!("\x1b[2;1H");  // Move to line 2, column 1
+                io::stdout().flush().ok();
+            }
+        } else {
+            // For non-v3 games, just clear screen
+            if let Some(ref mut display) = self.display {
+                display.clear_screen()?;
+            }
         }
 
         loop {
