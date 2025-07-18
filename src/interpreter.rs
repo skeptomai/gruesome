@@ -1386,20 +1386,37 @@ impl Interpreter {
                 // Note: The game prints its own prompt, we don't need to add one
                 io::stdout().flush().ok();
                 
-                // ALWAYS use the timer-based input path for testing
-                // This ensures we're testing the interruptible infrastructure
-                let (input, was_terminated) = self.timed_input.read_line_with_timer(time, routine)
-                    .map_err(|e| format!("Error reading timed input: {}", e))?;
+                // Create timer callback closure if we have a timer
+                let timer_callback = if has_timer && routine > 0 {
+                    // Create a closure that captures self through a raw pointer
+                    // This is safe because we know the interpreter outlives the input operation
+                    let interp_ptr = self as *mut Interpreter;
+                    Some(move || -> Result<bool, String> {
+                        unsafe {
+                            debug!("Timer callback triggered for routine 0x{:04x}", routine);
+                            (*interp_ptr).call_timer_routine(routine)
+                        }
+                    })
+                } else {
+                    None
+                };
                 
-                // Only simulate timer firing if there actually was a timer
-                if has_timer {
-                    debug!("Simulating timer interrupt after input");
+                // Read input with optional timer callback
+                let (input, was_terminated) = self.timed_input.read_line_with_timer(
+                    time, 
+                    routine,
+                    timer_callback
+                ).map_err(|e| format!("Error reading timed input: {}", e))?;
+                
+                // For turn-based games, simulate timer firing after input if not already fired
+                if has_timer && !was_terminated {
+                    debug!("Turn-based timer: simulating timer after input completion");
                     let result = self.call_timer_routine(routine)?;
                     debug!("Timer routine returned: {}", result);
                 }
                 
                 if was_terminated {
-                    debug!("Input was terminated by timer (not implemented yet)");
+                    info!("Input was terminated by timer interrupt");
                 }
                 
                 // Convert to lowercase - Z-Machine convention
@@ -1640,6 +1657,68 @@ impl Interpreter {
                 
                 Ok(ExecutionResult::Continue)
             }
+            0x16 => {
+                // read_char (V4+)
+                if self.vm.game.header.version < 4 {
+                    return Err("read_char is only available in V4+".to_string());
+                }
+                
+                // read_char has 1-3 operands:
+                // 1. keyboard (1 = read from keyboard, must be 1)
+                // 2. time (optional) - timeout in tenths of seconds
+                // 3. routine (optional) - routine to call on timeout
+                
+                if operands.is_empty() || operands[0] != 1 {
+                    return Err("read_char requires keyboard parameter = 1".to_string());
+                }
+                
+                let time = if operands.len() > 1 { operands[1] } else { 0 };
+                let routine = if operands.len() > 2 { operands[2] } else { 0 };
+                let has_timer = time > 0 && routine > 0;
+                
+                debug!("read_char: time={}, routine=0x{:04x}, has_timer={}", 
+                       time, routine, has_timer);
+                
+                // Flush any pending output
+                io::stdout().flush().ok();
+                
+                // Create timer callback if needed
+                let timer_callback = if has_timer {
+                    let interp_ptr = self as *mut Interpreter;
+                    Some(move || -> Result<bool, String> {
+                        unsafe {
+                            debug!("read_char timer callback for routine 0x{:04x}", routine);
+                            (*interp_ptr).call_timer_routine(routine)
+                        }
+                    })
+                } else {
+                    None
+                };
+                
+                // Read a single character with optional timeout
+                let (ch, was_terminated) = self.read_single_char(time, routine, timer_callback)?;
+                
+                // Store the result
+                if let Some(store_var) = inst.store_var {
+                    let char_code = if was_terminated {
+                        0 // Return 0 if terminated by timer
+                    } else {
+                        match ch {
+                            '\n' | '\r' => 13,  // Return
+                            '\x08' | '\x7f' => 8,  // Backspace/Delete
+                            '\x1b' => 27,  // Escape
+                            _ => ch as u16,
+                        }
+                    };
+                    self.vm.write_variable(store_var, char_code)?;
+                }
+                
+                if was_terminated {
+                    debug!("read_char terminated by timer");
+                }
+                
+                Ok(ExecutionResult::Continue)
+            }
             0x1B => {
                 // tokenise (V5+) or unknown in V3
                 // In V3, this opcode is not documented
@@ -1713,6 +1792,17 @@ impl Interpreter {
         Ok(ExecutionResult::Continue)
     }
 
+    /// Read a single character with optional timeout
+    fn read_single_char<F>(&mut self, time_tenths: u16, routine_addr: u16, timer_callback: Option<F>) 
+        -> Result<(char, bool), String>
+    where
+        F: FnMut() -> Result<bool, String>,
+    {
+        // For now, delegate to timed_input's character reading
+        // This will need to be implemented in timed_input.rs
+        self.timed_input.read_char_with_timeout_callback(time_tenths, routine_addr, timer_callback)
+    }
+    
     /// Handle routine calls
     /// Call a timer routine and execute it to completion
     fn call_timer_routine(&mut self, routine_addr: u16) -> Result<bool, String> {

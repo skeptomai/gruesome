@@ -46,12 +46,22 @@ impl TimedInput {
     /// This uses crossterm's event system for true non-blocking I/O.
     /// The OS notifies us when input is available (no polling required).
     /// 
+    /// Parameters:
+    /// - time_tenths: timeout in tenths of a second (0 = no timeout)
+    /// - routine_addr: address of timer routine (for logging)
+    /// - timer_callback: optional callback to execute when timer expires
+    ///                   returns true to terminate input, false to continue
+    /// 
     /// Returns: (input_string, was_terminated_by_timer)
-    pub fn read_line_with_timer(
+    pub fn read_line_with_timer<F>(
         &mut self,
         time_tenths: u16,
         routine_addr: u16,
-    ) -> Result<(String, bool), String> {
+        timer_callback: Option<F>,
+    ) -> Result<(String, bool), String> 
+    where
+        F: FnMut() -> Result<bool, String>,
+    {
         debug!("read_line_with_timer called: time={} tenths ({}s), routine=0x{:04x}", 
                time_tenths, time_tenths as f32 / 10.0, routine_addr);
         
@@ -67,13 +77,13 @@ impl TimedInput {
         debug!("Terminal input detected - using non-blocking event system");
         
         // Use the real non-blocking implementation
-        self.read_line_nonblocking(time_tenths, routine_addr)
+        self.read_line_nonblocking(time_tenths, routine_addr, timer_callback)
     }
     
     /// Read a line without any timer support (basic mode)
     pub fn read_line_basic(&mut self) -> Result<String, String> {
-        // Just use the timer version with no timeout
-        let (input, _) = self.read_line_with_timer(0, 0)?;
+        // Just use the timer version with no timeout and no callback
+        let (input, _) = self.read_line_with_timer::<fn() -> Result<bool, String>>(0, 0, None)?;
         Ok(input)
     }
     
@@ -99,11 +109,15 @@ impl TimedInput {
     /// 
     /// This uses crossterm's event system which leverages OS-level
     /// event notification (epoll on Linux, kqueue on macOS, IOCP on Windows)
-    fn read_line_nonblocking(
+    fn read_line_nonblocking<F>(
         &mut self,
         time_tenths: u16,
         routine_addr: u16,
-    ) -> Result<(String, bool), String> {
+        mut timer_callback: Option<F>,
+    ) -> Result<(String, bool), String> 
+    where
+        F: FnMut() -> Result<bool, String>,
+    {
         debug!("Entering non-blocking input mode");
         
         // Clear buffer for new input
@@ -125,7 +139,7 @@ impl TimedInput {
         } else {
             None
         };
-        let start_time = Instant::now();
+        let mut start_time = Instant::now();
         
         info!("Non-blocking input active. Timeout: {:?}, routine: 0x{:04x}", timeout, routine_addr);
         
@@ -134,9 +148,28 @@ impl TimedInput {
             if let Some(timeout_duration) = timeout {
                 if start_time.elapsed() >= timeout_duration {
                     debug!("Timer expired after {:?}", start_time.elapsed());
-                    // In a real implementation, we would call the timer routine here
-                    // For now, just return the partial input
-                    break Ok((self.buffer.clone(), true));
+                    
+                    // Call the timer callback if provided
+                    if let Some(ref mut callback) = timer_callback {
+                        match callback() {
+                            Ok(terminate) => {
+                                if terminate {
+                                    debug!("Timer callback requested input termination");
+                                    break Ok((self.buffer.clone(), true));
+                                } else {
+                                    debug!("Timer callback requested continuation");
+                                    // Reset timer for next interrupt
+                                    start_time = Instant::now();
+                                }
+                            }
+                            Err(e) => {
+                                return Err(format!("Timer callback error: {}", e));
+                            }
+                        }
+                    } else {
+                        // No callback provided, just return with timeout flag
+                        break Ok((self.buffer.clone(), true));
+                    }
                 }
             }
             
@@ -265,15 +298,143 @@ impl TimedInput {
     }
     
     
-    /// Read a single character with optional timeout
+    /// Read a single character with optional timeout and callback
     /// 
-    /// For future implementation of read_char opcode
-    pub fn read_char_with_timeout(
+    /// Used by the read_char opcode (V4+)
+    /// 
+    /// Returns: (character, was_terminated_by_timer)
+    pub fn read_char_with_timeout_callback<F>(
         &mut self,
-        _timeout_tenths: u16,
-    ) -> Result<Option<char>, String> {
-        // Placeholder for read_char implementation
-        Err("read_char not implemented yet".to_string())
+        time_tenths: u16,
+        routine_addr: u16,
+        timer_callback: Option<F>,
+    ) -> Result<(char, bool), String>
+    where
+        F: FnMut() -> Result<bool, String>,
+    {
+        debug!("read_char_with_timeout_callback: time={} tenths, routine=0x{:04x}", 
+               time_tenths, routine_addr);
+        
+        // Check if stdin is a terminal
+        if !atty::is(atty::Stream::Stdin) {
+            // Not a terminal - read single character from standard input
+            debug!("Input is piped/redirected - using standard single char read");
+            let ch = self.read_char_standard()?;
+            return Ok((ch, false));
+        }
+        
+        // Terminal input - use non-blocking single character read
+        debug!("Terminal input detected - using non-blocking character read");
+        self.read_char_nonblocking(time_tenths, routine_addr, timer_callback)
+    }
+    
+    /// Read a single character from standard input (blocking)
+    fn read_char_standard(&self) -> Result<char, String> {
+        use std::io::Read;
+        
+        let mut buffer = [0; 1];
+        io::stdin()
+            .read_exact(&mut buffer)
+            .map_err(|e| format!("Failed to read character: {}", e))?;
+        
+        Ok(buffer[0] as char)
+    }
+    
+    /// Read single character using non-blocking event-driven I/O
+    fn read_char_nonblocking<F>(
+        &mut self,
+        time_tenths: u16,
+        routine_addr: u16,
+        mut timer_callback: Option<F>,
+    ) -> Result<(char, bool), String>
+    where
+        F: FnMut() -> Result<bool, String>,
+    {
+        debug!("Entering non-blocking character read mode");
+        
+        // Enable raw mode for character-by-character input
+        terminal::enable_raw_mode()
+            .map_err(|e| format!("Failed to enable raw mode: {}", e))?;
+        self.in_raw_mode = true;
+        
+        // Calculate timeout if specified
+        let timeout = if time_tenths > 0 {
+            Some(Duration::from_millis((time_tenths as u64) * 100))
+        } else {
+            None
+        };
+        let mut start_time = Instant::now();
+        
+        info!("Non-blocking char read. Timeout: {:?}, routine: 0x{:04x}", timeout, routine_addr);
+        
+        let result = loop {
+            // Check for timeout
+            if let Some(timeout_duration) = timeout {
+                if start_time.elapsed() >= timeout_duration {
+                    debug!("Character read timer expired after {:?}", start_time.elapsed());
+                    
+                    // Call the timer callback if provided
+                    if let Some(ref mut callback) = timer_callback {
+                        match callback() {
+                            Ok(terminate) => {
+                                if terminate {
+                                    debug!("Timer callback requested termination");
+                                    break Ok(('\0', true)); // Return null char on timeout
+                                } else {
+                                    debug!("Timer callback requested continuation");
+                                    // Reset timer for next interrupt
+                                    start_time = Instant::now();
+                                }
+                            }
+                            Err(e) => {
+                                self.cleanup();
+                                return Err(format!("Timer callback error: {}", e));
+                            }
+                        }
+                    } else {
+                        // No callback, just timeout
+                        break Ok(('\0', true));
+                    }
+                }
+            }
+            
+            // Wait for next event
+            let poll_timeout = if timeout.is_some() {
+                Duration::from_millis(100) // Check timer every 100ms
+            } else {
+                Duration::from_secs(3600) // Effectively infinite
+            };
+            
+            if event::poll(poll_timeout).map_err(|e| format!("Event poll error: {}", e))? {
+                match event::read().map_err(|e| format!("Event read error: {}", e))? {
+                    Event::Key(key_event) => {
+                        // Return the character immediately
+                        if let KeyCode::Char(ch) = key_event.code {
+                            debug!("Character received: '{}' (0x{:02x})", ch, ch as u8);
+                            break Ok((ch, false));
+                        } else if let KeyCode::Enter = key_event.code {
+                            debug!("Enter key received");
+                            break Ok(('\r', false));
+                        } else if let KeyCode::Backspace = key_event.code {
+                            debug!("Backspace received");
+                            break Ok(('\x08', false));
+                        } else if let KeyCode::Esc = key_event.code {
+                            debug!("Escape received");
+                            break Ok(('\x1b', false));
+                        }
+                        // Ignore other special keys for now
+                    }
+                    _ => {
+                        // Ignore non-key events
+                    }
+                }
+            }
+        };
+        
+        // Clean up
+        self.cleanup();
+        
+        result
     }
 }
 

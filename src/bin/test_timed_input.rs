@@ -25,7 +25,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nTest 2: Timed input with 5 second timeout");
     println!("Type something within 5 seconds:");
     
-    match timed_input.read_line_with_timer(50, 0x1234) {  // 50 tenths = 5 seconds
+    // Create a simple timer callback that just logs
+    let timer_fired = std::cell::RefCell::new(false);
+    let callback = || -> Result<bool, String> {
+        println!("\n*** TIMER FIRED! ***");
+        *timer_fired.borrow_mut() = true;
+        Ok(false)  // Don't terminate input
+    };
+    
+    match timed_input.read_line_with_timer(50, 0x1234, Some(callback)) {  // 50 tenths = 5 seconds
         Ok((input, terminated)) => {
             println!("\nYou typed: '{}'", input);
             if terminated {
@@ -41,7 +49,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nTest 3: Very short timeout (1 second)");
     println!("Try to type something (it will timeout):");
     
-    match timed_input.read_line_with_timer(10, 0x5678) {  // 10 tenths = 1 second
+    let callback2 = || -> Result<bool, String> {
+        println!("\n*** TIMER EXPIRED - TERMINATING INPUT ***");
+        Ok(true)  // Terminate input
+    };
+    
+    match timed_input.read_line_with_timer(10, 0x5678, Some(callback2)) {  // 10 tenths = 1 second
         Ok((input, terminated)) => {
             if terminated {
                 println!("\nTimed out! Partial input: '{}'", input);
