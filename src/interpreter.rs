@@ -1286,6 +1286,19 @@ impl Interpreter {
                 self.do_call(routine_addr, &[arg], inst.store_var)?;
                 Ok(ExecutionResult::Called)
             }
+            0x1C => {
+                // not (v1-v3) - bitwise NOT
+                // In v5+ this becomes VAR:143
+                if self.vm.game.header.version <= 3 {
+                    if let Some(store_var) = inst.store_var {
+                        let result = !op1;  // op2 is ignored
+                        self.vm.write_variable(store_var, result)?;
+                    }
+                } else {
+                    return Err("2OP:0x1C (not) is only valid in v1-v3".to_string());
+                }
+                Ok(ExecutionResult::Continue)
+            }
             0x1F => {
                 // Undocumented 2OP:0x1F instruction
                 // Found in some Infocom games but not in the standard
