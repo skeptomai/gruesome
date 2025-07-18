@@ -203,6 +203,35 @@ Features:
 - Unicode support via escape sequences
 - High bit indicates end of string
 
+#### String Address Types
+
+The Z-Machine uses two different types of string addresses:
+
+1. **Byte Addresses** (direct memory addresses)
+   - Used by `decode_string()`
+   - Direct memory addresses (e.g., 0x1234)
+   - Used for:
+     - Object names/descriptions in property tables
+     - Dictionary entries
+     - Strings embedded in Z-code after print/print_ret instructions
+     - Any string accessed by actual byte address
+   - Returns both the decoded string and bytes consumed (needed to find next data)
+
+2. **Packed Addresses** (compressed 16-bit addresses)
+   - Used by `decode_string_at_packed_addr()`
+   - Must be "unpacked" before use
+   - Used for:
+     - `print_paddr` instruction operands
+     - Abbreviation table entries
+     - High strings table (V5+)
+   - Unpacking formula varies by version:
+     - V1-3: multiply by 2
+     - V4-5: multiply by 4
+     - V6-7: multiply by 4 + offset
+     - V8: multiply by 8
+
+The packed address system allows 16-bit values to reference strings throughout a 64KB+ memory space, crucial for saving space in abbreviations and certain opcodes.
+
 ### 2. Dictionary (`dictionary.rs`)
 
 Fast word lookup for parsing:
