@@ -1726,6 +1726,29 @@ impl Interpreter {
                 }
                 Ok(ExecutionResult::Continue)
             }
+            0x11 => {
+                // set_text_style
+                // Style bits: 1=reverse, 2=bold, 4=italic, 8=fixed-pitch
+                if !operands.is_empty() {
+                    let style = operands[0];
+                    debug!("set_text_style: style={}", style);
+                    
+                    // Apply text styles directly to stdout
+                    // For now, just handle the common styles
+                    if style == 0 {
+                        // Reset to normal
+                        print!("\x1b[0m");
+                    } else if style & 1 != 0 {
+                        // Reverse video
+                        print!("\x1b[7m");
+                    } else if style & 2 != 0 {
+                        // Bold
+                        print!("\x1b[1m");
+                    }
+                    io::stdout().flush().ok();
+                }
+                Ok(ExecutionResult::Continue)
+            }
             0x15 => {
                 // sound_effect - V3 only supports bleeps
                 // Format: sound_effect number effect volume routine
