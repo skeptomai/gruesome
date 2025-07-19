@@ -1,7 +1,7 @@
 use gruesome::instruction::Instruction;
 use gruesome::interpreter::Interpreter;
 use gruesome::vm::{Game, VM};
-use log::{debug, info};
+use log::debug;
 use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,13 +16,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     f.read_to_end(&mut memory)?;
 
     let game = Game::from_memory(memory)?;
-    let mut vm = VM::new(game);
+    let vm = VM::new(game);
     let mut interpreter = Interpreter::new(vm);
 
     println!("=== Tracing Timer/Queue System Initialization ===\n");
 
     // Set initial PC to start of game
-    interpreter.vm.set_pc(0x4f05);
+    interpreter.vm.pc = 0x4f05;
 
     // Track globals 88-90 (0x58-0x5a) for timer values
     let mut timer_globals_set = false;
@@ -31,9 +31,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Run until we see timer-related initialization
     while steps < 10000 {
-        let pc = interpreter.vm.pc();
+        let pc = interpreter.vm.pc;
 
-        if let Ok(inst) = interpreter.vm.decode_instruction(pc) {
+        if let Ok(inst) = Instruction::decode(
+            &interpreter.vm.game.memory,
+            pc as usize,
+            interpreter.vm.game.header.version,
+        ) {
             // Check for stores to timer globals
             if inst.opcode == 0x0d {
                 // store
@@ -88,7 +92,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // Step the interpreter
-            match interpreter.step() {
+            let new_pc = pc + inst.size as u32;
+            interpreter.vm.pc = new_pc;
+
+            match interpreter.execute_instruction(&inst) {
                 Ok(_) => {}
                 Err(e) => {
                     debug!("Error at PC 0x{:04x}: {}", pc, e);
@@ -107,9 +114,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Check final timer values
     println!("\n=== Timer Global Values After Init ===");
-    println!("G88 (0x58): {}", interpreter.vm.get_global(0x58)?);
-    println!("G89 (0x59): {}", interpreter.vm.get_global(0x59)?);
-    println!("G90 (0x5a): {}", interpreter.vm.get_global(0x5a)?);
+    println!("G88 (0x58): {}", interpreter.vm.read_global(0x58)?);
+    println!("G89 (0x59): {}", interpreter.vm.read_global(0x59)?);
+    println!("G90 (0x5a): {}", interpreter.vm.read_global(0x5a)?);
 
     if let Some(queue_addr) = queue_routine_addr {
         println!("\nLikely QUEUE routine at: 0x{:04x}", queue_addr);

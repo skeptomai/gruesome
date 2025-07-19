@@ -1,4 +1,3 @@
-use gruesome::interpreter::Interpreter;
 use gruesome::vm::{Game, VM};
 use std::io::Read;
 

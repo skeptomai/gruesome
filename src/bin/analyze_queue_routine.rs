@@ -1,6 +1,5 @@
 use gruesome::disassembler::Disassembler;
 use gruesome::vm::Game;
-use log::debug;
 use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

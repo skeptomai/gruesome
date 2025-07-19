@@ -1,7 +1,6 @@
 use env_logger;
 use gruesome::interpreter::Interpreter;
 use gruesome::vm::{Game, VM};
-use log::{debug, info};
 use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -15,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     f.read_to_end(&mut memory)?;
 
     let game = Game::from_memory(memory)?;
-    let mut vm = VM::new(game);
+    let vm = VM::new(game);
     let mut interpreter = Interpreter::new(vm);
 
     // Run the game up to the "move leaves" command

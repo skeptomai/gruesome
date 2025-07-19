@@ -2,7 +2,6 @@ use env_logger;
 use gruesome::disassembler::Disassembler;
 use gruesome::interpreter::Interpreter;
 use gruesome::vm::{Game, VM};
-use log::{debug, info};
 use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,11 +15,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     f.read_to_end(&mut memory)?;
 
     let game = Game::from_memory(memory)?;
-    let vm = VM::new(game)?;
+    let vm = VM::new(game);
     let mut interpreter = Interpreter::new(vm);
 
     // Enable debug mode for specific range around WORD-PRINT
-    interpreter.enable_single_step(0x5fda, 0x5ff0);
+    // interpreter.enable_single_step(0x5fda, 0x5ff0); // This method doesn't exist
 
     // Set up a call to WORD-PRINT with "leaves" (6 characters)
     // First set up the text buffer with "leaves" at a known location
@@ -41,9 +40,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Set up locals: L01=6 (length), L02=0 (position)
     interpreter.vm.call_stack.push(gruesome::vm::CallFrame {
         return_pc: 0x9999, // dummy return address
-        locals: vec![6, 0],
-        result_var: None,
-        arg_count: 2,
+        return_store: None,
+        num_locals: 2,
+        locals: [6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        stack_base: interpreter.vm.stack.len(),
     });
     interpreter.vm.pc = 0x5fda;
 
@@ -62,19 +62,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Show locals before execution
         if let Some(frame) = interpreter.vm.call_stack.last() {
             print!("  Locals before: ");
-            for (i, &local) in frame.locals.iter().enumerate() {
+            for (i, &local) in frame.locals[0..frame.num_locals as usize]
+                .iter()
+                .enumerate()
+            {
                 print!("L{:02}={} ", i + 1, local);
             }
             println!();
         }
 
         // Execute one instruction
-        match interpreter.execute_next() {
+        // Decode and execute one instruction
+        let inst = gruesome::instruction::Instruction::decode(
+            &interpreter.vm.game.memory,
+            interpreter.vm.pc as usize,
+            interpreter.vm.game.header.version,
+        )?;
+        let new_pc = interpreter.vm.pc + inst.size as u32;
+        interpreter.vm.pc = new_pc;
+
+        match interpreter.execute_instruction(&inst) {
             Ok(result) => {
                 // Show locals after execution
                 if let Some(frame) = interpreter.vm.call_stack.last() {
                     print!("  Locals after:  ");
-                    for (i, &local) in frame.locals.iter().enumerate() {
+                    for (i, &local) in frame.locals[0..frame.num_locals as usize]
+                        .iter()
+                        .enumerate()
+                    {
                         print!("L{:02}={} ", i + 1, local);
                     }
                     println!();

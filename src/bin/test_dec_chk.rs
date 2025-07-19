@@ -1,7 +1,6 @@
 use env_logger;
 use gruesome::interpreter::Interpreter;
 use gruesome::vm::{Game, VM};
-use log::{debug, info};
 use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -15,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     f.read_to_end(&mut memory)?;
 
     let game = Game::from_memory(memory)?;
-    let mut vm = VM::new(game);
+    let vm = VM::new(game);
     let mut interpreter = Interpreter::new(vm);
 
     println!("=== Testing dec_chk instruction ===\n");
@@ -26,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Set up a local variable
     interpreter.vm.call_stack.push(gruesome::vm::CallFrame {
         return_pc: 0x9999,
-        locals: [6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        locals: [6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 16 zeros
         return_store: None,
         num_locals: 2,
         stack_base: 0,
@@ -37,8 +36,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     interpreter.vm.pc = 0x5fdf;
 
     // Decode instruction at 0x5fdf
-    if let Ok(inst) = gruesome::instruction::decode_instruction(&interpreter.vm.game.memory, 0x5fdf)
-    {
+    if let Ok(inst) = gruesome::instruction::Instruction::decode(
+        &interpreter.vm.game.memory,
+        0x5fdf,
+        interpreter.vm.game.header.version,
+    ) {
         println!("Instruction at 0x5fdf:");
         println!("  Form: {:?}", inst.form);
         println!("  Opcode: 0x{:02x}", inst.opcode);
@@ -54,7 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         // Execute the instruction
-        match interpreter.execute() {
+        match interpreter.execute_instruction(&inst) {
             Ok(_) => {
                 println!(
                     "\nLocals after: L01={}, L02={}",

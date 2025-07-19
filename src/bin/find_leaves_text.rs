@@ -9,7 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut memory = Vec::new();
     f.read_to_end(&mut memory)?;
 
-    let game = Game::from_memory(memory)?;
+    let game = Game::from_memory(memory.clone())?;
 
     println!("Searching for 'leave' text patterns...\n");
 
@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let abbrev_table = game.header.abbrev_table as usize;
 
     for addr in 0..memory.len() - 10 {
-        if let Ok(text) = text::decode_string(&memory, addr, abbrev_table) {
+        if let Ok((text, _)) = text::decode_string(&memory, addr, abbrev_table) {
             for pattern in &patterns {
                 if text.contains(pattern) && text.len() < 100 {
                     println!("Found at 0x{:04x}: \"{}\"", addr, text);
@@ -61,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Also check dictionary
     println!("\nChecking dictionary entries:");
-    let dict_addr = game.header.dict_addr as usize;
+    let dict_addr = game.header.dictionary as usize;
     let sep_count = memory[dict_addr] as usize;
     let sep_start = dict_addr + 1;
     let entry_length = memory[sep_start + sep_count] as usize;
@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for i in 0..entry_count {
         let entry_addr = entries_start + (i * entry_length);
-        if let Ok(word) = text::decode_string(&memory, entry_addr, abbrev_table) {
+        if let Ok((word, _)) = text::decode_string(&memory, entry_addr, abbrev_table) {
             if word.contains("leave") {
                 println!(
                     "Dictionary entry {}: \"{}\" at 0x{:04x}",

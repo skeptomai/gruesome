@@ -1,5 +1,4 @@
-use gruesome::interpreter::Interpreter;
-use gruesome::vm::{Game, VM};
+use gruesome::vm::Game;
 use log::info;
 use std::io::Read;
 
@@ -17,12 +16,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // First find the "leaves" object
     let game = Game::from_memory(memory)?;
 
-    // Look for the leaves object in the object table
-    let obj_table = gruesome::zobject::ObjectTable::new(&game);
-    for i in 1..=255 {
-        if let Ok(name) = obj_table.get_object_name(i) {
-            if name.contains("leave") {
-                info!("Object {}: \"{}\"", i, name);
+    // Look for the leaves object by searching object names in memory
+    let obj_table_addr = game.header.object_table_addr as usize;
+    let property_defaults = obj_table_addr;
+    let obj_tree_base = property_defaults + 31 * 2; // v3 has 31 default properties
+
+    for obj_num in 1..=255 {
+        let obj_addr = obj_tree_base + ((obj_num - 1) * 9);
+        if obj_addr + 9 > game.memory.len() {
+            break;
+        }
+
+        // Get property table address
+        let prop_addr =
+            ((game.memory[obj_addr + 7] as usize) << 8) | (game.memory[obj_addr + 8] as usize);
+        if prop_addr == 0 || prop_addr >= game.memory.len() {
+            continue;
+        }
+
+        // Object name is at the start of property table
+        let name_len = game.memory[prop_addr] as usize;
+        if name_len > 0 {
+            let name_addr = prop_addr + 1;
+            if let Ok((name, _)) = gruesome::text::decode_string(
+                &game.memory,
+                name_addr,
+                game.header.abbrev_table as usize,
+            ) {
+                if name.contains("leave") {
+                    info!("Object {}: \"{}\"", obj_num, name);
+                }
             }
         }
     }

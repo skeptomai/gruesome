@@ -1,6 +1,5 @@
 use env_logger;
 use gruesome::timed_input::TimedInput;
-use log::info;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logger

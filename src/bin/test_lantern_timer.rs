@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let game = Game::from_memory(memory)?;
     let vm = VM::new(game);
-    let mut interpreter = Interpreter::new(vm);
+    let interpreter = Interpreter::new(vm);
 
     // Hook into read_global to track G88 changes
     let mut last_g88 = 0u16;

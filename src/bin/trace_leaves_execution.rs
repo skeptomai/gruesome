@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     f.read_to_end(&mut memory)?;
 
     let game = Game::from_memory(memory)?;
-    let mut vm = VM::new(game);
+    let vm = VM::new(game);
 
     // Set a breakpoint-like check
     // We want to trace execution from 0x6340 to 0x6360

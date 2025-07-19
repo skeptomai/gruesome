@@ -1,8 +1,6 @@
 use env_logger;
 use gruesome::disassembler::Disassembler;
-use gruesome::instruction::Instruction;
 use gruesome::vm::Game;
-use log::info;
 use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

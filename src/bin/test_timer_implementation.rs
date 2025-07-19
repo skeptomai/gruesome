@@ -1,6 +1,6 @@
 use gruesome::interpreter::Interpreter;
 use gruesome::vm::{Game, VM};
-use log::{debug, info};
+use log::info;
 use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

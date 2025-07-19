@@ -1,5 +1,4 @@
 use gruesome::disassembler::Disassembler;
-use gruesome::instruction::Instruction;
 use gruesome::interpreter::Interpreter;
 use gruesome::vm::{Game, VM};
 use std::io::Read;
@@ -61,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test random in actual game
     let vm = VM::new(game);
-    let mut interpreter = Interpreter::new(vm);
+    let interpreter = Interpreter::new(vm);
 
     // Find and test the random opcode
     println!("Testing random number generation:");

@@ -1,5 +1,5 @@
 use gruesome::instruction::Instruction;
-use gruesome::interpreter::{ExecutionResult, Interpreter};
+use gruesome::interpreter::Interpreter;
 use gruesome::vm::{Game, VM};
 use std::io::Read;
 
@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Now create a fresh VM and restore
     println!("\nCreating fresh VM and restoring...");
     let game2 = Game::from_memory(memory)?;
-    let mut vm2 = VM::new(game2);
+    let vm2 = VM::new(game2);
 
     // Run the fresh VM to a different point (to prove restore works)
     let mut interpreter2 = Interpreter::new(vm2);
