@@ -4,9 +4,11 @@
 #[macro_use]
 extern crate lazy_static;
 
+pub mod debug_symbols;
 pub mod debugger;
 pub mod dictionary;
 pub mod disassembler;
+pub mod display;
 pub mod game;
 pub mod gamememorymap;
 pub mod header;
@@ -14,16 +16,14 @@ pub mod instruction;
 pub mod interpreter;
 pub mod opcode_tables;
 pub mod property_defaults;
+pub mod quetzal;
 pub mod routine;
 pub mod text;
+pub mod timed_input;
 pub mod util;
 pub mod vm;
 pub mod zobject;
 pub mod zrand;
-pub mod debug_symbols;
-pub mod quetzal;
-pub mod timed_input;
-pub mod display;
 
 #[cfg(test)]
 mod test_execution;

@@ -1,8 +1,8 @@
-use crate::instruction::{Instruction, OperandType};
 use crate::debug_symbols::RoutineNames;
+use crate::display::Display;
+use crate::instruction::{Instruction, OperandType};
 use crate::text;
 use crate::timed_input::TimedInput;
-use crate::display::Display;
 use crate::vm::{CallFrame, VM};
 use log::{debug, info};
 use std::io::{self, Write};
@@ -57,7 +57,7 @@ impl Interpreter {
                 None
             }
         };
-        
+
         Interpreter {
             vm,
             debug: false,
@@ -74,16 +74,16 @@ impl Interpreter {
     pub fn set_debug(&mut self, debug: bool) {
         self.debug = debug;
     }
-    
+
     /// Enable single-step debugging for a PC range
     pub fn enable_single_step(&mut self, start: u32, end: u32) {
         self.single_step = true;
         self.step_range = Some((start, end));
-        
+
         // Show what routines are in this range
         println!("\n=== Single-step debugging enabled ===");
         println!("PC range: 0x{:04x} - 0x{:04x}", start, end);
-        
+
         // Find routines in this range
         let mut routines_in_range = Vec::new();
         for addr in start..=end {
@@ -91,7 +91,7 @@ impl Interpreter {
                 routines_in_range.push((addr, name));
             }
         }
-        
+
         if !routines_in_range.is_empty() {
             println!("Routines in range:");
             for (addr, name) in routines_in_range {
@@ -100,30 +100,34 @@ impl Interpreter {
         }
         println!();
     }
-    
+
     /// Dump memory state for debugging
     fn dump_memory_state(&self) {
         println!("\n=== Memory State ===");
-        
+
         // Show where we are
-        let current_pc_info = if let Some((routine_addr, name)) = self.routine_names.get_routine_containing(self.vm.pc) {
+        let current_pc_info = if let Some((routine_addr, name)) =
+            self.routine_names.get_routine_containing(self.vm.pc)
+        {
             let offset = self.vm.pc - routine_addr;
             format!("0x{:05x} (in {}+0x{:02x})", self.vm.pc, name, offset)
         } else {
             format!("0x{:05x}", self.vm.pc)
         };
         println!("Current PC: {}", current_pc_info);
-        
+
         if let Some(frame) = self.vm.call_stack.last() {
-            println!("Will return to: {}", self.routine_names.format_address(frame.return_pc));
+            println!(
+                "Will return to: {}",
+                self.routine_names.format_address(frame.return_pc)
+            );
         }
-        
+
         // Dump some key globals with names
         println!("\nKey globals:");
         for i in [0, 0x48, 0x4c, 0x4e, 0x6f, 0x7f] {
             if let Ok(val) = self.vm.read_global(i) {
-                let name = crate::debug_symbols::get_global_name(i + 0x10)
-                    .unwrap_or("");
+                let name = crate::debug_symbols::get_global_name(i + 0x10).unwrap_or("");
                 if !name.is_empty() {
                     println!("  G{:02x} {}: {} (0x{:04x})", i, name, val, val);
                 } else {
@@ -131,27 +135,37 @@ impl Interpreter {
                 }
             }
         }
-        
+
         // Dump stack
         println!("\nStack (top 5):");
         for i in 0..5.min(self.vm.stack.len()) {
             let idx = self.vm.stack.len() - 1 - i;
-            println!("  [{}]: {} (0x{:04x})", i, self.vm.stack[idx], self.vm.stack[idx]);
+            println!(
+                "  [{}]: {} (0x{:04x})",
+                i, self.vm.stack[idx], self.vm.stack[idx]
+            );
         }
-        
+
         // Current call frame info
         if let Some(frame) = self.vm.call_stack.last() {
             println!("\nCurrent call frame:");
-            println!("  Return PC: {}", self.routine_names.format_address(frame.return_pc));
+            println!(
+                "  Return PC: {}",
+                self.routine_names.format_address(frame.return_pc)
+            );
             println!("  Locals: {:?}", frame.locals);
         }
-        
+
         // Show call stack
         println!("\nCall stack:");
         for (i, frame) in self.vm.call_stack.iter().rev().enumerate() {
-            println!("  [{}] Return to: {}", i, self.routine_names.format_address(frame.return_pc));
+            println!(
+                "  [{}] Return to: {}",
+                i,
+                self.routine_names.format_address(frame.return_pc)
+            );
         }
-        
+
         println!();
     }
 
@@ -164,19 +178,20 @@ impl Interpreter {
     /// Dump current game state for debugging
     fn dump_game_state(&self, context: &str) {
         debug!("=== GAME STATE DUMP: {} ===", context);
-        
+
         // Current location (global variable 0)
-        if let Ok(location) = self.vm.read_variable(16) { // Global 0 = variable 16
+        if let Ok(location) = self.vm.read_variable(16) {
+            // Global 0 = variable 16
             debug!("Current location (G00): {}", location);
         }
-        
+
         // Player object (often stored in a global, commonly G01 or G02)
         for i in 0..5 {
             if let Ok(value) = self.vm.read_variable(16 + i) {
                 debug!("Global {:02}: {}", i, value);
             }
         }
-        
+
         // Check attributes of current location
         if let Ok(location) = self.vm.read_variable(16) {
             if location > 0 && location < 256 {
@@ -184,35 +199,44 @@ impl Interpreter {
                 for attr in 0..32 {
                     if let Ok(has_attr) = self.vm.test_attribute(location, attr) {
                         if has_attr {
-                            debug!("  Location {} has attribute {} ({})", location, attr, 
-                                   match attr {
-                                       2 => "LIGHT",
-                                       6 => "VISITED?", 
-                                       8 => "LIT?",
-                                       9 => "CONTAINER?",
-                                       20 => "ROOM?",
-                                       _ => "UNKNOWN"
-                                   });
+                            debug!(
+                                "  Location {} has attribute {} ({})",
+                                location,
+                                attr,
+                                match attr {
+                                    2 => "LIGHT",
+                                    6 => "VISITED?",
+                                    8 => "LIT?",
+                                    9 => "CONTAINER?",
+                                    20 => "ROOM?",
+                                    _ => "UNKNOWN",
+                                }
+                            );
                         }
                     }
                 }
-                
+
                 // Specifically check common light attributes including ONBIT (likely attr 3)
                 for light_attr in [2, 3, 8, 15] {
                     if let Ok(has_light) = self.vm.test_attribute(location, light_attr) {
-                        debug!("  Location {} light check attr {} ({}): {}", location, light_attr,
-                               match light_attr {
-                                   3 => "ONBIT?",
-                                   2 => "LIGHT", 
-                                   8 => "LIT",
-                                   15 => "PROVIDE_LIGHT",
-                                   _ => "UNKNOWN"
-                               }, has_light);
+                        debug!(
+                            "  Location {} light check attr {} ({}): {}",
+                            location,
+                            light_attr,
+                            match light_attr {
+                                3 => "ONBIT?",
+                                2 => "LIGHT",
+                                8 => "LIT",
+                                15 => "PROVIDE_LIGHT",
+                                _ => "UNKNOWN",
+                            },
+                            has_light
+                        );
                     }
                 }
             }
         }
-        
+
         // Check player object (assume it's object 4 based on insert_obj we saw)
         let player_obj = 4;
         debug!("=== Player object {} attributes ===", player_obj);
@@ -223,7 +247,7 @@ impl Interpreter {
                 }
             }
         }
-        
+
         // Check for objects that might be light sources or have lighting attributes
         debug!("=== Checking for light sources ===");
         for obj in 1..50 {
@@ -235,7 +259,7 @@ impl Interpreter {
                 }
             }
         }
-        
+
         // Check what happens if we manually set a light attribute on West of House
         debug!("=== Attempting to set light attribute on West of House ===");
         if let Ok(location) = self.vm.read_variable(16) {
@@ -245,7 +269,7 @@ impl Interpreter {
                 debug!("  This suggests the lighting check may use a different mechanism");
             }
         }
-        
+
         debug!("=== END GAME STATE DUMP ===");
     }
 
@@ -258,12 +282,12 @@ impl Interpreter {
             if let Some(ref mut display) = self.display {
                 // Clear screen
                 display.clear_screen()?;
-                
+
                 // Create status window (1 line)
                 display.split_window(1)?;
-                
+
                 // Position cursor below status line for game output
-                print!("\x1b[2;1H");  // Move to line 2, column 1
+                print!("\x1b[2;1H"); // Move to line 2, column 1
                 io::stdout().flush().ok();
             }
         } else {
@@ -288,16 +312,19 @@ impl Interpreter {
             };
 
             // Check if we should single-step this instruction
-            let should_step = self.single_step && match self.step_range {
-                Some((start, end)) => pc >= start && pc <= end,
-                None => true,
-            };
-            
+            let should_step = self.single_step
+                && match self.step_range {
+                    Some((start, end)) => pc >= start && pc <= end,
+                    None => true,
+                };
+
             // Log instruction for debugging
             if should_step {
                 // Print the instruction details (using println for interactive debugging)
                 // Show current routine if known
-                let routine_info = if let Some((routine_addr, name)) = self.routine_names.get_routine_containing(pc) {
+                let routine_info = if let Some((routine_addr, name)) =
+                    self.routine_names.get_routine_containing(pc)
+                {
                     let offset = pc - routine_addr;
                     if offset == 0 {
                         format!(" (start of {})", name)
@@ -308,18 +335,24 @@ impl Interpreter {
                     String::new()
                 };
                 println!("\n[{:05x}] {}{}", pc, instruction, routine_info);
-                println!("  Opcode: 0x{:02x}, Form: {:?}", instruction.opcode, instruction.form);
+                println!(
+                    "  Opcode: 0x{:02x}, Form: {:?}",
+                    instruction.opcode, instruction.form
+                );
                 if !instruction.operands.is_empty() {
                     print!("  Operands:");
-                    for (i, (op_type, value)) in instruction.operand_types.iter()
+                    for (i, (op_type, value)) in instruction
+                        .operand_types
+                        .iter()
                         .zip(instruction.operands.iter())
-                        .enumerate() 
+                        .enumerate()
                     {
                         print!(" [{}] ", i);
                         match op_type {
                             crate::instruction::OperandType::Variable => {
                                 if *value <= 0xFF {
-                                    let var_val = self.vm.read_variable(*value as u8).unwrap_or(0xFFFF);
+                                    let var_val =
+                                        self.vm.read_variable(*value as u8).unwrap_or(0xFFFF);
                                     print!("V{:02x}={} (0x{:04x})", value, var_val, var_val);
                                 } else {
                                     print!("V{:04x}=<invalid>", value);
@@ -334,16 +367,19 @@ impl Interpreter {
                     println!("  Store to: V{:02x}", store);
                 }
                 if let Some(branch) = &instruction.branch {
-                    println!("  Branch: offset={}, on_true={}", branch.offset, branch.on_true);
+                    println!(
+                        "  Branch: offset={}, on_true={}",
+                        branch.offset, branch.on_true
+                    );
                 }
-                
+
                 // Wait for user input
                 print!("  Press Enter to continue (or 'q' to quit, 'm' for memory dump)... ");
                 io::stdout().flush().ok();
-                
+
                 let mut input = String::new();
                 io::stdin().read_line(&mut input).ok();
-                
+
                 if input.trim() == "q" {
                     return Err("User quit".to_string());
                 } else if input.trim() == "m" {
@@ -359,7 +395,7 @@ impl Interpreter {
                     pc, instruction, instruction.form, instruction.opcode
                 );
             }
-            
+
             // Advance PC past the instruction
             self.vm.pc += instruction.size as u32;
 
@@ -478,7 +514,7 @@ impl Interpreter {
                         // (notably 'je') can use up to 4 operands as specified in the Z-Machine spec.
                         //
                         // From the spec: "je a b c d ?(label)" - Jump if a equals any of b, c, or d
-                        
+
                         self.execute_2op_variable(inst, &operands)
                     }
                     _ => self.execute_var(inst, &operands),
@@ -543,8 +579,12 @@ impl Interpreter {
                     } else {
                         text.clone()
                     };
-                    debug!("print at PC {:05x}: '{}'", self.vm.pc - inst.size as u32, preview);
-                    
+                    debug!(
+                        "print at PC {:05x}: '{}'",
+                        self.vm.pc - inst.size as u32,
+                        preview
+                    );
+
                     if let Some(ref mut display) = self.display {
                         display.print(text).ok();
                     } else {
@@ -584,7 +624,7 @@ impl Interpreter {
                             false
                         }
                     };
-                    
+
                     // Branch on success
                     if let Some(ref _branch) = inst.branch {
                         // For V1-3, save branches if successful
@@ -617,7 +657,7 @@ impl Interpreter {
                             false
                         }
                     };
-                    
+
                     // Branch on success
                     if let Some(ref _branch) = inst.branch {
                         self.do_branch(inst, restore_result)
@@ -673,7 +713,7 @@ impl Interpreter {
                 // show_status (V3 only)
                 if self.vm.game.header.version == 3 {
                     debug!("show_status called");
-                    
+
                     // Get location name from G16 (player's location in v3)
                     let location_obj = self.vm.read_global(16)?; // G16 contains player location in v3
                     let location_name = if location_obj > 0 {
@@ -681,11 +721,11 @@ impl Interpreter {
                     } else {
                         "Unknown".to_string()
                     };
-                    
+
                     // Get score and moves from globals (G17 and G18 in v3)
                     let score = self.vm.read_global(17)? as i16;
                     let moves = self.vm.read_global(18)?;
-                    
+
                     if let Some(ref mut display) = self.display {
                         display.show_status(&location_name, score, moves)?;
                     } else {
@@ -727,21 +767,23 @@ impl Interpreter {
                 // jz
                 let condition = operand == 0;
                 let current_pc = self.vm.pc - inst.size as u32;
-                
+
                 // Debug logging for critical checks
-                if current_pc == 0x8d51 {  // The JZ that checks LIT in DescribeObjects
+                if current_pc == 0x8d51 {
+                    // The JZ that checks LIT in DescribeObjects
                     debug!(
                         "JZ at PC {:05x}: checking if value {} is zero, condition = {}",
                         current_pc, operand, condition
                     );
                     // Also check what variable was loaded if this is checking a variable
                     if let Some(var_num) = inst.operands.get(0) {
-                        if *var_num == 0x52 {  // If checking global 0x52 (LIT)
+                        if *var_num == 0x52 {
+                            // If checking global 0x52 (LIT)
                             debug!("  -> This is checking LIT global (0x52)");
                         }
                     }
                 }
-                
+
                 self.do_branch(inst, condition)
             }
             0x05 => {
@@ -775,12 +817,15 @@ impl Interpreter {
                 // Print string at packed address
                 let pc = self.vm.pc - inst.size as u32;
                 debug!("print_paddr at {:05x}: operand={:04x}", pc, operand);
-                
+
                 // Check if this might be the problematic address
                 if operand == 0xa11d || operand == 0x1da1 {
-                    debug!("*** WARNING: print_paddr with suspicious address {:04x} ***", operand);
+                    debug!(
+                        "*** WARNING: print_paddr with suspicious address {:04x} ***",
+                        operand
+                    );
                 }
-                
+
                 let abbrev_addr = self.vm.game.header.abbrev_table as usize;
                 match text::decode_string_at_packed_addr(
                     &self.vm.game.memory,
@@ -860,7 +905,7 @@ impl Interpreter {
                     operand,
                     self.vm.pc - inst.size as u32
                 );
-                
+
                 let prop_len = if operand == 0 {
                     0
                 } else {
@@ -869,11 +914,13 @@ impl Interpreter {
                     let size_byte_addr = (operand as u32).saturating_sub(1);
                     let size_byte = self.vm.read_byte(size_byte_addr);
                     let size = ((size_byte >> 5) & 0x07) + 1;
-                    debug!("  Size byte at {:04x}: {:02x}, property size: {}", 
-                           size_byte_addr, size_byte, size);
+                    debug!(
+                        "  Size byte at {:04x}: {:02x}, property size: {}",
+                        size_byte_addr, size_byte, size
+                    );
                     size as u16
                 };
-                
+
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, prop_len)?;
                 }
@@ -889,13 +936,16 @@ impl Interpreter {
                     addr,
                     self.vm.pc - inst.size as u32
                 );
-                
+
                 // Check if this might be related to our bug
                 if addr == 0xa11d || addr == 0x1da1 {
-                    debug!("*** WARNING: print_addr with suspicious address {:04x} ***", addr);
+                    debug!(
+                        "*** WARNING: print_addr with suspicious address {:04x} ***",
+                        addr
+                    );
                     debug!("*** This might be the source of the 'w' garbage text! ***");
                 }
-                
+
                 match text::decode_string(&self.vm.game.memory, addr, abbrev_addr) {
                     Ok((string, _)) => {
                         print!("{}", string);
@@ -928,12 +978,15 @@ impl Interpreter {
                 let obj_num = operand;
                 let pc = self.vm.pc - inst.size as u32;
                 debug!("print_obj: object #{} at PC 0x{:04x}", obj_num, pc);
-                
+
                 // Special debugging for the leaves issue
                 if pc >= 0x6300 && pc <= 0x6400 {
-                    info!("*** print_obj in error message area: object #{} at PC 0x{:04x}", obj_num, pc);
+                    info!(
+                        "*** print_obj in error message area: object #{} at PC 0x{:04x}",
+                        obj_num, pc
+                    );
                 }
-                
+
                 if obj_num == 0 {
                     // Object 0 means no object - print nothing
                     return Ok(ExecutionResult::Continue);
@@ -941,21 +994,21 @@ impl Interpreter {
                 if obj_num > 255 {
                     return Err(format!("Invalid object number for print_obj: {}", obj_num));
                 }
-                
+
                 // Get object table base
                 let obj_table_addr = self.vm.game.header.object_table_addr as usize;
                 let property_defaults = obj_table_addr;
                 let obj_tree_base = property_defaults + 31 * 2; // 31 default properties, 2 bytes each
-                
+
                 // Calculate object entry address (9 bytes per object in V3)
                 let obj_addr = obj_tree_base + ((obj_num - 1) as usize * 9);
-                
+
                 // Get property table address (last 2 bytes of object entry)
                 let prop_table_addr = self.vm.read_word((obj_addr + 7) as u32) as usize;
-                
+
                 // The first byte is the text-length of the short name
                 let text_len = self.vm.game.memory[prop_table_addr] as usize;
-                
+
                 if text_len > 0 {
                     // Decode the object name (stored as Z-string)
                     let name_addr = prop_table_addr + 1;
@@ -974,7 +1027,7 @@ impl Interpreter {
                         }
                     }
                 }
-                
+
                 Ok(ExecutionResult::Continue)
             }
             _ => Err(format!(
@@ -1023,20 +1076,24 @@ impl Interpreter {
                 let value = self.vm.read_variable(var_num)?;
                 let new_value = value.wrapping_sub(1);
                 self.vm.write_variable(var_num, new_value)?;
-                
+
                 let pc = self.vm.pc - inst.size as u32;
                 if pc == 0x5fdf {
-                    debug!("dec_chk at 0x5fdf: value={} -> new_value={}, comparing with {}", 
-                           value, new_value, op2);
+                    debug!(
+                        "dec_chk at 0x5fdf: value={} -> new_value={}, comparing with {}",
+                        value, new_value, op2
+                    );
                 }
-                
+
                 let condition = (new_value as i16) < (op2 as i16);
-                
+
                 if pc == 0x5fdf && value == 1 {
-                    debug!("  new_value as i16 = {}, op2 as i16 = {}, condition = {}", 
-                           new_value as i16, op2 as i16, condition);
+                    debug!(
+                        "  new_value as i16 = {}, op2 as i16 = {}, condition = {}",
+                        new_value as i16, op2 as i16, condition
+                    );
                 }
-                
+
                 self.do_branch(inst, condition)
             }
             0x05 => {
@@ -1129,18 +1186,17 @@ impl Interpreter {
                 // Use raw operand for variable number (destination)
                 let var_num = inst.operands[0] as u8;
                 let current_pc = self.vm.pc - inst.size as u32;
-                
+
                 if var_num == 0x10 {
                     debug!(
                         "Setting location (global 0) to object {} at PC {:05x}",
-                        op2,
-                        current_pc
+                        op2, current_pc
                     );
                     if op2 == 180 {
                         debug!("  -> This is West of House!");
                     }
                 }
-                
+
                 // Special debugging for LIT variable
                 if var_num == 0x52 {
                     debug!(
@@ -1148,7 +1204,7 @@ impl Interpreter {
                         current_pc, var_num, op2
                     );
                 }
-                
+
                 self.vm.write_variable(var_num, op2)?;
                 Ok(ExecutionResult::Continue)
             }
@@ -1176,14 +1232,17 @@ impl Interpreter {
                 // loadb
                 let addr = op1 as u32 + op2 as u32;
                 let value = self.vm.read_byte(addr) as u16;
-                
+
                 // Debug the leaves issue
                 let pc = self.vm.pc - inst.size as u32;
                 if pc == 0x6345 || pc == 0x6349 {
-                    info!("loadb at 0x{:04x}: base=0x{:04x}, offset={}, addr=0x{:04x}, value={}",
-                          pc, op1, op2, addr, value);
+                    info!(
+                        "loadb at 0x{:04x}: base=0x{:04x}, offset={}, addr=0x{:04x}, value={}",
+                        pc, op1, op2, addr, value
+                    );
                     // Also show what V01 points to
-                    if op1 == 1 { // If using V01
+                    if op1 == 1 {
+                        // If using V01
                         if let Ok(v01) = self.vm.read_variable(1) {
                             info!("  V01 = 0x{:04x}", v01);
                             // Show parse buffer entry
@@ -1194,8 +1253,7 @@ impl Interpreter {
                         }
                     }
                 }
-                
-                
+
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, value)?;
                 }
@@ -1206,8 +1264,7 @@ impl Interpreter {
                 let obj_num = op1;
                 let prop_num = op2 as u8;
                 let value = self.vm.get_property(obj_num, prop_num)?;
-                
-                
+
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, value)?;
                 }
@@ -1291,7 +1348,7 @@ impl Interpreter {
                 // In v5+ this becomes VAR:143
                 if self.vm.game.header.version <= 3 {
                     if let Some(store_var) = inst.store_var {
-                        let result = !op1;  // op2 is ignored
+                        let result = !op1; // op2 is ignored
                         self.vm.write_variable(store_var, result)?;
                     }
                 } else {
@@ -1308,11 +1365,11 @@ impl Interpreter {
                     "WARNING: Undocumented 2OP:1F at PC {:05x} with operands {:04x}, {:04x}",
                     pc, op1, op2
                 );
-                
+
                 // Don't store anything - we don't know what this instruction does
                 // Storing 0 was causing bugs (e.g., clearing the LIT variable)
                 debug!("  -> Treating as NOP, not storing any result");
-                
+
                 Ok(ExecutionResult::Continue)
             }
             _ => {
@@ -1330,7 +1387,7 @@ impl Interpreter {
     }
 
     /// Execute 2OP instructions in Variable form
-    /// 
+    ///
     /// This method handles 2OP instructions that are encoded in Variable form,
     /// which may have more than 2 operands. The actual operand count is determined
     /// by the operand types byte(s) in the instruction encoding.
@@ -1343,11 +1400,13 @@ impl Interpreter {
         if operands.is_empty() && inst.opcode == 0x09 {
             // Special case: Variable 2OP AND with no operands
             // This appears in some games - treat as AND 0, 0
-            debug!("Variable 2OP AND with no operands at PC {:05x} - using 0, 0", 
-                   self.vm.pc - inst.size as u32);
+            debug!(
+                "Variable 2OP AND with no operands at PC {:05x} - using 0, 0",
+                self.vm.pc - inst.size as u32
+            );
             return self.execute_2op(inst, 0, 0);
         }
-        
+
         // Most 2OP instructions require at least 2 operands
         if operands.len() < 2 {
             let pc = self.vm.pc - inst.size as u32;
@@ -1395,7 +1454,9 @@ impl Interpreter {
                 let unpacked_addr = self.unpack_routine_address(routine_addr as u16) as u32;
                 debug!(
                     "Call to packed address 0x{:04x} (unpacked: {}) with store_var = {:?}",
-                    routine_addr, self.routine_names.format_address(unpacked_addr), inst.store_var
+                    routine_addr,
+                    self.routine_names.format_address(unpacked_addr),
+                    inst.store_var
                 );
                 self.do_call(routine_addr, args, inst.store_var)?;
                 Ok(ExecutionResult::Called)
@@ -1404,7 +1465,9 @@ impl Interpreter {
                 // storew
                 if operands.len() < 3 {
                     // For Variable form with OP2, this might be 2OP:21 (storew) not VAR:01
-                    if inst.form == crate::instruction::InstructionForm::Variable && inst.operand_count == crate::instruction::OperandCount::OP2 {
+                    if inst.form == crate::instruction::InstructionForm::Variable
+                        && inst.operand_count == crate::instruction::OperandCount::OP2
+                    {
                         // This is actually 2OP:21 (storew) in Variable form
                         debug!("Note: Variable form storew with OP2 at PC {:05x} - this is 2OP:21 in Variable form", 
                                self.vm.pc - inst.size as u32);
@@ -1446,21 +1509,29 @@ impl Interpreter {
                 }
                 let text_buffer = operands[0] as u32;
                 let parse_buffer = operands[1] as u32;
-                
+
                 // Debug: Show all operands
-                debug!("sread at PC 0x{:04x} with {} operands", self.vm.pc - inst.size as u32, operands.len());
+                debug!(
+                    "sread at PC 0x{:04x} with {} operands",
+                    self.vm.pc - inst.size as u32,
+                    operands.len()
+                );
                 for (i, op) in operands.iter().enumerate() {
                     debug!("  operand[{}] = 0x{:04x}", i, op);
                 }
-                
+
                 // Check for timer parameters (V3+)
                 let has_timer = operands.len() >= 4 && operands[2] > 0 && operands[3] > 0;
                 let time = if operands.len() > 2 { operands[2] } else { 0 };
                 let routine = if operands.len() > 3 { operands[3] } else { 0 };
-                
+
                 if has_timer {
-                    info!("SREAD WITH TIMER: time={} ({}s), routine=0x{:04x}", 
-                          time, time as f32 / 10.0, routine);
+                    info!(
+                        "SREAD WITH TIMER: time={} ({}s), routine=0x{:04x}",
+                        time,
+                        time as f32 / 10.0,
+                        routine
+                    );
                 }
 
                 // In v3 games, automatically update status line before input
@@ -1471,27 +1542,29 @@ impl Interpreter {
                     let location_name = self.get_object_name(location_obj)?;
                     let score = self.vm.read_global(17)? as i16;
                     let moves = self.vm.read_global(18)?;
-                    
+
                     // Now update display
                     if let Some(ref mut display) = self.display {
                         // Create status window if not already created
                         display.split_window(1)?;
-                        
+
                         // Update status line
                         display.show_status(&location_name, score, moves)?;
-                        
-                        debug!("Auto-updated status line: location='{}', score={}, moves={}", 
-                              location_name, score, moves);
+
+                        debug!(
+                            "Auto-updated status line: location='{}', score={}, moves={}",
+                            location_name, score, moves
+                        );
                     }
                 }
 
                 // Get max length from text buffer
                 let max_len = self.vm.read_byte(text_buffer);
-                
+
                 // Read input from user
                 // Note: The game prints its own prompt, we don't need to add one
                 io::stdout().flush().ok();
-                
+
                 // Create timer callback closure if we have a timer
                 let timer_callback = if has_timer && routine > 0 {
                     // Create a closure that captures self through a raw pointer
@@ -1506,28 +1579,27 @@ impl Interpreter {
                 } else {
                     None
                 };
-                
+
                 // Read input with optional timer callback
-                let (input, was_terminated) = self.timed_input.read_line_with_timer(
-                    time, 
-                    routine,
-                    timer_callback
-                ).map_err(|e| format!("Error reading timed input: {}", e))?;
-                
+                let (input, was_terminated) = self
+                    .timed_input
+                    .read_line_with_timer(time, routine, timer_callback)
+                    .map_err(|e| format!("Error reading timed input: {}", e))?;
+
                 // For turn-based games, simulate timer firing after input if not already fired
                 if has_timer && !was_terminated {
                     debug!("Turn-based timer: simulating timer after input completion");
                     let result = self.call_timer_routine(routine)?;
                     debug!("Timer routine returned: {}", result);
                 }
-                
+
                 if was_terminated {
                     info!("Input was terminated by timer interrupt");
                 }
-                
+
                 // Convert to lowercase - Z-Machine convention
                 let input = input.to_lowercase();
-                
+
                 // Limit input to max_len - 1 (leaving room for length byte)
                 let input_bytes = input.as_bytes();
                 let input_len = input_bytes.len().min(max_len as usize - 1);
@@ -1541,7 +1613,7 @@ impl Interpreter {
 
                 // Parse the text buffer using proper dictionary lookup
                 self.vm.parse_text(text_buffer, parse_buffer)?;
-                
+
                 // Debug: Show the actual text in the buffer
                 let text_len = self.vm.read_byte(text_buffer + 1);
                 debug!("Text buffer contents (len={}):", text_len);
@@ -1549,7 +1621,7 @@ impl Interpreter {
                     let ch = self.vm.read_byte(text_buffer + 2 + i as u32);
                     debug!("  [{}] = 0x{:02x} '{}'", i, ch, ch as char);
                 }
-                
+
                 // Extra debug: dump the exact parse buffer contents
                 if input.contains("leaves") {
                     info!("*** Parse buffer dump at 0x{:04x}:", parse_buffer);
@@ -1561,9 +1633,12 @@ impl Interpreter {
                     let word2_addr = self.vm.read_word(parse_buffer + 6);
                     let word2_len = self.vm.read_byte(parse_buffer + 8);
                     let word2_pos = self.vm.read_byte(parse_buffer + 9);
-                    info!("  Word 2: addr=0x{:04x}, len={}, pos={}", word2_addr, word2_len, word2_pos);
+                    info!(
+                        "  Word 2: addr=0x{:04x}, len={}, pos={}",
+                        word2_addr, word2_len, word2_pos
+                    );
                 }
-                
+
                 // Special check for leaves
                 if input.contains("leaves") {
                     info!("*** Special debug for 'leaves' issue ***");
@@ -1571,15 +1646,26 @@ impl Interpreter {
                     info!("Text buffer contents at 0x{:04x}:", text_buffer);
                     for i in 0..20 {
                         let ch = self.vm.read_byte(text_buffer + i as u32);
-                        info!("  +{}: 0x{:02x} '{}'", i, ch, if ch >= 32 && ch < 127 { ch as char } else { '.' });
+                        info!(
+                            "  +{}: 0x{:02x} '{}'",
+                            i,
+                            ch,
+                            if ch >= 32 && ch < 127 {
+                                ch as char
+                            } else {
+                                '.'
+                            }
+                        );
                     }
                 }
 
                 let pc = self.vm.pc - inst.size as u32;
                 // Debug removed for cleaner output
-                debug!("sread at PC {:05x}: text_buffer={:04x}, parse_buffer={:04x} - input: '{}'", 
-                    pc, text_buffer, parse_buffer, input);
-                
+                debug!(
+                    "sread at PC {:05x}: text_buffer={:04x}, parse_buffer={:04x} - input: '{}'",
+                    pc, text_buffer, parse_buffer, input
+                );
+
                 // Debug: Show what's in the parse buffer
                 let word_count = self.vm.read_byte(parse_buffer + 1);
                 debug!("  Parse buffer word count: {}", word_count);
@@ -1588,22 +1674,37 @@ impl Interpreter {
                     let dict_addr = self.vm.read_word(offset);
                     let word_len = self.vm.read_byte(offset + 2);
                     let text_pos = self.vm.read_byte(offset + 3);
-                    debug!("    Word {}: dict_addr=0x{:04x}, len={}, pos={}", 
-                           i, dict_addr, word_len, text_pos);
-                    
+                    debug!(
+                        "    Word {}: dict_addr=0x{:04x}, len={}, pos={}",
+                        i, dict_addr, word_len, text_pos
+                    );
+
                     // Special check for leaves
                     if input.contains("leaves") && i == 1 {
-                        info!("*** 'leaves' parse entry: dict_addr=0x{:04x}, len={}, pos={}", 
-                              dict_addr, word_len, text_pos);
+                        info!(
+                            "*** 'leaves' parse entry: dict_addr=0x{:04x}, len={}, pos={}",
+                            dict_addr, word_len, text_pos
+                        );
                         if word_len != 6 {
-                            info!("*** ERROR: 'leaves' has wrong length! Expected 6, got {}", word_len);
+                            info!(
+                                "*** ERROR: 'leaves' has wrong length! Expected 6, got {}",
+                                word_len
+                            );
                         }
                         // Check actual characters at this position
                         info!("*** Characters at text buffer position {}:", text_pos);
                         for j in 0..8 {
                             let ch = self.vm.read_byte(text_buffer + 2 + text_pos as u32 + j);
-                            info!("      pos {}: 0x{:02x} '{}'", text_pos + j as u8, ch, 
-                                  if ch >= 32 && ch < 127 { ch as char } else { '.' });
+                            info!(
+                                "      pos {}: 0x{:02x} '{}'",
+                                text_pos + j as u8,
+                                ch,
+                                if ch >= 32 && ch < 127 {
+                                    ch as char
+                                } else {
+                                    '.'
+                                }
+                            );
                         }
                     }
                 }
@@ -1614,12 +1715,15 @@ impl Interpreter {
                 if !operands.is_empty() {
                     let ch = operands[0] as u8 as char;
                     let pc = self.vm.pc - inst.size as u32;
-                    
+
                     // Debug all print_char in error area
                     if pc >= 0x6300 && pc <= 0x6400 {
-                        info!("print_char at 0x{:04x}: '{}' (0x{:02x})", pc, ch, operands[0]);
+                        info!(
+                            "print_char at 0x{:04x}: '{}' (0x{:02x})",
+                            pc, ch, operands[0]
+                        );
                     }
-                    
+
                     if operands[0] > 127 || operands[0] == 63 {
                         // 63 is '?'
                         debug!(
@@ -1670,7 +1774,7 @@ impl Interpreter {
                         debug!("Random({}) = {}", range, value);
                         value
                     };
-                    
+
                     if let Some(store_var) = inst.store_var {
                         self.vm.write_variable(store_var, result)?;
                     }
@@ -1714,7 +1818,7 @@ impl Interpreter {
                 if !operands.is_empty() {
                     let lines = operands[0];
                     debug!("split_window: lines={}", lines);
-                    
+
                     if let Some(ref mut display) = self.display {
                         display.split_window(lines)?;
                     } else {
@@ -1760,7 +1864,7 @@ impl Interpreter {
                 if !operands.is_empty() {
                     let style = operands[0];
                     debug!("set_text_style: style={}", style);
-                    
+
                     // Apply text styles directly to stdout
                     // For now, just handle the common styles
                     if style == 0 {
@@ -1781,14 +1885,14 @@ impl Interpreter {
                 // sound_effect - V3 only supports bleeps
                 // Format: sound_effect number effect volume routine
                 // For v3: number 1 or 2 are bleeps, no repeats, no callbacks
-                
+
                 if operands.is_empty() {
                     // No operands - beep if possible
                     print!("\x07");
                     io::stdout().flush().ok();
                 } else {
                     let number = operands[0];
-                    
+
                     if number == 1 || number == 2 {
                         // Built-in bleeps (1 = high, 2 = low)
                         // On terminal, both just use bell character
@@ -1798,7 +1902,7 @@ impl Interpreter {
                     // For v3, ignore other sound numbers and effects
                     // The Lurking Horror would use numbers 3+ for real sounds
                 }
-                
+
                 Ok(ExecutionResult::Continue)
             }
             0x16 => {
@@ -1806,26 +1910,28 @@ impl Interpreter {
                 if self.vm.game.header.version < 4 {
                     return Err("read_char is only available in V4+".to_string());
                 }
-                
+
                 // read_char has 1-3 operands:
                 // 1. keyboard (1 = read from keyboard, must be 1)
                 // 2. time (optional) - timeout in tenths of seconds
                 // 3. routine (optional) - routine to call on timeout
-                
+
                 if operands.is_empty() || operands[0] != 1 {
                     return Err("read_char requires keyboard parameter = 1".to_string());
                 }
-                
+
                 let time = if operands.len() > 1 { operands[1] } else { 0 };
                 let routine = if operands.len() > 2 { operands[2] } else { 0 };
                 let has_timer = time > 0 && routine > 0;
-                
-                debug!("read_char: time={}, routine=0x{:04x}, has_timer={}", 
-                       time, routine, has_timer);
-                
+
+                debug!(
+                    "read_char: time={}, routine=0x{:04x}, has_timer={}",
+                    time, routine, has_timer
+                );
+
                 // Flush any pending output
                 io::stdout().flush().ok();
-                
+
                 // Create timer callback if needed
                 let timer_callback = if has_timer {
                     let interp_ptr = self as *mut Interpreter;
@@ -1838,29 +1944,29 @@ impl Interpreter {
                 } else {
                     None
                 };
-                
+
                 // Read a single character with optional timeout
                 let (ch, was_terminated) = self.read_single_char(time, routine, timer_callback)?;
-                
+
                 // Store the result
                 if let Some(store_var) = inst.store_var {
                     let char_code = if was_terminated {
                         0 // Return 0 if terminated by timer
                     } else {
                         match ch {
-                            '\n' | '\r' => 13,  // Return
-                            '\x08' | '\x7f' => 8,  // Backspace/Delete
-                            '\x1b' => 27,  // Escape
+                            '\n' | '\r' => 13,    // Return
+                            '\x08' | '\x7f' => 8, // Backspace/Delete
+                            '\x1b' => 27,         // Escape
                             _ => ch as u16,
                         }
                     };
                     self.vm.write_variable(store_var, char_code)?;
                 }
-                
+
                 if was_terminated {
                     debug!("read_char terminated by timer");
                 }
-                
+
                 Ok(ExecutionResult::Continue)
             }
             0x1B => {
@@ -1910,7 +2016,7 @@ impl Interpreter {
                     offset => {
                         // Jump is relative to instruction after branch data
                         let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
-                        
+
                         // Add specific debug for the problematic branch
                         if self.vm.pc >= 0x08cc0 && self.vm.pc <= 0x08cd0 {
                             debug!(
@@ -1918,7 +2024,7 @@ impl Interpreter {
                                 self.vm.pc, offset, offset as u16, new_pc
                             );
                         }
-                        
+
                         if self.vm.pc >= 0x06f70 && self.vm.pc <= 0x06fa0
                             || self.vm.pc >= 0x4f70 && self.vm.pc <= 0x5000
                         {
@@ -1937,89 +2043,98 @@ impl Interpreter {
     }
 
     /// Read a single character with optional timeout
-    fn read_single_char<F>(&mut self, time_tenths: u16, routine_addr: u16, timer_callback: Option<F>) 
-        -> Result<(char, bool), String>
+    fn read_single_char<F>(
+        &mut self,
+        time_tenths: u16,
+        routine_addr: u16,
+        timer_callback: Option<F>,
+    ) -> Result<(char, bool), String>
     where
         F: FnMut() -> Result<bool, String>,
     {
         // For now, delegate to timed_input's character reading
         // This will need to be implemented in timed_input.rs
-        self.timed_input.read_char_with_timeout_callback(time_tenths, routine_addr, timer_callback)
+        self.timed_input
+            .read_char_with_timeout_callback(time_tenths, routine_addr, timer_callback)
     }
-    
+
     /// Get the name of an object
     fn get_object_name(&self, obj_num: u16) -> Result<String, String> {
         if obj_num == 0 || obj_num > 255 {
             return Ok("".to_string());
         }
-        
+
         // Calculate object address
         let obj_table_addr = self.vm.game.header.object_table_addr as usize;
         let property_defaults = obj_table_addr;
         let obj_tree_base = property_defaults + 31 * 2;
         let obj_addr = obj_tree_base + ((obj_num - 1) as usize * 9);
-        
+
         if obj_addr + 9 > self.vm.game.memory.len() {
             return Err(format!("Object {} address out of bounds", obj_num));
         }
-        
+
         // Get property table address
-        let prop_table_addr = ((self.vm.game.memory[obj_addr + 7] as u16) << 8) 
-                            | self.vm.game.memory[obj_addr + 8] as u16;
-        
+        let prop_table_addr = ((self.vm.game.memory[obj_addr + 7] as u16) << 8)
+            | self.vm.game.memory[obj_addr + 8] as u16;
+
         if prop_table_addr == 0 || prop_table_addr as usize >= self.vm.game.memory.len() {
             return Ok("".to_string());
         }
-        
+
         // First byte is text length in words
         let text_len = self.vm.game.memory[prop_table_addr as usize] as usize;
         if text_len == 0 {
             return Ok("".to_string());
         }
-        
+
         // Decode the object name
         let name_addr = prop_table_addr as usize + 1;
         let abbrev_addr = self.vm.game.header.abbrev_table as usize;
-        
+
         match text::decode_string(&self.vm.game.memory, name_addr, abbrev_addr) {
             Ok((name, _)) => Ok(name),
             Err(e) => Err(format!("Failed to decode object name: {}", e)),
         }
     }
-    
+
     /// Handle routine calls
     /// Call a timer routine and execute it to completion
     fn call_timer_routine(&mut self, routine_addr: u16) -> Result<bool, String> {
         debug!("Calling timer routine at 0x{:04x}", routine_addr);
-        
+
         // Save current PC and call depth
         let _saved_pc = self.vm.pc;
         let saved_call_depth = self.vm.call_depth();
-        
+
         // Call routine with 0 args, store result in temp variable (stack)
         self.do_call(routine_addr, &[], Some(0))?;
-        
+
         // Execute until routine returns (when call depth returns to saved level)
         let mut return_value = 0;
         let mut instruction_count = 0;
         const MAX_TIMER_INSTRUCTIONS: u64 = 10000; // Safety limit
-        
+
         while self.vm.call_depth() > saved_call_depth {
             instruction_count += 1;
             if instruction_count > MAX_TIMER_INSTRUCTIONS {
                 return Err("Timer routine exceeded instruction limit".to_string());
             }
-            
+
             // Fetch and decode instruction
             let pc = self.vm.pc;
-            let inst = match Instruction::decode(&self.vm.game.memory, pc as usize, self.vm.game.header.version) {
+            let inst = match Instruction::decode(
+                &self.vm.game.memory,
+                pc as usize,
+                self.vm.game.header.version,
+            ) {
                 Ok(inst) => inst,
                 Err(e) => return Err(format!("Error decoding instruction at {:05x}: {}", pc, e)),
             };
-            
+
             // Update PC
             self.vm.pc += inst.size as u32;
-            
+
             // Execute instruction
             match self.execute_instruction(&inst)? {
                 ExecutionResult::Returned(value) => {
@@ -2036,12 +2151,12 @@ impl Interpreter {
                 }
             }
         }
-        
+
         // Pop the return value from stack (since we stored to var 0)
         let _ = self.vm.pop();
-        
+
         debug!("Timer routine returned: {}", return_value);
-        
+
         // Return true if routine wants to terminate input
         Ok(return_value != 0)
     }
@@ -2062,7 +2177,7 @@ impl Interpreter {
 
         // Unpack the address
         let addr = self.unpack_routine_address(packed_addr) as u32;
-        
+
         if self.debug {
             debug!("CALL to 0x{:05x} with args: {:?}", addr, args);
         }
@@ -2107,7 +2222,7 @@ impl Interpreter {
                 new_frame.locals[i] = value;
                 self.vm.pc += 2;
             }
-            
+
             // CRITICAL: Arguments overwrite the first N locals in V1-4
             // This is the key part that was missing!
             for (i, &arg) in args.iter().enumerate() {
@@ -2122,7 +2237,6 @@ impl Interpreter {
             }
         }
 
-        
         // Push the call frame
         self.vm.call_stack.push(new_frame);
 

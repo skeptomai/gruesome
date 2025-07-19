@@ -1,53 +1,52 @@
-use gruesome::vm::{VM, Game};
-use gruesome::interpreter::{Interpreter};
-use gruesome::disassembler::Disassembler;
-use std::io::Read;
-use log::{debug, info};
 use env_logger;
+use gruesome::disassembler::Disassembler;
+use gruesome::interpreter::Interpreter;
+use gruesome::vm::{Game, VM};
+use log::{debug, info};
+use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logger to see debug output
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug"))
-        .init();
-    
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+
     let game_path = "resources/test/zork1/DATA/ZORK1.DAT";
-    
+
     let mut f = std::fs::File::open(game_path)?;
     let mut memory = Vec::new();
     f.read_to_end(&mut memory)?;
-    
+
     let game = Game::from_memory(memory)?;
     let vm = VM::new(game)?;
     let mut interpreter = Interpreter::new(vm);
-    
+
     // Enable debug mode for specific range around WORD-PRINT
     interpreter.enable_single_step(0x5fda, 0x5ff0);
-    
+
     // Set up a call to WORD-PRINT with "leaves" (6 characters)
     // First set up the text buffer with "leaves" at a known location
-    let text_addr = 0x1000;  // arbitrary address in dynamic memory
+    let text_addr = 0x1000; // arbitrary address in dynamic memory
     interpreter.vm.write_byte(text_addr, b'l')?;
     interpreter.vm.write_byte(text_addr + 1, b'e')?;
     interpreter.vm.write_byte(text_addr + 2, b'a')?;
     interpreter.vm.write_byte(text_addr + 3, b'v')?;
     interpreter.vm.write_byte(text_addr + 4, b'e')?;
     interpreter.vm.write_byte(text_addr + 5, b's')?;
-    
+
     // Set global V7d (text buffer address)
     interpreter.vm.write_global(0x7d - 0x10, text_addr as u16)?;
-    
+
     // Call WORD-PRINT with length=6, position=0
     println!("=== Calling WORD-PRINT with 'leaves' (length=6) ===\n");
-    
+
     // Set up locals: L01=6 (length), L02=0 (position)
     interpreter.vm.call_stack.push(gruesome::vm::CallFrame {
-        return_pc: 0x9999,  // dummy return address
+        return_pc: 0x9999, // dummy return address
         locals: vec![6, 0],
         result_var: None,
         arg_count: 2,
     });
     interpreter.vm.pc = 0x5fda;
-    
+
     // Run until routine returns
     let mut step_count = 0;
     loop {
@@ -59,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("PC {:04x}: {}", interpreter.vm.pc, first_line.trim());
             }
         }
-        
+
         // Show locals before execution
         if let Some(frame) = interpreter.vm.call_stack.last() {
             print!("  Locals before: ");
@@ -68,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             println!();
         }
-        
+
         // Execute one instruction
         match interpreter.execute_next() {
             Ok(result) => {
@@ -80,7 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     println!();
                 }
-                
+
                 match result {
                     gruesome::interpreter::ExecutionResult::Returned(_) => {
                         println!("\nRoutine returned");
@@ -98,15 +97,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 break;
             }
         }
-        
+
         step_count += 1;
         if step_count > 50 {
             println!("\nStopping after {} steps", step_count);
             break;
         }
-        
+
         println!();
     }
-    
+
     Ok(())
 }

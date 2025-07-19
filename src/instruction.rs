@@ -201,8 +201,7 @@ impl Instruction {
                 } else {
                     OperandType::SmallConstant
                 };
-                
-                
+
                 operand_types.push(type1);
                 operand_types.push(type2);
             }

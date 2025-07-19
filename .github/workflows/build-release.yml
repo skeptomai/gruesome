@@ -49,7 +49,7 @@ jobs:
         chmod +x artifacts/gruesome-universal-apple-darwin
     
     - name: Upload macOS artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: macos-binaries
         path: |
@@ -81,7 +81,7 @@ jobs:
         cp target/x86_64-pc-windows-gnu/release/gruesome.exe artifacts/gruesome-x86_64-pc-windows-gnu.exe
     
     - name: Upload Windows artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: windows-binaries
         path: artifacts/gruesome-x86_64-pc-windows-gnu.exe
@@ -94,7 +94,7 @@ jobs:
     
     steps:
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         path: artifacts
     

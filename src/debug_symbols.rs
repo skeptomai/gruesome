@@ -1,5 +1,5 @@
 //! Debug symbol names for Zork I
-//! 
+//!
 //! This module provides human-readable names for various game elements:
 //! - Routine addresses and their function names
 //! - Global variable names
@@ -15,7 +15,7 @@ pub struct RoutineNames {
 impl RoutineNames {
     pub fn new() -> Self {
         let mut names = HashMap::new();
-        
+
         // Main routines
         names.insert(0x4f05, "MAIN");
         names.insert(0x4fd9, "NOT-HERE-OBJECT-F");
@@ -34,20 +34,20 @@ impl RoutineNames {
         names.insert(0x7e04, "DESCRIBE-ROOM");
         names.insert(0x8c9a, "DESCRIBE-OBJECTS");
         names.insert(0x5fda, "WORD-PRINT");
-        
+
         RoutineNames { names }
     }
-    
+
     /// Get the name of a routine at the given address
     pub fn get_name(&self, addr: u32) -> Option<&'static str> {
         self.names.get(&addr).copied()
     }
-    
+
     /// Get the routine that contains the given address
     pub fn get_routine_containing(&self, addr: u32) -> Option<(u32, &'static str)> {
         // Find the highest routine address that's less than or equal to addr
         let mut best_match: Option<(u32, &'static str)> = None;
-        
+
         for (&routine_addr, &name) in &self.names {
             if routine_addr <= addr {
                 if let Some((best_addr, _)) = best_match {
@@ -59,17 +59,17 @@ impl RoutineNames {
                 }
             }
         }
-        
+
         // Only return if the address is reasonably close (within 1000 bytes)
         if let Some((routine_addr, name)) = best_match {
             if addr - routine_addr < 1000 {
                 return Some((routine_addr, name));
             }
         }
-        
+
         None
     }
-    
+
     /// Format an address with its name if known
     pub fn format_address(&self, addr: u32) -> String {
         if let Some(name) = self.get_name(addr) {
@@ -89,12 +89,12 @@ impl RoutineNames {
 /// Global variable names
 pub fn get_global_name(var_num: u8) -> Option<&'static str> {
     match var_num {
-        0x10 => Some("HERE"),       // G00 -> V10
-        0x48 => Some("PRSO"),       // G38 -> V48  
-        0x49 => Some("PRSI"),       // G39 -> V49
-        0x58 => Some("ACT"),        // G48 -> V58
-        0x5c => Some("P-WALK-DIR"), // G4c -> V5c
-        0x5e => Some("(Action-code)"), // G4e -> V5e
+        0x10 => Some("HERE"),           // G00 -> V10
+        0x48 => Some("PRSO"),           // G38 -> V48
+        0x49 => Some("PRSI"),           // G39 -> V49
+        0x58 => Some("ACT"),            // G48 -> V58
+        0x5c => Some("P-WALK-DIR"),     // G4c -> V5c
+        0x5e => Some("(Action-code)"),  // G4e -> V5e
         0x7f => Some("(Actor/Player)"), // G6f -> V7f
         _ => None,
     }
@@ -119,7 +119,7 @@ pub fn get_object_name(obj_num: u16) -> Option<&'static str> {
         15 => Some("Slide Room"),
         16 => Some("Coal Mine"),
         17 => Some("Coal Mine"),
-        18 => Some("Coal Mine"), 
+        18 => Some("Coal Mine"),
         19 => Some("Coal Mine"),
         20 => Some("Ladder Bottom"),
         21 => Some("Ladder Top"),
@@ -217,7 +217,7 @@ pub fn format_object(obj_num: u16) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_routine_names() {
         let names = RoutineNames::new();
@@ -226,7 +226,7 @@ mod tests {
         assert_eq!(names.format_address(0x51f0), "51f0 (GOTO)");
         assert_eq!(names.format_address(0x1234), "1234");
     }
-    
+
     #[test]
     fn test_global_names() {
         assert_eq!(get_global_name(0x10), Some("HERE"));

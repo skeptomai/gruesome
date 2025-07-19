@@ -40,11 +40,15 @@ impl Game {
             return Err("Game file too small for header".to_string());
         }
         let header = Header::new(&memory);
-        
+
         // Keep a copy of the original memory for save games
         let original_memory = Some(memory.clone());
 
-        Ok(Game { memory, header, original_memory })
+        Ok(Game {
+            memory,
+            header,
+            original_memory,
+        })
     }
 }
 
@@ -180,13 +184,16 @@ impl VM {
         let offset = ((var - 0x10) as u32) * 2;
         let addr = self.globals_addr as u32 + offset;
         let value = self.read_word(addr);
-        
+
         // Debug logging for critical globals
-        if var == 0x52 {  // LIT variable
-            debug!("Reading global 0x{:02x} (LIT) from addr 0x{:04x} = 0x{:04x} ({}) at PC {:05x}", 
-                   var, addr, value, value, self.pc);
+        if var == 0x52 {
+            // LIT variable
+            debug!(
+                "Reading global 0x{:02x} (LIT) from addr 0x{:04x} = 0x{:04x} ({}) at PC {:05x}",
+                var, addr, value, value, self.pc
+            );
         }
-        
+
         Ok(value)
     }
 
@@ -197,14 +204,17 @@ impl VM {
         }
         let offset = ((var - 0x10) as u32) * 2;
         let addr = self.globals_addr as u32 + offset;
-        
+
         // Debug logging for critical globals
-        if var == 0x52 {  // LIT variable
+        if var == 0x52 {
+            // LIT variable
             let old_value = self.read_word(addr);
-            debug!("Writing global 0x{:02x} (LIT) at addr 0x{:04x}: {} -> {} at PC {:05x}", 
-                   var, addr, old_value, value, self.pc);
+            debug!(
+                "Writing global 0x{:02x} (LIT) at addr 0x{:04x}: {} -> {} at PC {:05x}",
+                var, addr, old_value, value, self.pc
+            );
         }
-        
+
         self.write_word(addr, value)
     }
 
@@ -228,13 +238,15 @@ impl VM {
             }
             _ => self.read_global(var),
         };
-        
+
         // Debug logging for critical variable reads
         if var == 0x52 && self.pc >= 0x8d50 && self.pc <= 0x8d60 {
-            debug!("read_variable(0x{:02x}) at PC {:05x} returning value: {:?}", 
-                   var, self.pc, result);
+            debug!(
+                "read_variable(0x{:02x}) at PC {:05x} returning value: {:?}",
+                var, self.pc, result
+            );
         }
-        
+
         result
     }
 
@@ -315,9 +327,9 @@ impl VM {
         if obj_num > 255 {
             return Err(format!("Invalid object number: {}", obj_num));
         }
-        
+
         debug!("get_property_addr: obj={}, prop={}", obj_num, prop_num);
-        
+
         // Special debug for the problematic case
         if obj_num == 16 && prop_num == 29 {
             debug!("*** DEBUGGING: Object 16, Property 29 ***");

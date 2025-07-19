@@ -79,12 +79,19 @@ impl Debugger {
 
     /// Disassemble instruction at given PC
     pub fn disassemble_at(&self, pc: u32) -> Result<String, String> {
-        match Instruction::decode(&self.interpreter.vm.game.memory, pc as usize, self.interpreter.vm.game.header.version) {
+        match Instruction::decode(
+            &self.interpreter.vm.game.memory,
+            pc as usize,
+            self.interpreter.vm.game.header.version,
+        ) {
             Ok(inst) => {
                 let formatted = inst.format_with_version(self.interpreter.vm.game.header.version);
                 Ok(format!("{:05x}: {}", pc, formatted))
             }
-            Err(e) => Err(format!("Failed to decode instruction at 0x{:05x}: {}", pc, e))
+            Err(e) => Err(format!(
+                "Failed to decode instruction at 0x{:05x}: {}",
+                pc, e
+            )),
         }
     }
 
@@ -92,13 +99,17 @@ impl Debugger {
     pub fn disassemble_range(&self, start_pc: u32, count: usize) -> Vec<String> {
         let mut results = Vec::new();
         let mut pc = start_pc;
-        
+
         for _ in 0..count {
             match self.disassemble_at(pc) {
                 Ok(line) => {
                     results.push(line);
                     // Try to get the instruction size to advance PC
-                    if let Ok(inst) = Instruction::decode(&self.interpreter.vm.game.memory, pc as usize, self.interpreter.vm.game.header.version) {
+                    if let Ok(inst) = Instruction::decode(
+                        &self.interpreter.vm.game.memory,
+                        pc as usize,
+                        self.interpreter.vm.game.header.version,
+                    ) {
                         pc += inst.size as u32;
                     } else {
                         pc += 1; // Fallback
@@ -110,7 +121,7 @@ impl Debugger {
                 }
             }
         }
-        
+
         results
     }
 
@@ -120,19 +131,21 @@ impl Debugger {
         println!("PC: 0x{:05x}", self.interpreter.vm.pc);
         println!("Stack size: {}", self.interpreter.vm.stack.len());
         println!("Call stack depth: {}", self.interpreter.vm.call_stack.len());
-        
+
         // Show current instruction
         if let Ok(disasm) = self.disassemble_current() {
             println!("Current: {}", disasm);
         }
-        
+
         // Show call stack
         if !self.interpreter.vm.call_stack.is_empty() {
             println!("\nCall Stack:");
             for (i, frame) in self.interpreter.vm.call_stack.iter().enumerate() {
-                println!("  [{}] Return PC: 0x{:05x}, Locals: {}", 
-                        i, frame.return_pc, frame.num_locals);
-                
+                println!(
+                    "  [{}] Return PC: 0x{:05x}, Locals: {}",
+                    i, frame.return_pc, frame.num_locals
+                );
+
                 // Show locals for current frame
                 if i == self.interpreter.vm.call_stack.len() - 1 {
                     for j in 0..frame.num_locals as usize {
@@ -141,7 +154,7 @@ impl Debugger {
                 }
             }
         }
-        
+
         // Show recent stack values
         if !self.interpreter.vm.stack.is_empty() {
             println!("\nStack (top 5):");
@@ -164,29 +177,33 @@ impl Debugger {
     /// Execute a single instruction
     pub fn step(&mut self) -> Result<bool, String> {
         let pc = self.interpreter.vm.pc;
-        
+
         // Decode and record instruction for history
-        if let Ok(inst) = Instruction::decode(&self.interpreter.vm.game.memory, pc as usize, self.interpreter.vm.game.header.version) {
+        if let Ok(inst) = Instruction::decode(
+            &self.interpreter.vm.game.memory,
+            pc as usize,
+            self.interpreter.vm.game.header.version,
+        ) {
             let formatted = inst.format_with_version(self.interpreter.vm.game.header.version);
-            
+
             // Add to history
             self.history.push((pc, formatted.clone()));
             if self.history.len() > self.max_history {
                 self.history.remove(0);
             }
-            
+
             // Show instruction if in single-step mode
             if self.single_step {
                 println!("{:05x}: {}", pc, formatted);
             }
-            
+
             // Update PC
             self.interpreter.vm.pc += inst.size as u32;
-            
+
             // Execute instruction
             match self.interpreter.execute_instruction(&inst) {
                 Ok(_) => Ok(true),
-                Err(e) => Err(format!("Execution error at 0x{:05x}: {}", pc, e))
+                Err(e) => Err(format!("Execution error at 0x{:05x}: {}", pc, e)),
             }
         } else {
             Err(format!("Failed to decode instruction at 0x{:05x}", pc))
@@ -197,24 +214,26 @@ impl Debugger {
     pub fn run(&mut self) -> Result<(), String> {
         loop {
             let pc = self.interpreter.vm.pc;
-            
+
             // Check for breakpoints
             if self.breakpoints.contains(&pc) {
                 println!("Hit breakpoint at 0x{:05x}", pc);
                 self.set_single_step(true);
             }
-            
+
             // Handle single-step mode
             if self.single_step {
                 self.show_state();
-                
+
                 print!("(debug) ");
                 io::stdout().flush().ok();
-                
+
                 let mut input = String::new();
-                io::stdin().read_line(&mut input).map_err(|e| format!("Input error: {}", e))?;
+                io::stdin()
+                    .read_line(&mut input)
+                    .map_err(|e| format!("Input error: {}", e))?;
                 let input = input.trim();
-                
+
                 match input {
                     "n" | "next" | "" => {
                         // Step one instruction
@@ -264,7 +283,9 @@ impl Debugger {
                         continue;
                     }
                     _ => {
-                        println!("Commands: n(ext), c(ontinue), s(tate), h(istory), d(isasm), q(uit)");
+                        println!(
+                            "Commands: n(ext), c(ontinue), s(tate), h(istory), d(isasm), q(uit)"
+                        );
                         println!("         b <addr> (breakpoint), rb <addr> (remove), bl (list)");
                         continue;
                     }

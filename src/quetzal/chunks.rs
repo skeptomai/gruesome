@@ -1,6 +1,6 @@
 //! Quetzal chunk definitions according to the specification
 
-use crate::vm::{VM, CallFrame};
+use crate::vm::{CallFrame, VM};
 
 /// IFhd chunk - Interface Header
 /// Contains key information about the interpreter state
@@ -19,13 +19,13 @@ impl IFhdChunk {
     /// Create from VM state
     pub fn from_vm(vm: &VM) -> Self {
         let header = &vm.game.header;
-        
+
         // Get serial number bytes
         let mut serial = [0u8; 6];
         for i in 0..6 {
             serial[i] = vm.game.memory[0x12 + i];
         }
-        
+
         IFhdChunk {
             release: header.release,
             serial,
@@ -33,46 +33,46 @@ impl IFhdChunk {
             initial_pc: 0, // We'll use 0 for simplicity
         }
     }
-    
+
     /// Serialize to bytes
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(13);
-        
+
         // Release number (2 bytes, big-endian)
         bytes.extend_from_slice(&self.release.to_be_bytes());
-        
+
         // Serial number (6 bytes)
         bytes.extend_from_slice(&self.serial);
-        
+
         // Checksum (2 bytes, big-endian)
         bytes.extend_from_slice(&self.checksum.to_be_bytes());
-        
+
         // Initial PC (3 bytes for packed address)
         // For v3, PC is a packed address divided by 2
         let pc_bytes = (self.initial_pc as u32).to_be_bytes();
         bytes.push(pc_bytes[1]); // High byte
         bytes.push(pc_bytes[2]); // Middle byte
         bytes.push(pc_bytes[3]); // Low byte
-        
+
         bytes
     }
-    
+
     /// Deserialize from bytes
     pub fn from_bytes(data: &[u8]) -> Result<Self, String> {
         if data.len() < 13 {
             return Err("IFhd chunk too small".to_string());
         }
-        
+
         let release = u16::from_be_bytes([data[0], data[1]]);
-        
+
         let mut serial = [0u8; 6];
         serial.copy_from_slice(&data[2..8]);
-        
+
         let checksum = u16::from_be_bytes([data[8], data[9]]);
-        
+
         // Initial PC is 3 bytes
         let initial_pc = ((data[10] as u16) << 8) | (data[11] as u16);
-        
+
         Ok(IFhdChunk {
             release,
             serial,
@@ -95,15 +95,15 @@ impl UMemChunk {
         // Dynamic memory is from start to static memory base
         let dynamic_size = vm.game.header.base_static_mem;
         let memory = vm.game.memory[..dynamic_size].to_vec();
-        
+
         UMemChunk { memory }
     }
-    
+
     /// Get as bytes
     pub fn to_bytes(&self) -> Vec<u8> {
         self.memory.clone()
     }
-    
+
     /// Create from bytes
     pub fn from_bytes(data: Vec<u8>) -> Self {
         UMemChunk { memory: data }
@@ -121,7 +121,7 @@ impl StksChunk {
     /// Create from VM state
     pub fn from_vm(vm: &VM) -> Self {
         let mut data = Vec::new();
-        
+
         // Save all call frames, including the dummy frame
         // This preserves the stack structure correctly
         for (frame_idx, frame) in vm.call_stack.iter().enumerate() {
@@ -130,7 +130,7 @@ impl StksChunk {
             data.push(pc_bytes[1]);
             data.push(pc_bytes[2]);
             data.push(pc_bytes[3]);
-            
+
             // Flags byte:
             // Bit 0-3: local variable count
             // Bit 4: 1 if called with store variable
@@ -144,15 +144,15 @@ impl StksChunk {
             let arg_count = std::cmp::min(frame.num_locals as usize, 3) as u8;
             flags |= (arg_count & 0x03) << 5;
             data.push(flags);
-            
+
             // Store variable (1 byte) if present
             if let Some(var) = frame.return_store {
                 data.push(var);
             }
-            
+
             // Arguments supplied (1 byte each) - not needed for v3
             // Skip this for now
-            
+
             // Evaluation stack count (2 bytes)
             // Calculate stack size for this frame
             let next_frame_idx = frame_idx + 1;
@@ -167,53 +167,53 @@ impl StksChunk {
                 0 // Shouldn't happen, but be safe
             };
             data.extend_from_slice(&(stack_size as u16).to_be_bytes());
-            
+
             // Local variables (2 bytes each)
             for i in 0..frame.num_locals as usize {
                 data.extend_from_slice(&frame.locals[i].to_be_bytes());
             }
-            
+
             // Stack values (2 bytes each)
             for i in frame.stack_base..stack_end {
                 data.extend_from_slice(&vm.stack[i].to_be_bytes());
             }
         }
-        
+
         StksChunk { data }
     }
-    
+
     /// Get as bytes
     pub fn to_bytes(&self) -> Vec<u8> {
         self.data.clone()
     }
-    
+
     /// Restore stack frames to VM
     pub fn restore_to_vm(&self, vm: &mut VM) -> Result<(), String> {
         vm.call_stack.clear();
         vm.stack.clear();
-        
+
         let mut offset = 0;
         let data = &self.data;
-        
+
         while offset < data.len() {
             // Read return PC (3 bytes)
             if offset + 4 > data.len() {
                 return Err("Incomplete stack frame".to_string());
             }
-            
-            let return_pc = ((data[offset] as u32) << 16) 
-                          | ((data[offset + 1] as u32) << 8) 
-                          | (data[offset + 2] as u32);
+
+            let return_pc = ((data[offset] as u32) << 16)
+                | ((data[offset + 1] as u32) << 8)
+                | (data[offset + 2] as u32);
             offset += 3;
-            
+
             // Read flags
             let flags = data[offset];
             offset += 1;
-            
+
             let local_count = (flags & 0x0F) as usize;
             let has_result_var = (flags & 0x10) != 0;
             let _arg_count = ((flags >> 5) & 0x03) as usize;
-            
+
             // Read result variable if present
             let return_store = if has_result_var {
                 if offset >= data.len() {
@@ -225,16 +225,16 @@ impl StksChunk {
             } else {
                 None
             };
-            
+
             // Skip supplied arguments (not used in v3)
-            
+
             // Read evaluation stack count
             if offset + 2 > data.len() {
                 return Err("Missing stack count".to_string());
             }
             let stack_count = u16::from_be_bytes([data[offset], data[offset + 1]]) as usize;
             offset += 2;
-            
+
             // Read local variables
             let mut locals = [0u16; 16];
             if offset + local_count * 2 > data.len() {
@@ -244,7 +244,7 @@ impl StksChunk {
                 locals[i] = u16::from_be_bytes([data[offset], data[offset + 1]]);
                 offset += 2;
             }
-            
+
             // Read stack values and add to VM stack
             let stack_base = vm.stack.len();
             if offset + stack_count * 2 > data.len() {
@@ -255,7 +255,7 @@ impl StksChunk {
                 vm.stack.push(value);
                 offset += 2;
             }
-            
+
             // Create and add frame
             let frame = CallFrame {
                 return_pc,
@@ -266,7 +266,7 @@ impl StksChunk {
             };
             vm.call_stack.push(frame);
         }
-        
+
         Ok(())
     }
 }
@@ -288,12 +288,12 @@ impl IntDChunk {
             data: Vec::new(),
         }
     }
-    
+
     /// Add custom data
     pub fn add_data(&mut self, data: Vec<u8>) {
         self.data = data;
     }
-    
+
     /// Serialize to bytes
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();

@@ -351,28 +351,28 @@ pub fn get_expected_operand_count(
                     None
                 } else {
                     // True VAR opcodes
-                match opcode {
-                    0x00 => None,    // call - variable operands
-                    0x01 => Some(3), // storew - array, word-index, value
-                    0x02 => Some(3), // storeb - array, byte-index, value
-                    0x03 => Some(3), // put_prop - object, property, value
-                    0x04 => None,    // sread - variable operands
-                    0x05 => Some(1), // print_char - character
-                    0x06 => Some(1), // print_num - number
-                    0x07 => Some(1), // random - range
-                    0x08 => Some(1), // push - value
-                    0x09 => {
-                        // pull - 1 operand in V1-5, variable in V6
-                        if version <= 5 {
-                            Some(1)
-                        } else {
-                            None
+                    match opcode {
+                        0x00 => None,    // call - variable operands
+                        0x01 => Some(3), // storew - array, word-index, value
+                        0x02 => Some(3), // storeb - array, byte-index, value
+                        0x03 => Some(3), // put_prop - object, property, value
+                        0x04 => None,    // sread - variable operands
+                        0x05 => Some(1), // print_char - character
+                        0x06 => Some(1), // print_num - number
+                        0x07 => Some(1), // random - range
+                        0x08 => Some(1), // push - value
+                        0x09 => {
+                            // pull - 1 operand in V1-5, variable in V6
+                            if version <= 5 {
+                                Some(1)
+                            } else {
+                                None
+                            }
                         }
+                        0x0A => Some(1), // split_window - lines
+                        0x0B => Some(1), // set_window - window
+                        _ => None,
                     }
-                    0x0A => Some(1), // split_window - lines
-                    0x0B => Some(1), // set_window - window
-                    _ => None,
-                }
                 }
             }
         }
