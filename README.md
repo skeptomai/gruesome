@@ -41,10 +41,40 @@ The following Infocom v3 games have been tested and work correctly:
 
 ### Prerequisites
 
-- Rust 1.70 or later
+- Rust 1.70 or later (for building from source)
 - A Z-Machine game file (e.g., ZORK1.DAT)
 
-### Building and Running
+### Installing Pre-built Binaries
+
+Download the appropriate binary for your platform from the [releases page](https://github.com/skeptomai/gruesome/releases).
+
+#### Windows Installation
+
+After downloading `gruesome-x86_64-pc-windows-gnu.exe`:
+
+1. Right-click the file and select "Properties"
+2. Check the "Unblock" checkbox at the bottom
+3. Click "OK"
+4. Run the executable from Command Prompt or PowerShell:
+   ```
+   gruesome-x86_64-pc-windows-gnu.exe path\to\game.z3
+   ```
+
+If you see "Windows protected your PC":
+1. Click "More info"
+2. Click "Run anyway"
+
+#### macOS Installation
+
+1. Download the appropriate binary:
+   - `gruesome-universal-apple-darwin` - Works on both Intel and Apple Silicon
+   - `gruesome-aarch64-apple-darwin` - Apple Silicon only (smaller file)
+   - `gruesome-x86_64-apple-darwin` - Intel only
+2. Make it executable: `chmod +x gruesome-universal-apple-darwin`
+3. If macOS blocks the app, go to System Preferences → Security & Privacy and click "Open Anyway"
+4. Run: `./gruesome-universal-apple-darwin path/to/game.z3`
+
+### Building from Source
 
 1. Clone the repository:
 ```bash
