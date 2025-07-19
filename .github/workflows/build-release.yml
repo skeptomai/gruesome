@@ -93,10 +93,17 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     
     steps:
+    - name: Checkout code for README
+      uses: actions/checkout@v4
+    
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
         path: artifacts
+    
+    - name: Prepare README.txt
+      run: |
+        cp RUNTIME_README.md artifacts/README.txt
     
     - name: List artifacts
       run: |
@@ -112,6 +119,7 @@ jobs:
           artifacts/macos-binaries/gruesome-x86_64-apple-darwin
           artifacts/macos-binaries/gruesome-universal-apple-darwin
           artifacts/windows-binaries/gruesome-x86_64-pc-windows-gnu.exe
+          artifacts/README.txt
         draft: true
         prerelease: false
         generate_release_notes: true
