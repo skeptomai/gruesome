@@ -9,6 +9,9 @@ pub mod debugger;
 pub mod dictionary;
 pub mod disassembler;
 pub mod display;
+#[cfg(feature = "use-ratatui")]
+pub mod display_ratatui;
+pub mod display_manager;
 pub mod game;
 pub mod gamememorymap;
 pub mod header;

@@ -5,6 +5,10 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = ["use-ratatui"]
+use-ratatui = ["ratatui"]
+
 [dependencies]
 rand = "*"
 bitreader = "*"
@@ -16,3 +20,4 @@ test-log = "*"
 sub-array = "*"
 crossterm = "0.27"
 atty = "0.2"
+ratatui = { version = "0.26", optional = true }

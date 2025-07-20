@@ -1,5 +1,5 @@
 use crate::debug_symbols::RoutineNames;
-use crate::display::Display;
+use crate::display_manager::{DisplayManager, DisplayTrait};
 use crate::instruction::{Instruction, OperandType};
 use crate::text;
 use crate::timed_input::TimedInput;
@@ -43,14 +43,14 @@ pub struct Interpreter {
     /// Timed input handler
     timed_input: TimedInput,
     /// Display manager
-    display: Option<Display>,
+    display: Option<DisplayManager>,
 }
 
 impl Interpreter {
     /// Create a new interpreter
     pub fn new(vm: VM) -> Self {
         // Try to initialize display, but continue without it if it fails
-        let display = match Display::new() {
+        let display = match DisplayManager::new() {
             Ok(d) => Some(d),
             Err(e) => {
                 debug!("Failed to initialize display: {}", e);
