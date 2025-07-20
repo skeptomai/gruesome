@@ -26,6 +26,8 @@ pub struct Display {
     upper_cursor_y: u16,
     /// Buffer for upper window content
     upper_window_buffer: Vec<String>,
+    /// Track if upper window needs refresh
+    upper_window_dirty: bool,
 }
 
 impl Display {
@@ -41,6 +43,7 @@ impl Display {
             upper_cursor_x: 0,
             upper_cursor_y: 0,
             upper_window_buffer: Vec::new(),
+            upper_window_dirty: false,
         })
     }
 
@@ -78,6 +81,13 @@ impl Display {
     /// Set the current window (0 = lower, 1 = upper)
     pub fn set_window(&mut self, window: u8) -> Result<(), String> {
         debug!("set_window: {}", window);
+        
+        // If switching from upper to lower window, refresh the upper window if dirty
+        if self.current_window == 1 && window == 0 && self.upper_window_lines > 0 && self.upper_window_dirty {
+            self.refresh_upper_window()?;
+            self.upper_window_dirty = false;
+        }
+        
         self.current_window = window;
         Ok(())
     }
@@ -189,6 +199,7 @@ impl Display {
         // Update the first line of upper window
         if !self.upper_window_buffer.is_empty() {
             self.upper_window_buffer[0] = status_line;
+            self.upper_window_dirty = true;
             self.refresh_upper_window()?;
         }
 
@@ -218,8 +229,8 @@ impl Display {
             new_line.push_str(&line[..col]);
             new_line.push_str(text);
 
-            // Update cursor position
-            self.upper_cursor_x = (col + text.len()).min(self.terminal_width as usize - 1) as u16;
+            // Update cursor position  
+            self.upper_cursor_x = (col + text.len()).min(self.terminal_width as usize) as u16;
 
             // Keep rest of line if it fits
             if col + text.len() < line.len() {
@@ -227,7 +238,8 @@ impl Display {
             }
 
             *line = new_line;
-            self.refresh_upper_window()?;
+            // Mark upper window as needing refresh, but don't refresh immediately
+            self.upper_window_dirty = true;
         }
 
         Ok(())
@@ -240,6 +252,7 @@ impl Display {
         }
         self.upper_cursor_x = 0;
         self.upper_cursor_y = 0;
+        self.upper_window_dirty = true;
         self.refresh_upper_window()?;
         Ok(())
     }
