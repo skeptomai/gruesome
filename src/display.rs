@@ -299,6 +299,45 @@ impl Display {
             }
         }
     }
+    
+    /// Erase from cursor to end of line (v4+)
+    pub fn erase_line(&mut self) -> Result<(), String> {
+        execute!(
+            io::stdout(),
+            terminal::Clear(terminal::ClearType::UntilNewLine)
+        )
+        .map_err(|e| format!("Failed to erase line: {}", e))
+    }
+    
+    /// Get current cursor position (v4+)
+    /// Returns (line, column) with 1-based indexing
+    pub fn get_cursor(&mut self) -> Result<(u16, u16), String> {
+        // For v4+ games, we need to track the actual cursor position
+        // In the current window (upper or lower)
+        if self.current_window == 1 {
+            // Upper window - we track this
+            Ok((self.upper_cursor_y + 1, self.upper_cursor_x + 1))
+        } else {
+            // Lower window - get from terminal
+            if let Ok((col, row)) = cursor::position() {
+                Ok((row + 1, col + 1))  // Convert to 1-based
+            } else {
+                // Default position
+                Ok((1, 1))
+            }
+        }
+    }
+    
+    /// Set buffer mode (v4+)
+    /// In basic display, we don't really buffer, but we can flush on mode change
+    pub fn set_buffer_mode(&mut self, _buffered: bool) -> Result<(), String> {
+        // If turning off buffering, flush immediately
+        if !_buffered {
+            io::stdout().flush()
+                .map_err(|e| format!("Failed to flush output: {}", e))?;
+        }
+        Ok(())
+    }
 }
 
 impl Drop for Display {

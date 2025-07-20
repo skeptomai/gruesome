@@ -34,6 +34,7 @@ pub enum DisplayCommand {
     ShowStatus(String, i16, u16),
     SetTextStyle(u16),
     ClearScreen,
+    EraseLine,  // v4+
     Quit,
 }
 
@@ -153,6 +154,30 @@ impl RatatuiDisplay {
     /// Handle terminal resize
     pub fn handle_resize(&mut self, _new_width: u16, _new_height: u16) {
         // Ratatui handles resize automatically
+    }
+    
+    /// Erase from cursor to end of line (v4+)
+    pub fn erase_line(&mut self) -> Result<(), String> {
+        // Send erase line command to display thread
+        self.tx
+            .send(DisplayCommand::EraseLine)
+            .map_err(|_| "Failed to send erase line command".to_string())
+    }
+    
+    /// Get current cursor position (v4+)
+    /// Returns (line, column) with 1-based indexing
+    pub fn get_cursor(&mut self) -> Result<(u16, u16), String> {
+        // We need to get the cursor position from the display state
+        // For now, return a default since we don't have a way to query the display thread
+        // In a real implementation, we'd need a request/response mechanism
+        Ok((1, 1))
+    }
+    
+    /// Set buffer mode (v4+)
+    /// Ratatui already buffers appropriately
+    pub fn set_buffer_mode(&mut self, _buffered: bool) -> Result<(), String> {
+        // Ratatui handles buffering internally
+        Ok(())
     }
 }
 
@@ -347,6 +372,20 @@ fn handle_command(
             for _ in 0..state.upper_window_lines {
                 state.upper_window_content.push(String::new());
             }
+        }
+        DisplayCommand::EraseLine => {
+            // Erase from cursor to end of line in current window
+            if state.current_window == 1 && state.upper_cursor_y < state.upper_window_lines {
+                let line_idx = state.upper_cursor_y as usize;
+                if line_idx < state.upper_window_content.len() {
+                    let line = &mut state.upper_window_content[line_idx];
+                    let cursor_pos = state.upper_cursor_x as usize;
+                    if cursor_pos < line.len() {
+                        line.truncate(cursor_pos);
+                    }
+                }
+            }
+            // For lower window, we don't track cursor position precisely
         }
         _ => {}
     }

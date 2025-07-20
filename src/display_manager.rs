@@ -19,6 +19,11 @@ pub trait DisplayTrait {
     fn erase_window(&mut self, window: i16) -> Result<(), String>;
     fn show_status(&mut self, location: &str, score: i16, moves: u16) -> Result<(), String>;
     fn handle_resize(&mut self, new_width: u16, new_height: u16);
+    
+    // v4+ display opcodes
+    fn erase_line(&mut self) -> Result<(), String>;
+    fn get_cursor(&mut self) -> Result<(u16, u16), String>;
+    fn set_buffer_mode(&mut self, buffered: bool) -> Result<(), String>;
 }
 
 /// Wrapper for display implementations
@@ -125,6 +130,33 @@ impl DisplayTrait for DisplayManager {
             DisplayManager::Ratatui(d) => d.handle_resize(new_width, new_height),
             #[cfg(not(feature = "use-ratatui"))]
             DisplayManager::Basic(d) => d.handle_resize(new_width, new_height),
+        }
+    }
+    
+    fn erase_line(&mut self) -> Result<(), String> {
+        match self {
+            #[cfg(feature = "use-ratatui")]
+            DisplayManager::Ratatui(d) => d.erase_line(),
+            #[cfg(not(feature = "use-ratatui"))]
+            DisplayManager::Basic(d) => d.erase_line(),
+        }
+    }
+    
+    fn get_cursor(&mut self) -> Result<(u16, u16), String> {
+        match self {
+            #[cfg(feature = "use-ratatui")]
+            DisplayManager::Ratatui(d) => d.get_cursor(),
+            #[cfg(not(feature = "use-ratatui"))]
+            DisplayManager::Basic(d) => d.get_cursor(),
+        }
+    }
+    
+    fn set_buffer_mode(&mut self, buffered: bool) -> Result<(), String> {
+        match self {
+            #[cfg(feature = "use-ratatui")]
+            DisplayManager::Ratatui(d) => d.set_buffer_mode(buffered),
+            #[cfg(not(feature = "use-ratatui"))]
+            DisplayManager::Basic(d) => d.set_buffer_mode(buffered),
         }
     }
 }

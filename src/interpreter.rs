@@ -1998,6 +1998,76 @@ impl Interpreter {
 
                 Ok(ExecutionResult::Continue)
             }
+            0x0E => {
+                // erase_line (v4+)
+                // Erases the current line from cursor to end of line
+                // Only available in v4+
+                if self.vm.game.header.version < 4 {
+                    return Err("erase_line is only available in v4+".to_string());
+                }
+
+                // operand[0] = pixel value (1 = current cursor position)
+                // For text-only implementation, we only support value 1
+                if !operands.is_empty() && operands[0] == 1 {
+                    if let Some(ref mut display) = self.display {
+                        display.erase_line()?;
+                    } else {
+                        // Simple terminal implementation: clear to end of line
+                        print!("\x1b[K");
+                        io::stdout().flush().ok();
+                    }
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x10 => {
+                // get_cursor (v4+)
+                // Stores current cursor position in a word array
+                // array-->0 = line (1-based)
+                // array-->1 = column (1-based)
+                if self.vm.game.header.version < 4 {
+                    return Err("get_cursor is only available in v4+".to_string());
+                }
+
+                if !operands.is_empty() {
+                    let array_addr = operands[0] as u32;
+                    
+                    // Get cursor position from display
+                    let (line, column) = if let Some(ref mut display) = self.display {
+                        display.get_cursor()?
+                    } else {
+                        // Default position if no display
+                        (1, 1)
+                    };
+                    
+                    // Store line and column in array
+                    self.vm.write_word(array_addr, line)?;
+                    self.vm.write_word(array_addr + 2, column)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x12 => {
+                // buffer_mode (v4+)
+                // Controls whether output is buffered
+                // operand[0]: 0 = off (flush after every char), 1 = on (buffer output)
+                if self.vm.game.header.version < 4 {
+                    return Err("buffer_mode is only available in v4+".to_string());
+                }
+
+                if !operands.is_empty() {
+                    let mode = operands[0];
+                    debug!("buffer_mode: {}", if mode == 0 { "off" } else { "on" });
+                    
+                    if let Some(ref mut display) = self.display {
+                        display.set_buffer_mode(mode != 0)?;
+                    } else {
+                        // For stdout, we can flush immediately when buffer mode is off
+                        if mode == 0 {
+                            io::stdout().flush().ok();
+                        }
+                    }
+                }
+                Ok(ExecutionResult::Continue)
+            }
             0x1B => {
                 // tokenise (V5+) or unknown in V3
                 // In V3, this opcode is not documented
