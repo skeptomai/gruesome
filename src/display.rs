@@ -200,7 +200,7 @@ impl Display {
         if !self.upper_window_buffer.is_empty() {
             self.upper_window_buffer[0] = status_line;
             self.upper_window_dirty = true;
-            self.refresh_upper_window()?;
+            // Don't force immediate refresh - let the normal window switching handle it
         }
 
         Ok(())
