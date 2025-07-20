@@ -834,8 +834,12 @@ impl Interpreter {
                     abbrev_addr,
                 ) {
                     Ok(string) => {
-                        print!("{string}");
-                        io::stdout().flush().ok();
+                        if let Some(ref mut display) = self.display {
+                            display.print(&string).ok();
+                        } else {
+                            print!("{string}");
+                            io::stdout().flush().ok();
+                        }
                     }
                     Err(e) => {
                         debug!("Failed to decode string at {:04x}: {}", operand, e);
@@ -948,8 +952,12 @@ impl Interpreter {
 
                 match text::decode_string(&self.vm.game.memory, addr, abbrev_addr) {
                     Ok((string, _)) => {
-                        print!("{string}");
-                        io::stdout().flush().ok();
+                        if let Some(ref mut display) = self.display {
+                            display.print(&string).ok();
+                        } else {
+                            print!("{string}");
+                            io::stdout().flush().ok();
+                        }
                     }
                     Err(e) => {
                         debug!("Failed to decode string at {:04x}: {}", addr, e);
@@ -1003,8 +1011,12 @@ impl Interpreter {
                             debug!("Object 144 (leaves) name: '{}' (len={})", name, name.len());
                             debug!("  Name bytes: {:?}", name.as_bytes());
                         }
-                        print!("{name}");
-                        io::stdout().flush().ok();
+                        if let Some(ref mut display) = self.display {
+                            display.print(&name).ok();
+                        } else {
+                            print!("{name}");
+                            io::stdout().flush().ok();
+                        }
                     }
                     Err(e) => {
                         debug!("Failed to get object name: {}", e);
@@ -1879,17 +1891,24 @@ impl Interpreter {
 
                     // Apply text styles directly to stdout
                     // For now, just handle the common styles
-                    if style == 0 {
-                        // Reset to normal
-                        print!("\x1b[0m");
+                    let style_str = if style == 0 {
+                        "\x1b[0m" // Reset to normal
                     } else if style & 1 != 0 {
-                        // Reverse video
-                        print!("\x1b[7m");
+                        "\x1b[7m" // Reverse video
                     } else if style & 2 != 0 {
-                        // Bold
-                        print!("\x1b[1m");
+                        "\x1b[1m" // Bold
+                    } else {
+                        ""
+                    };
+                    
+                    if !style_str.is_empty() {
+                        if let Some(ref mut display) = self.display {
+                            display.print(style_str).ok();
+                        } else {
+                            print!("{}", style_str);
+                            io::stdout().flush().ok();
+                        }
                     }
-                    io::stdout().flush().ok();
                 }
                 Ok(ExecutionResult::Continue)
             }
@@ -1900,16 +1919,24 @@ impl Interpreter {
 
                 if operands.is_empty() {
                     // No operands - beep if possible
-                    print!("\x07");
-                    io::stdout().flush().ok();
+                    if let Some(ref mut display) = self.display {
+                        display.print("\x07").ok();
+                    } else {
+                        print!("\x07");
+                        io::stdout().flush().ok();
+                    }
                 } else {
                     let number = operands[0];
 
                     if number == 1 || number == 2 {
                         // Built-in bleeps (1 = high, 2 = low)
                         // On terminal, both just use bell character
-                        print!("\x07");
-                        io::stdout().flush().ok();
+                        if let Some(ref mut display) = self.display {
+                            display.print("\x07").ok();
+                        } else {
+                            print!("\x07");
+                            io::stdout().flush().ok();
+                        }
                     }
                     // For v3, ignore other sound numbers and effects
                     // The Lurking Horror would use numbers 3+ for real sounds
@@ -1996,8 +2023,12 @@ impl Interpreter {
                         display.erase_line()?;
                     } else {
                         // Simple terminal implementation: clear to end of line
-                        print!("\x1b[K");
-                        io::stdout().flush().ok();
+                        if let Some(ref mut display) = self.display {
+                            display.print("\x1b[K").ok();
+                        } else {
+                            print!("\x1b[K");
+                            io::stdout().flush().ok();
+                        }
                     }
                 }
                 Ok(ExecutionResult::Continue)

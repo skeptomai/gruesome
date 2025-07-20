@@ -1,6 +1,6 @@
 //! Display manager that wraps display implementations with robust fallback
 
-use log::{debug, warn};
+use log::debug;
 
 #[cfg(feature = "use-ratatui")]
 use crate::display_ratatui::RatatuiDisplay;
@@ -187,12 +187,12 @@ impl DisplayManager {
                             return Ok(DisplayManager::Ratatui(display));
                         }
                         Err(e) => {
-                            warn!("Ratatui failed ({}), falling back to basic display", e);
+                            debug!("Ratatui failed ({}), falling back to basic display", e);
                         }
                     }
                 }
                 
-                // Try basic display
+                // Try basic display  
                 if caps.has_terminal {
                     match BasicDisplay::new() {
                         Ok(display) => {
@@ -200,7 +200,7 @@ impl DisplayManager {
                             return Ok(DisplayManager::Basic(display));
                         }
                         Err(e) => {
-                            warn!("Basic display failed ({}), falling back to headless", e);
+                            debug!("Basic display failed ({}), falling back to headless", e);
                         }
                     }
                 }

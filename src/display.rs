@@ -31,8 +31,7 @@ pub struct Display {
 impl Display {
     /// Create a new display manager
     pub fn new() -> Result<Self, String> {
-        let (width, height) =
-            terminal::size().map_err(|e| format!("Failed to get terminal size: {e}"))?;
+        let (width, height) = terminal::size().unwrap_or((80, 24)); // Default to 80x24 if size detection fails
 
         Ok(Display {
             upper_window_lines: 0,
