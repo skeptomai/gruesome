@@ -14,9 +14,9 @@ This project implements a Z-Machine interpreter capable of running Infocom's tex
 - ✅ **Object system** - Complete with properties and attributes
 - ✅ **Parser** - Dictionary lookup and text parsing
 - ✅ **Random events** - Combat and NPC movement work correctly
-- ✅ **Timer support** - Turn-based timers for v3, real-time infrastructure ready for v4+
+- ✅ **Timer support** - Full timer implementation with real-time interrupts for all versions
 - ✅ **Non-blocking I/O** - True event-driven input using OS-level notifications
-- ✅ **read_char support** - Single character input with timers (v4+)
+- ✅ **read_char support** - Single character input with timers (v4+ feature, implemented but not tested with v4+ games)
 - ✅ **Status line** - Fully functional status line with automatic updates (v3)
 - ✅ **Display opcodes** - split_window, show_status, and set_text_style implemented
 
@@ -33,7 +33,7 @@ The following Infocom v3 games have been tested and work correctly:
 ### Known Limitations
 
 - ⚠️ **Some display opcodes** - set_cursor, erase_line, etc. not implemented
-- ⚠️ **v3 games primarily** - Basic v4+ support (SREAD/read_char work)
+- ⚠️ **v3 games primarily** - Timer and read_char support for v4+ implemented but not tested with actual v4+ games
 - ⚠️ **No sound support** - sound_effect plays beep only
 - ⚠️ **No graphics** - Text-only implementation
 
@@ -192,8 +192,8 @@ This implementation follows the Z-Machine Standards Document 1.1. Notable featur
 - Handles both Variable and Long forms of 2OP instructions
 - Supports the full Z-Machine v3 instruction set including all store operations
 - Real non-blocking I/O using OS-level event notification (epoll/kqueue/IOCP)
-- Timer callbacks for both SREAD and read_char opcodes
-- Turn-based timer support for v3 games, real-time ready for v4+
+- Full timer implementation with interrupt callbacks for both SREAD and read_char opcodes
+- Real-time timer interrupts for all Z-Machine versions (tested with v3, ready for v4+)
 - Cross-platform status line using crossterm (Windows/macOS/Linux/WSL)
 - Automatic status line updates before each input in v3 games
 - Proper text styling (bold, reverse video) for game titles and emphasis

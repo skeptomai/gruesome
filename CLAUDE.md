@@ -299,94 +299,32 @@ When processing commands, especially those with dictionary type 0x32 (like 'w'),
 
 ## TODO: Remaining Features to Implement
 
-### 1. Timed Interrupts (Critical Missing Feature)
-- **Current Status**: NOT IMPLEMENTED
-- **Impact**: **71% of Zork I sread calls use timers** - this breaks core gameplay mechanics
-- **Zork I Timer Analysis**:
-  - 15 out of 21 sread instructions use 4 operands (text_buffer, parse_buffer, time, routine)
-  - Timer values range from 0 to 42,271 tenths of seconds (0 to 70+ minutes)
-  - Each timer calls different interrupt routines for various game mechanics
-  - Examples: 0x1f58 uses 70-minute timeout, 0x011e uses 7.8-second timeout
+### 1. Timed Interrupts ✓ IMPLEMENTED
+- **Current Status**: FULLY IMPLEMENTED
+- **Implementation Details**:
+  - Non-blocking, event-driven input using crossterm
+  - OS-level event notification (epoll/kqueue/IOCP) - no polling
+  - Timer callbacks can terminate input or continue
+  - Proper handling of both terminal and piped input
+  - Full support for Z-Machine timer specification
+- **Files**:
+  - `timed_input.rs` - Complete timed input implementation
+  - `interpreter.rs` - sread opcode (0x04) handles all 4 operands
+  - `call_timer_routine()` - Executes timer interrupt routines
 
-#### Implementation Requirements:
-
-**1. Multi-threaded/Async Input System:**
-```rust
-// Need to handle simultaneously:
-// - User input from stdin
-// - Timer interrupts every time/10 seconds  
-// - Routine calls that can modify game state
-// - Routine return values that terminate input
-```
-
-**2. Extended sread Implementation:**
-```rust
-0x04 => {
-    // sread with optional timer support
-    let text_buffer = operands[0];
-    let parse_buffer = operands[1];
-    
-    if operands.len() >= 4 {
-        let time = operands[2];      // tenths of seconds
-        let routine = operands[3];   // interrupt routine address
-        
-        if time > 0 && routine > 0 {
-            // Use timed input with interrupts
-            return self.sread_with_timer(text_buffer, parse_buffer, time, routine);
-        }
-    }
-    
-    // Fall back to regular input
-    self.sread_basic(text_buffer, parse_buffer)
-}
-```
-
-**3. Timer Interrupt Handler:**
-```rust
-fn handle_timer_interrupt(&mut self, routine_addr: u16) -> Result<bool, String> {
-    // Call the interrupt routine
-    // If routine returns true: terminate input immediately
-    // If routine returns false: continue waiting for input
-    // Routine can modify game state (decrement counters, etc.)
-}
-```
-
-**4. Technical Challenges:**
-- **Async I/O**: Read from stdin while handling timer interrupts
-- **Game State Mutations**: Interrupt routines modify VM state during input
-- **Cross-platform Timing**: Precise timing across different operating systems
-- **Input Termination**: Clean termination when routine returns true
-
-**5. Real Gameplay Impact:**
-- **Lantern countdown**: Without timers, lantern never burns out (infinite light)
-- **Match mechanics**: Matches last forever instead of burning out quickly
-- **Candles**: Don't diminish over time
-- **Troll combat**: Troll waits indefinitely instead of getting impatient
-- **General pacing**: Many timed elements completely broken
-
-**6. Priority**: This is the **most critical missing feature** for authentic Zork I gameplay
-
-### 2. Character Input (read_char opcode)
-- **Current Status**: NOT IMPLEMENTED
-- **Impact**: Required for v4+ games with real-time elements and menus
+### 2. Character Input (read_char opcode) ✓ IMPLEMENTED
+- **Current Status**: FULLY IMPLEMENTED
+- **Implementation Details**:
+  - Single character input without echo
+  - Optional timeout with timer callbacks
+  - Proper ZSCII character mapping
+  - Raw terminal mode using crossterm
+  - Supports both terminal and piped input
+- **Files**:
+  - `interpreter.rs` - VAR opcode 0x16 handler (lines 1937-1999)
+  - `read_single_char()` - Helper function
+  - `timed_input.rs` - `read_char_with_timeout_callback()` implementation
 - **Note**: Zork I (v3) does NOT use read_char - it's a v4+ feature
-
-#### Implementation Challenges:
-1. **Cross-platform terminal control**: Different OSes handle raw input differently
-2. **Character encoding**: Must return proper ZSCII codes
-3. **Special keys**: Arrow keys, function keys need mapping
-4. **Timeout handling**: Async input with interrupts
-5. **Raw terminal mode**: Disable line buffering, no echo, immediate return
-
-#### Technical Requirements:
-```rust
-// What read_char needs:
-1. Raw terminal mode (disable line buffering)
-2. No echo (don't show the character typed)
-3. Immediate return (don't wait for Enter)
-4. Optional timeout support
-5. ZSCII character mapping
-```
 
 #### Games That Use read_char (v4+):
 - **Border Zone** (v5): Real-time spy thriller with timed sequences
@@ -394,13 +332,6 @@ fn handle_timer_interrupt(&mut self, routine_addr: u16) -> Result<bool, String> 
 - **Journey** (v6): Graphical adventure with menus
 - **Sherlock** (v5): Character-based menu navigation
 - **Bureaucracy** (v4): Real-time elements
-
-#### Use Cases:
-- Real-time games (like Border Zone with its real-time train sequences)
-- Menu navigation (arrow keys, Y/N prompts)
-- Games with special controls (function keys, etc.)
-- Timed puzzles where each keystroke matters
-- Immediate responses without Enter key
 
 ### 3. Sound Effects
 - **Current Status**: IMPLEMENTED ✓
@@ -437,4 +368,4 @@ fn handle_timer_interrupt(&mut self, routine_addr: u16) -> Result<bool, String> 
 
 ## Current State Summary
 
-The interpreter is fully playable for most of Zork I. The main limitation is the lack of timed interrupts, which makes the game easier than intended (infinite light sources) but doesn't break core gameplay. Save/restore works correctly with the standard Quetzal format, and random events (combat, thief movement) now function properly.
+The interpreter is fully playable for Zork I with all major features implemented, including timed interrupts. The lantern, matches, and candles now properly count down over time as intended. Save/restore works correctly with the standard Quetzal format, and random events (combat, thief movement) function properly. The main remaining features are for v4+ games (read_char) and display enhancements.
