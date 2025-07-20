@@ -741,6 +741,47 @@ impl VM {
 
         Ok(())
     }
+
+    /// Get the short name of an object (version-aware)
+    pub fn get_object_name(&self, obj_num: u16) -> Result<String, String> {
+        if obj_num == 0 {
+            return Ok(String::new()); // Object 0 has no name
+        }
+        
+        let max_objects = if self.game.header.version <= 3 { 255 } else { 65535 };
+        if obj_num > max_objects {
+            return Err(format!("Invalid object number: {obj_num}"));
+        }
+
+        // Get object table base
+        let obj_table_addr = self.game.header.object_table_addr;
+        let property_defaults = obj_table_addr;
+        let default_props = if self.game.header.version <= 3 { 31 } else { 63 };
+        let obj_tree_base = property_defaults + default_props * 2;
+
+        // Calculate object entry address (version-dependent size)
+        let obj_size = if self.game.header.version <= 3 { 9 } else { 14 };
+        let obj_addr = obj_tree_base + ((obj_num - 1) as usize * obj_size);
+
+        // Get property table address (last 2 bytes of object entry for both v3 and v4+)
+        let prop_table_offset = if self.game.header.version <= 3 { 7 } else { 12 };
+        let prop_table_addr = self.read_word((obj_addr + prop_table_offset) as u32) as usize;
+
+        // The first byte is the text-length of the short name
+        let text_len = self.game.memory[prop_table_addr] as usize;
+
+        if text_len > 0 {
+            // Decode the object name (stored as Z-string)
+            let name_addr = prop_table_addr + 1;
+            let abbrev_addr = self.game.header.abbrev_table;
+            match crate::text::decode_string(&self.game.memory, name_addr, abbrev_addr) {
+                Ok((name, _)) => Ok(name),
+                Err(e) => Err(format!("Failed to decode object name: {}", e))
+            }
+        } else {
+            Ok(String::new())
+        }
+    }
 }
 
 impl fmt::Display for VM {

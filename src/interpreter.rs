@@ -991,40 +991,23 @@ impl Interpreter {
                     // Object 0 means no object - print nothing
                     return Ok(ExecutionResult::Continue);
                 }
-                if obj_num > 255 {
-                    return Err(format!("Invalid object number for print_obj: {obj_num}"));
+                let max_objects = if self.vm.game.header.version <= 3 { 255 } else { 65535 };
+                if obj_num > max_objects {
+                    return Err(format!("Invalid object number for print_obj: {obj_num} (max: {max_objects} for v{})", self.vm.game.header.version));
                 }
 
-                // Get object table base
-                let obj_table_addr = self.vm.game.header.object_table_addr;
-                let property_defaults = obj_table_addr;
-                let obj_tree_base = property_defaults + 31 * 2; // 31 default properties, 2 bytes each
-
-                // Calculate object entry address (9 bytes per object in V3)
-                let obj_addr = obj_tree_base + ((obj_num - 1) as usize * 9);
-
-                // Get property table address (last 2 bytes of object entry)
-                let prop_table_addr = self.vm.read_word((obj_addr + 7) as u32) as usize;
-
-                // The first byte is the text-length of the short name
-                let text_len = self.vm.game.memory[prop_table_addr] as usize;
-
-                if text_len > 0 {
-                    // Decode the object name (stored as Z-string)
-                    let name_addr = prop_table_addr + 1;
-                    let abbrev_addr = self.vm.game.header.abbrev_table;
-                    match text::decode_string(&self.vm.game.memory, name_addr, abbrev_addr) {
-                        Ok((name, _)) => {
-                            if obj_num == 144 {
-                                debug!("Object 144 (leaves) name: '{}' (len={})", name, name.len());
-                                debug!("  Name bytes: {:?}", name.as_bytes());
-                            }
-                            print!("{name}");
-                            io::stdout().flush().ok();
+                // Use the VM's object name function which handles v3/v4+ differences
+                match self.vm.get_object_name(obj_num) {
+                    Ok(name) => {
+                        if obj_num == 144 {
+                            debug!("Object 144 (leaves) name: '{}' (len={})", name, name.len());
+                            debug!("  Name bytes: {:?}", name.as_bytes());
                         }
-                        Err(e) => {
-                            debug!("Failed to decode object name: {}", e);
-                        }
+                        print!("{name}");
+                        io::stdout().flush().ok();
+                    }
+                    Err(e) => {
+                        debug!("Failed to get object name: {}", e);
                     }
                 }
 
