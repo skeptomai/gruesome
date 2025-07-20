@@ -343,14 +343,19 @@ When processing commands, especially those with dictionary type 0x32 (like 'w'),
   - Note: Zork I doesn't use sound effects, only The Lurking Horror v3 does
 
 ### 4. Display Opcodes
-- **Current Status**: Partially implemented
-- **Missing**:
-  - set_text_style
+- **Current Status**: Mostly implemented
+- **Implemented**:
+  - set_text_style ✓
+  - split_window ✓ (fully functional for v3+)
+  - erase_window ✓ (fully functional for v3+)
+  - set_window ✓
+  - set_cursor ✓
+  - show_status ✓
+  - output_stream ✓ (basic)
+- **Missing (v4+ only)**:
   - buffer_mode
-  - erase_line
-  - set_cursor (stubbed)
+  - erase_line  
   - get_cursor
-  - split_window (stubbed)
 
 ## Completed Features
 
