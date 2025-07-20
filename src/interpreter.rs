@@ -873,7 +873,7 @@ impl Interpreter {
                 // get_sibling
                 let sibling = self.vm.get_sibling(operand)?;
                 if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, sibling as u16)?;
+                    self.vm.write_variable(store_var, sibling)?;
                 }
                 self.do_branch(inst, sibling != 0)
             }
@@ -881,7 +881,7 @@ impl Interpreter {
                 // get_child
                 let child = self.vm.get_child(operand)?;
                 if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, child as u16)?;
+                    self.vm.write_variable(store_var, child)?;
                 }
                 self.do_branch(inst, child != 0)
             }
@@ -894,7 +894,7 @@ impl Interpreter {
                 );
                 let parent = self.vm.get_parent(operand)?;
                 if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, parent as u16)?;
+                    self.vm.write_variable(store_var, parent)?;
                 }
                 Ok(ExecutionResult::Continue)
             }
@@ -1111,7 +1111,7 @@ impl Interpreter {
                 // jin
                 // Check if obj1 is inside obj2 (obj1's parent is obj2)
                 let parent = self.vm.get_parent(op1)?;
-                let condition = parent == op2 as u8;
+                let condition = parent == op2;
                 self.do_branch(inst, condition)
             }
             0x07 => {

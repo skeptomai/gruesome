@@ -290,7 +290,8 @@ impl VM {
         if obj_num == 0 {
             return Ok(0); // Object 0 has no properties
         }
-        if obj_num > 255 {
+        let max_objects = if self.game.header.version <= 3 { 255 } else { 65535 };
+        if obj_num > max_objects {
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
@@ -298,8 +299,8 @@ impl VM {
         let prop_addr = self.get_property_addr(obj_num, prop_num)?;
         if prop_addr != 0 {
             // Property found in object - read its value
-            let size_byte = self.game.memory[prop_addr - 1];
-            let prop_size = ((size_byte >> 5) & 0x07) + 1;
+            let prop_info = self.get_property_info(prop_addr - 1)?;
+            let prop_size = prop_info.1;
 
             if prop_size == 1 {
                 return Ok(self.read_byte(prop_addr as u32) as u16);
@@ -309,7 +310,8 @@ impl VM {
         }
 
         // Property not found in object, return default
-        if prop_num > 0 && prop_num <= 31 {
+        let max_defaults = if self.game.header.version <= 3 { 31 } else { 63 };
+        if prop_num > 0 && prop_num <= max_defaults {
             let obj_table_addr = self.game.header.object_table_addr;
             let default_addr = obj_table_addr + ((prop_num - 1) as usize * 2);
             Ok(self.read_word(default_addr as u32))
@@ -318,32 +320,60 @@ impl VM {
         }
     }
 
+    /// Parse property size byte to get property number, size, and header size
+    fn get_property_info(&self, prop_addr: usize) -> Result<(u8, usize, usize), String> {
+        let size_byte = self.game.memory[prop_addr];
+        
+        if self.game.header.version <= 3 {
+            // V1-3: prop num in bottom 5 bits, size in top 3 bits
+            let prop_num = size_byte & 0x1F;
+            let prop_size = ((size_byte >> 5) & 0x07) + 1;
+            Ok((prop_num, prop_size as usize, 1))
+        } else {
+            // V4+: prop num in bottom 6 bits
+            let prop_num = size_byte & 0x3F;
+            
+            if size_byte & 0x80 != 0 {
+                // Two-byte header
+                let size_byte_2 = self.game.memory[prop_addr + 1];
+                let size_val = size_byte_2 & 0x3F;
+                let prop_size = if size_val == 0 { 64 } else { size_val as usize };
+                Ok((prop_num, prop_size, 2))
+            } else if size_byte & 0x40 != 0 {
+                // Bit 6 set: size 2
+                Ok((prop_num, 2, 1))
+            } else {
+                // Bit 6 clear: size 1
+                Ok((prop_num, 1, 1))
+            }
+        }
+    }
+
     /// Get the address of an object property's data
     pub fn get_property_addr(&self, obj_num: u16, prop_num: u8) -> Result<usize, String> {
         if obj_num == 0 {
             return Ok(0); // Object 0 has no properties
         }
-        if obj_num > 255 {
+        let max_objects = if self.game.header.version <= 3 { 255 } else { 65535 };
+        if obj_num > max_objects {
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
         debug!("get_property_addr: obj={}, prop={}", obj_num, prop_num);
 
-        // Special debug for the problematic case
-        if obj_num == 16 && prop_num == 29 {
-            debug!("*** DEBUGGING: Object 16, Property 29 ***");
-        }
-
         // Get object table base
         let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
-        let obj_tree_base = property_defaults + 31 * 2; // 31 default properties, 2 bytes each
+        let default_props = if self.game.header.version <= 3 { 31 } else { 63 };
+        let obj_tree_base = property_defaults + default_props * 2;
 
-        // Calculate object entry address (9 bytes per object in V3)
-        let obj_addr = obj_tree_base + ((obj_num - 1) as usize * 9);
+        // Calculate object entry address
+        let obj_entry_size = if self.game.header.version <= 3 { 9 } else { 14 };
+        let obj_addr = obj_tree_base + ((obj_num - 1) as usize * obj_entry_size);
 
-        // Get property table address (last 2 bytes of object entry)
-        let prop_table_addr = self.read_word((obj_addr + 7) as u32) as usize;
+        // Get property table address
+        let prop_addr_offset = if self.game.header.version <= 3 { 7 } else { 12 };
+        let prop_table_addr = self.read_word((obj_addr + prop_addr_offset) as u32) as usize;
 
         // Skip the description byte length
         let desc_len = self.game.memory[prop_table_addr] as usize;
@@ -356,38 +386,40 @@ impl VM {
                 return Ok(0); // Property not found
             }
 
-            let prop_id = size_byte & 0x1F;
-            let prop_size = ((size_byte >> 5) & 0x07) + 1;
+            let (prop_id, prop_size, size_bytes) = self.get_property_info(prop_addr)?;
 
             if prop_id == prop_num {
                 // Found the property - return address of data
-                return Ok(prop_addr + 1);
+                return Ok(prop_addr + size_bytes);
             }
 
             // Move to next property
-            prop_addr += 1 + prop_size as usize;
+            prop_addr += size_bytes + prop_size;
         }
     }
 
     /// Write a value to an object property
     pub fn put_property(&mut self, obj_num: u16, prop_num: u8, value: u16) -> Result<(), String> {
-        // For V1-3, properties are stored directly in memory
         // We need to find the property in the object's property table
 
-        if obj_num == 0 || obj_num > 255 {
+        let max_objects = if self.game.header.version <= 3 { 255 } else { 65535 };
+        if obj_num == 0 || obj_num > max_objects {
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
         // Get object table base
         let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
-        let obj_tree_base = property_defaults + 31 * 2; // 31 default properties, 2 bytes each
+        let default_props = if self.game.header.version <= 3 { 31 } else { 63 };
+        let obj_tree_base = property_defaults + default_props * 2;
 
-        // Calculate object entry address (9 bytes per object in V3)
-        let obj_addr = obj_tree_base + ((obj_num - 1) as usize * 9);
+        // Calculate object entry address
+        let obj_entry_size = if self.game.header.version <= 3 { 9 } else { 14 };
+        let obj_addr = obj_tree_base + ((obj_num - 1) as usize * obj_entry_size);
 
-        // Get property table address (last 2 bytes of object entry)
-        let prop_table_addr = self.read_word((obj_addr + 7) as u32) as usize;
+        // Get property table address
+        let prop_addr_offset = if self.game.header.version <= 3 { 7 } else { 12 };
+        let prop_table_addr = self.read_word((obj_addr + prop_addr_offset) as u32) as usize;
 
         // Skip the description byte length
         let desc_len = self.game.memory[prop_table_addr] as usize;
@@ -402,15 +434,14 @@ impl VM {
                 ));
             }
 
-            let prop_id = size_byte & 0x1F;
-            let prop_size = ((size_byte >> 5) & 0x07) + 1;
+            let (prop_id, prop_size, size_bytes) = self.get_property_info(prop_addr)?;
 
             if prop_id == prop_num {
                 // Found the property - write the value
                 if prop_size == 1 {
-                    self.write_byte((prop_addr + 1) as u32, value as u8)?;
+                    self.write_byte((prop_addr + size_bytes) as u32, value as u8)?;
                 } else if prop_size == 2 {
-                    self.write_word((prop_addr + 1) as u32, value)?;
+                    self.write_word((prop_addr + size_bytes) as u32, value)?;
                 } else {
                     return Err(format!(
                         "Property {prop_num} has size {prop_size} (>2), cannot use put_prop"
@@ -420,7 +451,7 @@ impl VM {
             }
 
             // Move to next property
-            prop_addr += 1 + prop_size as usize;
+            prop_addr += size_bytes + prop_size;
         }
     }
 
@@ -429,20 +460,24 @@ impl VM {
         if obj_num == 0 {
             return Ok(0); // Object 0 has no properties
         }
-        if obj_num > 255 {
+        let max_objects = if self.game.header.version <= 3 { 255 } else { 65535 };
+        if obj_num > max_objects {
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
         // Get object table base
         let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
-        let obj_tree_base = property_defaults + 31 * 2; // 31 default properties, 2 bytes each
+        let default_props = if self.game.header.version <= 3 { 31 } else { 63 };
+        let obj_tree_base = property_defaults + default_props * 2;
 
-        // Calculate object entry address (9 bytes per object in V3)
-        let obj_addr = obj_tree_base + ((obj_num - 1) as usize * 9);
+        // Calculate object entry address
+        let obj_entry_size = if self.game.header.version <= 3 { 9 } else { 14 };
+        let obj_addr = obj_tree_base + ((obj_num - 1) as usize * obj_entry_size);
 
-        // Get property table address (last 2 bytes of object entry)
-        let prop_table_addr = self.read_word((obj_addr + 7) as u32) as usize;
+        // Get property table address
+        let prop_addr_offset = if self.game.header.version <= 3 { 7 } else { 12 };
+        let prop_table_addr = self.read_word((obj_addr + prop_addr_offset) as u32) as usize;
 
         // Skip the description byte length
         let desc_len = self.game.memory[prop_table_addr] as usize;
@@ -454,7 +489,8 @@ impl VM {
             if size_byte == 0 {
                 return Ok(0); // No properties
             }
-            return Ok(size_byte & 0x1F);
+            let (prop_id, _, _) = self.get_property_info(prop_addr)?;
+            return Ok(prop_id);
         }
 
         // Search for the given property, then return the next one
@@ -464,21 +500,21 @@ impl VM {
                 return Ok(0); // End of properties
             }
 
-            let prop_id = size_byte & 0x1F;
-            let prop_size = ((size_byte >> 5) & 0x07) + 1;
+            let (prop_id, prop_size, size_bytes) = self.get_property_info(prop_addr)?;
 
             if prop_id == prop_num {
                 // Found the property, now get the next one
-                prop_addr += 1 + prop_size as usize;
+                prop_addr += size_bytes + prop_size;
                 let next_size_byte = self.game.memory[prop_addr];
                 if next_size_byte == 0 {
                     return Ok(0); // No next property
                 }
-                return Ok(next_size_byte & 0x1F);
+                let (next_prop_id, _, _) = self.get_property_info(prop_addr)?;
+                return Ok(next_prop_id);
             }
 
             // Move to next property
-            prop_addr += 1 + prop_size as usize;
+            prop_addr += size_bytes + prop_size;
         }
     }
 
@@ -487,11 +523,11 @@ impl VM {
         if obj_num == 0 {
             return Ok(false); // Object 0 has no attributes
         }
-        if obj_num > 255 {
-            return Err(format!("Invalid object number: {obj_num}"));
-        }
 
-        if attr_num > 31 {
+        let obj_addr = self.get_object_addr(obj_num)?;
+        
+        let max_attrs = if self.game.header.version <= 3 { 31 } else { 47 };
+        if attr_num > max_attrs {
             debug!(
                 "WARNING: test_attribute with invalid attribute {} - returning false",
                 attr_num
@@ -499,15 +535,7 @@ impl VM {
             return Ok(false);
         }
 
-        // Get object table base
-        let obj_table_addr = self.game.header.object_table_addr;
-        let property_defaults = obj_table_addr;
-        let obj_tree_base = property_defaults + 31 * 2; // 31 default properties, 2 bytes each
-
-        // Calculate object entry address (9 bytes per object in V3)
-        let obj_addr = obj_tree_base + ((obj_num - 1) as usize * 9);
-
-        // Attributes are in the first 4 bytes of the object entry
+        // Attributes are in the first bytes of the object entry
         let attr_byte = attr_num / 8;
         let attr_bit = 7 - (attr_num % 8); // Attributes are numbered from high bit to low bit
 
@@ -522,11 +550,11 @@ impl VM {
         if obj_num == 0 {
             return Ok(()); // Cannot set attributes on object 0
         }
-        if obj_num > 255 {
-            return Err(format!("Invalid object number: {obj_num}"));
-        }
 
-        if attr_num > 31 {
+        let obj_addr = self.get_object_addr(obj_num)?;
+        
+        let max_attrs = if self.game.header.version <= 3 { 31 } else { 47 };
+        if attr_num > max_attrs {
             debug!(
                 "WARNING: set_attribute with invalid attribute {} - ignoring",
                 attr_num
@@ -534,15 +562,7 @@ impl VM {
             return Ok(());
         }
 
-        // Get object table base
-        let obj_table_addr = self.game.header.object_table_addr;
-        let property_defaults = obj_table_addr;
-        let obj_tree_base = property_defaults + 31 * 2; // 31 default properties, 2 bytes each
-
-        // Calculate object entry address (9 bytes per object in V3)
-        let obj_addr = obj_tree_base + ((obj_num - 1) as usize * 9);
-
-        // Attributes are in the first 4 bytes of the object entry
+        // Attributes are in the first bytes of the object entry
         let attr_byte = attr_num / 8;
         let attr_bit = 7 - (attr_num % 8); // Attributes are numbered from high bit to low bit
 
@@ -557,73 +577,109 @@ impl VM {
         Ok(())
     }
 
-    /// Get object address for V3 (9 bytes per object)
+    /// Get object address
     fn get_object_addr(&self, obj_num: u16) -> Result<usize, String> {
-        if obj_num == 0 || obj_num > 255 {
+        let max_objects = if self.game.header.version <= 3 { 255 } else { 65535 };
+        if obj_num == 0 || obj_num > max_objects {
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
         let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
-        let obj_tree_base = property_defaults + 31 * 2; // 31 default properties, 2 bytes each
+        let default_props = if self.game.header.version <= 3 { 31 } else { 63 };
+        let obj_tree_base = property_defaults + default_props * 2;
+        let obj_entry_size = if self.game.header.version <= 3 { 9 } else { 14 };
 
-        Ok(obj_tree_base + ((obj_num - 1) as usize * 9))
+        Ok(obj_tree_base + ((obj_num - 1) as usize * obj_entry_size))
     }
 
     /// Get parent of object
-    pub fn get_parent(&self, obj_num: u16) -> Result<u8, String> {
+    pub fn get_parent(&self, obj_num: u16) -> Result<u16, String> {
         if obj_num == 0 {
             return Ok(0); // Object 0 has no parent
         }
         let obj_addr = self.get_object_addr(obj_num)?;
-        Ok(self.game.memory[obj_addr + 4])
+        if self.game.header.version <= 3 {
+            Ok(self.game.memory[obj_addr + 4] as u16)
+        } else {
+            Ok(self.read_word((obj_addr + 6) as u32))
+        }
     }
 
     /// Set parent of object
-    pub fn set_parent(&mut self, obj_num: u16, parent: u8) -> Result<(), String> {
+    pub fn set_parent(&mut self, obj_num: u16, parent: u16) -> Result<(), String> {
         if obj_num == 0 {
             return Err("Cannot set parent of object 0".to_string());
         }
         let obj_addr = self.get_object_addr(obj_num)?;
-        self.game.memory[obj_addr + 4] = parent;
+        if self.game.header.version <= 3 {
+            if parent > 255 {
+                return Err(format!("Parent object number too large for v3: {parent}"));
+            }
+            self.game.memory[obj_addr + 4] = parent as u8;
+        } else {
+            self.write_word((obj_addr + 6) as u32, parent)?;
+        }
         Ok(())
     }
 
     /// Get sibling of object
-    pub fn get_sibling(&self, obj_num: u16) -> Result<u8, String> {
+    pub fn get_sibling(&self, obj_num: u16) -> Result<u16, String> {
         if obj_num == 0 {
             return Ok(0); // Object 0 has no sibling
         }
         let obj_addr = self.get_object_addr(obj_num)?;
-        Ok(self.game.memory[obj_addr + 5])
+        if self.game.header.version <= 3 {
+            Ok(self.game.memory[obj_addr + 5] as u16)
+        } else {
+            Ok(self.read_word((obj_addr + 8) as u32))
+        }
     }
 
     /// Set sibling of object
-    pub fn set_sibling(&mut self, obj_num: u16, sibling: u8) -> Result<(), String> {
+    pub fn set_sibling(&mut self, obj_num: u16, sibling: u16) -> Result<(), String> {
         if obj_num == 0 {
             return Err("Cannot set sibling of object 0".to_string());
         }
         let obj_addr = self.get_object_addr(obj_num)?;
-        self.game.memory[obj_addr + 5] = sibling;
+        if self.game.header.version <= 3 {
+            if sibling > 255 {
+                return Err(format!("Sibling object number too large for v3: {sibling}"));
+            }
+            self.game.memory[obj_addr + 5] = sibling as u8;
+        } else {
+            self.write_word((obj_addr + 8) as u32, sibling)?;
+        }
         Ok(())
     }
 
     /// Get child of object
-    pub fn get_child(&self, obj_num: u16) -> Result<u8, String> {
+    pub fn get_child(&self, obj_num: u16) -> Result<u16, String> {
         if obj_num == 0 {
             return Ok(0); // Object 0 has no child
         }
         let obj_addr = self.get_object_addr(obj_num)?;
-        Ok(self.game.memory[obj_addr + 6])
+        if self.game.header.version <= 3 {
+            Ok(self.game.memory[obj_addr + 6] as u16)
+        } else {
+            Ok(self.read_word((obj_addr + 10) as u32))
+        }
     }
 
     /// Set child of object
-    pub fn set_child(&mut self, obj_num: u16, child: u8) -> Result<(), String> {
+    pub fn set_child(&mut self, obj_num: u16, child: u16) -> Result<(), String> {
         if obj_num == 0 {
             return Err("Cannot set child of object 0".to_string());
         }
         let obj_addr = self.get_object_addr(obj_num)?;
-        self.game.memory[obj_addr + 6] = child;
+        if self.game.header.version <= 3 {
+            if child > 255 {
+                return Err(format!("Child object number too large for v3: {child}"));
+            }
+            self.game.memory[obj_addr + 6] = child as u8;
+        } else {
+            self.write_word((obj_addr + 10) as u32, child)?;
+        }
         Ok(())
     }
 
@@ -638,22 +694,22 @@ impl VM {
         }
 
         // Find previous sibling
-        let first_child = self.get_child(parent as u16)?;
-        if first_child == obj_num as u8 {
+        let first_child = self.get_child(parent)?;
+        if first_child == obj_num {
             // Object is first child, update parent's child pointer
             let next_sibling = self.get_sibling(obj_num)?;
-            self.set_child(parent as u16, next_sibling)?;
+            self.set_child(parent, next_sibling)?;
         } else {
             // Find previous sibling and update its sibling pointer
-            let mut current = first_child as u16;
+            let mut current = first_child;
             while current != 0 {
                 let next = self.get_sibling(current)?;
-                if next == obj_num as u8 {
+                if next == obj_num {
                     let obj_sibling = self.get_sibling(obj_num)?;
                     self.set_sibling(current, obj_sibling)?;
                     break;
                 }
-                current = next as u16;
+                current = next;
             }
         }
 
@@ -679,8 +735,8 @@ impl VM {
         let old_child = self.get_child(dest_num)?;
 
         // Set object as new first child
-        self.set_child(dest_num, obj_num as u8)?;
-        self.set_parent(obj_num, dest_num as u8)?;
+        self.set_child(dest_num, obj_num)?;
+        self.set_parent(obj_num, dest_num)?;
         self.set_sibling(obj_num, old_child)?;
 
         Ok(())
