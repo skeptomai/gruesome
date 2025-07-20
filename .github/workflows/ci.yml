@@ -49,11 +49,17 @@ jobs:
       run: cargo clippy -- -D warnings
       if: matrix.os == 'ubuntu-latest'
     
-    - name: Run tests
+    - name: Run tests (with default features)
       run: cargo test --verbose
     
-    - name: Build
+    - name: Run tests (without ratatui)
+      run: cargo test --verbose --no-default-features
+    
+    - name: Build (with default features)
       run: cargo build --verbose --bin gruesome
+    
+    - name: Build (without ratatui) 
+      run: cargo build --verbose --bin gruesome --no-default-features
 
   cross-compile:
     name: Cross-compile builds
@@ -72,5 +78,5 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y mingw-w64
     
-    - name: Build for Windows
-      run: cargo build --target x86_64-pc-windows-gnu --bin gruesome
+    - name: Build for Windows (without ratatui)
+      run: cargo build --target x86_64-pc-windows-gnu --bin gruesome --no-default-features

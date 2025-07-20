@@ -105,6 +105,23 @@ cargo build --release
 cargo run --release
 ```
 
+### Build Options
+
+The project supports optional features for enhanced display handling:
+
+```bash
+# Build with ratatui support (default - better display but larger binary)
+cargo build --release
+
+# Build without ratatui (smaller binary, maximum compatibility)
+cargo build --release --no-default-features
+
+# Run with specific features
+cargo run --release --no-default-features -- path/to/game.z3
+```
+
+**Note**: Release binaries are built without ratatui for maximum compatibility across different terminal environments.
+
 ## Documentation
 
 For developers new to the project:

@@ -35,7 +35,8 @@ build_target() {
     local output_name=$2
     
     echo -e "\n${GREEN}Building for $target...${NC}"
-    if cargo build --release --target "$target" --bin gruesome; then
+    # Build without ratatui for maximum compatibility in releases
+    if cargo build --release --target "$target" --bin gruesome --no-default-features; then
         local source_file="target/$target/release/gruesome"
         if [[ "$target" == *"windows"* ]]; then
             source_file="${source_file}.exe"

@@ -26,13 +26,13 @@ jobs:
     
     - name: Build for aarch64-apple-darwin
       run: |
-        cargo build --release --target aarch64-apple-darwin --bin gruesome
+        cargo build --release --target aarch64-apple-darwin --bin gruesome --no-default-features
         mkdir -p artifacts
         cp target/aarch64-apple-darwin/release/gruesome artifacts/gruesome-aarch64-apple-darwin
     
     - name: Build for x86_64-apple-darwin
       run: |
-        cargo build --release --target x86_64-apple-darwin --bin gruesome
+        cargo build --release --target x86_64-apple-darwin --bin gruesome --no-default-features
         cp target/x86_64-apple-darwin/release/gruesome artifacts/gruesome-x86_64-apple-darwin
     
     - name: Create universal binary
@@ -76,7 +76,7 @@ jobs:
     
     - name: Build for Windows
       run: |
-        cargo build --release --target x86_64-pc-windows-gnu --bin gruesome
+        cargo build --release --target x86_64-pc-windows-gnu --bin gruesome --no-default-features
         mkdir -p artifacts
         cp target/x86_64-pc-windows-gnu/release/gruesome.exe artifacts/gruesome-x86_64-pc-windows-gnu.exe
     
@@ -139,8 +139,11 @@ jobs:
     - name: Setup Rust
       uses: dtolnay/rust-toolchain@stable
     
-    - name: Run tests
+    - name: Run tests (with default features)
       run: cargo test --verbose
     
+    - name: Run tests (without ratatui)
+      run: cargo test --verbose --no-default-features
+    
     - name: Build native binary
-      run: cargo build --release --bin gruesome
+      run: cargo build --release --bin gruesome --no-default-features
