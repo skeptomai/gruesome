@@ -360,7 +360,7 @@ When processing commands, especially those with dictionary type 0x32 (like 'w'),
 ## Completed Features
 
 ✓ Core Z-Machine execution (opcodes, stack, variables)
-✓ Object system with properties and attributes
+✓ Object system with properties and attributes (v1-v5+ support)
 ✓ Parser and dictionary lookup
 ✓ Text encoding/decoding with abbreviations
 ✓ Save/Restore with Quetzal format
@@ -370,7 +370,22 @@ When processing commands, especially those with dictionary type 0x32 (like 'w'),
 ✓ Global and local variables
 ✓ Property get/set operations
 ✓ Stack operations
+✓ Timed interrupts (SREAD with timer callbacks)
+✓ Character input (read_char) with timer support
+✓ Version-aware object handling:
+  - v3: 255 objects, 32 attributes, 31 properties, 9-byte entries
+  - v4+: 65535 objects, 48 attributes, 63 properties, 14-byte entries
+  - Properties up to 64 bytes (v3 limited to 8 bytes)
+  - Two-byte property size format for v4+
 
 ## Current State Summary
 
-The interpreter is fully playable for Zork I with all major features implemented, including timed interrupts. The lantern, matches, and candles now properly count down over time as intended. Save/restore works correctly with the standard Quetzal format, and random events (combat, thief movement) function properly. The main remaining features are for v4+ games (read_char) and display enhancements.
+The interpreter is fully playable for most Z-Machine games across versions 1-5+:
+- **v3 games** (Zork I, Seastalker, The Lurking Horror): Fully supported with all features
+- **v4+ games** (A Mind Forever Voyaging, Bureaucracy): Core gameplay works with full object system support
+- Timed interrupts work correctly - lantern, matches, and candles count down as intended
+- Save/restore works with standard Quetzal format
+- Random events (combat, thief movement) function properly
+- Version-aware object system handles differences between v3 and v4+ formats
+
+The main limitations for v4+ games are minor display opcodes (buffer_mode, erase_line, get_cursor) which don't affect core gameplay.

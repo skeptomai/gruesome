@@ -16,25 +16,32 @@ This project implements a Z-Machine interpreter capable of running Infocom's tex
 - ✅ **Random events** - Combat and NPC movement work correctly
 - ✅ **Timer support** - Full timer implementation with real-time interrupts for all versions
 - ✅ **Non-blocking I/O** - True event-driven input using OS-level notifications
-- ✅ **read_char support** - Single character input with timers (v4+ feature, implemented but not tested with v4+ games)
+- ✅ **read_char support** - Single character input with timers (v4+ feature)
 - ✅ **Status line** - Fully functional status line with automatic updates (v3)
 - ✅ **Display opcodes** - split_window, show_status, and set_text_style implemented
 
 ### Tested and Working Games
 
-The following Infocom v3 games have been tested and work correctly:
+The following Infocom games have been tested and work correctly:
 
+#### Version 3 Games (Fully Supported)
 - **Zork I: The Great Underground Empire** - The classic that started it all
 - **Deadline** - Mystery game with complex character movements and timed events
 - **Enchanter** - First of the magic trilogy with spell system
 - **The Hitchhiker's Guide to the Galaxy** - Douglas Adams' sci-fi comedy
 - **Suspended** - Unique multi-robot perspective game
+- **Seastalker** - Underwater adventure with window splitting
+- **The Lurking Horror** - Horror game set at MIT
+
+#### Version 4+ Games (Core Support)
+- **A Mind Forever Voyaging** (v4) - Dystopian future simulation
+- **Bureaucracy** (v4) - Douglas Adams' satire on red tape
+- Core gameplay works; some advanced display features not implemented
 
 ### Known Limitations
 
-- ⚠️ **Some display opcodes** - set_cursor, erase_line, etc. not implemented
-- ⚠️ **v3 games primarily** - Timer and read_char support for v4+ implemented but not tested with actual v4+ games
-- ⚠️ **No sound support** - sound_effect plays beep only
+- ⚠️ **Minor v4+ display opcodes** - buffer_mode, erase_line, get_cursor not implemented (doesn't affect gameplay)
+- ⚠️ **No sound support** - sound_effect plays beep only (v3 feature)
 - ⚠️ **No graphics** - Text-only implementation
 
 ## Quick Start
