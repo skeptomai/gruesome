@@ -1887,28 +1887,11 @@ impl Interpreter {
                 // Style bits: 1=reverse, 2=bold, 4=italic, 8=fixed-pitch
                 if !operands.is_empty() {
                     let style = operands[0];
-                    debug!("set_text_style: style={}", style);
-
-                    // Apply text styles directly to stdout
-                    // For now, just handle the common styles
-                    let style_str = if style == 0 {
-                        "\x1b[0m" // Reset to normal
-                    } else if style & 1 != 0 {
-                        "\x1b[7m" // Reverse video
-                    } else if style & 2 != 0 {
-                        "\x1b[1m" // Bold
-                    } else {
-                        ""
-                    };
+                    debug!("set_text_style: style={} (ignoring for now)", style);
                     
-                    if !style_str.is_empty() {
-                        if let Some(ref mut display) = self.display {
-                            display.print(style_str).ok();
-                        } else {
-                            print!("{}", style_str);
-                            io::stdout().flush().ok();
-                        }
-                    }
+                    // TODO: Implement proper text style handling in display system
+                    // For now, ignore text styles to prevent ANSI codes from being
+                    // printed as literal text in the upper window
                 }
                 Ok(ExecutionResult::Continue)
             }

@@ -96,12 +96,18 @@ impl Display {
     ///
     /// In v3, this is only used for the upper window
     pub fn set_cursor(&mut self, line: u16, column: u16) -> Result<(), String> {
-        debug!("set_cursor: line={}, column={}", line, column);
+        debug!("set_cursor: line={}, column={}, current_window={}", line, column, self.current_window);
 
         if self.current_window == 1 {
             // Upper window - store position
+            let old_y = self.upper_cursor_y;
+            let old_x = self.upper_cursor_x;
             self.upper_cursor_y = (line - 1).min(self.upper_window_lines - 1);
             self.upper_cursor_x = (column - 1).min(self.terminal_width - 1);
+            debug!("set_cursor: moved from ({}, {}) to ({}, {})", 
+                   old_x, old_y, self.upper_cursor_x, self.upper_cursor_y);
+        } else {
+            debug!("set_cursor: ignoring because current_window={} (not upper window)", self.current_window);
         }
 
         Ok(())
@@ -209,15 +215,21 @@ impl Display {
     /// Print text to upper window at current cursor position
     fn print_to_upper_window(&mut self, text: &str) -> Result<(), String> {
         if self.upper_cursor_y >= self.upper_window_lines {
+            debug!("print_to_upper_window: cursor_y {} >= window_lines {}, skipping", 
+                   self.upper_cursor_y, self.upper_window_lines);
             return Ok(());
         }
 
         let line_idx = self.upper_cursor_y as usize;
         let col = self.upper_cursor_x as usize;
 
+        debug!("print_to_upper_window: text='{}', cursor=({}, {}), line_idx={}, col={}", 
+               text, self.upper_cursor_x, self.upper_cursor_y, line_idx, col);
+
         // Get current line
         if line_idx < self.upper_window_buffer.len() {
             let line = &mut self.upper_window_buffer[line_idx];
+            debug!("print_to_upper_window: current line before='{}'", line);
 
             // Ensure line is long enough
             if line.len() < col {
@@ -230,7 +242,10 @@ impl Display {
             new_line.push_str(text);
 
             // Update cursor position  
-            self.upper_cursor_x = (col + text.len()).min(self.terminal_width as usize) as u16;
+            let new_cursor_x = (col + text.len()).min(self.terminal_width as usize) as u16;
+            debug!("print_to_upper_window: updating cursor_x from {} to {}", 
+                   self.upper_cursor_x, new_cursor_x);
+            self.upper_cursor_x = new_cursor_x;
 
             // Keep rest of line if it fits
             if col + text.len() < line.len() {
@@ -238,6 +253,7 @@ impl Display {
             }
 
             *line = new_line;
+            debug!("print_to_upper_window: line after='{}'", line);
             // Mark upper window as needing refresh, but don't refresh immediately
             self.upper_window_dirty = true;
         }
