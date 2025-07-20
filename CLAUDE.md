@@ -343,8 +343,8 @@ When processing commands, especially those with dictionary type 0x32 (like 'w'),
   - Note: Zork I doesn't use sound effects, only The Lurking Horror v3 does
 
 ### 4. Display Opcodes
-- **Current Status**: Mostly implemented
-- **Implemented**:
+- **Current Status**: ✓ FULLY IMPLEMENTED
+- **All display opcodes implemented**:
   - set_text_style ✓
   - split_window ✓ (fully functional for v3+)
   - erase_window ✓ (fully functional for v3+)
@@ -352,10 +352,9 @@ When processing commands, especially those with dictionary type 0x32 (like 'w'),
   - set_cursor ✓
   - show_status ✓
   - output_stream ✓ (basic)
-- **Missing (v4+ only)**:
-  - buffer_mode
-  - erase_line  
-  - get_cursor
+  - buffer_mode ✓ (v4+)
+  - erase_line ✓ (v4+)
+  - get_cursor ✓ (v4+)
 
 ## Completed Features
 
@@ -388,4 +387,24 @@ The interpreter is fully playable for most Z-Machine games across versions 1-5+:
 - Random events (combat, thief movement) function properly
 - Version-aware object system handles differences between v3 and v4+ formats
 
-The main limitations for v4+ games are minor display opcodes (buffer_mode, erase_line, get_cursor) which don't affect core gameplay.
+All major features are now implemented for v1-5 games, including all display opcodes.
+
+## Version Support Summary
+
+### v3 Games: 100% Complete
+- All opcodes implemented
+- Full object system support
+- Timer interrupts working
+- Display features complete
+- Tested with: Zork I, Seastalker, The Lurking Horror, and more
+
+### v4 Games: Fully Playable
+- Version-aware object system (63 properties, 48 attributes, 14-byte objects)
+- All v4 display opcodes implemented (buffer_mode, erase_line, get_cursor)
+- Character input (read_char) with timers
+- Tested with: A Mind Forever Voyaging, Bureaucracy
+
+### v5 Games: Core Support
+- Should work with existing implementation
+- Extended opcodes (256+) not yet implemented
+- Needs testing with actual v5 games
