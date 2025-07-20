@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Let's see what happens after that
     println!("After space print at 0x630c:");
     if let Ok(output) = disasm.disassemble_range(0x630c, 0x6350) {
-        println!("{}", output);
+        println!("{output}");
     }
 
     // Looking for where "leave" gets printed
@@ -38,22 +38,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Ok((inst, text)) = disasm.disassemble_instruction(addr as u32) {
             if inst.opcode == 0x0D {
                 // print_paddr
-                println!("\nFound print_paddr at 0x{:04x}: {}", addr, text);
-                if let Some(op) = inst.operands.get(0) {
+                println!("\nFound print_paddr at 0x{addr:04x}: {text}");
+                if let Some(op) = inst.operands.first() {
                     let packed_addr = *op;
                     let unpacked = packed_addr as usize * 2;
-                    println!("  Packed address: 0x{:04x}", packed_addr);
-                    println!("  Unpacked address: 0x{:04x}", unpacked);
+                    println!("  Packed address: 0x{packed_addr:04x}");
+                    println!("  Unpacked address: 0x{unpacked:04x}");
 
                     // Try to decode string at that address
-                    let abbrev_addr = game.header.abbrev_table as usize;
+                    let abbrev_addr = game.header.abbrev_table;
                     if let Ok(decoded) = text::decode_string_at_packed_addr(
                         &game.memory,
                         packed_addr,
                         game.header.version,
                         abbrev_addr,
                     ) {
-                        println!("  String: \"{}\"", decoded);
+                        println!("  String: \"{decoded}\"");
                         if decoded.contains("leave") {
                             println!("  >>> Found 'leave'!");
                         }
@@ -69,7 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Ok((inst, text)) = disasm.disassemble_instruction(addr as u32) {
             if inst.opcode == 0x05 {
                 // print_char
-                println!("print_char at 0x{:04x}: {}", addr, text);
+                println!("print_char at 0x{addr:04x}: {text}");
             }
         }
     }

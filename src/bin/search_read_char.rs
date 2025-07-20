@@ -10,7 +10,7 @@ fn main() {
     let data = match fs::read(game_path) {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("Error loading game file: {:?}", e);
+            eprintln!("Error loading game file: {e:?}");
             return;
         }
     };
@@ -99,9 +99,9 @@ fn main() {
                 .enumerate()
                 .map(|(i, b)| {
                     if start + i == *loc {
-                        format!("[{:02x}]", b)
+                        format!("[{b:02x}]")
                     } else {
-                        format!("{:02x}", b)
+                        format!("{b:02x}")
                     }
                 })
                 .collect();

@@ -78,8 +78,8 @@ impl<'a> GameFile<'a> {
     /// default_properties creates PropertyDefault structure from memory maps property defaults
     pub fn default_properties(&self) -> PropertyDefaults<u8, MAX_PROPERTIES_V3> {
         let prop_raw: &[u8; MAX_PROPERTIES_V3] =
-            &self.bytes_sized(self.memory_map.property_defaults);
-        PropertyDefaults { prop_raw: prop_raw }
+            self.bytes_sized(self.memory_map.property_defaults);
+        PropertyDefaults { prop_raw }
     }
 
     /// header is an accessor that returns the game header
@@ -88,7 +88,7 @@ impl<'a> GameFile<'a> {
     }
 
     pub fn version(&self) -> usize {
-        *(&self.header.version) as usize
+        self.header.version as usize
     }
 
     /// abbrev_strings is an accessor that returns the abbreviated strings
@@ -113,13 +113,13 @@ impl<'a> GameFile<'a> {
 
     /// bytes is an accessor that returns all the bytes in the memory map as [u8]
     pub fn bytes(&self) -> &'a [u8] {
-        &self.memory_map.bytes[..]
+        self.memory_map.bytes
     }
 
     pub fn bytes_sized<const N: usize>(&self, offset: usize) -> &'a [u8; N] {
         log::debug!("calling bytes_sized");
-        let sub: &[u8; N] = &self.memory_map.bytes.sub_array_ref(offset);
-        &sub
+        let sub: &[u8; N] = self.memory_map.bytes.sub_array_ref(offset);
+        sub
     }
 }
 
@@ -142,13 +142,8 @@ impl<'a> Display for GameFile<'a> {
         let mut si = 1;
         loop {
             let _abbrev_string_addr =
-                (get_mem_addr(&self.bytes(), abbrev_table_offset as usize).unwrap() * 2) as usize;
-            writeln!(
-                f,
-                "[{}] \"{}\"",
-                si,
-                "ABBREV_TEXT".to_string() // Temporary placeholder
-            )?;
+                (get_mem_addr(self.bytes(), abbrev_table_offset).unwrap() * 2) as usize;
+            writeln!(f, "[{si}] \"ABBREV_TEXT\"")?;
             si += 1;
             abbrev_table_offset += 2;
             if abbrev_table_offset >= self.memory_map.property_defaults {
@@ -158,7 +153,7 @@ impl<'a> Display for GameFile<'a> {
 
         match &self.object_table {
             Some(ot) => {
-                write!(f, "{}", ot)?;
+                write!(f, "{ot}")?;
             }
             _ => {
                 write!(f, "no objects found")?;

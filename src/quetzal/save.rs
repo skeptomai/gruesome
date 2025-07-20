@@ -70,12 +70,12 @@ impl SaveGame {
         print!("Enter save filename: ");
         io::stdout()
             .flush()
-            .map_err(|e| format!("Failed to flush stdout: {}", e))?;
+            .map_err(|e| format!("Failed to flush stdout: {e}"))?;
 
         let mut filename = String::new();
         io::stdin()
             .read_line(&mut filename)
-            .map_err(|e| format!("Failed to read filename: {}", e))?;
+            .map_err(|e| format!("Failed to read filename: {e}"))?;
 
         let filename = filename.trim();
         if filename.is_empty() {
@@ -86,12 +86,12 @@ impl SaveGame {
         let filename = if filename.ends_with(".sav") || filename.ends_with(".qzl") {
             filename.to_string()
         } else {
-            format!("{}.sav", filename)
+            format!("{filename}.sav")
         };
 
         let path = Path::new(&filename);
 
-        println!("Saving game to '{}'...", filename);
+        println!("Saving game to '{filename}'...");
         self.save_to_file(path)?;
         println!("Game saved.");
 

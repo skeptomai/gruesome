@@ -22,17 +22,17 @@ pub struct Header {
 }
 
 impl Header {
-    pub fn new(bytes: &Vec<u8>) -> Header {
+    pub fn new(bytes: &[u8]) -> Header {
         Header {
             version: bytes[0],
             release: (bytes[2] as u16) * 256 + (bytes[3] as u16),
-            serial: || -> String {
+            serial: {
                 let mut serial: String = String::from("");
                 for b in &bytes[0x12..0x18] {
                     serial.push(*b as char);
                 }
                 serial
-            }(),
+            },
             base_high_mem: get_mem_addr(bytes, 4).unwrap(),
             base_static_mem: get_mem_addr(bytes, 14).unwrap(),
             initial_pc: get_mem_addr(bytes, 6).unwrap(),

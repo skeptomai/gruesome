@@ -13,9 +13,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // We know "leaves" is at dictionary address 0x44a5
     let leaves_addr = 0x44a5;
-    let abbrev_addr = game.header.abbrev_table as usize;
+    let abbrev_addr = game.header.abbrev_table;
 
-    println!("Dictionary entry for 'leaves' at 0x{:04x}:", leaves_addr);
+    println!("Dictionary entry for 'leaves' at 0x{leaves_addr:04x}:");
 
     // In V3, dictionary entries are 7 bytes:
     // - 4 bytes: encoded word (2 words of Z-characters)
@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nLooking for 'leave' in dictionary...");
 
     // Search dictionary
-    let dict_addr = game.header.dictionary as usize;
+    let dict_addr = game.header.dictionary;
     let sep_count = game.memory[dict_addr] as usize;
     let sep_start = dict_addr + 1;
     let entry_length = game.memory[sep_start + sep_count] as usize;
@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let entry_addr = entries_start + (i * entry_length);
         if let Ok((word, _)) = text::decode_string(&game.memory, entry_addr, abbrev_addr) {
             if word.trim() == "leave" {
-                println!("\nFound 'leave' at 0x{:04x}:", entry_addr);
+                println!("\nFound 'leave' at 0x{entry_addr:04x}:");
                 print!("Raw bytes: ");
                 for j in 0..7 {
                     print!("{:02x} ", game.memory[entry_addr + j]);

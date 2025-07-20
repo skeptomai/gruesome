@@ -32,7 +32,7 @@ impl Display {
     /// Create a new display manager
     pub fn new() -> Result<Self, String> {
         let (width, height) =
-            terminal::size().map_err(|e| format!("Failed to get terminal size: {}", e))?;
+            terminal::size().map_err(|e| format!("Failed to get terminal size: {e}"))?;
 
         Ok(Display {
             upper_window_lines: 0,
@@ -48,7 +48,7 @@ impl Display {
     /// Clear the entire screen and position cursor at top
     pub fn clear_screen(&mut self) -> Result<(), String> {
         execute!(io::stdout(), Clear(ClearType::All), MoveTo(0, 0))
-            .map_err(|e| format!("Failed to clear screen: {}", e))?;
+            .map_err(|e| format!("Failed to clear screen: {e}"))?;
         io::stdout().flush().ok();
         Ok(())
     }
@@ -105,7 +105,7 @@ impl Display {
             self.print_to_upper_window(text)?;
         } else {
             // Print to lower window (normal output)
-            print!("{}", text);
+            print!("{text}");
             io::stdout().flush().ok();
         }
         Ok(())
@@ -124,7 +124,7 @@ impl Display {
             -1 => {
                 // Erase whole screen
                 execute!(io::stdout(), Clear(ClearType::All))
-                    .map_err(|e| format!("Failed to clear screen: {}", e))?;
+                    .map_err(|e| format!("Failed to clear screen: {e}"))?;
             }
             0 => {
                 // Erase lower window
@@ -135,7 +135,7 @@ impl Display {
                         MoveTo(0, self.upper_window_lines),
                         Clear(ClearType::FromCursorDown)
                     )
-                    .map_err(|e| format!("Failed to clear lower window: {}", e))?;
+                    .map_err(|e| format!("Failed to clear lower window: {e}"))?;
                 }
             }
             1 => {
@@ -163,7 +163,7 @@ impl Display {
         );
 
         // Format status line
-        let right_text = format!("Score: {} Moves: {}", score, moves);
+        let right_text = format!("Score: {score} Moves: {moves}");
         let available_width = self.terminal_width as usize;
         let right_len = right_text.len();
 
@@ -253,7 +253,7 @@ impl Display {
 
         // Save current cursor position
         execute!(io::stdout(), cursor::SavePosition)
-            .map_err(|e| format!("Failed to save cursor: {}", e))?;
+            .map_err(|e| format!("Failed to save cursor: {e}"))?;
 
         // Draw upper window with reverse video
         for (i, line) in self.upper_window_buffer.iter().enumerate() {
@@ -264,7 +264,7 @@ impl Display {
                 Print(line),
                 style::SetAttribute(style::Attribute::Reset)
             )
-            .map_err(|e| format!("Failed to draw upper window line: {}", e))?;
+            .map_err(|e| format!("Failed to draw upper window line: {e}"))?;
         }
 
         // Draw separator line if there's room
@@ -274,12 +274,12 @@ impl Display {
                 MoveTo(0, self.upper_window_lines),
                 style::SetAttribute(style::Attribute::Reset)
             )
-            .map_err(|e| format!("Failed to reset attributes: {}", e))?;
+            .map_err(|e| format!("Failed to reset attributes: {e}"))?;
         }
 
         // Restore cursor position
         execute!(io::stdout(), cursor::RestorePosition)
-            .map_err(|e| format!("Failed to restore cursor: {}", e))?;
+            .map_err(|e| format!("Failed to restore cursor: {e}"))?;
 
         io::stdout().flush().ok();
         Ok(())

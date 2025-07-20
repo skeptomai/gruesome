@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // The routine table starts at the static memory boundary
     let routines_start = game.header.base_static_mem;
-    println!("Routines start at: 0x{:04x}", routines_start);
+    println!("Routines start at: 0x{routines_start:04x}");
 
     // Look for routines that might be QUEUE based on pattern
     // QUEUE typically takes 2-3 arguments and manipulates a queue structure
@@ -36,10 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let routine = inst.operands[3];
                 if time > 0 && routine > 0 {
                     timed_sreads.push((addr, time, routine));
-                    println!(
-                        "  0x{:04x}: sread with time={} routine=0x{:04x}",
-                        addr, time, routine
-                    );
+                    println!("  0x{addr:04x}: sread with time={time} routine=0x{routine:04x}");
                 }
             }
         }
@@ -47,17 +44,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Analyze the interrupt routines
     println!("\n3. Analyzing interrupt routines:");
-    for (sread_addr, time, routine_packed) in &timed_sreads {
+    for (sread_addr, _time, routine_packed) in &timed_sreads {
         let routine_addr = (*routine_packed as u32) * 2;
-        println!(
-            "\n  Interrupt routine 0x{:04x} (from sread at 0x{:04x}):",
-            routine_addr, sread_addr
-        );
+        println!("\n  Interrupt routine 0x{routine_addr:04x} (from sread at 0x{sread_addr:04x}):");
 
         // Disassemble first few instructions
         if let Ok(output) = disasm.disassemble_range(routine_addr, routine_addr + 30) {
             for line in output.lines().take(10) {
-                println!("    {}", line);
+                println!("    {line}");
             }
         }
 
@@ -67,15 +61,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Ok((inst, _)) = disasm.disassemble_instruction(routine_addr + offset) {
                 // Check for load/store/dec/inc of globals 88-90 (0x58-0x5a)
                 for (i, op) in inst.operands.iter().enumerate() {
-                    if matches!(inst.operand_types[i], OperandType::Variable) {
-                        if *op >= 0x58 && *op <= 0x5a {
-                            println!(
-                                "    Found access to G{} at +0x{:02x}: {}",
-                                op - 0x10,
-                                offset,
-                                inst.opcode
-                            );
-                        }
+                    if matches!(inst.operand_types[i], OperandType::Variable)
+                        && *op >= 0x58
+                        && *op <= 0x5a
+                    {
+                        println!(
+                            "    Found access to G{} at +0x{:02x}: {}",
+                            op - 0x10,
+                            offset,
+                            inst.opcode
+                        );
                     }
                 }
             }
@@ -94,9 +89,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Ok((inst, _)) = disasm.disassemble_instruction(addr as u32) {
             if inst.opcode == 0x04 {
                 // dec_chk
-                if inst.operands.len() >= 1 {
+                if !inst.operands.is_empty() {
                     let var = inst.operands[0];
-                    if var >= 0x58 && var <= 0x5a {
+                    if (0x58..=0x5a).contains(&var) {
                         println!("  0x{:04x}: dec_chk G{}", addr, var - 0x10);
 
                         // Show context
@@ -104,7 +99,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             disasm.disassemble_range((addr - 5) as u32, (addr + 10) as u32)
                         {
                             for line in output.lines() {
-                                println!("    {}", line);
+                                println!("    {line}");
                             }
                         }
                     }
@@ -150,9 +145,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
 
                     if has_loop && has_table_access {
-                        println!("\n  Potential QUEUE routine at 0x{:04x}:", addr);
+                        println!("\n  Potential QUEUE routine at 0x{addr:04x}:");
                         for line in lines.iter().take(15) {
-                            println!("    {}", line);
+                            println!("    {line}");
                         }
                     }
                 }

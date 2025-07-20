@@ -2,7 +2,7 @@ use crate::game::GameFile;
 use bitreader::{BitReader, BitReaderError};
 use std::array::TryFromSliceError;
 use std::collections::HashMap;
-use std::{io, usize};
+use std::io;
 
 ///There are three possible alphabets: lower case, upper case, and number/symbol
 ///
@@ -62,7 +62,7 @@ impl<'a, const U: usize> Iterator for UnpackedZCharsIter<'a, U> {
     fn next(&mut self) -> Option<Self::Item> {
         if self.pos < U {
             let cur_pos = self.pos;
-            self.pos = self.pos + 1;
+            self.pos += 1;
             Some(&self.chars[cur_pos])
         } else {
             None
@@ -100,7 +100,7 @@ pub fn properties_size_by_version(version: u8) -> usize {
     match version {
         3 => MAX_PROPERTIES_V3,
         _ => {
-            panic!("version out of range! {}", version);
+            panic!("version out of range! {version}");
         }
     }
 }

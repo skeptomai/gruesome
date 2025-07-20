@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if inst.opcode == 0x04
             && matches!(inst.operand_count, gruesome::instruction::OperandCount::VAR)
         {
-            println!("Reached first prompt at PC 0x{:05x}", pc);
+            println!("Reached first prompt at PC 0x{pc:05x}");
             break;
         }
 
@@ -91,7 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let inst = match Instruction::decode(&interpreter2.vm.game.memory, pc as usize, 3) {
             Ok(inst) => inst,
             Err(e) => {
-                println!("  Step {}: ERROR decoding at 0x{:05x}: {}", i, pc, e);
+                println!("  Step {i}: ERROR decoding at 0x{pc:05x}: {e}");
                 break;
             }
         };
@@ -107,7 +107,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match interpreter2.execute_instruction(&inst) {
             Ok(_) => {}
             Err(e) => {
-                println!("    ERROR: {}", e);
+                println!("    ERROR: {e}");
                 break;
             }
         }

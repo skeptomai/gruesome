@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Show bytes around 0x5fdf
     for addr in 0x5fda..=0x5ff0 {
         if addr % 8 == 0 {
-            print!("\n{:04x}: ", addr);
+            print!("\n{addr:04x}: ");
         }
         print!("{:02x} ", game.memory[addr]);
     }
@@ -29,13 +29,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let byte3 = game.memory[0x5fe1];
     let byte4 = game.memory[0x5fe2];
 
-    println!(
-        "Bytes: {:02x} {:02x} {:02x} {:02x}",
-        byte1, byte2, byte3, byte4
-    );
+    println!("Bytes: {byte1:02x} {byte2:02x} {byte3:02x} {byte4:02x}");
 
     // In Z-Machine, 0x04 is dec_chk
-    println!("Opcode: 0x{:02x} (dec_chk)", byte1);
+    println!("Opcode: 0x{byte1:02x} (dec_chk)");
 
     // For Long form 2OP, bits 6-5 of first byte determine form
     let form_bits = (byte1 >> 5) & 0x03;
@@ -57,10 +54,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Small constant"
     };
 
-    println!("Op1 type: {}", op1_type);
-    println!("Op2 type: {}", op2_type);
-    println!("Op1 value: 0x{:02x}", byte2);
-    println!("Op2 value: 0x{:02x}", byte3);
+    println!("Op1 type: {op1_type}");
+    println!("Op2 type: {op2_type}");
+    println!("Op1 value: 0x{byte2:02x}");
+    println!("Op2 value: 0x{byte3:02x}");
 
     // Branch info
     let branch_byte = byte4;
@@ -85,13 +82,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else if branch_offset == 1 {
         "RTRUE".to_string()
     } else {
-        format!("offset {}", branch_offset)
+        format!("offset {branch_offset}")
     };
 
-    println!(
-        "\nBranch: {} when condition is {}",
-        branch_target, branch_on
-    );
+    println!("\nBranch: {branch_target} when condition is {branch_on}");
 
     Ok(())
 }

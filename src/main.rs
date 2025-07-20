@@ -34,11 +34,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut step_range = None;
     if args.len() >= 5 && args[2] == "--step" {
         let start =
-            u32::from_str_radix(&args[3].trim_start_matches("0x"), 16).unwrap_or_else(|_| {
+            u32::from_str_radix(args[3].trim_start_matches("0x"), 16).unwrap_or_else(|_| {
                 eprintln!("Invalid start PC: {}", args[3]);
                 std::process::exit(1);
             });
-        let end = u32::from_str_radix(&args[4].trim_start_matches("0x"), 16).unwrap_or_else(|_| {
+        let end = u32::from_str_radix(args[4].trim_start_matches("0x"), 16).unwrap_or_else(|_| {
             eprintln!("Invalid end PC: {}", args[4]);
             std::process::exit(1);
         });
@@ -76,7 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             debug!("\nGame ended normally.");
         }
         Err(e) => {
-            eprintln!("\nError during execution: {}", e);
+            eprintln!("\nError during execution: {e}");
             std::process::exit(1);
         }
     }

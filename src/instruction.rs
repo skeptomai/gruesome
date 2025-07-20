@@ -100,7 +100,7 @@ impl Instruction {
     /// Decode an instruction from memory at the given address
     pub fn decode(memory: &[u8], addr: usize, version: u8) -> Result<Self, String> {
         if addr >= memory.len() {
-            return Err(format!("Instruction address {} out of bounds", addr));
+            return Err(format!("Instruction address {addr} out of bounds"));
         }
 
         let mut offset = addr;
@@ -355,7 +355,7 @@ impl Instruction {
                     (Some(string), len)
                 }
                 Err(e) => {
-                    return Err(format!("Failed to decode inline text: {}", e));
+                    return Err(format!("Failed to decode inline text: {e}"));
                 }
             }
         } else {
@@ -439,14 +439,14 @@ impl Instruction {
             }
 
             match self.operand_types[i] {
-                OperandType::Variable => write!(result, "V{:02x}", op).unwrap(),
-                _ => write!(result, "#{:04x}", op).unwrap(),
+                OperandType::Variable => write!(result, "V{op:02x}").unwrap(),
+                _ => write!(result, "#{op:04x}").unwrap(),
             }
         }
 
         // Print store variable
         if let Some(var) = self.store_var {
-            write!(result, " -> V{:02x}", var).unwrap();
+            write!(result, " -> V{var:02x}").unwrap();
         }
 
         // Print branch info
@@ -458,7 +458,7 @@ impl Instruction {
                 match branch.offset {
                     0 => " RFALSE".to_string(),
                     1 => " RTRUE".to_string(),
-                    n => format!(" {:+}", n),
+                    n => format!(" {n:+}"),
                 }
             )
             .unwrap();
@@ -483,14 +483,14 @@ impl Display for Instruction {
             }
 
             match self.operand_types[i] {
-                OperandType::Variable => write!(f, "V{:02x}", op)?,
-                _ => write!(f, "#{:04x}", op)?,
+                OperandType::Variable => write!(f, "V{op:02x}")?,
+                _ => write!(f, "#{op:04x}")?,
             }
         }
 
         // Print store variable
         if let Some(var) = self.store_var {
-            write!(f, " -> V{:02x}", var)?;
+            write!(f, " -> V{var:02x}")?;
         }
 
         // Print branch info
@@ -502,7 +502,7 @@ impl Display for Instruction {
                 match branch.offset {
                     0 => " RFALSE".to_string(),
                     1 => " RTRUE".to_string(),
-                    n => format!(" {:+}", n),
+                    n => format!(" {n:+}"),
                 }
             )?;
         }

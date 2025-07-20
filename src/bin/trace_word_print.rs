@@ -1,4 +1,3 @@
-use env_logger;
 use gruesome::disassembler::Disassembler;
 use gruesome::interpreter::Interpreter;
 use gruesome::vm::{Game, VM};
@@ -108,14 +107,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             Err(e) => {
-                println!("Error: {}", e);
+                println!("Error: {e}");
                 break;
             }
         }
 
         step_count += 1;
         if step_count > 50 {
-            println!("\nStopping after {} steps", step_count);
+            println!("\nStopping after {step_count} steps");
             break;
         }
 

@@ -29,16 +29,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for addr in 0x5000..game.header.base_static_mem {
         if let Ok((inst, _)) = disasm.disassemble_instruction(addr as u32) {
             // Look for CALL_2S, CALL_VS, CALL_VS2
-            if matches!(inst.opcode, 0x19 | 0x00 | 0x0c) {
-                if inst.operands.len() >= 3 {
-                    // Check if second operand looks like a time value (1-255)
-                    if inst.operands[1] > 0 && inst.operands[1] <= 255 {
-                        potential_queue_calls.push((addr, inst.operands[0], inst.operands[1]));
-                        println!(
-                            "  Found potential QUEUE call at 0x{:04x}: routine=0x{:04x}, arg2={}",
-                            addr, inst.operands[0], inst.operands[1]
-                        );
-                    }
+            if matches!(inst.opcode, 0x19 | 0x00 | 0x0c) && inst.operands.len() >= 3 {
+                // Check if second operand looks like a time value (1-255)
+                if inst.operands[1] > 0 && inst.operands[1] <= 255 {
+                    potential_queue_calls.push((addr, inst.operands[0], inst.operands[1]));
+                    println!(
+                        "  Found potential QUEUE call at 0x{:04x}: routine=0x{:04x}, arg2={}",
+                        addr, inst.operands[0], inst.operands[1]
+                    );
                 }
             }
         }
@@ -56,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         seen_routines.insert(routine_packed);
 
         let routine_addr = (routine_packed as u32) * 2;
-        println!("\n  Routine at 0x{:04x}:", routine_addr);
+        println!("\n  Routine at 0x{routine_addr:04x}:");
 
         // Disassemble first part of routine
         if let Ok(output) = disasm.disassemble_range(routine_addr, routine_addr + 100) {
@@ -90,13 +88,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if has_loop && has_storew && has_loadw {
                 println!("    *** LIKELY QUEUE ROUTINE ***");
                 println!(
-                    "    Has loop: {}, storew: {}, loadw: {}, je_zero: {}",
-                    has_loop, has_storew, has_loadw, has_je_zero
+                    "    Has loop: {has_loop}, storew: {has_storew}, loadw: {has_loadw}, je_zero: {has_je_zero}"
                 );
 
                 // Show more of this routine
                 for line in lines.iter().take(20) {
-                    println!("    {}", line);
+                    println!("    {line}");
                 }
             }
         }
@@ -111,10 +108,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for addr in 0x4f00..0x5000 {
         if let Ok((inst, text)) = disasm.disassemble_instruction(addr as u32) {
             // Look for calls with time-like values
-            if matches!(inst.opcode, 0x19 | 0x00 | 0x0c) && inst.operands.len() >= 3 {
-                if inst.operands[1] >= 100 && inst.operands[1] <= 400 {
-                    println!("    0x{:04x}: {} ; potential timer setup", addr, text);
-                }
+            if matches!(inst.opcode, 0x19 | 0x00 | 0x0c)
+                && inst.operands.len() >= 3
+                && inst.operands[1] >= 100
+                && inst.operands[1] <= 400
+            {
+                println!("    0x{addr:04x}: {text} ; potential timer setup");
             }
         }
     }
@@ -126,10 +125,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for addr in game.header.base_static_mem..game.header.base_static_mem + 0x5000 {
         if let Ok((inst, _)) = disasm.disassemble_instruction(addr as u32) {
             // Look for DEC or DEC_CHK on globals 88-90
-            if matches!(inst.opcode, 0x03 | 0x04) && inst.operands.len() >= 1 {
+            if matches!(inst.opcode, 0x03 | 0x04) && !inst.operands.is_empty() {
                 let var = inst.operands[0];
-                if var >= 0x58 && var <= 0x5a {
-                    println!("\n  Found timer operation at 0x{:04x}:", addr);
+                if (0x58..=0x5a).contains(&var) {
+                    println!("\n  Found timer operation at 0x{addr:04x}:");
 
                     // Show the routine this is in
                     let routine_start = (addr / 8) * 8; // Rough estimate
@@ -137,7 +136,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         disasm.disassemble_range(routine_start as u32, (addr + 50) as u32)
                     {
                         for line in output.lines().take(20) {
-                            println!("    {}", line);
+                            println!("    {line}");
                         }
                     }
                 }

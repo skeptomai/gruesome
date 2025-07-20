@@ -15,13 +15,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Search for text containing "leave" in various forms
     let patterns = vec!["leave", "leaves", " leave", "  leave"];
-    let abbrev_table = game.header.abbrev_table as usize;
+    let abbrev_table = game.header.abbrev_table;
 
     for addr in 0..memory.len() - 10 {
         if let Ok((text, _)) = text::decode_string(&memory, addr, abbrev_table) {
             for pattern in &patterns {
                 if text.contains(pattern) && text.len() < 100 {
-                    println!("Found at 0x{:04x}: \"{}\"", addr, text);
+                    println!("Found at 0x{addr:04x}: \"{text}\"");
 
                     // Show the raw bytes
                     print!("  Raw bytes: ");
@@ -44,8 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let z2 = (word >> 5) & 0x1f;
                             let z3 = word & 0x1f;
                             println!(
-                                "    Word at 0x{:04x}: {:04x} => z-chars: {}, {}, {}",
-                                pos, word, z1, z2, z3
+                                "    Word at 0x{pos:04x}: {word:04x} => z-chars: {z1}, {z2}, {z3}"
                             );
                             pos += 2;
                             if word & 0x8000 != 0 {
@@ -61,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Also check dictionary
     println!("\nChecking dictionary entries:");
-    let dict_addr = game.header.dictionary as usize;
+    let dict_addr = game.header.dictionary;
     let sep_count = memory[dict_addr] as usize;
     let sep_start = dict_addr + 1;
     let entry_length = memory[sep_start + sep_count] as usize;
@@ -73,10 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let entry_addr = entries_start + (i * entry_length);
         if let Ok((word, _)) = text::decode_string(&memory, entry_addr, abbrev_table) {
             if word.contains("leave") {
-                println!(
-                    "Dictionary entry {}: \"{}\" at 0x{:04x}",
-                    i, word, entry_addr
-                );
+                println!("Dictionary entry {i}: \"{word}\" at 0x{entry_addr:04x}");
             }
         }
     }

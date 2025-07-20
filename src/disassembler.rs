@@ -23,7 +23,7 @@ impl<'a> Disassembler<'a> {
         let instruction = Instruction::decode(&self.game.memory, addr as usize, self.version)?;
 
         let mut output = String::new();
-        write!(output, "{:05x}: ", addr).unwrap();
+        write!(output, "{addr:05x}: ").unwrap();
 
         // Write raw bytes
         let mut byte_str = String::new();
@@ -33,7 +33,7 @@ impl<'a> Disassembler<'a> {
         if instruction.size > 8 {
             byte_str.push_str("... ");
         }
-        write!(output, "{:<24} ", byte_str).unwrap();
+        write!(output, "{byte_str:<24} ").unwrap();
 
         // Write decoded instruction
         write!(output, "{}", instruction.format_with_version(self.version)).unwrap();
@@ -49,11 +49,11 @@ impl<'a> Disassembler<'a> {
         while addr < end {
             match self.disassemble_instruction(addr) {
                 Ok((instruction, line)) => {
-                    writeln!(output, "{}", line).unwrap();
+                    writeln!(output, "{line}").unwrap();
                     addr += instruction.size as u32;
                 }
                 Err(e) => {
-                    writeln!(output, "{:05x}: <error: {}>", addr, e).unwrap();
+                    writeln!(output, "{addr:05x}: <error: {e}>").unwrap();
                     addr += 1; // Skip bad byte
                 }
             }
@@ -69,14 +69,13 @@ impl<'a> Disassembler<'a> {
 
         writeln!(
             output,
-            "\n; Routine at packed address {:04x} (unpacked: {:05x})",
-            packed_addr, addr
+            "\n; Routine at packed address {packed_addr:04x} (unpacked: {addr:05x})"
         )
         .unwrap();
 
         // Read routine header
         let num_locals = self.game.memory[addr as usize];
-        writeln!(output, "; {} local variables", num_locals).unwrap();
+        writeln!(output, "; {num_locals} local variables").unwrap();
 
         let mut pc = addr + 1;
 
@@ -90,20 +89,20 @@ impl<'a> Disassembler<'a> {
             }
         }
 
-        writeln!(output, "\n; Code begins at {:05x}", pc).unwrap();
+        writeln!(output, "\n; Code begins at {pc:05x}").unwrap();
 
         // Disassemble until we hit a return or invalid instruction
         let mut seen_addrs = std::collections::HashSet::new();
         while pc < self.game.memory.len() as u32 {
             if seen_addrs.contains(&pc) {
-                writeln!(output, "; Loop detected at {:05x}", pc).unwrap();
+                writeln!(output, "; Loop detected at {pc:05x}").unwrap();
                 break;
             }
             seen_addrs.insert(pc);
 
             match self.disassemble_instruction(pc) {
                 Ok((instruction, line)) => {
-                    writeln!(output, "{}", line).unwrap();
+                    writeln!(output, "{line}").unwrap();
 
                     // Check for routine-ending instructions
                     match instruction.opcode {
@@ -127,7 +126,7 @@ impl<'a> Disassembler<'a> {
                     pc += instruction.size as u32;
                 }
                 Err(e) => {
-                    writeln!(output, "{:05x}: <error: {}>", pc, e).unwrap();
+                    writeln!(output, "{pc:05x}: <error: {e}>").unwrap();
                     break;
                 }
             }
@@ -163,9 +162,9 @@ impl<'a> Disassembler<'a> {
         let main_pc = self.game.header.initial_pc as u32;
         let mut output = String::new();
 
-        writeln!(output, "Main routine starts at PC {:05x}", main_pc).unwrap();
+        writeln!(output, "Main routine starts at PC {main_pc:05x}").unwrap();
         writeln!(output, "Version: {}", self.version).unwrap();
-        writeln!(output, "").unwrap();
+        writeln!(output).unwrap();
 
         // Start disassembling from main
         let disasm = self.disassemble_range(main_pc, main_pc + 100)?;

@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(ExecutionResult::Quit) => break,
             Ok(_) => {}
             Err(e) => {
-                println!("Error: {}", e);
+                println!("Error: {e}");
                 break;
             }
         }
@@ -75,9 +75,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let g1 = interpreter.vm.read_variable(0x11)?;
     let g2 = interpreter.vm.read_variable(0x12)?;
 
-    println!("Global 0: {}", g0);
-    println!("Global 1: {}", g1);
-    println!("Global 2: {}", g2);
+    println!("Global 0: {g0}");
+    println!("Global 1: {g1}");
+    println!("Global 2: {g2}");
 
     if g0 == 1 && g1 == 1 && g2 == 1 {
         println!("\n❌ BROKEN: Random always returns 1!");

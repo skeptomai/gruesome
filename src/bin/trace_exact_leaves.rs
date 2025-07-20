@@ -21,12 +21,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 3. Then " here!" is printed
 
     // Let's look for " here!" to find where that comes from
-    let abbrev_addr = game.header.abbrev_table as usize;
+    let abbrev_addr = game.header.abbrev_table;
 
     for addr in 0..game.memory.len() - 10 {
         if let Ok((text, _)) = text::decode_string(&game.memory, addr, abbrev_addr) {
             if text == " here!" || text.contains(" here!") && text.len() < 20 {
-                println!("Found ' here!' at 0x{:04x}: \"{}\"", addr, text);
+                println!("Found ' here!' at 0x{addr:04x}: \"{text}\"");
 
                 // Check if this is after a print instruction
                 if addr > 0 && game.memory[addr - 1] == 0xb2 {
@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Now let's trace the exact execution path after the space
     println!("\n\nExecution after space print:");
     if let Ok(output) = disasm.disassemble_range(0x630f, 0x6330) {
-        println!("{}", output);
+        println!("{output}");
     }
 
     // The key seems to be what happens between the space and " here!"

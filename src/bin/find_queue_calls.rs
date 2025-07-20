@@ -27,35 +27,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for addr in 0x4f00..0x5200 {
         if let Ok((inst, _)) = disasm.disassemble_instruction(addr as u32) {
             // Look for CALL instructions
-            if matches!(inst.opcode, 0x19 | 0x00 | 0x0c | 0xe0) {
-                if inst.operands.len() >= 1 {
-                    // Check if this might be calling QUEUE
-                    // QUEUE routines are typically in the 0x2xxx-0x3xxx range
-                    let routine = inst.operands[0];
-                    if routine >= 0x1000 && routine <= 0x2000 {
-                        call_addresses.push((addr, routine, inst.operands.clone()));
-                        queue_count += 1;
+            if matches!(inst.opcode, 0x19 | 0x00 | 0x0c | 0xe0) && !inst.operands.is_empty() {
+                // Check if this might be calling QUEUE
+                // QUEUE routines are typically in the 0x2xxx-0x3xxx range
+                let routine = inst.operands[0];
+                if (0x1000..=0x2000).contains(&routine) {
+                    call_addresses.push((addr, routine, inst.operands.clone()));
+                    queue_count += 1;
 
-                        if queue_count <= 10 {
-                            println!("\nCall #{} at 0x{:04x}:", queue_count, addr);
-                            println!(
-                                "  Routine: 0x{:04x} (unpacked: 0x{:04x})",
-                                routine,
-                                routine * 2
-                            );
+                    if queue_count <= 10 {
+                        println!("\nCall #{queue_count} at 0x{addr:04x}:");
+                        println!(
+                            "  Routine: 0x{:04x} (unpacked: 0x{:04x})",
+                            routine,
+                            routine * 2
+                        );
 
-                            if inst.operands.len() > 1 {
-                                println!("  Args: {:?}", &inst.operands[1..]);
-                            }
+                        if inst.operands.len() > 1 {
+                            println!("  Args: {:?}", &inst.operands[1..]);
+                        }
 
-                            // Show context
-                            if let Ok(output) =
-                                disasm.disassemble_range((addr - 5) as u32, (addr + 10) as u32)
-                            {
-                                println!("  Context:");
-                                for line in output.lines() {
-                                    println!("    {}", line);
-                                }
+                        // Show context
+                        if let Ok(output) =
+                            disasm.disassemble_range((addr - 5) as u32, (addr + 10) as u32)
+                        {
+                            println!("  Context:");
+                            for line in output.lines() {
+                                println!("    {line}");
                             }
                         }
                     }
@@ -73,10 +71,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for addr in 0x2e53..0x8000 {
         if let Ok((inst, text)) = disasm.disassemble_instruction(addr as u32) {
             // DEC_CHK on globals 88-90
-            if inst.opcode == 0x04 && inst.operands.len() >= 1 {
+            if inst.opcode == 0x04 && !inst.operands.is_empty() {
                 let var = inst.operands[0];
-                if var >= 0x58 && var <= 0x5a {
-                    println!("\nTimer operation at 0x{:04x}: {}", addr, text);
+                if (0x58..=0x5a).contains(&var) {
+                    println!("\nTimer operation at 0x{addr:04x}: {text}");
 
                     // This is likely in a timer interrupt routine
                     // Show the whole routine
@@ -86,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     {
                         println!("Routine context:");
                         for line in output.lines().take(15) {
-                            println!("  {}", line);
+                            println!("  {line}");
                         }
                     }
 
@@ -107,25 +105,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for addr in 0x2e53..0x8000 {
         if let Ok((inst, text)) = disasm.disassemble_instruction(addr as u32) {
             // Look for JE, JL, JG with G88 (0x58)
-            if matches!(inst.opcode, 0x01 | 0x02 | 0x03) && inst.operands.len() >= 2 {
-                if inst.operands[0] == 0x58 || (inst.operands.len() > 1 && inst.operands[1] == 0x58)
-                {
-                    println!("\nG88 comparison at 0x{:04x}: {}", addr, text);
+            if matches!(inst.opcode, 0x01..=0x03)
+                && inst.operands.len() >= 2
+                && (inst.operands[0] == 0x58
+                    || (inst.operands.len() > 1 && inst.operands[1] == 0x58))
+            {
+                println!("\nG88 comparison at 0x{addr:04x}: {text}");
 
-                    // Show context
-                    if let Ok(output) =
-                        disasm.disassemble_range((addr - 10) as u32, (addr + 20) as u32)
-                    {
-                        for line in output.lines() {
-                            if line.contains(&format!("{:04x}:", addr)) {
-                                println!(">>> {}", line);
-                            } else {
-                                println!("    {}", line);
-                            }
+                // Show context
+                if let Ok(output) = disasm.disassemble_range((addr - 10) as u32, (addr + 20) as u32)
+                {
+                    for line in output.lines() {
+                        if line.contains(&format!("{addr:04x}:")) {
+                            println!(">>> {line}");
+                        } else {
+                            println!("    {line}");
                         }
                     }
-                    break;
                 }
+                break;
             }
         }
     }

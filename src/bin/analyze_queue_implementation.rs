@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("1. Examining routine at 0x21fe (likely QUEUE):");
     if let Ok(output) = disasm.disassemble_range(0x21fe, 0x2250) {
-        println!("{}", output);
+        println!("{output}");
     }
 
     // Also look at the timer interrupt routine we found
@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The routine containing the dec_chk at 0x50dc
     let timer_routine_start = 0x50d0;
     if let Ok(output) = disasm.disassemble_range(timer_routine_start, timer_routine_start + 0x50) {
-        println!("{}", output);
+        println!("{output}");
     }
 
     // Look for where timers are checked against specific values
@@ -42,12 +42,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 for op in &inst.operands {
                     // Common lantern warning thresholds
                     if *op == 30 || *op == 20 || *op == 10 || *op == 5 {
-                        println!("\nFound comparison with {} at 0x{:04x}:", op, addr);
+                        println!("\nFound comparison with {op} at 0x{addr:04x}:");
                         if let Ok(output) =
                             disasm.disassemble_range((addr - 10) as u32, (addr + 20) as u32)
                         {
                             for line in output.lines() {
-                                println!("  {}", line);
+                                println!("  {line}");
                             }
                         }
                         break;

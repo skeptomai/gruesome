@@ -43,9 +43,9 @@ impl Debugger {
     pub fn add_breakpoint(&mut self, pc: u32) {
         if !self.breakpoints.contains(&pc) {
             self.breakpoints.push(pc);
-            println!("Breakpoint added at 0x{:05x}", pc);
+            println!("Breakpoint added at 0x{pc:05x}");
         } else {
-            println!("Breakpoint already exists at 0x{:05x}", pc);
+            println!("Breakpoint already exists at 0x{pc:05x}");
         }
     }
 
@@ -53,9 +53,9 @@ impl Debugger {
     pub fn remove_breakpoint(&mut self, pc: u32) {
         if let Some(pos) = self.breakpoints.iter().position(|&x| x == pc) {
             self.breakpoints.remove(pos);
-            println!("Breakpoint removed from 0x{:05x}", pc);
+            println!("Breakpoint removed from 0x{pc:05x}");
         } else {
-            println!("No breakpoint at 0x{:05x}", pc);
+            println!("No breakpoint at 0x{pc:05x}");
         }
     }
 
@@ -66,7 +66,7 @@ impl Debugger {
         } else {
             println!("Breakpoints:");
             for bp in &self.breakpoints {
-                println!("  0x{:05x}", bp);
+                println!("  0x{bp:05x}");
             }
         }
     }
@@ -86,12 +86,9 @@ impl Debugger {
         ) {
             Ok(inst) => {
                 let formatted = inst.format_with_version(self.interpreter.vm.game.header.version);
-                Ok(format!("{:05x}: {}", pc, formatted))
+                Ok(format!("{pc:05x}: {formatted}"))
             }
-            Err(e) => Err(format!(
-                "Failed to decode instruction at 0x{:05x}: {}",
-                pc, e
-            )),
+            Err(e) => Err(format!("Failed to decode instruction at 0x{pc:05x}: {e}")),
         }
     }
 
@@ -116,7 +113,7 @@ impl Debugger {
                     }
                 }
                 Err(e) => {
-                    results.push(format!("{:05x}: ERROR - {}", pc, e));
+                    results.push(format!("{pc:05x}: ERROR - {e}"));
                     pc += 1;
                 }
             }
@@ -134,7 +131,7 @@ impl Debugger {
 
         // Show current instruction
         if let Ok(disasm) = self.disassemble_current() {
-            println!("Current: {}", disasm);
+            println!("Current: {disasm}");
         }
 
         // Show call stack
@@ -170,7 +167,7 @@ impl Debugger {
         let start = self.history.len().saturating_sub(count);
         println!("Recent instructions:");
         for (pc, inst) in &self.history[start..] {
-            println!("  {:05x}: {}", pc, inst);
+            println!("  {pc:05x}: {inst}");
         }
     }
 
@@ -194,7 +191,7 @@ impl Debugger {
 
             // Show instruction if in single-step mode
             if self.single_step {
-                println!("{:05x}: {}", pc, formatted);
+                println!("{pc:05x}: {formatted}");
             }
 
             // Update PC
@@ -203,10 +200,10 @@ impl Debugger {
             // Execute instruction
             match self.interpreter.execute_instruction(&inst) {
                 Ok(_) => Ok(true),
-                Err(e) => Err(format!("Execution error at 0x{:05x}: {}", pc, e)),
+                Err(e) => Err(format!("Execution error at 0x{pc:05x}: {e}")),
             }
         } else {
-            Err(format!("Failed to decode instruction at 0x{:05x}", pc))
+            Err(format!("Failed to decode instruction at 0x{pc:05x}"))
         }
     }
 
@@ -217,7 +214,7 @@ impl Debugger {
 
             // Check for breakpoints
             if self.breakpoints.contains(&pc) {
-                println!("Hit breakpoint at 0x{:05x}", pc);
+                println!("Hit breakpoint at 0x{pc:05x}");
                 self.set_single_step(true);
             }
 
@@ -231,15 +228,13 @@ impl Debugger {
                 let mut input = String::new();
                 io::stdin()
                     .read_line(&mut input)
-                    .map_err(|e| format!("Input error: {}", e))?;
+                    .map_err(|e| format!("Input error: {e}"))?;
                 let input = input.trim();
 
                 match input {
                     "n" | "next" | "" => {
                         // Step one instruction
-                        if let Err(e) = self.step() {
-                            return Err(e);
-                        }
+                        self.step()?;
                     }
                     "c" | "continue" => {
                         self.set_single_step(false);
@@ -255,7 +250,7 @@ impl Debugger {
                     "d" | "disasm" => {
                         let disasm = self.disassemble_range(pc, 5);
                         for line in disasm {
-                            println!("{}", line);
+                            println!("{line}");
                         }
                         continue;
                     }
@@ -292,9 +287,7 @@ impl Debugger {
                 }
             } else {
                 // Run normally
-                if let Err(e) = self.step() {
-                    return Err(e);
-                }
+                self.step()?;
             }
         }
     }

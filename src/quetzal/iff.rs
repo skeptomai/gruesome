@@ -20,6 +20,12 @@ pub struct IffChunk {
     pub data: Vec<u8>,
 }
 
+impl Default for IffFile {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IffFile {
     /// Create a new Quetzal IFF file
     pub fn new() -> Self {
@@ -37,7 +43,7 @@ impl IffFile {
     /// Write the IFF file to disk
     pub fn write_to_file(&self, path: &Path) -> Result<(), String> {
         let mut file =
-            File::create(path).map_err(|e| format!("Failed to create save file: {}", e))?;
+            File::create(path).map_err(|e| format!("Failed to create save file: {e}"))?;
 
         // Calculate total size (all chunks + 4 bytes for form type)
         let total_size = 4 + self
@@ -48,34 +54,34 @@ impl IffFile {
 
         // Write FORM header
         file.write_all(b"FORM")
-            .map_err(|e| format!("Failed to write FORM header: {}", e))?;
+            .map_err(|e| format!("Failed to write FORM header: {e}"))?;
 
         // Write size (big-endian)
         file.write_all(&(total_size as u32).to_be_bytes())
-            .map_err(|e| format!("Failed to write size: {}", e))?;
+            .map_err(|e| format!("Failed to write size: {e}"))?;
 
         // Write form type
         file.write_all(&self.form_type)
-            .map_err(|e| format!("Failed to write form type: {}", e))?;
+            .map_err(|e| format!("Failed to write form type: {e}"))?;
 
         // Write each chunk
         for chunk in &self.chunks {
             // Chunk type
             file.write_all(&chunk.chunk_type)
-                .map_err(|e| format!("Failed to write chunk type: {}", e))?;
+                .map_err(|e| format!("Failed to write chunk type: {e}"))?;
 
             // Chunk size (big-endian)
             file.write_all(&(chunk.data.len() as u32).to_be_bytes())
-                .map_err(|e| format!("Failed to write chunk size: {}", e))?;
+                .map_err(|e| format!("Failed to write chunk size: {e}"))?;
 
             // Chunk data
             file.write_all(&chunk.data)
-                .map_err(|e| format!("Failed to write chunk data: {}", e))?;
+                .map_err(|e| format!("Failed to write chunk data: {e}"))?;
 
             // Pad to even length if necessary
             if chunk.data.len() % 2 == 1 {
                 file.write_all(&[0])
-                    .map_err(|e| format!("Failed to write padding: {}", e))?;
+                    .map_err(|e| format!("Failed to write padding: {e}"))?;
             }
         }
 
@@ -84,11 +90,11 @@ impl IffFile {
 
     /// Read an IFF file from disk
     pub fn read_from_file(path: &Path) -> Result<Self, String> {
-        let mut file = File::open(path).map_err(|e| format!("Failed to open save file: {}", e))?;
+        let mut file = File::open(path).map_err(|e| format!("Failed to open save file: {e}"))?;
 
         let mut header = [0u8; 4];
         file.read_exact(&mut header)
-            .map_err(|e| format!("Failed to read FORM header: {}", e))?;
+            .map_err(|e| format!("Failed to read FORM header: {e}"))?;
 
         if &header != b"FORM" {
             return Err("Not an IFF file (missing FORM header)".to_string());
@@ -97,13 +103,13 @@ impl IffFile {
         // Read size
         let mut size_bytes = [0u8; 4];
         file.read_exact(&mut size_bytes)
-            .map_err(|e| format!("Failed to read size: {}", e))?;
+            .map_err(|e| format!("Failed to read size: {e}"))?;
         let _total_size = u32::from_be_bytes(size_bytes);
 
         // Read form type
         let mut form_type = [0u8; 4];
         file.read_exact(&mut form_type)
-            .map_err(|e| format!("Failed to read form type: {}", e))?;
+            .map_err(|e| format!("Failed to read form type: {e}"))?;
 
         let mut iff = IffFile {
             form_type,
@@ -120,12 +126,12 @@ impl IffFile {
 
             let mut size_bytes = [0u8; 4];
             file.read_exact(&mut size_bytes)
-                .map_err(|e| format!("Failed to read chunk size: {}", e))?;
+                .map_err(|e| format!("Failed to read chunk size: {e}"))?;
             let chunk_size = u32::from_be_bytes(size_bytes) as usize;
 
             let mut data = vec![0u8; chunk_size];
             file.read_exact(&mut data)
-                .map_err(|e| format!("Failed to read chunk data: {}", e))?;
+                .map_err(|e| format!("Failed to read chunk data: {e}"))?;
 
             iff.chunks.push(IffChunk { chunk_type, data });
 

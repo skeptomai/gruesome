@@ -9,9 +9,9 @@ pub mod debugger;
 pub mod dictionary;
 pub mod disassembler;
 pub mod display;
+pub mod display_manager;
 #[cfg(feature = "use-ratatui")]
 pub mod display_ratatui;
-pub mod display_manager;
 pub mod game;
 pub mod gamememorymap;
 pub mod header;
@@ -147,16 +147,16 @@ mod tests {
         // Disassemble the main routine
         println!("\n=== Disassembling Zork I Main Routine ===");
         match disasm.disassemble_main() {
-            Ok(output) => println!("{}", output),
-            Err(e) => println!("Error disassembling: {}", e),
+            Ok(output) => println!("{output}"),
+            Err(e) => println!("Error disassembling: {e}"),
         }
 
         // Also try to disassemble a specific range
         let start_pc = game.header.initial_pc as u32;
         println!("\n=== First 20 instructions ===");
         match disasm.disassemble_range(start_pc, start_pc + 50) {
-            Ok(output) => println!("{}", output),
-            Err(e) => println!("Error: {}", e),
+            Ok(output) => println!("{output}"),
+            Err(e) => println!("Error: {e}"),
         }
 
         Ok(())
@@ -258,7 +258,7 @@ mod tests {
         println!("\n=== Running simple test program ===");
         match interpreter.run() {
             Ok(()) => println!("Program completed successfully"),
-            Err(e) => println!("Error: {}", e),
+            Err(e) => println!("Error: {e}"),
         }
     }
 }

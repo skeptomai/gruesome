@@ -12,6 +12,12 @@ pub struct RoutineNames {
     names: HashMap<u32, &'static str>,
 }
 
+impl Default for RoutineNames {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RoutineNames {
     pub fn new() -> Self {
         let mut names = HashMap::new();
@@ -73,15 +79,15 @@ impl RoutineNames {
     /// Format an address with its name if known
     pub fn format_address(&self, addr: u32) -> String {
         if let Some(name) = self.get_name(addr) {
-            format!("{:04x} ({})", addr, name)
+            format!("{addr:04x} ({name})")
         } else if let Some((routine_addr, name)) = self.get_routine_containing(addr) {
             if routine_addr == addr {
-                format!("{:04x} ({})", addr, name)
+                format!("{addr:04x} ({name})")
             } else {
-                format!("{:04x} (in {})", addr, name)
+                format!("{addr:04x} (in {name})")
             }
         } else {
-            format!("{:04x}", addr)
+            format!("{addr:04x}")
         }
     }
 }
@@ -208,9 +214,9 @@ pub fn get_object_name(obj_num: u16) -> Option<&'static str> {
 /// Format an object number with its name if known
 pub fn format_object(obj_num: u16) -> String {
     if let Some(name) = get_object_name(obj_num) {
-        format!("{} ({})", obj_num, name)
+        format!("{obj_num} ({name})")
     } else {
-        format!("{}", obj_num)
+        format!("{obj_num}")
     }
 }
 

@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Search all objects for ones containing "leave"
     for obj_num in 1..=255 {
         // Get object name directly from memory
-        let obj_table_addr = game.header.object_table_addr as usize;
+        let obj_table_addr = game.header.object_table_addr;
         let property_defaults = obj_table_addr;
         let obj_tree_base = property_defaults + 31 * 2;
         let obj_addr = obj_tree_base + ((obj_num - 1) as usize * 9);
@@ -37,13 +37,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let text_len = game.memory[prop_table_addr] as usize;
         if text_len > 0 {
             let name_addr = prop_table_addr + 1;
-            let abbrev_addr = game.header.abbrev_table as usize;
+            let abbrev_addr = game.header.abbrev_table;
             if let Ok((name, _)) = text::decode_string(&game.memory, name_addr, abbrev_addr) {
                 if name.to_lowercase().contains("leave") {
-                    println!("Object {}: \"{}\"", obj_num, name);
+                    println!("Object {obj_num}: \"{name}\"");
 
                     // Get more details about this object
-                    let obj_table_addr = game.header.object_table_addr as usize;
+                    let obj_table_addr = game.header.object_table_addr;
                     let property_defaults = obj_table_addr;
                     let obj_tree_base = property_defaults + 31 * 2;
                     let obj_addr = obj_tree_base + ((obj_num - 1) as usize * 9);
@@ -52,8 +52,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .fold(0, |acc, &b| (acc << 8) | b as usize);
 
                     let text_len = game.memory[prop_table_addr] as usize;
-                    println!("  Property table at: 0x{:04x}", prop_table_addr);
-                    println!("  Text length byte: {} (0x{:02x})", text_len, text_len);
+                    println!("  Property table at: 0x{prop_table_addr:04x}");
+                    println!("  Text length byte: {text_len} (0x{text_len:02x})");
                     println!("  Name starts at: 0x{:04x}", prop_table_addr + 1);
 
                     // Show the raw Z-string bytes
@@ -67,17 +67,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     // Decode manually to see what's happening
                     let name_addr = prop_table_addr + 1;
-                    let abbrev_addr = game.header.abbrev_table as usize;
+                    let abbrev_addr = game.header.abbrev_table;
                     match text::decode_string(&game.memory, name_addr, abbrev_addr) {
                         Ok((decoded, bytes_read)) => {
-                            println!("  Decoded: \"{}\" ({} bytes read)", decoded, bytes_read);
+                            println!("  Decoded: \"{decoded}\" ({bytes_read} bytes read)");
                             // Check for issues
                             if decoded != name {
                                 println!("  WARNING: Decoded differently!");
                             }
                         }
                         Err(e) => {
-                            println!("  Decode error: {}", e);
+                            println!("  Decode error: {e}");
                         }
                     }
                     println!();

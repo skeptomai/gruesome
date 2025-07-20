@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // We know object 144 is "pile of leaves"
     // Let's manually decode it
     let obj_num = 144u16;
-    let obj_table_addr = game.header.object_table_addr as usize;
+    let obj_table_addr = game.header.object_table_addr;
     let property_defaults = obj_table_addr;
     let obj_tree_base = property_defaults + 31 * 2;
     let obj_addr = obj_tree_base + ((obj_num - 1) as usize * 9);
@@ -24,21 +24,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let text_len = game.memory[prop_table_addr] as usize;
     let name_addr = prop_table_addr + 1;
-    let abbrev_addr = game.header.abbrev_table as usize;
+    let abbrev_addr = game.header.abbrev_table;
 
     println!("Object 144 details:");
-    println!("  Property table: 0x{:04x}", prop_table_addr);
-    println!("  Text length: {} words", text_len);
-    println!("  Name address: 0x{:04x}", name_addr);
+    println!("  Property table: 0x{prop_table_addr:04x}");
+    println!("  Text length: {text_len} words");
+    println!("  Name address: 0x{name_addr:04x}");
 
     // Full decode
     match text::decode_string(&game.memory, name_addr, abbrev_addr) {
         Ok((name, bytes_read)) => {
-            println!("  Full name: \"{}\"", name);
-            println!("  Bytes read: {}", bytes_read);
+            println!("  Full name: \"{name}\"");
+            println!("  Bytes read: {bytes_read}");
         }
         Err(e) => {
-            println!("  Decode error: {}", e);
+            println!("  Decode error: {e}");
         }
     }
 
@@ -47,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Try decoding only part of the string
     for words in 1..=text_len {
-        print!("  Decoding {} words: ", words);
+        print!("  Decoding {words} words: ");
 
         // Manually set the end bit on the last word we want to decode
         let mut test_memory = game.memory.clone();
@@ -58,10 +58,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         match text::decode_string(&test_memory, name_addr, abbrev_addr) {
             Ok((name, _)) => {
-                println!("\"{}\"", name);
+                println!("\"{name}\"");
             }
             Err(e) => {
-                println!("Error: {}", e);
+                println!("Error: {e}");
             }
         }
     }
@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let naddr = prop_addr + 1;
                 if let Ok((name, _)) = text::decode_string(&game.memory, naddr, abbrev_addr) {
                     if name == "leave" || name == " leave" {
-                        println!("  Object {}: \"{}\"", obj, name);
+                        println!("  Object {obj}: \"{name}\"");
                     }
                 }
             }

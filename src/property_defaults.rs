@@ -17,7 +17,7 @@ impl<'a> Display for PropertyDefaults<'a, u8, MAX_PROPERTIES_V3> {
             write!(
                 f,
                 "{} ",
-                get_mem_addr(&self.prop_raw[(i * 2) as usize..], 2).unwrap()
+                get_mem_addr(&self.prop_raw[(i * 2)..], 2).unwrap()
             )
             .unwrap();
         }
@@ -31,7 +31,7 @@ impl<'a> Debug for PropertyDefaults<'a, u8, MAX_PROPERTIES_V3> {
             write!(
                 f,
                 "{} ",
-                get_mem_addr(&self.prop_raw[(i * 2) as usize..], 2).unwrap()
+                get_mem_addr(&self.prop_raw[(i * 2)..], 2).unwrap()
             )
             .unwrap();
         }

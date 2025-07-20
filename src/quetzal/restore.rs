@@ -59,9 +59,7 @@ impl RestoreGame {
 
         // Check serial number matches
         let mut game_serial = [0u8; 6];
-        for i in 0..6 {
-            game_serial[i] = vm.game.memory[0x12 + i];
-        }
+        game_serial.copy_from_slice(&vm.game.memory[0x12..0x18]);
         if ifhd.serial != game_serial {
             warn!("Serial number mismatch - save may be incompatible");
         }
@@ -127,12 +125,12 @@ impl RestoreGame {
         print!("Enter save filename: ");
         io::stdout()
             .flush()
-            .map_err(|e| format!("Failed to flush stdout: {}", e))?;
+            .map_err(|e| format!("Failed to flush stdout: {e}"))?;
 
         let mut filename = String::new();
         io::stdin()
             .read_line(&mut filename)
-            .map_err(|e| format!("Failed to read filename: {}", e))?;
+            .map_err(|e| format!("Failed to read filename: {e}"))?;
 
         let filename = filename.trim();
         if filename.is_empty() {
@@ -143,12 +141,12 @@ impl RestoreGame {
         let filename = if filename.ends_with(".sav") || filename.ends_with(".qzl") {
             filename.to_string()
         } else {
-            format!("{}.sav", filename)
+            format!("{filename}.sav")
         };
 
         let path = Path::new(&filename);
 
-        println!("Loading game from '{}'...", filename);
+        println!("Loading game from '{filename}'...");
         RestoreGame::from_file(path)
     }
 }

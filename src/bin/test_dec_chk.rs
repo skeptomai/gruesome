@@ -1,4 +1,3 @@
-use env_logger;
 use gruesome::interpreter::Interpreter;
 use gruesome::vm::{Game, VM};
 use std::io::Read;
@@ -64,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     interpreter.vm.call_stack.last().unwrap().locals[1]
                 );
             }
-            Err(e) => println!("Error: {}", e),
+            Err(e) => println!("Error: {e}"),
         }
     }
 

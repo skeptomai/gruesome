@@ -37,16 +37,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut found_timed = false;
     for addr in 0x5000..0x10000 {
         if let Ok((inst, _)) = disasm.disassemble_instruction(addr as u32) {
-            if inst.opcode == 0x04 && inst.operand_count == gruesome::instruction::OperandCount::VAR
+            if inst.opcode == 0x04
+                && inst.operand_count == gruesome::instruction::OperandCount::VAR
+                && inst.operands.len() >= 4
             {
-                if inst.operands.len() >= 4 {
-                    println!(
-                        "  Found at 0x{:04x}: sread with {} operands",
-                        addr,
-                        inst.operands.len()
-                    );
-                    found_timed = true;
-                }
+                println!(
+                    "  Found at 0x{:04x}: sread with {} operands",
+                    addr,
+                    inst.operands.len()
+                );
+                found_timed = true;
             }
         }
     }
@@ -60,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test random in actual game
     let vm = VM::new(game);
-    let interpreter = Interpreter::new(vm);
+    let _interpreter = Interpreter::new(vm);
 
     // Find and test the random opcode
     println!("Testing random number generation:");
@@ -69,7 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         use rand::Rng;
         let mut rng = rand::thread_rng();
         let value = rng.gen_range(1..=10);
-        println!("  random(10) = {}", value);
+        println!("  random(10) = {value}");
     }
 
     println!("\nThis affects:");

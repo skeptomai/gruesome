@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("The print loop at 0x5fda:");
     if let Ok(output) = disasm.disassemble_range(0x5fda, 0x5ff0) {
-        println!("{}", output);
+        println!("{output}");
     }
 
     println!("\n\nLoop analysis:");
@@ -64,7 +64,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Look at where it's called from
     println!("\nThe call at 0x634d:");
     if let Ok(output) = disasm.disassemble_range(0x6345, 0x6355) {
-        println!("{}", output);
+        println!("{output}");
     }
 
     // The issue might be that V08 (length) is wrong

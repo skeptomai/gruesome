@@ -37,7 +37,7 @@ impl DisplayManager {
             debug!("Initializing Ratatui display");
             Ok(DisplayManager::Ratatui(RatatuiDisplay::new()?))
         }
-        
+
         #[cfg(not(feature = "use-ratatui"))]
         {
             debug!("Initializing basic display");
@@ -55,7 +55,7 @@ impl DisplayTrait for DisplayManager {
             DisplayManager::Basic(d) => d.clear_screen(),
         }
     }
-    
+
     fn split_window(&mut self, lines: u16) -> Result<(), String> {
         match self {
             #[cfg(feature = "use-ratatui")]
@@ -64,7 +64,7 @@ impl DisplayTrait for DisplayManager {
             DisplayManager::Basic(d) => d.split_window(lines),
         }
     }
-    
+
     fn set_window(&mut self, window: u8) -> Result<(), String> {
         match self {
             #[cfg(feature = "use-ratatui")]
@@ -73,7 +73,7 @@ impl DisplayTrait for DisplayManager {
             DisplayManager::Basic(d) => d.set_window(window),
         }
     }
-    
+
     fn set_cursor(&mut self, line: u16, column: u16) -> Result<(), String> {
         match self {
             #[cfg(feature = "use-ratatui")]
@@ -82,7 +82,7 @@ impl DisplayTrait for DisplayManager {
             DisplayManager::Basic(d) => d.set_cursor(line, column),
         }
     }
-    
+
     fn print(&mut self, text: &str) -> Result<(), String> {
         match self {
             #[cfg(feature = "use-ratatui")]
@@ -91,7 +91,7 @@ impl DisplayTrait for DisplayManager {
             DisplayManager::Basic(d) => d.print(text),
         }
     }
-    
+
     fn print_char(&mut self, ch: char) -> Result<(), String> {
         match self {
             #[cfg(feature = "use-ratatui")]
@@ -100,7 +100,7 @@ impl DisplayTrait for DisplayManager {
             DisplayManager::Basic(d) => d.print_char(ch),
         }
     }
-    
+
     fn erase_window(&mut self, window: i16) -> Result<(), String> {
         match self {
             #[cfg(feature = "use-ratatui")]
@@ -109,7 +109,7 @@ impl DisplayTrait for DisplayManager {
             DisplayManager::Basic(d) => d.erase_window(window),
         }
     }
-    
+
     fn show_status(&mut self, location: &str, score: i16, moves: u16) -> Result<(), String> {
         match self {
             #[cfg(feature = "use-ratatui")]
@@ -118,7 +118,7 @@ impl DisplayTrait for DisplayManager {
             DisplayManager::Basic(d) => d.show_status(location, score, moves),
         }
     }
-    
+
     fn handle_resize(&mut self, new_width: u16, new_height: u16) {
         match self {
             #[cfg(feature = "use-ratatui")]

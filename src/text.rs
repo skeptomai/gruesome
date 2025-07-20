@@ -171,8 +171,8 @@ fn decode_string_recursive(
                                 i += 2; // Skip the two chars we just read
 
                                 // Convert ZSCII to char
-                                if zscii_code >= 32 && zscii_code <= 126 {
-                                    let ch = zscii_code as u8 as char;
+                                if (32..=126).contains(&zscii_code) {
+                                    let ch = zscii_code as char;
                                     debug!("ZSCII code {} = '{}'", zscii_code, ch);
                                     ch
                                 } else {

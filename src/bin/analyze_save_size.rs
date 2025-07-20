@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let game = Game::from_memory(memory.clone())?;
     let vm = VM::new(game);
     let dynamic_size = vm.game.header.base_static_mem;
-    println!("Dynamic memory size: {} bytes", dynamic_size);
+    println!("Dynamic memory size: {dynamic_size} bytes");
     println!("This includes:");
     println!("  - Object table");
     println!("  - Property data");
@@ -71,7 +71,7 @@ fn save_and_analyze(vm: &VM, filename: &str) -> Result<(), Box<dyn std::error::E
     // Show compression ratio
     let dynamic_size = vm.game.header.base_static_mem;
     let ratio = (metadata.len() as f64 / dynamic_size as f64) * 100.0;
-    println!("  Compression ratio: {:.1}% of dynamic memory", ratio);
+    println!("  Compression ratio: {ratio:.1}% of dynamic memory");
 
     // Clean up
     std::fs::remove_file(filename).ok();

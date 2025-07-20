@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Disassemble the complete routine
     if let Ok(output) = disasm.disassemble_range(0x5fda, 0x5ff0) {
-        println!("{}", output);
+        println!("{output}");
     }
 
     println!("\n=== Analysis ===");

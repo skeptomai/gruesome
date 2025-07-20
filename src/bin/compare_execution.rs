@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for _i in 0..15 {
         match disasm.disassemble_instruction(addr) {
             Ok((inst, text)) => {
-                println!("{:05x}: {}", addr, text);
+                println!("{addr:05x}: {text}");
                 addr += inst.size as u32;
             }
             Err(_) => break,

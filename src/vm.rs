@@ -157,15 +157,14 @@ impl VM {
         let dynamic_limit = self.game.header.base_static_mem as u32;
         if addr >= dynamic_limit {
             return Err(format!(
-                "Attempt to write to non-dynamic memory at {:04x}",
-                addr
+                "Attempt to write to non-dynamic memory at {addr:04x}"
             ));
         }
         if addr < self.game.memory.len() as u32 {
             self.game.memory[addr as usize] = value;
             Ok(())
         } else {
-            Err(format!("Memory address out of bounds: {:04x}", addr))
+            Err(format!("Memory address out of bounds: {addr:04x}"))
         }
     }
 
@@ -179,7 +178,7 @@ impl VM {
     /// Read a global variable (0x10-0xFF)
     pub fn read_global(&self, var: u8) -> Result<u16, String> {
         if var < 0x10 {
-            return Err(format!("Invalid global variable number: {:02x}", var));
+            return Err(format!("Invalid global variable number: {var:02x}"));
         }
         let offset = ((var - 0x10) as u32) * 2;
         let addr = self.globals_addr as u32 + offset;
@@ -200,7 +199,7 @@ impl VM {
     /// Write a global variable (0x10-0xFF)
     pub fn write_global(&mut self, var: u8, value: u16) -> Result<(), String> {
         if var < 0x10 {
-            return Err(format!("Invalid global variable number: {:02x}", var));
+            return Err(format!("Invalid global variable number: {var:02x}"));
         }
         let offset = ((var - 0x10) as u32) * 2;
         let addr = self.globals_addr as u32 + offset;
@@ -292,7 +291,7 @@ impl VM {
             return Ok(0); // Object 0 has no properties
         }
         if obj_num > 255 {
-            return Err(format!("Invalid object number: {}", obj_num));
+            return Err(format!("Invalid object number: {obj_num}"));
         }
 
         // Search in object's property table first
@@ -311,7 +310,7 @@ impl VM {
 
         // Property not found in object, return default
         if prop_num > 0 && prop_num <= 31 {
-            let obj_table_addr = self.game.header.object_table_addr as usize;
+            let obj_table_addr = self.game.header.object_table_addr;
             let default_addr = obj_table_addr + ((prop_num - 1) as usize * 2);
             Ok(self.read_word(default_addr as u32))
         } else {
@@ -325,7 +324,7 @@ impl VM {
             return Ok(0); // Object 0 has no properties
         }
         if obj_num > 255 {
-            return Err(format!("Invalid object number: {}", obj_num));
+            return Err(format!("Invalid object number: {obj_num}"));
         }
 
         debug!("get_property_addr: obj={}, prop={}", obj_num, prop_num);
@@ -336,7 +335,7 @@ impl VM {
         }
 
         // Get object table base
-        let obj_table_addr = self.game.header.object_table_addr as usize;
+        let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
         let obj_tree_base = property_defaults + 31 * 2; // 31 default properties, 2 bytes each
 
@@ -376,11 +375,11 @@ impl VM {
         // We need to find the property in the object's property table
 
         if obj_num == 0 || obj_num > 255 {
-            return Err(format!("Invalid object number: {}", obj_num));
+            return Err(format!("Invalid object number: {obj_num}"));
         }
 
         // Get object table base
-        let obj_table_addr = self.game.header.object_table_addr as usize;
+        let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
         let obj_tree_base = property_defaults + 31 * 2; // 31 default properties, 2 bytes each
 
@@ -399,8 +398,7 @@ impl VM {
             let size_byte = self.game.memory[prop_addr];
             if size_byte == 0 {
                 return Err(format!(
-                    "Property {} not found for object {}",
-                    prop_num, obj_num
+                    "Property {prop_num} not found for object {obj_num}"
                 ));
             }
 
@@ -415,8 +413,7 @@ impl VM {
                     self.write_word((prop_addr + 1) as u32, value)?;
                 } else {
                     return Err(format!(
-                        "Property {} has size {} (>2), cannot use put_prop",
-                        prop_num, prop_size
+                        "Property {prop_num} has size {prop_size} (>2), cannot use put_prop"
                     ));
                 }
                 return Ok(());
@@ -433,11 +430,11 @@ impl VM {
             return Ok(0); // Object 0 has no properties
         }
         if obj_num > 255 {
-            return Err(format!("Invalid object number: {}", obj_num));
+            return Err(format!("Invalid object number: {obj_num}"));
         }
 
         // Get object table base
-        let obj_table_addr = self.game.header.object_table_addr as usize;
+        let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
         let obj_tree_base = property_defaults + 31 * 2; // 31 default properties, 2 bytes each
 
@@ -491,7 +488,7 @@ impl VM {
             return Ok(false); // Object 0 has no attributes
         }
         if obj_num > 255 {
-            return Err(format!("Invalid object number: {}", obj_num));
+            return Err(format!("Invalid object number: {obj_num}"));
         }
 
         if attr_num > 31 {
@@ -503,7 +500,7 @@ impl VM {
         }
 
         // Get object table base
-        let obj_table_addr = self.game.header.object_table_addr as usize;
+        let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
         let obj_tree_base = property_defaults + 31 * 2; // 31 default properties, 2 bytes each
 
@@ -526,7 +523,7 @@ impl VM {
             return Ok(()); // Cannot set attributes on object 0
         }
         if obj_num > 255 {
-            return Err(format!("Invalid object number: {}", obj_num));
+            return Err(format!("Invalid object number: {obj_num}"));
         }
 
         if attr_num > 31 {
@@ -538,7 +535,7 @@ impl VM {
         }
 
         // Get object table base
-        let obj_table_addr = self.game.header.object_table_addr as usize;
+        let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
         let obj_tree_base = property_defaults + 31 * 2; // 31 default properties, 2 bytes each
 
@@ -563,10 +560,10 @@ impl VM {
     /// Get object address for V3 (9 bytes per object)
     fn get_object_addr(&self, obj_num: u16) -> Result<usize, String> {
         if obj_num == 0 || obj_num > 255 {
-            return Err(format!("Invalid object number: {}", obj_num));
+            return Err(format!("Invalid object number: {obj_num}"));
         }
 
-        let obj_table_addr = self.game.header.object_table_addr as usize;
+        let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
         let obj_tree_base = property_defaults + 31 * 2; // 31 default properties, 2 bytes each
 
@@ -692,12 +689,12 @@ impl VM {
 
 impl fmt::Display for VM {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "VM State:\n")?;
-        write!(f, "  PC: {:04x}\n", self.pc)?;
-        write!(f, "  Stack depth: {}\n", self.stack.len())?;
-        write!(f, "  Call depth: {}\n", self.call_stack.len())?;
+        writeln!(f, "VM State:")?;
+        writeln!(f, "  PC: {:04x}", self.pc)?;
+        writeln!(f, "  Stack depth: {}", self.stack.len())?;
+        writeln!(f, "  Call depth: {}", self.call_stack.len())?;
         if !self.stack.is_empty() {
-            write!(f, "  Stack top: {:04x}\n", self.stack.last().unwrap())?;
+            writeln!(f, "  Stack top: {:04x}", self.stack.last().unwrap())?;
         }
         Ok(())
     }

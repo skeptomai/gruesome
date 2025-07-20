@@ -23,6 +23,12 @@ pub struct TimedInput {
     cursor_pos: usize,
 }
 
+impl Default for TimedInput {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TimedInput {
     pub fn new() -> Self {
         TimedInput {
@@ -50,7 +56,7 @@ impl TimedInput {
     /// - time_tenths: timeout in tenths of a second (0 = no timeout)
     /// - routine_addr: address of timer routine (for logging)
     /// - timer_callback: optional callback to execute when timer expires
-    ///                   returns true to terminate input, false to continue
+    ///   returns true to terminate input, false to continue
     ///
     /// Returns: (input_string, was_terminated_by_timer)
     pub fn read_line_with_timer<F>(
@@ -96,7 +102,7 @@ impl TimedInput {
         let mut input = String::new();
         io::stdin()
             .read_line(&mut input)
-            .map_err(|e| format!("Failed to read input: {}", e))?;
+            .map_err(|e| format!("Failed to read input: {e}"))?;
 
         // Remove trailing newline
         if input.ends_with('\n') {
@@ -129,12 +135,12 @@ impl TimedInput {
         self.cursor_pos = 0;
 
         // Enable raw mode for character-by-character input
-        terminal::enable_raw_mode().map_err(|e| format!("Failed to enable raw mode: {}", e))?;
+        terminal::enable_raw_mode().map_err(|e| format!("Failed to enable raw mode: {e}"))?;
         self.in_raw_mode = true;
 
         // Disable line wrap for cleaner display
         execute!(io::stdout(), DisableLineWrap)
-            .map_err(|e| format!("Failed to disable line wrap: {}", e))?;
+            .map_err(|e| format!("Failed to disable line wrap: {e}"))?;
 
         // Calculate timeout if specified
         let timeout = if time_tenths > 0 {
@@ -169,7 +175,7 @@ impl TimedInput {
                                 }
                             }
                             Err(e) => {
-                                return Err(format!("Timer callback error: {}", e));
+                                return Err(format!("Timer callback error: {e}"));
                             }
                         }
                     } else {
@@ -188,9 +194,9 @@ impl TimedInput {
                 Duration::from_secs(3600) // Effectively infinite
             };
 
-            if event::poll(poll_timeout).map_err(|e| format!("Event poll error: {}", e))? {
+            if event::poll(poll_timeout).map_err(|e| format!("Event poll error: {e}"))? {
                 // We have an event - process it
-                match event::read().map_err(|e| format!("Event read error: {}", e))? {
+                match event::read().map_err(|e| format!("Event read error: {e}"))? {
                     Event::Key(key_event) => {
                         if let Some(result) = self.handle_key_event(key_event)? {
                             break Ok((result, false));
@@ -212,7 +218,7 @@ impl TimedInput {
                             self.cursor_pos += 1;
                         }
                         // Echo the pasted text
-                        print!("{}", text);
+                        print!("{text}");
                         io::stdout().flush().ok();
                     }
                 }
@@ -250,7 +256,7 @@ impl TimedInput {
                 self.cursor_pos += 1;
 
                 // Echo the character
-                print!("{}", c);
+                print!("{c}");
                 io::stdout().flush().ok();
 
                 Ok(None)
@@ -344,7 +350,7 @@ impl TimedInput {
         let mut buffer = [0; 1];
         io::stdin()
             .read_exact(&mut buffer)
-            .map_err(|e| format!("Failed to read character: {}", e))?;
+            .map_err(|e| format!("Failed to read character: {e}"))?;
 
         Ok(buffer[0] as char)
     }
@@ -362,7 +368,7 @@ impl TimedInput {
         debug!("Entering non-blocking character read mode");
 
         // Enable raw mode for character-by-character input
-        terminal::enable_raw_mode().map_err(|e| format!("Failed to enable raw mode: {}", e))?;
+        terminal::enable_raw_mode().map_err(|e| format!("Failed to enable raw mode: {e}"))?;
         self.in_raw_mode = true;
 
         // Calculate timeout if specified
@@ -402,7 +408,7 @@ impl TimedInput {
                             }
                             Err(e) => {
                                 self.cleanup();
-                                return Err(format!("Timer callback error: {}", e));
+                                return Err(format!("Timer callback error: {e}"));
                             }
                         }
                     } else {
@@ -419,8 +425,8 @@ impl TimedInput {
                 Duration::from_secs(3600) // Effectively infinite
             };
 
-            if event::poll(poll_timeout).map_err(|e| format!("Event poll error: {}", e))? {
-                match event::read().map_err(|e| format!("Event read error: {}", e))? {
+            if event::poll(poll_timeout).map_err(|e| format!("Event poll error: {e}"))? {
+                match event::read().map_err(|e| format!("Event read error: {e}"))? {
                     Event::Key(key_event) => {
                         // Return the character immediately
                         if let KeyCode::Char(ch) = key_event.code {

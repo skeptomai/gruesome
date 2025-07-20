@@ -20,25 +20,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("1. Space print at 0x630c:");
     if let Ok(output) = disasm.disassemble_range(0x630c, 0x6310) {
-        println!("{}", output);
+        println!("{output}");
     }
 
     println!("\n2. Object name print at 0x6340:");
     if let Ok(output) = disasm.disassemble_range(0x633e, 0x6345) {
-        println!("{}", output);
+        println!("{output}");
     }
 
     // The key is: what's in V7b?
     // Let's trace back to see where V7b is loaded
     println!("\n3. Where V7b is loaded (0x633e):");
     if let Ok(output) = disasm.disassemble_range(0x6335, 0x6345) {
-        println!("{}", output);
+        println!("{output}");
     }
 
     // loadb #0047, #00aa -> V7b
     // This loads a byte from address 0x0047 + 0x00aa = 0x00f1
     let addr = 0x0047 + 0x00aa;
-    println!("\n4. What's at address 0x{:04x} (0x47 + 0xaa)?", addr);
+    println!("\n4. What's at address 0x{addr:04x} (0x47 + 0xaa)?");
     println!(
         "   Byte value: 0x{:02x} ({})",
         game.memory[addr], game.memory[addr]
@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Let's see what happens if we use this as a word offset
     let word_num = game.memory[addr];
-    println!("   If {} is a word number in the object name...", word_num);
+    println!("   If {word_num} is a word number in the object name...");
 
     // For object 144 "pile of leaves"
     // Word 0-1: "pile "

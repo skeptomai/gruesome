@@ -23,12 +23,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Let's check the actual format at a known SREAD location
     println!("Checking SREAD at 0x1f58:");
     if let Ok(output) = disasm.disassemble_range(0x1f58, 0x1f60) {
-        println!("{}", output);
+        println!("{output}");
     }
 
     println!("\nChecking SREAD at 0x5015:");
     if let Ok(output) = disasm.disassemble_range(0x5015, 0x501d) {
-        println!("{}", output);
+        println!("{output}");
     }
 
     // Let's look for ALL sread instructions
@@ -41,14 +41,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if inst.opcode == 0x04 {
                 // sread
                 sread_count += 1;
-                print!("0x{:04x}: sread ", addr);
+                print!("0x{addr:04x}: sread ");
 
                 // Print operands
                 for (i, op) in inst.operands.iter().enumerate() {
                     if i > 0 {
                         print!(", ");
                     }
-                    print!("0x{:04x}", op);
+                    print!("0x{op:04x}");
                 }
 
                 if inst.operands.len() >= 4 && inst.operands[2] > 0 && inst.operands[3] > 0 {
@@ -67,8 +67,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    println!("\nTotal SREAD instructions found: {}", sread_count);
-    println!("SREAD with timers: {}", timer_sread_count);
+    println!("\nTotal SREAD instructions found: {sread_count}");
+    println!("SREAD with timers: {timer_sread_count}");
 
     Ok(())
 }

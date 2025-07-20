@@ -31,17 +31,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Ok((inst, text)) = disasm.disassemble_instruction(addr as u32) {
             if inst.opcode == 0x05 {
                 // print_char
-                println!("\nFound print_char at 0x{:04x}: {}", addr, text);
+                println!("\nFound print_char at 0x{addr:04x}: {text}");
 
                 // Show surrounding code
                 if let Ok(output) = disasm.disassemble_range((addr - 20) as u32, (addr + 20) as u32)
                 {
                     println!("Context:");
                     for line in output.lines() {
-                        if line.contains(&format!("{:04x}:", addr)) {
-                            println!(">>> {}", line);
+                        if line.contains(&format!("{addr:04x}:")) {
+                            println!(">>> {line}");
                         } else {
-                            println!("    {}", line);
+                            println!("    {line}");
                         }
                     }
                 }
@@ -54,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Ok((back_inst, _)) = disasm.disassemble_instruction(back_addr as u32) {
                         if back_inst.opcode == 0x10 {
                             // loadb
-                            println!("  Found loadb at 0x{:04x}", back_addr);
+                            println!("  Found loadb at 0x{back_addr:04x}");
                         }
                     }
                 }
@@ -64,7 +64,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Ok((fwd_inst, _)) = disasm.disassemble_instruction(fwd_addr as u32) {
                         if fwd_inst.opcode == 0x0C {
                             // jump
-                            println!("  Found jump at 0x{:04x}", fwd_addr);
+                            println!("  Found jump at 0x{fwd_addr:04x}");
                         }
                     }
                 }
@@ -75,7 +75,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Also check the area around where we know the issue happens
     println!("\n\nDetailed analysis of execution after space (0x630c):");
     if let Ok(output) = disasm.disassemble_range(0x630c, 0x6360) {
-        println!("{}", output);
+        println!("{output}");
     }
 
     Ok(())

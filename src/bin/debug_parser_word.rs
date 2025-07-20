@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // The parse buffer is at 0x2551 (from our trace)
     let parse_buffer = 0x2551;
-    println!("Parse buffer at: 0x{:04x}", parse_buffer);
+    println!("Parse buffer at: 0x{parse_buffer:04x}");
 
     // Parse buffer format:
     // Byte 0: Max words
@@ -56,7 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting game to trace parser behavior...");
     if let Err(e) = interpreter.run() {
-        eprintln!("Error: {}", e);
+        eprintln!("Error: {e}");
     }
 
     Ok(())

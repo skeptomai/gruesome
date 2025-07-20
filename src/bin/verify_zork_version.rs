@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for addr in sread_addresses {
         let byte = game.memory.get(addr).copied().unwrap_or(0);
-        println!("  0x{:04x}: byte = 0x{:02x}", addr, byte);
+        println!("  0x{addr:04x}: byte = 0x{byte:02x}");
 
         // In V3, SREAD is a 2OP instruction, not VAR
         // Check if it's actually opcode 0x04 (sread)

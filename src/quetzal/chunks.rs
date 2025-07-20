@@ -22,9 +22,7 @@ impl IFhdChunk {
 
         // Get serial number bytes
         let mut serial = [0u8; 6];
-        for i in 0..6 {
-            serial[i] = vm.game.memory[0x12 + i];
-        }
+        serial.copy_from_slice(&vm.game.memory[0x12..0x18]);
 
         IFhdChunk {
             release: header.release,
@@ -126,7 +124,7 @@ impl StksChunk {
         // This preserves the stack structure correctly
         for (frame_idx, frame) in vm.call_stack.iter().enumerate() {
             // Return PC (3 bytes packed address)
-            let pc_bytes = (frame.return_pc as u32).to_be_bytes();
+            let pc_bytes = frame.return_pc.to_be_bytes();
             data.push(pc_bytes[1]);
             data.push(pc_bytes[2]);
             data.push(pc_bytes[3]);
@@ -136,7 +134,7 @@ impl StksChunk {
             // Bit 4: 1 if called with store variable
             // Bit 5-6: number of arguments supplied
             // Bit 7: reserved
-            let mut flags = (frame.num_locals as u8) & 0x0F;
+            let mut flags = frame.num_locals & 0x0F;
             if frame.return_store.is_some() {
                 flags |= 0x10;
             }
@@ -161,11 +159,7 @@ impl StksChunk {
             } else {
                 vm.stack.len()
             };
-            let stack_size = if stack_end >= frame.stack_base {
-                stack_end - frame.stack_base
-            } else {
-                0 // Shouldn't happen, but be safe
-            };
+            let stack_size = stack_end.saturating_sub(frame.stack_base);
             data.extend_from_slice(&(stack_size as u16).to_be_bytes());
 
             // Local variables (2 bytes each)
@@ -240,8 +234,8 @@ impl StksChunk {
             if offset + local_count * 2 > data.len() {
                 return Err("Missing local variables".to_string());
             }
-            for i in 0..local_count {
-                locals[i] = u16::from_be_bytes([data[offset], data[offset + 1]]);
+            for local in locals.iter_mut().take(local_count) {
+                *local = u16::from_be_bytes([data[offset], data[offset + 1]]);
                 offset += 2;
             }
 
@@ -278,6 +272,12 @@ pub struct IntDChunk {
     pub interpreter_id: [u8; 4],
     /// Custom data
     pub data: Vec<u8>,
+}
+
+impl Default for IntDChunk {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl IntDChunk {

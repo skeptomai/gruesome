@@ -31,23 +31,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // See if the code after the header looks valid
             if expected_code_start < 0x630c {
-                println!("\nPossible routine at 0x{:04x}:", addr);
-                println!("  Locals: {}", locals);
-                println!("  Code starts at: 0x{:04x}", expected_code_start);
+                println!("\nPossible routine at 0x{addr:04x}:");
+                println!("  Locals: {locals}");
+                println!("  Code starts at: 0x{expected_code_start:04x}");
 
                 // Show some disassembly
                 if let Ok(output) = disasm.disassemble_range(addr as u32, 0x6320) {
                     println!("\nDisassembly:");
                     let lines: Vec<&str> = output.lines().collect();
-                    for (i, line) in lines.iter().take(20).enumerate() {
-                        println!("{}", line);
+                    for line in lines.iter().take(20) {
+                        println!("{line}");
                         if line.contains("630c") {
                             println!("  ^-- Space print found!");
                         }
                     }
                 }
 
-                if addr >= 0x62e0 && addr <= 0x6300 {
+                if (0x62e0..=0x6300).contains(&addr) {
                     println!("\nThis is likely BUFFER-PRINT!");
                 }
             }

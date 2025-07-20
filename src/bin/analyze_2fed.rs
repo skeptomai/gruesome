@@ -20,9 +20,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Routine at 0x2fed is packed address, so actual address is 0x2fed * 2 = 0x5fda
     let routine_addr = 0x5fda;
 
-    println!("Disassembling routine at 0x{:04x}:", routine_addr);
+    println!("Disassembling routine at 0x{routine_addr:04x}:");
     if let Ok(output) = disasm.disassemble_range(routine_addr, routine_addr + 0x40) {
-        println!("{}", output);
+        println!("{output}");
     }
 
     // This routine likely:

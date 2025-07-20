@@ -14,10 +14,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Searching for 'leaves' object ===\n");
 
     // Get object table info
-    let obj_table_addr = game.header.object_table_addr as usize;
+    let obj_table_addr = game.header.object_table_addr;
     let property_defaults = obj_table_addr;
     let obj_tree_base = property_defaults + 31 * 2;
-    let abbrev_addr = game.header.abbrev_table as usize;
+    let abbrev_addr = game.header.abbrev_table;
 
     // Search all objects
     for obj_num in 1..=255u16 {
@@ -40,10 +40,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if let Ok((name, _)) = text::decode_string(&game.memory, name_addr, abbrev_addr) {
                 if name.to_lowercase().contains("leave") {
-                    println!("Object {}: \"{}\"", obj_num, name);
-                    println!("  Property table at: 0x{:04x}", prop_table_addr);
-                    println!("  Text length: {} words", text_len);
-                    println!("  Name address: 0x{:04x}", name_addr);
+                    println!("Object {obj_num}: \"{name}\"");
+                    println!("  Property table at: 0x{prop_table_addr:04x}");
+                    println!("  Text length: {text_len} words");
+                    println!("  Name address: 0x{name_addr:04x}");
 
                     // Show raw bytes
                     print!("  Raw Z-string words: ");
@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if addr + 1 < game.memory.len() {
                             let word =
                                 ((game.memory[addr] as u16) << 8) | game.memory[addr + 1] as u16;
-                            print!("{:04x} ", word);
+                            print!("{word:04x} ");
                         }
                     }
                     println!();

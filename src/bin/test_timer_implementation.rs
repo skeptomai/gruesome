@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ) {
             Ok(inst) => inst,
             Err(e) => {
-                eprintln!("Error decoding at 0x{:04x}: {}", pc, e);
+                eprintln!("Error decoding at 0x{pc:04x}: {e}");
                 break;
             }
         };
@@ -68,7 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             gruesome::interpreter::ExecutionResult::Quit => break,
             gruesome::interpreter::ExecutionResult::GameOver => break,
             gruesome::interpreter::ExecutionResult::Error(e) => {
-                eprintln!("Execution error: {}", e);
+                eprintln!("Execution error: {e}");
                 break;
             }
             _ => {}

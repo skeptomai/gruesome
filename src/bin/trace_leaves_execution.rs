@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let pc = interpreter.vm.pc;
 
         // Check if we're in the area where the error happens
-        if pc >= 0x6340 && pc <= 0x6360 {
+        if (0x6340..=0x6360).contains(&pc) {
             if !in_trace_area {
                 info!("=== Entered trace area at PC 0x{:04x} ===", pc);
                 in_trace_area = true;
@@ -68,7 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // Execute
                 if let Err(e) = interpreter.execute_instruction(&inst) {
-                    eprintln!("Error: {}", e);
+                    eprintln!("Error: {e}");
                     break;
                 }
             }
@@ -88,7 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Ok(gruesome::interpreter::ExecutionResult::Quit) => break,
                     Ok(gruesome::interpreter::ExecutionResult::GameOver) => break,
                     Err(e) => {
-                        eprintln!("Error at PC 0x{:04x}: {}", pc, e);
+                        eprintln!("Error at PC 0x{pc:04x}: {e}");
                         break;
                     }
                     _ => {}

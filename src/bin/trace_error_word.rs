@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Let's trace the routine at 0x5092 more carefully
     println!("Routine at 0x5092 (after 'You can't see any'):");
     if let Ok(output) = disasm.disassemble_range(0x5092, 0x5100) {
-        println!("{}", output);
+        println!("{output}");
     }
 
     // The routine seems to be checking variables and calling print_addr
@@ -57,14 +57,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if inst.operands.len() >= 2 {
                     let base = inst.operands[0];
                     // Check if it's accessing text buffer area
-                    if base >= 0x2600 && base <= 0x2700 {
-                        println!("\nloadb from text area at 0x{:04x}: {}", addr, text);
+                    if (0x2600..=0x2700).contains(&base) {
+                        println!("\nloadb from text area at 0x{addr:04x}: {text}");
                         // Show context
                         if let Ok(output) =
                             disasm.disassemble_range((addr - 5) as u32, (addr + 10) as u32)
                         {
                             for line in output.lines() {
-                                println!("  {}", line);
+                                println!("  {line}");
                             }
                         }
                     }

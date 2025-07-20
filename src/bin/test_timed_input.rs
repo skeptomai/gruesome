@@ -1,4 +1,3 @@
-use env_logger;
 use gruesome::timed_input::TimedInput;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,8 +15,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("- Arrow keys and backspace work\n");
 
     match timed_input.read_line_basic() {
-        Ok(input) => println!("\nYou typed: '{}'", input),
-        Err(e) => println!("\nError: {}", e),
+        Ok(input) => println!("\nYou typed: '{input}'"),
+        Err(e) => println!("\nError: {e}"),
     }
 
     // Test 2: Timed input with 5 second timeout
@@ -35,14 +34,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match timed_input.read_line_with_timer(50, 0x1234, Some(callback)) {
         // 50 tenths = 5 seconds
         Ok((input, terminated)) => {
-            println!("\nYou typed: '{}'", input);
+            println!("\nYou typed: '{input}'");
             if terminated {
                 println!("Input was TERMINATED by timer!");
             } else {
                 println!("Input completed before timeout");
             }
         }
-        Err(e) => println!("\nError: {}", e),
+        Err(e) => println!("\nError: {e}"),
     }
 
     // Test 3: Very short timeout
@@ -58,12 +57,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // 10 tenths = 1 second
         Ok((input, terminated)) => {
             if terminated {
-                println!("\nTimed out! Partial input: '{}'", input);
+                println!("\nTimed out! Partial input: '{input}'");
             } else {
-                println!("\nFast typing! You entered: '{}'", input);
+                println!("\nFast typing! You entered: '{input}'");
             }
         }
-        Err(e) => println!("\nError: {}", e),
+        Err(e) => println!("\nError: {e}"),
     }
 
     println!("\nTests complete!");

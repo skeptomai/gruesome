@@ -10,7 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     f.read_to_end(&mut memory)?;
 
     let game = Game::from_memory(memory)?;
-    let abbrev_addr = game.header.abbrev_table as usize;
+    let abbrev_addr = game.header.abbrev_table;
 
     println!("=== Searching for 'leave' string in memory ===\n");
 
@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Also check if "leave" is stored as a dictionary word
     println!("\n=== Checking dictionary ===");
-    let dict_addr = game.header.dictionary as usize;
+    let dict_addr = game.header.dictionary;
     let sep_count = game.memory[dict_addr] as usize;
     let sep_start = dict_addr + 1;
     let entry_length = game.memory[sep_start + sep_count] as usize;
@@ -53,10 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let entry_addr = entries_start + (i * entry_length);
         if let Ok((word, _)) = text::decode_string(&game.memory, entry_addr, abbrev_addr) {
             if word.trim() == "leave" {
-                println!(
-                    "Dictionary word {}: \"{}\" at 0x{:04x}",
-                    i, word, entry_addr
-                );
+                println!("Dictionary word {i}: \"{word}\" at 0x{entry_addr:04x}");
             }
         }
     }

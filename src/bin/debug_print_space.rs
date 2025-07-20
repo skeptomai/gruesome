@@ -16,12 +16,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Show the area around where the space is printed
     if let Ok(output) = disasm.disassemble_range(0x6300, 0x6320) {
-        println!("{}", output);
+        println!("{output}");
     }
 
     println!("\n=== Checking what instruction is at 0x630c ===");
     if let Ok((inst, text)) = disasm.disassemble_instruction(0x630c) {
-        println!("Instruction: {}", text);
+        println!("Instruction: {text}");
         println!("Opcode: 0x{:02x}", inst.opcode);
         println!("Operands: {:?}", inst.operands);
     }
@@ -34,13 +34,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Ok((inst, text)) = disasm.disassemble_instruction(addr as u32) {
             if inst.opcode == 0x0A {
                 // print_obj
-                println!("\nFound print_obj at 0x{:04x}: {}", addr, text);
+                println!("\nFound print_obj at 0x{addr:04x}: {text}");
                 // Show context
                 if let Ok(output) = disasm.disassemble_range((addr - 5) as u32, (addr + 10) as u32)
                 {
                     println!("Context:");
                     for line in output.lines() {
-                        println!("  {}", line);
+                        println!("  {line}");
                     }
                 }
             }

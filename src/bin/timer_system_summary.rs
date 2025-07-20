@@ -42,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Timer decrement at 0x50dc:");
     if let Ok(output) = disasm.disassemble_range(0x50d8, 0x50e5) {
         for line in output.lines() {
-            println!("  {}", line);
+            println!("  {line}");
         }
     }
 
@@ -97,16 +97,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 if time > 0 && routine > 0 && !found_timed_sread {
                     found_timed_sread = true;
-                    println!("Example timed SREAD at 0x{:04x}:", addr);
+                    println!("Example timed SREAD at 0x{addr:04x}:");
                     if let Ok(output) = disasm.disassemble_range(addr as u32, (addr + 5) as u32) {
                         for line in output.lines() {
-                            println!("  {}", line);
+                            println!("  {line}");
                         }
                     }
                     println!("\nThis shows:");
                     println!("- Text buffer: 0x{:04x}", inst.operands[0]);
                     println!("- Parse buffer: 0x{:04x}", inst.operands[1]);
-                    println!("- Time: {} tenths of seconds", time);
+                    println!("- Time: {time} tenths of seconds");
                     println!(
                         "- Interrupt routine: 0x{:04x} (unpacked: 0x{:04x})",
                         routine,

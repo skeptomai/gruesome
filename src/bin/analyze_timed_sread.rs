@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Look at a different timed sread at 0x6065
     println!("Disassembling around 0x6065:");
     let output = disasm.disassemble_range(0x6060, 0x6070)?;
-    println!("{}", output);
+    println!("{output}");
 
     // Decode the instruction specifically
     if let Ok((inst, _text)) = disasm.disassemble_instruction(0x6065) {
@@ -34,9 +34,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Try to find what the interrupt routine does
             if inst.operands[3] != 0 {
                 let routine_addr = inst.operands[3] as u32 * 2; // Packed address
-                println!("\nInterrupt routine at 0x{:04x}:", routine_addr);
+                println!("\nInterrupt routine at 0x{routine_addr:04x}:");
                 let routine_output = disasm.disassemble_range(routine_addr, routine_addr + 20)?;
-                println!("{}", routine_output);
+                println!("{routine_output}");
             }
         }
     }

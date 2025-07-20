@@ -1,4 +1,3 @@
-use env_logger;
 use gruesome::interpreter::Interpreter;
 use gruesome::vm::{Game, VM};
 use std::io::Read;
@@ -26,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let text_buffer = 0x2641; // From the debug output
 
     // Show what's in the text buffer when "move leaves" is parsed
-    println!("\n=== Text buffer contents at 0x{:04x} ===", text_buffer);
+    println!("\n=== Text buffer contents at 0x{text_buffer:04x} ===");
 
     // Simulate having "move leaves" in the buffer
     let text = "move leaves";

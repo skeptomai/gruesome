@@ -176,7 +176,7 @@ mod tests {
 
         match interpreter.run() {
             Ok(()) => {}
-            Err(e) => panic!("Execution error: {}", e),
+            Err(e) => panic!("Execution error: {e}"),
         }
 
         // Check that global 10 contains 42
@@ -239,7 +239,7 @@ mod tests {
 
         match interpreter.run() {
             Ok(()) => {}
-            Err(e) => panic!("Execution error: {}", e),
+            Err(e) => panic!("Execution error: {e}"),
         }
 
         // Check that global 12 contains 49 (7 + 42)

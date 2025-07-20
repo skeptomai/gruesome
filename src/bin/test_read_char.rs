@@ -1,4 +1,3 @@
-use env_logger;
 use gruesome::timed_input::TimedInput;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,10 +13,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match timed_input.read_char_with_timeout_callback::<fn() -> Result<bool, String>>(0, 0, None) {
         Ok((ch, terminated)) => {
-            println!("You pressed: '{}' (0x{:02x})", ch, ch as u8);
-            println!("Was terminated: {}", terminated);
+            println!("You pressed: '{ch}' (0x{:02x})", ch as u8);
+            println!("Was terminated: {terminated}");
         }
-        Err(e) => println!("Error: {}", e),
+        Err(e) => println!("Error: {e}"),
     }
 
     // Test 2: Character read with timeout
@@ -35,13 +34,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if terminated {
                 println!("\nTimeout! No character received");
             } else {
-                println!("You pressed: '{}' (0x{:02x})", ch, ch as u8);
+                println!("You pressed: '{ch}' (0x{:02x})", ch as u8);
             }
             if timer_fired {
                 println!("Timer fired during input");
             }
         }
-        Err(e) => println!("Error: {}", e),
+        Err(e) => println!("Error: {e}"),
     }
 
     // Test 3: Character read with terminating timeout
@@ -57,10 +56,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if terminated {
                 println!("Input terminated by timer (returned null char)");
             } else {
-                println!("You pressed: '{}' (0x{:02x})", ch, ch as u8);
+                println!("You pressed: '{ch}' (0x{:02x})", ch as u8);
             }
         }
-        Err(e) => println!("Error: {}", e),
+        Err(e) => println!("Error: {e}"),
     }
 
     println!("\nTests complete!");

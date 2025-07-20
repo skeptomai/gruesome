@@ -28,7 +28,7 @@ fn main() {
             );
             println!("  This is the 'call' instruction, not 'rtrue'!\n");
         }
-        Err(e) => println!("  Error: {}\n", e),
+        Err(e) => println!("  Error: {e}\n"),
     }
 
     // Example 2: 0OP:176 (0xB0) - rtrue instruction
@@ -48,7 +48,7 @@ fn main() {
             );
             println!("  This is the actual 'rtrue' instruction!\n");
         }
-        Err(e) => println!("  Error: {}\n", e),
+        Err(e) => println!("  Error: {e}\n"),
     }
 
     // Example 3: 2OP in variable form (0xC1) - je
@@ -77,7 +77,7 @@ fn main() {
             );
             println!("  Note: je can take 2-4 operands in variable form\n");
         }
-        Err(e) => println!("  Error: {}\n", e),
+        Err(e) => println!("  Error: {e}\n"),
     }
 
     // Example 4: 1OP:143 (0x8F) - not (V1-4) / call_1n (V5)
@@ -94,7 +94,7 @@ fn main() {
         Ok(inst) => {
             println!("    Decoded as: {}", inst.format_with_version(3));
         }
-        Err(e) => println!("    Error: {}", e),
+        Err(e) => println!("    Error: {e}"),
     }
 
     println!("  In Version 5:");
@@ -102,6 +102,6 @@ fn main() {
         Ok(inst) => {
             println!("    Decoded as: {}", inst.format_with_version(5));
         }
-        Err(e) => println!("    Error: {}", e),
+        Err(e) => println!("    Error: {e}"),
     }
 }

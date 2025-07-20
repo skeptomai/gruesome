@@ -190,8 +190,8 @@ impl Zobject {
         }
 
         Zobject {
-            zobj: zobj,
-            description: description,
+            zobj,
+            description,
             properties: props,
         }
     }
@@ -304,11 +304,10 @@ impl Display for Zobject {
             write!(
                 f,
                 "
-                    [{}]: ",
-                k
+                    [{k}]: "
             )?;
             for val in v {
-                write!(f, "{:02x} ", val)?;
+                write!(f, "{val:02x} ")?;
             }
         }
         Ok(())

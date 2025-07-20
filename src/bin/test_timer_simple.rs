@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Run the interpreter normally
     if let Err(e) = interpreter.run() {
-        eprintln!("Error: {}", e);
+        eprintln!("Error: {e}");
     }
 
     Ok(())

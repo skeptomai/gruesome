@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a save game directly
     match gruesome::quetzal::save::save_game(&vm) {
         Ok(()) => println!("Save completed successfully!"),
-        Err(e) => println!("Save failed: {}", e),
+        Err(e) => println!("Save failed: {e}"),
     }
 
     // List saved file
@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut vm2 = vm;
         match gruesome::quetzal::restore::restore_game(&mut vm2) {
             Ok(()) => println!("Restore completed successfully!"),
-            Err(e) => println!("Restore failed: {}", e),
+            Err(e) => println!("Restore failed: {e}"),
         }
     } else {
         println!("Save file was not created");
