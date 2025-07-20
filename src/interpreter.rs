@@ -1827,12 +1827,34 @@ impl Interpreter {
                 }
                 Ok(ExecutionResult::Continue)
             }
+            0x0B => {
+                // set_window (V3+)
+                if !operands.is_empty() {
+                    let window = operands[0] as u8;
+                    debug!("set_window: window={}", window);
+                    
+                    if let Some(ref mut display) = self.display {
+                        display.set_window(window)?;
+                    } else {
+                        debug!("No display available for set_window");
+                    }
+                }
+                Ok(ExecutionResult::Continue)
+            }
             0x0D => {
-                // erase_window (V4+) or unknown in V3
-                // In V3, this opcode is not documented
-                // Some V3 games might use it as a NOP or for other purposes
-                let pc = self.vm.pc - inst.size as u32;
-                debug!("VAR:0x0D at PC {:05x} - treating as NOP for V3", pc);
+                // erase_window - actually used in v3 (Seastalker uses it)
+                if !operands.is_empty() {
+                    let window = operands[0] as i16;
+                    debug!("erase_window: window={}", window);
+                    
+                    if let Some(ref mut display) = self.display {
+                        display.erase_window(window)?;
+                    } else {
+                        debug!("No display available for erase_window");
+                    }
+                } else {
+                    debug!("erase_window called with no operands");
+                }
                 Ok(ExecutionResult::Continue)
             }
             0x13 => {
@@ -1849,12 +1871,19 @@ impl Interpreter {
                 Ok(ExecutionResult::Continue)
             }
             0x0F => {
-                // set_cursor (V4+) - ignore in V3
-                if self.vm.game.header.version >= 4 {
-                    // Would set cursor position here
-                    debug!("set_cursor called but not implemented");
+                // set_cursor - v3 uses this too (especially Seastalker)
+                if operands.len() >= 2 {
+                    let line = operands[0];
+                    let column = operands[1];
+                    debug!("set_cursor: line={}, column={}", line, column);
+                    
+                    if let Some(ref mut display) = self.display {
+                        display.set_cursor(line, column)?;
+                    } else {
+                        debug!("No display available for set_cursor");
+                    }
                 } else {
-                    debug!("set_cursor called in V3 game - ignoring");
+                    debug!("set_cursor called with insufficient operands");
                 }
                 Ok(ExecutionResult::Continue)
             }
