@@ -215,6 +215,26 @@ impl ZMachineDisplay for V3Display {
         io::stdout().flush()?;
         Ok(())
     }
+    
+    fn set_text_style(&mut self, style: u16) -> Result<(), DisplayError> {
+        // V3 games use ANSI codes for text styling, primarily for status lines
+        let style_str = if style == 0 {
+            "\x1b[0m" // Reset to normal
+        } else if style & 1 != 0 {
+            "\x1b[7m" // Reverse video
+        } else if style & 2 != 0 {
+            "\x1b[1m" // Bold
+        } else {
+            ""
+        };
+        
+        if !style_str.is_empty() {
+            print!("{}", style_str);
+            io::stdout().flush()?;
+        }
+        
+        Ok(())
+    }
 }
 
 impl Drop for V3Display {

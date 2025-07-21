@@ -144,6 +144,12 @@ impl ZMachineDisplay for HeadlessDisplay {
         self.flush_line();
         Ok(())
     }
+    
+    fn set_text_style(&mut self, style: u16) -> Result<(), DisplayError> {
+        debug!("Headless: set_text_style({})", style);
+        // Headless display ignores text styles
+        Ok(())
+    }
 }
 
 impl Drop for HeadlessDisplay {

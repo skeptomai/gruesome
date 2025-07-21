@@ -53,6 +53,10 @@ pub trait ZMachineDisplay {
     /// Set buffer mode (v4+)
     fn set_buffer_mode(&mut self, buffered: bool) -> Result<(), DisplayError>;
     
+    /// Set text style (0 = normal, 1 = reverse, 2 = bold, 4 = italic, 8 = fixed)
+    /// Multiple styles can be combined with bitwise OR
+    fn set_text_style(&mut self, style: u16) -> Result<(), DisplayError>;
+    
     // Utility methods
     
     /// Get the current terminal dimensions

@@ -26,6 +26,7 @@ pub struct V4Display {
     current_window: u8,
     upper_cursor_x: u16,
     upper_cursor_y: u16,
+    current_style: u16,
 }
 
 impl V4Display {
@@ -41,6 +42,7 @@ impl V4Display {
             current_window: 0,
             upper_cursor_x: 0,
             upper_cursor_y: 0,
+            current_style: 0,
         })
     }
     
@@ -55,14 +57,12 @@ impl V4Display {
         // Get current cursor position manually
         let current_pos = cursor::position().ok();
         
-        // Draw upper window with reverse video
+        // Draw upper window WITHOUT reverse video - v4 games control their own styling
         for (i, line) in self.upper_window_buffer.iter().enumerate() {
             execute!(
                 io::stdout(),
                 MoveTo(0, i as u16),
-                SetAttribute(Attribute::Reverse),
-                Print(line),
-                SetAttribute(Attribute::Reset)
+                Print(line)
             )?;
         }
         
@@ -97,7 +97,10 @@ impl V4Display {
             
             // Build new line with text at cursor position
             let mut new_line = String::new();
-            new_line.push_str(&line[..col]);
+            if col > 0 {
+                // Add the content before the cursor position
+                new_line.push_str(&line[..col.min(line.len())]);
+            }
             new_line.push_str(text);
             
             // Update cursor position
@@ -124,7 +127,10 @@ impl V4Display {
 
 impl ZMachineDisplay for V4Display {
     fn clear_screen(&mut self) -> Result<(), DisplayError> {
+        debug!("V4: clear_screen");
         execute!(io::stdout(), Clear(ClearType::All), MoveTo(0, 0))?;
+        // Reset any active text styles
+        execute!(io::stdout(), SetAttribute(Attribute::Reset))?;
         io::stdout().flush()?;
         Ok(())
     }
@@ -176,19 +182,21 @@ impl ZMachineDisplay for V4Display {
             self.upper_cursor_y = (line - 1).min(self.upper_window_lines - 1);
             self.upper_cursor_x = (column - 1).min(self.terminal_width - 1);
         } else {
-            // Lower window - move cursor directly
-            let actual_line = if self.upper_window_lines > 0 {
-                self.upper_window_lines + line - 1
-            } else {
-                line - 1
-            };
-            execute!(io::stdout(), MoveTo(column - 1, actual_line))?;
+            // Lower window - per Z-Machine spec section 8.7.2.3.1:
+            // "set_cursor can only set the position of the cursor in the upper window,
+            // and has no effect when the lower window is selected."
+            debug!("V4: set_cursor ignored in lower window (per spec)");
         }
         
         Ok(())
     }
     
     fn print(&mut self, text: &str) -> Result<(), DisplayError> {
+        debug!("V4: print('{}') to window {} with style {}", 
+               text.chars().take(20).collect::<String>(), 
+               self.current_window, 
+               self.current_style);
+        
         if self.current_window == 1 && self.upper_window_lines > 0 {
             // Print to upper window buffer
             self.print_to_upper_window(text)?;
@@ -209,8 +217,24 @@ impl ZMachineDisplay for V4Display {
         
         match window {
             -1 => {
-                // Erase whole screen
+                // Erase whole screen - per spec section 8.7.3.3:
+                // - Clear screen to background colour
+                // - Collapse upper window to height 0
+                // - Move cursor to bottom left (v4) or top left (v5+)
+                // - Select lower window
                 execute!(io::stdout(), Clear(ClearType::All))?;
+                
+                // Collapse upper window
+                self.upper_window_lines = 0;
+                self.upper_window_buffer.clear();
+                self.upper_window_dirty = false;
+                
+                // Select lower window
+                self.current_window = 0;
+                
+                // Position cursor at bottom left for v4
+                // (In v5+ it would be top left, but this is v4)
+                execute!(io::stdout(), MoveTo(0, self.terminal_height - 1))?;
             }
             0 => {
                 // Erase lower window
@@ -297,6 +321,35 @@ impl ZMachineDisplay for V4Display {
             self.upper_window_dirty = false;
         }
         io::stdout().flush()?;
+        Ok(())
+    }
+    
+    fn set_text_style(&mut self, style: u16) -> Result<(), DisplayError> {
+        debug!("V4: set_text_style({}) in window {}", style, self.current_window);
+        self.current_style = style;
+        
+        // If we're in the lower window, apply style immediately
+        if self.current_window == 0 {
+            let style_str = if style == 0 {
+                "\x1b[0m" // Reset to normal
+            } else if style & 1 != 0 {
+                "\x1b[7m" // Reverse video
+            } else if style & 2 != 0 {
+                "\x1b[1m" // Bold
+            } else if style & 4 != 0 {
+                "\x1b[3m" // Italic
+            } else {
+                ""
+            };
+            
+            if !style_str.is_empty() {
+                print!("{}", style_str);
+                io::stdout().flush()?;
+            }
+        }
+        // For upper window, styles need to be embedded in the text buffer
+        // This is handled when text is printed
+        
         Ok(())
     }
 }

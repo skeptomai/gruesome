@@ -1893,27 +1893,9 @@ impl Interpreter {
                     let style = operands[0];
                     debug!("set_text_style: style={}", style);
                     
-                    // For v3 games, we need to handle reverse video for status lines
-                    // For v4+ games, we avoid ANSI codes in upper window
-                    if self.vm.game.header.version <= 3 {
-                        // V3 games: allow reverse video for status line
-                        let style_str = if style == 0 {
-                            "\x1b[0m" // Reset to normal
-                        } else if style & 1 != 0 {
-                            "\x1b[7m" // Reverse video
-                        } else if style & 2 != 0 {
-                            "\x1b[1m" // Bold
-                        } else {
-                            ""
-                        };
-                        
-                        if !style_str.is_empty() {
-                            print!("{}", style_str);
-                            io::stdout().flush().ok();
-                        }
-                    } else {
-                        // V4+ games: handle styles through display system (TODO)
-                        // For now, ignore to prevent upper window corruption
+                    // Use the display system's text style handling
+                    if let Some(ref mut display) = self.display {
+                        display.set_text_style(style).ok();
                     }
                 }
                 Ok(ExecutionResult::Continue)
