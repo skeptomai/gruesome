@@ -45,6 +45,25 @@ pub struct Interpreter {
     timed_input: TimedInput,
     /// Display manager
     display: Option<Box<dyn ZMachineDisplay>>,
+    /// Output stream state
+    output_streams: OutputStreamState,
+}
+
+/// State for managing output stream redirection
+struct OutputStreamState {
+    /// Stack of output stream 3 tables (for nested redirection)
+    stream3_stack: Vec<u16>,
+    /// Current stream 3 table address (if active)
+    current_stream3_table: Option<u16>,
+}
+
+impl OutputStreamState {
+    fn new() -> Self {
+        OutputStreamState {
+            stream3_stack: Vec::new(),
+            current_stream3_table: None,
+        }
+    }
 }
 
 impl Interpreter {
@@ -71,6 +90,7 @@ impl Interpreter {
             step_range: None,
             timed_input: TimedInput::new(),
             display,
+            output_streams: OutputStreamState::new(),
         }
     }
 
@@ -589,24 +609,15 @@ impl Interpreter {
                         preview
                     );
 
-                    if let Some(ref mut display) = self.display {
-                        display.print(text).ok();
-                    } else {
-                        print!("{text}");
-                        io::stdout().flush().ok();
-                    }
+                    self.output_text(text)?;
                 }
                 Ok(ExecutionResult::Continue)
             }
             0x03 => {
                 // print_ret
                 if let Some(ref text) = inst.text {
-                    if let Some(ref mut display) = self.display {
-                        display.print(text).ok();
-                        display.print("\n").ok();
-                    } else {
-                        println!("{text}");
-                    }
+                    self.output_text(text)?;
+                    self.output_char('\n')?;
                 }
                 self.do_return(1)
             }
@@ -706,11 +717,7 @@ impl Interpreter {
             }
             0x0B => {
                 // new_line
-                if let Some(ref mut display) = self.display {
-                    display.print("\n").ok();
-                } else {
-                    println!();
-                }
+                self.output_char('\n')?;
                 Ok(ExecutionResult::Continue)
             }
             0x0C => {
@@ -838,12 +845,7 @@ impl Interpreter {
                     abbrev_addr,
                 ) {
                     Ok(string) => {
-                        if let Some(ref mut display) = self.display {
-                            display.print(&string).ok();
-                        } else {
-                            print!("{string}");
-                            io::stdout().flush().ok();
-                        }
+                        self.output_text(&string)?;
                     }
                     Err(e) => {
                         debug!("Failed to decode string at {:04x}: {}", operand, e);
@@ -956,12 +958,7 @@ impl Interpreter {
 
                 match text::decode_string(&self.vm.game.memory, addr, abbrev_addr) {
                     Ok((string, _)) => {
-                        if let Some(ref mut display) = self.display {
-                            display.print(&string).ok();
-                        } else {
-                            print!("{string}");
-                            io::stdout().flush().ok();
-                        }
+                        self.output_text(&string)?;
                     }
                     Err(e) => {
                         debug!("Failed to decode string at {:04x}: {}", addr, e);
@@ -1015,12 +1012,7 @@ impl Interpreter {
                             debug!("Object 144 (leaves) name: '{}' (len={})", name, name.len());
                             debug!("  Name bytes: {:?}", name.as_bytes());
                         }
-                        if let Some(ref mut display) = self.display {
-                            display.print(&name).ok();
-                        } else {
-                            print!("{name}");
-                            io::stdout().flush().ok();
-                        }
+                        self.output_text(&name)?;
                     }
                     Err(e) => {
                         debug!("Failed to get object name: {}", e);
@@ -1733,12 +1725,7 @@ impl Interpreter {
                             self.vm.pc - inst.size as u32
                         );
                     }
-                    if let Some(ref mut display) = self.display {
-                        display.print_char(ch).ok();
-                    } else {
-                        print!("{ch}");
-                        io::stdout().flush().ok();
-                    }
+                    self.output_char(ch)?;
                 }
                 Ok(ExecutionResult::Continue)
             }
@@ -1746,12 +1733,7 @@ impl Interpreter {
                 // print_num
                 if !operands.is_empty() {
                     let num_str = format!("{}", operands[0] as i16);
-                    if let Some(ref mut display) = self.display {
-                        display.print(&num_str).ok();
-                    } else {
-                        print!("{num_str}");
-                        io::stdout().flush().ok();
-                    }
+                    self.output_text(&num_str)?;
                 }
                 Ok(ExecutionResult::Continue)
             }
@@ -1860,11 +1842,35 @@ impl Interpreter {
                 // output_stream
                 if !operands.is_empty() {
                     let stream_num = operands[0] as i16;
-                    // For now, we only support stream 1 (screen output)
-                    // Stream 1 is always on by default
-                    // Positive numbers enable streams, negative disable
-                    if stream_num.abs() != 1 {
-                        debug!("Unsupported output stream: {}", stream_num);
+                    debug!("output_stream: stream_num={}", stream_num);
+                    
+                    match stream_num {
+                        1 => {
+                            // Enable screen output (always on, ignore)
+                            debug!("output_stream: enabling screen output (always on)");
+                        }
+                        -1 => {
+                            // Disable screen output (not implemented)
+                            debug!("output_stream: disabling screen output (not implemented)");
+                        }
+                        3 => {
+                            // Enable stream 3 (table redirection)
+                            if operands.len() >= 2 {
+                                let table_addr = operands[1];
+                                debug!("output_stream: enabling stream 3, table at 0x{:04x}", table_addr);
+                                self.enable_stream3(table_addr)?;
+                            } else {
+                                debug!("output_stream: stream 3 requested but no table address provided");
+                            }
+                        }
+                        -3 => {
+                            // Disable stream 3
+                            debug!("output_stream: disabling stream 3");
+                            self.disable_stream3()?;
+                        }
+                        _ => {
+                            debug!("output_stream: unsupported stream {}", stream_num);
+                        }
                     }
                 }
                 Ok(ExecutionResult::Continue)
@@ -1907,24 +1913,14 @@ impl Interpreter {
 
                 if operands.is_empty() {
                     // No operands - beep if possible
-                    if let Some(ref mut display) = self.display {
-                        display.print("\x07").ok();
-                    } else {
-                        print!("\x07");
-                        io::stdout().flush().ok();
-                    }
+                    self.output_char('\x07')?;
                 } else {
                     let number = operands[0];
 
                     if number == 1 || number == 2 {
                         // Built-in bleeps (1 = high, 2 = low)
                         // On terminal, both just use bell character
-                        if let Some(ref mut display) = self.display {
-                            display.print("\x07").ok();
-                        } else {
-                            print!("\x07");
-                            io::stdout().flush().ok();
-                        }
+                        self.output_char('\x07')?;
                     }
                     // For v3, ignore other sound numbers and effects
                     // The Lurking Horror would use numbers 3+ for real sounds
@@ -2395,6 +2391,123 @@ impl Interpreter {
             8 => (packed as usize) * 8,
             _ => (packed as usize) * 2,
         }
+    }
+    
+    /// Enable output stream 3 (text redirection to table)
+    fn enable_stream3(&mut self, table_addr: u16) -> Result<(), String> {
+        debug!("enable_stream3: redirecting to table at 0x{:04x}", table_addr);
+        
+        // Push current state onto stack (for nested redirection)
+        if let Some(current) = self.output_streams.current_stream3_table {
+            self.output_streams.stream3_stack.push(current);
+        }
+        
+        // Set new table
+        self.output_streams.current_stream3_table = Some(table_addr);
+        
+        // Initialize table with 0 characters written
+        self.vm.write_word(table_addr as u32, 0)?;
+        
+        Ok(())
+    }
+    
+    /// Disable output stream 3 (stop text redirection)
+    fn disable_stream3(&mut self) -> Result<(), String> {
+        debug!("disable_stream3: stopping text redirection");
+        
+        if self.output_streams.current_stream3_table.is_some() {
+            // Pop from stack if there are nested redirections
+            self.output_streams.current_stream3_table = self.output_streams.stream3_stack.pop();
+        } else {
+            debug!("disable_stream3: no active stream 3 to disable");
+        }
+        
+        Ok(())
+    }
+    
+    /// Output text, handling stream 3 redirection
+    fn output_text(&mut self, text: &str) -> Result<(), String> {
+        // Handle stream 3 redirection first
+        if let Some(table_addr) = self.output_streams.current_stream3_table {
+            let current_count = self.vm.read_word(table_addr as u32);
+            debug!("output_text: redirecting '{}' to stream 3 table at 0x{:04x}, current_count={} (CAPTURE ONLY)", 
+                   text, table_addr, current_count);
+            
+            // Write text to table starting at table+2+current_count
+            for (i, ch) in text.chars().enumerate() {
+                let addr = table_addr + 2 + current_count + i as u16;
+                // Write byte - VM will handle bounds checking
+                self.vm.write_byte(addr as u32, ch as u8)?;
+            }
+            
+            // Update character count in table
+            let new_count = current_count + text.len() as u16;
+            self.vm.write_word(table_addr as u32, new_count)?;
+            
+            debug!("output_text: stream 3 updated count to {} (text captured, NOT printed to screen)", new_count);
+            
+            // When stream 3 is active, ONLY capture to table - don't print to screen
+            // The game will handle screen printing separately after disabling stream 3
+            return Ok(());
+        }
+        
+        // Only send to screen when stream 3 is NOT active
+        if let Some(ref mut display) = self.display {
+            display.print(text).ok();
+        } else {
+            print!("{}", text);
+            io::stdout().flush().ok();
+        }
+        
+        Ok(())
+    }
+    
+    /// Output a single character, handling stream 3 redirection
+    fn output_char(&mut self, ch: char) -> Result<(), String> {
+        // Handle stream 3 redirection first
+        if let Some(table_addr) = self.output_streams.current_stream3_table {
+            let current_count = self.vm.read_word(table_addr as u32);
+            debug!("output_char: redirecting '{}' to stream 3 table at 0x{:04x}, current_count={} (CAPTURE ONLY)", 
+                   ch, table_addr, current_count);
+            
+            // Write character to table at table+2+current_count
+            let addr = table_addr + 2 + current_count;
+            // Write byte - VM will handle bounds checking
+            self.vm.write_byte(addr as u32, ch as u8)?;
+            
+            // Update character count in table
+            let new_count = current_count + 1;
+            self.vm.write_word(table_addr as u32, new_count)?;
+            
+            debug!("output_char: stream 3 updated count to {} (char captured, NOT printed to screen)", new_count);
+            
+            // When stream 3 is active, ONLY capture to table - don't print to screen
+            // The game will handle screen printing separately after disabling stream 3
+            return Ok(());
+        }
+        
+        // Only send to screen when stream 3 is NOT active
+        if let Some(ref mut display) = self.display {
+            display.print_char(ch).ok();
+        } else {
+            print!("{}", ch);
+            io::stdout().flush().ok();
+        }
+        
+        Ok(())
+    }
+    
+    /// Clean up terminal state on exit
+    pub fn cleanup(&mut self) {
+        debug!("Interpreter: Performing terminal cleanup");
+        
+        // The display Drop implementations will handle most cleanup,
+        // but we can force it by dropping the display explicitly
+        if self.display.is_some() {
+            self.display = None;
+        }
+        
+        debug!("Interpreter: Terminal cleanup completed");
     }
 }
 

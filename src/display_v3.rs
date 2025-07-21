@@ -239,11 +239,18 @@ impl ZMachineDisplay for V3Display {
 
 impl Drop for V3Display {
     fn drop(&mut self) {
-        // Reset terminal attributes on exit
+        // Comprehensive terminal cleanup on exit
         let _ = execute!(
             io::stdout(),
-            SetAttribute(Attribute::Reset),
-            crossterm::cursor::Show
+            SetAttribute(Attribute::Reset),    // Reset all text attributes
+            crossterm::cursor::Show,           // Show cursor
+            MoveTo(0, self.terminal_height.saturating_sub(1)), // Move to bottom of screen
+            Clear(ClearType::UntilNewLine),    // Clear to end of line
         );
+        
+        // Flush to ensure all cleanup is applied
+        let _ = io::stdout().flush();
+        
+        debug!("V3Display: Terminal cleanup completed");
     }
 }

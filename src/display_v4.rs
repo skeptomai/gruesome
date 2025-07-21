@@ -28,6 +28,8 @@ pub struct V4Display {
     upper_cursor_y: u16,
     current_style: u16,
     upper_window_has_content: bool,  // Track if upper window has styled content
+    buffered_mode: bool,            // Track if we're in buffered mode
+    lower_window_buffer: String,    // Buffer for lower window text when in buffered mode
 }
 
 impl V4Display {
@@ -45,6 +47,8 @@ impl V4Display {
             upper_cursor_y: 0,
             current_style: 0,
             upper_window_has_content: false,
+            buffered_mode: true,  // Start in buffered mode (Z-Machine default)
+            lower_window_buffer: String::new(),
         })
     }
     
@@ -54,8 +58,9 @@ impl V4Display {
             return Ok(());
         }
         
-        debug!("V4: Refreshing upper window (lines={}, has_content={})", 
-               self.upper_window_lines, self.upper_window_has_content);
+        debug!("V4: Refreshing upper window (lines={}, has_content={}, cursor=({},{}))", 
+               self.upper_window_lines, self.upper_window_has_content,
+               self.upper_cursor_x, self.upper_cursor_y);
         
         // Get current cursor position manually
         let current_pos = if self.current_window == 0 {
@@ -124,9 +129,12 @@ impl V4Display {
         if line_idx < self.upper_window_buffer.len() {
             let line = &mut self.upper_window_buffer[line_idx];
             
+            debug!("V4: Before print - line length: {}, content: '{}'", line.len(), line);
+            
             // Ensure line is long enough
             if line.len() < col {
                 line.push_str(&" ".repeat(col - line.len()));
+                debug!("V4: Padded line to length {}", line.len());
             }
             
             // Build new line with text at cursor position
@@ -135,6 +143,8 @@ impl V4Display {
                 // Add the content before the cursor position
                 new_line.push_str(&line[..col.min(line.len())]);
             }
+            
+            // Add the text at cursor position
             new_line.push_str(text);
             
             // Debug log if we're writing at column 0 and might be overwriting
@@ -152,20 +162,36 @@ impl V4Display {
                 new_line.push_str(&line[text_end..]);
             }
             
-            // Ensure line is exactly terminal width (prevents display artifacts and overflow)
+            // Only pad to terminal width if we don't have existing content beyond the new text
+            // This prevents overwriting existing text when printing single characters
             if new_line.len() < self.terminal_width as usize {
-                new_line.push_str(&" ".repeat(self.terminal_width as usize - new_line.len()));
+                // Only pad if the original line was also padded to terminal width
+                // or if we're starting from an empty line
+                if line.len() == self.terminal_width as usize || line.trim().is_empty() {
+                    new_line.push_str(&" ".repeat(self.terminal_width as usize - new_line.len()));
+                }
             } else if new_line.len() > self.terminal_width as usize {
                 // Truncate if line is too long
                 new_line.truncate(self.terminal_width as usize);
             }
             
+            debug!("V4: After print - new line content: '{}'", new_line);
             *line = new_line;
             self.upper_window_dirty = true;
             
             // Track if we're printing styled content
             if self.current_style != 0 {
                 self.upper_window_has_content = true;
+            }
+            
+            // Debug: Log the exact buffer state after each print
+            if log::log_enabled!(log::Level::Trace) {
+                log::trace!("V4: Upper window buffer after print:");
+                for (i, buf_line) in self.upper_window_buffer.iter().enumerate() {
+                    if !buf_line.trim().is_empty() {
+                        log::trace!("  Line {}: '{}'", i, buf_line);
+                    }
+                }
             }
         }
         
@@ -213,12 +239,14 @@ impl ZMachineDisplay for V4Display {
     }
     
     fn set_window(&mut self, window: u8) -> Result<(), DisplayError> {
-        debug!("V4: set_window({}) from {}, upper_window_lines={}, dirty={}", 
-               window, self.current_window, self.upper_window_lines, self.upper_window_dirty);
+        debug!("V4: set_window({}) from {}, upper_window_lines={}, dirty={}, cursor=({},{})", 
+               window, self.current_window, self.upper_window_lines, self.upper_window_dirty,
+               self.upper_cursor_x, self.upper_cursor_y);
         
         // Refresh upper window when switching away from it
         if self.current_window == 1 && window == 0 && self.upper_window_dirty {
-            debug!("V4: Refreshing dirty upper window on switch to lower");
+            debug!("V4: Refreshing dirty upper window on switch to lower (cursor was at ({},{}))",
+                   self.upper_cursor_x, self.upper_cursor_y);
             self.refresh_upper_window()?;
             self.upper_window_dirty = false;
         }
@@ -240,8 +268,16 @@ impl ZMachineDisplay for V4Display {
         
         if self.current_window == 1 {
             // Upper window - store position for buffered printing
-            self.upper_cursor_y = (line - 1).min(self.upper_window_lines - 1);
-            self.upper_cursor_x = (column - 1).min(self.terminal_width - 1);
+            // Handle edge case where game might pass 0 (though it shouldn't per spec)
+            let safe_line = if line == 0 { 1 } else { line };
+            let safe_column = if column == 0 { 1 } else { column };
+            
+            self.upper_cursor_y = (safe_line - 1).min(self.upper_window_lines - 1);
+            self.upper_cursor_x = (safe_column - 1).min(self.terminal_width - 1);
+            
+            if line == 0 || column == 0 {
+                debug!("V4: WARNING - set_cursor called with 0 position: ({}, {})", line, column);
+            }
         } else {
             // Lower window - per Z-Machine spec section 8.7.2.3.1:
             // "set_cursor can only set the position of the cursor in the upper window,
@@ -254,8 +290,8 @@ impl ZMachineDisplay for V4Display {
     
     fn print(&mut self, text: &str) -> Result<(), DisplayError> {
         let preview = text.chars().take(30).collect::<String>();
-        debug!("V4: print('{}') to window {} with style {}, upper_lines={}", 
-               preview, self.current_window, self.current_style, self.upper_window_lines);
+        debug!("V4: print('{}') to window {} with style {}, buffered={}, upper_lines={}", 
+               preview, self.current_window, self.current_style, self.buffered_mode, self.upper_window_lines);
         
         if self.current_window == 1 {
             if self.upper_window_lines > 0 {
@@ -267,17 +303,26 @@ impl ZMachineDisplay for V4Display {
                 // Should we print to lower window or ignore?
             }
         } else {
-            // Print to lower window directly
-            // First ensure cursor is not in upper window area
-            if let Ok((col, row)) = cursor::position() {
-                if row < self.upper_window_lines {
-                    debug!("V4: WARNING - Cursor at ({}, {}) in upper window area while printing to lower window!", col, row);
-                    // Move cursor to start of lower window
-                    execute!(io::stdout(), MoveTo(0, self.upper_window_lines))?;
+            // Lower window - check if we're in buffered mode
+            if self.buffered_mode {
+                // In buffered mode - accumulate text in buffer
+                debug!("V4: Buffering lower window text: '{}'", preview);
+                self.lower_window_buffer.push_str(text);
+            } else {
+                // Not buffered - print immediately
+                // First ensure cursor is not in upper window area
+                if let Ok((col, row)) = cursor::position() {
+                    if row < self.upper_window_lines {
+                        debug!("V4: WARNING - Cursor at ({}, {}) in upper window area while printing to lower window!", col, row);
+                        // Move cursor to start of lower window
+                        execute!(io::stdout(), MoveTo(0, self.upper_window_lines))?;
+                    }
                 }
+                
+                debug!("V4: Printing immediately to lower window: '{}'", preview);
+                print!("{}", text);
+                io::stdout().flush()?;
             }
-            print!("{}", text);
-            io::stdout().flush()?;
         }
         Ok(())
     }
@@ -367,7 +412,29 @@ impl ZMachineDisplay for V4Display {
     // V4+ specific operations
     
     fn erase_line(&mut self) -> Result<(), DisplayError> {
-        execute!(io::stdout(), Clear(ClearType::UntilNewLine))?;
+        debug!("V4: erase_line called in window {} at cursor ({},{})", 
+               self.current_window, self.upper_cursor_x, self.upper_cursor_y);
+        
+        if self.current_window == 1 {
+            // In upper window, we need to update the buffer
+            let line_idx = self.upper_cursor_y as usize;
+            let col = self.upper_cursor_x as usize;
+            
+            if line_idx < self.upper_window_buffer.len() {
+                let line = &mut self.upper_window_buffer[line_idx];
+                // Clear from cursor to end of line
+                if col < line.len() {
+                    line.truncate(col);
+                    // Pad to terminal width
+                    line.push_str(&" ".repeat(self.terminal_width as usize - line.len()));
+                }
+                self.upper_window_dirty = true;
+                debug!("V4: Erased from column {} in upper window line {}", col, line_idx);
+            }
+        } else {
+            // In lower window, use terminal's erase line
+            execute!(io::stdout(), Clear(ClearType::UntilNewLine))?;
+        }
         Ok(())
     }
     
@@ -385,11 +452,32 @@ impl ZMachineDisplay for V4Display {
         }
     }
     
-    fn set_buffer_mode(&mut self, _buffered: bool) -> Result<(), DisplayError> {
-        // We don't implement true buffering, but flush on unbuffer
-        if !_buffered {
-            io::stdout().flush()?;
+    fn set_buffer_mode(&mut self, buffered: bool) -> Result<(), DisplayError> {
+        debug!("V4: set_buffer_mode({}) - was {}, buffer has: '{}'", 
+               buffered, self.buffered_mode, 
+               self.lower_window_buffer.chars().take(50).collect::<String>());
+        
+        if self.buffered_mode && !buffered {
+            // Switching from buffered to unbuffered - flush any buffered content
+            if !self.lower_window_buffer.is_empty() {
+                debug!("V4: Flushing buffered lower window content: '{}'", 
+                       self.lower_window_buffer.chars().take(100).collect::<String>());
+                
+                // Ensure cursor is positioned correctly for lower window
+                if let Ok((col, row)) = cursor::position() {
+                    if row < self.upper_window_lines {
+                        debug!("V4: Moving cursor from upper window area to lower window before flush");
+                        execute!(io::stdout(), MoveTo(0, self.upper_window_lines))?;
+                    }
+                }
+                
+                print!("{}", self.lower_window_buffer);
+                io::stdout().flush()?;
+                self.lower_window_buffer.clear();
+            }
         }
+        
+        self.buffered_mode = buffered;
         Ok(())
     }
     
@@ -438,11 +526,18 @@ impl ZMachineDisplay for V4Display {
 
 impl Drop for V4Display {
     fn drop(&mut self) {
-        // Reset terminal attributes on exit
+        // Comprehensive terminal cleanup on exit
         let _ = execute!(
             io::stdout(),
-            SetAttribute(Attribute::Reset),
-            crossterm::cursor::Show
+            SetAttribute(Attribute::Reset),    // Reset all text attributes
+            crossterm::cursor::Show,           // Show cursor
+            MoveTo(0, self.terminal_height.saturating_sub(1)), // Move to bottom of screen
+            Clear(ClearType::UntilNewLine),    // Clear to end of line
         );
+        
+        // Flush to ensure all cleanup is applied
+        let _ = io::stdout().flush();
+        
+        debug!("V4Display: Terminal cleanup completed");
     }
 }

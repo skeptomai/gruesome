@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!();
         eprintln!("The --step option enables single-step debugging for instructions");
         eprintln!("in the specified PC range (hex values with or without 0x prefix)");
-        std::process::exit(1);
+        return Err("Invalid arguments".into());
     }
 
     let game_path = &args[1];
@@ -33,15 +33,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Check for --step option
     let mut step_range = None;
     if args.len() >= 5 && args[2] == "--step" {
-        let start =
-            u32::from_str_radix(args[3].trim_start_matches("0x"), 16).unwrap_or_else(|_| {
-                eprintln!("Invalid start PC: {}", args[3]);
-                std::process::exit(1);
-            });
-        let end = u32::from_str_radix(args[4].trim_start_matches("0x"), 16).unwrap_or_else(|_| {
-            eprintln!("Invalid end PC: {}", args[4]);
-            std::process::exit(1);
-        });
+        let start = u32::from_str_radix(args[3].trim_start_matches("0x"), 16)
+            .map_err(|_| format!("Invalid start PC: {}", args[3]))?;
+        let end = u32::from_str_radix(args[4].trim_start_matches("0x"), 16)
+            .map_err(|_| format!("Invalid end PC: {}", args[4]))?;
         step_range = Some((start, end));
         info!(
             "Single-stepping enabled for PC range 0x{:04x}-0x{:04x}",
@@ -71,15 +66,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     debug!("Starting game...\n");
 
     // Run the interpreter with a limit to avoid crashes
-    match interpreter.run_with_limit(Some(500000)) {
+    let result = match interpreter.run_with_limit(Some(500000)) {
         Ok(()) => {
             debug!("\nGame ended normally.");
+            Ok(())
         }
         Err(e) => {
             eprintln!("\nError during execution: {e}");
-            std::process::exit(1);
+            Err(e)
         }
-    }
-
-    Ok(())
+    };
+    
+    // Always clean up terminal state before exit
+    interpreter.cleanup();
+    
+    // Return the result (will exit with error code if there was an error)
+    result.map_err(|e| Box::new(std::io::Error::new(std::io::ErrorKind::Other, e)) as Box<dyn std::error::Error>)
 }
