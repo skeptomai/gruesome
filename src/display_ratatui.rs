@@ -134,6 +134,11 @@ impl RatatuiDisplay {
 
     /// Show status line
     pub fn show_status(&mut self, location: &str, score: i16, moves: u16) -> Result<(), String> {
+        self.show_status_with_version(location, score, moves, 3)
+    }
+    
+    /// Show status line with version-specific behavior
+    pub fn show_status_with_version(&mut self, location: &str, score: i16, moves: u16, _version: u8) -> Result<(), String> {
         debug!(
             "show_status: location='{}', score={}, moves={}",
             location, score, moves

@@ -1,5 +1,6 @@
 use crate::debug_symbols::RoutineNames;
-use crate::display_manager::{DisplayManager, DisplayTrait};
+use crate::display_manager::{create_display, DisplayMode};
+use crate::display_trait::ZMachineDisplay;
 use crate::instruction::{Instruction, OperandType};
 use crate::text;
 use crate::timed_input::TimedInput;
@@ -43,14 +44,17 @@ pub struct Interpreter {
     /// Timed input handler
     timed_input: TimedInput,
     /// Display manager
-    display: Option<DisplayManager>,
+    display: Option<Box<dyn ZMachineDisplay>>,
 }
 
 impl Interpreter {
     /// Create a new interpreter
     pub fn new(vm: VM) -> Self {
+        // Get the game version for creating appropriate display
+        let version = vm.game.header.version;
+        
         // Try to initialize display, but continue without it if it fails
-        let display = match DisplayManager::new() {
+        let display = match create_display(version, DisplayMode::Auto) {
             Ok(d) => Some(d),
             Err(e) => {
                 debug!("Failed to initialize display: {}", e);
@@ -1543,7 +1547,7 @@ impl Interpreter {
                         // Create status window if not already created
                         display.split_window(1)?;
 
-                        // Update status line
+                        // Update status line with version info
                         display.show_status(&location_name, score, moves)?;
 
                         debug!(
