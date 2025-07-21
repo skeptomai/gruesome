@@ -206,7 +206,9 @@ impl Display {
         if !self.upper_window_buffer.is_empty() {
             self.upper_window_buffer[0] = status_line;
             self.upper_window_dirty = true;
-            // Don't force immediate refresh - let the normal window switching handle it
+            // For v3 games, force immediate refresh since status updates happen outside window switching
+            self.refresh_upper_window()?;
+            self.upper_window_dirty = false;
         }
 
         Ok(())
