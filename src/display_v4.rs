@@ -11,7 +11,7 @@ use crate::display_trait::{DisplayError, ZMachineDisplay};
 use crossterm::{
     cursor::{self, MoveTo},
     execute,
-    style::{Attribute, Print, SetAttribute},
+    style::{Attribute, SetAttribute},
     terminal::{self, Clear, ClearType},
 };
 use log::debug;
@@ -27,6 +27,7 @@ pub struct V4Display {
     upper_cursor_x: u16,
     upper_cursor_y: u16,
     current_style: u16,
+    upper_window_has_content: bool,  // Track if upper window has styled content
 }
 
 impl V4Display {
@@ -43,6 +44,7 @@ impl V4Display {
             upper_cursor_x: 0,
             upper_cursor_y: 0,
             current_style: 0,
+            upper_window_has_content: false,
         })
     }
     
@@ -57,13 +59,19 @@ impl V4Display {
         // Get current cursor position manually
         let current_pos = cursor::position().ok();
         
-        // Draw upper window WITHOUT reverse video - v4 games control their own styling
+        // Draw upper window
         for (i, line) in self.upper_window_buffer.iter().enumerate() {
-            execute!(
-                io::stdout(),
-                MoveTo(0, i as u16),
-                Print(line)
-            )?;
+            execute!(io::stdout(), MoveTo(0, i as u16))?;
+            
+            // If the upper window has styled content, apply reverse video to non-blank lines
+            // This is a workaround until we implement proper style storage
+            if self.upper_window_has_content && !line.trim().is_empty() {
+                execute!(io::stdout(), SetAttribute(Attribute::Reverse))?;
+                print!("{}", line);
+                execute!(io::stdout(), SetAttribute(Attribute::Reset))?;
+            } else {
+                print!("{}", line);
+            }
         }
         
         // Restore cursor position if we had one
@@ -119,6 +127,11 @@ impl V4Display {
             
             *line = new_line;
             self.upper_window_dirty = true;
+            
+            // Track if we're printing styled content
+            if self.current_style != 0 {
+                self.upper_window_has_content = true;
+            }
         }
         
         Ok(())
@@ -228,6 +241,7 @@ impl ZMachineDisplay for V4Display {
                 self.upper_window_lines = 0;
                 self.upper_window_buffer.clear();
                 self.upper_window_dirty = false;
+                self.upper_window_has_content = false;
                 
                 // Select lower window
                 self.current_window = 0;
