@@ -1887,11 +1887,30 @@ impl Interpreter {
                 // Style bits: 1=reverse, 2=bold, 4=italic, 8=fixed-pitch
                 if !operands.is_empty() {
                     let style = operands[0];
-                    debug!("set_text_style: style={} (ignoring for now)", style);
+                    debug!("set_text_style: style={}", style);
                     
-                    // TODO: Implement proper text style handling in display system
-                    // For now, ignore text styles to prevent ANSI codes from being
-                    // printed as literal text in the upper window
+                    // For v3 games, we need to handle reverse video for status lines
+                    // For v4+ games, we avoid ANSI codes in upper window
+                    if self.vm.game.header.version <= 3 {
+                        // V3 games: allow reverse video for status line
+                        let style_str = if style == 0 {
+                            "\x1b[0m" // Reset to normal
+                        } else if style & 1 != 0 {
+                            "\x1b[7m" // Reverse video
+                        } else if style & 2 != 0 {
+                            "\x1b[1m" // Bold
+                        } else {
+                            ""
+                        };
+                        
+                        if !style_str.is_empty() {
+                            print!("{}", style_str);
+                            io::stdout().flush().ok();
+                        }
+                    } else {
+                        // V4+ games: handle styles through display system (TODO)
+                        // For now, ignore to prevent upper window corruption
+                    }
                 }
                 Ok(ExecutionResult::Continue)
             }
