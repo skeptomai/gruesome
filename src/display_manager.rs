@@ -9,6 +9,7 @@ use crate::display_trait::{DisplayError, ZMachineDisplay};
 use crate::display_v3::V3Display;
 use crate::display_v4::V4Display;
 use crate::display_headless::HeadlessDisplay;
+use crate::display_logging::LoggingDisplay;
 
 // TODO: Uncomment when RatatuiDisplay implements ZMachineDisplay
 // #[cfg(feature = "use-ratatui")]
@@ -63,7 +64,9 @@ impl DisplayCapabilities {
     
     /// Check if terminal display is likely to work
     pub fn supports_terminal(&self) -> bool {
-        self.has_terminal
+        // Be more permissive - try terminal display if we have any output
+        // Even if stdout isn't detected as a terminal, we might still be able to use it
+        true
     }
 }
 
@@ -73,7 +76,7 @@ pub fn create_display(version: u8, mode: DisplayMode) -> Result<Box<dyn ZMachine
     debug!("Display capabilities: {:?}", caps);
     debug!("Creating display for Z-Machine version {}", version);
     
-    match mode {
+    let mut display: Box<dyn ZMachineDisplay> = match mode {
         DisplayMode::Auto => {
             // Try in order: ratatui -> terminal -> headless
             #[cfg(feature = "use-ratatui")]
@@ -81,52 +84,92 @@ pub fn create_display(version: u8, mode: DisplayMode) -> Result<Box<dyn ZMachine
                 match create_ratatui_display(version) {
                     Ok(display) => {
                         debug!("Using Ratatui display");
-                        return Ok(display);
+                        display
                     }
                     Err(e) => {
                         debug!("Ratatui failed ({}), falling back", e);
+                        // Continue to terminal attempt
+                        if caps.supports_terminal() {
+                            match create_terminal_display(version) {
+                                Ok(display) => {
+                                    debug!("Using terminal display");
+                                    display
+                                }
+                                Err(e) => {
+                                    debug!("Terminal display failed ({}), falling back to headless", e);
+                                    Box::new(HeadlessDisplay::new()?)
+                                }
+                            }
+                        } else {
+                            debug!("Using headless display (fallback)");
+                            Box::new(HeadlessDisplay::new()?)
+                        }
                     }
                 }
+            } else if caps.supports_terminal() {
+                match create_terminal_display(version) {
+                    Ok(display) => {
+                        debug!("Using terminal display");
+                        display
+                    }
+                    Err(e) => {
+                        debug!("Terminal display failed ({}), falling back to headless", e);
+                        Box::new(HeadlessDisplay::new()?)
+                    }
+                }
+            } else {
+                debug!("Using headless display (fallback)");
+                Box::new(HeadlessDisplay::new()?)
             }
             
+            #[cfg(not(feature = "use-ratatui"))]
             if caps.supports_terminal() {
                 match create_terminal_display(version) {
                     Ok(display) => {
                         debug!("Using terminal display");
-                        return Ok(display);
+                        display
                     }
                     Err(e) => {
                         debug!("Terminal display failed ({}), falling back to headless", e);
+                        Box::new(HeadlessDisplay::new()?)
                     }
                 }
+            } else {
+                debug!("Using headless display (fallback)");
+                Box::new(HeadlessDisplay::new()?)
             }
-            
-            debug!("Using headless display (fallback)");
-            Ok(Box::new(HeadlessDisplay::new()?))
         }
         
         DisplayMode::Ratatui => {
             #[cfg(feature = "use-ratatui")]
             {
                 debug!("Forcing Ratatui display");
-                create_ratatui_display(version)
+                create_ratatui_display(version)?
             }
             #[cfg(not(feature = "use-ratatui"))]
             {
-                Err(DisplayError::new("Ratatui not available (feature disabled)"))
+                return Err(DisplayError::new("Ratatui not available (feature disabled)"));
             }
         }
         
         DisplayMode::Terminal => {
             debug!("Forcing terminal display");
-            create_terminal_display(version)
+            create_terminal_display(version)?
         }
         
         DisplayMode::Headless => {
             debug!("Using headless display");
-            Ok(Box::new(HeadlessDisplay::new()?))
+            Box::new(HeadlessDisplay::new()?)
         }
+    };
+    
+    // Check if we should wrap with logging
+    if std::env::var("DISPLAY_LOG").is_ok() {
+        debug!("Wrapping display with logging");
+        display = Box::new(LoggingDisplay::new(display));
     }
+    
+    Ok(display)
 }
 
 /// Create a terminal-based display for the given version

@@ -54,14 +54,26 @@ impl V4Display {
             return Ok(());
         }
         
-        debug!("V4: Refreshing upper window");
+        debug!("V4: Refreshing upper window (lines={}, has_content={})", 
+               self.upper_window_lines, self.upper_window_has_content);
         
         // Get current cursor position manually
-        let current_pos = cursor::position().ok();
+        let current_pos = if self.current_window == 0 {
+            // If we're in lower window, don't save cursor position
+            // We'll position it correctly after refresh
+            None
+        } else {
+            cursor::position().ok()
+        };
         
         // Draw upper window
         for (i, line) in self.upper_window_buffer.iter().enumerate() {
             execute!(io::stdout(), MoveTo(0, i as u16))?;
+            
+            // Log what we're about to print
+            if !line.trim().is_empty() {
+                debug!("V4: Upper window line {}: '{}'", i, line.trim());
+            }
             
             // If the upper window has styled content, apply reverse video to non-blank lines
             // This is a workaround until we implement proper style storage
@@ -75,11 +87,25 @@ impl V4Display {
         }
         
         // Restore cursor position if we had one
+        // But make sure we don't position cursor inside upper window if we're in lower window
         if let Some((col, row)) = current_pos {
-            execute!(io::stdout(), MoveTo(col, row))?;
+            if self.current_window == 0 && row < self.upper_window_lines {
+                // We're in lower window but cursor was in upper window area
+                // Move cursor to start of lower window instead
+                execute!(io::stdout(), MoveTo(0, self.upper_window_lines))?;
+                debug!("V4: Adjusted cursor position from ({}, {}) to (0, {})", col, row, self.upper_window_lines);
+            } else {
+                execute!(io::stdout(), MoveTo(col, row))?;
+            }
+        } else if self.current_window == 0 {
+            // We're in lower window and didn't save position
+            // Position cursor at start of lower window
+            execute!(io::stdout(), MoveTo(0, self.upper_window_lines))?;
+            debug!("V4: Positioned cursor at start of lower window after refresh");
         }
         
         io::stdout().flush()?;
+        debug!("V4: Upper window refresh complete");
         Ok(())
     }
     
@@ -111,6 +137,12 @@ impl V4Display {
             }
             new_line.push_str(text);
             
+            // Debug log if we're writing at column 0 and might be overwriting
+            if col == 0 && !line.trim().is_empty() {
+                debug!("V4: WARNING - Writing '{}' at column 0, potentially overwriting '{}'", 
+                       text, line.trim());
+            }
+            
             // Update cursor position
             self.upper_cursor_x = (col + text.len()).min(self.terminal_width as usize) as u16;
             
@@ -120,9 +152,12 @@ impl V4Display {
                 new_line.push_str(&line[text_end..]);
             }
             
-            // Ensure line is full width (prevents display artifacts)
+            // Ensure line is exactly terminal width (prevents display artifacts and overflow)
             if new_line.len() < self.terminal_width as usize {
                 new_line.push_str(&" ".repeat(self.terminal_width as usize - new_line.len()));
+            } else if new_line.len() > self.terminal_width as usize {
+                // Truncate if line is too long
+                new_line.truncate(self.terminal_width as usize);
             }
             
             *line = new_line;
@@ -149,7 +184,8 @@ impl ZMachineDisplay for V4Display {
     }
     
     fn split_window(&mut self, lines: u16) -> Result<(), DisplayError> {
-        debug!("V4: split_window({})", lines);
+        debug!("V4: split_window({}) - previous lines: {}, current window: {}", 
+               lines, self.upper_window_lines, self.current_window);
         
         if lines != self.upper_window_lines {
             self.upper_window_lines = lines;
@@ -160,18 +196,29 @@ impl ZMachineDisplay for V4Display {
                 self.upper_window_buffer.push(" ".repeat(self.terminal_width as usize));
             }
             
+            debug!("V4: split_window - initialized {} lines of buffer", lines);
+            
             // Clear and redraw the upper window
             self.refresh_upper_window()?;
+            
+            // Ensure cursor is positioned correctly for lower window
+            // After splitting, cursor should be at start of lower window
+            if self.current_window == 0 {
+                execute!(io::stdout(), MoveTo(0, self.upper_window_lines))?;
+                debug!("V4: Positioned cursor at start of lower window after split");
+            }
         }
         
         Ok(())
     }
     
     fn set_window(&mut self, window: u8) -> Result<(), DisplayError> {
-        debug!("V4: set_window({}) from {}", window, self.current_window);
+        debug!("V4: set_window({}) from {}, upper_window_lines={}, dirty={}", 
+               window, self.current_window, self.upper_window_lines, self.upper_window_dirty);
         
         // Refresh upper window when switching away from it
         if self.current_window == 1 && window == 0 && self.upper_window_dirty {
+            debug!("V4: Refreshing dirty upper window on switch to lower");
             self.refresh_upper_window()?;
             self.upper_window_dirty = false;
         }
@@ -179,6 +226,7 @@ impl ZMachineDisplay for V4Display {
         // Also refresh when switching TO upper window if it's dirty
         // This helps games that don't follow strict patterns
         if self.current_window == 0 && window == 1 && self.upper_window_dirty {
+            debug!("V4: Refreshing dirty upper window on switch to upper");
             self.refresh_upper_window()?;
             self.upper_window_dirty = false;
         }
@@ -205,16 +253,29 @@ impl ZMachineDisplay for V4Display {
     }
     
     fn print(&mut self, text: &str) -> Result<(), DisplayError> {
-        debug!("V4: print('{}') to window {} with style {}", 
-               text.chars().take(20).collect::<String>(), 
-               self.current_window, 
-               self.current_style);
+        let preview = text.chars().take(30).collect::<String>();
+        debug!("V4: print('{}') to window {} with style {}, upper_lines={}", 
+               preview, self.current_window, self.current_style, self.upper_window_lines);
         
-        if self.current_window == 1 && self.upper_window_lines > 0 {
-            // Print to upper window buffer
-            self.print_to_upper_window(text)?;
+        if self.current_window == 1 {
+            if self.upper_window_lines > 0 {
+                // Print to upper window buffer
+                debug!("V4: Printing to upper window buffer");
+                self.print_to_upper_window(text)?;
+            } else {
+                debug!("V4: WARNING - trying to print to upper window but no lines allocated!");
+                // Should we print to lower window or ignore?
+            }
         } else {
             // Print to lower window directly
+            // First ensure cursor is not in upper window area
+            if let Ok((col, row)) = cursor::position() {
+                if row < self.upper_window_lines {
+                    debug!("V4: WARNING - Cursor at ({}, {}) in upper window area while printing to lower window!", col, row);
+                    // Move cursor to start of lower window
+                    execute!(io::stdout(), MoveTo(0, self.upper_window_lines))?;
+                }
+            }
             print!("{}", text);
             io::stdout().flush()?;
         }
@@ -222,11 +283,14 @@ impl ZMachineDisplay for V4Display {
     }
     
     fn print_char(&mut self, ch: char) -> Result<(), DisplayError> {
+        debug!("V4: print_char('{}') to window {} at cursor ({}, {})", 
+               ch, self.current_window, self.upper_cursor_x, self.upper_cursor_y);
         self.print(&ch.to_string())
     }
     
     fn erase_window(&mut self, window: i16) -> Result<(), DisplayError> {
-        debug!("V4: erase_window({})", window);
+        debug!("V4: erase_window({}) - current_window={}, upper_lines={}, has_content={}", 
+               window, self.current_window, self.upper_window_lines, self.upper_window_has_content);
         
         match window {
             -1 => {
@@ -252,6 +316,7 @@ impl ZMachineDisplay for V4Display {
             }
             0 => {
                 // Erase lower window
+                debug!("V4: Erasing lower window only");
                 if self.upper_window_lines > 0 {
                     execute!(
                         io::stdout(),
@@ -262,12 +327,15 @@ impl ZMachineDisplay for V4Display {
             }
             1 => {
                 // Erase upper window
-                for line in &mut self.upper_window_buffer {
+                debug!("V4: erase_window(1) - clearing upper window buffer and content flag");
+                for (i, line) in self.upper_window_buffer.iter_mut().enumerate() {
+                    debug!("V4: Clearing upper window line {} (was: '{}')", i, line.trim());
                     *line = " ".repeat(self.terminal_width as usize);
                 }
                 self.upper_cursor_x = 0;
                 self.upper_cursor_y = 0;
                 self.upper_window_dirty = true;
+                self.upper_window_has_content = false;
                 self.refresh_upper_window()?;
             }
             _ => {}
