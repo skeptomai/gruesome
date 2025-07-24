@@ -1459,9 +1459,20 @@ impl Interpreter {
             return self.execute_2op(inst, 0, 0);
         }
 
-        // Most 2OP instructions require at least 2 operands
+        // Handle special cases for instructions that can work with fewer operands
         if operands.len() < 2 {
             let pc = self.vm.pc - inst.size as u32;
+            match inst.opcode {
+                0x01 => {
+                    // je - Jump if Equal with 1 operand means "jump if operand equals 0"
+                    if operands.len() == 1 {
+                        debug!("Variable 2OP je with 1 operand at PC {:05x} - testing if {:04x} == 0", pc, operands[0]);
+                        let condition = operands[0] == 0;
+                        return self.do_branch(inst, condition);
+                    }
+                }
+                _ => {}
+            }
             return Err(format!("Variable 2OP instruction at PC {:05x} requires at least 2 operands, got {} - opcode: {:02x}", 
                                pc, operands.len(), inst.opcode));
         }
@@ -1616,6 +1627,18 @@ impl Interpreter {
                 // Read input from user
                 // Note: The game prints its own prompt, we don't need to add one
                 io::stdout().flush().ok();
+                
+                // Force display refresh to show any pending output (like prompt)
+                // Also flush any buffered text (like '>' prompt that doesn't end with newline)
+                if let Some(ref mut display) = self.display {
+                    // First flush any buffered content
+                    if let Err(_) = display.set_buffer_mode(false) {
+                        // If flush fails, try force refresh
+                        display.force_refresh().ok();
+                    }
+                    // Re-enable buffering for normal operation
+                    display.set_buffer_mode(true).ok();
+                }
 
                 // Create timer callback closure if we have a timer
                 let timer_callback = if has_timer && routine > 0 {
@@ -2160,6 +2183,61 @@ impl Interpreter {
                 let pc = self.vm.pc - inst.size as u32;
                 debug!("VAR:0x1B at PC {:05x} - treating as NOP for V3", pc);
                 Ok(ExecutionResult::Continue)
+            }
+            0x17 => {
+                // scan_table (V4+)
+                // Searches for a value in a table
+                // scan_table x table len form -> (result) ?(label)
+                if self.vm.game.header.version < 4 {
+                    return Err("scan_table is only available in V4+".to_string());
+                }
+
+                if operands.len() < 3 {
+                    return Err("scan_table requires at least 3 operands".to_string());
+                }
+
+                let search_value = operands[0];
+                let table_addr = operands[1] as u32;
+                let table_len = operands[2];
+                let form = if operands.len() > 3 { operands[3] } else { 0x82 }; // Default form
+
+                debug!(
+                    "scan_table: searching for 0x{:04x} in table at 0x{:04x}, len={}, form=0x{:02x}",
+                    search_value, table_addr, table_len, form
+                );
+
+                // Parse form: bit 7 = word/byte, bits 0-6 = field length
+                let is_word = (form & 0x80) != 0;
+                let field_length = (form & 0x7F) as u32;
+                
+                let mut found_addr = 0u16;
+                let mut current_addr = table_addr;
+
+                // Search through the table
+                for _ in 0..table_len {
+                    let table_value = if is_word {
+                        self.vm.read_word(current_addr)
+                    } else {
+                        self.vm.read_byte(current_addr) as u16
+                    };
+
+                    if table_value == search_value {
+                        found_addr = current_addr as u16;
+                        break;
+                    }
+
+                    // Move to next entry
+                    current_addr += field_length;
+                }
+
+                // Store result
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, found_addr)?;
+                }
+
+                // Branch if found
+                let condition = found_addr != 0;
+                self.do_branch(inst, condition)
             }
             _ => {
                 let pc = self.vm.pc - inst.size as u32;

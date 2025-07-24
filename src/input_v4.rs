@@ -266,8 +266,9 @@ impl V4Input {
                             self.line_buffer.insert(self.cursor_pos, ch);
                             self.cursor_pos += 1;
                         }
-                        print!("{}", text);
-                        io::stdout().flush().ok();
+                        // Echo disabled - let display system handle output
+                        // print!("{}", text);
+                        // io::stdout().flush().ok();
                     }
                     _ => {
                         // Ignore other events
@@ -319,9 +320,9 @@ impl V4Input {
                 self.line_buffer.insert(self.cursor_pos, c);
                 self.cursor_pos += 1;
 
-                // Echo character
-                print!("{}", c);
-                io::stdout().flush().ok();
+                // Echo disabled - let display system handle output
+                // print!("{}", c);
+                // io::stdout().flush().ok();
                 
                 Ok(None)
             }
@@ -330,9 +331,9 @@ impl V4Input {
                     self.cursor_pos -= 1;
                     self.line_buffer.remove(self.cursor_pos);
 
-                    // Move cursor back and clear to end of line
-                    print!("\x08 \x08");
-                    io::stdout().flush().ok();
+                    // Echo disabled - let display system handle output
+                    // print!("\x08 \x08");
+                    // io::stdout().flush().ok();
                 }
                 Ok(None)
             }
