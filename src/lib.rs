@@ -11,11 +11,9 @@ pub mod disassembler;
 pub mod display_headless;
 pub mod display_logging;
 pub mod display_manager;
-#[cfg(feature = "use-ratatui")]
 pub mod display_ratatui;
 pub mod display_trait;
 pub mod display_v3;
-pub mod display_v4;
 pub mod game;
 pub mod gamememorymap;
 pub mod header;
