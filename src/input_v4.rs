@@ -11,6 +11,7 @@ use crossterm::{
 use log::debug;
 use std::io;
 use std::time::{Duration, Instant};
+use crate::display_trait::ZMachineDisplay;
 
 pub struct V4Input {
     /// Whether we're currently in raw mode
@@ -64,6 +65,7 @@ impl V4Input {
         time_tenths: u16,
         _routine_addr: u16,
         timer_callback: Option<F>,
+        display: &mut dyn ZMachineDisplay,
     ) -> Result<(String, bool), String>
     where
         F: FnMut() -> Result<bool, String>,
@@ -82,7 +84,7 @@ impl V4Input {
 
         // Interactive terminal - use event-driven line input
         debug!("V4 input: interactive mode, using terminal line input");
-        self.read_line_interactive(time_tenths, _routine_addr, timer_callback)
+        self.read_line_interactive(time_tenths, _routine_addr, timer_callback, display)
     }
 
     /// Read character from piped input
@@ -202,6 +204,7 @@ impl V4Input {
         time_tenths: u16,
         _routine_addr: u16,
         mut timer_callback: Option<F>,
+        display: &mut dyn ZMachineDisplay,
     ) -> Result<(String, bool), String>
     where
         F: FnMut() -> Result<bool, String>,
@@ -255,20 +258,19 @@ impl V4Input {
             if event::poll(poll_timeout).map_err(|e| format!("Event poll error: {e}"))? {
                 match event::read().map_err(|e| format!("Event read error: {e}"))? {
                     Event::Key(key_event) => {
-                        if let Some(line) = self.handle_line_key_event(key_event)? {
+                        if let Some(line) = self.handle_line_key_event(key_event, display)? {
                             debug!("V4 input: got line '{}' from keyboard", line);
                             break Ok((line, false));
                         }
                     }
                     Event::Paste(text) => {
-                        // Handle pasted text
+                        // Handle pasted text with echo
                         for ch in text.chars() {
                             self.line_buffer.insert(self.cursor_pos, ch);
                             self.cursor_pos += 1;
                         }
-                        // Echo disabled - let display system handle output
-                        // print!("{}", text);
-                        // io::stdout().flush().ok();
+                        // Echo pasted text to display immediately
+                        display.print_input_echo(&text).ok();
                     }
                     _ => {
                         // Ignore other events
@@ -281,8 +283,11 @@ impl V4Input {
         self.cleanup_raw_mode();
         execute!(io::stdout(), EnableLineWrap).ok();
         
-        // Print newline after input
-        println!();
+        // Z-Machine spec 15.4 (read): "If input was terminated in the usual way, by the player 
+        // typing a carriage return, then a carriage return is printed (so the cursor moves to the next line)"
+        if let Ok((_, false)) = &result {
+            display.print("\n").ok();
+        }
         
         result
     }
@@ -305,7 +310,7 @@ impl V4Input {
     }
 
     /// Handle key event for line input
-    fn handle_line_key_event(&mut self, key: KeyEvent) -> Result<Option<String>, String> {
+    fn handle_line_key_event(&mut self, key: KeyEvent, display: &mut dyn ZMachineDisplay) -> Result<Option<String>, String> {
         match key.code {
             KeyCode::Enter => {
                 // Line complete
@@ -320,9 +325,8 @@ impl V4Input {
                 self.line_buffer.insert(self.cursor_pos, c);
                 self.cursor_pos += 1;
 
-                // Echo disabled - let display system handle output
-                // print!("{}", c);
-                // io::stdout().flush().ok();
+                // Echo character to display immediately (Z-Machine spec 7.1.1.1: input should be echoed)
+                display.print_input_echo(&c.to_string()).ok();
                 
                 Ok(None)
             }
@@ -331,9 +335,8 @@ impl V4Input {
                     self.cursor_pos -= 1;
                     self.line_buffer.remove(self.cursor_pos);
 
-                    // Echo disabled - let display system handle output
-                    // print!("\x08 \x08");
-                    // io::stdout().flush().ok();
+                    // Echo backspace to display immediately (backspace, space, backspace)
+                    display.print_input_echo("\x08 \x08").ok();
                 }
                 Ok(None)
             }

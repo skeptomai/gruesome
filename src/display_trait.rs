@@ -57,6 +57,12 @@ pub trait ZMachineDisplay {
     /// Multiple styles can be combined with bitwise OR
     fn set_text_style(&mut self, style: u16) -> Result<(), DisplayError>;
     
+    /// Print input echo immediately (for real-time feedback during input)
+    fn print_input_echo(&mut self, text: &str) -> Result<(), DisplayError> {
+        // Default implementation just calls print
+        self.print(text)
+    }
+    
     // Utility methods
     
     /// Get the current terminal dimensions

@@ -1669,8 +1669,12 @@ impl Interpreter {
                     // V4+ - use advanced input handler  
                     debug!("Using V4+ input handler for sread");
                     if let Some(ref mut v4_input) = self.v4_input {
-                        v4_input.read_line(time, routine, timer_callback)
-                            .map_err(|e| format!("Error reading V4+ input: {e}"))?
+                        if let Some(ref mut display) = self.display {
+                            v4_input.read_line(time, routine, timer_callback, display.as_mut())
+                                .map_err(|e| format!("Error reading V4+ input: {e}"))?
+                        } else {
+                            return Err("Display not initialized for V4+ input".to_string());
+                        }
                     } else {
                         return Err("V4+ input handler not initialized".to_string());
                     }

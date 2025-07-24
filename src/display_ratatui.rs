@@ -63,10 +63,6 @@ pub struct RatatuiDisplay {
     tx: Sender<DisplayCommand>,
     /// Handle to display thread
     display_thread: Option<thread::JoinHandle<()>>,
-    /// Buffer mode state
-    buffered_mode: bool,
-    /// Buffered content for lower window
-    lower_window_buffer: String,
     /// Current window (0 = lower, 1 = upper)
     current_window: u8,
 }
@@ -158,8 +154,6 @@ impl RatatuiDisplay {
         Ok(RatatuiDisplay {
             tx,
             display_thread: Some(display_thread),
-            buffered_mode: true,  // Z-Machine v4+ starts in buffered mode
-            lower_window_buffer: String::new(),
             current_window: 0,    // Start in lower window
         })
     }
@@ -193,21 +187,11 @@ impl RatatuiDisplay {
     }
 
     /// Print text to current window
+    /// 
+    /// All text is sent immediately to the display thread for real-time rendering.
+    /// Z-Machine "buffer mode" controls word-wrapping behavior, not display timing.
     pub fn print(&mut self, text: &str) -> Result<(), String> {
-        
-        if self.current_window == 0 && self.buffered_mode {
-            // Lower window in buffered mode - accumulate in buffer
-            self.lower_window_buffer.push_str(text);
-            
-            // Flush on newlines (Z-Machine buffering behavior)
-            if text.contains('\n') {
-                self.flush_lower_window_buffer()?;
-            }
-            Ok(())
-        } else {
-            // Upper window or unbuffered - send immediately
-            self.send_command(DisplayCommand::Print(text.to_string()))
-        }
+        self.send_command(DisplayCommand::Print(text.to_string()))
     }
 
     /// Print a character to current window
@@ -215,24 +199,10 @@ impl RatatuiDisplay {
         self.print(&ch.to_string())
     }
     
-    /// Flush the lower window buffer to the display
-    fn flush_lower_window_buffer(&mut self) -> Result<(), String> {
-        if !self.lower_window_buffer.is_empty() {
-            self.send_command(DisplayCommand::Print(self.lower_window_buffer.clone()))?;
-            self.lower_window_buffer.clear();
-        }
-        Ok(())
-    }
 
     /// Erase a window
     pub fn erase_window(&mut self, window: i16) -> Result<(), String> {
         debug!("erase_window: {}", window);
-        
-        // Clear main thread buffer when erasing lower window
-        if window == 0 || window == -1 {
-            debug!("Clearing main thread lower window buffer");
-            self.lower_window_buffer.clear();
-        }
         
         self.send_command(DisplayCommand::EraseWindow(window))
     }
@@ -279,21 +249,11 @@ impl RatatuiDisplay {
     }
     
     /// Set buffer mode (v4+)
-    /// Ratatui already buffers appropriately
-    pub fn set_buffer_mode(&mut self, buffered: bool) -> Result<(), String> {
-        
-        if self.buffered_mode && !buffered {
-            // Switching from buffered to unbuffered - flush buffer
-            self.flush_lower_window_buffer()?;
-        } else if !self.buffered_mode && buffered {
-            // Switching from unbuffered to buffered - clear any stale content first
-            // IMPORTANT: Clear stale content instead of flushing it to prevent
-            // old text from appearing when it shouldn't (buffer mode transitions)
-            debug!("Ratatui: Switching from unbuffered to buffered mode - clearing stale buffer");
-            self.lower_window_buffer.clear();
-        }
-        
-        self.buffered_mode = buffered;
+    /// 
+    /// Z-Machine buffer mode controls word-wrapping to prevent words from splitting
+    /// across lines. It does NOT control display timing - all text appears immediately.
+    /// Our ratatui implementation handles word-wrapping automatically.
+    pub fn set_buffer_mode(&mut self, _buffered: bool) -> Result<(), String> {
         Ok(())
     }
 
@@ -387,6 +347,11 @@ impl ZMachineDisplay for RatatuiDisplay {
     fn set_text_style(&mut self, style: u16) -> Result<(), DisplayError> {
         self.set_text_style(style).map_err(|e| DisplayError::new(e))
     }
+    
+    fn print_input_echo(&mut self, text: &str) -> Result<(), DisplayError> {
+        // Input echo uses standard print - display thread handles timing
+        self.print(text).map_err(|e| DisplayError::new(e))
+    }
 }
 
 impl Drop for RatatuiDisplay {
@@ -455,7 +420,7 @@ fn run_display_thread(rx: Receiver<DisplayCommand>) -> Result<(), Box<dyn std::e
         
         // Process all available commands before rendering
         loop {
-            match rx.recv_timeout(Duration::from_millis(50)) {
+            match rx.recv_timeout(Duration::from_millis(16)) {
                 Ok(cmd) => {
                     match cmd {
                         DisplayCommand::Quit => return Ok(()),
