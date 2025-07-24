@@ -26,7 +26,7 @@ pub struct V3Display {
 
 impl V3Display {
     pub fn new() -> Result<Self, DisplayError> {
-        let (width, height) = terminal::size().unwrap_or((80, 24));
+        let (width, height) = terminal::size().unwrap_or((120, 36));
         
         Ok(V3Display {
             terminal_width: width,

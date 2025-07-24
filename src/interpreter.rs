@@ -343,7 +343,6 @@ impl Interpreter {
         // Initialize header screen dimensions (required by Z-Machine spec)
         if let Some(ref display) = self.display {
             let (width, height) = display.get_terminal_size();
-            debug!("Setting header screen dimensions: {}x{}", width, height);
             // Byte 0x20: Screen height in lines
             self.vm.write_byte(0x20, height as u8)?;
             // Byte 0x21: Screen width in characters  

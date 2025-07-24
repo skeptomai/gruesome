@@ -25,8 +25,8 @@ impl HeadlessDisplay {
             cursor: (1, 1),
             upper_window_lines: 0,
             current_window: 0,
-            terminal_width: 80,
-            terminal_height: 24,
+            terminal_width: 120,
+            terminal_height: 36,
         })
     }
     
