@@ -261,8 +261,8 @@ impl RatatuiDisplay {
 
     /// Get terminal size
     pub fn get_terminal_size(&self) -> (u16, u16) {
-        // Default size - ratatui will handle actual terminal size
-        (80, 24)
+        // Try to get actual terminal size, fallback to default
+        crossterm::terminal::size().unwrap_or((80, 24))
     }
 
     /// Force refresh
