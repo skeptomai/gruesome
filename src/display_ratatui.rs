@@ -12,7 +12,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    text::Line,
+    text::{Line, Span},
     widgets::{Paragraph, Wrap},
     Terminal,
 };
@@ -207,9 +207,11 @@ impl RatatuiDisplay {
 
     /// Erase a window
     pub fn erase_window(&mut self, window: i16) -> Result<(), String> {
+        debug!("erase_window: {}", window);
         
         // Clear main thread buffer when erasing lower window
         if window == 0 || window == -1 {
+            debug!("Clearing main thread lower window buffer");
             self.lower_window_buffer.clear();
         }
         
@@ -266,6 +268,7 @@ impl RatatuiDisplay {
             self.flush_lower_window_buffer()?;
         } else if !self.buffered_mode && buffered {
             // Switching from unbuffered to buffered - clear any stale content first
+            debug!("Ratatui: Switching from unbuffered to buffered mode - clearing stale buffer");
             self.lower_window_buffer.clear();
         }
         
@@ -569,6 +572,7 @@ fn handle_command(
                 state.upper_cursor_x = (current_x as u16).min(state.terminal_width - 1);
             } else {
                 // Print to lower window with proper text flow
+                debug!("Lower window: adding text '{}'", text);
                 
                 // Handle newlines in text by splitting and processing
                 if text.contains('\n') {
@@ -606,18 +610,19 @@ fn handle_command(
         DisplayCommand::EraseWindow(window) => {
             match window {
                 -1 => {
-                    // Clear entire screen - don't restore upper window, let split_window handle that
+                    // Clear entire screen
                     state.upper_window_content.clear();
                     state.lower_window_content.clear();
                     state.lower_current_line.clear();
-                    // Don't restore upper window lines here - split_window will create the correct number
+                    for _ in 0..state.upper_window_lines {
+                        state.upper_window_content.push(Vec::new());
+                    }
                 }
                 0 => {
                     // Clear lower window - this should completely reset the text flow
-                    let _old_lines = state.lower_window_content.len();
-                    let _old_current = state.lower_current_line.len();
                     state.lower_window_content.clear();
                     state.lower_current_line.clear();
+                    debug!("Lower window cleared - removed {} lines and current line", state.lower_window_content.len());
                 }
                 1 => {
                     // Clear upper window - refill with spaces

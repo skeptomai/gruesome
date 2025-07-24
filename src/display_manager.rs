@@ -7,8 +7,11 @@
 
 use crate::display_trait::{DisplayError, ZMachineDisplay};
 use crate::display_v3::V3Display;
+use crate::display_v4::V4Display;
 use crate::display_headless::HeadlessDisplay;
 use crate::display_logging::LoggingDisplay;
+
+#[cfg(feature = "use-ratatui")]
 use crate::display_ratatui::RatatuiDisplay;
 
 use log::debug;
@@ -74,28 +77,57 @@ pub fn create_display(version: u8, mode: DisplayMode) -> Result<Box<dyn ZMachine
     
     let mut display: Box<dyn ZMachineDisplay> = match mode {
         DisplayMode::Auto => {
-            // Try in order: ratatui -> v3-only fallback -> headless
-            match create_ratatui_display(version) {
-                Ok(display) => {
-                    debug!("Using Ratatui display for version {}", version);
-                    display
+            // Version-aware display selection
+            if version <= 3 {
+                // v3 games work best with simple terminal display
+                debug!("Auto mode: Using terminal display for v3 game");
+                match create_terminal_display(version) {
+                    Ok(display) => {
+                        debug!("Using terminal display for v3");
+                        display
+                    }
+                    Err(e) => {
+                        debug!("Terminal display failed ({}), falling back to headless", e);
+                        Box::new(HeadlessDisplay::new()?)
+                    }
                 }
-                Err(e) => {
-                    debug!("Ratatui failed ({}), trying fallback", e);
-                    if version <= 3 {
-                        match V3Display::new() {
-                            Ok(v3_display) => {
-                                debug!("Using V3 terminal fallback for version {}", version);
-                                Box::new(v3_display)
-                            }
-                            Err(e) => {
-                                debug!("V3 display failed ({}), falling back to headless", e);
-                                Box::new(HeadlessDisplay::new()?)
+            } else {
+                // v4+ games need ratatui for advanced features
+                #[cfg(feature = "use-ratatui")]
+                {
+                    debug!("Auto mode: Using ratatui display for v4+ game");
+                    match create_ratatui_display(version) {
+                        Ok(display) => {
+                            debug!("Using Ratatui display for v4+");
+                            display
+                        }
+                        Err(e) => {
+                            debug!("Ratatui failed ({}), falling back to terminal for v4+", e);
+                            match create_terminal_display(version) {
+                                Ok(display) => {
+                                    debug!("Using terminal display fallback for v4+");
+                                    display
+                                }
+                                Err(e) => {
+                                    debug!("Terminal display failed ({}), falling back to headless", e);
+                                    Box::new(HeadlessDisplay::new()?)
+                                }
                             }
                         }
-                    } else {
-                        debug!("No fallback available for v4+ games, using headless");
-                        Box::new(HeadlessDisplay::new()?)
+                    }
+                }
+                #[cfg(not(feature = "use-ratatui"))]
+                {
+                    debug!("Auto mode: Ratatui not available, using terminal display for v4+ game");
+                    match create_terminal_display(version) {
+                        Ok(display) => {
+                            debug!("Using terminal display for v4+ (no ratatui)");
+                            display
+                        }
+                        Err(e) => {
+                            debug!("Terminal display failed ({}), falling back to headless", e);
+                            Box::new(HeadlessDisplay::new()?)
+                        }
                     }
                 }
             }
@@ -130,7 +162,19 @@ pub fn create_display(version: u8, mode: DisplayMode) -> Result<Box<dyn ZMachine
     Ok(display)
 }
 
+/// Create a terminal-based display for the given version
+fn create_terminal_display(version: u8) -> Result<Box<dyn ZMachineDisplay>, DisplayError> {
+    if version <= 3 {
+        debug!("Creating V3 terminal display");
+        Ok(Box::new(V3Display::new()?))
+    } else {
+        debug!("Creating V4+ terminal display");
+        Ok(Box::new(V4Display::new()?))
+    }
+}
+
 /// Create a ratatui-based display for the given version
+#[cfg(feature = "use-ratatui")]
 fn create_ratatui_display(_version: u8) -> Result<Box<dyn ZMachineDisplay>, DisplayError> {
     debug!("Creating RatatuiDisplay for version {}", _version);
     let display = RatatuiDisplay::new()
