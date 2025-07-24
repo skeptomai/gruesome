@@ -8,6 +8,7 @@ use crossterm::{
     execute,
     terminal::{enable_raw_mode, EnterAlternateScreen},
 };
+use log::debug;
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},

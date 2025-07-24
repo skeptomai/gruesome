@@ -7,7 +7,6 @@
 
 use crate::display_trait::{DisplayError, ZMachineDisplay};
 use crate::display_v3::V3Display;
-use crate::display_v4::V4Display;
 use crate::display_headless::HeadlessDisplay;
 use crate::display_logging::LoggingDisplay;
 
@@ -134,8 +133,15 @@ pub fn create_display(version: u8, mode: DisplayMode) -> Result<Box<dyn ZMachine
         }
         
         DisplayMode::Ratatui => {
-            debug!("Forcing Ratatui display for version {}", version);
-            create_ratatui_display(version)?
+            #[cfg(feature = "use-ratatui")]
+            {
+                debug!("Forcing Ratatui display for version {}", version);
+                create_ratatui_display(version)?
+            }
+            #[cfg(not(feature = "use-ratatui"))]
+            {
+                return Err(DisplayError::new("Ratatui not available (feature disabled)"));
+            }
         }
         
         DisplayMode::Terminal => {
@@ -168,8 +174,8 @@ fn create_terminal_display(version: u8) -> Result<Box<dyn ZMachineDisplay>, Disp
         debug!("Creating V3 terminal display");
         Ok(Box::new(V3Display::new()?))
     } else {
-        debug!("Creating V4+ terminal display");
-        Ok(Box::new(V4Display::new()?))
+        debug!("V4+ games require ratatui - terminal display removed");
+        Err(DisplayError::new("V4+ games require ratatui display"))
     }
 }
 
