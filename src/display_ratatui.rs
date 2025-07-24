@@ -14,6 +14,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
+    widgets::{Paragraph, Wrap},
     Terminal,
 };
 use std::io::{self, Stdout};
@@ -61,14 +62,13 @@ struct DisplayState {
     current_window: u8,
     /// Upper window content with style information
     upper_window_content: Vec<Vec<StyledChar>>,
-    /// Lower window content with style information (absolute character grid)
-    lower_window_content: Vec<Vec<StyledChar>>,
+    /// Lower window content as scrolling text lines
+    lower_window_content: Vec<String>,
     /// Cursor position in upper window
     upper_cursor_x: u16,
     upper_cursor_y: u16,
-    /// Cursor position in lower window
-    lower_cursor_x: u16,
-    lower_cursor_y: u16,
+    /// Current line being built in lower window
+    lower_current_line: String,
     /// Current text style
     text_style: Style,
     /// Terminal dimensions
@@ -189,6 +189,13 @@ impl RatatuiDisplay {
     /// Erase a window
     pub fn erase_window(&mut self, window: i16) -> Result<(), String> {
         debug!("erase_window: {}", window);
+        
+        // Clear main thread buffer when erasing lower window
+        if window == 0 || window == -1 {
+            debug!("Clearing main thread lower window buffer");
+            self.lower_window_buffer.clear();
+        }
+        
         self.send_command(DisplayCommand::EraseWindow(window))
     }
 
@@ -250,9 +257,9 @@ impl RatatuiDisplay {
             debug!("Ratatui: Switching from buffered to unbuffered mode - flushing buffer");
             self.flush_lower_window_buffer()?;
         } else if !self.buffered_mode && buffered {
-            // Switching from unbuffered to buffered - also flush any existing content
-            debug!("Ratatui: Switching from unbuffered to buffered mode - flushing buffer");
-            self.flush_lower_window_buffer()?;
+            // Switching from unbuffered to buffered - clear any stale content first
+            debug!("Ratatui: Switching from unbuffered to buffered mode - clearing stale buffer");
+            self.lower_window_buffer.clear();
         }
         
         self.buffered_mode = buffered;
@@ -372,8 +379,7 @@ fn run_display_thread(rx: Receiver<DisplayCommand>) -> Result<(), Box<dyn std::e
         lower_window_content: vec![],
         upper_cursor_x: 0,
         upper_cursor_y: 0,
-        lower_cursor_x: 0,
-        lower_cursor_y: 0,
+        lower_current_line: String::new(),
         text_style: Style::default(),
         terminal_width: 0,
         terminal_height: 0,
@@ -445,12 +451,8 @@ fn handle_command(
             if state.current_window == 1 {
                 state.upper_cursor_y = (line - 1).min(state.upper_window_lines - 1);
                 state.upper_cursor_x = (column - 1).min(state.terminal_width - 1);
-            } else {
-                // Lower window cursor positioning
-                state.lower_cursor_y = (line - 1).min((state.terminal_height - state.upper_window_lines) - 1);
-                state.lower_cursor_x = (column - 1).min(state.terminal_width - 1);
-                debug!("Lower window cursor set to ({}, {})", state.lower_cursor_x, state.lower_cursor_y);
             }
+            // Lower window doesn't support cursor positioning per Z-Machine spec
         }
         DisplayCommand::Print(text) => {
             debug!("Print: '{}' (reverse_video_active: {})", text, state.reverse_video_active);
@@ -502,70 +504,37 @@ fn handle_command(
 
                 debug!("Upper window: cursor now at ({}, {})", state.upper_cursor_x, state.upper_cursor_y);
             } else {
-                // Print to lower window using absolute character positioning
-                debug!("Lower window: placing '{}' at cursor ({}, {})", text, state.lower_cursor_x, state.lower_cursor_y);
+                // Print to lower window with proper text flow
+                debug!("Lower window: adding text '{}'", text);
                 
-                let mut current_y = state.lower_cursor_y as usize;
-                let mut current_x = state.lower_cursor_x as usize;
-                let max_lines = (state.terminal_height - state.upper_window_lines) as usize;
-
-                // Ensure we have enough lines in the lower window content
-                while state.lower_window_content.len() <= current_y {
-                    state.lower_window_content.push(Vec::new());
-                }
-
-                // Handle text with potential newlines
-                for ch in text.chars() {
-                    if ch == '\n' {
-                        // Move to next line
-                        current_y += 1;
-                        current_x = 0;
-                        
-                        // Ensure we have enough lines
-                        while state.lower_window_content.len() <= current_y {
-                            state.lower_window_content.push(Vec::new());
-                        }
-                        
-                        // Scroll if we're beyond the available window space
-                        if current_y >= max_lines {
-                            // Remove the first line and adjust current_y
-                            if !state.lower_window_content.is_empty() {
-                                state.lower_window_content.remove(0);
-                                current_y = max_lines - 1;
-                            }
-                        }
-                    } else {
-                        // Regular character - place at absolute position
-                        if current_y < state.lower_window_content.len() {
-                            let line = &mut state.lower_window_content[current_y];
-
-                            // Ensure line is long enough with spaces
-                            while line.len() <= current_x {
-                                line.push(StyledChar { ch: ' ', reverse_video: false });
-                            }
-
-                            // Place styled character at cursor position
-                            let styled_char = StyledChar {
-                                ch,
-                                reverse_video: state.reverse_video_active,
-                            };
-                            
-                            if current_x < line.len() {
-                                line[current_x] = styled_char;
-                            } else {
-                                line.push(styled_char);
-                            }
-                            
-                            current_x += 1;
-                        }
+                // Handle newlines in text by splitting and processing
+                if text.contains('\n') {
+                    let parts: Vec<&str> = text.split('\n').collect();
+                    
+                    // Add first part to current line
+                    if !parts.is_empty() {
+                        state.lower_current_line.push_str(parts[0]);
                     }
+                    
+                    // For each newline, finish current line and start new ones
+                    for part in parts.iter().skip(1) {
+                        // Finish current line and add to content
+                        state.lower_window_content.push(state.lower_current_line.clone());
+                        state.lower_current_line.clear();
+                        
+                        // Start new line with this part
+                        state.lower_current_line.push_str(part);
+                    }
+                } else {
+                    // No newlines - add to current line
+                    state.lower_current_line.push_str(&text);
                 }
-
-                // Update cursor position
-                state.lower_cursor_y = current_y as u16;
-                state.lower_cursor_x = current_x as u16;
                 
-                debug!("Lower window: cursor now at ({}, {})", state.lower_cursor_x, state.lower_cursor_y);
+                // Keep scrolling buffer reasonable
+                let max_lines = (state.terminal_height - state.upper_window_lines) as usize;
+                if state.lower_window_content.len() > max_lines * 3 {
+                    state.lower_window_content.drain(0..max_lines);
+                }
             }
         }
         DisplayCommand::PrintChar(ch) => {
@@ -582,10 +551,10 @@ fn handle_command(
                     }
                 }
                 0 => {
-                    // Clear lower window
+                    // Clear lower window - this should completely reset the text flow
                     state.lower_window_content.clear();
-                    state.lower_cursor_x = 0;
-                    state.lower_cursor_y = 0;
+                    state.lower_current_line.clear();
+                    debug!("Lower window cleared - removed {} lines and current line", state.lower_window_content.len());
                 }
                 1 => {
                     // Clear upper window
@@ -647,17 +616,8 @@ fn handle_command(
                         line.truncate(cursor_pos);
                     }
                 }
-            } else if state.current_window == 0 {
-                // Erase from cursor to end of line in lower window
-                let line_idx = state.lower_cursor_y as usize;
-                if line_idx < state.lower_window_content.len() {
-                    let line = &mut state.lower_window_content[line_idx];
-                    let cursor_pos = state.lower_cursor_x as usize;
-                    if cursor_pos < line.len() {
-                        line.truncate(cursor_pos);
-                    }
-                }
             }
+            // Lower window uses streaming - no cursor-based line erasing
         }
         _ => {}
     }
@@ -794,23 +754,30 @@ impl DisplayState {
                 }
             }
 
-            // Render lower window using absolute character positioning
-            for (line_idx, styled_line) in self.lower_window_content.iter().enumerate() {
-                if line_idx < chunks[1].height as usize {
-                    let y = chunks[1].y + line_idx as u16;
-                    for (col_idx, styled_char) in styled_line.iter().enumerate() {
-                        if col_idx < chunks[1].width as usize {
-                            let x = chunks[1].x + col_idx as u16;
-                            let style = if styled_char.reverse_video {
-                                Style::default().add_modifier(Modifier::REVERSED)
-                            } else {
-                                Style::default().fg(Color::White).bg(Color::Black)
-                            };
-                            f.buffer_mut().get_mut(x, y).set_char(styled_char.ch).set_style(style);
-                        }
-                    }
-                }
+            // Render lower window as scrolling text
+            let mut lower_lines = self.lower_window_content.clone();
+            
+            // Add current line being built (if any)
+            if !self.lower_current_line.is_empty() {
+                lower_lines.push(self.lower_current_line.clone());
             }
+            
+            let lower_text: Vec<Line> = lower_lines
+                .iter()
+                .map(|s| Line::from(s.as_str()))
+                .collect();
+
+            let lower_paragraph = Paragraph::new(lower_text)
+                .wrap(Wrap { trim: false })  // Don't trim - preserve spaces!
+                .style(Style::default().bg(Color::Black).fg(Color::White))
+                .scroll((
+                    lower_lines
+                        .len()
+                        .saturating_sub(chunks[1].height as usize) as u16,
+                    0,
+                ));
+
+            f.render_widget(lower_paragraph, chunks[1]);
         })?;
 
         Ok(())
