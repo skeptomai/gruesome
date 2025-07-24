@@ -65,8 +65,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Initial PC: {:04x}", interpreter.vm.game.header.initial_pc);
     debug!("Starting game...\n");
 
-    // Run the interpreter with a limit to avoid crashes
-    let result = match interpreter.run_with_limit(Some(500000)) {
+    // Run the interpreter with a limit to avoid crashes  
+    let result = match interpreter.run_with_limit(Some(1000000)) {
         Ok(()) => {
             debug!("\nGame ended normally.");
             Ok(())

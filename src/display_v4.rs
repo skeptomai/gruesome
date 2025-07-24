@@ -52,6 +52,30 @@ impl V4Display {
         })
     }
     
+    /// Flush the lower window buffer to the screen
+    fn flush_lower_window_buffer(&mut self) -> Result<(), DisplayError> {
+        if self.lower_window_buffer.is_empty() {
+            return Ok(());
+        }
+        
+        // Ensure cursor is positioned correctly for lower window
+        if let Ok((_col, row)) = cursor::position() {
+            if row < self.upper_window_lines {
+                debug!("V4: Moving cursor from upper window area to lower window before flush");
+                execute!(io::stdout(), MoveTo(0, self.upper_window_lines))?;
+            }
+        }
+        
+        // Print buffered content
+        debug!("V4: About to flush buffer content: '{}'", 
+               self.lower_window_buffer.chars().take(100).collect::<String>());
+        print!("{}", self.lower_window_buffer);
+        io::stdout().flush()?;
+        debug!("V4: Flushed buffer content, clearing buffer");
+        self.lower_window_buffer.clear();
+        Ok(())
+    }
+    
     /// Refresh the upper window display
     fn refresh_upper_window(&mut self) -> Result<(), DisplayError> {
         if self.upper_window_lines == 0 {
@@ -80,15 +104,8 @@ impl V4Display {
                 debug!("V4: Upper window line {}: '{}'", i, line.trim());
             }
             
-            // If the upper window has styled content, apply reverse video to non-blank lines
-            // This is a workaround until we implement proper style storage
-            if self.upper_window_has_content && !line.trim().is_empty() {
-                execute!(io::stdout(), SetAttribute(Attribute::Reverse))?;
-                print!("{}", line);
-                execute!(io::stdout(), SetAttribute(Attribute::Reset))?;
-            } else {
-                print!("{}", line);
-            }
+            // Just print the line without any automatic styling
+            print!("{}", line);
         }
         
         // Restore cursor position if we had one
@@ -251,13 +268,8 @@ impl ZMachineDisplay for V4Display {
             self.upper_window_dirty = false;
         }
         
-        // Also refresh when switching TO upper window if it's dirty
-        // This helps games that don't follow strict patterns
-        if self.current_window == 0 && window == 1 && self.upper_window_dirty {
-            debug!("V4: Refreshing dirty upper window on switch to upper");
-            self.refresh_upper_window()?;
-            self.upper_window_dirty = false;
-        }
+        // Don't refresh when switching TO upper window - this causes duplicate printing
+        // Upper window will be refreshed when we switch away from it or explicitly refresh
         
         self.current_window = window;
         Ok(())
@@ -305,9 +317,17 @@ impl ZMachineDisplay for V4Display {
         } else {
             // Lower window - check if we're in buffered mode
             if self.buffered_mode {
-                // In buffered mode - accumulate text in buffer
-                debug!("V4: Buffering lower window text: '{}'", preview);
+                // In buffered mode - accumulate text in buffer and flush on newlines
+                debug!("V4: Buffering lower window text: '{}' (total buffer length: {})", preview, self.lower_window_buffer.len());
                 self.lower_window_buffer.push_str(text);
+                
+                // Flush buffer on newlines (for word-wrapping as per Z-Machine spec)
+                if text.contains('\n') {
+                    debug!("V4: Flushing buffered content on newline (length={}): '{}'", 
+                           self.lower_window_buffer.len(),
+                           self.lower_window_buffer.chars().take(100).collect::<String>());
+                    self.flush_lower_window_buffer()?;
+                }
             } else {
                 // Not buffered - print immediately
                 // First ensure cursor is not in upper window area
@@ -459,22 +479,12 @@ impl ZMachineDisplay for V4Display {
         
         if self.buffered_mode && !buffered {
             // Switching from buffered to unbuffered - flush any buffered content
-            if !self.lower_window_buffer.is_empty() {
-                debug!("V4: Flushing buffered lower window content: '{}'", 
-                       self.lower_window_buffer.chars().take(100).collect::<String>());
-                
-                // Ensure cursor is positioned correctly for lower window
-                if let Ok((col, row)) = cursor::position() {
-                    if row < self.upper_window_lines {
-                        debug!("V4: Moving cursor from upper window area to lower window before flush");
-                        execute!(io::stdout(), MoveTo(0, self.upper_window_lines))?;
-                    }
-                }
-                
-                print!("{}", self.lower_window_buffer);
-                io::stdout().flush()?;
-                self.lower_window_buffer.clear();
-            }
+            debug!("V4: Switching from buffered to unbuffered mode - flushing buffer");
+            self.flush_lower_window_buffer()?;
+        } else if !self.buffered_mode && buffered {
+            // Switching from unbuffered to buffered - also flush any existing content
+            debug!("V4: Switching from unbuffered to buffered mode - flushing buffer");
+            self.flush_lower_window_buffer()?;
         }
         
         self.buffered_mode = buffered;

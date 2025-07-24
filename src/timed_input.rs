@@ -104,6 +104,8 @@ impl TimedInput {
             .read_line(&mut input)
             .map_err(|e| format!("Failed to read input: {e}"))?;
 
+        debug!("Raw input from stdin: '{}'", input.replace('\n', "\\n").replace('\r', "\\r"));
+
         // Remove trailing newline
         if input.ends_with('\n') {
             input.pop();
@@ -112,6 +114,7 @@ impl TimedInput {
             }
         }
 
+        debug!("Processed input from stdin: '{}'", input);
         Ok(input)
     }
 
@@ -331,7 +334,10 @@ impl TimedInput {
         );
 
         // Check if stdin is a terminal
-        if !atty::is(atty::Stream::Stdin) {
+        let is_terminal = atty::is(atty::Stream::Stdin);
+        debug!("Terminal detection: stdin is_tty={}", is_terminal);
+        
+        if !is_terminal {
             // Not a terminal - read single character from standard input
             debug!("Input is piped/redirected - using standard single char read");
             let ch = self.read_char_standard()?;
@@ -347,12 +353,43 @@ impl TimedInput {
     fn read_char_standard(&self) -> Result<char, String> {
         use std::io::Read;
 
+        debug!("Attempting to read single character from stdin");
+        
+        // Try to read a single character
         let mut buffer = [0; 1];
-        io::stdin()
-            .read_exact(&mut buffer)
-            .map_err(|e| format!("Failed to read character: {e}"))?;
-
-        Ok(buffer[0] as char)
+        match io::stdin().read_exact(&mut buffer) {
+            Ok(_) => {
+                debug!("Successfully read character: 0x{:02x} '{}'", buffer[0], buffer[0] as char);
+                Ok(buffer[0] as char)
+            }
+            Err(e) => {
+                debug!("read_exact failed: {}, trying fallback interactive method", e);
+                // Fallback: if read_exact fails, try interactive line-based input
+                // This handles the case where terminal detection failed but we're actually interactive
+                self.read_char_interactive_fallback()
+            }
+        }
+    }
+    
+    /// Fallback for reading a character when terminal detection fails
+    fn read_char_interactive_fallback(&self) -> Result<char, String> {
+        debug!("Using interactive fallback for character input");
+        
+        // Read a line and take the first character
+        // This provides better user experience than failing
+        let mut input = String::new();
+        match io::stdin().read_line(&mut input) {
+            Ok(_) => {
+                if let Some(ch) = input.chars().next() {
+                    debug!("Interactive fallback got character: '{}'", ch);
+                    Ok(ch)
+                } else {
+                    debug!("Interactive fallback got empty input, using newline");
+                    Ok('\n')  // Return newline for empty input
+                }
+            }
+            Err(e) => Err(format!("Interactive fallback failed: {e}"))
+        }
     }
 
     /// Read single character using non-blocking event-driven I/O

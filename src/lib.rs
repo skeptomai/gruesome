@@ -19,6 +19,8 @@ pub mod display_v4;
 pub mod game;
 pub mod gamememorymap;
 pub mod header;
+pub mod input_v3;
+pub mod input_v4;
 pub mod instruction;
 pub mod interpreter;
 pub mod opcode_tables;

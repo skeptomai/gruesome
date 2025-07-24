@@ -11,10 +11,9 @@ use crossterm::{
 use log::debug;
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Paragraph, Wrap},
     Terminal,
 };
 use std::io::{self, Stdout};
@@ -44,6 +43,12 @@ pub struct RatatuiDisplay {
     tx: Sender<DisplayCommand>,
     /// Handle to display thread
     display_thread: Option<thread::JoinHandle<()>>,
+    /// Buffer mode state
+    buffered_mode: bool,
+    /// Buffered content for lower window
+    lower_window_buffer: String,
+    /// Current window (0 = lower, 1 = upper)
+    current_window: u8,
 }
 
 /// Internal display state managed by the display thread
@@ -54,35 +59,58 @@ struct DisplayState {
     upper_window_lines: u16,
     /// Current window (0 = lower, 1 = upper)
     current_window: u8,
-    /// Upper window content
-    upper_window_content: Vec<String>,
-    /// Lower window content
-    lower_window_content: Vec<String>,
+    /// Upper window content with style information
+    upper_window_content: Vec<Vec<StyledChar>>,
+    /// Lower window content with style information (absolute character grid)
+    lower_window_content: Vec<Vec<StyledChar>>,
     /// Cursor position in upper window
     upper_cursor_x: u16,
     upper_cursor_y: u16,
+    /// Cursor position in lower window
+    lower_cursor_x: u16,
+    lower_cursor_y: u16,
     /// Current text style
     text_style: Style,
     /// Terminal dimensions
     terminal_width: u16,
     terminal_height: u16,
+    /// Track if reverse video is currently active
+    reverse_video_active: bool,
+}
+
+/// A character with associated styling
+#[derive(Clone, Debug)]
+struct StyledChar {
+    ch: char,
+    reverse_video: bool,
 }
 
 impl RatatuiDisplay {
     /// Create a new Ratatui-based display
     pub fn new() -> Result<Self, String> {
+        // More permissive TTY detection - only fail if we definitely can't work
+        if std::env::var("TERM").is_err() && std::env::var("COLORTERM").is_err() {
+            return Err("No terminal environment detected (TERM/COLORTERM not set)".to_string());
+        }
+        
+        // Skip raw mode test - let the display thread handle terminal setup
+        // If it fails there, the thread will report the error
+        
         let (tx, rx) = mpsc::channel();
 
         // Spawn display thread
         let display_thread = thread::spawn(move || {
             if let Err(e) = run_display_thread(rx) {
-                eprintln!("Display thread error: {e}");
+                debug!("Display thread error: {e}");
             }
         });
 
         Ok(RatatuiDisplay {
             tx,
             display_thread: Some(display_thread),
+            buffered_mode: true,  // Z-Machine v4+ starts in buffered mode
+            lower_window_buffer: String::new(),
+            current_window: 0,    // Start in lower window
         })
     }
 
@@ -107,6 +135,7 @@ impl RatatuiDisplay {
     /// Set the current window
     pub fn set_window(&mut self, window: u8) -> Result<(), String> {
         debug!("set_window: {}", window);
+        self.current_window = window;
         self.send_command(DisplayCommand::SetWindow(window))
     }
 
@@ -118,12 +147,43 @@ impl RatatuiDisplay {
 
     /// Print text to current window
     pub fn print(&mut self, text: &str) -> Result<(), String> {
-        self.send_command(DisplayCommand::Print(text.to_string()))
+        debug!("Ratatui: print('{}') to window {} (buffered={})", 
+               text.chars().take(30).collect::<String>(), self.current_window, self.buffered_mode);
+        
+        if self.current_window == 0 && self.buffered_mode {
+            // Lower window in buffered mode - accumulate in buffer
+            debug!("Ratatui: Buffering lower window text: '{}' (buffer length: {})", 
+                   text.chars().take(50).collect::<String>(), self.lower_window_buffer.len());
+            self.lower_window_buffer.push_str(text);
+            
+            // Flush on newlines (Z-Machine buffering behavior)
+            if text.contains('\n') {
+                debug!("Ratatui: Flushing buffer on newline (length={}): '{}'", 
+                       self.lower_window_buffer.len(),
+                       self.lower_window_buffer.chars().take(100).collect::<String>());
+                self.flush_lower_window_buffer()?;
+            }
+            Ok(())
+        } else {
+            // Upper window or unbuffered - send immediately
+            self.send_command(DisplayCommand::Print(text.to_string()))
+        }
     }
 
     /// Print a character to current window
     pub fn print_char(&mut self, ch: char) -> Result<(), String> {
-        self.send_command(DisplayCommand::PrintChar(ch))
+        self.print(&ch.to_string())
+    }
+    
+    /// Flush the lower window buffer to the display
+    fn flush_lower_window_buffer(&mut self) -> Result<(), String> {
+        if !self.lower_window_buffer.is_empty() {
+            debug!("Ratatui: Flushing buffer content: '{}'", 
+                   self.lower_window_buffer.chars().take(100).collect::<String>());
+            self.send_command(DisplayCommand::Print(self.lower_window_buffer.clone()))?;
+            self.lower_window_buffer.clear();
+        }
+        Ok(())
     }
 
     /// Erase a window
@@ -180,9 +240,99 @@ impl RatatuiDisplay {
     
     /// Set buffer mode (v4+)
     /// Ratatui already buffers appropriately
-    pub fn set_buffer_mode(&mut self, _buffered: bool) -> Result<(), String> {
-        // Ratatui handles buffering internally
+    pub fn set_buffer_mode(&mut self, buffered: bool) -> Result<(), String> {
+        debug!("Ratatui: set_buffer_mode({}) - was {}, buffer has: '{}'", 
+               buffered, self.buffered_mode, 
+               self.lower_window_buffer.chars().take(50).collect::<String>());
+        
+        if self.buffered_mode && !buffered {
+            // Switching from buffered to unbuffered - flush buffer
+            debug!("Ratatui: Switching from buffered to unbuffered mode - flushing buffer");
+            self.flush_lower_window_buffer()?;
+        } else if !self.buffered_mode && buffered {
+            // Switching from unbuffered to buffered - also flush any existing content
+            debug!("Ratatui: Switching from unbuffered to buffered mode - flushing buffer");
+            self.flush_lower_window_buffer()?;
+        }
+        
+        self.buffered_mode = buffered;
         Ok(())
+    }
+
+    /// Get terminal size
+    pub fn get_terminal_size(&self) -> (u16, u16) {
+        // Default size - ratatui will handle actual terminal size
+        (80, 24)
+    }
+
+    /// Force refresh
+    pub fn force_refresh(&mut self) -> Result<(), String> {
+        // Ratatui handles refresh automatically
+        Ok(())
+    }
+}
+
+use crate::display_trait::{DisplayError, ZMachineDisplay};
+
+impl ZMachineDisplay for RatatuiDisplay {
+    fn clear_screen(&mut self) -> Result<(), DisplayError> {
+        self.clear_screen().map_err(|e| DisplayError::new(e))
+    }
+    
+    fn split_window(&mut self, lines: u16) -> Result<(), DisplayError> {
+        self.split_window(lines).map_err(|e| DisplayError::new(e))
+    }
+    
+    fn set_window(&mut self, window: u8) -> Result<(), DisplayError> {
+        self.set_window(window).map_err(|e| DisplayError::new(e))
+    }
+    
+    fn set_cursor(&mut self, line: u16, column: u16) -> Result<(), DisplayError> {
+        self.set_cursor(line, column).map_err(|e| DisplayError::new(e))
+    }
+    
+    fn print(&mut self, text: &str) -> Result<(), DisplayError> {
+        self.print(text).map_err(|e| DisplayError::new(e))
+    }
+    
+    fn print_char(&mut self, ch: char) -> Result<(), DisplayError> {
+        self.print_char(ch).map_err(|e| DisplayError::new(e))
+    }
+    
+    fn erase_window(&mut self, window: i16) -> Result<(), DisplayError> {
+        self.erase_window(window).map_err(|e| DisplayError::new(e))
+    }
+    
+    fn handle_resize(&mut self, width: u16, height: u16) {
+        self.handle_resize(width, height);
+    }
+    
+    fn show_status(&mut self, location: &str, score: i16, moves: u16) -> Result<(), DisplayError> {
+        self.show_status(location, score, moves).map_err(|e| DisplayError::new(e))
+    }
+    
+    fn erase_line(&mut self) -> Result<(), DisplayError> {
+        self.erase_line().map_err(|e| DisplayError::new(e))
+    }
+    
+    fn get_cursor(&mut self) -> Result<(u16, u16), DisplayError> {
+        self.get_cursor().map_err(|e| DisplayError::new(e))
+    }
+    
+    fn set_buffer_mode(&mut self, buffered: bool) -> Result<(), DisplayError> {
+        self.set_buffer_mode(buffered).map_err(|e| DisplayError::new(e))
+    }
+    
+    fn get_terminal_size(&self) -> (u16, u16) {
+        self.get_terminal_size()
+    }
+    
+    fn force_refresh(&mut self) -> Result<(), DisplayError> {
+        self.force_refresh().map_err(|e| DisplayError::new(e))
+    }
+    
+    fn set_text_style(&mut self, style: u16) -> Result<(), DisplayError> {
+        self.set_text_style(style).map_err(|e| DisplayError::new(e))
     }
 }
 
@@ -198,12 +348,20 @@ impl Drop for RatatuiDisplay {
 
 /// Run the display thread
 fn run_display_thread(rx: Receiver<DisplayCommand>) -> Result<(), Box<dyn std::error::Error>> {
-    // Setup terminal
-    enable_raw_mode()?;
+    // Try to setup terminal with fallback handling
+    debug!("Ratatui: attempting to enable raw mode");
+    if let Err(e) = enable_raw_mode() {
+        debug!("Ratatui: raw mode failed: {}, trying to continue anyway", e);
+        // Don't fail immediately - some terminals work without raw mode
+        // We'll try to continue and see if basic terminal access works
+    }
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    if let Err(e) = execute!(stdout, EnterAlternateScreen) {
+        debug!("Ratatui: failed to enter alternate screen: {}, continuing without it", e);
+        // Continue without alternate screen - may work in some environments
+    }
     let backend = CrosstermBackend::new(stdout);
-    let terminal = Terminal::new(backend)?;
+    let terminal = Terminal::new(backend).map_err(|e| format!("Failed to create terminal: {}", e))?;
 
     // Create display state
     let mut state = DisplayState {
@@ -214,9 +372,12 @@ fn run_display_thread(rx: Receiver<DisplayCommand>) -> Result<(), Box<dyn std::e
         lower_window_content: vec![],
         upper_cursor_x: 0,
         upper_cursor_y: 0,
+        lower_cursor_x: 0,
+        lower_cursor_y: 0,
         text_style: Style::default(),
         terminal_width: 0,
         terminal_height: 0,
+        reverse_video_active: false,
     };
 
     // Get initial terminal size
@@ -252,9 +413,13 @@ fn run_display_thread(rx: Receiver<DisplayCommand>) -> Result<(), Box<dyn std::e
         }
     }
 
-    // Cleanup
-    disable_raw_mode()?;
-    execute!(state.terminal.backend_mut(), LeaveAlternateScreen)?;
+    // Cleanup - be resilient to failures
+    if let Err(e) = disable_raw_mode() {
+        debug!("Ratatui: failed to disable raw mode during cleanup: {}", e);
+    }
+    if let Err(e) = execute!(state.terminal.backend_mut(), LeaveAlternateScreen) {
+        debug!("Ratatui: failed to leave alternate screen during cleanup: {}", e);
+    }
 
     Ok(())
 }
@@ -270,7 +435,7 @@ fn handle_command(
             // Initialize upper window content
             state.upper_window_content.clear();
             for _ in 0..lines {
-                state.upper_window_content.push(String::new());
+                state.upper_window_content.push(Vec::new());
             }
         }
         DisplayCommand::SetWindow(window) => {
@@ -280,48 +445,127 @@ fn handle_command(
             if state.current_window == 1 {
                 state.upper_cursor_y = (line - 1).min(state.upper_window_lines - 1);
                 state.upper_cursor_x = (column - 1).min(state.terminal_width - 1);
+            } else {
+                // Lower window cursor positioning
+                state.lower_cursor_y = (line - 1).min((state.terminal_height - state.upper_window_lines) - 1);
+                state.lower_cursor_x = (column - 1).min(state.terminal_width - 1);
+                debug!("Lower window cursor set to ({}, {})", state.lower_cursor_x, state.lower_cursor_y);
             }
         }
         DisplayCommand::Print(text) => {
+            debug!("Print: '{}' (reverse_video_active: {})", text, state.reverse_video_active);
             if state.current_window == 1 && state.upper_window_lines > 0 {
-                // Print to upper window
-                let y = state.upper_cursor_y as usize;
-                let x = state.upper_cursor_x as usize;
+                // Print to upper window with style information, handling newlines
+                let mut current_y = state.upper_cursor_y as usize;
+                let mut current_x = state.upper_cursor_x as usize;
 
-                if y < state.upper_window_content.len() {
-                    let line = &mut state.upper_window_content[y];
+                // Handle text with potential newlines
+                for ch in text.chars() {
+                    if ch == '\n' {
+                        // Move to next line
+                        current_y += 1;
+                        current_x = 0;
+                        if current_y >= state.upper_window_content.len() {
+                            break; // Don't go beyond allocated lines
+                        }
+                    } else {
+                        // Regular character
+                        if current_y < state.upper_window_content.len() {
+                            let line = &mut state.upper_window_content[current_y];
 
-                    // Ensure line is long enough
-                    if line.len() < x {
-                        line.push_str(&" ".repeat(x - line.len()));
+                            // Ensure line is long enough with spaces
+                            while line.len() <= current_x {
+                                line.push(StyledChar { ch: ' ', reverse_video: false });
+                            }
+
+                            // Place styled character at cursor position
+                            let styled_char = StyledChar {
+                                ch,
+                                reverse_video: state.reverse_video_active,
+                            };
+                            
+                            if current_x < line.len() {
+                                line[current_x] = styled_char;
+                            } else {
+                                line.push(styled_char);
+                            }
+                            
+                            current_x += 1;
+                            // Don't auto-wrap - let the Z-Machine handle line breaking
+                        }
                     }
-
-                    // Replace text at cursor position
-                    let mut new_line = String::new();
-                    if x > 0 {
-                        new_line.push_str(&line[..x]);
-                    }
-                    new_line.push_str(&text);
-
-                    // Update cursor position
-                    state.upper_cursor_x =
-                        (x + text.len()).min(state.terminal_width as usize - 1) as u16;
-
-                    // Keep rest of line if it fits
-                    if x + text.len() < line.len() {
-                        new_line.push_str(&line[x + text.len()..]);
-                    }
-
-                    *line = new_line;
                 }
+
+                // Update cursor position
+                state.upper_cursor_y = (current_y as u16).min(state.upper_window_lines - 1);
+                state.upper_cursor_x = (current_x as u16).min(state.terminal_width - 1);
+
+                debug!("Upper window: cursor now at ({}, {})", state.upper_cursor_x, state.upper_cursor_y);
             } else {
-                // Print to lower window
-                state.lower_window_content.push(text);
-                // Keep only last N lines based on window size
-                let max_lines = (state.terminal_height - state.upper_window_lines - 1) as usize;
-                if state.lower_window_content.len() > max_lines * 2 {
-                    state.lower_window_content.drain(0..max_lines);
+                // Print to lower window using absolute character positioning
+                debug!("Lower window: placing '{}' at cursor ({}, {})", text, state.lower_cursor_x, state.lower_cursor_y);
+                
+                let mut current_y = state.lower_cursor_y as usize;
+                let mut current_x = state.lower_cursor_x as usize;
+                let max_lines = (state.terminal_height - state.upper_window_lines) as usize;
+
+                // Ensure we have enough lines in the lower window content
+                while state.lower_window_content.len() <= current_y {
+                    state.lower_window_content.push(Vec::new());
                 }
+
+                // Handle text with potential newlines
+                for ch in text.chars() {
+                    if ch == '\n' {
+                        // Move to next line
+                        current_y += 1;
+                        current_x = 0;
+                        
+                        // Ensure we have enough lines
+                        while state.lower_window_content.len() <= current_y {
+                            state.lower_window_content.push(Vec::new());
+                        }
+                        
+                        // Scroll if we're beyond the available window space
+                        if current_y >= max_lines {
+                            // Remove the first line and adjust current_y
+                            if !state.lower_window_content.is_empty() {
+                                state.lower_window_content.remove(0);
+                                current_y = max_lines - 1;
+                            }
+                        }
+                    } else {
+                        // Regular character - place at absolute position
+                        if current_y < state.lower_window_content.len() {
+                            let line = &mut state.lower_window_content[current_y];
+
+                            // Ensure line is long enough with spaces
+                            while line.len() <= current_x {
+                                line.push(StyledChar { ch: ' ', reverse_video: false });
+                            }
+
+                            // Place styled character at cursor position
+                            let styled_char = StyledChar {
+                                ch,
+                                reverse_video: state.reverse_video_active,
+                            };
+                            
+                            if current_x < line.len() {
+                                line[current_x] = styled_char;
+                            } else {
+                                line.push(styled_char);
+                            }
+                            
+                            current_x += 1;
+                        }
+                    }
+                }
+
+                // Update cursor position
+                state.lower_cursor_y = current_y as u16;
+                state.lower_cursor_x = current_x as u16;
+                
+                debug!("Lower window: cursor now at ({}, {})", state.lower_cursor_x, state.lower_cursor_y);
             }
         }
         DisplayCommand::PrintChar(ch) => {
@@ -334,12 +578,14 @@ fn handle_command(
                     state.upper_window_content.clear();
                     state.lower_window_content.clear();
                     for _ in 0..state.upper_window_lines {
-                        state.upper_window_content.push(String::new());
+                        state.upper_window_content.push(Vec::new());
                     }
                 }
                 0 => {
                     // Clear lower window
                     state.lower_window_content.clear();
+                    state.lower_cursor_x = 0;
+                    state.lower_cursor_y = 0;
                 }
                 1 => {
                     // Clear upper window
@@ -355,19 +601,31 @@ fn handle_command(
         DisplayCommand::ShowStatus(location, score, moves) => {
             if !state.upper_window_content.is_empty() {
                 let status = format_status_line(&location, score, moves, state.terminal_width);
-                state.upper_window_content[0] = status;
+                // Convert string to styled chars (status line is not reversed)
+                let styled_chars: Vec<StyledChar> = status.chars()
+                    .map(|ch| StyledChar { ch, reverse_video: false })
+                    .collect();
+                state.upper_window_content[0] = styled_chars;
             }
         }
         DisplayCommand::SetTextStyle(style_bits) => {
+            debug!("SetTextStyle called with bits: 0x{:04x}", style_bits);
             let mut style = Style::default();
             if style_bits & 1 != 0 {
                 style = style.add_modifier(Modifier::REVERSED);
+                state.reverse_video_active = true;
+                debug!("Reverse video ENABLED");
+            } else {
+                state.reverse_video_active = false;
+                debug!("Reverse video disabled");
             }
             if style_bits & 2 != 0 {
                 style = style.add_modifier(Modifier::BOLD);
+                debug!("Bold enabled");
             }
             if style_bits & 4 != 0 {
                 style = style.add_modifier(Modifier::ITALIC);
+                debug!("Italic enabled");
             }
             state.text_style = style;
         }
@@ -375,7 +633,7 @@ fn handle_command(
             state.upper_window_content.clear();
             state.lower_window_content.clear();
             for _ in 0..state.upper_window_lines {
-                state.upper_window_content.push(String::new());
+                state.upper_window_content.push(Vec::new());
             }
         }
         DisplayCommand::EraseLine => {
@@ -389,8 +647,17 @@ fn handle_command(
                         line.truncate(cursor_pos);
                     }
                 }
+            } else if state.current_window == 0 {
+                // Erase from cursor to end of line in lower window
+                let line_idx = state.lower_cursor_y as usize;
+                if line_idx < state.lower_window_content.len() {
+                    let line = &mut state.lower_window_content[line_idx];
+                    let cursor_pos = state.lower_cursor_x as usize;
+                    if cursor_pos < line.len() {
+                        line.truncate(cursor_pos);
+                    }
+                }
             }
-            // For lower window, we don't track cursor position precisely
         }
         _ => {}
     }
@@ -429,50 +696,121 @@ impl DisplayState {
     /// Render the current state to the terminal
     fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.terminal.draw(|f| {
+            // Clear the entire screen with black background
+            f.render_widget(
+                ratatui::widgets::Clear,
+                f.size()
+            );
             let chunks = if self.upper_window_lines > 0 {
                 Layout::default()
                     .direction(Direction::Vertical)
+                    .margin(0)  // No margin - use full screen
                     .constraints([
                         Constraint::Length(self.upper_window_lines),
-                        Constraint::Min(1),
+                        Constraint::Min(0),  // Allow zero height if needed
                     ])
                     .split(f.size())
             } else {
-                vec![Rect::default(), f.size()].into()
+                vec![f.size(), f.size()].into()  // Use full screen for lower window
             };
 
-            // Render upper window if present
+            // Render upper window if present - treat as absolute character grid
             if self.upper_window_lines > 0 {
-                let upper_text: Vec<Line> = self
+                debug!("RATATUI rendering upper window with {} lines", self.upper_window_lines);
+                let _upper_text: Vec<Line> = self
                     .upper_window_content
                     .iter()
-                    .map(|s| {
-                        Line::from(vec![Span::styled(s, Style::default().bg(Color::DarkGray))])
+                    .enumerate()
+                    .map(|(line_idx, styled_line)| {
+                        debug!("Rendering upper window line {}: {} styled chars", line_idx, styled_line.len());
+                        
+                        // Build a fixed-width line that represents the exact character grid
+                        // Pad to full terminal width to preserve spacing
+                        let mut grid_line = vec![StyledChar { ch: ' ', reverse_video: false }; self.terminal_width as usize];
+                        
+                        // Copy the actual characters from the styled line
+                        for (col_idx, styled_char) in styled_line.iter().enumerate() {
+                            if col_idx < grid_line.len() {
+                                grid_line[col_idx] = styled_char.clone();
+                            }
+                        }
+                        
+                        // Convert to spans, preserving ALL characters including spaces
+                        let mut spans = Vec::new();
+                        let mut current_span_text = String::new();
+                        let mut current_reverse = false;
+                        
+                        for styled_char in grid_line {
+                            if styled_char.reverse_video != current_reverse {
+                                // Style change - push current span if it has content
+                                if !current_span_text.is_empty() {
+                                    let style = if current_reverse {
+                                        Style::default().add_modifier(Modifier::REVERSED)
+                                    } else {
+                                        Style::default().fg(Color::White)
+                                    };
+                                    spans.push(Span::styled(current_span_text, style));
+                                    current_span_text = String::new();
+                                }
+                                current_reverse = styled_char.reverse_video;
+                            }
+                            current_span_text.push(styled_char.ch);
+                        }
+                        
+                        // Push final span
+                        if !current_span_text.is_empty() {
+                            let style = if current_reverse {
+                                Style::default().add_modifier(Modifier::REVERSED)
+                            } else {
+                                Style::default().fg(Color::White)
+                            };
+                            spans.push(Span::styled(current_span_text, style));
+                        }
+                        
+                        if spans.is_empty() {
+                            spans.push(Span::raw(""));
+                        }
+                        
+                        Line::from(spans)
                     })
                     .collect();
 
-                let upper_paragraph = Paragraph::new(upper_text).wrap(Wrap { trim: false });
-
-                f.render_widget(upper_paragraph, chunks[0]);
+                // Render character grid with individual character placement
+                for (line_idx, styled_line) in self.upper_window_content.iter().enumerate() {
+                    if line_idx < chunks[0].height as usize {
+                        let y = chunks[0].y + line_idx as u16;
+                        for (col_idx, styled_char) in styled_line.iter().enumerate() {
+                            if col_idx < chunks[0].width as usize {
+                                let x = chunks[0].x + col_idx as u16;
+                                let style = if styled_char.reverse_video {
+                                    Style::default().add_modifier(Modifier::REVERSED)
+                                } else {
+                                    Style::default().fg(Color::White).bg(Color::Black)
+                                };
+                                f.buffer_mut().get_mut(x, y).set_char(styled_char.ch).set_style(style);
+                            }
+                        }
+                    }
+                }
             }
 
-            // Render lower window
-            let lower_text: Vec<Line> = self
-                .lower_window_content
-                .iter()
-                .map(|s| Line::from(s.as_str()))
-                .collect();
-
-            let lower_paragraph = Paragraph::new(lower_text)
-                .wrap(Wrap { trim: true })
-                .scroll((
-                    self.lower_window_content
-                        .len()
-                        .saturating_sub(chunks[1].height as usize) as u16,
-                    0,
-                ));
-
-            f.render_widget(lower_paragraph, chunks[1]);
+            // Render lower window using absolute character positioning
+            for (line_idx, styled_line) in self.lower_window_content.iter().enumerate() {
+                if line_idx < chunks[1].height as usize {
+                    let y = chunks[1].y + line_idx as u16;
+                    for (col_idx, styled_char) in styled_line.iter().enumerate() {
+                        if col_idx < chunks[1].width as usize {
+                            let x = chunks[1].x + col_idx as u16;
+                            let style = if styled_char.reverse_video {
+                                Style::default().add_modifier(Modifier::REVERSED)
+                            } else {
+                                Style::default().fg(Color::White).bg(Color::Black)
+                            };
+                            f.buffer_mut().get_mut(x, y).set_char(styled_char.ch).set_style(style);
+                        }
+                    }
+                }
+            }
         })?;
 
         Ok(())

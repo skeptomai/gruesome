@@ -11,9 +11,8 @@ use crate::display_v4::V4Display;
 use crate::display_headless::HeadlessDisplay;
 use crate::display_logging::LoggingDisplay;
 
-// TODO: Uncomment when RatatuiDisplay implements ZMachineDisplay
-// #[cfg(feature = "use-ratatui")]
-// use crate::display_ratatui::RatatuiDisplay;
+#[cfg(feature = "use-ratatui")]
+use crate::display_ratatui::RatatuiDisplay;
 
 use log::debug;
 
@@ -74,56 +73,37 @@ impl DisplayCapabilities {
 pub fn create_display(version: u8, mode: DisplayMode) -> Result<Box<dyn ZMachineDisplay>, DisplayError> {
     let caps = DisplayCapabilities::detect();
     debug!("Display capabilities: {:?}", caps);
-    debug!("Creating display for Z-Machine version {}", version);
+    debug!("Creating display for Z-Machine version {} with mode {:?}", version, mode);
     
     let mut display: Box<dyn ZMachineDisplay> = match mode {
         DisplayMode::Auto => {
             // Try in order: ratatui -> terminal -> headless
             #[cfg(feature = "use-ratatui")]
-            if caps.supports_ratatui() {
+            {
                 match create_ratatui_display(version) {
                     Ok(display) => {
+                        debug!("Using Ratatui display");
                         debug!("Using Ratatui display");
                         display
                     }
                     Err(e) => {
-                        debug!("Ratatui failed ({}), falling back", e);
-                        // Continue to terminal attempt
-                        if caps.supports_terminal() {
-                            match create_terminal_display(version) {
-                                Ok(display) => {
-                                    debug!("Using terminal display");
-                                    display
-                                }
-                                Err(e) => {
-                                    debug!("Terminal display failed ({}), falling back to headless", e);
-                                    Box::new(HeadlessDisplay::new()?)
-                                }
+                        debug!("Ratatui failed ({}), falling back to terminal", e);
+                        debug!("Ratatui failed ({}), falling back to terminal", e);
+                        match create_terminal_display(version) {
+                            Ok(display) => {
+                                debug!("Using terminal display");
+                                display
                             }
-                        } else {
-                            debug!("Using headless display (fallback)");
-                            Box::new(HeadlessDisplay::new()?)
+                            Err(e) => {
+                                debug!("Terminal display failed ({}), falling back to headless", e);
+                                Box::new(HeadlessDisplay::new()?)
+                            }
                         }
                     }
                 }
-            } else if caps.supports_terminal() {
-                match create_terminal_display(version) {
-                    Ok(display) => {
-                        debug!("Using terminal display");
-                        display
-                    }
-                    Err(e) => {
-                        debug!("Terminal display failed ({}), falling back to headless", e);
-                        Box::new(HeadlessDisplay::new()?)
-                    }
-                }
-            } else {
-                debug!("Using headless display (fallback)");
-                Box::new(HeadlessDisplay::new()?)
             }
-            
             #[cfg(not(feature = "use-ratatui"))]
-            if caps.supports_terminal() {
+            {
                 match create_terminal_display(version) {
                     Ok(display) => {
                         debug!("Using terminal display");
@@ -134,9 +114,6 @@ pub fn create_display(version: u8, mode: DisplayMode) -> Result<Box<dyn ZMachine
                         Box::new(HeadlessDisplay::new()?)
                     }
                 }
-            } else {
-                debug!("Using headless display (fallback)");
-                Box::new(HeadlessDisplay::new()?)
             }
         }
         
@@ -185,8 +162,9 @@ fn create_terminal_display(version: u8) -> Result<Box<dyn ZMachineDisplay>, Disp
 
 /// Create a ratatui-based display for the given version
 #[cfg(feature = "use-ratatui")]
-fn create_ratatui_display(version: u8) -> Result<Box<dyn ZMachineDisplay>, DisplayError> {
-    // TODO: Update RatatuiDisplay to implement ZMachineDisplay trait
-    // For now, fall back to terminal display
-    create_terminal_display(version)
+fn create_ratatui_display(_version: u8) -> Result<Box<dyn ZMachineDisplay>, DisplayError> {
+    debug!("Creating RatatuiDisplay");
+    let display = RatatuiDisplay::new()
+        .map_err(|e| DisplayError::new(format!("Failed to create RatatuiDisplay: {}", e)))?;
+    Ok(Box::new(display))
 }

@@ -1,9 +1,10 @@
 use crate::debug_symbols::RoutineNames;
 use crate::display_manager::{create_display, DisplayMode};
 use crate::display_trait::ZMachineDisplay;
+use crate::input_v3::V3Input;
+use crate::input_v4::V4Input;
 use crate::instruction::{Instruction, OperandType};
 use crate::text;
-use crate::timed_input::TimedInput;
 use crate::vm::{CallFrame, VM};
 use log::{debug, info};
 use std::io::{self, Write};
@@ -41,8 +42,10 @@ pub struct Interpreter {
     pub single_step: bool,
     /// PC range for single-stepping (start, end)
     pub step_range: Option<(u32, u32)>,
-    /// Timed input handler
-    timed_input: TimedInput,
+    /// V3 input handler (for v1-v3 games)
+    v3_input: Option<V3Input>,
+    /// V4+ input handler (for v4+ games)  
+    v4_input: Option<V4Input>,
     /// Display manager
     display: Option<Box<dyn ZMachineDisplay>>,
     /// Output stream state
@@ -72,13 +75,28 @@ impl Interpreter {
         // Get the game version for creating appropriate display
         let version = vm.game.header.version;
         
+        // Determine display mode from environment or default to Auto
+        let display_mode = match std::env::var("DISPLAY_MODE").as_deref() {
+            Ok("ratatui") => DisplayMode::Ratatui,
+            Ok("terminal") => DisplayMode::Terminal,
+            Ok("headless") => DisplayMode::Headless,
+            _ => DisplayMode::Auto,
+        };
+        
         // Try to initialize display, but continue without it if it fails
-        let display = match create_display(version, DisplayMode::Auto) {
+        let display = match create_display(version, display_mode) {
             Ok(d) => Some(d),
             Err(e) => {
                 debug!("Failed to initialize display: {}", e);
                 None
             }
+        };
+
+        // Create version-specific input handler
+        let (v3_input, v4_input) = if version <= 3 {
+            (Some(V3Input::new()), None)
+        } else {
+            (None, Some(V4Input::new()))
         };
 
         Interpreter {
@@ -88,7 +106,8 @@ impl Interpreter {
             routine_names: RoutineNames::new(),
             single_step: false,
             step_range: None,
-            timed_input: TimedInput::new(),
+            v3_input,
+            v4_input,
             display,
             output_streams: OutputStreamState::new(),
         }
@@ -321,9 +340,36 @@ impl Interpreter {
             }
         }
 
+        // Initialize header screen dimensions (required by Z-Machine spec)
+        if let Some(ref display) = self.display {
+            let (width, height) = display.get_terminal_size();
+            debug!("Setting header screen dimensions: {}x{}", width, height);
+            // Byte 0x20: Screen height in lines
+            self.vm.write_byte(0x20, height as u8)?;
+            // Byte 0x21: Screen width in characters  
+            self.vm.write_byte(0x21, width as u8)?;
+        }
+
         loop {
             // Fetch and decode instruction
             let pc = self.vm.pc;
+            
+            // Debug: Show raw bytes at critical addresses and quote area execution flow
+            if pc == 0xcc6a {
+                let bytes: Vec<u8> = self.vm.game.memory[pc as usize..pc as usize + 8].to_vec();
+                debug!("DEBUG: At PC {:05x}, raw bytes: {:02x?}", pc, bytes);
+            }
+            if (0xcc6a..=0xcc70).contains(&pc) {
+                debug!("*** QUOTE EXECUTION: About to execute at PC {:05x}", pc);
+            }
+            if (0x33b1c..=0x33b40).contains(&pc) {
+                debug!("*** CENTERING ROUTINE: About to execute at PC {:05x}", pc);
+            }
+            // Debug spacing routine execution
+            if (0x19ad8..=0x19b00).contains(&pc) {
+                debug!("*** SPACING ROUTINE: About to execute at PC {:05x}", pc);
+            }
+            
             let instruction = match Instruction::decode(
                 &self.vm.game.memory,
                 pc as usize,
@@ -717,6 +763,13 @@ impl Interpreter {
             }
             0x0B => {
                 // new_line
+                let pc = self.vm.pc - inst.size as u32;
+                
+                // Debug logging for NEW_LINE at quote area
+                if (0xcc6a..=0xcc6d).contains(&pc) {
+                    debug!("*** NEW_LINE executed at PC {:05x}", pc);
+                }
+                
                 self.output_char('\n')?;
                 Ok(ExecutionResult::Continue)
             }
@@ -1331,6 +1384,15 @@ impl Interpreter {
                 // call_2s
                 let routine_addr = op1;
                 let arg = op2;
+                let pc = self.vm.pc - inst.size as u32;
+                
+                // Debug logging for spacing routine calls
+                if pc == 0xcc6e || pc == 0xcc84 || pc == 0xcca4 {
+                    let unpacked = (routine_addr as u32).wrapping_mul(4);
+                    debug!("*** SPACING ROUTINE CALL at PC {:05x}: calling packed addr {:04x} (unpacked: {:05x}) with arg {}", 
+                           pc, routine_addr, unpacked, arg);
+                }
+                
                 self.do_call(routine_addr, &[arg], inst.store_var)?;
                 Ok(ExecutionResult::Called)
             }
@@ -1571,11 +1633,26 @@ impl Interpreter {
                     None
                 };
 
-                // Read input with optional timer callback
-                let (input, was_terminated) = self
-                    .timed_input
-                    .read_line_with_timer(time, routine, timer_callback)
-                    .map_err(|e| format!("Error reading timed input: {e}"))?;
+                // Use version-specific input handling
+                let (input, was_terminated) = if self.vm.game.header.version <= 3 {
+                    // V3 and earlier - use simple input handler
+                    debug!("Using V3 input handler for sread");
+                    if let Some(ref mut v3_input) = self.v3_input {
+                        v3_input.read_line_with_timer(time, routine, timer_callback)
+                            .map_err(|e| format!("Error reading V3 input: {e}"))?
+                    } else {
+                        return Err("V3 input handler not initialized".to_string());
+                    }
+                } else {
+                    // V4+ - use advanced input handler  
+                    debug!("Using V4+ input handler for sread");
+                    if let Some(ref mut v4_input) = self.v4_input {
+                        v4_input.read_line(time, routine, timer_callback)
+                            .map_err(|e| format!("Error reading V4+ input: {e}"))?
+                    } else {
+                        return Err("V4+ input handler not initialized".to_string());
+                    }
+                };
 
                 // For turn-based games, simulate timer firing after input if not already fired
                 if has_timer && !was_terminated {
@@ -1713,6 +1790,11 @@ impl Interpreter {
                             "print_char at 0x{:04x}: '{}' (0x{:02x})",
                             pc, ch, operands[0]
                         );
+                    }
+                    
+                    // Debug space characters from spacing routine
+                    if operands[0] == 32 && (0x19ad8..=0x19b00).contains(&pc) {
+                        debug!("*** SPACING ROUTINE: print_char SPACE at PC {:05x}", pc);
                     }
 
                     if operands[0] > 127 || operands[0] == 63 {
@@ -1968,8 +2050,14 @@ impl Interpreter {
                     None
                 };
 
-                // Read a single character with optional timeout
-                let (ch, was_terminated) = self.read_single_char(time, routine, timer_callback)?;
+                // Use V4+ input handler for character input
+                let (ch, was_terminated) = if let Some(ref mut v4_input) = self.v4_input {
+                    debug!("Using V4+ input handler for read_char");
+                    v4_input.read_char(time, routine, timer_callback)
+                        .map_err(|e| format!("Error reading V4+ character: {e}"))?
+                } else {
+                    return Err("V4+ input handler not initialized for read_char".to_string());
+                };
 
                 // Store the result
                 if let Some(store_var) = inst.store_var {
@@ -2139,21 +2227,6 @@ impl Interpreter {
         Ok(ExecutionResult::Continue)
     }
 
-    /// Read a single character with optional timeout
-    fn read_single_char<F>(
-        &mut self,
-        time_tenths: u16,
-        routine_addr: u16,
-        timer_callback: Option<F>,
-    ) -> Result<(char, bool), String>
-    where
-        F: FnMut() -> Result<bool, String>,
-    {
-        // For now, delegate to timed_input's character reading
-        // This will need to be implemented in timed_input.rs
-        self.timed_input
-            .read_char_with_timeout_callback(time_tenths, routine_addr, timer_callback)
-    }
 
     /// Get the name of an object
     fn get_object_name(&self, obj_num: u16) -> Result<String, String> {
@@ -2287,12 +2360,40 @@ impl Interpreter {
             locals: [0; 16],
             stack_base: self.vm.stack.len(),
         };
+        
+        debug!("do_call: saving return_pc={:05x}", self.vm.pc);
+        
+        // Special debug for calls that return to the newlines after the quote
+        if self.vm.pc == 0xcc6a {
+            debug!("*** CALL TO ROUTINE #{:04x} that returns to newlines at 0cc6a", packed_addr);
+        }
+        
+        // Special debug for the centering routine
+        if packed_addr == 0xcec7 {
+            debug!("*** CALLING CENTERING ROUTINE #cec7 with {} args: {:?}", args.len(), args);
+        }
+        
         debug!(
             "Creating call frame with return_store={:?}, stack_base={}",
             return_store,
             self.vm.stack.len()
         );
+        debug!(
+            "Call stack before push: depth={}, frames={:?}",
+            self.vm.call_stack.len(),
+            self.vm.call_stack.iter().map(|f| format!("{:05x}", f.return_pc)).collect::<Vec<_>>()
+        );
 
+        // Special debug for centering routine
+        if packed_addr == 0xcec7 {
+            debug!("*** ENTERING CENTERING ROUTINE at address {:05x}", addr);
+        }
+        
+        // Special debug for spacing routine #66b6
+        if packed_addr == 0x66b6 {
+            debug!("*** ENTERING SPACING ROUTINE #66b6 at address {:05x} with {} args: {:?}", addr, args.len(), args);
+        }
+        
         // Read routine header
         let mut num_locals = self.vm.read_byte(addr) as usize;
         if num_locals > 15 {
@@ -2352,9 +2453,17 @@ impl Interpreter {
             "Returning from routine: value={}, return_pc={:05x}",
             value, frame.return_pc
         );
+        
+        debug!(
+            "Call stack before return: depth={}, frames={:?}",
+            self.vm.call_stack.len(),
+            self.vm.call_stack.iter().map(|f| format!("{:05x}", f.return_pc)).collect::<Vec<_>>()
+        );
 
         // Restore PC
         self.vm.pc = frame.return_pc;
+        
+        debug!("After setting PC to {:05x}, call stack depth={}", self.vm.pc, self.vm.call_stack.len());
 
         // Restore stack
         debug!(
@@ -2430,7 +2539,7 @@ impl Interpreter {
         // Handle stream 3 redirection first
         if let Some(table_addr) = self.output_streams.current_stream3_table {
             let current_count = self.vm.read_word(table_addr as u32);
-            debug!("output_text: redirecting '{}' to stream 3 table at 0x{:04x}, current_count={} (CAPTURE ONLY)", 
+            debug!("output_text: capturing '{}' to stream 3 table at 0x{:04x}, current_count={} (CAPTURE ONLY)", 
                    text, table_addr, current_count);
             
             // Write text to table starting at table+2+current_count
@@ -2444,14 +2553,14 @@ impl Interpreter {
             let new_count = current_count + text.len() as u16;
             self.vm.write_word(table_addr as u32, new_count)?;
             
-            debug!("output_text: stream 3 updated count to {} (text captured, NOT printed to screen)", new_count);
+            debug!("output_text: stream 3 updated count to {} (text captured ONLY - display handled separately)", new_count);
             
-            // When stream 3 is active, ONLY capture to table - don't print to screen
-            // The game will handle screen printing separately after disabling stream 3
+            // IMPORTANT: When stream 3 is active, DON'T display text here
+            // Stream 3 is for text measurement only - display is handled by separate routine
             return Ok(());
         }
         
-        // Only send to screen when stream 3 is NOT active
+        // Send to screen (whether stream 3 is active or not)
         if let Some(ref mut display) = self.display {
             display.print(text).ok();
         } else {
@@ -2479,14 +2588,13 @@ impl Interpreter {
             let new_count = current_count + 1;
             self.vm.write_word(table_addr as u32, new_count)?;
             
-            debug!("output_char: stream 3 updated count to {} (char captured, NOT printed to screen)", new_count);
+            debug!("output_char: stream 3 updated count to {} (char captured AND will be displayed)", new_count);
             
-            // When stream 3 is active, ONLY capture to table - don't print to screen
-            // The game will handle screen printing separately after disabling stream 3
-            return Ok(());
+            // IMPORTANT: Continue to display character even when stream 3 is active
+            // Stream 3 is used for text measurement, but text should still be visible
         }
         
-        // Only send to screen when stream 3 is NOT active
+        // Send to screen (whether stream 3 is active or not)
         if let Some(ref mut display) = self.display {
             display.print_char(ch).ok();
         } else {

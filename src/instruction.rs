@@ -140,7 +140,8 @@ impl Instruction {
         let form = match opcode_byte >> 6 {
             0b11 => InstructionForm::Variable,
             0b10 => InstructionForm::Short,
-            _ => {
+            0b01 => InstructionForm::Long,
+            0b00 => {
                 // Check for extended form (0xBE in V5+)
                 if opcode_byte == 0xBE && version >= 5 {
                     InstructionForm::Extended
@@ -148,6 +149,7 @@ impl Instruction {
                     InstructionForm::Long
                 }
             }
+            _ => unreachable!(),
         };
 
         // Get the actual opcode and operand count
