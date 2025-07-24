@@ -1,4 +1,18 @@
-/// Dictionary lookup for Z-Machine (version-aware)
+/// Dictionary lookup for Z-Machine with version-aware encoding
+///
+/// The Z-Machine dictionary format differs significantly between versions:
+/// - **v3**: 6 Z-characters encoded in 4 bytes (2 words)
+/// - **v4+**: 9 Z-characters encoded in 6 bytes (3 words)
+///
+/// This module provides automatic version detection and appropriate encoding
+/// for dictionary lookups. The encoding uses 5-bit Z-characters packed into
+/// words, with character 5 representing space and characters 6-31 representing
+/// letters a-z.
+///
+/// ## Binary Search:
+/// Dictionary entries are stored in sorted order, allowing efficient binary
+/// search lookup. For v4+ games, lexicographic comparison across all 3 words
+/// is used to maintain proper ordering.
 use crate::vm::VM;
 use log::debug;
 

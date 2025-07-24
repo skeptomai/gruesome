@@ -1,7 +1,25 @@
-//! Ratatui-based display management for Z-Machine
+//! Ratatui-based display management for Z-Machine v4+ games
 //!
-//! Provides efficient window management with proper double-buffering
-//! and flicker-free updates for games like Seastalker.
+//! This module provides advanced display capabilities required by v4+ Z-Machine games
+//! like A Mind Forever Voyaging (AMFV). It features:
+//!
+//! ## Key Capabilities:
+//! - **Split windowing**: Upper window (status/menus) + lower window (main text)
+//! - **Absolute positioning**: Character-level cursor control in upper window  
+//! - **Text flow management**: Proper streaming text in lower window with word wrap
+//! - **Buffer mode support**: Z-Machine buffered vs unbuffered text output
+//! - **Style support**: Reverse video, bold, italic text formatting
+//!
+//! ## Critical Text Flow Fix:
+//! The display thread maintains `lower_current_line` for building text lines.
+//! This buffer MUST be cleared during screen transitions (ERASE_WINDOW) to prevent
+//! text concatenation issues like "[Hit any key to continue.]You hear..." appearing
+//! on the same line instead of separate lines.
+//!
+//! ## Threading Architecture:
+//! - Main thread: Handles Z-Machine execution and buffering
+//! - Display thread: Manages terminal and renders content
+//! - Communication via mpsc channels with DisplayCommand enum
 
 use crossterm::{
     event::{self, Event},
@@ -13,7 +31,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    text::{Line, Span},
+    text::Line,
     widgets::{Paragraph, Wrap},
     Terminal,
 };
@@ -269,6 +287,8 @@ impl RatatuiDisplay {
             self.flush_lower_window_buffer()?;
         } else if !self.buffered_mode && buffered {
             // Switching from unbuffered to buffered - clear any stale content first
+            // IMPORTANT: Clear stale content instead of flushing it to prevent
+            // old text from appearing when it shouldn't (buffer mode transitions)
             debug!("Ratatui: Switching from unbuffered to buffered mode - clearing stale buffer");
             self.lower_window_buffer.clear();
         }
@@ -612,9 +632,12 @@ fn handle_command(
             match window {
                 -1 => {
                     // Clear entire screen
+                    // CRITICAL: Must clear lower_current_line to prevent text concatenation
+                    // Without this, "[Hit any key to continue.]" gets concatenated with
+                    // subsequent text like "You hear..." on the same line
                     state.upper_window_content.clear();
                     state.lower_window_content.clear();
-                    state.lower_current_line.clear();
+                    state.lower_current_line.clear(); // <- This line prevents holdover text
                     for _ in 0..state.upper_window_lines {
                         state.upper_window_content.push(Vec::new());
                     }

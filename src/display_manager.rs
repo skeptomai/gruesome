@@ -1,9 +1,18 @@
 //! Display manager that creates appropriate display implementations
 //!
-//! This module is responsible for:
-//! - Creating the right display implementation based on Z-Machine version
-//! - Handling fallback between ratatui/terminal/headless modes
-//! - Providing a unified interface to the interpreter
+//! This module provides version-aware display system selection for the Z-Machine interpreter.
+//! It automatically chooses the optimal display system based on game version and environment:
+//!
+//! ## Display Strategy:
+//! - **v3 games** (Zork I): Use simple terminal display for maximum compatibility
+//! - **v4+ games** (AMFV): Use ratatui display for advanced windowing features
+//! - **Fallbacks**: Graceful degradation to headless mode if displays fail
+//!
+//! ## Key Features:
+//! - Automatic version detection and appropriate display selection
+//! - Environment capability detection (TTY, color support, etc.)
+//! - Comprehensive fallback chain for maximum compatibility
+//! - Optional logging wrapper for debugging display operations
 
 use crate::display_trait::{DisplayError, ZMachineDisplay};
 use crate::display_v3::V3Display;

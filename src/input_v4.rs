@@ -9,7 +9,7 @@ use crossterm::{
     execute,
 };
 use log::debug;
-use std::io::{self, Write};
+use std::io;
 use std::time::{Duration, Instant};
 
 pub struct V4Input {
