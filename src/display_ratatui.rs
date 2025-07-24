@@ -544,17 +544,21 @@ fn handle_command(
             match window {
                 -1 => {
                     // Clear entire screen
+                    debug!("Display thread clearing entire screen");
                     state.upper_window_content.clear();
                     state.lower_window_content.clear();
+                    state.lower_current_line.clear();
                     for _ in 0..state.upper_window_lines {
                         state.upper_window_content.push(Vec::new());
                     }
                 }
                 0 => {
                     // Clear lower window - this should completely reset the text flow
+                    let old_lines = state.lower_window_content.len();
+                    let old_current = state.lower_current_line.len();
                     state.lower_window_content.clear();
                     state.lower_current_line.clear();
-                    debug!("Lower window cleared - removed {} lines and current line", state.lower_window_content.len());
+                    debug!("Display thread cleared lower window");
                 }
                 1 => {
                     // Clear upper window
