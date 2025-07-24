@@ -5,9 +5,7 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[features]
-default = ["use-ratatui"]
-use-ratatui = []
+# No feature flags needed - ratatui is always required for v4+ games
 
 [dependencies]
 rand = "*"
