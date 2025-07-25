@@ -515,6 +515,11 @@ fn handle_command(
                             state.upper_window_content.push(new_line);
                             state.upper_window_lines += 1;
                         }
+                    } else if ch == '\x08' {
+                        // Backspace - move cursor left
+                        if current_x > 0 {
+                            current_x -= 1;
+                        }
                     } else {
                         // Auto-expand upper window if needed (error recovery per Z-Machine spec)
                         while current_y >= state.upper_window_content.len() {
@@ -560,13 +565,13 @@ fn handle_command(
                 // Print to lower window with proper text flow
                 debug!("Lower window: adding text '{}'", text);
                 
-                // Handle newlines in text by splitting and processing
+                // Handle newlines and control characters in text
                 if text.contains('\n') {
                     let parts: Vec<&str> = text.split('\n').collect();
                     
-                    // Add first part to current line
+                    // Add first part to current line with backspace processing
                     if !parts.is_empty() {
-                        state.lower_current_line.push_str(parts[0]);
+                        process_text_with_backspace(&mut state.lower_current_line, parts[0]);
                     }
                     
                     // For each newline, finish current line and start new ones
@@ -575,12 +580,12 @@ fn handle_command(
                         state.lower_window_content.push(state.lower_current_line.clone());
                         state.lower_current_line.clear();
                         
-                        // Start new line with this part
-                        state.lower_current_line.push_str(part);
+                        // Start new line with this part (with backspace processing)
+                        process_text_with_backspace(&mut state.lower_current_line, part);
                     }
                 } else {
-                    // No newlines - add to current line
-                    state.lower_current_line.push_str(&text);
+                    // No newlines - add to current line with backspace processing
+                    process_text_with_backspace(&mut state.lower_current_line, &text);
                 }
                 
                 // Keep scrolling buffer reasonable
@@ -704,6 +709,52 @@ fn format_status_line(location: &str, score: i16, moves: u16, width: u16) -> Str
         right_text,
         padding = padding_len
     )
+}
+
+/// Process text with backspace characters, properly removing characters
+/// This handles the backspace sequence "\x08 \x08" sent by input handlers
+fn process_text_with_backspace(buffer: &mut String, text: &str) {
+    for ch in text.chars() {
+        if ch == '\x08' {
+            // Backspace - remove last character
+            buffer.pop();
+        } else {
+            // Regular character - add to buffer
+            buffer.push(ch);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_process_text_with_backspace() {
+        let mut buffer = String::new();
+        
+        // Test normal text
+        process_text_with_backspace(&mut buffer, "Hello");
+        assert_eq!(buffer, "Hello");
+        
+        // Test backspace removing character
+        process_text_with_backspace(&mut buffer, "\x08");
+        assert_eq!(buffer, "Hell");
+        
+        // Test backspace sequence like input handlers send: "\x08 \x08"
+        process_text_with_backspace(&mut buffer, "\x08 \x08");
+        assert_eq!(buffer, "Hel"); // First \x08 removes 'l', space adds ' ', second \x08 removes ' '
+        
+        // Test backspace on empty buffer (should be safe)
+        buffer.clear();
+        process_text_with_backspace(&mut buffer, "\x08");
+        assert_eq!(buffer, "");
+        
+        // Test mixed text and backspaces
+        buffer.clear();
+        process_text_with_backspace(&mut buffer, "AB\x08C");
+        assert_eq!(buffer, "AC"); // AB, backspace removes B, C is added
+    }
 }
 
 impl DisplayState {

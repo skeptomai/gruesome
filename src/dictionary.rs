@@ -16,6 +16,50 @@
 use crate::vm::VM;
 use log::debug;
 
+/// Tokenize text using dictionary separators, not just whitespace
+/// Returns a vector of (word, position_in_original_text) tuples
+fn tokenize_with_separators(input: &str, separators: &[char]) -> Vec<(String, usize)> {
+    let mut tokens = Vec::new();
+    let mut current_word = String::new();
+    let mut word_start_pos = 0;
+    let mut pos = 0;
+    
+    for ch in input.chars() {
+        if ch.is_whitespace() {
+            // Finish current word if any
+            if !current_word.is_empty() {
+                tokens.push((current_word.clone(), word_start_pos));
+                current_word.clear();
+            }
+            // Skip whitespace - next non-whitespace will start a new word
+            pos += 1;
+        } else if separators.contains(&ch) {
+            // Finish current word if any
+            if !current_word.is_empty() {
+                tokens.push((current_word.clone(), word_start_pos));
+                current_word.clear();
+            }
+            // The separator itself becomes a token
+            tokens.push((ch.to_string(), pos));
+            pos += 1;
+        } else {
+            // Regular character - start new word if needed
+            if current_word.is_empty() {
+                word_start_pos = pos;
+            }
+            current_word.push(ch);
+            pos += 1;
+        }
+    }
+    
+    // Add final word if any
+    if !current_word.is_empty() {
+        tokens.push((current_word, word_start_pos));
+    }
+    
+    tokens
+}
+
 /// Encode a word for dictionary lookup (V3) - 6 Z-characters in 4 bytes
 fn encode_word_v3(word: &str) -> (u16, u16) {
     let mut chars = Vec::new();
@@ -231,6 +275,15 @@ impl VM {
 
     /// Parse text buffer into parse buffer
     pub fn parse_text(&mut self, text_buffer: u32, parse_buffer: u32) -> Result<(), String> {
+        // Read dictionary separators from dictionary header
+        let dict_addr = self.game.header.dictionary as u32;
+        let sep_count = self.read_byte(dict_addr);
+        let mut separators = Vec::new();
+        for i in 0..sep_count {
+            separators.push(self.read_byte(dict_addr + 1 + i as u32) as char);
+        }
+        debug!("Dictionary separators: {:?}", separators);
+
         // Read text from text buffer
         let text_len = self.read_byte(text_buffer + 1) as usize;
         let mut text = String::new();
@@ -238,33 +291,28 @@ impl VM {
             let ch = self.read_byte(text_buffer + 2 + i as u32);
             text.push(ch as char);
         }
+        debug!("Input text to parse: '{}'", text);
 
         // Get max words from parse buffer
         let max_words = self.read_byte(parse_buffer);
 
-        // Split into words (simple whitespace split)
-        let words: Vec<&str> = text.split_whitespace().collect();
-        let word_count = words.len().min(max_words as usize);
+        // Tokenize using dictionary separators, not just whitespace
+        let word_tokens = tokenize_with_separators(&text, &separators);
+        debug!("Tokenized words: {:?}", word_tokens);
+        let word_count = word_tokens.len().min(max_words as usize);
 
         // Write word count
         self.write_byte(parse_buffer + 1, word_count as u8)?;
 
         // For each word, write parse data
-        let mut text_offset = 0;
-        for (i, word) in words.iter().take(word_count).enumerate() {
-            // Find word position in original text
-            while text_offset < text.len() && text.chars().nth(text_offset).unwrap().is_whitespace()
-            {
-                text_offset += 1;
-            }
-
+        for (i, (word, position)) in word_tokens.iter().take(word_count).enumerate() {
             // Look up word in dictionary
             let dict_addr = self.lookup_dictionary(word);
 
             // Log what we're storing in the parse buffer
             debug!(
-                "Storing word '{}' in parse buffer: dict_addr={:04x}",
-                word, dict_addr
+                "Storing word '{}' at position {} in parse buffer: dict_addr={:04x}",
+                word, position, dict_addr
             );
 
             // Write parse entry (V3 format)
@@ -272,22 +320,19 @@ impl VM {
             self.write_word(entry_offset, dict_addr)?; // Dictionary address
 
             // Special debug for leaves
-            if *word == "leaves" {
+            if word == "leaves" {
                 debug!(
                     "Writing parse entry for 'leaves': len={}, pos={}",
                     word.len(),
-                    text_offset + 2
+                    position + 2
                 );
             }
 
             self.write_byte(entry_offset + 2, word.len() as u8)?; // Word length
-                                                                  // The position is the byte offset in the text buffer where the word starts
-                                                                  // text_offset is 0-based in the text string
-                                                                  // The text starts at buffer+2, so buffer offset = text_offset + 2
-            self.write_byte(entry_offset + 3, (text_offset + 2) as u8)?; // Byte offset in buffer
-
-            // Advance text offset
-            text_offset += word.len();
+            // The position is the byte offset in the text buffer where the word starts
+            // position is 0-based in the text string
+            // The text starts at buffer+2, so buffer offset = position + 2
+            self.write_byte(entry_offset + 3, (position + 2) as u8)?; // Byte offset in buffer
         }
 
         Ok(())

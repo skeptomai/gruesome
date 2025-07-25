@@ -774,6 +774,7 @@ impl VM {
             // Decode the object name (stored as Z-string)
             let name_addr = prop_table_addr + 1;
             let abbrev_addr = self.game.header.abbrev_table;
+            
             match crate::text::decode_string(&self.game.memory, name_addr, abbrev_addr) {
                 Ok((name, _)) => Ok(name),
                 Err(e) => Err(format!("Failed to decode object name: {}", e))
