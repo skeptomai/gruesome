@@ -1,4 +1,0 @@
-look
-inventory  
-quit
-y

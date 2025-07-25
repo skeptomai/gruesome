@@ -1,7 +1,0 @@
-w
-n
-move leaves
-w
-move leaves
-quit
-y
