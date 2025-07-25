@@ -33,16 +33,17 @@ The following Infocom games have been tested and work correctly:
 - **Seastalker** - Underwater adventure with window splitting
 - **The Lurking Horror** - Horror game set at MIT
 
-#### Version 4+ Games (Core Support)
+#### Version 4+ Games (Fully Supported)
 - **A Mind Forever Voyaging** (v4) - Dystopian future simulation
+- **Trinity** (v4) - Nuclear thriller with complex command processing
 - **Bureaucracy** (v4) - Douglas Adams' satire on red tape
-- Core gameplay works; some advanced display features not implemented
+- Full gameplay support with advanced display features and proper instruction handling
 
 ### Known Limitations
 
-- ⚠️ **Minor v4+ display opcodes** - buffer_mode, erase_line, get_cursor not implemented (doesn't affect gameplay)
-- ⚠️ **No sound support** - sound_effect plays beep only (v3 feature)
-- ⚠️ **No graphics** - Text-only implementation
+- ⚠️ **Limited sound support** - sound_effect plays beep only (most games don't use sound)
+- ⚠️ **No graphics** - Text-only implementation (affects only rare graphical games)
+- ⚠️ **No v5+ unicode** - Extended character sets not supported
 
 ## Quick Start
 
@@ -193,17 +194,19 @@ See [CODEBASE_GUIDE.md](docs/CODEBASE_GUIDE.md) for getting started and [CLAUDE.
 
 This implementation follows the Z-Machine Standards Document 1.1. Notable features:
 
+- **Complete instruction decoder** - Handles all instruction forms including complex edge cases
+- **Branch detection** - Proper branch handling for all opcodes including scan_table (VAR:0x17)
+- **Version-aware execution** - Smart dispatch between v3 and v4+ instruction handling
+- **Robust error handling** - Graceful degradation with comprehensive debugging
 - Discovers and handles undocumented opcode 0x1F (see [undocumented_opcode_0x1f.md](undocumented_opcode_0x1f.md))
 - Implements 2OP:0x1C (not) for v1-v3 games (moved to VAR:143 in v5+)
 - Implements proper Quetzal save format with XOR-RLE compression
 - Handles both Variable and Long forms of 2OP instructions
-- Supports the full Z-Machine v3 instruction set including all store operations
+- Supports complete Z-Machine v3/v4+ instruction sets including all store and branch operations
 - Real non-blocking I/O using OS-level event notification (epoll/kqueue/IOCP)
 - Full timer implementation with interrupt callbacks for both SREAD and read_char opcodes
-- Real-time timer interrupts for all Z-Machine versions (tested with v3, ready for v4+)
-- Cross-platform status line using crossterm (Windows/macOS/Linux/WSL)
-- Automatic status line updates before each input in v3 games
-- Proper text styling (bold, reverse video) for game titles and emphasis
+- Cross-platform display system with smart fallback (ratatui → basic → headless)
+- Automatic status line updates and proper text styling support
 
 ## License
 
