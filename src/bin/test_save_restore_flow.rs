@@ -1,3 +1,14 @@
+/// Test program to verify save/restore functionality in a realistic game context.
+/// 
+/// This test validates the Quetzal save format implementation by:
+/// 1. Running Zork I to the first input prompt
+/// 2. Creating a save file with current VM state
+/// 3. Creating a fresh VM and advancing it to a different state
+/// 4. Restoring the save file and verifying state is correctly restored
+/// 5. Executing instructions after restore to ensure the VM remains functional
+/// 
+/// This is essential for validating that saved games work correctly across
+/// game sessions, which is a core feature expected by players.
 use gruesome::instruction::Instruction;
 use gruesome::interpreter::Interpreter;
 use gruesome::vm::{Game, VM};

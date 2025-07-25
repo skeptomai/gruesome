@@ -1,3 +1,14 @@
+/// Test program to validate lantern timer countdown functionality in Zork I.
+/// 
+/// This test specifically verifies that the lantern timer mechanism works correctly
+/// by tracking Global 88 (the lantern countdown timer). The lantern is a critical
+/// game mechanic in Zork I - when it runs out, the player is plunged into darkness
+/// and may be eaten by a grue.
+/// 
+/// The test simulates timer interrupts and verifies that:
+/// - Global 88 decrements properly with each timer callback
+/// - The lantern warnings appear at the correct thresholds (30, 20, 10, 5 turns)
+/// - The lantern extinguishes when the timer reaches 0
 use gruesome::interpreter::Interpreter;
 use gruesome::vm::{Game, VM};
 use log::info;
