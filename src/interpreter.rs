@@ -666,9 +666,24 @@ impl Interpreter {
         Ok(values)
     }
 
-    /// Execute 0OP instructions
+    // ========================================================================
+    // OPCODE EXECUTION METHODS
+    // ========================================================================
+    // 
+    // These methods handle the different instruction forms and organize opcodes
+    // by their logical function:
+    // - Control flow (return, quit, branch, jump)
+    // - Stack operations (push, pull, call)
+    // - Memory operations (load, store, loadw, storew)
+    // - Arithmetic/logical operations (add, sub, mul, div, and, or, not)
+    // - Object system operations (get_prop, put_prop, insert_obj, remove_obj)
+    // - I/O operations (sread, read_char, print_*)
+    // - System operations (save, restore, random, etc.)
+
+    /// Execute 0OP instructions (control flow and system operations)
     fn execute_0op(&mut self, inst: &Instruction) -> Result<ExecutionResult, String> {
         match inst.opcode {
+            // ---- CONTROL FLOW OPERATIONS ----
             0x00 => {
                 // rtrue
                 self.do_return(1)
@@ -677,6 +692,8 @@ impl Interpreter {
                 // rfalse
                 self.do_return(0)
             }
+            
+            // ---- I/O OPERATIONS ----
             0x02 => {
                 // print (literal string)
                 if let Some(ref text) = inst.text {
@@ -716,6 +733,8 @@ impl Interpreter {
                 // nop
                 Ok(ExecutionResult::Continue)
             }
+            
+            // ---- SYSTEM OPERATIONS ----
             0x05 => {
                 // save (V1-3: branch on success, V4+: store result)
                 if self.vm.game.header.version <= 3 {
@@ -783,6 +802,8 @@ impl Interpreter {
                     Ok(ExecutionResult::Continue)
                 }
             }
+            
+            // ---- STACK OPERATIONS ----
             0x08 => {
                 // ret_popped
                 let value = self.vm.pop()?;
@@ -869,9 +890,10 @@ impl Interpreter {
         }
     }
 
-    /// Execute 1OP instructions
+    /// Execute 1OP instructions (mostly memory and object operations)
     fn execute_1op(&mut self, inst: &Instruction, operand: u16) -> Result<ExecutionResult, String> {
         match inst.opcode {
+            // ---- CONTROL FLOW OPERATIONS ----
             0x00 => {
                 // jz
                 let condition = operand == 0;
@@ -1123,7 +1145,7 @@ impl Interpreter {
         }
     }
 
-    /// Execute 2OP instructions
+    /// Execute 2OP instructions (arithmetic, logical, and comparison operations)
     fn execute_2op(
         &mut self,
         inst: &Instruction,
