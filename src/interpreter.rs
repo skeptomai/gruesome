@@ -1892,7 +1892,21 @@ impl Interpreter {
                 Ok(ExecutionResult::Continue)
             }
             0x13 => {
-                // output_stream
+                // This opcode can be either get_next_prop or output_stream in VAR form
+                // get_next_prop stores a result, output_stream does not
+                if inst.store_var.is_some() {
+                    // This is get_next_prop (VAR form of 2OP:19)
+                    let obj_num = operands[0];
+                    let prop_num = if operands.len() >= 2 { operands[1] as u8 } else { 0u8 };
+                    debug!("VAR get_next_prop: obj={:04x}, prop={}", obj_num, prop_num);
+                    let next_prop = self.vm.get_next_property(obj_num, prop_num)? as u16;
+                    if let Some(store_var) = inst.store_var {
+                        self.vm.write_variable(store_var, next_prop)?;
+                    }
+                    return Ok(ExecutionResult::Continue);
+                }
+                
+                // output_stream  
                 if !operands.is_empty() {
                     let stream_num = operands[0] as i16;
                     debug!("output_stream: stream_num={}", stream_num);
