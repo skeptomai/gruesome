@@ -272,7 +272,11 @@ pub fn has_branch(
                 if operand_count == OperandCount::OP2 {
                     has_branch_2op(opcode)
                 } else {
-                    false
+                    // True VAR opcodes that have branches
+                    match opcode {
+                        0x17 => true, // scan_table
+                        _ => false,
+                    }
                 }
             }
         }

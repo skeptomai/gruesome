@@ -369,6 +369,11 @@ impl Interpreter {
                 debug!("*** SPACING ROUTINE: About to execute at PC {:05x}", pc);
             }
             
+            // Check for problematic Trinity PC range
+            if (0x13fc0..=0x13ff0).contains(&pc) {
+                debug!("🚨 TRINITY EXECUTION at PC {:05x}", pc);
+            }
+            
             let instruction = match Instruction::decode(
                 &self.vm.game.memory,
                 pc as usize,
@@ -466,21 +471,62 @@ impl Interpreter {
             }
 
             // Advance PC past the instruction
+            let old_pc = self.vm.pc;
             self.vm.pc += instruction.size as u32;
+            
+            // Debug PC advancement for Trinity offset issue
+            if old_pc == 0x125c7 {
+                debug!("🚨 PC ADVANCEMENT: 0x{:05x} + {} = 0x{:05x} (instruction: {})", 
+                       old_pc, instruction.size, self.vm.pc, instruction.name(self.vm.game.header.version));
+            }
+
+            // Add single-step disassembly for Trinity PC tracking
+            if old_pc >= 0x125bf && old_pc <= 0x125e0 {
+                debug!("📍 EXECUTE: {:05x}: {} (size={}, next_pc={:05x})", 
+                       old_pc, instruction.format_with_version(self.vm.game.header.version), 
+                       instruction.size, self.vm.pc);
+                // Show raw instruction bytes
+                let end_addr = (old_pc as usize + instruction.size).min(self.vm.game.memory.len());
+                let bytes: Vec<String> = self.vm.game.memory[old_pc as usize..end_addr]
+                    .iter().map(|b| format!("{:02x}", b)).collect();
+                debug!("📍 RAW BYTES: {}", bytes.join(" "));
+            }
+
+            // Track PC changes to catch jumps to invalid addresses like 13fe7
+            let pc_before_exec = self.vm.pc;
 
             // Execute the instruction
             match self.execute_instruction(&instruction)? {
                 ExecutionResult::Continue => {
                     // Normal execution, PC already advanced
+                    // Debug PC state after execution for Trinity tracking
+                    if old_pc >= 0x125bf && old_pc <= 0x125e0 {
+                        debug!("📍 AFTER EXEC: PC remains at {:05x} (expected)", self.vm.pc);
+                    }
                 }
                 ExecutionResult::Branched => {
                     // Branch taken, PC was updated by branch logic
+                    let pc_after_exec = self.vm.pc;
+                    if pc_after_exec == 0x13fe7 {
+                        debug!("🚨 INVALID JUMP: Branch from {:05x} to invalid PC {:05x} (opcode: {:02x})", 
+                               pc_before_exec, pc_after_exec, instruction.opcode);
+                    }
                 }
                 ExecutionResult::Called => {
                     // Routine called, PC was updated
+                    let pc_after_exec = self.vm.pc;
+                    if pc_after_exec == 0x13fe7 {
+                        debug!("🚨 INVALID JUMP: Call from {:05x} to invalid PC {:05x} (opcode: {:02x})", 
+                               pc_before_exec, pc_after_exec, instruction.opcode);
+                    }
                 }
                 ExecutionResult::Returned(_value) => {
                     // Return value already handled by do_return
+                    let pc_after_exec = self.vm.pc;
+                    if pc_after_exec == 0x13fe7 {
+                        debug!("🚨 INVALID JUMP: Return from {:05x} to invalid PC {:05x} (opcode: {:02x})", 
+                               pc_before_exec, pc_after_exec, instruction.opcode);
+                    }
                 }
                 ExecutionResult::Quit => {
                     // Quit opcode executed - exit the entire program immediately
@@ -906,11 +952,8 @@ impl Interpreter {
                 Ok(ExecutionResult::Continue)
             }
             0x0E => {
-                // load
-                if inst.operand_types[0] != OperandType::Variable {
-                    return Err("load requires variable operand".to_string());
-                }
-                let var_num = inst.operands[0] as u8;
+                // load - operand can be any type, value specifies which variable to load
+                let var_num = operand as u8;
                 let value = self.vm.read_variable(var_num)?;
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, value)?;
@@ -1449,14 +1492,22 @@ impl Interpreter {
         operands: &[u16],
     ) -> Result<ExecutionResult, String> {
         // Handle edge cases first
-        if operands.is_empty() && inst.opcode == 0x09 {
-            // Special case: Variable 2OP AND with no operands
-            // This appears in some games - treat as AND 0, 0
-            debug!(
-                "Variable 2OP AND with no operands at PC {:05x} - using 0, 0",
-                self.vm.pc - inst.size as u32
-            );
-            return self.execute_2op(inst, 0, 0);
+        if operands.is_empty() {
+            let pc = self.vm.pc - inst.size as u32;
+            match inst.opcode {
+                0x09 => {
+                    // Special case: Variable 2OP AND with no operands
+                    // This appears in some games - treat as AND 0, 0
+                    debug!("Variable 2OP AND with no operands at PC {:05x} - using 0, 0", pc);
+                    return self.execute_2op(inst, 0, 0);
+                }
+                0x01 => {
+                    // je with no operands means "jump if true" (always false)
+                    debug!("Variable 2OP je with no operands at PC {:05x} - always false", pc);
+                    return self.do_branch(inst, false);
+                }
+                _ => {}
+            }
         }
 
         // Handle special cases for instructions that can work with fewer operands
@@ -1471,6 +1522,13 @@ impl Interpreter {
                         return self.do_branch(inst, condition);
                     }
                 }
+                0x13 => {
+                    // get_next_prop - can be called with 1 operand (property 0 = get first property)
+                    if operands.len() == 1 {
+                        debug!("Variable 2OP get_next_prop with 1 operand at PC {:05x} - treating as get_next_prop {:04x}, 0", pc, operands[0]);
+                        return self.execute_2op(inst, operands[0], 0);
+                    }
+                }
                 _ => {}
             }
             return Err(format!("Variable 2OP instruction at PC {:05x} requires at least 2 operands, got {} - opcode: {:02x}", 
@@ -1483,6 +1541,16 @@ impl Interpreter {
                 // je - Jump if Equal (can have 2-4 operands)
                 // From the spec: "je a b c d ?(label)"
                 // Jump if a is equal to any of the subsequent operands (b, c, or d)
+                let pc = self.vm.pc - inst.size as u32;
+                
+                // Debug output for the problematic JE at 13fd7
+                if pc == 0x13fd7 {
+                    debug!("🚨 TRINITY JE at 13fd7: operands={:?}, should branch to 1406d", operands);
+                    for (i, op) in operands.iter().enumerate() {
+                        debug!("  operand[{}] = {:04x}", i, op);
+                    }
+                }
+                
                 let mut condition = false;
                 for i in 1..operands.len() {
                     if operands[0] == operands[i] {
@@ -1490,6 +1558,11 @@ impl Interpreter {
                         break;
                     }
                 }
+                
+                if pc == 0x13fd7 {
+                    debug!("  condition={}, branch_on_true={:?}", condition, inst.branch.as_ref().map(|b| b.on_true));
+                }
+                
                 self.do_branch(inst, condition)
             }
             _ => {
@@ -1575,12 +1648,18 @@ impl Interpreter {
 
                 // Debug: Show all operands
                 debug!(
-                    "sread at PC 0x{:04x} with {} operands",
+                    "🕐 SREAD at PC 0x{:04x} with {} operands",
                     self.vm.pc - inst.size as u32,
                     operands.len()
                 );
                 for (i, op) in operands.iter().enumerate() {
-                    debug!("  operand[{}] = 0x{:04x}", i, op);
+                    debug!("🕐   operand[{}] = 0x{:04x}", i, op);
+                }
+                
+                // Trinity-specific timer debug
+                if operands.len() >= 4 {
+                    debug!("🕐 TIMER CHECK: operands[2]={}, operands[3]=0x{:04x}, has_timer={}", 
+                           operands[2], operands[3], operands.len() >= 4 && operands[2] > 0 && operands[3] > 0);
                 }
 
                 // Check for timer parameters (V3+)
@@ -1983,6 +2062,30 @@ impl Interpreter {
                 }
                 Ok(ExecutionResult::Continue)
             }
+            0x14 => {
+                // input_stream (V3+)
+                if !operands.is_empty() {
+                    let stream_num = operands[0] as i16;
+                    debug!("input_stream: stream_num={}", stream_num);
+                    
+                    match stream_num {
+                        0 => {
+                            // Select keyboard input (default, always active)
+                            debug!("input_stream: selecting keyboard input (default)");
+                        }
+                        1 => {
+                            // Select file input (not commonly used)
+                            debug!("input_stream: selecting file input (not implemented)");
+                        }
+                        _ => {
+                            debug!("input_stream: unsupported stream {}", stream_num);
+                        }
+                    }
+                } else {
+                    debug!("input_stream: no stream number provided");
+                }
+                Ok(ExecutionResult::Continue)
+            }
             0x0F => {
                 // set_cursor - v3 uses this too (especially Seastalker)
                 if operands.len() >= 2 {
@@ -2205,28 +2308,38 @@ impl Interpreter {
                 let table_len = operands[2];
                 let form = if operands.len() > 3 { operands[3] } else { 0x82 }; // Default form
 
+                // Parse form: bit 7 = word/byte, bits 0-6 = field length
+                let is_word = (form & 0x80) != 0;
+                let field_length = (form & 0x7F) as u32;
+
                 debug!(
                     "scan_table: searching for 0x{:04x} in table at 0x{:04x}, len={}, form=0x{:02x}",
                     search_value, table_addr, table_len, form
                 );
-
-                // Parse form: bit 7 = word/byte, bits 0-6 = field length
-                let is_word = (form & 0x80) != 0;
-                let field_length = (form & 0x7F) as u32;
+                debug!("scan_table: current PC = 0x{:05x} (EXPECTED: 0x125cb)", self.vm.pc);
+                
+                // Debug the PC before scan_table to trace the offset issue
+                if self.vm.pc >= 0x125c0 && self.vm.pc <= 0x125e0 {
+                    debug!("🚨 PC OFFSET ISSUE: scan_table at PC {:05x}, should be 125cb", self.vm.pc);
+                }
+                debug!("  is_word={}, field_length={}", is_word, field_length);
                 
                 let mut found_addr = 0u16;
                 let mut current_addr = table_addr;
 
                 // Search through the table
-                for _ in 0..table_len {
+                for i in 0..table_len {
                     let table_value = if is_word {
                         self.vm.read_word(current_addr)
                     } else {
                         self.vm.read_byte(current_addr) as u16
                     };
 
+                    debug!("  Entry {}: 0x{:04x} at addr 0x{:04x}", i, table_value, current_addr);
+
                     if table_value == search_value {
                         found_addr = current_addr as u16;
+                        debug!("  *** MATCH FOUND at addr 0x{:04x} ***", found_addr);
                         break;
                     }
 
@@ -2239,8 +2352,25 @@ impl Interpreter {
                     self.vm.write_variable(store_var, found_addr)?;
                 }
 
+                debug!("scan_table result: found_addr=0x{:04x}, condition={}", found_addr, found_addr != 0);
+
                 // Branch if found
                 let condition = found_addr != 0;
+                
+                // Debug Trinity scan_table branch calculation
+                if self.vm.pc == 0x125cb {
+                    debug!("🔍 TRINITY SCAN_TABLE at 125cb: condition={}, found_addr=0x{:04x}", condition, found_addr);
+                    if let Some(ref branch) = inst.branch {
+                        debug!("🔍 Branch info: on_true={}, offset={}", branch.on_true, branch.offset);
+                        let should_branch = condition == branch.on_true;
+                        debug!("🔍 Should branch: {} (condition={}, on_true={})", should_branch, condition, branch.on_true);
+                        if should_branch {
+                            let calc_target = (self.vm.pc as i32 + branch.offset as i32 - 2) as u32;
+                            debug!("🔍 Calculated target: 0x{:05x} (expected: 0x125dc)", calc_target);
+                        }
+                    }
+                }
+                
                 self.do_branch(inst, condition)
             }
             _ => {
@@ -2282,6 +2412,11 @@ impl Interpreter {
                     offset => {
                         // Jump is relative to instruction after branch data
                         let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
+                        
+                        // Debug output for Trinity JE branch
+                        if self.vm.pc == 0x13fde {
+                            debug!("🚨 TRINITY BRANCH from 13fde: offset={}, new_pc={:05x} (should be 1406d)", offset, new_pc);
+                        }
 
                         // Add specific debug for the problematic branch
                         if self.vm.pc >= 0x08cc0 && self.vm.pc <= 0x08cd0 {
@@ -2289,6 +2424,17 @@ impl Interpreter {
                                 "Branch at PC {:05x}: offset={} ({:04x}), new_pc={:05x}",
                                 self.vm.pc, offset, offset as u16, new_pc
                             );
+                        }
+
+                        // Debug scan_table branch calculation for Trinity quit issue
+                        if self.vm.pc >= 0x125cb && self.vm.pc <= 0x125dd {
+                            debug!("🔍 SCAN_TABLE BRANCH at PC {:05x}: condition={}, branch.on_true={}, should_branch={}, offset={}", 
+                                   self.vm.pc, condition, branch.on_true, should_branch, branch.offset);
+                            if should_branch {
+                                let calc_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
+                                debug!("🔍 SCAN_TABLE: Current PC={:05x}, offset={}, calculated target={:05x} (expected 125dc)", 
+                                       self.vm.pc, offset, calc_pc);
+                            }
                         }
 
                         if self.vm.pc >= 0x06f70 && self.vm.pc <= 0x06fa0
@@ -2355,7 +2501,7 @@ impl Interpreter {
         debug!("Calling timer routine at 0x{:04x}", routine_addr);
 
         // Save current PC and call depth
-        let _saved_pc = self.vm.pc;
+        let saved_pc = self.vm.pc;
         let saved_call_depth = self.vm.call_depth();
 
         // Call routine with 0 args, store result in temp variable (stack)
@@ -2407,6 +2553,10 @@ impl Interpreter {
         let _ = self.vm.pop();
 
         debug!("Timer routine returned: {}", return_value);
+
+        // Restore the original PC (critical for proper execution flow)
+        debug!("Restoring PC from 0x{:05x} to 0x{:05x}", self.vm.pc, saved_pc);
+        self.vm.pc = saved_pc;
 
         // Return true if routine wants to terminate input
         Ok(return_value != 0)
