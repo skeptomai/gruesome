@@ -619,6 +619,9 @@ impl Interpreter {
                     // Check if this is a memory operation and route to memory module
                     } else if Interpreter::is_memory_opcode(inst.opcode, &inst.operand_count) {
                         self.execute_memory_op(inst, &[operands[0]])
+                    // Check if this is an object operation and route to object module
+                    } else if Interpreter::is_object_opcode(inst.opcode, &inst.operand_count) {
+                        self.execute_object_op(inst, &[operands[0]])
                     } else {
                         self.execute_1op(inst, operands[0])
                     }
@@ -635,6 +638,9 @@ impl Interpreter {
                 // Check if this is a memory operation and route to memory module
                 } else if Interpreter::is_memory_opcode(inst.opcode, &inst.operand_count) {
                     self.execute_memory_op(inst, &[operands[0], operands[1]])
+                // Check if this is an object operation and route to object module
+                } else if Interpreter::is_object_opcode(inst.opcode, &inst.operand_count) {
+                    self.execute_object_op(inst, &[operands[0], operands[1]])
                 } else {
                     self.execute_2op(inst, operands[0], operands[1])
                 }
@@ -660,6 +666,10 @@ impl Interpreter {
                         // Check if this is a memory operation and route to memory module
                         } else if Interpreter::is_memory_opcode(inst.opcode, &inst.operand_count) {
                             self.execute_memory_op(inst, &operands)
+                        // Check if this is an object operation and route to object module
+                        } else if Interpreter::is_object_opcode(inst.opcode, &inst.operand_count) 
+                                  || Interpreter::is_var_13_object_opcode(inst) {
+                            self.execute_object_op(inst, &operands)
                         } else {
                             self.execute_2op_variable(inst, &operands)
                         }
@@ -668,6 +678,10 @@ impl Interpreter {
                         // Check if this is a memory operation and route to memory module
                         if Interpreter::is_memory_opcode(inst.opcode, &inst.operand_count) {
                             self.execute_memory_op(inst, &operands)
+                        // Check if this is an object operation and route to object module
+                        } else if Interpreter::is_object_opcode(inst.opcode, &inst.operand_count) 
+                                  || Interpreter::is_var_13_object_opcode(inst) {
+                            self.execute_object_op(inst, &operands)
                         } else {
                             self.execute_var(inst, &operands)
                         }
@@ -987,63 +1001,6 @@ impl Interpreter {
                 }
                 Ok(ExecutionResult::Continue)
             }
-            0x01 => {
-                // get_sibling
-                let sibling = self.vm.get_sibling(operand)?;
-                if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, sibling)?;
-                }
-                self.do_branch(inst, sibling != 0)
-            }
-            0x02 => {
-                // get_child
-                let child = self.vm.get_child(operand)?;
-                if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, child)?;
-                }
-                self.do_branch(inst, child != 0)
-            }
-            0x03 => {
-                // get_parent
-                debug!(
-                    "get_parent: obj_num={} at PC {:05x}",
-                    operand,
-                    self.vm.pc - inst.size as u32
-                );
-                let parent = self.vm.get_parent(operand)?;
-                if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, parent)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x04 => {
-                // get_prop_len - get the length of a property given its data address
-                debug!(
-                    "get_prop_len: prop_addr={:04x} at PC {:05x}",
-                    operand,
-                    self.vm.pc - inst.size as u32
-                );
-
-                let prop_len = if operand == 0 {
-                    0
-                } else {
-                    // In Z-Machine v3, the size byte is immediately before the property data
-                    // The size byte encodes: top 3 bits = size-1, bottom 5 bits = property number
-                    let size_byte_addr = (operand as u32).saturating_sub(1);
-                    let size_byte = self.vm.read_byte(size_byte_addr);
-                    let size = ((size_byte >> 5) & 0x07) + 1;
-                    debug!(
-                        "  Size byte at {:04x}: {:02x}, property size: {}",
-                        size_byte_addr, size_byte, size
-                    );
-                    size as u16
-                };
-
-                if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, prop_len)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
             0x07 => {
                 // print_addr
                 // Print string at unpacked address
@@ -1072,56 +1029,6 @@ impl Interpreter {
                         debug!("Failed to decode string at {:04x}: {}", addr, e);
                     }
                 }
-                Ok(ExecutionResult::Continue)
-            }
-            0x09 => {
-                // remove_obj
-                let obj_num = operand;
-                debug!(
-                    "remove_obj: obj_num={} at PC {:05x}",
-                    obj_num,
-                    self.vm.pc - inst.size as u32
-                );
-                self.vm.remove_object(obj_num)?;
-                Ok(ExecutionResult::Continue)
-            }
-            0x0A => {
-                // print_obj - print short name of object
-                let obj_num = operand;
-                let pc = self.vm.pc - inst.size as u32;
-                debug!("print_obj: object #{} at PC 0x{:04x}", obj_num, pc);
-
-                // Special debugging for the leaves issue
-                if (0x6300..=0x6400).contains(&pc) {
-                    info!(
-                        "*** print_obj in error message area: object #{} at PC 0x{:04x}",
-                        obj_num, pc
-                    );
-                }
-
-                if obj_num == 0 {
-                    // Object 0 means no object - print nothing
-                    return Ok(ExecutionResult::Continue);
-                }
-                let max_objects = if self.vm.game.header.version <= 3 { 255 } else { 65535 };
-                if obj_num > max_objects {
-                    return Err(format!("Invalid object number for print_obj: {obj_num} (max: {max_objects} for v{})", self.vm.game.header.version));
-                }
-
-                // Use the VM's object name function which handles v3/v4+ differences
-                match self.vm.get_object_name(obj_num) {
-                    Ok(name) => {
-                        if obj_num == 144 {
-                            debug!("Object 144 (leaves) name: '{}' (len={})", name, name.len());
-                            debug!("  Name bytes: {:?}", name.as_bytes());
-                        }
-                        self.output_text(&name)?;
-                    }
-                    Err(e) => {
-                        debug!("Failed to get object name: {}", e);
-                    }
-                }
-
                 Ok(ExecutionResult::Continue)
             }
             _ => Err(format!(
@@ -1201,13 +1108,6 @@ impl Interpreter {
                 let condition = (new_value as i16) > (op2 as i16);
                 self.do_branch(inst, condition)
             }
-            0x06 => {
-                // jin
-                // Check if obj1 is inside obj2 (obj1's parent is obj2)
-                let parent = self.vm.get_parent(op1)?;
-                let condition = parent == op2;
-                self.do_branch(inst, condition)
-            }
             0x07 => {
                 // test
                 // Bitwise AND and test if all bits in op2 are set in op1
@@ -1221,87 +1121,6 @@ impl Interpreter {
                     );
                 }
                 self.do_branch(inst, result)
-            }
-            0x0A => {
-                // test_attr
-                let obj_num = op1;
-                let attr_num = op2 as u8;
-                let result = self.vm.test_attribute(obj_num, attr_num)?;
-                let current_pc = self.vm.pc - inst.size as u32;
-
-                // Let's follow the natural flow
-                if current_pc == 0x4f7e {
-                    debug!(
-                        "test_attr at {:05x}: obj={}, attr={}, result={}",
-                        current_pc, obj_num, attr_num, result
-                    );
-                }
-
-                self.do_branch(inst, result)
-            }
-            0x0B => {
-                // set_attr
-                let obj_num = op1;
-                let attr_num = op2 as u8;
-                self.vm.set_attribute(obj_num, attr_num, true)?;
-                Ok(ExecutionResult::Continue)
-            }
-            0x0C => {
-                // clear_attr
-                let obj_num = op1;
-                let attr_num = op2 as u8;
-                if attr_num > 31 {
-                    debug!(
-                        "clear_attr: obj={}, attr={} at PC {:05x}",
-                        obj_num,
-                        attr_num,
-                        self.vm.pc - inst.size as u32
-                    );
-                }
-                self.vm.set_attribute(obj_num, attr_num, false)?;
-                Ok(ExecutionResult::Continue)
-            }
-            0x0E => {
-                // insert_obj
-                debug!(
-                    "insert_obj: obj={}, dest={} at PC {:05x}",
-                    op1,
-                    op2,
-                    self.vm.pc - inst.size as u32
-                );
-                self.vm.insert_object(op1, op2)?;
-                Ok(ExecutionResult::Continue)
-            }
-            0x11 => {
-                // get_prop
-                let obj_num = op1;
-                let prop_num = op2 as u8;
-                let value = self.vm.get_property(obj_num, prop_num)?;
-
-                if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, value)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x12 => {
-                // get_prop_addr
-                let obj_num = op1;
-                let prop_num = op2 as u8;
-                let addr = self.vm.get_property_addr(obj_num, prop_num)? as u16;
-                if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, addr)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x13 => {
-                // get_next_prop
-                let obj_num = op1;
-                let prop_num = op2 as u8;
-                let next_prop = self.vm.get_next_property(obj_num, prop_num)? as u16;
-                if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, next_prop)?;
-                }
-                Ok(ExecutionResult::Continue)
             }
             0x19 => {
                 // call_2s
@@ -1448,17 +1267,6 @@ impl Interpreter {
         operands: &[u16],
     ) -> Result<ExecutionResult, String> {
         match inst.opcode {
-            0x03 => {
-                // put_prop
-                if operands.len() < 3 {
-                    return Err("put_prop requires 3 operands".to_string());
-                }
-                let obj_num = operands[0];
-                let prop_num = operands[1] as u8;
-                let value = operands[2];
-                self.vm.put_property(obj_num, prop_num, value)?;
-                Ok(ExecutionResult::Continue)
-            }
             0x04 => {
                 // sread (V1-4) with timer support (V3+)
                 // Proper implementation that reads from stdin
@@ -1816,20 +1624,6 @@ impl Interpreter {
                 Ok(ExecutionResult::Continue)
             }
             0x13 => {
-                // This opcode can be either get_next_prop or output_stream in VAR form
-                // get_next_prop stores a result, output_stream does not
-                if inst.store_var.is_some() {
-                    // This is get_next_prop (VAR form of 2OP:19)
-                    let obj_num = operands[0];
-                    let prop_num = if operands.len() >= 2 { operands[1] as u8 } else { 0u8 };
-                    debug!("VAR get_next_prop: obj={:04x}, prop={}", obj_num, prop_num);
-                    let next_prop = self.vm.get_next_property(obj_num, prop_num)? as u16;
-                    if let Some(store_var) = inst.store_var {
-                        self.vm.write_variable(store_var, next_prop)?;
-                    }
-                    return Ok(ExecutionResult::Continue);
-                }
-                
                 // output_stream  
                 if !operands.is_empty() {
                     let stream_num = operands[0] as i16;
@@ -2201,7 +1995,7 @@ impl Interpreter {
     }
 
     /// Handle branching
-    fn do_branch(
+    pub(crate) fn do_branch(
         &mut self,
         inst: &Instruction,
         condition: bool,
@@ -2570,7 +2364,7 @@ impl Interpreter {
     }
     
     /// Output text, handling stream 3 redirection
-    fn output_text(&mut self, text: &str) -> Result<(), String> {
+    pub(crate) fn output_text(&mut self, text: &str) -> Result<(), String> {
         // Handle stream 3 redirection first
         if let Some(table_addr) = self.output_streams.current_stream3_table {
             let current_count = self.vm.read_word(table_addr as u32);
