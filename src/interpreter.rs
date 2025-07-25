@@ -563,6 +563,11 @@ impl Interpreter {
         // Get operand values
         let operands = self.resolve_operands(inst)?;
 
+        // Check if this is a stack operation and handle it in the dedicated module
+        if Interpreter::is_stack_opcode(inst.opcode, &inst.operand_count) {
+            return self.execute_stack_op(inst, &operands);
+        }
+
         // Debug problematic variables
         if let Some(store_var) = inst.store_var {
             if (0x01..=0x0F).contains(&store_var) {
@@ -802,27 +807,6 @@ impl Interpreter {
                     Ok(ExecutionResult::Continue)
                 }
             }
-            
-            // ---- STACK OPERATIONS ----
-            0x08 => {
-                // ret_popped
-                let value = self.vm.pop()?;
-                self.do_return(value)
-            }
-            0x09 => {
-                // pop (V1-4) / catch (V5+)
-                if self.vm.game.header.version <= 4 {
-                    self.vm.pop()?;
-                    Ok(ExecutionResult::Continue)
-                } else {
-                    // catch: store call stack depth
-                    if let Some(store_var) = inst.store_var {
-                        let depth = self.vm.call_depth() as u16;
-                        self.vm.write_variable(store_var, depth)?;
-                    }
-                    Ok(ExecutionResult::Continue)
-                }
-            }
             0x0A => {
                 // quit
                 Ok(ExecutionResult::Quit)
@@ -930,10 +914,6 @@ impl Interpreter {
                 let value = self.vm.read_variable(var_num)?;
                 self.vm.write_variable(var_num, value.wrapping_sub(1))?;
                 Ok(ExecutionResult::Continue)
-            }
-            0x0B => {
-                // ret
-                self.do_return(operand)
             }
             0x0C => {
                 // jump
@@ -1093,11 +1073,6 @@ impl Interpreter {
                 );
                 self.vm.remove_object(obj_num)?;
                 Ok(ExecutionResult::Continue)
-            }
-            0x08 => {
-                // call_1s
-                self.do_call(operand, &[], inst.store_var)?;
-                Ok(ExecutionResult::Called)
             }
             0x0A => {
                 // print_obj - print short name of object
@@ -1602,23 +1577,6 @@ impl Interpreter {
         operands: &[u16],
     ) -> Result<ExecutionResult, String> {
         match inst.opcode {
-            0x00 => {
-                // call
-                if operands.is_empty() {
-                    return Err("call requires at least one operand".to_string());
-                }
-                let routine_addr = operands[0];
-                let args = &operands[1..];
-                let unpacked_addr = self.unpack_routine_address(routine_addr) as u32;
-                debug!(
-                    "Call to packed address 0x{:04x} (unpacked: {}) with store_var = {:?}",
-                    routine_addr,
-                    self.routine_names.format_address(unpacked_addr),
-                    inst.store_var
-                );
-                self.do_call(routine_addr, args, inst.store_var)?;
-                Ok(ExecutionResult::Called)
-            }
             0x01 => {
                 // storew
                 if operands.len() < 3 {
@@ -1968,38 +1926,6 @@ impl Interpreter {
                     if let Some(store_var) = inst.store_var {
                         self.vm.write_variable(store_var, result)?;
                     }
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x08 => {
-                // push
-                if !operands.is_empty() {
-                    self.vm.push(operands[0])?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x09 => {
-                // pull
-                if !inst.operands.is_empty() {
-                    let current_pc = self.vm.pc - inst.size as u32;
-                    if (0x06f70..=0x06fa0).contains(&current_pc) {
-                        debug!(
-                            "pull at {:05x}: stack depth before pop: {}",
-                            current_pc,
-                            self.vm.stack.len()
-                        );
-                    }
-                    let value = self.vm.pop()?;
-                    // Use the raw operand value, not the resolved one
-                    // (Variable 0 as destination means V00, not pop)
-                    let var_num = inst.operands[0] as u8;
-                    if (0x06f70..=0x06fa0).contains(&current_pc) {
-                        debug!(
-                            "pull at {:05x}: storing popped value {:04x} into V{:02x}",
-                            current_pc, value, var_num
-                        );
-                    }
-                    self.vm.write_variable(var_num, value)?;
                 }
                 Ok(ExecutionResult::Continue)
             }
@@ -2584,7 +2510,7 @@ impl Interpreter {
         Ok(return_value != 0)
     }
 
-    fn do_call(
+    pub(crate) fn do_call(
         &mut self,
         packed_addr: u16,
         args: &[u16],
@@ -2694,7 +2620,7 @@ impl Interpreter {
     }
 
     /// Handle routine returns
-    fn do_return(&mut self, value: u16) -> Result<ExecutionResult, String> {
+    pub(crate) fn do_return(&mut self, value: u16) -> Result<ExecutionResult, String> {
         // Pop the call frame
         let frame = self
             .vm
