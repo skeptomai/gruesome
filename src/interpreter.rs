@@ -568,6 +568,11 @@ impl Interpreter {
             return self.execute_stack_op(inst, &operands);
         }
 
+        // Check if this is a math operation and handle it in the dedicated module
+        if Interpreter::is_math_opcode(inst.opcode, &inst.operand_count) {
+            return self.execute_math_op(inst, &operands);
+        }
+
         // Debug problematic variables
         if let Some(store_var) = inst.store_var {
             if (0x01..=0x0F).contains(&store_var) {
@@ -962,20 +967,6 @@ impl Interpreter {
                 }
                 Ok(ExecutionResult::Continue)
             }
-            0x0F => {
-                // not (V1-4) / call_1n (V5+)
-                if self.vm.game.header.version <= 4 {
-                    // Bitwise NOT
-                    if let Some(store_var) = inst.store_var {
-                        self.vm.write_variable(store_var, !operand)?;
-                    }
-                } else {
-                    // call_1n: call with no return value
-                    self.do_call(operand, &[], None)?;
-                    return Ok(ExecutionResult::Called);
-                }
-                Ok(ExecutionResult::Continue)
-            }
             0x01 => {
                 // get_sibling
                 let sibling = self.vm.get_sibling(operand)?;
@@ -1211,20 +1202,6 @@ impl Interpreter {
                 }
                 self.do_branch(inst, result)
             }
-            0x08 => {
-                // or
-                if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, op1 | op2)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x09 => {
-                // and
-                if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, op1 & op2)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
             0x0A => {
                 // test_attr
                 let obj_num = op1;
@@ -1373,52 +1350,6 @@ impl Interpreter {
                 }
                 Ok(ExecutionResult::Continue)
             }
-            0x14 => {
-                // add
-                if let Some(store_var) = inst.store_var {
-                    let result = (op1 as i16).wrapping_add(op2 as i16) as u16;
-                    self.vm.write_variable(store_var, result)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x15 => {
-                // sub
-                if let Some(store_var) = inst.store_var {
-                    let result = (op1 as i16).wrapping_sub(op2 as i16) as u16;
-                    self.vm.write_variable(store_var, result)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x16 => {
-                // mul
-                if let Some(store_var) = inst.store_var {
-                    let result = (op1 as i16).wrapping_mul(op2 as i16) as u16;
-                    self.vm.write_variable(store_var, result)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x17 => {
-                // div
-                if op2 == 0 {
-                    return Err("Division by zero".to_string());
-                }
-                if let Some(store_var) = inst.store_var {
-                    let result = (op1 as i16) / (op2 as i16);
-                    self.vm.write_variable(store_var, result as u16)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x18 => {
-                // mod
-                if op2 == 0 {
-                    return Err("Modulo by zero".to_string());
-                }
-                if let Some(store_var) = inst.store_var {
-                    let result = (op1 as i16) % (op2 as i16);
-                    self.vm.write_variable(store_var, result as u16)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
             0x19 => {
                 // call_2s
                 let routine_addr = op1;
@@ -1434,19 +1365,6 @@ impl Interpreter {
                 
                 self.do_call(routine_addr, &[arg], inst.store_var)?;
                 Ok(ExecutionResult::Called)
-            }
-            0x1C => {
-                // not (v1-v3) - bitwise NOT
-                // In v5+ this becomes VAR:143
-                if self.vm.game.header.version <= 3 {
-                    if let Some(store_var) = inst.store_var {
-                        let result = !op1; // op2 is ignored
-                        self.vm.write_variable(store_var, result)?;
-                    }
-                } else {
-                    return Err("2OP:0x1C (not) is only valid in v1-v3".to_string());
-                }
-                Ok(ExecutionResult::Continue)
             }
             0x1F => {
                 // Undocumented 2OP:0x1F instruction
