@@ -568,11 +568,6 @@ impl Interpreter {
             return self.execute_stack_op(inst, &operands);
         }
 
-        // Check if this is a math operation and handle it in the dedicated module
-        if Interpreter::is_math_opcode(inst.opcode, &inst.operand_count) {
-            return self.execute_math_op(inst, &operands);
-        }
-
         // Debug problematic variables
         if let Some(store_var) = inst.store_var {
             if (0x01..=0x0F).contains(&store_var) {
@@ -616,14 +611,26 @@ impl Interpreter {
         match inst.form {
             crate::instruction::InstructionForm::Short => match inst.operand_count {
                 crate::instruction::OperandCount::OP0 => self.execute_0op(inst),
-                crate::instruction::OperandCount::OP1 => self.execute_1op(inst, operands[0]),
+                crate::instruction::OperandCount::OP1 => {
+                    // Check if this is a math operation and route to math module
+                    if Interpreter::is_math_opcode(inst.opcode, &inst.operand_count) {
+                        self.execute_math_op(inst, &[operands[0]])
+                    } else {
+                        self.execute_1op(inst, operands[0])
+                    }
+                }
                 _ => Err(format!(
                     "Invalid operand count for short form: {:?}",
                     inst.operand_count
                 )),
             },
             crate::instruction::InstructionForm::Long => {
-                self.execute_2op(inst, operands[0], operands[1])
+                // Check if this is a math operation and route to math module
+                if Interpreter::is_math_opcode(inst.opcode, &inst.operand_count) {
+                    self.execute_math_op(inst, &[operands[0], operands[1]])
+                } else {
+                    self.execute_2op(inst, operands[0], operands[1])
+                }
             }
             crate::instruction::InstructionForm::Variable => {
                 match inst.operand_count {
@@ -640,7 +647,12 @@ impl Interpreter {
                         //
                         // From the spec: "je a b c d ?(label)" - Jump if a equals any of b, c, or d
 
-                        self.execute_2op_variable(inst, &operands)
+                        // Check if this is a math operation and route to math module
+                        if Interpreter::is_math_opcode(inst.opcode, &inst.operand_count) {
+                            self.execute_math_op(inst, &operands)
+                        } else {
+                            self.execute_2op_variable(inst, &operands)
+                        }
                     }
                     _ => self.execute_var(inst, &operands),
                 }
