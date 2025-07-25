@@ -23,6 +23,7 @@ pub mod instruction;
 pub mod interpreter;
 pub mod opcode_tables;
 pub mod opcodes_math;
+pub mod opcodes_memory;
 pub mod opcodes_stack;
 pub mod property_defaults;
 pub mod quetzal;

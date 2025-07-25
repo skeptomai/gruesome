@@ -568,6 +568,7 @@ impl Interpreter {
             return self.execute_stack_op(inst, &operands);
         }
 
+
         // Debug problematic variables
         if let Some(store_var) = inst.store_var {
             if (0x01..=0x0F).contains(&store_var) {
@@ -615,6 +616,9 @@ impl Interpreter {
                     // Check if this is a math operation and route to math module
                     if Interpreter::is_math_opcode(inst.opcode, &inst.operand_count) {
                         self.execute_math_op(inst, &[operands[0]])
+                    // Check if this is a memory operation and route to memory module
+                    } else if Interpreter::is_memory_opcode(inst.opcode, &inst.operand_count) {
+                        self.execute_memory_op(inst, &[operands[0]])
                     } else {
                         self.execute_1op(inst, operands[0])
                     }
@@ -628,6 +632,9 @@ impl Interpreter {
                 // Check if this is a math operation and route to math module
                 if Interpreter::is_math_opcode(inst.opcode, &inst.operand_count) {
                     self.execute_math_op(inst, &[operands[0], operands[1]])
+                // Check if this is a memory operation and route to memory module
+                } else if Interpreter::is_memory_opcode(inst.opcode, &inst.operand_count) {
+                    self.execute_memory_op(inst, &[operands[0], operands[1]])
                 } else {
                     self.execute_2op(inst, operands[0], operands[1])
                 }
@@ -650,11 +657,21 @@ impl Interpreter {
                         // Check if this is a math operation and route to math module
                         if Interpreter::is_math_opcode(inst.opcode, &inst.operand_count) {
                             self.execute_math_op(inst, &operands)
+                        // Check if this is a memory operation and route to memory module
+                        } else if Interpreter::is_memory_opcode(inst.opcode, &inst.operand_count) {
+                            self.execute_memory_op(inst, &operands)
                         } else {
                             self.execute_2op_variable(inst, &operands)
                         }
                     }
-                    _ => self.execute_var(inst, &operands),
+                    _ => {
+                        // Check if this is a memory operation and route to memory module
+                        if Interpreter::is_memory_opcode(inst.opcode, &inst.operand_count) {
+                            self.execute_memory_op(inst, &operands)
+                        } else {
+                            self.execute_var(inst, &operands)
+                        }
+                    }
                 }
             }
             crate::instruction::InstructionForm::Extended => self.execute_ext(inst, &operands),
@@ -970,15 +987,6 @@ impl Interpreter {
                 }
                 Ok(ExecutionResult::Continue)
             }
-            0x0E => {
-                // load - operand can be any type, value specifies which variable to load
-                let var_num = operand as u8;
-                let value = self.vm.read_variable(var_num)?;
-                if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, value)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
             0x01 => {
                 // get_sibling
                 let sibling = self.vm.get_sibling(operand)?;
@@ -1253,33 +1261,6 @@ impl Interpreter {
                 self.vm.set_attribute(obj_num, attr_num, false)?;
                 Ok(ExecutionResult::Continue)
             }
-            0x0D => {
-                // store
-                // Use raw operand for variable number (destination)
-                let var_num = inst.operands[0] as u8;
-                let current_pc = self.vm.pc - inst.size as u32;
-
-                if var_num == 0x10 {
-                    debug!(
-                        "Setting location (global 0) to object {} at PC {:05x}",
-                        op2, current_pc
-                    );
-                    if op2 == 180 {
-                        debug!("  -> This is West of House!");
-                    }
-                }
-
-                // Special debugging for LIT variable
-                if var_num == 0x52 {
-                    debug!(
-                        "STORE instruction at PC {:05x}: setting global 0x{:02x} (LIT) to {}",
-                        current_pc, var_num, op2
-                    );
-                }
-
-                self.vm.write_variable(var_num, op2)?;
-                Ok(ExecutionResult::Continue)
-            }
             0x0E => {
                 // insert_obj
                 debug!(
@@ -1289,46 +1270,6 @@ impl Interpreter {
                     self.vm.pc - inst.size as u32
                 );
                 self.vm.insert_object(op1, op2)?;
-                Ok(ExecutionResult::Continue)
-            }
-            0x0F => {
-                // loadw
-                let addr = op1 as u32 + (op2 as u32 * 2);
-                let value = self.vm.read_word(addr);
-                if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, value)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x10 => {
-                // loadb
-                let addr = op1 as u32 + op2 as u32;
-                let value = self.vm.read_byte(addr) as u16;
-
-                // Debug the leaves issue
-                let pc = self.vm.pc - inst.size as u32;
-                if pc == 0x6345 || pc == 0x6349 {
-                    info!(
-                        "loadb at 0x{:04x}: base=0x{:04x}, offset={}, addr=0x{:04x}, value={}",
-                        pc, op1, op2, addr, value
-                    );
-                    // Also show what V01 points to
-                    if op1 == 1 {
-                        // If using V01
-                        if let Ok(v01) = self.vm.read_variable(1) {
-                            info!("  V01 = 0x{:04x}", v01);
-                            // Show parse buffer entry
-                            for i in 0..4 {
-                                let byte = self.vm.read_byte(v01 as u32 + i);
-                                info!("    V01+{} = 0x{:02x}", i, byte);
-                            }
-                        }
-                    }
-                }
-
-                if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, value)?;
-                }
                 Ok(ExecutionResult::Continue)
             }
             0x11 => {
@@ -1507,35 +1448,6 @@ impl Interpreter {
         operands: &[u16],
     ) -> Result<ExecutionResult, String> {
         match inst.opcode {
-            0x01 => {
-                // storew
-                if operands.len() < 3 {
-                    // For Variable form with OP2, this might be 2OP:21 (storew) not VAR:01
-                    if inst.form == crate::instruction::InstructionForm::Variable
-                        && inst.operand_count == crate::instruction::OperandCount::OP2
-                    {
-                        // This is actually 2OP:21 (storew) in Variable form
-                        debug!("Note: Variable form storew with OP2 at PC {:05x} - this is 2OP:21 in Variable form", 
-                               self.vm.pc - inst.size as u32);
-                    }
-                    return Err(format!(
-                        "storew at PC {:05x} requires 3 operands, got {} (operands: {:?}) - instruction form: {:?}, opcode: {:02x}, operand_count: {:?}",
-                        self.vm.pc - inst.size as u32, operands.len(), operands, inst.form, inst.opcode, inst.operand_count
-                    ));
-                }
-                let addr = operands[0] as u32 + (operands[1] as u32 * 2);
-                self.vm.write_word(addr, operands[2])?;
-                Ok(ExecutionResult::Continue)
-            }
-            0x02 => {
-                // storeb
-                if operands.len() < 3 {
-                    return Err("storeb requires 3 operands".to_string());
-                }
-                let addr = operands[0] as u32 + operands[1] as u32;
-                self.vm.write_byte(addr, operands[2] as u8)?;
-                Ok(ExecutionResult::Continue)
-            }
             0x03 => {
                 // put_prop
                 if operands.len() < 3 {
