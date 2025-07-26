@@ -43,9 +43,9 @@ pub struct Interpreter {
     /// PC range for single-stepping (start, end)
     pub step_range: Option<(u32, u32)>,
     /// V3 input handler (for v1-v3 games)
-    v3_input: Option<V3Input>,
+    pub(crate) v3_input: Option<V3Input>,
     /// V4+ input handler (for v4+ games)  
-    v4_input: Option<V4Input>,
+    pub(crate) v4_input: Option<V4Input>,
     /// Display manager
     pub(crate) display: Option<Box<dyn ZMachineDisplay>>,
     /// Output stream state
@@ -1244,7 +1244,7 @@ impl Interpreter {
                     Some(move || -> Result<bool, String> {
                         unsafe {
                             debug!("Timer callback triggered for routine 0x{:04x}", routine);
-                            (*interp_ptr).call_timer_routine(routine)
+                            (*interp_ptr).call_timer_routine(routine).map(|result| result != 0)
                         }
                     })
                 } else {
@@ -1445,7 +1445,7 @@ impl Interpreter {
                             if operands.len() >= 2 {
                                 let table_addr = operands[1];
                                 debug!("output_stream: enabling stream 3, table at 0x{:04x}", table_addr);
-                                self.enable_stream3(table_addr)?;
+                                self.enable_stream3(table_addr as u32)?;
                             } else {
                                 debug!("output_stream: stream 3 requested but no table address provided");
                             }
@@ -1519,7 +1519,7 @@ impl Interpreter {
                     Some(move || -> Result<bool, String> {
                         unsafe {
                             debug!("read_char timer callback for routine 0x{:04x}", routine);
-                            (*interp_ptr).call_timer_routine(routine)
+                            (*interp_ptr).call_timer_routine(routine).map(|result| result != 0)
                         }
                     })
                 } else {
@@ -1770,7 +1770,7 @@ impl Interpreter {
 
     /// Handle routine calls
     /// Call a timer routine and execute it to completion
-    fn call_timer_routine(&mut self, routine_addr: u16) -> Result<bool, String> {
+    pub(crate) fn call_timer_routine(&mut self, routine_addr: u16) -> Result<u16, String> {
         debug!("Calling timer routine at 0x{:04x}", routine_addr);
 
         // Save current PC and call depth
@@ -1832,7 +1832,7 @@ impl Interpreter {
         self.vm.pc = saved_pc;
 
         // Return true if routine wants to terminate input
-        Ok(return_value != 0)
+        Ok(return_value)
     }
 
     pub(crate) fn do_call(
@@ -2007,7 +2007,7 @@ impl Interpreter {
     }
     
     /// Enable output stream 3 (text redirection to table)
-    fn enable_stream3(&mut self, table_addr: u16) -> Result<(), String> {
+    pub(crate) fn enable_stream3(&mut self, table_addr: u32) -> Result<(), String> {
         debug!("enable_stream3: redirecting to table at 0x{:04x}", table_addr);
         
         // Push current state onto stack (for nested redirection)
@@ -2016,16 +2016,16 @@ impl Interpreter {
         }
         
         // Set new table
-        self.output_streams.current_stream3_table = Some(table_addr);
+        self.output_streams.current_stream3_table = Some(table_addr as u16);
         
         // Initialize table with 0 characters written
-        self.vm.write_word(table_addr as u32, 0)?;
+        self.vm.write_word(table_addr, 0)?;
         
         Ok(())
     }
     
     /// Disable output stream 3 (stop text redirection)
-    fn disable_stream3(&mut self) -> Result<(), String> {
+    pub(crate) fn disable_stream3(&mut self) -> Result<(), String> {
         debug!("disable_stream3: stopping text redirection");
         
         if self.output_streams.current_stream3_table.is_some() {

@@ -23,6 +23,7 @@ pub mod instruction;
 pub mod interpreter;
 pub mod opcode_tables;
 pub mod opcodes_display;
+pub mod opcodes_io;
 pub mod opcodes_math;
 pub mod opcodes_memory;
 pub mod opcodes_object;
