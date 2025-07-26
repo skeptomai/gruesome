@@ -1,12 +1,21 @@
 //! Tests for V4+ display implementation
 
 use gruesome::display_trait::ZMachineDisplay;
-use gruesome::display_ratatui::RatatuiDisplay;
+use gruesome::display_manager::{create_display, DisplayMode};
+
+fn create_test_display() -> Box<dyn ZMachineDisplay> {
+    // Use headless mode for CI environments, ratatui for interactive
+    if std::env::var("CI").is_ok() || std::env::var("TERM").is_err() {
+        create_display(4, DisplayMode::Headless).unwrap()
+    } else {
+        create_display(4, DisplayMode::Auto).unwrap()
+    }
+}
 
 #[test]
 fn test_v4_deferred_refresh() {
     // V4 key behavior: upper window buffers content until window switch
-    let mut display = RatatuiDisplay::new().unwrap();
+    let mut display = create_test_display();
     
     // Create multi-line upper window
     display.split_window(3).unwrap();
@@ -28,7 +37,7 @@ fn test_v4_deferred_refresh() {
 
 #[test]
 fn test_v4_cursor_positioning() {
-    let mut display = RatatuiDisplay::new().unwrap();
+    let mut display = create_test_display();
     
     display.split_window(5).unwrap();
     display.set_window(1).unwrap();
@@ -44,7 +53,7 @@ fn test_v4_cursor_positioning() {
 
 #[test]
 fn test_v4_window_buffering() {
-    let mut display = RatatuiDisplay::new().unwrap();
+    let mut display = create_test_display();
     
     display.split_window(2).unwrap();
     
@@ -62,7 +71,7 @@ fn test_v4_window_buffering() {
 
 #[test]
 fn test_v4_specific_operations() {
-    let mut display = RatatuiDisplay::new().unwrap();
+    let mut display = create_test_display();
     
     // V4+ operations should work
     display.erase_line().unwrap();
@@ -78,7 +87,7 @@ fn test_v4_specific_operations() {
 
 #[test]
 fn test_v4_ignores_show_status() {
-    let mut display = RatatuiDisplay::new().unwrap();
+    let mut display = create_test_display();
     
     // V4 games don't use show_status - should be ignored
     display.show_status("Location", 100, 50).unwrap();
