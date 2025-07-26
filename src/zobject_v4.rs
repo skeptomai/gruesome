@@ -383,24 +383,14 @@ impl ObjectSystemV4 for VM {
             if current_prop_num == prop_num as u8 {
                 // Found current property, move to next
                 let prop_size = if (size_byte & 0x80) != 0 {
-                    // Two-byte format
+                    // Two-byte format - both branches use the same logic
                     let second_byte = self.game.memory[prop_addr + 1];
-                    let size = if (size_byte & 0x40) != 0 {
-                        let size = second_byte & 0x3F;
-                        if size == 0 {
-                            64
-                        } else {
-                            size as usize
-                        }
+                    let size = second_byte & 0x3F;
+                    if size == 0 {
+                        64
                     } else {
-                        let size = second_byte & 0x3F;
-                        if size == 0 {
-                            64
-                        } else {
-                            size as usize
-                        }
-                    };
-                    size
+                        size as usize
+                    }
                 } else {
                     // One-byte format
                     if (size_byte & 0x40) != 0 {

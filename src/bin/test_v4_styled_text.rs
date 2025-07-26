@@ -1,5 +1,4 @@
 use gruesome::display_manager::create_display;
-use gruesome::display_trait::ZMachineDisplay;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a v4 display

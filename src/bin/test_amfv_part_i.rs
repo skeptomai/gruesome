@@ -1,5 +1,4 @@
 use gruesome::display_manager::{create_display, DisplayMode};
-use gruesome::display_trait::ZMachineDisplay;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_default_env()

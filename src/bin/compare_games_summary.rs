@@ -5,8 +5,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Trinity vs AMFV Comparison Summary ===\n");
 
     // Read both headers
-    let trinity_header = read_header("./resources/test/trinity/trinity-r15-s870628.z4")?;
-    let amfv_header = read_header("./resources/test/amfv/amfv-r79-s851122.z4")?;
+    let _trinity_header = read_header("./resources/test/trinity/trinity-r15-s870628.z4")?;
+    let _amfv_header = read_header("./resources/test/amfv/amfv-r79-s851122.z4")?;
 
     println!("Key Differences Found:");
     println!("1. Dictionary word separators:");
@@ -66,8 +66,8 @@ fn analyze_text_encoding_differences() -> Result<(), Box<dyn std::error::Error>>
     let amfv_alpha = get_word(&amfv_data, 0x34);
 
     println!("Alphabet table addresses:");
-    println!("  Trinity: 0x{:04x}", trinity_alpha);
-    println!("  AMFV:    0x{:04x}", amfv_alpha);
+    println!("  Trinity: 0x{trinity_alpha:04x}");
+    println!("  AMFV:    0x{amfv_alpha:04x}");
 
     if trinity_alpha == 0 && amfv_alpha == 0 {
         println!("  -> Both use standard v4 alphabet (A0=a-z, A1=A-Z, A2=symbols)");
@@ -79,8 +79,8 @@ fn analyze_text_encoding_differences() -> Result<(), Box<dyn std::error::Error>>
     let amfv_abbrev = get_word(&amfv_data, 0x18);
 
     println!("Abbreviation analysis:");
-    println!("  Trinity abbrev table: 0x{:04x}", trinity_abbrev);
-    println!("  AMFV abbrev table:    0x{:04x}", amfv_abbrev);
+    println!("  Trinity abbrev table: 0x{trinity_abbrev:04x}");
+    println!("  AMFV abbrev table:    0x{amfv_abbrev:04x}");
 
     // Look at first few abbreviation entries
     if trinity_abbrev as usize + 10 < trinity_data.len() {

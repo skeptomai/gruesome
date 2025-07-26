@@ -1,5 +1,5 @@
 use gruesome::display_manager::{create_display, DisplayMode};
-use std::io::{self, Write};
+use std::io::{self};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_default_env()

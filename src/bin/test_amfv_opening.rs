@@ -1,5 +1,5 @@
 use gruesome::display_manager::{create_display, DisplayMode};
-use std::io::{self, Write};
+use std::io::{self};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_default_env()
@@ -33,7 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     display.erase_window(0)?;
 
     // Step 7: Print quote
-    display.print("\n\n\n\n\n\n\n\n\n\n"); // Move down
+    let _ = display.print("\n\n\n\n\n\n\n\n\n\n"); // Move down
     display.print("      \"Tomorrow never yet\n")?;
     display.print("      On any human being rose or set.\"\n")?;
     display.print("                           -- William Marsden\n")?;

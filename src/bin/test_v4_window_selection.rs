@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 6. Print quote to lower window
     println!("\nStep 6: Print quote to lower window");
-    display.print("\n\n\n\n\n"); // Move down a bit
+    let _ = display.print("\n\n\n\n\n"); // Move down a bit
     display.print("\"Tomorrow never yet\n")?;
     display.print("On any human being rose or set.\"\n")?;
     display.print("-- William Marsden\n")?;

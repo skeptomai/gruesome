@@ -1,5 +1,5 @@
 use gruesome::display_manager::{create_display, DisplayMode};
-use std::io::{self, Write};
+use std::io::{self};
 use std::thread;
 use std::time::Duration;
 

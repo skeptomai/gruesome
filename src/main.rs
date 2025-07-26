@@ -82,6 +82,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Return the result (will exit with error code if there was an error)
     result.map_err(|e| {
-        Box::new(std::io::Error::new(std::io::ErrorKind::Other, e)) as Box<dyn std::error::Error>
+        Box::new(std::io::Error::other(e)) as Box<dyn std::error::Error>
     })
 }

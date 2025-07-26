@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let search_bytes = b"Time:";
     for (i, window) in all_bytes.windows(search_bytes.len()).enumerate() {
         if window == search_bytes {
-            println!("Found 'Time:' at offset 0x{:04x}", i);
+            println!("Found 'Time:' at offset 0x{i:04x}");
         }
     }
 
@@ -42,8 +42,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         game.header.initial_pc as u32,
         game.header.initial_pc as u32 + 0x100,
     ) {
-        Ok(output) => println!("\n{}", output),
-        Err(e) => println!("Error: {}", e),
+        Ok(output) => println!("\n{output}"),
+        Err(e) => println!("Error: {e}"),
     }
 
     Ok(())
