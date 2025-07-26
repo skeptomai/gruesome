@@ -1,5 +1,5 @@
 /// Display and text output operations for Z-Machine interpreter
-/// 
+///
 /// This module handles all display-related operations including:
 /// - Text output operations (print, print_ret, print_char, print_num, print_addr, print_paddr)
 /// - Window management (split_window, set_window, erase_window, erase_line)
@@ -7,10 +7,9 @@
 /// - Text styling (set_text_style)
 /// - Output control (new_line, show_status, buffer_mode)
 /// - Audio/UI feedback (sound_effect)
-/// 
+///
 /// These operations form the user interface layer of Z-Machine games,
 /// controlling how text appears on screen and managing the display system.
-
 use crate::instruction::Instruction;
 use crate::interpreter::{ExecutionResult, Interpreter};
 use log::debug;
@@ -18,10 +17,14 @@ use std::io::{self, Write};
 
 impl Interpreter {
     /// Handle display and text output opcodes
-    pub fn execute_display_op(&mut self, inst: &Instruction, operands: &[u16]) -> Result<ExecutionResult, String> {
+    pub fn execute_display_op(
+        &mut self,
+        inst: &Instruction,
+        operands: &[u16],
+    ) -> Result<ExecutionResult, String> {
         match (inst.opcode, &inst.operand_count) {
             // ---- 0OP DISPLAY OPERATIONS ----
-            
+
             // 0OP:0x02 - print (literal string)
             (0x02, crate::instruction::OperandCount::OP0) => {
                 if let Some(ref text) = inst.text {
@@ -73,15 +76,15 @@ impl Interpreter {
                     // Get location name from G16 (player's location in v3)
                     let location_obj = self.vm.read_global(16)?; // G16 contains player location in v3
                     let location_name = if location_obj > 0 {
-                        self.vm.get_object_name(location_obj).unwrap_or_else(|_| {
-                            format!("Location {}", location_obj)
-                        })
+                        self.vm
+                            .get_object_name(location_obj)
+                            .unwrap_or_else(|_| format!("Location {}", location_obj))
                     } else {
                         "Unknown".to_string()
                     };
 
                     let score = self.vm.read_global(17)? as i16; // G17 = score
-                    let moves = self.vm.read_global(18)?;        // G18 = moves
+                    let moves = self.vm.read_global(18)?; // G18 = moves
 
                     if let Some(ref mut display) = self.display {
                         display.show_status(&location_name, score, moves)?;
@@ -93,7 +96,7 @@ impl Interpreter {
             }
 
             // ---- 1OP DISPLAY OPERATIONS ----
-            
+
             // 1OP:0x0D - print_paddr
             (0x0D, crate::instruction::OperandCount::OP1) => {
                 // Print string at packed address
@@ -180,10 +183,7 @@ impl Interpreter {
                     if operands[0] > 127 || operands[0] == 63 {
                         debug!(
                             "print_char: value={} (0x{:02x}) char='{}' at PC {:05x}",
-                            operands[0],
-                            operands[0],
-                            ch,
-                            pc
+                            operands[0], operands[0], ch, pc
                         );
                     }
 
@@ -321,7 +321,7 @@ impl Interpreter {
                 if !operands.is_empty() {
                     let style = operands[0];
                     debug!("set_text_style: style={}", style);
-                    
+
                     // Use the display system's text style handling
                     if let Some(ref mut display) = self.display {
                         display.set_text_style(style).ok();
@@ -359,7 +359,7 @@ impl Interpreter {
                 if !operands.is_empty() {
                     let mode = operands[0];
                     debug!("buffer_mode: {}", if mode == 0 { "off" } else { "on" });
-                    
+
                     if let Some(ref mut display) = self.display {
                         display.set_buffer_mode(mode != 0)?;
                     } else {
@@ -372,8 +372,10 @@ impl Interpreter {
                 Ok(ExecutionResult::Continue)
             }
 
-            _ => Err(format!("Unhandled display opcode: {:02x} with operand count {:?}", 
-                           inst.opcode, inst.operand_count))
+            _ => Err(format!(
+                "Unhandled display opcode: {:02x} with operand count {:?}",
+                inst.opcode, inst.operand_count
+            )),
         }
     }
 
@@ -400,7 +402,7 @@ impl Interpreter {
             (0x0F, crate::instruction::OperandCount::VAR) |  // set_cursor
             (0x11, crate::instruction::OperandCount::VAR) |  // set_text_style
             (0x12, crate::instruction::OperandCount::VAR) |  // buffer_mode
-            (0x15, crate::instruction::OperandCount::VAR)    // sound_effect
+            (0x15, crate::instruction::OperandCount::VAR) // sound_effect
         )
     }
 }

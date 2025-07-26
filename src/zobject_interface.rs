@@ -1,8 +1,7 @@
 /// Unified Z-Machine Object System Interface
-/// 
+///
 /// This module provides a version-agnostic interface that dispatches
 /// to the appropriate v3 or v4+ object system implementation.
-
 use crate::vm::VM;
 use crate::zobject_v3::ObjectSystemV3;
 use crate::zobject_v4::ObjectSystemV4;
@@ -18,7 +17,12 @@ pub trait ZObjectSystem {
     fn set_object_attribute(&mut self, obj_num: u16, attr_num: u16) -> Result<(), String>;
     fn clear_object_attribute(&mut self, obj_num: u16, attr_num: u16) -> Result<(), String>;
     fn get_object_property(&self, obj_num: u16, prop_num: u16) -> Result<u16, String>;
-    fn set_object_property(&mut self, obj_num: u16, prop_num: u16, value: u16) -> Result<(), String>;
+    fn set_object_property(
+        &mut self,
+        obj_num: u16,
+        prop_num: u16,
+        value: u16,
+    ) -> Result<(), String>;
     fn get_object_property_addr(&self, obj_num: u16, prop_num: u16) -> Result<u16, String>;
     fn get_next_object_property(&self, obj_num: u16, prop_num: u16) -> Result<u16, String>;
 }
@@ -104,7 +108,12 @@ impl ZObjectSystem for VM {
         }
     }
 
-    fn set_object_property(&mut self, obj_num: u16, prop_num: u16, value: u16) -> Result<(), String> {
+    fn set_object_property(
+        &mut self,
+        obj_num: u16,
+        prop_num: u16,
+        value: u16,
+    ) -> Result<(), String> {
         if self.game.header.version <= 3 {
             self.set_object_property_v3(obj_num, prop_num, value)
         } else {

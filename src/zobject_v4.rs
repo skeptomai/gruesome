@@ -1,12 +1,11 @@
 /// Z-Machine Object System for Version 4+
-/// 
+///
 /// V4+ Object Format:
 /// - Maximum 65535 objects
 /// - 48 attributes (0-47)  
 /// - 63 default properties
 /// - 14-byte object entries
 /// - Property numbers 1-63
-
 use crate::vm::VM;
 use log::debug;
 
@@ -27,7 +26,12 @@ pub trait ObjectSystemV4 {
     fn set_object_attribute_v4(&mut self, obj_num: u16, attr_num: u16) -> Result<(), String>;
     fn clear_object_attribute_v4(&mut self, obj_num: u16, attr_num: u16) -> Result<(), String>;
     fn get_object_property_v4(&self, obj_num: u16, prop_num: u16) -> Result<u16, String>;
-    fn set_object_property_v4(&mut self, obj_num: u16, prop_num: u16, value: u16) -> Result<(), String>;
+    fn set_object_property_v4(
+        &mut self,
+        obj_num: u16,
+        prop_num: u16,
+        value: u16,
+    ) -> Result<(), String>;
     fn get_object_property_addr_v4(&self, obj_num: u16, prop_num: u16) -> Result<u16, String>;
     fn get_next_object_property_v4(&self, obj_num: u16, prop_num: u16) -> Result<u16, String>;
 }
@@ -35,13 +39,15 @@ pub trait ObjectSystemV4 {
 impl ObjectSystemV4 for VM {
     fn get_object_addr_v4(&self, obj_num: u16) -> Result<usize, String> {
         if obj_num == 0 || obj_num > MAX_OBJECTS_V4 {
-            return Err(format!("Invalid v4+ object number: {obj_num} (max: {MAX_OBJECTS_V4})"));
+            return Err(format!(
+                "Invalid v4+ object number: {obj_num} (max: {MAX_OBJECTS_V4})"
+            ));
         }
-        
+
         let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
         let obj_tree_base = property_defaults + MAX_PROPERTIES_V4 as usize * 2;
-        
+
         Ok(obj_tree_base + ((obj_num - 1) as usize * OBJECT_ENTRY_SIZE_V4))
     }
 
@@ -83,12 +89,12 @@ impl ObjectSystemV4 for VM {
             debug!("Warning: Attribute {attr_num} out of range for v4+ (max: {MAX_ATTRIBUTES_V4})");
             return Ok(false);
         }
-        
+
         let obj_addr = self.get_object_addr_v4(obj_num)?;
         let byte_offset = attr_num / 8;
         let bit_offset = 7 - (attr_num % 8);
         let attr_byte = self.game.memory[obj_addr + byte_offset as usize];
-        
+
         Ok((attr_byte & (1 << bit_offset)) != 0)
     }
 
@@ -97,12 +103,12 @@ impl ObjectSystemV4 for VM {
             debug!("Warning: Trying to set attribute {attr_num} out of range for v4+ (max: {MAX_ATTRIBUTES_V4})");
             return Ok(());
         }
-        
+
         let obj_addr = self.get_object_addr_v4(obj_num)?;
         let byte_offset = attr_num / 8;
         let bit_offset = 7 - (attr_num % 8);
         let byte_addr = obj_addr + byte_offset as usize;
-        
+
         self.game.memory[byte_addr] |= 1 << bit_offset;
         Ok(())
     }
@@ -112,12 +118,12 @@ impl ObjectSystemV4 for VM {
             debug!("Warning: Trying to clear attribute {attr_num} out of range for v4+ (max: {MAX_ATTRIBUTES_V4})");
             return Ok(());
         }
-        
+
         let obj_addr = self.get_object_addr_v4(obj_num)?;
         let byte_offset = attr_num / 8;
         let bit_offset = 7 - (attr_num % 8);
         let byte_addr = obj_addr + byte_offset as usize;
-        
+
         self.game.memory[byte_addr] &= !(1 << bit_offset);
         Ok(())
     }
@@ -150,11 +156,19 @@ impl ObjectSystemV4 for VM {
                 let size = if (size_byte & 0x40) != 0 {
                     // Size in second byte & 0x3F (can be 0-63, 0 means 64)
                     let size = second_byte & 0x3F;
-                    if size == 0 { 64 } else { size as usize }
+                    if size == 0 {
+                        64
+                    } else {
+                        size as usize
+                    }
                 } else {
                     // Size = second byte & 0x3F (but limited to reasonable values)
                     let size = second_byte & 0x3F;
-                    if size == 0 { 64 } else { size as usize }
+                    if size == 0 {
+                        64
+                    } else {
+                        size as usize
+                    }
                 };
                 (prop_num, size)
             } else {
@@ -171,7 +185,7 @@ impl ObjectSystemV4 for VM {
                 } else {
                     prop_addr + 1 // One-byte header
                 };
-                
+
                 return match prop_size {
                     1 => Ok(self.game.memory[data_addr] as u16),
                     2 => Ok(self.read_word(data_addr as u32)),
@@ -201,12 +215,17 @@ impl ObjectSystemV4 for VM {
         }
     }
 
-    fn set_object_property_v4(&mut self, obj_num: u16, prop_num: u16, value: u16) -> Result<(), String> {
+    fn set_object_property_v4(
+        &mut self,
+        obj_num: u16,
+        prop_num: u16,
+        value: u16,
+    ) -> Result<(), String> {
         if prop_num == 0 {
             return Err("Property number 0 is invalid".to_string());
         }
 
-        // Get property table address  
+        // Get property table address
         let obj_addr = self.get_object_addr_v4(obj_num)?;
         let prop_table_addr = self.read_word((obj_addr + 12) as u32) as usize;
 
@@ -226,13 +245,8 @@ impl ObjectSystemV4 for VM {
                 // Two-byte format
                 let prop_num = size_byte & 0x3F;
                 let second_byte = self.game.memory[prop_addr + 1];
-                let size = if (size_byte & 0x40) != 0 {
-                    let size = second_byte & 0x3F;
-                    if size == 0 { 64 } else { size as usize }
-                } else {
-                    let size = second_byte & 0x3F;
-                    if size == 0 { 64 } else { size as usize }
-                };
+                let size = second_byte & 0x3F;
+                let size = if size == 0 { 64 } else { size as usize };
                 (prop_num, size)
             } else {
                 // One-byte format
@@ -248,7 +262,7 @@ impl ObjectSystemV4 for VM {
                 } else {
                     prop_addr + 1 // One-byte header
                 };
-                
+
                 match prop_size {
                     1 => {
                         if value > 255 {
@@ -322,17 +336,16 @@ impl ObjectSystemV4 for VM {
             let prop_size = if (size_byte & 0x80) != 0 {
                 // Two-byte format
                 let second_byte = self.game.memory[prop_addr + 1];
-                let size = if (size_byte & 0x40) != 0 {
-                    let size = second_byte & 0x3F;
-                    if size == 0 { 64 } else { size as usize }
-                } else {
-                    let size = second_byte & 0x3F;
-                    if size == 0 { 64 } else { size as usize }
-                };
+                let size = second_byte & 0x3F;
+                let size = if size == 0 { 64 } else { size as usize };
                 size
             } else {
                 // One-byte format
-                if (size_byte & 0x40) != 0 { 2 } else { 1 }
+                if (size_byte & 0x40) != 0 {
+                    2
+                } else {
+                    1
+                }
             };
 
             let header_size = if (size_byte & 0x80) != 0 { 2 } else { 1 };
@@ -383,25 +396,37 @@ impl ObjectSystemV4 for VM {
                     let second_byte = self.game.memory[prop_addr + 1];
                     let size = if (size_byte & 0x40) != 0 {
                         let size = second_byte & 0x3F;
-                        if size == 0 { 64 } else { size as usize }
+                        if size == 0 {
+                            64
+                        } else {
+                            size as usize
+                        }
                     } else {
                         let size = second_byte & 0x3F;
-                        if size == 0 { 64 } else { size as usize }
+                        if size == 0 {
+                            64
+                        } else {
+                            size as usize
+                        }
                     };
                     size
                 } else {
                     // One-byte format
-                    if (size_byte & 0x40) != 0 { 2 } else { 1 }
+                    if (size_byte & 0x40) != 0 {
+                        2
+                    } else {
+                        1
+                    }
                 };
 
                 let header_size = if (size_byte & 0x80) != 0 { 2 } else { 1 };
                 prop_addr += header_size + prop_size;
-                
+
                 let next_size_byte = self.game.memory[prop_addr];
                 if next_size_byte == 0 {
                     return Ok(0); // No next property
                 }
-                
+
                 let next_prop_num = if (next_size_byte & 0x80) != 0 {
                     next_size_byte & 0x3F // Two-byte format
                 } else {
@@ -414,17 +439,19 @@ impl ObjectSystemV4 for VM {
             let prop_size = if (size_byte & 0x80) != 0 {
                 // Two-byte format
                 let second_byte = self.game.memory[prop_addr + 1];
-                let size = if (size_byte & 0x40) != 0 {
-                    let size = second_byte & 0x3F;
-                    if size == 0 { 64 } else { size as usize }
+                let size = second_byte & 0x3F;
+                if size == 0 {
+                    64
                 } else {
-                    let size = second_byte & 0x3F;
-                    if size == 0 { 64 } else { size as usize }
-                };
-                size
+                    size as usize
+                }
             } else {
                 // One-byte format
-                if (size_byte & 0x40) != 0 { 2 } else { 1 }
+                if (size_byte & 0x40) != 0 {
+                    2
+                } else {
+                    1
+                }
             };
 
             let header_size = if (size_byte & 0x80) != 0 { 2 } else { 1 };

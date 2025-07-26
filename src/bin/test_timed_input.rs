@@ -1,12 +1,12 @@
 /// Test program for the non-blocking timed input system.
-/// 
+///
 /// This test validates the core input handling that enables Z-Machine timer
 /// interrupts during SREAD operations. The timed input system is essential for:
 /// - Lantern countdown timers in Zork I
-/// - Match and candle timers 
+/// - Match and candle timers
 /// - Real-time game mechanics in Border Zone and other v4+ games
 /// - Proper input echo behavior per Z-Machine specification
-/// 
+///
 /// Tests both basic input and timed input with callbacks to ensure the
 /// system works correctly across different terminal environments.
 use gruesome::timed_input::TimedInput;

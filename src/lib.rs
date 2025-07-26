@@ -36,9 +36,9 @@ pub mod timed_input;
 pub mod util;
 pub mod vm;
 pub mod zobject;
+pub mod zobject_interface;
 pub mod zobject_v3;
 pub mod zobject_v4;
-pub mod zobject_interface;
 pub mod zrand;
 
 #[cfg(test)]

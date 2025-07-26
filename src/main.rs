@@ -65,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Initial PC: {:04x}", interpreter.vm.game.header.initial_pc);
     debug!("Starting game...\n");
 
-    // Run the interpreter with a limit to avoid crashes  
+    // Run the interpreter with a limit to avoid crashes
     let result = match interpreter.run_with_limit(Some(1000000)) {
         Ok(()) => {
             debug!("\nGame ended normally.");
@@ -76,10 +76,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Err(e)
         }
     };
-    
+
     // Always clean up terminal state before exit
     interpreter.cleanup();
-    
+
     // Return the result (will exit with error code if there was an error)
-    result.map_err(|e| Box::new(std::io::Error::new(std::io::ErrorKind::Other, e)) as Box<dyn std::error::Error>)
+    result.map_err(|e| {
+        Box::new(std::io::Error::new(std::io::ErrorKind::Other, e)) as Box<dyn std::error::Error>
+    })
 }

@@ -140,7 +140,7 @@ impl Instruction {
         let form = match opcode_byte >> 6 {
             0b11 => InstructionForm::Variable,
             0b10 => InstructionForm::Short,
-            0b01 => InstructionForm::Long,   // REVERT: 01 is Long form, not Short
+            0b01 => InstructionForm::Long, // REVERT: 01 is Long form, not Short
             0b00 => {
                 // Check for extended form (0xBE in V5+)
                 if opcode_byte == 0xBE && version >= 5 {
@@ -372,15 +372,30 @@ impl Instruction {
             debug!("  Start addr: 0x{:05x}", addr);
             debug!("  Final offset: 0x{:05x}", offset);
             debug!("  Calculated size: {} bytes", size);
-            debug!("  Opcode: 0x{:02x} ({})", opcode_byte, if opcode_byte == 0x4f { "LOADW" } else { "OTHER" });
+            debug!(
+                "  Opcode: 0x{:02x} ({})",
+                opcode_byte,
+                if opcode_byte == 0x4f {
+                    "LOADW"
+                } else {
+                    "OTHER"
+                }
+            );
             debug!("  Form: {:?}", form);
             debug!("  Operand count: {:?}", operand_count);
             debug!("  Operand types: {:?}", operand_types);
             debug!("  Store var: {:?}", store_var);
             debug!("  Branch: {:?}", branch);
             debug!("  Text: {}", if text.is_some() { "YES" } else { "NO" });
-            debug!("  Expected next PC should be: 0x{:05x} (125c7 + 4)", addr + 4);
-            debug!("  But interpreter will use: 0x{:05x} (125c7 + {})", addr + size, size);
+            debug!(
+                "  Expected next PC should be: 0x{:05x} (125c7 + 4)",
+                addr + 4
+            );
+            debug!(
+                "  But interpreter will use: 0x{:05x} (125c7 + {})",
+                addr + size,
+                size
+            );
         }
 
         // Truncate operand_types to match the actual operands read

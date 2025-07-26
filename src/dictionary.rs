@@ -23,7 +23,7 @@ fn tokenize_with_separators(input: &str, separators: &[char]) -> Vec<(String, us
     let mut current_word = String::new();
     let mut word_start_pos = 0;
     let mut pos = 0;
-    
+
     for ch in input.chars() {
         if ch.is_whitespace() {
             // Finish current word if any
@@ -51,12 +51,12 @@ fn tokenize_with_separators(input: &str, separators: &[char]) -> Vec<(String, us
             pos += 1;
         }
     }
-    
+
     // Add final word if any
     if !current_word.is_empty() {
         tokens.push((current_word, word_start_pos));
     }
-    
+
     tokens
 }
 
@@ -141,12 +141,17 @@ impl VM {
         let entry_length = self.read_byte(entry_start);
         let entry_count = self.read_word(entry_start + 1);
 
-        debug!("V3 dictionary lookup for '{}': {} entries, length {} bytes", 
-               word, entry_count, entry_length);
+        debug!(
+            "V3 dictionary lookup for '{}': {} entries, length {} bytes",
+            word, entry_count, entry_length
+        );
 
         // Encode the search word (v3: 6 Z-characters in 2 words)
         let (search_word1, search_word2) = encode_word_v3(word);
-        debug!("V3 encoded '{}' as: {:04x} {:04x}", word, search_word1, search_word2);
+        debug!(
+            "V3 encoded '{}' as: {:04x} {:04x}",
+            word, search_word1, search_word2
+        );
 
         // Dictionary entries start here
         let entries_addr = entry_start + 3;
@@ -164,9 +169,13 @@ impl VM {
             let dict_word2 = self.read_word(addr + 2);
 
             // Compare as 32-bit values
-            if search_word1 < dict_word1 || (search_word1 == dict_word1 && search_word2 < dict_word2) {
+            if search_word1 < dict_word1
+                || (search_word1 == dict_word1 && search_word2 < dict_word2)
+            {
                 high = mid - 1;
-            } else if search_word1 > dict_word1 || (search_word1 == dict_word1 && search_word2 > dict_word2) {
+            } else if search_word1 > dict_word1
+                || (search_word1 == dict_word1 && search_word2 > dict_word2)
+            {
                 low = mid + 1;
             } else {
                 // Found!
@@ -207,13 +216,17 @@ impl VM {
         let entry_length = self.read_byte(entry_start);
         let entry_count = self.read_word(entry_start + 1);
 
-        debug!("V4+ dictionary lookup for '{}': {} entries, length {} bytes", 
-               word, entry_count, entry_length);
+        debug!(
+            "V4+ dictionary lookup for '{}': {} entries, length {} bytes",
+            word, entry_count, entry_length
+        );
 
         // Encode the search word (v4+: 9 Z-characters in 3 words)
         let (search_word1, search_word2, search_word3) = encode_word_v4_plus(word);
-        debug!("V4+ encoded '{}' as: {:04x} {:04x} {:04x}", 
-               word, search_word1, search_word2, search_word3);
+        debug!(
+            "V4+ encoded '{}' as: {:04x} {:04x} {:04x}",
+            word, search_word1, search_word2, search_word3
+        );
 
         // Dictionary entries start here
         let entries_addr = entry_start + 3;
@@ -329,9 +342,9 @@ impl VM {
             }
 
             self.write_byte(entry_offset + 2, word.len() as u8)?; // Word length
-            // The position is the byte offset in the text buffer where the word starts
-            // position is 0-based in the text string
-            // The text starts at buffer+2, so buffer offset = position + 2
+                                                                  // The position is the byte offset in the text buffer where the word starts
+                                                                  // position is 0-based in the text string
+                                                                  // The text starts at buffer+2, so buffer offset = position + 2
             self.write_byte(entry_offset + 3, (position + 2) as u8)?; // Byte offset in buffer
         }
 

@@ -3,15 +3,15 @@
 //! V4+ games like AMFV use both read_char and sread instructions.
 //! This requires careful terminal control and proper input sequencing.
 
+use crate::display_trait::ZMachineDisplay;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
-    terminal::{self, DisableLineWrap, EnableLineWrap},
     execute,
+    terminal::{self, DisableLineWrap, EnableLineWrap},
 };
 use log::debug;
 use std::io;
 use std::time::{Duration, Instant};
-use crate::display_trait::ZMachineDisplay;
 
 pub struct V4Input {
     /// Whether we're currently in raw mode
@@ -101,7 +101,7 @@ impl V4Input {
                 debug!("V4 input: got character '{}' from piped input", ch);
                 Ok((ch, false))
             }
-            Err(e) => Err(format!("Failed to read character from pipe: {e}"))
+            Err(e) => Err(format!("Failed to read character from pipe: {e}")),
         }
     }
 
@@ -125,7 +125,7 @@ impl V4Input {
                 debug!("V4 input: got line '{}' from piped input", line);
                 Ok((line, false))
             }
-            Err(e) => Err(format!("Failed to read line from pipe: {e}"))
+            Err(e) => Err(format!("Failed to read line from pipe: {e}")),
         }
     }
 
@@ -175,7 +175,8 @@ impl V4Input {
             }
 
             // Poll for events with timeout
-            let poll_timeout = timeout.map(|_| Duration::from_millis(100))
+            let poll_timeout = timeout
+                .map(|_| Duration::from_millis(100))
                 .unwrap_or(Duration::from_secs(3600));
 
             if event::poll(poll_timeout).map_err(|e| format!("Event poll error: {e}"))? {
@@ -252,7 +253,8 @@ impl V4Input {
             }
 
             // Poll for events
-            let poll_timeout = timeout.map(|_| Duration::from_millis(100))
+            let poll_timeout = timeout
+                .map(|_| Duration::from_millis(100))
                 .unwrap_or(Duration::from_secs(3600));
 
             if event::poll(poll_timeout).map_err(|e| format!("Event poll error: {e}"))? {
@@ -282,13 +284,13 @@ impl V4Input {
         // Cleanup
         self.cleanup_raw_mode();
         execute!(io::stdout(), EnableLineWrap).ok();
-        
-        // Z-Machine spec 15.4 (read): "If input was terminated in the usual way, by the player 
+
+        // Z-Machine spec 15.4 (read): "If input was terminated in the usual way, by the player
         // typing a carriage return, then a carriage return is printed (so the cursor moves to the next line)"
         if let Ok((_, false)) = &result {
             display.print("\n").ok();
         }
-        
+
         result
     }
 
@@ -305,12 +307,16 @@ impl V4Input {
             KeyCode::Esc => Ok(Some('\x1b')),
             KeyCode::Backspace => Ok(Some('\x08')),
             KeyCode::Tab => Ok(Some('\t')),
-            _ => Ok(None) // Ignore other keys for character input
+            _ => Ok(None), // Ignore other keys for character input
         }
     }
 
     /// Handle key event for line input
-    fn handle_line_key_event(&mut self, key: KeyEvent, display: &mut dyn ZMachineDisplay) -> Result<Option<String>, String> {
+    fn handle_line_key_event(
+        &mut self,
+        key: KeyEvent,
+        display: &mut dyn ZMachineDisplay,
+    ) -> Result<Option<String>, String> {
         match key.code {
             KeyCode::Enter => {
                 // Line complete
@@ -327,7 +333,7 @@ impl V4Input {
 
                 // Echo character to display immediately (Z-Machine spec 7.1.1.1: input should be echoed)
                 display.print_input_echo(&c.to_string()).ok();
-                
+
                 Ok(None)
             }
             KeyCode::Backspace => {
@@ -340,7 +346,7 @@ impl V4Input {
                 }
                 Ok(None)
             }
-            _ => Ok(None) // Ignore other keys
+            _ => Ok(None), // Ignore other keys
         }
     }
 

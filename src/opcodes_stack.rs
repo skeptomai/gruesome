@@ -1,23 +1,26 @@
 /// Stack and routine call operations for Z-Machine interpreter
-/// 
+///
 /// This module handles all stack-related opcodes including:
 /// - Stack manipulation (push, pull, pop)
 /// - Routine calls and returns (call, ret, ret_popped)
 /// - Call stack management
-/// 
+///
 /// These operations are fundamental to Z-Machine execution as they manage
 /// the call stack, local/global variable access, and routine execution flow.
-
 use crate::instruction::Instruction;
 use crate::interpreter::{ExecutionResult, Interpreter};
 use log::debug;
 
 impl Interpreter {
     /// Handle stack and call-related opcodes
-    pub fn execute_stack_op(&mut self, inst: &Instruction, operands: &[u16]) -> Result<ExecutionResult, String> {
+    pub fn execute_stack_op(
+        &mut self,
+        inst: &Instruction,
+        operands: &[u16],
+    ) -> Result<ExecutionResult, String> {
         match (inst.opcode, &inst.operand_count) {
             // ---- 0OP STACK OPERATIONS ----
-            
+
             // 0OP:0x08 - ret_popped
             (0x08, crate::instruction::OperandCount::OP0) => {
                 debug!("ret_popped");
@@ -35,14 +38,15 @@ impl Interpreter {
                     debug!("catch");
                     // catch: store call stack depth
                     if let Some(store_var) = inst.store_var {
-                        self.vm.write_variable(store_var, self.vm.call_stack.len() as u16)?;
+                        self.vm
+                            .write_variable(store_var, self.vm.call_stack.len() as u16)?;
                     }
                     Ok(ExecutionResult::Continue)
                 }
             }
 
             // ---- 1OP STACK OPERATIONS ----
-            
+
             // 1OP:0x0B - ret (return with value)
             (0x0B, crate::instruction::OperandCount::OP1) => {
                 debug!("ret {}", operands[0]);
@@ -62,7 +66,7 @@ impl Interpreter {
             (0x00, crate::instruction::OperandCount::VAR) => {
                 let packed_addr = operands[0];
                 debug!("call routine at packed address {:04x}", packed_addr);
-                
+
                 if packed_addr == 0 {
                     // Call to address 0 returns false (0)
                     if let Some(store_var) = inst.store_var {
@@ -115,8 +119,10 @@ impl Interpreter {
                 Ok(ExecutionResult::Continue)
             }
 
-            _ => Err(format!("Unhandled stack opcode: {:02x} with operand count {:?}", 
-                           inst.opcode, inst.operand_count))
+            _ => Err(format!(
+                "Unhandled stack opcode: {:02x} with operand count {:?}",
+                inst.opcode, inst.operand_count
+            )),
         }
     }
 
@@ -133,7 +139,7 @@ impl Interpreter {
             // VAR stack operations
             (0x00, crate::instruction::OperandCount::VAR) |  // call
             (0x08, crate::instruction::OperandCount::VAR) |  // push
-            (0x09, crate::instruction::OperandCount::VAR)    // pull
+            (0x09, crate::instruction::OperandCount::VAR) // pull
         )
     }
 }

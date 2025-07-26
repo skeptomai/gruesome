@@ -1,12 +1,11 @@
 /// Z-Machine Object System for Version 3
-/// 
+///
 /// V3 Object Format:
 /// - Maximum 255 objects
 /// - 32 attributes (0-31)
 /// - 31 default properties
 /// - 9-byte object entries
 /// - Property numbers 1-31
-
 use crate::vm::VM;
 use log::debug;
 
@@ -27,7 +26,12 @@ pub trait ObjectSystemV3 {
     fn set_object_attribute_v3(&mut self, obj_num: u16, attr_num: u16) -> Result<(), String>;
     fn clear_object_attribute_v3(&mut self, obj_num: u16, attr_num: u16) -> Result<(), String>;
     fn get_object_property_v3(&self, obj_num: u16, prop_num: u16) -> Result<u16, String>;
-    fn set_object_property_v3(&mut self, obj_num: u16, prop_num: u16, value: u16) -> Result<(), String>;
+    fn set_object_property_v3(
+        &mut self,
+        obj_num: u16,
+        prop_num: u16,
+        value: u16,
+    ) -> Result<(), String>;
     fn get_object_property_addr_v3(&self, obj_num: u16, prop_num: u16) -> Result<u16, String>;
     fn get_next_object_property_v3(&self, obj_num: u16, prop_num: u16) -> Result<u16, String>;
 }
@@ -35,13 +39,15 @@ pub trait ObjectSystemV3 {
 impl ObjectSystemV3 for VM {
     fn get_object_addr_v3(&self, obj_num: u16) -> Result<usize, String> {
         if obj_num == 0 || obj_num > MAX_OBJECTS_V3 {
-            return Err(format!("Invalid v3 object number: {obj_num} (max: {MAX_OBJECTS_V3})"));
+            return Err(format!(
+                "Invalid v3 object number: {obj_num} (max: {MAX_OBJECTS_V3})"
+            ));
         }
-        
+
         let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
         let obj_tree_base = property_defaults + MAX_PROPERTIES_V3 as usize * 2;
-        
+
         Ok(obj_tree_base + ((obj_num - 1) as usize * OBJECT_ENTRY_SIZE_V3))
     }
 
@@ -52,7 +58,9 @@ impl ObjectSystemV3 for VM {
 
     fn set_object_parent_v3(&mut self, obj_num: u16, parent: u16) -> Result<(), String> {
         if parent > MAX_OBJECTS_V3 {
-            return Err(format!("Parent object number too large for v3: {parent} (max: {MAX_OBJECTS_V3})"));
+            return Err(format!(
+                "Parent object number too large for v3: {parent} (max: {MAX_OBJECTS_V3})"
+            ));
         }
         let obj_addr = self.get_object_addr_v3(obj_num)?;
         self.game.memory[obj_addr + 4] = parent as u8;
@@ -66,7 +74,9 @@ impl ObjectSystemV3 for VM {
 
     fn set_object_sibling_v3(&mut self, obj_num: u16, sibling: u16) -> Result<(), String> {
         if sibling > MAX_OBJECTS_V3 {
-            return Err(format!("Sibling object number too large for v3: {sibling} (max: {MAX_OBJECTS_V3})"));
+            return Err(format!(
+                "Sibling object number too large for v3: {sibling} (max: {MAX_OBJECTS_V3})"
+            ));
         }
         let obj_addr = self.get_object_addr_v3(obj_num)?;
         self.game.memory[obj_addr + 5] = sibling as u8;
@@ -80,7 +90,9 @@ impl ObjectSystemV3 for VM {
 
     fn set_object_child_v3(&mut self, obj_num: u16, child: u16) -> Result<(), String> {
         if child > MAX_OBJECTS_V3 {
-            return Err(format!("Child object number too large for v3: {child} (max: {MAX_OBJECTS_V3})"));
+            return Err(format!(
+                "Child object number too large for v3: {child} (max: {MAX_OBJECTS_V3})"
+            ));
         }
         let obj_addr = self.get_object_addr_v3(obj_num)?;
         self.game.memory[obj_addr + 6] = child as u8;
@@ -92,12 +104,12 @@ impl ObjectSystemV3 for VM {
             debug!("Warning: Attribute {attr_num} out of range for v3 (max: {MAX_ATTRIBUTES_V3})");
             return Ok(false);
         }
-        
+
         let obj_addr = self.get_object_addr_v3(obj_num)?;
         let byte_offset = attr_num / 8;
         let bit_offset = 7 - (attr_num % 8);
         let attr_byte = self.game.memory[obj_addr + byte_offset as usize];
-        
+
         Ok((attr_byte & (1 << bit_offset)) != 0)
     }
 
@@ -106,12 +118,12 @@ impl ObjectSystemV3 for VM {
             debug!("Warning: Trying to set attribute {attr_num} out of range for v3 (max: {MAX_ATTRIBUTES_V3})");
             return Ok(());
         }
-        
+
         let obj_addr = self.get_object_addr_v3(obj_num)?;
         let byte_offset = attr_num / 8;
         let bit_offset = 7 - (attr_num % 8);
         let byte_addr = obj_addr + byte_offset as usize;
-        
+
         self.game.memory[byte_addr] |= 1 << bit_offset;
         Ok(())
     }
@@ -121,12 +133,12 @@ impl ObjectSystemV3 for VM {
             debug!("Warning: Trying to clear attribute {attr_num} out of range for v3 (max: {MAX_ATTRIBUTES_V3})");
             return Ok(());
         }
-        
+
         let obj_addr = self.get_object_addr_v3(obj_num)?;
         let byte_offset = attr_num / 8;
         let bit_offset = 7 - (attr_num % 8);
         let byte_addr = obj_addr + byte_offset as usize;
-        
+
         self.game.memory[byte_addr] &= !(1 << bit_offset);
         Ok(())
     }
@@ -182,12 +194,17 @@ impl ObjectSystemV3 for VM {
         }
     }
 
-    fn set_object_property_v3(&mut self, obj_num: u16, prop_num: u16, value: u16) -> Result<(), String> {
+    fn set_object_property_v3(
+        &mut self,
+        obj_num: u16,
+        prop_num: u16,
+        value: u16,
+    ) -> Result<(), String> {
         if prop_num == 0 {
             return Err("Property number 0 is invalid".to_string());
         }
 
-        // Get property table address  
+        // Get property table address
         let obj_addr = self.get_object_addr_v3(obj_num)?;
         let prop_table_addr = self.read_word((obj_addr + 7) as u32) as usize;
 

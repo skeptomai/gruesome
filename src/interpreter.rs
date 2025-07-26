@@ -74,7 +74,7 @@ impl Interpreter {
     pub fn new(vm: VM) -> Self {
         // Get the game version for creating appropriate display
         let version = vm.game.header.version;
-        
+
         // Determine display mode from environment or default to Auto
         let display_mode = match std::env::var("DISPLAY_MODE").as_deref() {
             Ok("ratatui") => DisplayMode::Ratatui,
@@ -82,7 +82,7 @@ impl Interpreter {
             Ok("headless") => DisplayMode::Headless,
             _ => DisplayMode::Auto,
         };
-        
+
         // Try to initialize display, but continue without it if it fails
         let display = match create_display(version, display_mode) {
             Ok(d) => Some(d),
@@ -345,14 +345,14 @@ impl Interpreter {
             let (width, height) = display.get_terminal_size();
             // Byte 0x20: Screen height in lines
             self.vm.write_byte(0x20, height as u8)?;
-            // Byte 0x21: Screen width in characters  
+            // Byte 0x21: Screen width in characters
             self.vm.write_byte(0x21, width as u8)?;
         }
 
         loop {
             // Fetch and decode instruction
             let pc = self.vm.pc;
-            
+
             // Debug: Show raw bytes at critical addresses and quote area execution flow
             if pc == 0xcc6a {
                 let bytes: Vec<u8> = self.vm.game.memory[pc as usize..pc as usize + 8].to_vec();
@@ -368,12 +368,12 @@ impl Interpreter {
             if (0x19ad8..=0x19b00).contains(&pc) {
                 debug!("*** SPACING ROUTINE: About to execute at PC {:05x}", pc);
             }
-            
+
             // Check for problematic Trinity PC range
             if (0x13fc0..=0x13ff0).contains(&pc) {
                 debug!("🚨 TRINITY EXECUTION at PC {:05x}", pc);
             }
-            
+
             let instruction = match Instruction::decode(
                 &self.vm.game.memory,
                 pc as usize,
@@ -473,22 +473,33 @@ impl Interpreter {
             // Advance PC past the instruction
             let old_pc = self.vm.pc;
             self.vm.pc += instruction.size as u32;
-            
+
             // Debug PC advancement for Trinity offset issue
             if old_pc == 0x125c7 {
-                debug!("🚨 PC ADVANCEMENT: 0x{:05x} + {} = 0x{:05x} (instruction: {})", 
-                       old_pc, instruction.size, self.vm.pc, instruction.name(self.vm.game.header.version));
+                debug!(
+                    "🚨 PC ADVANCEMENT: 0x{:05x} + {} = 0x{:05x} (instruction: {})",
+                    old_pc,
+                    instruction.size,
+                    self.vm.pc,
+                    instruction.name(self.vm.game.header.version)
+                );
             }
 
             // Add single-step disassembly for Trinity PC tracking
             if old_pc >= 0x125bf && old_pc <= 0x125e0 {
-                debug!("📍 EXECUTE: {:05x}: {} (size={}, next_pc={:05x})", 
-                       old_pc, instruction.format_with_version(self.vm.game.header.version), 
-                       instruction.size, self.vm.pc);
+                debug!(
+                    "📍 EXECUTE: {:05x}: {} (size={}, next_pc={:05x})",
+                    old_pc,
+                    instruction.format_with_version(self.vm.game.header.version),
+                    instruction.size,
+                    self.vm.pc
+                );
                 // Show raw instruction bytes
                 let end_addr = (old_pc as usize + instruction.size).min(self.vm.game.memory.len());
                 let bytes: Vec<String> = self.vm.game.memory[old_pc as usize..end_addr]
-                    .iter().map(|b| format!("{:02x}", b)).collect();
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect();
                 debug!("📍 RAW BYTES: {}", bytes.join(" "));
             }
 
@@ -567,7 +578,6 @@ impl Interpreter {
         if Interpreter::is_stack_opcode(inst.opcode, &inst.operand_count) {
             return self.execute_stack_op(inst, &operands);
         }
-
 
         // Debug problematic variables
         if let Some(store_var) = inst.store_var {
@@ -680,8 +690,9 @@ impl Interpreter {
                         } else if Interpreter::is_memory_opcode(inst.opcode, &inst.operand_count) {
                             self.execute_memory_op(inst, &operands)
                         // Check if this is an object operation and route to object module
-                        } else if Interpreter::is_object_opcode(inst.opcode, &inst.operand_count) 
-                                  || Interpreter::is_var_13_object_opcode(inst) {
+                        } else if Interpreter::is_object_opcode(inst.opcode, &inst.operand_count)
+                            || Interpreter::is_var_13_object_opcode(inst)
+                        {
                             self.execute_object_op(inst, &operands)
                         // Check if this is a display operation and route to display module
                         } else if Interpreter::is_display_opcode(inst.opcode, &inst.operand_count) {
@@ -695,8 +706,9 @@ impl Interpreter {
                         if Interpreter::is_memory_opcode(inst.opcode, &inst.operand_count) {
                             self.execute_memory_op(inst, &operands)
                         // Check if this is an object operation and route to object module
-                        } else if Interpreter::is_object_opcode(inst.opcode, &inst.operand_count) 
-                                  || Interpreter::is_var_13_object_opcode(inst) {
+                        } else if Interpreter::is_object_opcode(inst.opcode, &inst.operand_count)
+                            || Interpreter::is_var_13_object_opcode(inst)
+                        {
                             self.execute_object_op(inst, &operands)
                         // Check if this is a display operation and route to display module
                         } else if Interpreter::is_display_opcode(inst.opcode, &inst.operand_count) {
@@ -741,7 +753,7 @@ impl Interpreter {
     // ========================================================================
     // OPCODE EXECUTION METHODS
     // ========================================================================
-    // 
+    //
     // These methods handle the different instruction forms and organize opcodes
     // by their logical function:
     // - Control flow (return, quit, branch, jump)
@@ -764,13 +776,13 @@ impl Interpreter {
                 // rfalse
                 self.do_return(0)
             }
-            
+
             // ---- I/O OPERATIONS ----
             0x04 => {
                 // nop
                 Ok(ExecutionResult::Continue)
             }
-            
+
             // ---- SYSTEM OPERATIONS ----
             0x05 => {
                 // save (V1-3: branch on success, V4+: store result)
@@ -1014,14 +1026,14 @@ impl Interpreter {
                 let routine_addr = op1;
                 let arg = op2;
                 let pc = self.vm.pc - inst.size as u32;
-                
+
                 // Debug logging for spacing routine calls
                 if pc == 0xcc6e || pc == 0xcc84 || pc == 0xcca4 {
                     let unpacked = (routine_addr as u32).wrapping_mul(4);
                     debug!("*** SPACING ROUTINE CALL at PC {:05x}: calling packed addr {:04x} (unpacked: {:05x}) with arg {}", 
                            pc, routine_addr, unpacked, arg);
                 }
-                
+
                 self.do_call(routine_addr, &[arg], inst.store_var)?;
                 Ok(ExecutionResult::Called)
             }
@@ -1072,12 +1084,18 @@ impl Interpreter {
                 0x09 => {
                     // Special case: Variable 2OP AND with no operands
                     // This appears in some games - treat as AND 0, 0
-                    debug!("Variable 2OP AND with no operands at PC {:05x} - using 0, 0", pc);
+                    debug!(
+                        "Variable 2OP AND with no operands at PC {:05x} - using 0, 0",
+                        pc
+                    );
                     return self.execute_2op(inst, 0, 0);
                 }
                 0x01 => {
                     // je with no operands means "jump if true" (always false)
-                    debug!("Variable 2OP je with no operands at PC {:05x} - always false", pc);
+                    debug!(
+                        "Variable 2OP je with no operands at PC {:05x} - always false",
+                        pc
+                    );
                     return self.do_branch(inst, false);
                 }
                 _ => {}
@@ -1091,7 +1109,10 @@ impl Interpreter {
                 0x01 => {
                     // je - Jump if Equal with 1 operand means "jump if operand equals 0"
                     if operands.len() == 1 {
-                        debug!("Variable 2OP je with 1 operand at PC {:05x} - testing if {:04x} == 0", pc, operands[0]);
+                        debug!(
+                            "Variable 2OP je with 1 operand at PC {:05x} - testing if {:04x} == 0",
+                            pc, operands[0]
+                        );
                         let condition = operands[0] == 0;
                         return self.do_branch(inst, condition);
                     }
@@ -1116,15 +1137,18 @@ impl Interpreter {
                 // From the spec: "je a b c d ?(label)"
                 // Jump if a is equal to any of the subsequent operands (b, c, or d)
                 let pc = self.vm.pc - inst.size as u32;
-                
+
                 // Debug output for the problematic JE at 13fd7
                 if pc == 0x13fd7 {
-                    debug!("🚨 TRINITY JE at 13fd7: operands={:?}, should branch to 1406d", operands);
+                    debug!(
+                        "🚨 TRINITY JE at 13fd7: operands={:?}, should branch to 1406d",
+                        operands
+                    );
                     for (i, op) in operands.iter().enumerate() {
                         debug!("  operand[{}] = {:04x}", i, op);
                     }
                 }
-                
+
                 let mut condition = false;
                 for i in 1..operands.len() {
                     if operands[0] == operands[i] {
@@ -1132,11 +1156,15 @@ impl Interpreter {
                         break;
                     }
                 }
-                
+
                 if pc == 0x13fd7 {
-                    debug!("  condition={}, branch_on_true={:?}", condition, inst.branch.as_ref().map(|b| b.on_true));
+                    debug!(
+                        "  condition={}, branch_on_true={:?}",
+                        condition,
+                        inst.branch.as_ref().map(|b| b.on_true)
+                    );
                 }
-                
+
                 self.do_branch(inst, condition)
             }
             _ => {
@@ -1172,11 +1200,15 @@ impl Interpreter {
                 for (i, op) in operands.iter().enumerate() {
                     debug!("🕐   operand[{}] = 0x{:04x}", i, op);
                 }
-                
+
                 // Trinity-specific timer debug
                 if operands.len() >= 4 {
-                    debug!("🕐 TIMER CHECK: operands[2]={}, operands[3]=0x{:04x}, has_timer={}", 
-                           operands[2], operands[3], operands.len() >= 4 && operands[2] > 0 && operands[3] > 0);
+                    debug!(
+                        "🕐 TIMER CHECK: operands[2]={}, operands[3]=0x{:04x}, has_timer={}",
+                        operands[2],
+                        operands[3],
+                        operands.len() >= 4 && operands[2] > 0 && operands[3] > 0
+                    );
                 }
 
                 // Check for timer parameters (V3+)
@@ -1223,7 +1255,7 @@ impl Interpreter {
                 // Read input from user
                 // Note: The game prints its own prompt, we don't need to add one
                 io::stdout().flush().ok();
-                
+
                 // Force display refresh to show any pending output (like prompt)
                 // Also flush any buffered text (like '>' prompt that doesn't end with newline)
                 if let Some(ref mut display) = self.display {
@@ -1244,7 +1276,9 @@ impl Interpreter {
                     Some(move || -> Result<bool, String> {
                         unsafe {
                             debug!("Timer callback triggered for routine 0x{:04x}", routine);
-                            (*interp_ptr).call_timer_routine(routine).map(|result| result != 0)
+                            (*interp_ptr)
+                                .call_timer_routine(routine)
+                                .map(|result| result != 0)
                         }
                     })
                 } else {
@@ -1256,17 +1290,19 @@ impl Interpreter {
                     // V3 and earlier - use simple input handler
                     debug!("Using V3 input handler for sread");
                     if let Some(ref mut v3_input) = self.v3_input {
-                        v3_input.read_line_with_timer(time, routine, timer_callback)
+                        v3_input
+                            .read_line_with_timer(time, routine, timer_callback)
                             .map_err(|e| format!("Error reading V3 input: {e}"))?
                     } else {
                         return Err("V3 input handler not initialized".to_string());
                     }
                 } else {
-                    // V4+ - use advanced input handler  
+                    // V4+ - use advanced input handler
                     debug!("Using V4+ input handler for sread");
                     if let Some(ref mut v4_input) = self.v4_input {
                         if let Some(ref mut display) = self.display {
-                            v4_input.read_line(time, routine, timer_callback, display.as_mut())
+                            v4_input
+                                .read_line(time, routine, timer_callback, display.as_mut())
                                 .map_err(|e| format!("Error reading V4+ input: {e}"))?
                         } else {
                             return Err("Display not initialized for V4+ input".to_string());
@@ -1426,11 +1462,11 @@ impl Interpreter {
                 Ok(ExecutionResult::Continue)
             }
             0x13 => {
-                // output_stream  
+                // output_stream
                 if !operands.is_empty() {
                     let stream_num = operands[0] as i16;
                     debug!("output_stream: stream_num={}", stream_num);
-                    
+
                     match stream_num {
                         1 => {
                             // Enable screen output (always on, ignore)
@@ -1444,7 +1480,10 @@ impl Interpreter {
                             // Enable stream 3 (table redirection)
                             if operands.len() >= 2 {
                                 let table_addr = operands[1];
-                                debug!("output_stream: enabling stream 3, table at 0x{:04x}", table_addr);
+                                debug!(
+                                    "output_stream: enabling stream 3, table at 0x{:04x}",
+                                    table_addr
+                                );
                                 self.enable_stream3(table_addr as u32)?;
                             } else {
                                 debug!("output_stream: stream 3 requested but no table address provided");
@@ -1467,7 +1506,7 @@ impl Interpreter {
                 if !operands.is_empty() {
                     let stream_num = operands[0] as i16;
                     debug!("input_stream: stream_num={}", stream_num);
-                    
+
                     match stream_num {
                         0 => {
                             // Select keyboard input (default, always active)
@@ -1519,7 +1558,9 @@ impl Interpreter {
                     Some(move || -> Result<bool, String> {
                         unsafe {
                             debug!("read_char timer callback for routine 0x{:04x}", routine);
-                            (*interp_ptr).call_timer_routine(routine).map(|result| result != 0)
+                            (*interp_ptr)
+                                .call_timer_routine(routine)
+                                .map(|result| result != 0)
                         }
                     })
                 } else {
@@ -1529,7 +1570,8 @@ impl Interpreter {
                 // Use V4+ input handler for character input
                 let (ch, was_terminated) = if let Some(ref mut v4_input) = self.v4_input {
                     debug!("Using V4+ input handler for read_char");
-                    v4_input.read_char(time, routine, timer_callback)
+                    v4_input
+                        .read_char(time, routine, timer_callback)
                         .map_err(|e| format!("Error reading V4+ character: {e}"))?
                 } else {
                     return Err("V4+ input handler not initialized for read_char".to_string());
@@ -1579,7 +1621,11 @@ impl Interpreter {
                 let search_value = operands[0];
                 let table_addr = operands[1] as u32;
                 let table_len = operands[2];
-                let form = if operands.len() > 3 { operands[3] } else { 0x82 }; // Default form
+                let form = if operands.len() > 3 {
+                    operands[3]
+                } else {
+                    0x82
+                }; // Default form
 
                 // Parse form: bit 7 = word/byte, bits 0-6 = field length
                 let is_word = (form & 0x80) != 0;
@@ -1589,14 +1635,20 @@ impl Interpreter {
                     "scan_table: searching for 0x{:04x} in table at 0x{:04x}, len={}, form=0x{:02x}",
                     search_value, table_addr, table_len, form
                 );
-                debug!("scan_table: current PC = 0x{:05x} (EXPECTED: 0x125cb)", self.vm.pc);
-                
+                debug!(
+                    "scan_table: current PC = 0x{:05x} (EXPECTED: 0x125cb)",
+                    self.vm.pc
+                );
+
                 // Debug the PC before scan_table to trace the offset issue
                 if self.vm.pc >= 0x125c0 && self.vm.pc <= 0x125e0 {
-                    debug!("🚨 PC OFFSET ISSUE: scan_table at PC {:05x}, should be 125cb", self.vm.pc);
+                    debug!(
+                        "🚨 PC OFFSET ISSUE: scan_table at PC {:05x}, should be 125cb",
+                        self.vm.pc
+                    );
                 }
                 debug!("  is_word={}, field_length={}", is_word, field_length);
-                
+
                 let mut found_addr = 0u16;
                 let mut current_addr = table_addr;
 
@@ -1608,7 +1660,10 @@ impl Interpreter {
                         self.vm.read_byte(current_addr) as u16
                     };
 
-                    debug!("  Entry {}: 0x{:04x} at addr 0x{:04x}", i, table_value, current_addr);
+                    debug!(
+                        "  Entry {}: 0x{:04x} at addr 0x{:04x}",
+                        i, table_value, current_addr
+                    );
 
                     if table_value == search_value {
                         found_addr = current_addr as u16;
@@ -1625,25 +1680,41 @@ impl Interpreter {
                     self.vm.write_variable(store_var, found_addr)?;
                 }
 
-                debug!("scan_table result: found_addr=0x{:04x}, condition={}", found_addr, found_addr != 0);
+                debug!(
+                    "scan_table result: found_addr=0x{:04x}, condition={}",
+                    found_addr,
+                    found_addr != 0
+                );
 
                 // Branch if found
                 let condition = found_addr != 0;
-                
+
                 // Debug Trinity scan_table branch calculation
                 if self.vm.pc == 0x125cb {
-                    debug!("🔍 TRINITY SCAN_TABLE at 125cb: condition={}, found_addr=0x{:04x}", condition, found_addr);
+                    debug!(
+                        "🔍 TRINITY SCAN_TABLE at 125cb: condition={}, found_addr=0x{:04x}",
+                        condition, found_addr
+                    );
                     if let Some(ref branch) = inst.branch {
-                        debug!("🔍 Branch info: on_true={}, offset={}", branch.on_true, branch.offset);
+                        debug!(
+                            "🔍 Branch info: on_true={}, offset={}",
+                            branch.on_true, branch.offset
+                        );
                         let should_branch = condition == branch.on_true;
-                        debug!("🔍 Should branch: {} (condition={}, on_true={})", should_branch, condition, branch.on_true);
+                        debug!(
+                            "🔍 Should branch: {} (condition={}, on_true={})",
+                            should_branch, condition, branch.on_true
+                        );
                         if should_branch {
                             let calc_target = (self.vm.pc as i32 + branch.offset as i32 - 2) as u32;
-                            debug!("🔍 Calculated target: 0x{:05x} (expected: 0x125dc)", calc_target);
+                            debug!(
+                                "🔍 Calculated target: 0x{:05x} (expected: 0x125dc)",
+                                calc_target
+                            );
                         }
                     }
                 }
-                
+
                 self.do_branch(inst, condition)
             }
             _ => {
@@ -1685,7 +1756,7 @@ impl Interpreter {
                     offset => {
                         // Jump is relative to instruction after branch data
                         let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
-                        
+
                         // Debug output for Trinity JE branch
                         if self.vm.pc == 0x13fde {
                             debug!("🚨 TRINITY BRANCH from 13fde: offset={}, new_pc={:05x} (should be 1406d)", offset, new_pc);
@@ -1726,7 +1797,6 @@ impl Interpreter {
         }
         Ok(ExecutionResult::Continue)
     }
-
 
     /// Get the name of an object
     fn get_object_name(&self, obj_num: u16) -> Result<String, String> {
@@ -1828,7 +1898,10 @@ impl Interpreter {
         debug!("Timer routine returned: {}", return_value);
 
         // Restore the original PC (critical for proper execution flow)
-        debug!("Restoring PC from 0x{:05x} to 0x{:05x}", self.vm.pc, saved_pc);
+        debug!(
+            "Restoring PC from 0x{:05x} to 0x{:05x}",
+            self.vm.pc, saved_pc
+        );
         self.vm.pc = saved_pc;
 
         // Return true if routine wants to terminate input
@@ -1864,19 +1937,26 @@ impl Interpreter {
             locals: [0; 16],
             stack_base: self.vm.stack.len(),
         };
-        
+
         debug!("do_call: saving return_pc={:05x}", self.vm.pc);
-        
+
         // Special debug for calls that return to the newlines after the quote
         if self.vm.pc == 0xcc6a {
-            debug!("*** CALL TO ROUTINE #{:04x} that returns to newlines at 0cc6a", packed_addr);
+            debug!(
+                "*** CALL TO ROUTINE #{:04x} that returns to newlines at 0cc6a",
+                packed_addr
+            );
         }
-        
+
         // Special debug for the centering routine
         if packed_addr == 0xcec7 {
-            debug!("*** CALLING CENTERING ROUTINE #cec7 with {} args: {:?}", args.len(), args);
+            debug!(
+                "*** CALLING CENTERING ROUTINE #cec7 with {} args: {:?}",
+                args.len(),
+                args
+            );
         }
-        
+
         debug!(
             "Creating call frame with return_store={:?}, stack_base={}",
             return_store,
@@ -1885,19 +1965,28 @@ impl Interpreter {
         debug!(
             "Call stack before push: depth={}, frames={:?}",
             self.vm.call_stack.len(),
-            self.vm.call_stack.iter().map(|f| format!("{:05x}", f.return_pc)).collect::<Vec<_>>()
+            self.vm
+                .call_stack
+                .iter()
+                .map(|f| format!("{:05x}", f.return_pc))
+                .collect::<Vec<_>>()
         );
 
         // Special debug for centering routine
         if packed_addr == 0xcec7 {
             debug!("*** ENTERING CENTERING ROUTINE at address {:05x}", addr);
         }
-        
+
         // Special debug for spacing routine #66b6
         if packed_addr == 0x66b6 {
-            debug!("*** ENTERING SPACING ROUTINE #66b6 at address {:05x} with {} args: {:?}", addr, args.len(), args);
+            debug!(
+                "*** ENTERING SPACING ROUTINE #66b6 at address {:05x} with {} args: {:?}",
+                addr,
+                args.len(),
+                args
+            );
         }
-        
+
         // Read routine header
         let mut num_locals = self.vm.read_byte(addr) as usize;
         if num_locals > 15 {
@@ -1957,17 +2046,25 @@ impl Interpreter {
             "Returning from routine: value={}, return_pc={:05x}",
             value, frame.return_pc
         );
-        
+
         debug!(
             "Call stack before return: depth={}, frames={:?}",
             self.vm.call_stack.len(),
-            self.vm.call_stack.iter().map(|f| format!("{:05x}", f.return_pc)).collect::<Vec<_>>()
+            self.vm
+                .call_stack
+                .iter()
+                .map(|f| format!("{:05x}", f.return_pc))
+                .collect::<Vec<_>>()
         );
 
         // Restore PC
         self.vm.pc = frame.return_pc;
-        
-        debug!("After setting PC to {:05x}, call stack depth={}", self.vm.pc, self.vm.call_stack.len());
+
+        debug!(
+            "After setting PC to {:05x}, call stack depth={}",
+            self.vm.pc,
+            self.vm.call_stack.len()
+        );
 
         // Restore stack
         debug!(
@@ -2005,39 +2102,42 @@ impl Interpreter {
             _ => (packed as usize) * 2,
         }
     }
-    
+
     /// Enable output stream 3 (text redirection to table)
     pub(crate) fn enable_stream3(&mut self, table_addr: u32) -> Result<(), String> {
-        debug!("enable_stream3: redirecting to table at 0x{:04x}", table_addr);
-        
+        debug!(
+            "enable_stream3: redirecting to table at 0x{:04x}",
+            table_addr
+        );
+
         // Push current state onto stack (for nested redirection)
         if let Some(current) = self.output_streams.current_stream3_table {
             self.output_streams.stream3_stack.push(current);
         }
-        
+
         // Set new table
         self.output_streams.current_stream3_table = Some(table_addr as u16);
-        
+
         // Initialize table with 0 characters written
         self.vm.write_word(table_addr, 0)?;
-        
+
         Ok(())
     }
-    
+
     /// Disable output stream 3 (stop text redirection)
     pub(crate) fn disable_stream3(&mut self) -> Result<(), String> {
         debug!("disable_stream3: stopping text redirection");
-        
+
         if self.output_streams.current_stream3_table.is_some() {
             // Pop from stack if there are nested redirections
             self.output_streams.current_stream3_table = self.output_streams.stream3_stack.pop();
         } else {
             debug!("disable_stream3: no active stream 3 to disable");
         }
-        
+
         Ok(())
     }
-    
+
     /// Output text, handling stream 3 redirection
     pub(crate) fn output_text(&mut self, text: &str) -> Result<(), String> {
         // Handle stream 3 redirection first
@@ -2045,25 +2145,25 @@ impl Interpreter {
             let current_count = self.vm.read_word(table_addr as u32);
             debug!("output_text: capturing '{}' to stream 3 table at 0x{:04x}, current_count={} (CAPTURE ONLY)", 
                    text, table_addr, current_count);
-            
+
             // Write text to table starting at table+2+current_count
             for (i, ch) in text.chars().enumerate() {
                 let addr = table_addr + 2 + current_count + i as u16;
                 // Write byte - VM will handle bounds checking
                 self.vm.write_byte(addr as u32, ch as u8)?;
             }
-            
+
             // Update character count in table
             let new_count = current_count + text.len() as u16;
             self.vm.write_word(table_addr as u32, new_count)?;
-            
+
             debug!("output_text: stream 3 updated count to {} (text captured ONLY - display handled separately)", new_count);
-            
+
             // IMPORTANT: When stream 3 is active, DON'T display text here
             // Stream 3 is for text measurement only - display is handled by separate routine
             return Ok(());
         }
-        
+
         // Send to screen (whether stream 3 is active or not)
         if let Some(ref mut display) = self.display {
             display.print(text).ok();
@@ -2071,10 +2171,10 @@ impl Interpreter {
             print!("{}", text);
             io::stdout().flush().ok();
         }
-        
+
         Ok(())
     }
-    
+
     /// Output a single character, handling stream 3 redirection
     pub(crate) fn output_char(&mut self, ch: char) -> Result<(), String> {
         // Handle stream 3 redirection first
@@ -2082,22 +2182,25 @@ impl Interpreter {
             let current_count = self.vm.read_word(table_addr as u32);
             debug!("output_char: redirecting '{}' to stream 3 table at 0x{:04x}, current_count={} (CAPTURE ONLY)", 
                    ch, table_addr, current_count);
-            
+
             // Write character to table at table+2+current_count
             let addr = table_addr + 2 + current_count;
             // Write byte - VM will handle bounds checking
             self.vm.write_byte(addr as u32, ch as u8)?;
-            
+
             // Update character count in table
             let new_count = current_count + 1;
             self.vm.write_word(table_addr as u32, new_count)?;
-            
-            debug!("output_char: stream 3 updated count to {} (char captured AND will be displayed)", new_count);
-            
+
+            debug!(
+                "output_char: stream 3 updated count to {} (char captured AND will be displayed)",
+                new_count
+            );
+
             // IMPORTANT: Continue to display character even when stream 3 is active
             // Stream 3 is used for text measurement, but text should still be visible
         }
-        
+
         // Send to screen (whether stream 3 is active or not)
         if let Some(ref mut display) = self.display {
             display.print_char(ch).ok();
@@ -2105,20 +2208,20 @@ impl Interpreter {
             print!("{}", ch);
             io::stdout().flush().ok();
         }
-        
+
         Ok(())
     }
-    
+
     /// Clean up terminal state on exit
     pub fn cleanup(&mut self) {
         debug!("Interpreter: Performing terminal cleanup");
-        
+
         // The display Drop implementations will handle most cleanup,
         // but we can force it by dropping the display explicitly
         if self.display.is_some() {
             self.display = None;
         }
-        
+
         debug!("Interpreter: Terminal cleanup completed");
     }
 }

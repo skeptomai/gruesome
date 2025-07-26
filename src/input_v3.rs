@@ -19,11 +19,11 @@ impl V3Input {
     }
 
     /// Read a line of input for V3 games (sread instruction)
-    /// 
+    ///
     /// V3 games only use line input, no character input complications
     pub fn read_line(&mut self) -> Result<String, String> {
         debug!("V3 input: reading line");
-        
+
         // Simple line reading - works reliably for V3 games
         self.buffer.clear();
         io::stdin()
@@ -43,7 +43,7 @@ impl V3Input {
     }
 
     /// Read line with timer support for V3 games
-    /// 
+    ///
     /// In V3, timers are simpler - they just fire once after input for turn counting
     pub fn read_line_with_timer<F>(
         &mut self,
@@ -63,7 +63,7 @@ impl V3Input {
         // For V3 games, we use a simplified approach:
         // 1. Get input normally (blocking is fine for turn-based games)
         let input = self.read_line()?;
-        
+
         // 2. After input, fire timer callback if present (for turn counting)
         if time_tenths > 0 && routine_addr > 0 {
             if let Some(callback) = timer_callback {

@@ -1,12 +1,12 @@
 /// Test program to verify random number generation functionality.
-/// 
+///
 /// This test is critical for Z-Machine games because many core gameplay mechanics
 /// depend on random numbers, including:
 /// - Combat outcomes (troll fights, etc.)
 /// - Thief movement patterns
 /// - Item placement randomization
 /// - Any other probability-based game events
-/// 
+///
 /// The test creates a minimal Z-Machine program that calls the random opcode
 /// three times and verifies the results are not all identical (which would
 /// indicate broken randomization).

@@ -1,33 +1,39 @@
 /// Input/Output operations for Z-Machine interpreter
-/// 
+///
 /// This module handles all I/O-related operations including:
 /// - Text input operations (sread - line input with optional timer support)
 /// - Character input operations (read_char - single character with optional timer)
 /// - Stream management (input_stream - select input source, output_stream - redirect output)
-/// 
+///
 /// These operations form the interactive layer of Z-Machine games,
 /// handling all communication between the game and the player.
-/// 
+///
 /// Key features:
 /// - Version-aware input handling (V3 vs V4+ input systems)
 /// - Timer interrupt support for timed input operations
 /// - Stream redirection for advanced output control
 /// - Proper Z-Machine specification compliance
-
 use crate::instruction::Instruction;
 use crate::interpreter::{ExecutionResult, Interpreter};
 use log::debug;
 
 impl Interpreter {
     /// Handle I/O system opcodes
-    pub fn execute_io_op(&mut self, inst: &Instruction, operands: &[u16]) -> Result<ExecutionResult, String> {
+    pub fn execute_io_op(
+        &mut self,
+        inst: &Instruction,
+        operands: &[u16],
+    ) -> Result<ExecutionResult, String> {
         match (inst.opcode, &inst.operand_count) {
             // ---- VAR I/O OPERATIONS ----
-            
+
             // VAR:0x04 - sread (text input with optional timer)
             (0x04, crate::instruction::OperandCount::VAR) => {
                 // For now, delegate back to the main interpreter until we can properly handle the complex input logic
-                Err("I/O operations not fully implemented yet - delegating to main interpreter".to_string())
+                Err(
+                    "I/O operations not fully implemented yet - delegating to main interpreter"
+                        .to_string(),
+                )
             }
 
             // VAR:0x13 - output_stream (when no store_var)
@@ -56,7 +62,10 @@ impl Interpreter {
                             // Stream 3: table output (redirect to memory table)
                             if operands.len() >= 2 {
                                 let table_addr = operands[1];
-                                debug!("output_stream: enabling stream 3, table at 0x{:04x}", table_addr);
+                                debug!(
+                                    "output_stream: enabling stream 3, table at 0x{:04x}",
+                                    table_addr
+                                );
                                 self.enable_stream3(table_addr as u32)?;
                             } else {
                                 debug!("output_stream: stream 3 requested but no table address provided");
@@ -105,11 +114,16 @@ impl Interpreter {
             // VAR:0x16 - read_char
             (0x16, crate::instruction::OperandCount::VAR) => {
                 // For now, delegate back to the main interpreter until we can properly handle the complex input logic
-                Err("I/O operations not fully implemented yet - delegating to main interpreter".to_string())
+                Err(
+                    "I/O operations not fully implemented yet - delegating to main interpreter"
+                        .to_string(),
+                )
             }
 
-            _ => Err(format!("Unhandled I/O opcode: {:02x} with operand count {:?}", 
-                           inst.opcode, inst.operand_count))
+            _ => Err(format!(
+                "Unhandled I/O opcode: {:02x} with operand count {:?}",
+                inst.opcode, inst.operand_count
+            )),
         }
     }
 
@@ -120,15 +134,15 @@ impl Interpreter {
             // VAR I/O operations
             (0x04, crate::instruction::OperandCount::VAR) |  // sread
             (0x14, crate::instruction::OperandCount::VAR) |  // input_stream
-            (0x16, crate::instruction::OperandCount::VAR)    // read_char
-            // Note: VAR:0x13 (output_stream) is handled specially via disambiguation
+            (0x16, crate::instruction::OperandCount::VAR) // read_char
+                                                          // Note: VAR:0x13 (output_stream) is handled specially via disambiguation
         )
     }
 
     /// Check if a VAR:0x13 opcode should be routed to the I/O module
     /// This handles the get_next_prop vs output_stream disambiguation
     pub fn is_var_13_io_opcode(inst: &crate::instruction::Instruction) -> bool {
-        inst.opcode == 0x13 
+        inst.opcode == 0x13
             && inst.operand_count == crate::instruction::OperandCount::VAR
             && inst.store_var.is_none()
     }

@@ -14,11 +14,11 @@
 //! - Comprehensive fallback chain for maximum compatibility
 //! - Optional logging wrapper for debugging display operations
 
-use crate::display_trait::{DisplayError, ZMachineDisplay};
-use crate::display_v3::V3Display;
 use crate::display_headless::HeadlessDisplay;
 use crate::display_logging::LoggingDisplay;
 use crate::display_ratatui::RatatuiDisplay;
+use crate::display_trait::{DisplayError, ZMachineDisplay};
+use crate::display_v3::V3Display;
 
 use log::debug;
 
@@ -55,18 +55,18 @@ impl DisplayCapabilities {
     pub fn detect() -> Self {
         Self {
             has_terminal: atty::is(atty::Stream::Stdout),
-            has_color: std::env::var("COLORTERM").is_ok() 
+            has_color: std::env::var("COLORTERM").is_ok()
                 || std::env::var("TERM").map_or(false, |t| t.contains("color")),
             has_unicode: std::env::var("LANG").map_or(false, |lang| lang.contains("UTF-8")),
             is_interactive: atty::is(atty::Stream::Stdin) && atty::is(atty::Stream::Stdout),
         }
     }
-    
+
     /// Check if ratatui is likely to work
     pub fn supports_ratatui(&self) -> bool {
         self.has_terminal && self.is_interactive
     }
-    
+
     /// Check if terminal display is likely to work
     pub fn supports_terminal(&self) -> bool {
         // Be more permissive - try terminal display if we have any output
@@ -76,11 +76,17 @@ impl DisplayCapabilities {
 }
 
 /// Create a display implementation based on version and mode
-pub fn create_display(version: u8, mode: DisplayMode) -> Result<Box<dyn ZMachineDisplay>, DisplayError> {
+pub fn create_display(
+    version: u8,
+    mode: DisplayMode,
+) -> Result<Box<dyn ZMachineDisplay>, DisplayError> {
     let caps = DisplayCapabilities::detect();
     debug!("Display capabilities: {:?}", caps);
-    debug!("Creating display for Z-Machine version {} with mode {:?}", version, mode);
-    
+    debug!(
+        "Creating display for Z-Machine version {} with mode {:?}",
+        version, mode
+    );
+
     let mut display: Box<dyn ZMachineDisplay> = match mode {
         DisplayMode::Auto => {
             // Version-aware display selection
@@ -112,33 +118,35 @@ pub fn create_display(version: u8, mode: DisplayMode) -> Result<Box<dyn ZMachine
                 }
             }
         }
-        
+
         DisplayMode::Ratatui => {
             debug!("Forcing Ratatui display for version {}", version);
             create_ratatui_display(version)?
         }
-        
+
         DisplayMode::Terminal => {
             if version <= 3 {
                 debug!("Using V3 terminal display for version {}", version);
                 Box::new(V3Display::new()?)
             } else {
-                return Err(DisplayError::new("V4+ games require RatatuiDisplay - V4Display removed due to limitations"));
+                return Err(DisplayError::new(
+                    "V4+ games require RatatuiDisplay - V4Display removed due to limitations",
+                ));
             }
         }
-        
+
         DisplayMode::Headless => {
             debug!("Using headless display");
             Box::new(HeadlessDisplay::new()?)
         }
     };
-    
+
     // Check if we should wrap with logging
     if std::env::var("DISPLAY_LOG").is_ok() {
         debug!("Wrapping display with logging");
         display = Box::new(LoggingDisplay::new(display));
     }
-    
+
     Ok(display)
 }
 

@@ -1,11 +1,11 @@
 /// Test program for single character input (read_char opcode) functionality.
-/// 
+///
 /// This tests the v4+ read_char opcode implementation which provides single
 /// character input without requiring Enter to be pressed. This is used by:
 /// - Menu-driven interfaces in Arthur and Journey
 /// - Real-time input in Border Zone
 /// - Character-based navigation in various v4+ games
-/// 
+///
 /// Tests both immediate character reading and timed character input with
 /// callback support for timer interrupts.
 use gruesome::timed_input::TimedInput;

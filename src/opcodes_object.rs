@@ -1,25 +1,28 @@
 /// Object system operations for Z-Machine interpreter
-/// 
+///
 /// This module handles all object-related operations including:
 /// - Object hierarchy operations (get_sibling, get_child, get_parent, insert_obj, remove_obj)
 /// - Object properties (get_prop, put_prop, get_prop_addr, get_next_prop, get_prop_len)
 /// - Object attributes (test_attr, set_attr, clear_attr)
 /// - Object relationships (jin - test if object is inside another)
 /// - Object display (print_obj - print object's short name)
-/// 
+///
 /// These operations form the core of Z-Machine's object-oriented game world,
 /// enabling complex interactions between game objects, rooms, and items.
-
 use crate::instruction::Instruction;
 use crate::interpreter::{ExecutionResult, Interpreter};
 use log::debug;
 
 impl Interpreter {
     /// Handle object system opcodes
-    pub fn execute_object_op(&mut self, inst: &Instruction, operands: &[u16]) -> Result<ExecutionResult, String> {
+    pub fn execute_object_op(
+        &mut self,
+        inst: &Instruction,
+        operands: &[u16],
+    ) -> Result<ExecutionResult, String> {
         match (inst.opcode, &inst.operand_count) {
             // ---- 1OP OBJECT OPERATIONS ----
-            
+
             // 1OP:0x01 - get_sibling
             (0x01, crate::instruction::OperandCount::OP1) => {
                 // get_sibling
@@ -249,7 +252,11 @@ impl Interpreter {
                 if inst.store_var.is_some() {
                     // This is get_next_prop (VAR form of 2OP:19)
                     let obj_num = operands[0];
-                    let prop_num = if operands.len() >= 2 { operands[1] as u8 } else { 0u8 };
+                    let prop_num = if operands.len() >= 2 {
+                        operands[1] as u8
+                    } else {
+                        0u8
+                    };
                     debug!("VAR get_next_prop: obj={:04x}, prop={}", obj_num, prop_num);
                     let next_prop = self.vm.get_next_property(obj_num, prop_num)? as u16;
                     if let Some(store_var) = inst.store_var {
@@ -258,12 +265,17 @@ impl Interpreter {
                     return Ok(ExecutionResult::Continue);
                 } else {
                     // This is output_stream - not an object operation, should not reach here
-                    return Err("VAR:0x13 without store_var should be output_stream, not object operation".to_string());
+                    return Err(
+                        "VAR:0x13 without store_var should be output_stream, not object operation"
+                            .to_string(),
+                    );
                 }
             }
 
-            _ => Err(format!("Unhandled object opcode: {:02x} with operand count {:?}", 
-                           inst.opcode, inst.operand_count))
+            _ => Err(format!(
+                "Unhandled object opcode: {:02x} with operand count {:?}",
+                inst.opcode, inst.operand_count
+            )),
         }
     }
 
@@ -289,15 +301,15 @@ impl Interpreter {
             (0x12, crate::instruction::OperandCount::OP2) |  // get_prop_addr
             (0x13, crate::instruction::OperandCount::OP2) |  // get_next_prop
             // VAR object operations
-            (0x03, crate::instruction::OperandCount::VAR)    // put_prop
-            // Note: VAR:0x13 is handled specially in the interpreter routing
+            (0x03, crate::instruction::OperandCount::VAR) // put_prop
+                                                          // Note: VAR:0x13 is handled specially in the interpreter routing
         )
     }
-    
+
     /// Check if a VAR:0x13 opcode should be routed to the object module
     /// This handles the get_next_prop vs output_stream disambiguation
     pub fn is_var_13_object_opcode(inst: &crate::instruction::Instruction) -> bool {
-        inst.opcode == 0x13 
+        inst.opcode == 0x13
             && inst.operand_count == crate::instruction::OperandCount::VAR
             && inst.store_var.is_some()
     }

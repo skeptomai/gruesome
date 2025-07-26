@@ -1,23 +1,26 @@
 /// Mathematical and logical operations for Z-Machine interpreter
-/// 
+///
 /// This module handles all arithmetic and bitwise operations including:
 /// - Arithmetic operations (add, sub, mul, div, mod)
 /// - Bitwise operations (and, or, not)
 /// - Version-specific handling for operations that changed between versions
-/// 
+///
 /// These operations form the computational core of Z-Machine games,
 /// enabling everything from simple counters to complex game mechanics.
-
 use crate::instruction::Instruction;
 use crate::interpreter::{ExecutionResult, Interpreter};
 use log::debug;
 
 impl Interpreter {
     /// Handle mathematical and logical opcodes
-    pub fn execute_math_op(&mut self, inst: &Instruction, operands: &[u16]) -> Result<ExecutionResult, String> {
+    pub fn execute_math_op(
+        &mut self,
+        inst: &Instruction,
+        operands: &[u16],
+    ) -> Result<ExecutionResult, String> {
         match (inst.opcode, &inst.operand_count) {
             // ---- 1OP MATH OPERATIONS ----
-            
+
             // 1OP:0x0F - not (V1-4) / call_1n (V5+)
             (0x0F, crate::instruction::OperandCount::OP1) => {
                 if self.vm.game.header.version <= 4 {
@@ -29,7 +32,9 @@ impl Interpreter {
                     Ok(ExecutionResult::Continue)
                 } else {
                     // In v5+, this becomes call_1n - should be handled by stack module
-                    Err(format!("1OP:0x0F in v5+ should be handled by stack module, not math"))
+                    Err(format!(
+                        "1OP:0x0F in v5+ should be handled by stack module, not math"
+                    ))
                 }
             }
 
@@ -39,7 +44,8 @@ impl Interpreter {
             (0x08, crate::instruction::OperandCount::OP2) => {
                 debug!("or {} {}", operands[0], operands[1]);
                 if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, operands[0] | operands[1])?;
+                    self.vm
+                        .write_variable(store_var, operands[0] | operands[1])?;
                 }
                 Ok(ExecutionResult::Continue)
             }
@@ -48,7 +54,8 @@ impl Interpreter {
             (0x09, crate::instruction::OperandCount::OP2) => {
                 debug!("and {} {}", operands[0], operands[1]);
                 if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, operands[0] & operands[1])?;
+                    self.vm
+                        .write_variable(store_var, operands[0] & operands[1])?;
                 }
                 Ok(ExecutionResult::Continue)
             }
@@ -123,8 +130,10 @@ impl Interpreter {
                 }
             }
 
-            _ => Err(format!("Unhandled math opcode: {:02x} with operand count {:?}", 
-                           inst.opcode, inst.operand_count))
+            _ => Err(format!(
+                "Unhandled math opcode: {:02x} with operand count {:?}",
+                inst.opcode, inst.operand_count
+            )),
         }
     }
 
@@ -142,7 +151,7 @@ impl Interpreter {
             (0x16, crate::instruction::OperandCount::OP2) |  // mul
             (0x17, crate::instruction::OperandCount::OP2) |  // div
             (0x18, crate::instruction::OperandCount::OP2) |  // mod
-            (0x1C, crate::instruction::OperandCount::OP2)    // not (v1-v3)
+            (0x1C, crate::instruction::OperandCount::OP2) // not (v1-v3)
         )
     }
 }

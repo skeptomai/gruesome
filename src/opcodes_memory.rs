@@ -1,23 +1,26 @@
 /// Memory operations for Z-Machine interpreter
-/// 
+///
 /// This module handles all memory access operations including:
 /// - Variable operations (load, store)
 /// - Word operations (loadw, storew) - 16-bit values at word boundaries
 /// - Byte operations (loadb, storeb) - 8-bit values at byte addresses
-/// 
+///
 /// These operations form the foundation of Z-Machine memory access,
 /// enabling everything from variable manipulation to dynamic memory access.
-
 use crate::instruction::Instruction;
 use crate::interpreter::{ExecutionResult, Interpreter};
 use log::debug;
 
 impl Interpreter {
     /// Handle memory access opcodes
-    pub fn execute_memory_op(&mut self, inst: &Instruction, operands: &[u16]) -> Result<ExecutionResult, String> {
+    pub fn execute_memory_op(
+        &mut self,
+        inst: &Instruction,
+        operands: &[u16],
+    ) -> Result<ExecutionResult, String> {
         match (inst.opcode, &inst.operand_count) {
             // ---- 1OP MEMORY OPERATIONS ----
-            
+
             // 1OP:0x0E - load (load from variable)
             (0x0E, crate::instruction::OperandCount::OP1) => {
                 // load - operand can be any type, value specifies which variable to load
@@ -137,8 +140,10 @@ impl Interpreter {
                 Ok(ExecutionResult::Continue)
             }
 
-            _ => Err(format!("Unhandled memory opcode: {:02x} with operand count {:?}", 
-                           inst.opcode, inst.operand_count))
+            _ => Err(format!(
+                "Unhandled memory opcode: {:02x} with operand count {:?}",
+                inst.opcode, inst.operand_count
+            )),
         }
     }
 
@@ -154,7 +159,7 @@ impl Interpreter {
             (0x10, crate::instruction::OperandCount::OP2) |  // loadb
             // VAR memory operations
             (0x01, crate::instruction::OperandCount::VAR) |  // storew
-            (0x02, crate::instruction::OperandCount::VAR)    // storeb
+            (0x02, crate::instruction::OperandCount::VAR) // storeb
         )
     }
 }

@@ -29,12 +29,12 @@ impl HeadlessDisplay {
             terminal_height: 36,
         })
     }
-    
+
     /// Get the current buffer content (for testing)
     pub fn get_buffer(&self) -> &[String] {
         &self.buffer
     }
-    
+
     /// Get all output as a single string
     pub fn get_output(&self) -> String {
         let mut output = self.buffer.join("\n");
@@ -46,7 +46,7 @@ impl HeadlessDisplay {
         }
         output
     }
-    
+
     /// Flush the current line to the buffer
     fn flush_line(&mut self) {
         if !self.current_line.is_empty() || self.buffer.is_empty() {
@@ -62,25 +62,25 @@ impl ZMachineDisplay for HeadlessDisplay {
         self.current_line.clear();
         Ok(())
     }
-    
+
     fn split_window(&mut self, lines: u16) -> Result<(), DisplayError> {
         debug!("Headless: split_window({})", lines);
         self.upper_window_lines = lines;
         Ok(())
     }
-    
+
     fn set_window(&mut self, window: u8) -> Result<(), DisplayError> {
         debug!("Headless: set_window({})", window);
         self.current_window = window;
         Ok(())
     }
-    
+
     fn set_cursor(&mut self, line: u16, column: u16) -> Result<(), DisplayError> {
         debug!("Headless: set_cursor({}, {})", line, column);
         self.cursor = (line, column);
         Ok(())
     }
-    
+
     fn print(&mut self, text: &str) -> Result<(), DisplayError> {
         // Handle newlines properly
         if !text.contains('\n') {
@@ -96,7 +96,7 @@ impl ZMachineDisplay for HeadlessDisplay {
         }
         Ok(())
     }
-    
+
     fn print_char(&mut self, ch: char) -> Result<(), DisplayError> {
         if ch == '\n' {
             self.flush_line();
@@ -105,46 +105,46 @@ impl ZMachineDisplay for HeadlessDisplay {
         }
         Ok(())
     }
-    
+
     fn erase_window(&mut self, _window: i16) -> Result<(), DisplayError> {
         self.buffer.clear();
         self.current_line.clear();
         Ok(())
     }
-    
+
     fn show_status(&mut self, location: &str, score: i16, moves: u16) -> Result<(), DisplayError> {
-        let status = format!("{} Score: {} Moves: {}", location, score, moves);
-        self.buffer.push(format!("[STATUS: {}]", status));
+        let status = format!("{location} Score: {score} Moves: {moves}");
+        self.buffer.push(format!("[STATUS: {status}]"));
         Ok(())
     }
-    
+
     fn handle_resize(&mut self, width: u16, height: u16) {
         self.terminal_width = width;
         self.terminal_height = height;
     }
-    
+
     fn erase_line(&mut self) -> Result<(), DisplayError> {
         self.buffer.push("[ERASE_LINE]".to_string());
         Ok(())
     }
-    
+
     fn get_cursor(&mut self) -> Result<(u16, u16), DisplayError> {
         Ok(self.cursor)
     }
-    
+
     fn set_buffer_mode(&mut self, _buffered: bool) -> Result<(), DisplayError> {
         Ok(())
     }
-    
+
     fn get_terminal_size(&self) -> (u16, u16) {
         (self.terminal_width, self.terminal_height)
     }
-    
+
     fn force_refresh(&mut self) -> Result<(), DisplayError> {
         self.flush_line();
         Ok(())
     }
-    
+
     fn set_text_style(&mut self, style: u16) -> Result<(), DisplayError> {
         debug!("Headless: set_text_style({})", style);
         // Headless display ignores text styles

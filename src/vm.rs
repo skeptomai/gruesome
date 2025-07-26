@@ -290,7 +290,11 @@ impl VM {
         if obj_num == 0 {
             return Ok(0); // Object 0 has no properties
         }
-        let max_objects = if self.game.header.version <= 3 { 255 } else { 65535 };
+        let max_objects = if self.game.header.version <= 3 {
+            255
+        } else {
+            65535
+        };
         if obj_num > max_objects {
             return Err(format!("Invalid object number: {obj_num}"));
         }
@@ -310,7 +314,11 @@ impl VM {
         }
 
         // Property not found in object, return default
-        let max_defaults = if self.game.header.version <= 3 { 31 } else { 63 };
+        let max_defaults = if self.game.header.version <= 3 {
+            31
+        } else {
+            63
+        };
         if prop_num > 0 && prop_num <= max_defaults {
             let obj_table_addr = self.game.header.object_table_addr;
             let default_addr = obj_table_addr + ((prop_num - 1) as usize * 2);
@@ -323,7 +331,7 @@ impl VM {
     /// Parse property size byte to get property number, size, and header size
     fn get_property_info(&self, prop_addr: usize) -> Result<(u8, usize, usize), String> {
         let size_byte = self.game.memory[prop_addr];
-        
+
         if self.game.header.version <= 3 {
             // V1-3: prop num in bottom 5 bits, size in top 3 bits
             let prop_num = size_byte & 0x1F;
@@ -332,7 +340,7 @@ impl VM {
         } else {
             // V4+: prop num in bottom 6 bits
             let prop_num = size_byte & 0x3F;
-            
+
             if size_byte & 0x80 != 0 {
                 // Two-byte header
                 let size_byte_2 = self.game.memory[prop_addr + 1];
@@ -354,7 +362,11 @@ impl VM {
         if obj_num == 0 {
             return Ok(0); // Object 0 has no properties
         }
-        let max_objects = if self.game.header.version <= 3 { 255 } else { 65535 };
+        let max_objects = if self.game.header.version <= 3 {
+            255
+        } else {
+            65535
+        };
         if obj_num > max_objects {
             return Err(format!("Invalid object number: {obj_num}"));
         }
@@ -364,7 +376,11 @@ impl VM {
         // Get object table base
         let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
-        let default_props = if self.game.header.version <= 3 { 31 } else { 63 };
+        let default_props = if self.game.header.version <= 3 {
+            31
+        } else {
+            63
+        };
         let obj_tree_base = property_defaults + default_props * 2;
 
         // Calculate object entry address
@@ -402,7 +418,11 @@ impl VM {
     pub fn put_property(&mut self, obj_num: u16, prop_num: u8, value: u16) -> Result<(), String> {
         // We need to find the property in the object's property table
 
-        let max_objects = if self.game.header.version <= 3 { 255 } else { 65535 };
+        let max_objects = if self.game.header.version <= 3 {
+            255
+        } else {
+            65535
+        };
         if obj_num == 0 || obj_num > max_objects {
             return Err(format!("Invalid object number: {obj_num}"));
         }
@@ -410,7 +430,11 @@ impl VM {
         // Get object table base
         let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
-        let default_props = if self.game.header.version <= 3 { 31 } else { 63 };
+        let default_props = if self.game.header.version <= 3 {
+            31
+        } else {
+            63
+        };
         let obj_tree_base = property_defaults + default_props * 2;
 
         // Calculate object entry address
@@ -460,7 +484,11 @@ impl VM {
         if obj_num == 0 {
             return Ok(0); // Object 0 has no properties
         }
-        let max_objects = if self.game.header.version <= 3 { 255 } else { 65535 };
+        let max_objects = if self.game.header.version <= 3 {
+            255
+        } else {
+            65535
+        };
         if obj_num > max_objects {
             return Err(format!("Invalid object number: {obj_num}"));
         }
@@ -468,7 +496,11 @@ impl VM {
         // Get object table base
         let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
-        let default_props = if self.game.header.version <= 3 { 31 } else { 63 };
+        let default_props = if self.game.header.version <= 3 {
+            31
+        } else {
+            63
+        };
         let obj_tree_base = property_defaults + default_props * 2;
 
         // Calculate object entry address
@@ -525,8 +557,12 @@ impl VM {
         }
 
         let obj_addr = self.get_object_addr(obj_num)?;
-        
-        let max_attrs = if self.game.header.version <= 3 { 31 } else { 47 };
+
+        let max_attrs = if self.game.header.version <= 3 {
+            31
+        } else {
+            47
+        };
         if attr_num > max_attrs {
             debug!(
                 "WARNING: test_attribute with invalid attribute {} - returning false",
@@ -552,8 +588,12 @@ impl VM {
         }
 
         let obj_addr = self.get_object_addr(obj_num)?;
-        
-        let max_attrs = if self.game.header.version <= 3 { 31 } else { 47 };
+
+        let max_attrs = if self.game.header.version <= 3 {
+            31
+        } else {
+            47
+        };
         if attr_num > max_attrs {
             debug!(
                 "WARNING: set_attribute with invalid attribute {} - ignoring",
@@ -579,14 +619,22 @@ impl VM {
 
     /// Get object address
     fn get_object_addr(&self, obj_num: u16) -> Result<usize, String> {
-        let max_objects = if self.game.header.version <= 3 { 255 } else { 65535 };
+        let max_objects = if self.game.header.version <= 3 {
+            255
+        } else {
+            65535
+        };
         if obj_num == 0 || obj_num > max_objects {
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
         let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
-        let default_props = if self.game.header.version <= 3 { 31 } else { 63 };
+        let default_props = if self.game.header.version <= 3 {
+            31
+        } else {
+            63
+        };
         let obj_tree_base = property_defaults + default_props * 2;
         let obj_entry_size = if self.game.header.version <= 3 { 9 } else { 14 };
 
@@ -747,8 +795,12 @@ impl VM {
         if obj_num == 0 {
             return Ok(String::new()); // Object 0 has no name
         }
-        
-        let max_objects = if self.game.header.version <= 3 { 255 } else { 65535 };
+
+        let max_objects = if self.game.header.version <= 3 {
+            255
+        } else {
+            65535
+        };
         if obj_num > max_objects {
             return Err(format!("Invalid object number: {obj_num}"));
         }
@@ -756,7 +808,11 @@ impl VM {
         // Get object table base
         let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
-        let default_props = if self.game.header.version <= 3 { 31 } else { 63 };
+        let default_props = if self.game.header.version <= 3 {
+            31
+        } else {
+            63
+        };
         let obj_tree_base = property_defaults + default_props * 2;
 
         // Calculate object entry address (version-dependent size)
@@ -774,10 +830,10 @@ impl VM {
             // Decode the object name (stored as Z-string)
             let name_addr = prop_table_addr + 1;
             let abbrev_addr = self.game.header.abbrev_table;
-            
+
             match crate::text::decode_string(&self.game.memory, name_addr, abbrev_addr) {
                 Ok((name, _)) => Ok(name),
-                Err(e) => Err(format!("Failed to decode object name: {}", e))
+                Err(e) => Err(format!("Failed to decode object name: {}", e)),
             }
         } else {
             Ok(String::new())
