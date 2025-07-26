@@ -278,15 +278,15 @@ impl RatatuiDisplay {
     /// This accounts for typical upper window usage to prevent coordinate mismatches
     pub fn get_effective_screen_size(&self) -> (u16, u16) {
         let (width, height) = self.get_terminal_size();
-        
+
         // Reserve space for typical upper window usage (1-2 lines for status/menus)
         // This ensures Z-Machine header size matches actual usable lower window space
         let effective_height = if height > 2 {
-            height - 1  // Reserve 1 line for typical status line
+            height - 1 // Reserve 1 line for typical status line
         } else {
-            height  // Don't go below minimum
+            height // Don't go below minimum
         };
-        
+
         (width, effective_height)
     }
 
@@ -829,7 +829,7 @@ impl DisplayState {
             // Note: The prompt is part of the game content, not a separate UI element
             let available_lines = chunks[1].height as usize;
             let available_width = chunks[1].width as usize;
-            
+
             // Calculate actual display lines after word wrapping
             let mut total_display_lines = 0;
             for line in &lower_lines {
@@ -841,7 +841,7 @@ impl DisplayState {
                     total_display_lines += wrapped_lines.max(1);
                 }
             }
-            
+
             let scroll_offset = total_display_lines.saturating_sub(available_lines);
 
             let lower_paragraph = Paragraph::new(lower_text)
