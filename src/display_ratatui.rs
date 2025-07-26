@@ -744,38 +744,6 @@ fn process_text_with_backspace(buffer: &mut String, text: &str) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_process_text_with_backspace() {
-        let mut buffer = String::new();
-
-        // Test normal text
-        process_text_with_backspace(&mut buffer, "Hello");
-        assert_eq!(buffer, "Hello");
-
-        // Test backspace removing character
-        process_text_with_backspace(&mut buffer, "\x08");
-        assert_eq!(buffer, "Hell");
-
-        // Test backspace sequence like input handlers send: "\x08 \x08"
-        process_text_with_backspace(&mut buffer, "\x08 \x08");
-        assert_eq!(buffer, "Hel"); // First \x08 removes 'l', space adds ' ', second \x08 removes ' '
-
-        // Test backspace on empty buffer (should be safe)
-        buffer.clear();
-        process_text_with_backspace(&mut buffer, "\x08");
-        assert_eq!(buffer, "");
-
-        // Test mixed text and backspaces
-        buffer.clear();
-        process_text_with_backspace(&mut buffer, "AB\x08C");
-        assert_eq!(buffer, "AC"); // AB, backspace removes B, C is added
-    }
-}
-
 impl DisplayState {
     /// Render the current state to the terminal
     fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -785,15 +753,14 @@ impl DisplayState {
             let chunks = if self.upper_window_lines > 0 {
                 let screen_rect = f.size();
 
-                let layout_chunks = Layout::default()
+                Layout::default()
                     .direction(Direction::Vertical)
                     .margin(0) // No margin - use full screen
                     .constraints([
                         Constraint::Length(self.upper_window_lines),
                         Constraint::Min(0), // Allow zero height if needed
                     ])
-                    .split(screen_rect);
-                layout_chunks
+                    .split(screen_rect)
             } else {
                 vec![f.size(), f.size()].into() // Use full screen for lower window
             };
@@ -846,5 +813,37 @@ impl DisplayState {
         })?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_process_text_with_backspace() {
+        let mut buffer = String::new();
+
+        // Test normal text
+        process_text_with_backspace(&mut buffer, "Hello");
+        assert_eq!(buffer, "Hello");
+
+        // Test backspace removing character
+        process_text_with_backspace(&mut buffer, "\x08");
+        assert_eq!(buffer, "Hell");
+
+        // Test backspace sequence like input handlers send: "\x08 \x08"
+        process_text_with_backspace(&mut buffer, "\x08 \x08");
+        assert_eq!(buffer, "Hel"); // First \x08 removes 'l', space adds ' ', second \x08 removes ' '
+
+        // Test backspace on empty buffer (should be safe)
+        buffer.clear();
+        process_text_with_backspace(&mut buffer, "\x08");
+        assert_eq!(buffer, "");
+
+        // Test mixed text and backspaces
+        buffer.clear();
+        process_text_with_backspace(&mut buffer, "AB\x08C");
+        assert_eq!(buffer, "AC"); // AB, backspace removes B, C is added
     }
 }

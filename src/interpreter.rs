@@ -486,7 +486,7 @@ impl Interpreter {
             }
 
             // Add single-step disassembly for Trinity PC tracking
-            if old_pc >= 0x125bf && old_pc <= 0x125e0 {
+            if (0x125bf..=0x125e0).contains(&old_pc) {
                 debug!(
                     "📍 EXECUTE: {:05x}: {} (size={}, next_pc={:05x})",
                     old_pc,
@@ -498,7 +498,7 @@ impl Interpreter {
                 let end_addr = (old_pc as usize + instruction.size).min(self.vm.game.memory.len());
                 let bytes: Vec<String> = self.vm.game.memory[old_pc as usize..end_addr]
                     .iter()
-                    .map(|b| format!("{:02x}", b))
+                    .map(|b| format!("{b:02x}"))
                     .collect();
                 debug!("📍 RAW BYTES: {}", bytes.join(" "));
             }
@@ -511,7 +511,7 @@ impl Interpreter {
                 ExecutionResult::Continue => {
                     // Normal execution, PC already advanced
                     // Debug PC state after execution for Trinity tracking
-                    if old_pc >= 0x125bf && old_pc <= 0x125e0 {
+                    if (0x125bf..=0x125e0).contains(&old_pc) {
                         debug!("📍 AFTER EXEC: PC remains at {:05x} (expected)", self.vm.pc);
                     }
                 }
@@ -1260,7 +1260,7 @@ impl Interpreter {
                 // Also flush any buffered text (like '>' prompt that doesn't end with newline)
                 if let Some(ref mut display) = self.display {
                     // First flush any buffered content
-                    if let Err(_) = display.set_buffer_mode(false) {
+                    if display.set_buffer_mode(false).is_err() {
                         // If flush fails, try force refresh
                         display.force_refresh().ok();
                     }
@@ -2168,7 +2168,7 @@ impl Interpreter {
         if let Some(ref mut display) = self.display {
             display.print(text).ok();
         } else {
-            print!("{}", text);
+            print!("{text}");
             io::stdout().flush().ok();
         }
 
@@ -2205,7 +2205,7 @@ impl Interpreter {
         if let Some(ref mut display) = self.display {
             display.print_char(ch).ok();
         } else {
-            print!("{}", ch);
+            print!("{ch}");
             io::stdout().flush().ok();
         }
 

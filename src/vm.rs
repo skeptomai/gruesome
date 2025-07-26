@@ -833,7 +833,7 @@ impl VM {
 
             match crate::text::decode_string(&self.game.memory, name_addr, abbrev_addr) {
                 Ok((name, _)) => Ok(name),
-                Err(e) => Err(format!("Failed to decode object name: {}", e)),
+                Err(e) => Err(format!("Failed to decode object name: {e}")),
             }
         } else {
             Ok(String::new())

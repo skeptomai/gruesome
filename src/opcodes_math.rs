@@ -32,9 +32,7 @@ impl Interpreter {
                     Ok(ExecutionResult::Continue)
                 } else {
                     // In v5+, this becomes call_1n - should be handled by stack module
-                    Err(format!(
-                        "1OP:0x0F in v5+ should be handled by stack module, not math"
-                    ))
+                    Err("1OP:0x0F in v5+ should be handled by stack module, not math".to_string())
                 }
             }
 

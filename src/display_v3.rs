@@ -110,13 +110,13 @@ impl ZMachineDisplay for V3Display {
 
     fn print(&mut self, text: &str) -> Result<(), DisplayError> {
         // V3 printing is simple - just output to terminal
-        print!("{}", text);
+        print!("{text}");
         io::stdout().flush()?;
         Ok(())
     }
 
     fn print_char(&mut self, ch: char) -> Result<(), DisplayError> {
-        print!("{}", ch);
+        print!("{ch}");
         io::stdout().flush()?;
         Ok(())
     }
@@ -164,7 +164,7 @@ impl ZMachineDisplay for V3Display {
         debug!("V3: show_status('{}', {}, {})", location, score, moves);
 
         // Format the status line
-        let right_text = format!("Score: {} Moves: {}", score, moves);
+        let right_text = format!("Score: {score} Moves: {moves}");
         let available_width = self.terminal_width as usize;
         let right_len = right_text.len();
 
@@ -231,7 +231,7 @@ impl ZMachineDisplay for V3Display {
         };
 
         if !style_str.is_empty() {
-            print!("{}", style_str);
+            print!("{style_str}");
             io::stdout().flush()?;
         }
 

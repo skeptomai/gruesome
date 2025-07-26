@@ -96,7 +96,7 @@ impl std::error::Error for DisplayError {}
 
 impl From<std::io::Error> for DisplayError {
     fn from(error: std::io::Error) -> Self {
-        Self::new(format!("I/O error: {}", error))
+        Self::new(format!("I/O error: {error}"))
     }
 }
 

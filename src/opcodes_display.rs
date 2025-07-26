@@ -78,7 +78,7 @@ impl Interpreter {
                     let location_name = if location_obj > 0 {
                         self.vm
                             .get_object_name(location_obj)
-                            .unwrap_or_else(|_| format!("Location {}", location_obj))
+                            .unwrap_or_else(|_| format!("Location {location_obj}"))
                     } else {
                         "Unknown".to_string()
                     };

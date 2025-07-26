@@ -311,12 +311,8 @@ impl ObjectSystemV4 for VM {
                 return Ok(0); // Property not found
             }
 
-            // V4+: Parse property number
-            let current_prop_num = if (size_byte & 0x80) != 0 {
-                size_byte & 0x3F // Two-byte format
-            } else {
-                size_byte & 0x3F // One-byte format
-            };
+            // V4+: Parse property number (same bits in both one-byte and two-byte format)
+            let current_prop_num = size_byte & 0x3F;
 
             if current_prop_num == prop_num as u8 {
                 // Return address of property data
@@ -371,11 +367,7 @@ impl ObjectSystemV4 for VM {
             if size_byte == 0 {
                 return Ok(0); // No properties
             }
-            let first_prop_num = if (size_byte & 0x80) != 0 {
-                size_byte & 0x3F // Two-byte format
-            } else {
-                size_byte & 0x3F // One-byte format
-            };
+            let first_prop_num = size_byte & 0x3F;
             return Ok(first_prop_num as u16);
         }
 
@@ -386,11 +378,7 @@ impl ObjectSystemV4 for VM {
                 return Ok(0); // End of properties
             }
 
-            let current_prop_num = if (size_byte & 0x80) != 0 {
-                size_byte & 0x3F // Two-byte format
-            } else {
-                size_byte & 0x3F // One-byte format
-            };
+            let current_prop_num = size_byte & 0x3F;
 
             if current_prop_num == prop_num as u8 {
                 // Found current property, move to next
@@ -430,11 +418,7 @@ impl ObjectSystemV4 for VM {
                     return Ok(0); // No next property
                 }
 
-                let next_prop_num = if (next_size_byte & 0x80) != 0 {
-                    next_size_byte & 0x3F // Two-byte format
-                } else {
-                    next_size_byte & 0x3F // One-byte format
-                };
+                let next_prop_num = next_size_byte & 0x3F;
                 return Ok(next_prop_num as u16);
             }
 
