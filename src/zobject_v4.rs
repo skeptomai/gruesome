@@ -38,7 +38,7 @@ pub trait ObjectSystemV4 {
 
 impl ObjectSystemV4 for VM {
     fn get_object_addr_v4(&self, obj_num: u16) -> Result<usize, String> {
-        if obj_num == 0 || obj_num > MAX_OBJECTS_V4 {
+        if obj_num == 0 {
             return Err(format!(
                 "Invalid v4+ object number: {obj_num} (max: {MAX_OBJECTS_V4})"
             ));
@@ -337,8 +337,11 @@ impl ObjectSystemV4 for VM {
                 // Two-byte format
                 let second_byte = self.game.memory[prop_addr + 1];
                 let size = second_byte & 0x3F;
-                let size = if size == 0 { 64 } else { size as usize };
-                size
+                if size == 0 {
+                    64
+                } else {
+                    size as usize
+                }
             } else {
                 // One-byte format
                 if (size_byte & 0x40) != 0 {

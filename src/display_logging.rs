@@ -29,17 +29,17 @@ impl ZMachineDisplay for LoggingDisplay {
     }
 
     fn split_window(&mut self, lines: u16) -> Result<(), DisplayError> {
-        self.log_op(&format!("split_window({})", lines));
+        self.log_op(&format!("split_window({lines})"));
         self.inner.split_window(lines)
     }
 
     fn set_window(&mut self, window: u8) -> Result<(), DisplayError> {
-        self.log_op(&format!("set_window({})", window));
+        self.log_op(&format!("set_window({window})"));
         self.inner.set_window(window)
     }
 
     fn set_cursor(&mut self, line: u16, column: u16) -> Result<(), DisplayError> {
-        self.log_op(&format!("set_cursor({}, {})", line, column));
+        self.log_op(&format!("set_cursor({line}, {column})"));
         self.inner.set_cursor(line, column)
     }
 
@@ -50,35 +50,32 @@ impl ZMachineDisplay for LoggingDisplay {
             .collect::<String>()
             .replace('\n', "\\n")
             .replace('\r', "\\r");
-        self.log_op(&format!("print('{}')", preview));
+        self.log_op(&format!("print('{preview}')"));
         self.inner.print(text)
     }
 
     fn print_char(&mut self, ch: char) -> Result<(), DisplayError> {
-        self.log_op(&format!("print_char('{}')", ch));
+        self.log_op(&format!("print_char('{ch}')"));
         self.inner.print_char(ch)
     }
 
     fn erase_window(&mut self, window: i16) -> Result<(), DisplayError> {
-        self.log_op(&format!("erase_window({})", window));
+        self.log_op(&format!("erase_window({window})"));
         self.inner.erase_window(window)
     }
 
     fn handle_resize(&mut self, width: u16, height: u16) {
-        self.log_op(&format!("handle_resize({}, {})", width, height));
+        self.log_op(&format!("handle_resize({width}, {height})"));
         self.inner.handle_resize(width, height)
     }
 
     fn show_status(&mut self, location: &str, score: i16, moves: u16) -> Result<(), DisplayError> {
-        self.log_op(&format!(
-            "show_status('{}', {}, {})",
-            location, score, moves
-        ));
+        self.log_op(&format!("show_status('{location}', {score}, {moves})"));
         self.inner.show_status(location, score, moves)
     }
 
     fn set_text_style(&mut self, style: u16) -> Result<(), DisplayError> {
-        self.log_op(&format!("set_text_style({})", style));
+        self.log_op(&format!("set_text_style({style})"));
         self.inner.set_text_style(style)
     }
 
@@ -93,7 +90,7 @@ impl ZMachineDisplay for LoggingDisplay {
     }
 
     fn set_buffer_mode(&mut self, buffered: bool) -> Result<(), DisplayError> {
-        self.log_op(&format!("set_buffer_mode({})", buffered));
+        self.log_op(&format!("set_buffer_mode({buffered})"));
         self.inner.set_buffer_mode(buffered)
     }
 

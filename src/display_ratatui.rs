@@ -116,7 +116,7 @@ fn get_terminal_size_fallback() -> Result<(u16, u16), std::io::Error> {
 
     if output.status.success() {
         let size_str = String::from_utf8_lossy(&output.stdout);
-        let parts: Vec<&str> = size_str.trim().split_whitespace().collect();
+        let parts: Vec<&str> = size_str.split_whitespace().collect();
         if parts.len() == 2 {
             if let (Ok(height), Ok(width)) = (parts[0].parse::<u16>(), parts[1].parse::<u16>()) {
                 return Ok((width, height));
@@ -270,7 +270,7 @@ impl RatatuiDisplay {
                 }
                 size
             }
-            Err(_) => get_terminal_size_fallback().unwrap_or_else(|_| (80, 24)),
+            Err(_) => get_terminal_size_fallback().unwrap_or((80, 24)),
         }
     }
 
@@ -285,32 +285,31 @@ use crate::display_trait::{DisplayError, ZMachineDisplay};
 
 impl ZMachineDisplay for RatatuiDisplay {
     fn clear_screen(&mut self) -> Result<(), DisplayError> {
-        self.clear_screen().map_err(|e| DisplayError::new(e))
+        self.clear_screen().map_err(DisplayError::new)
     }
 
     fn split_window(&mut self, lines: u16) -> Result<(), DisplayError> {
-        self.split_window(lines).map_err(|e| DisplayError::new(e))
+        self.split_window(lines).map_err(DisplayError::new)
     }
 
     fn set_window(&mut self, window: u8) -> Result<(), DisplayError> {
-        self.set_window(window).map_err(|e| DisplayError::new(e))
+        self.set_window(window).map_err(DisplayError::new)
     }
 
     fn set_cursor(&mut self, line: u16, column: u16) -> Result<(), DisplayError> {
-        self.set_cursor(line, column)
-            .map_err(|e| DisplayError::new(e))
+        self.set_cursor(line, column).map_err(DisplayError::new)
     }
 
     fn print(&mut self, text: &str) -> Result<(), DisplayError> {
-        self.print(text).map_err(|e| DisplayError::new(e))
+        self.print(text).map_err(DisplayError::new)
     }
 
     fn print_char(&mut self, ch: char) -> Result<(), DisplayError> {
-        self.print_char(ch).map_err(|e| DisplayError::new(e))
+        self.print_char(ch).map_err(DisplayError::new)
     }
 
     fn erase_window(&mut self, window: i16) -> Result<(), DisplayError> {
-        self.erase_window(window).map_err(|e| DisplayError::new(e))
+        self.erase_window(window).map_err(DisplayError::new)
     }
 
     fn handle_resize(&mut self, width: u16, height: u16) {
@@ -319,20 +318,19 @@ impl ZMachineDisplay for RatatuiDisplay {
 
     fn show_status(&mut self, location: &str, score: i16, moves: u16) -> Result<(), DisplayError> {
         self.show_status(location, score, moves)
-            .map_err(|e| DisplayError::new(e))
+            .map_err(DisplayError::new)
     }
 
     fn erase_line(&mut self) -> Result<(), DisplayError> {
-        self.erase_line().map_err(|e| DisplayError::new(e))
+        self.erase_line().map_err(DisplayError::new)
     }
 
     fn get_cursor(&mut self) -> Result<(u16, u16), DisplayError> {
-        self.get_cursor().map_err(|e| DisplayError::new(e))
+        self.get_cursor().map_err(DisplayError::new)
     }
 
     fn set_buffer_mode(&mut self, buffered: bool) -> Result<(), DisplayError> {
-        self.set_buffer_mode(buffered)
-            .map_err(|e| DisplayError::new(e))
+        self.set_buffer_mode(buffered).map_err(DisplayError::new)
     }
 
     fn get_terminal_size(&self) -> (u16, u16) {
@@ -340,16 +338,16 @@ impl ZMachineDisplay for RatatuiDisplay {
     }
 
     fn force_refresh(&mut self) -> Result<(), DisplayError> {
-        self.force_refresh().map_err(|e| DisplayError::new(e))
+        self.force_refresh().map_err(DisplayError::new)
     }
 
     fn set_text_style(&mut self, style: u16) -> Result<(), DisplayError> {
-        self.set_text_style(style).map_err(|e| DisplayError::new(e))
+        self.set_text_style(style).map_err(DisplayError::new)
     }
 
     fn print_input_echo(&mut self, text: &str) -> Result<(), DisplayError> {
         // Input echo uses standard print - display thread handles timing
-        self.print(text).map_err(|e| DisplayError::new(e))
+        self.print(text).map_err(DisplayError::new)
     }
 }
 
@@ -375,8 +373,7 @@ fn run_display_thread(rx: Receiver<DisplayCommand>) -> Result<(), Box<dyn std::e
         // Continue without alternate screen - may work in some environments
     }
     let backend = CrosstermBackend::new(stdout);
-    let terminal =
-        Terminal::new(backend).map_err(|e| format!("Failed to create terminal: {}", e))?;
+    let terminal = Terminal::new(backend).map_err(|e| format!("Failed to create terminal: {e}"))?;
 
     // Create display state
     let mut state = DisplayState {
@@ -523,9 +520,7 @@ fn handle_command(
                         }
                     } else if ch == '\x08' {
                         // Backspace - move cursor left
-                        if current_x > 0 {
-                            current_x -= 1;
-                        }
+                        current_x = current_x.saturating_sub(1);
                     } else {
                         // Auto-expand upper window if needed (error recovery per Z-Machine spec)
                         while current_y >= state.upper_window_content.len() {
@@ -637,7 +632,7 @@ fn handle_command(
                 }
                 1 => {
                     // Clear upper window - refill with spaces
-                    for (_line_idx, line) in state.upper_window_content.iter_mut().enumerate() {
+                    for line in state.upper_window_content.iter_mut() {
                         line.clear();
                         for _ in 0..state.terminal_width {
                             line.push(StyledChar {

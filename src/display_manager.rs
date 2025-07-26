@@ -23,9 +23,10 @@ use crate::display_v3::V3Display;
 use log::debug;
 
 /// Display mode selection
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum DisplayMode {
     /// Try ratatui, fallback to terminal, fallback to headless
+    #[default]
     Auto,
     /// Force ratatui (fail if not available)  
     Ratatui,
@@ -33,12 +34,6 @@ pub enum DisplayMode {
     Terminal,
     /// No display output (for testing/CI)
     Headless,
-}
-
-impl Default for DisplayMode {
-    fn default() -> Self {
-        DisplayMode::Auto
-    }
 }
 
 /// Display environment capabilities
@@ -56,8 +51,8 @@ impl DisplayCapabilities {
         Self {
             has_terminal: atty::is(atty::Stream::Stdout),
             has_color: std::env::var("COLORTERM").is_ok()
-                || std::env::var("TERM").map_or(false, |t| t.contains("color")),
-            has_unicode: std::env::var("LANG").map_or(false, |lang| lang.contains("UTF-8")),
+                || std::env::var("TERM").is_ok_and(|t| t.contains("color")),
+            has_unicode: std::env::var("LANG").is_ok_and(|lang| lang.contains("UTF-8")),
             is_interactive: atty::is(atty::Stream::Stdin) && atty::is(atty::Stream::Stdout),
         }
     }
@@ -165,6 +160,6 @@ fn create_terminal_display(version: u8) -> Result<Box<dyn ZMachineDisplay>, Disp
 fn create_ratatui_display(_version: u8) -> Result<Box<dyn ZMachineDisplay>, DisplayError> {
     debug!("Creating RatatuiDisplay for version {}", _version);
     let display = RatatuiDisplay::new()
-        .map_err(|e| DisplayError::new(format!("Failed to create RatatuiDisplay: {}", e)))?;
+        .map_err(|e| DisplayError::new(format!("Failed to create RatatuiDisplay: {e}")))?;
     Ok(Box::new(display))
 }
