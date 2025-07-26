@@ -41,8 +41,17 @@ graph TB
     
     subgraph "Core Execution Engine"
         VM[vm.rs<br/>Virtual Machine State]
-        INTERP[interpreter.rs<br/>Execution Engine]
+        INTERP[interpreter.rs<br/>Execution Orchestrator]
         INST[instruction.rs<br/>Instruction Decoder]
+    end
+    
+    subgraph "Modular Opcode System"
+        STACK_OPS[opcodes_stack.rs<br/>Stack Operations]
+        MATH_OPS[opcodes_math.rs<br/>Arithmetic & Logic]
+        MEMORY_OPS[opcodes_memory.rs<br/>Memory Load/Store]
+        OBJECT_OPS[opcodes_object.rs<br/>Object System]
+        DISPLAY_OPS[opcodes_display.rs<br/>Text & Display]
+        IO_OPS[opcodes_io.rs<br/>Input/Output]
     end
     
     subgraph "Display Management"
@@ -77,7 +86,20 @@ graph TB
     
     INTERP --> VM
     INTERP --> INST
+    INTERP --> STACK_OPS
+    INTERP --> MATH_OPS
+    INTERP --> MEMORY_OPS
+    INTERP --> OBJECT_OPS
+    INTERP --> DISPLAY_OPS
+    INTERP --> IO_OPS
     VM --> INTERP
+    
+    STACK_OPS --> VM
+    MATH_OPS --> VM
+    MEMORY_OPS --> VM
+    OBJECT_OPS --> VM
+    DISPLAY_OPS --> VM
+    IO_OPS --> VM
     
     DISPLAYMGR --> TRAIT
     TRAIT --> HEADLESS
@@ -235,6 +257,135 @@ graph TB
     TRAIT_INTERFACE --> OPERATIONS
 ```
 
+## Modular Opcode Architecture
+
+### Overview
+
+The Z-Machine interpreter uses a modular opcode system that separates operations by functional domain. This architecture provides clean separation of concerns, improved maintainability, and better testability.
+
+```mermaid
+graph TB
+    subgraph "Instruction Dispatch Flow"
+        DECODE[Instruction Decode<br/>instruction.rs]
+        ROUTER[Opcode Router<br/>interpreter.rs]
+        RESOLVE[Operand Resolution<br/>Variables vs Constants]
+    end
+    
+    subgraph "Opcode Modules"
+        STACK[Stack Operations<br/>opcodes_stack.rs]
+        MATH[Math Operations<br/>opcodes_math.rs] 
+        MEMORY[Memory Operations<br/>opcodes_memory.rs]
+        OBJECT[Object Operations<br/>opcodes_object.rs]
+        DISPLAY[Display Operations<br/>opcodes_display.rs]
+        IO[I/O Operations<br/>opcodes_io.rs]
+        FLOW[Flow Control<br/>Embedded in interpreter.rs]
+    end
+    
+    subgraph "Execution Engine"
+        VM_STATE[VM State<br/>vm.rs]
+        RESULT[Execution Result<br/>Continue/Branch/Call/Return]
+    end
+    
+    DECODE --> ROUTER
+    ROUTER --> RESOLVE
+    RESOLVE --> STACK
+    RESOLVE --> MATH
+    RESOLVE --> MEMORY
+    RESOLVE --> OBJECT
+    RESOLVE --> DISPLAY
+    RESOLVE --> IO
+    RESOLVE --> FLOW
+    
+    STACK --> VM_STATE
+    MATH --> VM_STATE
+    MEMORY --> VM_STATE
+    OBJECT --> VM_STATE
+    DISPLAY --> VM_STATE
+    IO --> VM_STATE
+    FLOW --> VM_STATE
+    
+    VM_STATE --> RESULT
+```
+
+### Opcode Module Responsibilities
+
+| Module | Operations | Key Features |
+|--------|------------|--------------|
+| **Stack** | push, pull, call_*, ret | Call frame management, stack manipulation |
+| **Math** | add, sub, mul, div, mod, and, or, not | Arithmetic and bitwise logic |
+| **Memory** | load, store, loadw, storew, loadb, storeb | Memory access and manipulation |
+| **Object** | get_prop, put_prop, get_parent, insert_obj | Z-Machine object system |
+| **Display** | print, print_*, new_line, set_cursor | Text output and screen control |
+| **I/O** | sread, read_char, output_stream | Input/output and stream management |
+| **Flow Control** | je, jz, jump, rtrue, rfalse, branches | Embedded in execution methods |
+
+### Routing Logic
+
+The interpreter uses a form-aware routing system that checks for specialized operations before falling back to default handlers:
+
+```rust
+// Example routing logic for Variable form instructions
+match inst.operand_count {
+    OperandCount::OP2 => {
+        if Interpreter::is_math_opcode(inst.opcode, &inst.operand_count) {
+            self.execute_math_op(inst, &operands)
+        } else if Interpreter::is_memory_opcode(inst.opcode, &inst.operand_count) {
+            self.execute_memory_op(inst, &operands)
+        } else if Interpreter::is_object_opcode(inst.opcode, &inst.operand_count) 
+                  || Interpreter::is_var_13_object_opcode(inst) {
+            self.execute_object_op(inst, &operands)
+        } else if Interpreter::is_display_opcode(inst.opcode, &inst.operand_count) {
+            self.execute_display_op(inst, &operands)
+        } else {
+            self.execute_2op_variable(inst, &operands)
+        }
+    }
+    // ... other operand counts
+}
+```
+
+### Special Cases
+
+#### VAR:0x13 Disambiguation
+The interpreter handles the critical VAR:0x13 opcode disambiguation between `get_next_prop` (object operations) and `output_stream` (I/O operations):
+
+```rust
+// Object operations when store_var is present
+pub fn is_var_13_object_opcode(inst: &Instruction) -> bool {
+    inst.opcode == 0x13 
+        && inst.operand_count == OperandCount::VAR
+        && inst.store_var.is_some()
+}
+
+// I/O operations when store_var is absent  
+pub fn is_var_13_io_opcode(inst: &Instruction) -> bool {
+    inst.opcode == 0x13 
+        && inst.operand_count == OperandCount::VAR
+        && inst.store_var.is_none()
+}
+```
+
+#### Flow Control Integration
+Flow control operations (branches, jumps, returns) remain embedded in the main execution methods (`execute_0op`, `execute_1op`, `execute_2op`, `execute_var`) because they are fundamental to the execution flow and benefit from direct integration rather than extraction.
+
+### Module Integration Patterns
+
+Each opcode module follows a consistent pattern:
+
+1. **Method Definition**: `execute_[module]_op(&mut self, inst: &Instruction, operands: &[u16])`
+2. **Opcode Matching**: Pattern matching on `(opcode, operand_count)` tuples
+3. **Operation Execution**: Direct VM state manipulation
+4. **Result Return**: `ExecutionResult` enum (Continue, Branch, Call, Return, etc.)
+5. **Detection Function**: `is_[module]_opcode(opcode, operand_count)` for routing
+
+### Benefits of Modular Architecture
+
+1. **Separation of Concerns**: Each module handles a specific functional domain
+2. **Improved Maintainability**: Changes to math operations don't affect object operations
+3. **Better Testability**: Individual modules can be tested in isolation
+4. **Code Organization**: Related operations are grouped together logically
+5. **Performance**: Direct method calls with minimal routing overhead
+
 ## Core Components Deep Dive
 
 ### 1. Game Loading and Version Detection
@@ -379,14 +530,39 @@ graph LR
         FETCH[Fetch<br/>PC → Memory]
         DECODE[Decode<br/>instruction.rs]
         OPERANDS[Resolve Operands<br/>Variables/Constants]
-        EXECUTE[Execute<br/>Version-aware Dispatch]
+        ROUTE[Route to Module<br/>Form-aware Dispatch]
+        EXECUTE[Execute in Module<br/>Specialized Handler]
         STORE[Store Result<br/>If Required]
         BRANCH[Handle Branch<br/>If Conditional]
     end
     
+    subgraph "Module Routing"
+        STACK_R[Stack Module]
+        MATH_R[Math Module]
+        MEMORY_R[Memory Module]
+        OBJECT_R[Object Module]
+        DISPLAY_R[Display Module]
+        IO_R[I/O Module]
+        FLOW_R[Flow Control<br/>Embedded]
+    end
+    
     FETCH --> DECODE
     DECODE --> OPERANDS
-    OPERANDS --> EXECUTE
+    OPERANDS --> ROUTE
+    ROUTE --> STACK_R
+    ROUTE --> MATH_R
+    ROUTE --> MEMORY_R
+    ROUTE --> OBJECT_R
+    ROUTE --> DISPLAY_R
+    ROUTE --> IO_R
+    ROUTE --> FLOW_R
+    STACK_R --> EXECUTE
+    MATH_R --> EXECUTE
+    MEMORY_R --> EXECUTE
+    OBJECT_R --> EXECUTE
+    DISPLAY_R --> EXECUTE
+    IO_R --> EXECUTE
+    FLOW_R --> EXECUTE
     EXECUTE --> STORE
     STORE --> BRANCH
     BRANCH -->|Continue| FETCH
@@ -482,4 +658,30 @@ cargo build --target x86_64-unknown-linux-gnu
 - Automatic fallback systems handle missing dependencies
 - Single binary supports all platforms and game versions
 
-This architecture provides a robust, maintainable foundation for a complete Z-Machine interpreter with excellent game compatibility and clean code organization.
+## Modular File Organization
+
+### Core Files
+- `interpreter.rs` - Main execution orchestrator and routing logic
+- `vm.rs` - Virtual machine state and memory management
+- `instruction.rs` - Instruction decoding and format handling
+
+### Opcode Modules
+- `opcodes_stack.rs` - Stack manipulation (push, pull, call_*, ret)
+- `opcodes_math.rs` - Arithmetic and logic (add, sub, mul, div, and, or, not)
+- `opcodes_memory.rs` - Memory operations (load, store, loadw, storew, loadb, storeb)
+- `opcodes_object.rs` - Object system (get_prop, put_prop, get_parent, insert_obj, etc.)
+- `opcodes_display.rs` - Text and display (print, print_*, new_line, set_cursor, etc.)
+- `opcodes_io.rs` - Input/output (sread, read_char, output_stream, input_stream)
+
+### Version-Specific Systems
+- `input_v3.rs` / `input_v4.rs` - Version-specific input handling
+- `display_v3.rs` / `display_ratatui.rs` - Version-specific display systems
+- `zobject_v3.rs` / `zobject_v4.rs` - Version-specific object formats
+
+### Support Systems
+- `display_manager.rs` - Smart display selection and fallback
+- `dictionary.rs` - Version-aware text encoding
+- `quetzal/` - Save/restore functionality
+- `text.rs` - Z-string decoding
+
+This modular architecture provides a robust, maintainable foundation for a complete Z-Machine interpreter with excellent game compatibility, clean code organization, and clear separation of concerns across functional domains.
