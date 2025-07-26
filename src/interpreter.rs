@@ -47,7 +47,7 @@ pub struct Interpreter {
     /// V4+ input handler (for v4+ games)  
     v4_input: Option<V4Input>,
     /// Display manager
-    display: Option<Box<dyn ZMachineDisplay>>,
+    pub(crate) display: Option<Box<dyn ZMachineDisplay>>,
     /// Output stream state
     output_streams: OutputStreamState,
 }
@@ -611,7 +611,14 @@ impl Interpreter {
 
         match inst.form {
             crate::instruction::InstructionForm::Short => match inst.operand_count {
-                crate::instruction::OperandCount::OP0 => self.execute_0op(inst),
+                crate::instruction::OperandCount::OP0 => {
+                    // Check if this is a display operation and route to display module
+                    if Interpreter::is_display_opcode(inst.opcode, &inst.operand_count) {
+                        self.execute_display_op(inst, &[])
+                    } else {
+                        self.execute_0op(inst)
+                    }
+                }
                 crate::instruction::OperandCount::OP1 => {
                     // Check if this is a math operation and route to math module
                     if Interpreter::is_math_opcode(inst.opcode, &inst.operand_count) {
@@ -622,6 +629,9 @@ impl Interpreter {
                     // Check if this is an object operation and route to object module
                     } else if Interpreter::is_object_opcode(inst.opcode, &inst.operand_count) {
                         self.execute_object_op(inst, &[operands[0]])
+                    // Check if this is a display operation and route to display module
+                    } else if Interpreter::is_display_opcode(inst.opcode, &inst.operand_count) {
+                        self.execute_display_op(inst, &[operands[0]])
                     } else {
                         self.execute_1op(inst, operands[0])
                     }
@@ -641,6 +651,9 @@ impl Interpreter {
                 // Check if this is an object operation and route to object module
                 } else if Interpreter::is_object_opcode(inst.opcode, &inst.operand_count) {
                     self.execute_object_op(inst, &[operands[0], operands[1]])
+                // Check if this is a display operation and route to display module
+                } else if Interpreter::is_display_opcode(inst.opcode, &inst.operand_count) {
+                    self.execute_display_op(inst, &[operands[0], operands[1]])
                 } else {
                     self.execute_2op(inst, operands[0], operands[1])
                 }
@@ -670,6 +683,9 @@ impl Interpreter {
                         } else if Interpreter::is_object_opcode(inst.opcode, &inst.operand_count) 
                                   || Interpreter::is_var_13_object_opcode(inst) {
                             self.execute_object_op(inst, &operands)
+                        // Check if this is a display operation and route to display module
+                        } else if Interpreter::is_display_opcode(inst.opcode, &inst.operand_count) {
+                            self.execute_display_op(inst, &operands)
                         } else {
                             self.execute_2op_variable(inst, &operands)
                         }
@@ -682,6 +698,9 @@ impl Interpreter {
                         } else if Interpreter::is_object_opcode(inst.opcode, &inst.operand_count) 
                                   || Interpreter::is_var_13_object_opcode(inst) {
                             self.execute_object_op(inst, &operands)
+                        // Check if this is a display operation and route to display module
+                        } else if Interpreter::is_display_opcode(inst.opcode, &inst.operand_count) {
+                            self.execute_display_op(inst, &operands)
                         } else {
                             self.execute_var(inst, &operands)
                         }
@@ -747,41 +766,6 @@ impl Interpreter {
             }
             
             // ---- I/O OPERATIONS ----
-            0x02 => {
-                // print (literal string)
-                if let Some(ref text) = inst.text {
-                    // Always log print instructions when debugging 'w' issue
-                    if text.contains("can you attack") || text.contains("spirit") {
-                        debug!(
-                            "*** FOUND GARBAGE TEXT: print at PC {:05x}: '{}'",
-                            self.vm.pc - inst.size as u32,
-                            text
-                        );
-                    }
-                    // Log first part of all print strings for debugging
-                    let preview = if text.len() > 40 {
-                        format!("{}...", &text[..40])
-                    } else {
-                        text.clone()
-                    };
-                    debug!(
-                        "print at PC {:05x}: '{}'",
-                        self.vm.pc - inst.size as u32,
-                        preview
-                    );
-
-                    self.output_text(text)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x03 => {
-                // print_ret
-                if let Some(ref text) = inst.text {
-                    self.output_text(text)?;
-                    self.output_char('\n')?;
-                }
-                self.do_return(1)
-            }
             0x04 => {
                 // nop
                 Ok(ExecutionResult::Continue)
@@ -859,43 +843,6 @@ impl Interpreter {
                 // quit
                 Ok(ExecutionResult::Quit)
             }
-            0x0B => {
-                // new_line
-                let pc = self.vm.pc - inst.size as u32;
-                
-                // Debug logging for NEW_LINE at quote area
-                if (0xcc6a..=0xcc6d).contains(&pc) {
-                    debug!("*** NEW_LINE executed at PC {:05x}", pc);
-                }
-                
-                self.output_char('\n')?;
-                Ok(ExecutionResult::Continue)
-            }
-            0x0C => {
-                // show_status (V3 only)
-                if self.vm.game.header.version == 3 {
-                    debug!("show_status called");
-
-                    // Get location name from G16 (player's location in v3)
-                    let location_obj = self.vm.read_global(16)?; // G16 contains player location in v3
-                    let location_name = if location_obj > 0 {
-                        self.get_object_name(location_obj)?
-                    } else {
-                        "Unknown".to_string()
-                    };
-
-                    // Get score and moves from globals (G17 and G18 in v3)
-                    let score = self.vm.read_global(17)? as i16;
-                    let moves = self.vm.read_global(18)?;
-
-                    if let Some(ref mut display) = self.display {
-                        display.show_status(&location_name, score, moves)?;
-                    } else {
-                        debug!("No display available for show_status");
-                    }
-                }
-                Ok(ExecutionResult::Continue)
-            }
             0x0F => {
                 // piracy
                 // Copy protection check - interpreters should be "gullible and unconditionally branch"
@@ -970,66 +917,6 @@ impl Interpreter {
                 let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
                 self.vm.pc = new_pc;
                 Ok(ExecutionResult::Branched)
-            }
-            0x0D => {
-                // print_paddr
-                // Print string at packed address
-                let pc = self.vm.pc - inst.size as u32;
-                debug!("print_paddr at {:05x}: operand={:04x}", pc, operand);
-
-                // Check if this might be the problematic address
-                if operand == 0xa11d || operand == 0x1da1 {
-                    debug!(
-                        "*** WARNING: print_paddr with suspicious address {:04x} ***",
-                        operand
-                    );
-                }
-
-                let abbrev_addr = self.vm.game.header.abbrev_table;
-                match text::decode_string_at_packed_addr(
-                    &self.vm.game.memory,
-                    operand,
-                    self.vm.game.header.version,
-                    abbrev_addr,
-                ) {
-                    Ok(string) => {
-                        self.output_text(&string)?;
-                    }
-                    Err(e) => {
-                        debug!("Failed to decode string at {:04x}: {}", operand, e);
-                    }
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x07 => {
-                // print_addr
-                // Print string at unpacked address
-                let addr = operand as usize;
-                let abbrev_addr = self.vm.game.header.abbrev_table;
-                debug!(
-                    "print_addr: addr={:04x} at PC {:05x}",
-                    addr,
-                    self.vm.pc - inst.size as u32
-                );
-
-                // Check if this might be related to our bug
-                if addr == 0xa11d || addr == 0x1da1 {
-                    debug!(
-                        "*** WARNING: print_addr with suspicious address {:04x} ***",
-                        addr
-                    );
-                    debug!("*** This might be the source of the 'w' garbage text! ***");
-                }
-
-                match text::decode_string(&self.vm.game.memory, addr, abbrev_addr) {
-                    Ok((string, _)) => {
-                        self.output_text(&string)?;
-                    }
-                    Err(e) => {
-                        debug!("Failed to decode string at {:04x}: {}", addr, e);
-                    }
-                }
-                Ok(ExecutionResult::Continue)
             }
             _ => Err(format!(
                 "Unimplemented 1OP instruction: {:02x}",
@@ -1513,47 +1400,6 @@ impl Interpreter {
                 }
                 Ok(ExecutionResult::Continue)
             }
-            0x05 => {
-                // print_char
-                if !operands.is_empty() {
-                    let ch = operands[0] as u8 as char;
-                    let pc = self.vm.pc - inst.size as u32;
-
-                    // Debug all print_char in error area
-                    if (0x6300..=0x6400).contains(&pc) {
-                        info!(
-                            "print_char at 0x{:04x}: '{}' (0x{:02x})",
-                            pc, ch, operands[0]
-                        );
-                    }
-                    
-                    // Debug space characters from spacing routine
-                    if operands[0] == 32 && (0x19ad8..=0x19b00).contains(&pc) {
-                        debug!("*** SPACING ROUTINE: print_char SPACE at PC {:05x}", pc);
-                    }
-
-                    if operands[0] > 127 || operands[0] == 63 {
-                        // 63 is '?'
-                        debug!(
-                            "print_char: value={} (0x{:02x}) char='{}' at PC {:05x}",
-                            operands[0],
-                            operands[0],
-                            ch,
-                            self.vm.pc - inst.size as u32
-                        );
-                    }
-                    self.output_char(ch)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x06 => {
-                // print_num
-                if !operands.is_empty() {
-                    let num_str = format!("{}", operands[0] as i16);
-                    self.output_text(&num_str)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
             0x07 => {
                 // random
                 if !operands.is_empty() {
@@ -1576,50 +1422,6 @@ impl Interpreter {
                     if let Some(store_var) = inst.store_var {
                         self.vm.write_variable(store_var, result)?;
                     }
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x0A => {
-                // split_window (V3+)
-                if !operands.is_empty() {
-                    let lines = operands[0];
-                    debug!("split_window: lines={}", lines);
-
-                    if let Some(ref mut display) = self.display {
-                        display.split_window(lines)?;
-                    } else {
-                        debug!("No display available for split_window");
-                    }
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x0B => {
-                // set_window (V3+)
-                if !operands.is_empty() {
-                    let window = operands[0] as u8;
-                    debug!("set_window: window={}", window);
-
-                    if let Some(ref mut display) = self.display {
-                        display.set_window(window)?;
-                    } else {
-                        debug!("No display available for set_window");
-                    }
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x0D => {
-                // erase_window - actually used in v3 (Seastalker uses it)
-                if !operands.is_empty() {
-                    let window = operands[0] as i16;
-                    debug!("erase_window: window={}", window);
-
-                    if let Some(ref mut display) = self.display {
-                        display.erase_window(window)?;
-                    } else {
-                        debug!("No display available for erase_window");
-                    }
-                } else {
-                    debug!("erase_window called with no operands");
                 }
                 Ok(ExecutionResult::Continue)
             }
@@ -1682,59 +1484,6 @@ impl Interpreter {
                 } else {
                     debug!("input_stream: no stream number provided");
                 }
-                Ok(ExecutionResult::Continue)
-            }
-            0x0F => {
-                // set_cursor - v3 uses this too (especially Seastalker)
-                if operands.len() >= 2 {
-                    let line = operands[0];
-                    let column = operands[1];
-                    debug!("set_cursor: line={}, column={}", line, column);
-
-                    if let Some(ref mut display) = self.display {
-                        display.set_cursor(line, column)?;
-                    } else {
-                        debug!("No display available for set_cursor");
-                    }
-                } else {
-                    debug!("set_cursor called with insufficient operands");
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x11 => {
-                // set_text_style
-                // Style bits: 1=reverse, 2=bold, 4=italic, 8=fixed-pitch
-                if !operands.is_empty() {
-                    let style = operands[0];
-                    debug!("set_text_style: style={}", style);
-                    
-                    // Use the display system's text style handling
-                    if let Some(ref mut display) = self.display {
-                        display.set_text_style(style).ok();
-                    }
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x15 => {
-                // sound_effect - V3 only supports bleeps
-                // Format: sound_effect number effect volume routine
-                // For v3: number 1 or 2 are bleeps, no repeats, no callbacks
-
-                if operands.is_empty() {
-                    // No operands - beep if possible
-                    self.output_char('\x07')?;
-                } else {
-                    let number = operands[0];
-
-                    if number == 1 || number == 2 {
-                        // Built-in bleeps (1 = high, 2 = low)
-                        // On terminal, both just use bell character
-                        self.output_char('\x07')?;
-                    }
-                    // For v3, ignore other sound numbers and effects
-                    // The Lurking Horror would use numbers 3+ for real sounds
-                }
-
                 Ok(ExecutionResult::Continue)
             }
             0x16 => {
@@ -1805,80 +1554,6 @@ impl Interpreter {
                     debug!("read_char terminated by timer");
                 }
 
-                Ok(ExecutionResult::Continue)
-            }
-            0x0E => {
-                // erase_line (v4+)
-                // Erases the current line from cursor to end of line
-                // Only available in v4+
-                if self.vm.game.header.version < 4 {
-                    return Err("erase_line is only available in v4+".to_string());
-                }
-
-                // operand[0] = pixel value (1 = current cursor position)
-                // For text-only implementation, we only support value 1
-                if !operands.is_empty() && operands[0] == 1 {
-                    if let Some(ref mut display) = self.display {
-                        display.erase_line()?;
-                    } else {
-                        // Simple terminal implementation: clear to end of line
-                        if let Some(ref mut display) = self.display {
-                            display.print("\x1b[K").ok();
-                        } else {
-                            print!("\x1b[K");
-                            io::stdout().flush().ok();
-                        }
-                    }
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x10 => {
-                // get_cursor (v4+)
-                // Stores current cursor position in a word array
-                // array-->0 = line (1-based)
-                // array-->1 = column (1-based)
-                if self.vm.game.header.version < 4 {
-                    return Err("get_cursor is only available in v4+".to_string());
-                }
-
-                if !operands.is_empty() {
-                    let array_addr = operands[0] as u32;
-                    
-                    // Get cursor position from display
-                    let (line, column) = if let Some(ref mut display) = self.display {
-                        display.get_cursor()?
-                    } else {
-                        // Default position if no display
-                        (1, 1)
-                    };
-                    
-                    // Store line and column in array
-                    self.vm.write_word(array_addr, line)?;
-                    self.vm.write_word(array_addr + 2, column)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x12 => {
-                // buffer_mode (v4+)
-                // Controls whether output is buffered
-                // operand[0]: 0 = off (flush after every char), 1 = on (buffer output)
-                if self.vm.game.header.version < 4 {
-                    return Err("buffer_mode is only available in v4+".to_string());
-                }
-
-                if !operands.is_empty() {
-                    let mode = operands[0];
-                    debug!("buffer_mode: {}", if mode == 0 { "off" } else { "on" });
-                    
-                    if let Some(ref mut display) = self.display {
-                        display.set_buffer_mode(mode != 0)?;
-                    } else {
-                        // For stdout, we can flush immediately when buffer mode is off
-                        if mode == 0 {
-                            io::stdout().flush().ok();
-                        }
-                    }
-                }
                 Ok(ExecutionResult::Continue)
             }
             0x1B => {
@@ -2401,7 +2076,7 @@ impl Interpreter {
     }
     
     /// Output a single character, handling stream 3 redirection
-    fn output_char(&mut self, ch: char) -> Result<(), String> {
+    pub(crate) fn output_char(&mut self, ch: char) -> Result<(), String> {
         // Handle stream 3 redirection first
         if let Some(table_addr) = self.output_streams.current_stream3_table {
             let current_count = self.vm.read_word(table_addr as u32);
