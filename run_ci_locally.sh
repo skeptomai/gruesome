@@ -30,9 +30,9 @@ cargo fmt -- --check
 echo "✅ Code formatting check passed"
 
 print_step "Step 2: Run clippy lints"
-echo "ℹ️  Running clippy with warnings (not failing on warnings for now)"
-cargo clippy --all-targets --all-features 2>&1 | head -20
-echo "✅ Clippy check completed (warnings allowed for development)"
+echo "ℹ️  Running clippy with strict warning enforcement (matching CI)"
+cargo clippy -- -D warnings
+echo "✅ Clippy check passed with zero warnings"
 
 print_step "Step 3: Run all tests (with CI environment)"
 cargo test --verbose

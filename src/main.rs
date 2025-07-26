@@ -81,7 +81,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     interpreter.cleanup();
 
     // Return the result (will exit with error code if there was an error)
-    result.map_err(|e| {
-        Box::new(std::io::Error::other(e)) as Box<dyn std::error::Error>
-    })
+    result.map_err(|e| Box::new(std::io::Error::other(e)) as Box<dyn std::error::Error>)
 }
