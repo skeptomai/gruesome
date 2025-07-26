@@ -274,6 +274,22 @@ impl RatatuiDisplay {
         }
     }
 
+    /// Get effective screen size for Z-Machine header
+    /// This accounts for typical upper window usage to prevent coordinate mismatches
+    pub fn get_effective_screen_size(&self) -> (u16, u16) {
+        let (width, height) = self.get_terminal_size();
+        
+        // Reserve space for typical upper window usage (1-2 lines for status/menus)
+        // This ensures Z-Machine header size matches actual usable lower window space
+        let effective_height = if height > 2 {
+            height - 1  // Reserve 1 line for typical status line
+        } else {
+            height  // Don't go below minimum
+        };
+        
+        (width, effective_height)
+    }
+
     /// Force refresh
     pub fn force_refresh(&mut self) -> Result<(), String> {
         // Ratatui handles refresh automatically
@@ -335,6 +351,10 @@ impl ZMachineDisplay for RatatuiDisplay {
 
     fn get_terminal_size(&self) -> (u16, u16) {
         self.get_terminal_size()
+    }
+
+    fn get_effective_screen_size(&self) -> (u16, u16) {
+        self.get_effective_screen_size()
     }
 
     fn force_refresh(&mut self) -> Result<(), DisplayError> {
@@ -801,13 +821,38 @@ impl DisplayState {
             let lower_text: Vec<Line> =
                 lower_lines.iter().map(|s| Line::from(s.as_str())).collect();
 
+            // Calculate scroll to keep all content visible, accounting for word wrapping
+            // CRITICAL FIX (v0.5.0): This calculation now accounts for ratatui's automatic
+            // word wrapping, which can cause logical lines to span multiple display lines.
+            // Previous versions only counted logical lines, causing input prompts to be
+            // lost below the viewport in games like AMFV when content filled small terminals.
+            // Note: The prompt is part of the game content, not a separate UI element
+            let available_lines = chunks[1].height as usize;
+            let available_width = chunks[1].width as usize;
+            
+            // Calculate actual display lines after word wrapping
+            let mut total_display_lines = 0;
+            for line in &lower_lines {
+                if line.is_empty() {
+                    total_display_lines += 1;
+                } else {
+                    // Calculate wrapped line count
+                    let wrapped_lines = (line.len() + available_width - 1) / available_width.max(1);
+                    total_display_lines += wrapped_lines.max(1);
+                }
+            }
+            
+            let scroll_offset = if total_display_lines > available_lines {
+                // Ensure the last content (including prompt) is visible
+                total_display_lines - available_lines
+            } else {
+                0
+            };
+
             let lower_paragraph = Paragraph::new(lower_text)
                 .wrap(Wrap { trim: false }) // Don't trim - preserve spaces!
                 .style(Style::default().bg(Color::Black).fg(Color::White))
-                .scroll((
-                    lower_lines.len().saturating_sub(chunks[1].height as usize) as u16,
-                    0,
-                ));
+                .scroll((scroll_offset as u16, 0));
 
             f.render_widget(lower_paragraph, chunks[1]);
         })?;

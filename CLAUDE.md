@@ -531,6 +531,23 @@ The architecture now cleanly separates version-specific behavior while maintaini
 - Robust display architecture with automatic fallback ✓
 - **Status**: AMFV and other v4+ games fully playable with proper input experience
 
+## Critical Scrolling Fix (v0.5.0)
+
+### AMFV Vertical Scrolling Issue Resolution
+
+Fixed a major display issue where games like A Mind Forever Voyaging would lose the input prompt when content filled small terminal windows (e.g., 20-line terminals). 
+
+**Problem**: The ratatui scroll calculation only counted logical text lines, not accounting for automatic word wrapping. When long lines wrapped to multiple display lines, the scroll offset was incorrect, causing the input prompt to disappear below the visible viewport.
+
+**Solution**: Enhanced the scroll calculation in `display_ratatui.rs` to:
+- Calculate actual display lines after word wrapping
+- Account for terminal width to determine screen line usage
+- Ensure proper scroll offset keeps prompt and recent content visible
+
+**Test Case**: In a 20-line terminal, run AMFV and enter 'PPCC' command. The description now properly scrolls while keeping the input prompt visible at the bottom.
+
+This fix resolves the core gameplay issue that prevented proper interaction with v4+ games in constrained terminal environments.
+
 ### v5 Games: Core Support
 - Should work with existing implementation
 - Extended opcodes (256+) not yet implemented

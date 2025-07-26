@@ -68,6 +68,13 @@ pub trait ZMachineDisplay {
     /// Get the current terminal dimensions
     fn get_terminal_size(&self) -> (u16, u16);
 
+    /// Get effective screen size for Z-Machine header initialization
+    /// This should account for any UI chrome that reduces usable space
+    fn get_effective_screen_size(&self) -> (u16, u16) {
+        // Default implementation: same as terminal size
+        self.get_terminal_size()
+    }
+
     /// Force a display refresh (mainly for debugging)
     fn force_refresh(&mut self) -> Result<(), DisplayError>;
 }

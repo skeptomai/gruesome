@@ -14,6 +14,7 @@
 //! - Comprehensive fallback chain for maximum compatibility
 //! - Optional logging wrapper for debugging display operations
 
+use crate::display_crossterm::CrosstermDisplay;
 use crate::display_headless::HeadlessDisplay;
 use crate::display_logging::LoggingDisplay;
 use crate::display_ratatui::RatatuiDisplay;
@@ -25,9 +26,11 @@ use log::debug;
 /// Display mode selection
 #[derive(Debug, Clone, Default)]
 pub enum DisplayMode {
-    /// Try ratatui, fallback to terminal, fallback to headless
+    /// Try crossterm, fallback to ratatui, fallback to terminal, fallback to headless
     #[default]
     Auto,
+    /// Force crossterm character-by-character display (fail if not available)
+    Crossterm,
     /// Force ratatui (fail if not available)  
     Ratatui,
     /// Force terminal-based display
@@ -84,9 +87,9 @@ pub fn create_display(
 
     let mut display: Box<dyn ZMachineDisplay> = match mode {
         DisplayMode::Auto => {
-            // Version-aware display selection
+            // Fallback based on version - skip crossterm for now due to coordinate issues
             if version <= 3 {
-                // v3 games work best with simple terminal display
+                // v3 games work with simple terminal display
                 debug!("Auto mode: Using terminal display for v3 game");
                 match create_terminal_display(version) {
                     Ok(display) => {
@@ -99,7 +102,7 @@ pub fn create_display(
                     }
                 }
             } else {
-                // v4+ games need ratatui for advanced features
+                // v4+ games use ratatui with fixed scrolling
                 debug!("Auto mode: Using ratatui display for v4+ game");
                 match create_ratatui_display(version) {
                     Ok(display) => {
@@ -112,6 +115,11 @@ pub fn create_display(
                     }
                 }
             }
+        }
+
+        DisplayMode::Crossterm => {
+            debug!("Forcing crossterm display for version {}", version);
+            create_crossterm_display(version)?
         }
 
         DisplayMode::Ratatui => {
@@ -154,6 +162,14 @@ fn create_terminal_display(version: u8) -> Result<Box<dyn ZMachineDisplay>, Disp
         debug!("V4+ games require ratatui - terminal display removed");
         Err(DisplayError::new("V4+ games require ratatui display"))
     }
+}
+
+/// Create a crossterm-based display for the given version  
+fn create_crossterm_display(_version: u8) -> Result<Box<dyn ZMachineDisplay>, DisplayError> {
+    debug!("Creating CrosstermDisplay for version {}", _version);
+    let display = CrosstermDisplay::new()
+        .map_err(|e| DisplayError::new(format!("Failed to create CrosstermDisplay: {e}")))?;
+    Ok(Box::new(display))
 }
 
 /// Create a ratatui-based display for the given version
