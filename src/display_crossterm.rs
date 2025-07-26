@@ -11,7 +11,7 @@ use crossterm::{
     execute, queue,
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
     terminal::{
-        self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, ScrollUp,
+        self, Clear, ClearType, ScrollUp,
     },
 };
 use log::debug;
@@ -55,15 +55,15 @@ impl CrosstermDisplay {
             Hide,
             Clear(ClearType::All),
             MoveTo(0, 0)
-        ).map_err(|e| format!("Failed to initialize terminal: {}", e))?;
+        ).map_err(|e| format!("Failed to initialize terminal: {e}"))?;
         
         // Enable raw mode for direct input handling
         terminal::enable_raw_mode()
-            .map_err(|e| format!("Failed to enable raw mode: {}", e))?;
+            .map_err(|e| format!("Failed to enable raw mode: {e}"))?;
         
         // Get terminal size - crossterm may return default 80x24 instead of actual size
         let (width, reported_height) = terminal::size()
-            .map_err(|e| format!("Failed to get terminal size: {}", e))?;
+            .map_err(|e| format!("Failed to get terminal size: {e}"))?;
         
         // Try to get actual terminal size using stty as fallback
         let actual_size = std::process::Command::new("stty")
@@ -111,7 +111,7 @@ impl CrosstermDisplay {
     fn move_to_visible(&mut self, col: u16, row: u16) -> Result<(), String> {
         let visible_row = row + self.coordinate_offset;
         queue!(self.stdout, MoveTo(col, visible_row))
-            .map_err(|e| format!("Failed to move cursor to visible area: {}", e))
+            .map_err(|e| format!("Failed to move cursor to visible area: {e}"))
     }
     
     /// Print a character at the current cursor position with automatic scrolling
@@ -148,7 +148,7 @@ impl CrosstermDisplay {
                     self.move_to_visible(self.cursor_col, self.cursor_row)?;
                     // Erase character at new position
                     queue!(self.stdout, Print(' '))
-                        .map_err(|e| format!("Failed to print space: {}", e))?;
+                        .map_err(|e| format!("Failed to print space: {e}"))?;
                     self.move_to_visible(self.cursor_col, self.cursor_row)?;
                 }
             }
@@ -158,19 +158,19 @@ impl CrosstermDisplay {
                 // Apply text style
                 if self.reverse_video {
                     queue!(self.stdout, SetBackgroundColor(Color::White), SetForegroundColor(Color::Black))
-                        .map_err(|e| format!("Failed to set reverse video: {}", e))?;
+                        .map_err(|e| format!("Failed to set reverse video: {e}"))?;
                 } else {
                     queue!(self.stdout, SetBackgroundColor(Color::Black), SetForegroundColor(Color::White))
-                        .map_err(|e| format!("Failed to set normal colors: {}", e))?;
+                        .map_err(|e| format!("Failed to set normal colors: {e}"))?;
                 }
                 
                 self.move_to_visible(self.cursor_col, self.cursor_row)?;
                 queue!(self.stdout, Print(ch))
-                    .map_err(|e| format!("Failed to print character: {}", e))?;
+                    .map_err(|e| format!("Failed to print character: {e}"))?;
                 
                 // Reset colors
                 queue!(self.stdout, ResetColor)
-                    .map_err(|e| format!("Failed to reset colors: {}", e))?;
+                    .map_err(|e| format!("Failed to reset colors: {e}"))?;
                 
                 // Advance cursor
                 self.cursor_col += 1;
@@ -191,7 +191,7 @@ impl CrosstermDisplay {
         }
         
         self.stdout.flush()
-            .map_err(|e| format!("Failed to flush output: {}", e))?;
+            .map_err(|e| format!("Failed to flush output: {e}"))?;
         
         Ok(())
     }
@@ -227,7 +227,7 @@ impl CrosstermDisplay {
                     }
                     self.move_to_visible(self.upper_cursor_col, self.upper_cursor_row)?;
                     queue!(self.stdout, Print(' '))
-                        .map_err(|e| format!("Failed to print space: {}", e))?;
+                        .map_err(|e| format!("Failed to print space: {e}"))?;
                 }
             }
             _ => {
@@ -247,19 +247,19 @@ impl CrosstermDisplay {
                 // Apply text style and print
                 if self.reverse_video {
                     queue!(self.stdout, SetBackgroundColor(Color::White), SetForegroundColor(Color::Black))
-                        .map_err(|e| format!("Failed to set reverse video: {}", e))?;
+                        .map_err(|e| format!("Failed to set reverse video: {e}"))?;
                 } else {
                     queue!(self.stdout, SetBackgroundColor(Color::Black), SetForegroundColor(Color::White))
-                        .map_err(|e| format!("Failed to set normal colors: {}", e))?;
+                        .map_err(|e| format!("Failed to set normal colors: {e}"))?;
                 }
                 
                 self.move_to_visible(self.upper_cursor_col, self.upper_cursor_row)?;
                 queue!(self.stdout, Print(ch))
-                    .map_err(|e| format!("Failed to print character: {}", e))?;
+                    .map_err(|e| format!("Failed to print character: {e}"))?;
                 
                 // Reset colors
                 queue!(self.stdout, ResetColor)
-                    .map_err(|e| format!("Failed to reset colors: {}", e))?;
+                    .map_err(|e| format!("Failed to reset colors: {e}"))?;
                 
                 // Advance cursor (with bounds checking)
                 self.upper_cursor_col += 1;
@@ -271,7 +271,7 @@ impl CrosstermDisplay {
         }
         
         self.stdout.flush()
-            .map_err(|e| format!("Failed to flush output: {}", e))?;
+            .map_err(|e| format!("Failed to flush output: {e}"))?;
         
         Ok(())
     }
@@ -290,22 +290,22 @@ impl CrosstermDisplay {
             
             // Set reverse video for the entire upper window (status line)
             queue!(self.stdout, SetBackgroundColor(Color::White), SetForegroundColor(Color::Black))
-                .map_err(|e| format!("Failed to set reverse video: {}", e))?;
+                .map_err(|e| format!("Failed to set reverse video: {e}"))?;
             
             if let Some(line) = self.upper_window_content.get(row_idx as usize) {
                 for &ch in line.iter() {
                     queue!(self.stdout, Print(ch))
-                        .map_err(|e| format!("Failed to print character: {}", e))?;
+                        .map_err(|e| format!("Failed to print character: {e}"))?;
                 }
             }
             
             // Reset colors at end of line
             queue!(self.stdout, ResetColor)
-                .map_err(|e| format!("Failed to reset colors: {}", e))?;
+                .map_err(|e| format!("Failed to reset colors: {e}"))?;
         }
         
         self.stdout.flush()
-            .map_err(|e| format!("Failed to flush upper window redraw: {}", e))?;
+            .map_err(|e| format!("Failed to flush upper window redraw: {e}"))?;
         
         Ok(())
     }
@@ -321,11 +321,11 @@ impl CrosstermDisplay {
             // Move to the scroll region and scroll up
             self.move_to_visible(0, scroll_bottom)?;
             queue!(self.stdout, ScrollUp(1))
-                .map_err(|e| format!("Failed to scroll up: {}", e))?;
+                .map_err(|e| format!("Failed to scroll up: {e}"))?;
         }
         
         self.stdout.flush()
-            .map_err(|e| format!("Failed to flush after scroll: {}", e))?;
+            .map_err(|e| format!("Failed to flush after scroll: {e}"))?;
         
         Ok(())
     }
@@ -334,7 +334,7 @@ impl CrosstermDisplay {
 impl ZMachineDisplay for CrosstermDisplay {
     fn clear_screen(&mut self) -> Result<(), DisplayError> {
         execute!(self.stdout, Clear(ClearType::All))
-            .map_err(|e| DisplayError::new(format!("Failed to clear screen: {}", e)))?;
+            .map_err(|e| DisplayError::new(format!("Failed to clear screen: {e}")))?;
         
         // Reset all window state
         self.upper_window_lines = 0;
@@ -348,7 +348,7 @@ impl ZMachineDisplay for CrosstermDisplay {
         self.cursor_col = 0;
         
         self.move_to_visible(self.cursor_col, self.cursor_row)
-            .map_err(|e| DisplayError::new(format!("Failed to move cursor: {}", e)))?;
+            .map_err(|e| DisplayError::new(format!("Failed to move cursor: {e}")))?;
         
         debug!("Clear screen: reset all window state, cursor at bottom-left");
         
@@ -361,9 +361,9 @@ impl ZMachineDisplay for CrosstermDisplay {
         // Clear the upper window area on screen
         for row in 0..lines {
             self.move_to_visible(0, row)
-                .map_err(|e| DisplayError::new(format!("Failed to move cursor: {}", e)))?;
+                .map_err(|e| DisplayError::new(format!("Failed to move cursor: {e}")))?;
             queue!(self.stdout, Clear(ClearType::CurrentLine))
-                .map_err(|e| DisplayError::new(format!("Failed to clear line: {}", e)))?;
+                .map_err(|e| DisplayError::new(format!("Failed to clear line: {e}")))?;
         }
         
         // Initialize upper window content buffer
@@ -384,7 +384,7 @@ impl ZMachineDisplay for CrosstermDisplay {
         }
         
         self.stdout.flush()
-            .map_err(|e| DisplayError::new(format!("Failed to flush: {}", e)))?;
+            .map_err(|e| DisplayError::new(format!("Failed to flush: {e}")))?;
         
         debug!("Split window: {} lines, cleared upper area, lower window starts at row {}", lines, lower_window_top);
         
@@ -401,7 +401,7 @@ impl ZMachineDisplay for CrosstermDisplay {
         if old_window == 1 && window == 0 && self.upper_window_lines > 0 {
             debug!("Switching from upper to lower window - redrawing upper window");
             self.redraw_upper_window()
-                .map_err(|e| DisplayError::new(format!("Failed to redraw upper window: {}", e)))?;
+                .map_err(|e| DisplayError::new(format!("Failed to redraw upper window: {e}")))?;
         }
         
         Ok(())
@@ -424,14 +424,14 @@ impl ZMachineDisplay for CrosstermDisplay {
         debug!("Print to window {}: '{}'", self.current_window, text.replace('\n', "\\n"));
         for ch in text.chars() {
             self.print_char_at_cursor(ch)
-                .map_err(|e| DisplayError::new(e))?;
+                .map_err(DisplayError::new)?;
         }
         Ok(())
     }
     
     fn print_char(&mut self, ch: char) -> Result<(), DisplayError> {
         self.print_char_at_cursor(ch)
-            .map_err(|e| DisplayError::new(e))
+            .map_err(DisplayError::new)
     }
     
     fn erase_window(&mut self, window: i16) -> Result<(), DisplayError> {
@@ -442,7 +442,7 @@ impl ZMachineDisplay for CrosstermDisplay {
                 
                 // Clear the screen
                 execute!(self.stdout, Clear(ClearType::All))
-                    .map_err(|e| DisplayError::new(format!("Failed to clear screen: {}", e)))?;
+                    .map_err(|e| DisplayError::new(format!("Failed to clear screen: {e}")))?;
                 
                 // Clear upper window buffer but keep the window structure
                 for line in &mut self.upper_window_content {
@@ -457,7 +457,7 @@ impl ZMachineDisplay for CrosstermDisplay {
                 self.current_window = 0; // Switch to lower window
                 
                 execute!(self.stdout, MoveTo(self.cursor_col, self.cursor_row))
-                    .map_err(|e| DisplayError::new(format!("Failed to move cursor: {}", e)))?;
+                    .map_err(|e| DisplayError::new(format!("Failed to move cursor: {e}")))?;
             }
             0 => {
                 // Clear lower window
@@ -465,9 +465,9 @@ impl ZMachineDisplay for CrosstermDisplay {
                 debug!("Erase window 0: clearing lower window from row {} to {}", lower_start, self.terminal_height - 1);
                 for row in lower_start..self.terminal_height {
                     self.move_to_visible(0, row)
-                        .map_err(|e| DisplayError::new(format!("Failed to move cursor: {}", e)))?;
+                        .map_err(|e| DisplayError::new(format!("Failed to move cursor: {e}")))?;
                     queue!(self.stdout, Clear(ClearType::CurrentLine))
-                        .map_err(|e| DisplayError::new(format!("Failed to clear line: {}", e)))?;
+                        .map_err(|e| DisplayError::new(format!("Failed to clear line: {e}")))?;
                 }
                 
                 // Reset lower window cursor to bottom of lower window area
@@ -475,15 +475,15 @@ impl ZMachineDisplay for CrosstermDisplay {
                 self.cursor_col = 0;
                 
                 self.stdout.flush()
-                    .map_err(|e| DisplayError::new(format!("Failed to flush: {}", e)))?;
+                    .map_err(|e| DisplayError::new(format!("Failed to flush: {e}")))?;
             }
             1 => {
                 // Clear upper window
                 for row in 0..self.upper_window_lines {
                     self.move_to_visible(0, row)
-                        .map_err(|e| DisplayError::new(format!("Failed to move cursor: {}", e)))?;
+                        .map_err(|e| DisplayError::new(format!("Failed to move cursor: {e}")))?;
                     queue!(self.stdout, Clear(ClearType::CurrentLine))
-                        .map_err(|e| DisplayError::new(format!("Failed to clear line: {}", e)))?;
+                        .map_err(|e| DisplayError::new(format!("Failed to clear line: {e}")))?;
                 }
                 
                 // Clear upper window buffer
@@ -496,7 +496,7 @@ impl ZMachineDisplay for CrosstermDisplay {
                 self.upper_cursor_col = 0;
                 
                 self.stdout.flush()
-                    .map_err(|e| DisplayError::new(format!("Failed to flush: {}", e)))?;
+                    .map_err(|e| DisplayError::new(format!("Failed to flush: {e}")))?;
             }
             _ => {}
         }
@@ -529,20 +529,20 @@ impl ZMachineDisplay for CrosstermDisplay {
         if self.current_window == 1 {
             // Erase from cursor to end of line in upper window
             self.move_to_visible(self.upper_cursor_col, self.upper_cursor_row)
-                .map_err(|e| DisplayError::new(format!("Failed to move cursor: {}", e)))?;
+                .map_err(|e| DisplayError::new(format!("Failed to move cursor: {e}")))?;
             queue!(self.stdout, Clear(ClearType::UntilNewLine))
-                .map_err(|e| DisplayError::new(format!("Failed to clear line: {}", e)))?;
+                .map_err(|e| DisplayError::new(format!("Failed to clear line: {e}")))?;
             
             // Update buffer
             if (self.upper_cursor_row as usize) < self.upper_window_content.len() {
                 let line = &mut self.upper_window_content[self.upper_cursor_row as usize];
-                for col in self.upper_cursor_col as usize..line.len() {
-                    line[col] = ' ';
+                for item in line.iter_mut().skip(self.upper_cursor_col as usize) {
+                    *item = ' ';
                 }
             }
             
             self.stdout.flush()
-                .map_err(|e| DisplayError::new(format!("Failed to flush: {}", e)))?;
+                .map_err(|e| DisplayError::new(format!("Failed to flush: {e}")))?;
         }
         
         Ok(())
@@ -570,7 +570,7 @@ impl ZMachineDisplay for CrosstermDisplay {
     
     fn force_refresh(&mut self) -> Result<(), DisplayError> {
         self.stdout.flush()
-            .map_err(|e| DisplayError::new(format!("Failed to flush: {}", e)))?;
+            .map_err(|e| DisplayError::new(format!("Failed to flush: {e}")))?;
         Ok(())
     }
     

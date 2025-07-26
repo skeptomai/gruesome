@@ -1,6 +1,5 @@
 /// Simple test to verify crossterm coordinate system
 /// Places characters at the four corners of the terminal to verify positioning
-
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
     execute, queue,
@@ -35,11 +34,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             None
         });
     
-    println!("Crossterm reports: {}x{}", crossterm_width, crossterm_height);
+    println!("Crossterm reports: {crossterm_width}x{crossterm_height}");
     if let Some((stty_width, stty_height)) = stty_size {
-        println!("stty reports: {}x{}", stty_width, stty_height);
+        println!("stty reports: {stty_width}x{stty_height}");
         let offset = crossterm_height.saturating_sub(stty_height);
-        println!("Offset would be: {}", offset);
+        println!("Offset would be: {offset}");
     } else {
         println!("stty: failed to get size");
     }
@@ -103,7 +102,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let center_y = height / 2;
     queue!(stdout, MoveTo(center_x.saturating_sub(10), center_y + offset))?;
     queue!(stdout, SetBackgroundColor(Color::Magenta), SetForegroundColor(Color::White))?;
-    queue!(stdout, Print(format!("CENTER - Size: {}x{}", width, height)))?;
+    queue!(stdout, Print(format!("CENTER - Size: {width}x{height}")))?;
     queue!(stdout, ResetColor)?;
     
     // Status line at row 1
@@ -119,11 +118,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for row in 2..7 {
         queue!(stdout, MoveTo(0, row))?;
         queue!(stdout, SetBackgroundColor(Color::Cyan), SetForegroundColor(Color::Black))?;
-        let text = format!("Upper window row {}", row);
+        let text = format!("Upper window row {row}");
         queue!(stdout, Print(text))?;
         
         // Fill rest of line with spaces
-        for _ in (format!("Upper window row {}", row).len() as u16)..width {
+        for _ in (format!("Upper window row {row}").len() as u16)..width {
             queue!(stdout, Print(" "))?;
         }
         queue!(stdout, ResetColor)?;

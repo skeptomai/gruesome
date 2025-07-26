@@ -842,12 +842,7 @@ impl DisplayState {
                 }
             }
             
-            let scroll_offset = if total_display_lines > available_lines {
-                // Ensure the last content (including prompt) is visible
-                total_display_lines - available_lines
-            } else {
-                0
-            };
+            let scroll_offset = total_display_lines.saturating_sub(available_lines);
 
             let lower_paragraph = Paragraph::new(lower_text)
                 .wrap(Wrap { trim: false }) // Don't trim - preserve spaces!
