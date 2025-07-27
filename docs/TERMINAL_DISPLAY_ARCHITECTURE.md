@@ -126,3 +126,129 @@ Today's interpreters face the challenge of implementing a direct-access display 
 4. **Platform adaptation is still necessary**: Different environments require different strategies, just as in the 1980s
 
 This architectural understanding informed our final implementation choice and explains why certain approaches succeeded while others failed.
+
+## Our Ratatui Implementation Details
+
+### How We Use Ratatui
+
+#### 1. Fullscreen Alternate Screen Mode
+
+```rust
+// We enter alternate screen mode for fullscreen control
+if let Err(_e) = execute!(stdout, EnterAlternateScreen) {
+    // Continue without alternate screen - may work in some environments
+}
+```
+
+This puts the terminal into fullscreen mode, taking over the entire terminal viewport (similar to vim/emacs), avoiding interference from shell prompts and history.
+
+#### 2. Frame-Based Coordinate System (Not Raw Terminal)
+
+```rust
+// We get size from ratatui's terminal, not crossterm directly
+let ratatui_size = state.terminal.size()?;
+
+// In render function, we use frame's abstracted size
+f.render_widget(ratatui::widgets::Clear, f.size());
+let screen_rect = f.size();
+```
+
+**This is crucial**: We use **ratatui's abstracted size** (`f.size()`) rather than crossterm's raw `terminal::size()`. This avoids the scrollback buffer coordinate issues we encountered with direct crossterm positioning.
+
+#### 3. Our Hybrid Screen Drawing Process
+
+Our `render()` method (lines 770-856 in `display_ratatui.rs`) implements a sophisticated hybrid approach:
+
+##### Step 1: Dynamic Layout Creation
+```rust
+let chunks = if self.upper_window_lines > 0 {
+    Layout::default()
+        .direction(Direction::Vertical)
+        .margin(0) // No margin - use full screen
+        .constraints([
+            Constraint::Length(self.upper_window_lines),
+            Constraint::Min(0), // Allow zero height if needed
+        ])
+        .split(screen_rect)
+} else {
+    vec![f.size(), f.size()].into() // Use full screen for lower window
+};
+```
+
+This creates a **dynamic vertical split** with:
+- **Upper chunk**: Fixed height (N lines for status/menus)
+- **Lower chunk**: Remaining space (for main game text)
+
+##### Step 2: Upper Window - Direct Buffer Manipulation
+```rust
+// Direct character-by-character placement for upper window
+for (line_idx, styled_line) in self.upper_window_content.iter().enumerate() {
+    let y = chunks[0].y + line_idx as u16;
+    for (col_idx, styled_char) in styled_line.iter().enumerate() {
+        let x = chunks[0].x + col_idx as u16;
+        f.buffer_mut()
+            .get_mut(x, y)
+            .set_char(styled_char.ch)
+            .set_style(style);
+    }
+}
+```
+
+**Critical technique**: We bypass ratatui's widget system entirely and directly manipulate the character buffer for precise Z-Machine positioning in the upper window. This gives us exact 1980s-style character placement.
+
+##### Step 3: Lower Window - Modern Widget System
+```rust
+let lower_paragraph = Paragraph::new(lower_text)
+    .wrap(Wrap { trim: false }) // Don't trim - preserve spaces!
+    .style(Style::default().bg(Color::Black).fg(Color::White))
+    .scroll((scroll_offset as u16, 0));
+
+f.render_widget(lower_paragraph, chunks[1]);
+```
+
+For the lower window, we use ratatui's `Paragraph` widget with automatic word wrapping and our custom scroll calculation.
+
+### Why This Hybrid Approach Works Perfectly
+
+#### Upper Window: "1980s Style" Direct Placement
+- **Z-Machine compliant**: Exact character positioning for status lines, menus
+- **No interference**: Bypasses ratatui's layout system for precise control
+- **Perfect for**: "* PART I *" boxes, status lines, absolute cursor positioning
+- **Implementation**: Direct buffer manipulation via `f.buffer_mut().get_mut(x, y)`
+
+#### Lower Window: "Modern Style" Text Flow
+- **Automatic word wrap**: Handles varying terminal widths gracefully
+- **Smart scrolling**: Built-in scroll management with our word-wrap-aware calculation
+- **Natural text flow**: Proper paragraph rendering for game narrative
+- **Implementation**: Ratatui `Paragraph` widget with custom scroll offset
+
+#### Coordinate System: Frame-Based Abstraction
+- **`f.size()`**: Uses ratatui's abstracted viewport, not raw terminal dimensions
+- **Layout chunks**: Automatic space division without manual coordinate calculations
+- **Resize handling**: Ratatui handles terminal resize events transparently
+- **No scrollback issues**: Frame coordinates map to visible viewport, not terminal history
+
+### The Technical Breakthrough
+
+Our implementation uses **two different rendering paradigms in one system**:
+
+1. **Upper window rendering**: Direct character buffer access for exact positioning
+2. **Lower window rendering**: Widget-based text flow for robust content display
+3. **Coordinate abstraction**: Frame-based positioning eliminates terminal quirks
+
+This hybrid approach solves the fundamental architecture mismatch:
+- We get Z-Machine's direct positioning model where required (upper window)
+- We get modern terminal compatibility where beneficial (lower window)
+- We avoid raw terminal coordinate system problems entirely (frame abstraction)
+
+### Code Location Summary
+
+The key implementation files:
+- **`src/display_ratatui.rs`**: Main ratatui implementation
+  - Lines 770-856: Core `render()` method with hybrid approach
+  - Lines 791-810: Direct buffer manipulation for upper window
+  - Lines 847-852: Widget-based lower window rendering
+- **`src/display_manager.rs`**: Display system selection logic
+- **`src/display_trait.rs`**: Common interface abstraction
+
+This technical approach explains why our ratatui implementation succeeded where pure crossterm failed - we combined the best aspects of both direct hardware access (for Z-Machine compliance) and modern terminal abstraction (for compatibility) in a single, cohesive system.
