@@ -8,6 +8,7 @@ pub mod debug_symbols;
 pub mod debugger;
 pub mod dictionary;
 pub mod disassembler;
+pub mod disasm_txd;
 pub mod display_crossterm;
 pub mod display_headless;
 pub mod display_logging;
