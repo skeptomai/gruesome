@@ -71,7 +71,8 @@ impl<'a> TxdDisassembler<'a> {
             // V1-5: code starts after dictionary, initial PC from header
             let dict_end = Self::calculate_dict_end(game);
             let initial_pc = ((game.memory[0x06] as u32) << 8) | (game.memory[0x07] as u32);
-            (dict_end, initial_pc)
+            // For Zork, TXD uses dict_end + 1 as the start boundary
+            (dict_end + 1, initial_pc)
         };
 
         debug!("TXD_INIT: version={}, code_base={:04x}, initial_pc={:04x}, file_size={:04x}", 
