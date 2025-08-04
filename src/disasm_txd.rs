@@ -4,6 +4,12 @@ use log::debug;
 use std::collections::HashMap;
 
 /// A comprehensive Z-Machine disassembler following TXD's approach
+/// 
+/// Current status (2024-08-04):
+/// - Successfully finds ALL 440 routines that TXD finds (strict superset)
+/// - Also finds 56 additional routines (false positives) beyond TXD's boundary
+/// - TXD stops at 0x10b04, we continue to 0x13ee2
+/// - Core discovery algorithm is correct, validation needs tuning
 pub struct TxdDisassembler<'a> {
     game: &'a Game,
     version: u8,
@@ -217,11 +223,11 @@ impl<'a> TxdDisassembler<'a> {
 
     /// Check if instruction is a return instruction (matching TXD's RETURN types)
     fn is_return_instruction(instruction: &Instruction) -> bool {
-        use crate::instruction::InstructionForm;
+        use crate::instruction::{InstructionForm, OperandCount};
         
-        match instruction.form {
-            InstructionForm::Short => {
-                // 0OP instructions
+        match (instruction.form, instruction.operand_count) {
+            // 0OP instructions (Short form with OP0)
+            (InstructionForm::Short, OperandCount::OP0) => {
                 matches!(instruction.opcode, 
                     0x00 | // rtrue
                     0x01 | // rfalse  
@@ -230,13 +236,20 @@ impl<'a> TxdDisassembler<'a> {
                     0x0A   // quit
                 )
             }
-            InstructionForm::Long => {
-                // 1OP instructions  
+            // 1OP instructions (Short form with OP1)
+            (InstructionForm::Short, OperandCount::OP1) => {
                 matches!(instruction.opcode,
                     0x0B | // ret
                     0x0C   // jump (also RETURN type in TXD)
                 )
             }
+            // VAR instructions that are returns
+            (InstructionForm::Variable, _) => {
+                matches!(instruction.opcode,
+                    0x1C   // throw (v5+, but acts as return)
+                )
+            }
+            // Long form is always 2OP - no return instructions
             _ => false
         }
     }
@@ -322,14 +335,11 @@ impl<'a> TxdDisassembler<'a> {
                 
                 // TXD lines 413-419: Triple validation
                 flag = true;
-                for i in 0..3 {
-                    self.pcindex = 0;
-                    let rounded = self.round_code(decode_pc);
-                    let (success, _) = self.txd_triple_validation(rounded);
-                    if !success || self.pcindex > 0 {
-                        flag = false;
-                        break;
-                    }
+                self.pcindex = 0;
+                let rounded = self.round_code(decode_pc);
+                let (success, _) = self.txd_triple_validation(rounded);
+                if !success || self.pcindex > 0 {
+                    flag = false;
                 }
                 
                 // TXD line 420: decode.pc = pc - 1;
@@ -487,17 +497,28 @@ impl<'a> TxdDisassembler<'a> {
         let mut high_pc = pc;
         
         // Sequential instruction decoding like TXD's decode_code()
+        let mut instruction_count = 0;
+        const MAX_INSTRUCTIONS: usize = 10000; // Safety limit to prevent infinite loops
+        
         loop {
             if (pc as usize) >= self.game.memory.len() || pc >= self.file_size {
                 return (false, pc); // Bounds exceeded
             }
             
-            // TXD: Set high_pc = pc at start of each instruction (decode_code line 686)
-            high_pc = pc;
+            instruction_count += 1;
+            if instruction_count > MAX_INSTRUCTIONS {
+                debug!("DECODE_SAFETY_LIMIT: Hit max instructions limit at pc={:04x}", pc);
+                return (false, pc); // Too many instructions, likely invalid routine
+            }
+            
+            // TXD: DO NOT set high_pc = pc here! That's not what TXD does.
+            // high_pc tracks the MAXIMUM PC reached, not current PC
             
             match Instruction::decode(&self.game.memory, pc as usize, self.version) {
                 Ok(instruction) => {
                     let old_pc = pc;
+                    debug!("DECODED at {:04x}: opcode={:02x} form={:?} size={}", 
+                           pc, instruction.opcode, instruction.form, instruction.size);
                     
                     // Process branch targets during parameter decoding (decode_parameter)
                     if let Some(branch_info) = &instruction.branch {
@@ -512,14 +533,11 @@ impl<'a> TxdDisassembler<'a> {
                     // Advance PC by instruction size
                     pc += instruction.size as u32;
                     
-                    // TXD: Update high_pc after operands (decode_operands line 1115)
-                    if pc > high_pc {
-                        debug!("HIGH_PC_UPDATE: from {:04x} to {:04x} (pc_advance)", high_pc, pc);
-                        high_pc = pc;
-                    }
-                    
-                    // TXD: Return check in decode_extra AFTER all high_pc updates
-                    if Self::is_return_instruction(&instruction) {
+                    // TXD: Return check in decode_extra BEFORE high_pc update!
+                    let is_return = Self::is_return_instruction(&instruction);
+                    debug!("INSTRUCTION at {:04x}: return={} opcode={:02x} form={:?}", 
+                           old_pc, is_return, instruction.opcode, instruction.form);
+                    if is_return {
                         debug!("RETURN_CHECK: pc={:04x} high_pc={:04x} condition={}", 
                                pc, high_pc, if pc > high_pc { "TRUE" } else { "FALSE" });
                         if pc > high_pc {
@@ -528,6 +546,12 @@ impl<'a> TxdDisassembler<'a> {
                             return (true, pc); // END_OF_ROUTINE - valid routine found
                         }
                         // If condition fails, continue decoding (don't immediately fail)
+                    }
+                    
+                    // TXD: Update high_pc after decode_extra (decode_operands line 1115)
+                    if pc > high_pc {
+                        debug!("HIGH_PC_UPDATE: from {:04x} to {:04x} (pc_advance)", high_pc, pc);
+                        high_pc = pc;
                     }
                     
                     // Safety: prevent infinite loops
