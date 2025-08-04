@@ -438,16 +438,20 @@ impl<'a> TxdDisassembler<'a> {
     
     /// TXD's final high routine scan (lines 514-520)
     fn final_high_routine_scan(&mut self) -> Result<(), String> {
+        debug!("TXD_FINAL_HIGH_SCAN: Starting at high_address={:04x}", self.high_address);
         let mut pc = self.high_address;
         
         while pc < self.file_size {
+            debug!("TXD_FINAL_HIGH_SCAN: Trying pc={:04x}", pc);
             let (success, end_pc) = self.txd_triple_validation(pc);
             if success {
+                debug!("TXD_FINAL_HIGH_SCAN: Found routine at {:04x}", pc);
                 self.add_routine(pc);
                 self.high_address = pc;
                 self.analyze_routine_calls_with_expansion(pc)?;
                 pc = self.round_code(end_pc);
             } else {
+                debug!("TXD_FINAL_HIGH_SCAN: No routine at {:04x}, stopping", pc);
                 break;
             }
         }
@@ -535,9 +539,12 @@ impl<'a> TxdDisassembler<'a> {
                            pc, instruction.opcode, instruction.form, instruction.size);
                     
                     // Check operands for boundary expansion (TXD does this during decode_operands)
-                    // Use the less restrictive check that TXD uses - just check vars <= 15
-                    for &operand in &instruction.operands {
-                        self.check_operand_for_boundary_expansion(operand as u32);
+                    // TXD only checks ROUTINE type operands (from CALL instructions)
+                    if Self::is_call_instruction(&instruction, self.version) {
+                        if let Some(&first_operand) = instruction.operands.first() {
+                            let routine_addr = self.unpack_routine_address(first_operand as u16);
+                            self.try_expand_boundaries(routine_addr);
+                        }
                     }
                     
                     // Process branch targets during parameter decoding (decode_parameter)
@@ -701,10 +708,9 @@ impl<'a> TxdDisassembler<'a> {
         }
     }
 
-    /// Check instruction for call targets and expand boundaries
-    fn check_instruction_targets(&mut self, instruction: &Instruction, pc: u32) {
-        // Look for CALL instructions and routine operands based on form and opcode
-        let is_call = match instruction.form {
+    /// Check if an instruction is a CALL instruction
+    fn is_call_instruction(instruction: &Instruction, version: u8) -> bool {
+        match instruction.form {
             crate::instruction::InstructionForm::Variable => {
                 // VAR opcodes: call/call_vs (0x20), call_vs2 (0x2c), call_vn (0x39), call_vn2 (0x3a)
                 matches!(instruction.opcode, 0x20 | 0x2c | 0x39 | 0x3a)
@@ -712,15 +718,20 @@ impl<'a> TxdDisassembler<'a> {
             crate::instruction::InstructionForm::Long => {
                 // 2OP opcodes: call_2s (0x19) - V4+ only
                 // Note: call_2n (0x1a) is V5+ only, not V4
-                self.version >= 4 && instruction.opcode == 0x19
+                version >= 4 && instruction.opcode == 0x19
             }
             crate::instruction::InstructionForm::Short => {
                 // 1OP opcodes: call_1s (0x08) - V4+ only
                 // Note: 0x0f is 'not' in V4, only becomes call_1n in V5+
-                self.version >= 4 && instruction.opcode == 0x08
+                version >= 4 && instruction.opcode == 0x08
             }
             _ => false,
-        };
+        }
+    }
+
+    /// Check instruction for call targets and expand boundaries
+    fn check_instruction_targets(&mut self, instruction: &Instruction, pc: u32) {
+        let is_call = Self::is_call_instruction(instruction, self.version);
         
         // Also check for timer routines in READ (sread) instruction - V4+ only
         let is_timed_read = self.version >= 4 && 
@@ -739,13 +750,9 @@ impl<'a> TxdDisassembler<'a> {
             let target = self.unpack_routine_address(timer_routine as u16);
             debug!("TXD_TIMER_ROUTINE: found timer routine at {:04x} from sread", target);
             self.process_routine_target(target);
-        } else {
-            // For non-call instructions, check operands for boundary expansion
-            // TXD checks operands as multiple types of addresses
-            for operand in &instruction.operands {
-                self.check_operand_for_boundary_expansion(*operand as u32);
-            }
         }
+        // Note: TXD only expands boundaries for ROUTINE type operands (CALL instructions)
+        // not for other operand types like LABEL (JUMP instructions)
     }
 
     /// Extract routine target from CALL instruction
