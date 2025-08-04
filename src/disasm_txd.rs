@@ -428,6 +428,9 @@ impl<'a> TxdDisassembler<'a> {
                 debug!("TXD_ITERATION: No boundary expansion, stopping");
                 break;
             }
+            
+            debug!("TXD_ITERATION: Boundaries expanded from {:04x}-{:04x} to {:04x}-{:04x}", 
+                   prev_low, prev_high, self.low_address, self.high_address);
         }
         
         Ok(())
