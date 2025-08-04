@@ -590,10 +590,8 @@ impl<'a> TxdDisassembler<'a> {
         while (pc as usize) < self.game.memory.len() {
             match Instruction::decode(&self.game.memory, pc as usize, self.version) {
                 Ok(instruction) => {
-                    // Check ALL operands for boundary expansion
-                    for &operand in &instruction.operands {
-                        self.check_operand_for_boundary_expansion(operand as u32);
-                    }
+                    // Use the proper instruction target checking that handles V4 opcodes
+                    self.check_instruction_targets(&instruction, pc);
                     
                     pc += instruction.size as u32;
                     
@@ -696,20 +694,39 @@ impl<'a> TxdDisassembler<'a> {
         // Look for CALL instructions and routine operands based on form and opcode
         let is_call = match instruction.form {
             crate::instruction::InstructionForm::Variable => {
-                // VAR opcodes: call (0x20), call_2s (0x19), call_vs2 (0x2c), call_vn (0x39), call_vn2 (0x3a)
-                matches!(instruction.opcode, 0x20 | 0x19 | 0x2c | 0x39 | 0x3a)
+                // VAR opcodes: call/call_vs (0x20), call_vs2 (0x2c), call_vn (0x39), call_vn2 (0x3a)
+                matches!(instruction.opcode, 0x20 | 0x2c | 0x39 | 0x3a)
+            }
+            crate::instruction::InstructionForm::Long => {
+                // 2OP opcodes: call_2s (0x19) - V4+ only
+                // Note: call_2n (0x1a) is V5+ only, not V4
+                self.version >= 4 && instruction.opcode == 0x19
             }
             crate::instruction::InstructionForm::Short => {
-                // 1OP opcodes: call_1s (0x08), call_1n (0x0f)
-                matches!(instruction.opcode, 0x08 | 0x0f)
+                // 1OP opcodes: call_1s (0x08) - V4+ only
+                // Note: 0x0f is 'not' in V4, only becomes call_1n in V5+
+                self.version >= 4 && instruction.opcode == 0x08
             }
             _ => false,
         };
+        
+        // Also check for timer routines in READ (sread) instruction - V4+ only
+        let is_timed_read = self.version >= 4 && 
+            instruction.form == crate::instruction::InstructionForm::Variable &&
+            instruction.opcode == 0x04 && // sread
+            instruction.operands.len() >= 4 && // has timer routine operand
+            instruction.operands[3] != 0; // timer routine is non-zero
         
         if is_call {
             if let Some(target) = self.extract_routine_target(instruction, pc) {
                 self.process_routine_target(target);
             }
+        } else if is_timed_read {
+            // Timer routine is in operand 3 for timed read
+            let timer_routine = instruction.operands[3];
+            let target = self.unpack_routine_address(timer_routine as u16);
+            debug!("TXD_TIMER_ROUTINE: found timer routine at {:04x} from sread", target);
+            self.process_routine_target(target);
         } else {
             // For non-call instructions, check operands that might be routine addresses
             for operand in &instruction.operands {
