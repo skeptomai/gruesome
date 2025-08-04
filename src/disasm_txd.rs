@@ -384,10 +384,18 @@ impl<'a> TxdDisassembler<'a> {
             debug!("TXD_ITERATION: starting boundaries low={:04x} high={:04x}", prev_low, prev_high);
             
             let mut pc = self.low_address;
-            let max_pc = std::cmp::max(self.high_address, self.initial_pc);
+            let mut scan_count = 0;
             
-            while pc <= max_pc {
-                debug!("TXD_SCAN: trying pc={:04x} (high={:04x} initial={:04x})", pc, self.high_address, self.initial_pc);
+            // TXD lines 463-464: high_pc = decode.high_address (captured at start of iteration)
+            let high_pc = self.high_address;
+            
+            // TXD line 466: while (decode.pc <= high_pc || decode.pc <= decode.initial_pc)
+            while pc <= high_pc || pc <= self.initial_pc {
+                scan_count += 1;
+                if scan_count % 1000 == 0 {
+                    debug!("TXD_SCAN_PROGRESS: scanned {} addresses, pc={:04x}", scan_count, pc);
+                }
+                debug!("TXD_SCAN: trying pc={:04x} (high={:04x} initial={:04x})", pc, high_pc, self.initial_pc);
                 
                 let (success, end_pc) = self.txd_triple_validation(pc);
                 if success {
@@ -403,7 +411,7 @@ impl<'a> TxdDisassembler<'a> {
                     loop {
                         pc += self.code_scaler;
                         if (pc as usize) >= self.game.memory.len() || pc > self.file_size {
-                            pc = max_pc + 1; // Force exit
+                            pc = self.file_size + 1; // Force exit
                             break;
                         }
                         // TXD: pc++; vars = read_data_byte(&pc); pc--;
@@ -728,11 +736,10 @@ impl<'a> TxdDisassembler<'a> {
             debug!("TXD_TIMER_ROUTINE: found timer routine at {:04x} from sread", target);
             self.process_routine_target(target);
         } else {
-            // For non-call instructions, check operands that might be routine addresses
+            // For non-call instructions, check operands for boundary expansion
+            // TXD checks operands as multiple types of addresses
             for operand in &instruction.operands {
-                if let Some(target) = self.check_operand_for_routine_address(*operand as u32) {
-                    self.process_routine_target(target);
-                }
+                self.check_operand_for_boundary_expansion(*operand as u32);
             }
         }
     }
