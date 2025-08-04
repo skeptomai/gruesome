@@ -27,6 +27,8 @@ pub struct TxdDisassembler<'a> {
     routine_queue: Vec<u32>,
     /// First pass flag
     first_pass: bool,
+    /// TXD's pcindex counter for orphan fragment tracking
+    pcindex: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -70,13 +72,20 @@ impl<'a> TxdDisassembler<'a> {
         } else {
             // V1-5: code starts after dictionary, initial PC from header
             let dict_end = Self::calculate_dict_end(game);
-            let initial_pc = ((game.memory[0x06] as u32) << 8) | (game.memory[0x07] as u32);
-            // For Zork, TXD uses dict_end + 1 as the start boundary
-            (dict_end + 1, initial_pc)
+            let start_pc = ((game.memory[0x06] as u32) << 8) | (game.memory[0x07] as u32);
+            // TXD: decode.initial_pc = (unsigned long)header.start_pc - 1; (line 320)
+            let initial_pc = start_pc - 1;
+            // TXD: code_base = dict_end (line 319) 
+            (dict_end, initial_pc)
         };
 
+        // Get resident_size for display
+        let resident_size = ((game.memory[0x04] as u32) << 8) | (game.memory[0x05] as u32);
+        
         debug!("TXD_INIT: version={}, code_base={:04x}, initial_pc={:04x}, file_size={:04x}", 
                version, code_base, initial_pc, file_size);
+        debug!("Resident data ends at {:x}, program starts at {:x}, file ends at {:x}",
+               resident_size, initial_pc, file_size);
 
         Self {
             game,
@@ -91,6 +100,7 @@ impl<'a> TxdDisassembler<'a> {
             routines: HashMap::new(),
             routine_queue: Vec::new(),
             first_pass: true,
+            pcindex: 0,
         }
     }
 
@@ -205,15 +215,30 @@ impl<'a> TxdDisassembler<'a> {
         }
     }
 
-    /// Check if instruction is a return instruction
+    /// Check if instruction is a return instruction (matching TXD's RETURN types)
     fn is_return_instruction(instruction: &Instruction) -> bool {
-        matches!(instruction.opcode, 
-            0x00 | // rtrue (0OP)
-            0x01 | // rfalse (0OP)  
-            0x08 | // ret_popped (0OP)
-            0x0B | // ret (1OP)
-            0x0A   // quit (0OP) - also ends execution
-        )
+        use crate::instruction::InstructionForm;
+        
+        match instruction.form {
+            InstructionForm::Short => {
+                // 0OP instructions
+                matches!(instruction.opcode, 
+                    0x00 | // rtrue
+                    0x01 | // rfalse  
+                    0x03 | // print_ret
+                    0x08 | // ret_popped
+                    0x0A   // quit
+                )
+            }
+            InstructionForm::Long => {
+                // 1OP instructions  
+                matches!(instruction.opcode,
+                    0x0B | // ret
+                    0x0C   // jump (also RETURN type in TXD)
+                )
+            }
+            _ => false
+        }
     }
 
     /// Add a routine to the discovery list
@@ -231,89 +256,294 @@ impl<'a> TxdDisassembler<'a> {
                 };
                 self.routines.insert(rounded_addr, routine_info);
                 self.routine_queue.push(rounded_addr);
+                
+                // TXD's pcindex tracking: increment when routine is added
+                self.pcindex += 1;
+                debug!("TXD_PCINDEX: incremented to {} for routine {:04x}", self.pcindex, rounded_addr);
             }
         }
     }
 
     /// Run the complete discovery process like TXD
     pub fn discover_routines(&mut self) -> Result<(), String> {
-        debug!("TXD_PHASE2_START: initial boundaries low={:04x} high={:04x} pc={:04x}", 
-               self.low_address, self.high_address, self.code_base);
-
-        // Initial setup - start from the calculated boundaries
-        self.low_address = self.initial_pc.min(self.code_base);
-        self.high_address = self.initial_pc.max(self.code_base);
+        // TXD's initial scan to find starting point (lines 408-421)
+        // This updates self.code_base to the found routine or initial_pc
+        let start_pc = self.initial_preliminary_scan()?;
         
-        // Iterative boundary expansion like TXD
+        // TXD's main boundary expansion algorithm (lines 444-513)
+        // TXD: decode.low_address = decode.pc; decode.high_address = decode.pc;
+        self.low_address = start_pc;
+        self.high_address = start_pc;
+        debug!("TXD_PHASE2_START: initial boundaries low={:04x} high={:04x} pc={:04x}", 
+               self.low_address, self.high_address, start_pc);
+
+        self.iterative_boundary_expansion()?;
+        
+        // TXD's final high routine scan (lines 514-520)
+        self.final_high_routine_scan()?;
+
+        debug!("TXD_DISCOVERY_COMPLETE: {} routines found", self.routines.len());
+        
+        Ok(())
+    }
+
+    /// TXD's preliminary scan to find good starting point (lines 408-421)
+    /// Returns the starting PC for the main scan
+    fn initial_preliminary_scan(&mut self) -> Result<u32, String> {
+        // TXD scans from code_base to initial_pc looking for low routines
+        let mut decode_pc = self.code_base;
+        
+        debug!("TXD_PRELIM_SCAN: scanning from {:04x} to {:04x}", decode_pc, self.initial_pc);
+        
+        if decode_pc < self.initial_pc {
+            decode_pc = self.round_code(decode_pc);
+            let mut pc = decode_pc;
+            let mut flag = false;
+            
+            // TXD line 408: for (pc = decode.pc, flag = 0; pc < decode.initial_pc && flag == 0; pc += code_scaler)
+            while pc < self.initial_pc && !flag {
+                // TXD lines 410-411: Skip to valid locals count
+                let mut test_pc = pc;
+                let mut vars = self.game.memory[test_pc as usize] as i8;
+                while vars < 0 || vars > 15 {
+                    test_pc = self.round_code(test_pc + 1);
+                    if test_pc >= self.initial_pc {
+                        break;
+                    }
+                    vars = self.game.memory[test_pc as usize] as i8;
+                }
+                
+                if test_pc >= self.initial_pc {
+                    break;
+                }
+                
+                // TXD line 412: decode.pc = pc - 1; 
+                decode_pc = test_pc; // NOTE: TXD uses pc-1 but test_pc is already at the var byte
+                
+                // TXD lines 413-419: Triple validation
+                flag = true;
+                for i in 0..3 {
+                    self.pcindex = 0;
+                    let rounded = self.round_code(decode_pc);
+                    let (success, _) = self.txd_triple_validation(rounded);
+                    if !success || self.pcindex > 0 {
+                        flag = false;
+                        break;
+                    }
+                }
+                
+                // TXD line 420: decode.pc = pc - 1;
+                if flag {
+                    debug!("TXD_PRELIM: Found valid low routine at {:04x}", decode_pc);
+                    // Found a valid routine, use this as starting point
+                    return Ok(decode_pc);
+                }
+                
+                pc += self.code_scaler;
+            }
+            
+            // TXD lines 422-439: Additional backward scan for V1-4 (skipping for now)
+            
+            // TXD lines 440-441: if (flag == 0 || decode.pc > decode.initial_pc) decode.pc = decode.initial_pc;
+            if !flag || decode_pc > self.initial_pc {
+                decode_pc = self.initial_pc;
+            }
+        }
+        
+        Ok(decode_pc)
+    }
+    
+    /// TXD's main iterative boundary expansion (lines 450-513)
+    fn iterative_boundary_expansion(&mut self) -> Result<(), String> {
+        let mut iteration_count = 0;
+        const MAX_ITERATIONS: usize = 100; // Safety limit
+        
         loop {
+            iteration_count += 1;
+            if iteration_count > MAX_ITERATIONS {
+                debug!("TXD_ITERATION: Hit maximum iterations, breaking");
+                break;
+            }
+            
             let prev_low = self.low_address;
             let prev_high = self.high_address;
             
-            debug!("TXD_ITERATION: starting boundaries low={:04x} high={:04x}", 
-                   prev_low, prev_high);
-
-            // Clear routines before each iteration to rebuild them
-            self.routines.clear();
-            self.routine_queue.clear();
-
-            self.scan_routines_in_range()?;
+            debug!("TXD_ITERATION: starting boundaries low={:04x} high={:04x}", prev_low, prev_high);
             
-            // Check if boundaries expanded
+            let mut pc = self.low_address;
+            let max_pc = std::cmp::max(self.high_address, self.initial_pc);
+            
+            while pc <= max_pc {
+                debug!("TXD_SCAN: trying pc={:04x} (high={:04x} initial={:04x})", pc, self.high_address, self.initial_pc);
+                
+                let (success, end_pc) = self.txd_triple_validation(pc);
+                if success {
+                    debug!("TXD_SCAN: SUCCESS decode_routine at pc={:04x}", pc);
+                    self.add_routine(pc);
+                    self.analyze_routine_calls_with_expansion(pc)?;
+                    // TXD line 502: pc = ROUND_CODE(decode.pc) - jump to where routine ended
+                    pc = self.round_code(end_pc);
+                } else {
+                    debug!("TXD_SCAN: FAILED decode_routine at pc={:04x}", pc);
+                    // TXD lines 480-487: Skip forward to next valid header
+                    pc = self.round_code(pc);
+                    loop {
+                        pc += self.code_scaler;
+                        if (pc as usize) >= self.game.memory.len() || pc > self.file_size {
+                            pc = max_pc + 1; // Force exit
+                            break;
+                        }
+                        // TXD: pc++; vars = read_data_byte(&pc); pc--;
+                        let vars = self.game.memory[pc as usize];
+                        if vars <= 15 {
+                            break; // Found valid header
+                        }
+                    }
+                }
+            }
+            
+            // Exit loop if no boundary expansion happened
             if self.low_address >= prev_low && self.high_address <= prev_high {
-                break; // No more expansion
-            }
-            
-            // Safety check to prevent infinite expansion
-            if self.high_address > self.file_size || 
-               self.low_address < self.code_base ||
-               (self.high_address - self.low_address) > 50000 {
-                debug!("TXD_SAFETY: stopping expansion at low={:04x} high={:04x}", 
-                       self.low_address, self.high_address);
+                debug!("TXD_ITERATION: No boundary expansion, stopping");
                 break;
             }
         }
-
-        debug!("TXD_DISCOVERY_COMPLETE: final boundaries low={:04x} high={:04x}, {} routines found", 
-               self.low_address, self.high_address, self.routines.len());
         
         Ok(())
     }
-
-    /// Scan for routines in the current boundary range
-    fn scan_routines_in_range(&mut self) -> Result<(), String> {
-        let mut pc = self.low_address;
-        let high_limit = self.high_address.max(self.initial_pc);
+    
+    /// TXD's final high routine scan (lines 514-520)
+    fn final_high_routine_scan(&mut self) -> Result<(), String> {
+        let mut pc = self.high_address;
         
-        while pc <= high_limit || pc <= self.initial_pc {
-            debug!("TXD_SCAN: trying pc={:04x} (high={:04x} initial={:04x})", 
-                   pc, high_limit, self.initial_pc);
-            
-            if self.decode_routine_validation(pc) {
-                debug!("TXD_SCAN: SUCCESS decode_routine at pc={:04x}", pc);
+        while pc < self.file_size {
+            let (success, end_pc) = self.txd_triple_validation(pc);
+            if success {
                 self.add_routine(pc);
-                
-                // Analyze this routine for call targets
-                self.analyze_routine_calls(pc)?;
-                
-                // Move to next potential routine
-                pc = self.round_code(pc + 1);
+                self.high_address = pc;
+                self.analyze_routine_calls_with_expansion(pc)?;
+                pc = self.round_code(end_pc);
             } else {
-                debug!("TXD_SCAN: FAILED decode_routine at pc={:04x}", pc);
-                // Skip to next code boundary  
-                pc = self.round_code(pc + self.code_scaler);
-            }
-            
-            // Safety check to prevent infinite loops
-            if pc > self.file_size {
                 break;
             }
         }
         
         Ok(())
     }
+    
+    /// TXD's exact triple validation with pcindex constraint
+    /// Returns (success, end_pc) where end_pc is where the routine ends
+    fn txd_triple_validation(&mut self, addr: u32) -> (bool, u32) {
+        let rounded_addr = self.round_code(addr);
+        let mut routine_end_pc = rounded_addr;
+        
+        if let Some(locals_count) = self.validate_routine(addr) {
+            debug!("DECODE_START ");
+            
+            // TXD requires triple validation - decode the same routine 3 times
+            let mut flag = true;
+            for attempt in 0..3 {
+                // TXD line 415: pcindex = 0; (reset before each decode attempt)
+                self.pcindex = 0;
+                debug!("TRIPLE_ATTEMPT_{}: pcindex reset to 0", attempt + 1);
+                
+                let (decode_result, end_pc) = self.decode_single_routine_attempt(rounded_addr, locals_count);
+                routine_end_pc = end_pc;
+                
+                // TXD line 417: if (decode_routine() != END_OF_ROUTINE || pcindex)
+                if !decode_result || self.pcindex > 0 {
+                    debug!("FAIL_DECODE (decode={} pcindex={})", decode_result, self.pcindex);
+                    flag = false;
+                    break;
+                }
+                
+                debug!("TRIPLE_ATTEMPT_{}: success, pcindex={}", attempt + 1, self.pcindex);
+            }
+            
+            if flag {
+                debug!("PASS_DECODE");
+                (true, routine_end_pc)
+            } else {
+                debug!("FAIL_DECODE");
+                (false, routine_end_pc)
+            }
+        } else {
+            debug!("FAIL_DECODE");
+            (false, rounded_addr)
+        }
+    }
+    
+    /// TXD's exact sequential decode validation (matching decode_code + decode_outputs)
+    /// Returns (success, end_pc) where end_pc is where decoding stopped
+    fn decode_single_routine_attempt(&mut self, rounded_addr: u32, locals_count: u8) -> (bool, u32) {
+        let mut pc = rounded_addr + 1;
+        
+        // Skip local variable initial values in V1-4
+        if self.version <= 4 {
+            pc += (locals_count as u32) * 2;
+        }
+        
+        // TXD's high_pc tracking (line 686: decode.high_pc = decode.pc)
+        let mut high_pc = pc;
+        
+        // Sequential instruction decoding like TXD's decode_code()
+        loop {
+            if (pc as usize) >= self.game.memory.len() || pc >= self.file_size {
+                return (false, pc); // Bounds exceeded
+            }
+            
+            // TXD: Set high_pc = pc at start of each instruction (decode_code line 686)
+            high_pc = pc;
+            
+            match Instruction::decode(&self.game.memory, pc as usize, self.version) {
+                Ok(instruction) => {
+                    let old_pc = pc;
+                    
+                    // Process branch targets during parameter decoding (decode_parameter)
+                    if let Some(branch_info) = &instruction.branch {
+                        let branch_addr = old_pc.wrapping_add(instruction.size as u32)
+                            .wrapping_add((branch_info.offset as i32) as u32).wrapping_sub(2);
+                        if branch_addr > high_pc {
+                            debug!("HIGH_PC_UPDATE: from {:04x} to {:04x} (branch_addr)", high_pc, branch_addr);
+                            high_pc = branch_addr;
+                        }
+                    }
+                    
+                    // Advance PC by instruction size
+                    pc += instruction.size as u32;
+                    
+                    // TXD: Update high_pc after operands (decode_operands line 1115)
+                    if pc > high_pc {
+                        debug!("HIGH_PC_UPDATE: from {:04x} to {:04x} (pc_advance)", high_pc, pc);
+                        high_pc = pc;
+                    }
+                    
+                    // TXD: Return check in decode_extra AFTER all high_pc updates
+                    if Self::is_return_instruction(&instruction) {
+                        debug!("RETURN_CHECK: pc={:04x} high_pc={:04x} condition={}", 
+                               pc, high_pc, if pc > high_pc { "TRUE" } else { "FALSE" });
+                        if pc > high_pc {
+                            // Update high_pc one more time after successful return check
+                            debug!("HIGH_PC_UPDATE: from {:04x} to {:04x} (pc_advance)", high_pc, pc);
+                            return (true, pc); // END_OF_ROUTINE - valid routine found
+                        }
+                        // If condition fails, continue decoding (don't immediately fail)
+                    }
+                    
+                    // Safety: prevent infinite loops
+                    if pc <= old_pc {
+                        return (false, pc);
+                    }
+                }
+                Err(_) => {
+                    return (false, pc); // Decode failure - invalid routine
+                }
+            }
+        }
+    }
 
-    /// Analyze a routine for CALL instructions to discover new routines
-    fn analyze_routine_calls(&mut self, routine_addr: u32) -> Result<(), String> {
+    /// Analyze routine calls WITH boundary expansion (TXD lines 1376-1401)
+    fn analyze_routine_calls_with_expansion(&mut self, routine_addr: u32) -> Result<(), String> {
         let rounded_addr = self.round_code(routine_addr);
         let locals_count = self.game.memory[rounded_addr as usize];
         
@@ -324,12 +554,14 @@ impl<'a> TxdDisassembler<'a> {
             pc += (locals_count as u32) * 2;
         }
         
-        // Decode instructions and look for calls
+        // Decode instructions and look for operands that expand boundaries
         while (pc as usize) < self.game.memory.len() {
             match Instruction::decode(&self.game.memory, pc as usize, self.version) {
                 Ok(instruction) => {
-                    // Check for call instructions and extract targets
-                    self.check_instruction_targets(&instruction, pc);
+                    // Check ALL operands for boundary expansion
+                    for &operand in &instruction.operands {
+                        self.check_operand_for_boundary_expansion(operand as u32);
+                    }
                     
                     pc += instruction.size as u32;
                     
@@ -343,6 +575,61 @@ impl<'a> TxdDisassembler<'a> {
         }
         
         Ok(())
+    }
+    
+    /// TXD's exact boundary expansion logic (lines 1376-1401)
+    fn check_operand_for_boundary_expansion(&mut self, operand: u32) {
+        // Check operand as routine address (for CALL instructions)
+        let routine_addr = self.unpack_routine_address(operand as u16);
+        if routine_addr >= self.code_base && routine_addr < self.file_size {
+            self.try_expand_boundaries(routine_addr);
+        }
+        
+        // Check operand as direct address (for branches/labels)
+        if operand >= self.code_base && operand < self.file_size {
+            self.try_expand_boundaries(operand);
+        }
+        
+        // Check if operand could be a packed string address or other packed data
+        // (TXD checks various interpretations of operands)
+        let string_addr = operand * self.story_scaler;
+        if string_addr >= self.code_base && string_addr < self.file_size {
+            self.try_expand_boundaries(string_addr);
+        }
+    }
+    
+    /// Try to expand boundaries for a given address (exact TXD logic)
+    fn try_expand_boundaries(&mut self, addr: u32) {
+        debug!("TXD_OPERAND: checking addr={:04x} (low={:04x} high={:04x})", 
+               addr, self.low_address, self.high_address);
+               
+        // Check for low boundary expansion (TXD lines 1376-1388)
+        if addr < self.low_address && addr >= self.code_base {
+            if (addr as usize) < self.game.memory.len() {
+                let vars = self.game.memory[addr as usize];
+                debug!("TXD_CHECK_LOW: addr={:04x} vars={} ", addr, vars);
+                if vars <= 15 {
+                    debug!("EXPANDING LOW from {:04x} to {:04x}", self.low_address, addr);
+                    self.low_address = addr;
+                } else {
+                    debug!("REJECT LOW (bad vars)");
+                }
+            }
+        }
+        
+        // Check for high boundary expansion (TXD lines 1389-1401)
+        if addr > self.high_address && addr < self.file_size {
+            if (addr as usize) < self.game.memory.len() {
+                let vars = self.game.memory[addr as usize];
+                debug!("TXD_CHECK_HIGH: addr={:04x} vars={} ", addr, vars);
+                if vars <= 15 {
+                    debug!("EXPANDING HIGH from {:04x} to {:04x}", self.high_address, addr);
+                    self.high_address = addr;
+                } else {
+                    debug!("REJECT HIGH (bad vars)");
+                }
+            }
+        }
     }
 
     /// Check instruction for call targets and expand boundaries
@@ -445,9 +732,12 @@ impl<'a> TxdDisassembler<'a> {
     pub fn generate_output(&self) -> String {
         let mut output = String::new();
         
-        // Header information
+        // Get resident_size from header for display
+        let resident_size = ((self.game.memory[0x04] as u32) << 8) | (self.game.memory[0x05] as u32);
+        
+        // Header information - match TXD exactly
         output.push_str(&format!("Resident data ends at {:x}, program starts at {:x}, file ends at {:x}\n\n", 
-                                self.code_base, self.initial_pc, self.file_size));
+                                resident_size, self.initial_pc, self.file_size));
         
         output.push_str(&format!("Starting analysis pass at address {:x}\n\n", self.code_base));
         
@@ -457,16 +747,27 @@ impl<'a> TxdDisassembler<'a> {
         output.push_str("[Start of code]\n\n");
         
         // TODO: Generate routine disassembly in TXD format
-        for (addr, routine) in &self.routines {
-            output.push_str(&format!("Routine R{:04}, {} local", 
-                                    addr, routine.locals_count));
+        let mut sorted_routines: Vec<_> = self.routines.iter().collect();
+        sorted_routines.sort_by_key(|(addr, _)| *addr);
+        
+        let mut routine_num = 1;
+        for (addr, routine) in sorted_routines {
+            // Check if this is the main routine
+            let routine_prefix = if *addr == self.initial_pc { "Main r" } else { "R" };
+            
+            output.push_str(&format!("{}outine R{:04}, {} local", 
+                                    routine_prefix, routine_num, routine.locals_count));
             if routine.locals_count != 1 {
                 output.push('s');
             }
+            
+            // TODO: Add local variable initial values for V1-4
             output.push_str(" (0000)\n\n");
             
             // TODO: Add instruction disassembly
             output.push_str("       ; Routine disassembly not yet implemented\n\n");
+            
+            routine_num += 1;
         }
         
         output.push_str("[End of code]\n");
