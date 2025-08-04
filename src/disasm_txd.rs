@@ -535,8 +535,9 @@ impl<'a> TxdDisassembler<'a> {
                            pc, instruction.opcode, instruction.form, instruction.size);
                     
                     // Check operands for boundary expansion (TXD does this during decode_operands)
+                    // Use the less restrictive check that TXD uses - just check vars <= 15
                     for &operand in &instruction.operands {
-                        self.check_and_expand_operand(operand as u32);
+                        self.check_operand_for_boundary_expansion(operand as u32);
                     }
                     
                     // Process branch targets during parameter decoding (decode_parameter)
