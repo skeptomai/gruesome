@@ -523,6 +523,11 @@ impl<'a> TxdDisassembler<'a> {
                     debug!("DECODED at {:04x}: opcode={:02x} form={:?} size={}", 
                            pc, instruction.opcode, instruction.form, instruction.size);
                     
+                    // Check operands for boundary expansion (TXD does this during decode_operands)
+                    for &operand in &instruction.operands {
+                        self.check_and_expand_operand(operand as u32);
+                    }
+                    
                     // Process branch targets during parameter decoding (decode_parameter)
                     if let Some(branch_info) = &instruction.branch {
                         let branch_addr = old_pc.wrapping_add(instruction.size as u32)
@@ -625,6 +630,33 @@ impl<'a> TxdDisassembler<'a> {
         }
     }
     
+    /// Check operand and expand boundaries if it's a valid routine address
+    fn check_and_expand_operand(&mut self, operand: u32) {
+        // Check if operand could be a routine address
+        let routine_addr = self.unpack_routine_address(operand as u16);
+        
+        // Only check if it's in a reasonable range
+        if routine_addr >= self.code_base && routine_addr < self.file_size {
+            debug!("TXD_OPERAND: checking addr={:04x} (low={:04x} high={:04x})", 
+                   routine_addr, self.low_address, self.high_address);
+            
+            // Check for boundary expansion
+            if routine_addr < self.low_address {
+                if let Some(locals_count) = self.validate_routine(routine_addr) {
+                    debug!("TXD_CHECK_LOW: addr={:04x} vars={} EXPANDING LOW from {:04x} to {:04x}", 
+                           routine_addr, locals_count, self.low_address, routine_addr);
+                    self.low_address = routine_addr;
+                }
+            } else if routine_addr > self.high_address {
+                if let Some(locals_count) = self.validate_routine(routine_addr) {
+                    debug!("TXD_CHECK_HIGH: addr={:04x} vars={} EXPANDING HIGH from {:04x} to {:04x}", 
+                           routine_addr, locals_count, self.high_address, routine_addr);
+                    self.high_address = routine_addr;
+                }
+            }
+        }
+    }
+
     /// Try to expand boundaries for a given address (exact TXD logic)
     fn try_expand_boundaries(&mut self, addr: u32) {
         debug!("TXD_OPERAND: checking addr={:04x} (low={:04x} high={:04x})", 
@@ -768,15 +800,28 @@ impl<'a> TxdDisassembler<'a> {
         // For now, use a heuristic based on what we know about TXD's behavior:
         // If we've expanded beyond a reasonable code size, check more carefully
         
-        const TYPICAL_MAX_CODE_SIZE: u32 = 0x10C00; // ~67KB, slightly above TXD's 0x10b04 boundary
+        // For v4+ files, don't apply string detection - TXD doesn't seem to filter
+        // routines based on string regions for v4+ files
+        if self.version >= 4 {
+            debug!("TXD_STRING_SCAN: Skipping string detection for v{} file", self.version);
+            return Ok(());
+        }
         
-        if self.high_address > TYPICAL_MAX_CODE_SIZE {
+        // Version-aware code size limits based on Z-Machine memory constraints
+        let typical_max_code_size = match self.version {
+            1..=3 => 0x10C00,  // ~67KB, based on TXD's v3 boundary
+            4..=5 => 0x3A000,  // ~232KB, based on v4-5 memory layout
+            6..=8 => 0x60000,  // ~384KB, v6+ can be larger
+            _ => 0x10C00,      // Default to v3
+        };
+        
+        if self.high_address > typical_max_code_size {
             debug!("TXD_STRING_SCAN: High address {:04x} exceeds typical code size", self.high_address);
             
             // Find routines beyond the typical boundary
             let mut routines_to_check: Vec<u32> = Vec::new();
             for (addr, _) in &self.routines {
-                if *addr >= TYPICAL_MAX_CODE_SIZE {
+                if *addr >= typical_max_code_size {
                     routines_to_check.push(*addr);
                 }
             }
