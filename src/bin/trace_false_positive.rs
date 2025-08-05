@@ -23,7 +23,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Check if it's in our discovered routines
     let _ = disasm.discover_routines();
-    let is_found = disasm.routines.contains_key(&address);
+    let routines = disasm.get_routine_addresses();
+    let is_found = routines.contains(&address);
     
     info!("Result: is_found = {}", is_found);
     

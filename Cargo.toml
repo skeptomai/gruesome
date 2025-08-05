@@ -63,3 +63,35 @@ path = "src/bin/analyze_routine_patterns.rs"
 [[bin]]
 name = "analyze-txd-heuristics"
 path = "src/bin/analyze_txd_heuristics.rs"
+
+[[bin]]
+name = "filter-nested-routines"
+path = "src/bin/filter_nested_routines.rs"
+
+[[bin]]
+name = "implement-txd-filters"
+path = "src/bin/implement_txd_filters.rs"
+
+[[bin]]
+name = "debug-call-graph"
+path = "src/bin/debug_call_graph.rs"
+
+[[bin]]
+name = "fix-alternate-entries"
+path = "src/bin/fix_alternate_entries.rs"
+
+[[bin]]
+name = "analyze-nested-difference"
+path = "src/bin/analyze_nested_difference.rs"
+
+[[bin]]
+name = "check-nested-calls"
+path = "src/bin/check_nested_calls.rs"
+
+[[bin]]
+name = "analyze-txd-nested"
+path = "src/bin/analyze_txd_nested.rs"
+
+[[bin]]
+name = "verify-cafc-rejected"
+path = "src/bin/verify_cafc_rejected.rs"

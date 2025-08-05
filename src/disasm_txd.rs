@@ -363,6 +363,12 @@ impl<'a> TxdDisassembler<'a> {
         let rounded_addr = self.round_code(addr);
         if !self.routines.contains_key(&rounded_addr) {
             
+            // Check if this address falls inside another routine's header
+            if self.is_inside_routine_header(rounded_addr) {
+                debug!("TXD_ADD_ROUTINE: Rejecting {:04x} - inside another routine's header", rounded_addr);
+                return;
+            }
+            
             if let Some(locals_count) = self.validate_routine(addr) {
                 let routine_info = RoutineInfo {
                     address: rounded_addr,
@@ -376,6 +382,32 @@ impl<'a> TxdDisassembler<'a> {
         }
     }
 
+    /// Check if an address falls inside another routine's header/locals area
+    fn is_inside_routine_header(&self, addr: u32) -> bool {
+        // Check all existing routines
+        for (&routine_addr, routine_info) in &self.routines {
+            if routine_addr >= addr {
+                continue; // Only check routines that start before this address
+            }
+            
+            // Calculate header size for this routine
+            let header_size = 1 + if self.version <= 4 {
+                (routine_info.locals_count as u32) * 2
+            } else {
+                0
+            };
+            
+            // Check if addr falls within this routine's header
+            if addr > routine_addr && addr < routine_addr + header_size {
+                debug!("Address {:04x} is inside routine {:04x}'s header (locals={}, header_size={})", 
+                       addr, routine_addr, routine_info.locals_count, header_size);
+                return true;
+            }
+        }
+        
+        false
+    }
+    
     /// Enable orphan detection (must be called before discover_routines)
     pub fn enable_orphan_detection(&mut self) {
         self.enable_orphan_detection = true;
