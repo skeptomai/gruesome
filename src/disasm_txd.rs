@@ -749,12 +749,26 @@ impl<'a> TxdDisassembler<'a> {
         // TXD's high_pc tracking (line 686: decode.high_pc = decode.pc)
         let mut high_pc = pc;
         
-        // NOTE: Orphan detection disabled after investigation
+        // NOTE: Orphan detection disabled after investigation (August 2025)
         // Initial implementation was too aggressive, removing ~474 valid routines
         // The actual false positive issue was resolved by proper opcode validation
         // in the instruction decoder (rejecting invalid Long form opcode 0x00).
         // Keeping the infrastructure for potential future use, but the simple
         // solution of spec-compliant instruction decoding was sufficient.
+        //
+        // Further analysis shows we find ~65 more routines than TXD for V4+ games.
+        // These extras are:
+        // - Uncalled code fragments inside other routines (~50)
+        // - Short routines that fall through without proper termination (~9)
+        // - Very short routines with immediate jump/return (~30)
+        //
+        // TXD appears to use stricter heuristics:
+        // 1. Routines must be called from somewhere in the code
+        // 2. Must be properly terminated with ret/jump/quit
+        // 3. Must not be located inside other routine boundaries
+        //
+        // Our more aggressive scanning finds all potential entry points,
+        // while TXD is more conservative about what constitutes a "routine".
         
         // Sequential instruction decoding like TXD's decode_code()
         let mut instruction_count = 0;

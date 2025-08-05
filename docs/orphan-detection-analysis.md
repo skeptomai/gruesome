@@ -152,6 +152,51 @@ The false positive at 33c04 was particularly instructive - it's a region of all 
 ### 5. Remaining Differences May Be Valid
 After fixing the false positives, we find MORE routines than TXD (1010 vs 982). This suggests our scanner is more thorough, not that we have more false positives.
 
+## Analysis of Extra Routines (August 2025)
+
+After further investigation into why we find 65 more routines than TXD for AMFV:
+
+### Key Findings
+
+1. **All 65 extra routines are uncalled** - None are directly called by any other routine
+2. **Most are code fragments inside other routines** - About 50 of the 65 are located within the boundaries of legitimate routines
+3. **TXD uses stricter heuristics** - It rejects:
+   - Routines not called by anyone
+   - Code fragments that fall through without proper termination
+   - Very short routines that immediately jump elsewhere
+   - Code that starts with `ret_popped`
+
+### Patterns Found
+
+The extra routines fall into these categories:
+- **Inside other routines** (50): Code fragments within legitimate routine boundaries
+- **Very short with jump** (13): Routines that just jump elsewhere
+- **Falls through** (9): Code without proper termination (ret/jump/quit)
+- **Very short with return** (17): Minimal routines with immediate return
+
+### Examples
+
+1. **Address 0cafc**: Inside routine 0caf4 at offset +8
+   - Not called by any routine
+   - Appears to be a fallthrough destination
+
+2. **Address 34170**: Inside routine 340d4 at offset +156
+   - Contains valid print instructions
+   - But is part of a larger routine's code
+
+3. **Address 0e114**: Falls through after 4 instructions
+   - Valid code but doesn't terminate properly
+   - Likely a code fragment, not a true routine
+
+### Conclusion
+
+Our disassembler is more aggressive in finding potential routines, while TXD applies stricter validation:
+- TXD requires routines to be called from somewhere
+- TXD rejects code fragments that lack proper termination
+- TXD avoids marking code inside other routines as separate routines
+
+This explains the difference: we find 1010 routines vs TXD's 982. The 65 extra are technically valid code sequences but likely not intended as separate routines. TXD's heuristics are more conservative and probably more accurate for identifying true entry points.
+
 ## Risk Assessment
 
 **Low Risk**:
