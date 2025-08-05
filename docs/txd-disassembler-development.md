@@ -100,3 +100,52 @@ The implementation is robust, well-tested, and ready for further enhancements.
 2. Implement the actual instruction disassembly output (currently placeholder)
 3. Add support for other Z-Machine versions beyond v3
 4. Optimize the boundary expansion algorithm for performance
+
+## V4+ Support and False Positives Investigation (August 2025)
+
+### V4 Game Results (A Mind Forever Voyaging)
+After adding V4+ support and implementing preliminary routine scanning:
+- **We find**: 624 routines
+- **TXD finds**: 982 routines
+- **Missing**: 393 routines that TXD discovers
+- **False positives**: 35 routines we find that TXD doesn't
+
+### False Positives Analysis
+The 35 false positives were introduced in commit 7741710 when implementing:
+- Preliminary low routine scan (searching before initial PC)
+- Backward scan for V1-4 games
+
+#### Specific False Positives
+1. **caf8, cafc** - Addresses before the first valid routine (caf4)
+2. **33c04-34498** - A cluster of 22 consecutive addresses in a data region
+3. **Various scattered addresses** - Data that coincidentally looks like valid code
+
+### Root Cause: Missing Orphan Code Detection
+Our implementation validates routines by checking:
+- Valid locals count (0-15)
+- Successful instruction decoding
+- Reaches a return instruction
+
+However, TXD has additional validation through "orphan code fragment" detection:
+```c
+// TXD performs a second decode pass after validation
+decode.pc = old_pc;
+if ((status = decode_code()) != END_OF_ROUTINE) {
+    decode.pc = old_pc;  // Not a routine
+} else {
+    pctable[pcindex++] = old_pc;  // Orphan fragment
+}
+// During first pass, routines with pcindex > 0 are rejected
+```
+
+Orphan fragments are code reachable by falling through rather than being called. Our implementation lacks this crucial check, allowing data regions that happen to decode as valid instructions to be accepted as routines.
+
+### Example: Invalid Opcode at 33c04
+- Address 33c04 has locals count 0 followed by all zeros
+- Decoded as Long form opcode 0x00 (invalid - Long form starts at 0x01)
+- Our decoder accepted it anyway, revealing another validation gap
+
+### Current Implementation Status
+- **V3 games**: Excellent - strict superset with minimal false positives
+- **V4+ games**: Functional but imperfect - finds majority of routines with some false positives
+- **Missing TXD features**: Orphan code detection, full two-pass validation

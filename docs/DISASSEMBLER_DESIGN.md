@@ -118,3 +118,72 @@ TXD provides extensive debug output showing:
 - Make iterative commits to allow rollback if needed
 - Test frequently against TXD reference implementation
 - Document all algorithmic decisions and edge cases
+
+## Key Findings: False Positives Investigation (August 2025)
+
+### Problem Statement
+Our TXD-style disassembler finds 35 false positive routines compared to TXD for V4 games (AMFV). These false positives were introduced in commit 7741710 when implementing the preliminary low routine scan and backward scan.
+
+### Root Cause Analysis
+
+#### 1. Insufficient Validation
+Our implementation accepts addresses as valid routines if they:
+- Have a valid locals count (0-15)
+- Decode to valid instructions
+- Eventually reach a return instruction
+
+However, this is insufficient. Data regions can coincidentally match these criteria.
+
+#### 2. Missing Orphan Code Detection
+TXD implements a sophisticated "orphan code fragment" detection mechanism:
+- After validating a routine, TXD performs a second decode pass
+- If this second decode returns END_OF_ROUTINE, it's marked as an orphan fragment
+- During the first pass, any routine that creates orphan fragments (pcindex > 0) is rejected
+- Orphan fragments are code reachable by falling through, not by being called
+
+Our implementation lacks this crucial validation step.
+
+#### 3. Specific False Positives Found
+1. **caf8, cafc** - Addresses before the first valid routine (caf4)
+2. **33c04-34498 cluster** - 22 consecutive addresses in what appears to be a data table
+3. **Various scattered addresses** - Likely data that coincidentally decodes as valid instructions
+
+### Example: Address 33c04
+- Locals count: 0 (valid)
+- First instruction: 0x00 (all zeros)
+- Decoded as Long form opcode 0x00, which is NOT a valid Z-Machine instruction
+- Yet our decoder accepted it because we don't validate opcode validity
+
+### TXD's Validation Process (Detailed)
+```c
+// From txd.c lines 562-587
+if (decode_code() == END_OF_ROUTINE) {
+    // First validation passed
+    return (END_OF_ROUTINE);
+}
+// Reset and try second decode
+decode.pc = old_pc;
+if ((status = decode_code()) != END_OF_ROUTINE) {
+    decode.pc = old_pc;  // Not a routine
+} else {
+    pctable[pcindex++] = old_pc;  // Orphan fragment found
+}
+```
+
+### Why Our Opcode Validation Failed
+We attempted to fix false positives by validating opcodes (rejecting Long form 0x00), but this created new problems:
+- Rejected some valid TXD routines
+- Still accepted other false positives
+- The real issue isn't invalid opcodes, but orphan code detection
+
+### Recommendations
+1. **Implement proper orphan code detection**: Track pcindex and reject routines that create orphan fragments
+2. **Strict return validation**: Ensure pc > high_pc for valid returns (already implemented)
+3. **Consider data vs code context**: TXD's two-pass approach helps distinguish actual routines from data
+
+### Current Status
+- V3 games: Achieve strict superset (448 vs TXD's 440 for Zork I) ✓
+- V4+ games: Find 624 routines vs TXD's 982 for AMFV
+  - Missing 393 routines that TXD finds
+  - Have 35 false positives
+- Core functionality works well, but lacks TXD's sophisticated validation

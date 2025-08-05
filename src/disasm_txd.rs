@@ -1,4 +1,4 @@
-use crate::instruction::Instruction;
+use crate::instruction::{Instruction, InstructionForm};
 use crate::vm::Game;
 use log::debug;
 use std::collections::HashMap;
@@ -243,6 +243,48 @@ impl<'a> TxdDisassembler<'a> {
         }
     }
 
+    /// Check if opcode is valid for its form and version
+    fn is_valid_opcode(instruction: &Instruction, version: u8) -> bool {
+        use crate::instruction::{InstructionForm, OperandCount};
+        
+        match instruction.form {
+            InstructionForm::Long => {
+                // Long form (2OP): opcodes 0x01-0x1C are valid
+                // 0x00 is NOT a valid Long form opcode!
+                instruction.opcode >= 0x01 && instruction.opcode <= 0x1C
+            }
+            InstructionForm::Short => {
+                match instruction.operand_count {
+                    OperandCount::OP0 => {
+                        // 0OP: opcodes 0x00-0x0F are valid (with version restrictions)
+                        match instruction.opcode {
+                            0x00..=0x0B => true,
+                            0x0C => version <= 3, // show_status only in V1-3
+                            0x0D => true, // verify
+                            0x0E => version >= 5, // piracy only in V5+
+                            0x0F => version >= 6, // piracy only in V6
+                            _ => false
+                        }
+                    }
+                    OperandCount::OP1 => {
+                        // 1OP: opcodes 0x00-0x0F are valid
+                        instruction.opcode <= 0x0F
+                    }
+                    _ => false
+                }
+            }
+            InstructionForm::Variable => {
+                // Variable form: opcodes 0x00-0x3F are potentially valid
+                // (though some are version-specific)
+                instruction.opcode <= 0x3F
+            }
+            InstructionForm::Extended => {
+                // Extended form: all opcodes potentially valid in V5+
+                version >= 5
+            }
+        }
+    }
+    
     /// Check if instruction is a return instruction (matching TXD's RETURN types)
     fn is_return_instruction(instruction: &Instruction) -> bool {
         use crate::instruction::{InstructionForm, OperandCount};
@@ -291,10 +333,6 @@ impl<'a> TxdDisassembler<'a> {
                 };
                 self.routines.insert(rounded_addr, routine_info);
                 self.routine_queue.push(rounded_addr);
-                
-                // TXD's pcindex tracking: increment when routine is added
-                self.pcindex += 1;
-                debug!("TXD_PCINDEX: incremented to {} for routine {:04x}", self.pcindex, rounded_addr);
             }
         }
     }
@@ -361,7 +399,8 @@ impl<'a> TxdDisassembler<'a> {
                 }
                 
                 // TXD line 412: decode.pc = pc - 1; 
-                decode_pc = test_pc; // NOTE: TXD uses pc-1 but test_pc is already at the var byte
+                // test_pc is at the var byte, but we need to match TXD's exact behavior
+                decode_pc = test_pc;
                 
                 // TXD lines 413-419: Triple validation
                 flag = true;
@@ -403,7 +442,10 @@ impl<'a> TxdDisassembler<'a> {
                         
                         while pc >= low_pc && pc >= self.code_base {
                             self.pcindex = 0;
-                            let (success, _) = self.txd_triple_validation(pc);
+                            debug!("TXD_BACKWARD_SCAN: Trying pc={:04x} (low_pc={:04x})", pc, low_pc);
+                            let (success, end_pc) = self.txd_triple_validation(pc);
+                            debug!("TXD_BACKWARD_SCAN: pc={:04x} success={} end_pc={:04x} pcindex={}", 
+                                   pc, success, end_pc, self.pcindex);
                             if success && self.pcindex == 0 {
                                 debug!("TXD_PRELIM: Found backward scan routine at {:04x}", pc);
                                 self.add_routine(pc);
@@ -1065,6 +1107,11 @@ impl<'a> TxdDisassembler<'a> {
         Ok(())
     }
 
+    /// Get all discovered routine addresses
+    pub fn get_routine_addresses(&self) -> Vec<u32> {
+        self.routines.keys().cloned().collect()
+    }
+    
     /// Generate output matching TXD format
     pub fn generate_output(&self) -> String {
         let mut output = String::new();

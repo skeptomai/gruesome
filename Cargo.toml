@@ -19,3 +19,19 @@ sub-array = "*"
 crossterm = "0.27"
 atty = "0.2"
 ratatui = "0.26"
+
+[[bin]]
+name = "gruedasm-txd"
+path = "src/bin/gruedasm-txd.rs"
+
+[[bin]]
+name = "analyze-false-positives"
+path = "src/bin/analyze_false_positives.rs"
+
+[[bin]]
+name = "trace-false-positive"
+path = "src/bin/trace_false_positive.rs"
+
+[[bin]]
+name = "check-fallthrough"
+path = "src/bin/check_fallthrough.rs"
