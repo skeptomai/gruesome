@@ -551,9 +551,14 @@ impl<'a> TxdDisassembler<'a> {
                     
                     // Check operands for boundary expansion (TXD does this during decode_operands)
                     // TXD only checks ROUTINE type operands (from CALL instructions)
-                    if Self::is_call_instruction(&instruction, self.version) {
+                    let is_call = Self::is_call_instruction(&instruction, self.version);
+                    if is_call {
+                        debug!("FOUND_CALL: opcode={:02x} form={:?} operands={:?}", 
+                               instruction.opcode, instruction.form, instruction.operands);
                         if let Some(&first_operand) = instruction.operands.first() {
                             let routine_addr = self.unpack_routine_address(first_operand as u16);
+                            debug!("TXD_OPERAND: checking addr={:04x} (low={:04x} high={:04x})", 
+                                   routine_addr, self.low_address, self.high_address);
                             self.try_expand_boundaries(routine_addr);
                         }
                     }
@@ -723,8 +728,9 @@ impl<'a> TxdDisassembler<'a> {
     fn is_call_instruction(instruction: &Instruction, version: u8) -> bool {
         match instruction.form {
             crate::instruction::InstructionForm::Variable => {
-                // VAR opcodes: call/call_vs (0x20), call_vs2 (0x2c), call_vn (0x39), call_vn2 (0x3a)
-                matches!(instruction.opcode, 0x20 | 0x2c | 0x39 | 0x3a)
+                // VAR opcodes: call/call_vs (0x00), call_vs2 (0x0c), call_vn (0x19), call_vn2 (0x1a)
+                // Note: Variable form opcodes are stored as bottom 5 bits only
+                matches!(instruction.opcode, 0x00 | 0x0c | 0x19 | 0x1a)
             }
             crate::instruction::InstructionForm::Long => {
                 // 2OP opcodes: call_2s (0x19) - V4+ only
