@@ -327,23 +327,26 @@ impl<'a> TxdDisassembler<'a> {
         }
     }
 
-    /// Simple heuristic to detect potential orphan fragments
-    fn is_potential_orphan(&self, address: u32) -> bool {
-        // Check if we can reach this address by falling through from a previous instruction
-        let check_start = if address > 20 { address - 20 } else { 0 };
+    /// Check if an address can be reached by falling through from previous code
+    fn is_reachable_by_fallthrough(&self, address: u32) -> bool {
+        // Look backward to see if any instruction would naturally flow into this address
+        let check_start = if address > 10 { address - 10 } else { 0 };
         
         for check_addr in check_start..address {
             if let Ok(inst) = Instruction::decode(&self.game.memory, check_addr as usize, self.version) {
                 let next_addr = check_addr + inst.size as u32;
                 
-                // If an instruction ends exactly at our address, check if it would fall through
+                // If an instruction ends exactly at our address
                 if next_addr == address {
                     // Check if it's a control flow instruction that wouldn't fall through
                     let is_return = Self::is_return_instruction(&inst);
                     let is_jump = inst.opcode == 0x0c && matches!(inst.form, InstructionForm::Short);
+                    let is_quit = inst.opcode == 0x0a && matches!(inst.form, InstructionForm::Short);
                     
-                    if !is_return && !is_jump {
-                        // This address can be reached by falling through
+                    if !is_return && !is_jump && !is_quit {
+                        // Non-control-flow instruction would fall through to our address
+                        debug!("FALLTHROUGH_DETECTED: Instruction at {:04x} falls through to {:04x}", 
+                               check_addr, address);
                         return true;
                     }
                 }
@@ -745,6 +748,16 @@ impl<'a> TxdDisassembler<'a> {
         
         // TXD's high_pc tracking (line 686: decode.high_pc = decode.pc)
         let mut high_pc = pc;
+        
+        // Check if this could be an orphan fragment (code reachable by falling through)
+        // This implements TXD's decode_routine orphan detection
+        if self.enable_orphan_detection && self.first_pass {
+            // Check if we can reach this address by falling through from previous code
+            if self.is_reachable_by_fallthrough(rounded_addr) {
+                debug!("TXD_ORPHAN_FRAGMENT_DETECTED: {:04x} is reachable by fallthrough", rounded_addr);
+                self.pcindex += 1;  // Mark that we found an orphan fragment
+            }
+        }
         
         // Sequential instruction decoding like TXD's decode_code()
         let mut instruction_count = 0;

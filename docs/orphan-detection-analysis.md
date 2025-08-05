@@ -1,5 +1,22 @@
 # TXD Orphan Detection Analysis
 
+## Session Restart Context (August 2025)
+
+This document captures the deep analysis of TXD's orphan detection mechanism and our implementation status. If restarting work on this feature, this provides complete context.
+
+### Current Status
+- **Infrastructure**: Complete (flags, pctable, filtering) 
+- **V3 Games**: No regression, finding 449 routines (TXD finds 440)
+- **V4 Games**: Still have 35 false positives (caf8, cafc, 33c04, etc.)
+- **Root Issue**: Preliminary scan bypasses orphan detection
+
+### Key Implementation Files
+- `src/disasm_txd.rs`: Main disassembler with orphan detection foundation
+- `src/bin/test_orphan_v4.rs`: Tests orphan detection effectiveness
+- `src/bin/test_v3_regression.rs`: Ensures no V3 regression
+- `src/bin/analyze_false_positives.rs`: Analyzes suspect addresses
+- `src/bin/check_fallthrough.rs`: Detects orphan fragments
+
 ## Summary of Investigation
 
 After deep analysis of TXD's orphan detection mechanism, I've uncovered how it works and why our implementation isn't catching the false positives.
@@ -29,6 +46,25 @@ if ((status = decode_code()) != END_OF_ROUTINE) {
 - Reset to 0 before each validation attempt
 - Incremented when orphan fragments are found
 - During validation: `if (decode_routine() != END_OF_ROUTINE || pcindex)` - reject if pcindex > 0
+
+## Implementation Progress Update
+
+### What's Working
+- Fallthrough detection correctly identifies addresses reachable by falling through
+- pcindex is now properly incremented when orphan fragments are detected
+- False positives caf8, cafc, 33c04 are correctly removed
+- V3 games are unaffected (449 routines maintained)
+
+### Current Issue
+- Being too aggressive: removing 474 addresses instead of just 35
+- From 624 to 406 routines (should be ~589 after removing 35 false positives)
+- Need more sophisticated heuristics to distinguish true orphans from valid routines
+
+### Key Insight
+The simple "is reachable by fallthrough" test is insufficient. Many valid routines can be reached by fallthrough but are still legitimate entry points. Need additional criteria like:
+- Check if the "falling through" instruction is actually executed
+- Consider if the routine is called from elsewhere
+- Look at the pattern of instructions before the routine
 
 ## Why Our Implementation Doesn't Catch False Positives
 
