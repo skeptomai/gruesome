@@ -157,7 +157,14 @@ impl Instruction {
             InstructionForm::Long => {
                 // Long form: 2OP, opcode in bottom 5 bits
                 let opcode = opcode_byte & 0x1F;
-                // Validate: Long form opcodes start at 0x01, not 0x00
+                
+                // CRITICAL FIX: Validate opcode per Z-Machine specification
+                // Long form opcodes start at 0x01, not 0x00
+                // This validation prevents false positives in disassembly where
+                // data regions (especially zeros) were incorrectly decoded as instructions
+                // Examples of false positives this prevents:
+                // - Address 33c04 in AMFV: all zeros decoded as Long 0x00
+                // - Addresses caf8, cafc: data incorrectly interpreted as code
                 if opcode == 0x00 {
                     return Err(format!("Invalid Long form opcode 0x00 at address {:04x}", addr));
                 }
