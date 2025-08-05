@@ -13,9 +13,9 @@ use std::collections::HashMap;
 ///   - All 440 TXD routines are found
 ///   - 8 additional routines (potential false positives) beyond TXD's boundary
 /// 
-/// - V4+ games (AMFV): Finds 621 routines vs TXD's 981
-///   - All 621 routines are valid (verified: zero false positives)
-///   - Missing ~360 routines that TXD discovers through additional mechanisms
+/// - V4+ games (AMFV): Finds 623 routines vs TXD's 981
+///   - All 623 routines are valid (verified: zero false positives)
+///   - Missing ~358 routines that TXD discovers through additional mechanisms
 /// 
 /// The missing V4+ routines are likely discovered through:
 /// - Object property tables containing action routines
@@ -24,10 +24,14 @@ use std::collections::HashMap;
 /// - Additional scanning methods not yet reverse-engineered from TXD
 /// 
 /// Implementation notes:
-/// - Uses TXD's two-phase algorithm with iterative boundary expansion
+/// - Preliminary scan for low routines before initial PC (with backward scan for V1-4)
+/// - Two-phase algorithm with iterative boundary expansion (matches TXD lines 444-513)
+/// - Operand-based boundary expansion during decode (matches TXD lines 1354-1405)
+/// - Final high routine scan after main phase
 /// - Validates routines with triple decode (3x validation like TXD)
 /// - Correctly handles version differences (V3 vs V4+ opcodes)
-/// - Implements TXD's exact operand checking for boundary expansion
+/// - String region detection for V3 games to avoid false positives
+/// - Timer routine discovery from SREAD instructions (V4+)
 pub struct TxdDisassembler<'a> {
     game: &'a Game,
     version: u8,
@@ -371,22 +375,53 @@ impl<'a> TxdDisassembler<'a> {
                 // TXD line 420: decode.pc = pc - 1;
                 if flag {
                     debug!("TXD_PRELIM: Found valid low routine at {:04x}", decode_pc);
-                    // Found a valid routine, use this as starting point
-                    return Ok(decode_pc);
+                    // Add this routine to our collection
+                    self.add_routine(decode_pc);
                 }
                 
                 pc += self.code_scaler;
             }
             
-            // TXD lines 422-439: Additional backward scan for V1-4 (skipping for now)
-            
-            // TXD lines 440-441: if (flag == 0 || decode.pc > decode.initial_pc) decode.pc = decode.initial_pc;
-            if !flag || decode_pc > self.initial_pc {
-                decode_pc = self.initial_pc;
+            // TXD lines 422-439: Additional backward scan for V1-4
+            // If we found at least one routine and version < 5, do backward scan
+            if self.version < 5 && !self.routines.is_empty() {
+                // Get the lowest routine address we found
+                let lowest_addr = *self.routines.keys().min().unwrap();
+                if let Some(vars) = self.validate_routine(lowest_addr) {
+                    // TXD line 424: pc = decode.pc;
+                    let mut pc = lowest_addr;
+                    // TXD line 425: vars = (char)read_data_byte(&pc);
+                    // We already have vars from validation
+                    // TXD line 426: low_pc = decode.pc;
+                    let low_pc = lowest_addr;
+                    
+                    // TXD line 427: for (pc = pc + (vars * 2) - 1, flag = 0; pc >= low_pc && flag == 0; pc -= story_scaler)
+                    // Start from just before the locals data
+                    pc = pc + 1 + (vars as u32 * 2);
+                    if pc > self.story_scaler {
+                        pc -= self.story_scaler;
+                        
+                        while pc >= low_pc && pc >= self.code_base {
+                            self.pcindex = 0;
+                            let (success, _) = self.txd_triple_validation(pc);
+                            if success && self.pcindex == 0 {
+                                debug!("TXD_PRELIM: Found backward scan routine at {:04x}", pc);
+                                self.add_routine(pc);
+                            }
+                            
+                            if pc >= self.story_scaler {
+                                pc -= self.story_scaler;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                }
             }
         }
         
-        Ok(decode_pc)
+        // TXD always uses initial_pc as the starting point for phase 2
+        Ok(self.initial_pc)
     }
     
     /// TXD's main iterative boundary expansion (lines 450-513)
@@ -573,16 +608,23 @@ impl<'a> TxdDisassembler<'a> {
                            pc, instruction.opcode, instruction.form, instruction.size);
                     
                     // Check operands for boundary expansion (TXD does this during decode_operands)
-                    // TXD only checks ROUTINE type operands (from CALL instructions)
-                    let is_call = Self::is_call_instruction(&instruction, self.version);
-                    if is_call {
-                        debug!("FOUND_CALL: opcode={:02x} form={:?} operands={:?}", 
+                    // TXD expands boundaries for ALL ROUTINE type operands during first pass
+                    // This is key to discovering more routines!
+                    
+                    // We need to determine which operands are ROUTINE type
+                    // For now, check all CALL instructions and some other opcodes that take routine addresses
+                    if self.should_check_operand_for_routine(&instruction) {
+                        debug!("CHECKING_OPERANDS: opcode={:02x} form={:?} operands={:?}", 
                                instruction.opcode, instruction.form, instruction.operands);
-                        if let Some(&first_operand) = instruction.operands.first() {
-                            let routine_addr = self.unpack_routine_address(first_operand as u16);
-                            debug!("TXD_OPERAND: checking addr={:04x} (low={:04x} high={:04x})", 
-                                   routine_addr, self.low_address, self.high_address);
-                            self.try_expand_boundaries(routine_addr);
+                        
+                        // Check each operand that could be a routine address
+                        for (i, &operand) in instruction.operands.iter().enumerate() {
+                            if self.is_routine_operand(&instruction, i) && operand != 0 {
+                                let routine_addr = self.unpack_routine_address(operand as u16);
+                                debug!("TXD_OPERAND: checking addr={:04x} (low={:04x} high={:04x})", 
+                                       routine_addr, self.low_address, self.high_address);
+                                self.process_routine_target(routine_addr);
+                            }
                         }
                     }
                     
@@ -775,6 +817,60 @@ impl<'a> TxdDisassembler<'a> {
         }
     }
 
+    /// Check if we should examine this instruction's operands for routine addresses
+    fn should_check_operand_for_routine(&self, instruction: &Instruction) -> bool {
+        // Check all instructions that might have ROUTINE type operands
+        match instruction.form {
+            crate::instruction::InstructionForm::Variable => {
+                // VAR opcodes with routine operands:
+                // - call variants: 0x00, 0x0c, 0x19, 0x1a
+                // - throw (0x1c) has a routine operand in V5+
+                // - catch (0x09) stores a routine address in V5+
+                // - read/sread (0x04) with timer routine in V4+
+                matches!(instruction.opcode, 0x00 | 0x0c | 0x19 | 0x1a) ||
+                (self.version >= 4 && instruction.opcode == 0x04) || // timed read
+                (self.version >= 5 && matches!(instruction.opcode, 0x09 | 0x1c))
+            }
+            crate::instruction::InstructionForm::Short => {
+                // 1OP: call_1s (0x08) in V4+, call_1n (0x0f) in V5+
+                (self.version >= 4 && instruction.opcode == 0x08) ||
+                (self.version >= 5 && instruction.opcode == 0x0f)
+            }
+            crate::instruction::InstructionForm::Long => {
+                // 2OP: call_2s (0x19) in V4+, call_2n (0x1a) in V5+
+                (self.version >= 4 && instruction.opcode == 0x19) ||
+                (self.version >= 5 && instruction.opcode == 0x1a)
+            }
+            _ => false,
+        }
+    }
+    
+    /// Check if operand at given index is a ROUTINE type operand
+    fn is_routine_operand(&self, instruction: &Instruction, operand_index: usize) -> bool {
+        match instruction.form {
+            crate::instruction::InstructionForm::Variable => {
+                match instruction.opcode {
+                    // Call instructions - first operand is routine
+                    0x00 | 0x0c | 0x19 | 0x1a => operand_index == 0,
+                    // Read with timer - fourth operand (index 3) is timer routine
+                    0x04 if self.version >= 4 && instruction.operands.len() >= 4 => operand_index == 3,
+                    // Throw - second operand is routine in V5+
+                    0x1c if self.version >= 5 => operand_index == 1,
+                    _ => false,
+                }
+            }
+            crate::instruction::InstructionForm::Short => {
+                // call_1s, call_1n - first operand is routine
+                (instruction.opcode == 0x08 || instruction.opcode == 0x0f) && operand_index == 0
+            }
+            crate::instruction::InstructionForm::Long => {
+                // call_2s, call_2n - first operand is routine  
+                (instruction.opcode == 0x19 || instruction.opcode == 0x1a) && operand_index == 0
+            }
+            _ => false,
+        }
+    }
+    
     /// Check instruction for call targets and expand boundaries
     fn check_instruction_targets(&mut self, instruction: &Instruction, pc: u32) {
         let is_call = Self::is_call_instruction(instruction, self.version);
