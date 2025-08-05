@@ -439,6 +439,7 @@ impl<'a> TxdDisassembler<'a> {
     /// TXD's final high routine scan (lines 514-520)
     fn final_high_routine_scan(&mut self) -> Result<(), String> {
         debug!("TXD_FINAL_HIGH_SCAN: Starting at high_address={:04x}", self.high_address);
+        let initial_routine_count = self.routines.len();
         let mut pc = self.high_address;
         
         while pc < self.file_size {
@@ -454,6 +455,16 @@ impl<'a> TxdDisassembler<'a> {
                 debug!("TXD_FINAL_HIGH_SCAN: No routine at {:04x}, stopping", pc);
                 break;
             }
+        }
+        
+        // If we found new routines, they might have expanded boundaries
+        // Run another iteration to discover routines in the newly expanded area
+        if self.routines.len() > initial_routine_count {
+            let new_routines = self.routines.len() - initial_routine_count;
+            debug!("TXD_FINAL_HIGH_SCAN: Found {} new routines, checking for boundary expansion", new_routines);
+            
+            // Run another boundary expansion iteration
+            self.iterative_boundary_expansion()?;
         }
         
         Ok(())
