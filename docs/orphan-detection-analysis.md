@@ -261,3 +261,91 @@ To achieve true superset status, we need to implement scanning of:
 4. Other Z-Machine data structures
 
 This would add the 13 legitimate routines we're missing without introducing TXD's false positives.
+
+## Data Structure Scanning Research (August 2025)
+
+### Where Routine Addresses Can Appear
+
+Based on Z-Machine specification and TXD source analysis:
+
+1. **Object Properties** (confirmed in spec):
+   - Properties can contain arbitrary data including packed routine addresses
+   - Common for action routines (property 17 in many Infocom games)
+   - Any property can theoretically contain a routine address
+
+2. **Timer/Interrupt Callbacks** (confirmed in spec):
+   - SREAD instruction's 4th operand (timer callback routine)
+   - Sound effect completion callbacks (VAR:245 sound_effect's 4th operand)
+   - Newline interrupt routines (window property 8 in V6)
+
+3. **Grammar Tables** (inferred from TXD):
+   - TXD source mentions "action routines" and "pre-action routines"
+   - Grammar tables contain verb definitions that reference action routines
+   - Not explicitly documented in Z-Machine spec sections we reviewed
+
+4. **Global Variables**:
+   - Can contain routine addresses as values
+   - Routines can be called indirectly via @call [variable]
+
+5. **Arrays and Tables**:
+   - Any word in memory could theoretically be a packed routine address
+   - Game-specific data structures often contain routine references
+
+### Implementation Strategy
+
+To find the 13 missing data-referenced routines:
+
+1. **Scan Object Properties**:
+   - Iterate through all objects
+   - Check each property value as potential packed address
+   - Validate if it points to a valid routine header
+
+2. **Scan Global Variables**:
+   - Check all 240 global variables
+   - Test each value as potential routine address
+
+3. **Grammar Table Parsing**:
+   - Would require understanding Inform/Infocom grammar table format
+   - More complex as format varies between versions
+
+4. **Conservative Memory Scan**:
+   - Scan all memory for words that could be packed addresses
+   - Validate each candidate points to valid routine header
+   - Filter out false positives using existing validation
+
+### Analysis of the 13 Missing Routines (Confirmed)
+
+All 13 missing routines have been found and are legitimate data-referenced routines:
+
+**Object Property References (8 routines)**:
+- `1b0d8`: Object 311 property
+- `1b980`: Object 317 property  
+- `1d854`: Object 388 property
+- `1da50`: Object 540 property
+- `1dc1c`: Object 420 property
+- `1e138`: Object 277 property (also in global 226)
+- `1f250`: Object 541 property
+- `20ae8`: Object 559 property
+
+**Grammar Table References (5 routines)**:
+- `12a04`: 10 references in grammar tables (contexts suggest action routines)
+- `12b18`: 2 references in grammar tables
+- `12b38`: 1 reference in grammar tables
+- `1bf3c`: 5 references in grammar tables
+- `2b248`: 2 references in grammar tables
+
+The context bytes around these references (e.g., `bb 88 [4a 81] 00 b8`) suggest structured grammar table entries where routine addresses are stored as part of verb/action definitions.
+
+### Conclusion
+
+Our disassembler correctly identifies all routines reachable via code flow. The 13 "missing" routines are:
+1. Valid Z-Machine routines with proper headers
+2. Referenced only through data structures (not direct calls)
+3. Primarily action handlers for objects and verbs
+
+To achieve 100% compatibility with TXD (minus its false positives), we would need to implement:
+1. Object property scanning
+2. Grammar table parsing
+3. Validation that referenced addresses point to valid routine headers
+
+However, this is a quality vs completeness tradeoff - our current approach finds all actively executed code with zero false positives.
