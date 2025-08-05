@@ -43,3 +43,7 @@ path = "src/bin/test_orphan_v4.rs"
 [[bin]]
 name = "test-v3-regression"
 path = "src/bin/test_v3_regression.rs"
+
+[[bin]]
+name = "test-opcode-validation"
+path = "src/bin/test_opcode_validation.rs"

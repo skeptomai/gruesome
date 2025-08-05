@@ -749,6 +749,9 @@ impl<'a> TxdDisassembler<'a> {
         // TXD's high_pc tracking (line 686: decode.high_pc = decode.pc)
         let mut high_pc = pc;
         
+        // Disabled: This was too aggressive, removing valid routines
+        // The proper fix is opcode validation in the instruction decoder
+        /*
         // Check if this could be an orphan fragment (code reachable by falling through)
         // This implements TXD's decode_routine orphan detection
         if self.enable_orphan_detection && self.first_pass {
@@ -758,6 +761,7 @@ impl<'a> TxdDisassembler<'a> {
                 self.pcindex += 1;  // Mark that we found an orphan fragment
             }
         }
+        */
         
         // Sequential instruction decoding like TXD's decode_code()
         let mut instruction_count = 0;

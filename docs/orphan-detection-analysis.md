@@ -4,11 +4,22 @@
 
 This document captures the deep analysis of TXD's orphan detection mechanism and our implementation status. If restarting work on this feature, this provides complete context.
 
-### Current Status
-- **Infrastructure**: Complete (flags, pctable, filtering) 
-- **V3 Games**: No regression, finding 449 routines (TXD finds 440)
-- **V4 Games**: Still have 35 false positives (caf8, cafc, 33c04, etc.)
-- **Root Issue**: Preliminary scan bypasses orphan detection
+### Current Status (Latest Update)
+- **Infrastructure**: Complete with pcindex tracking and fallthrough detection
+- **V3 Games**: No regression, finding 449 routines (TXD finds 440) ✓
+- **V4 Games**: Removes false positives but too aggressive (624 → 406 routines)
+- **Key Achievement**: Successfully removes caf8, cafc, 33c04 false positives
+- **Current Issue**: Being too aggressive - removing ~474 addresses instead of just 35
+
+### What's Implemented
+1. **Orphan detection flag**: `enable_orphan_detection()` - opt-in feature
+2. **pctable tracking**: Stores orphan fragment addresses
+3. **pcindex increment**: Properly increments when orphans detected
+4. **Fallthrough detection**: `is_reachable_by_fallthrough()` method
+5. **Post-discovery filtering**: Removes orphans from final routine list
+
+### The Problem
+Our current fallthrough detection is too simple. It marks ANY routine reachable by fallthrough as an orphan, but many valid routines can be reached this way. We need more sophisticated criteria to distinguish true orphan fragments from valid routines.
 
 ### Key Implementation Files
 - `src/disasm_txd.rs`: Main disassembler with orphan detection foundation

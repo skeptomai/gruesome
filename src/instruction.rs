@@ -156,7 +156,12 @@ impl Instruction {
         let (opcode, ext_opcode, operand_count) = match form {
             InstructionForm::Long => {
                 // Long form: 2OP, opcode in bottom 5 bits
-                (opcode_byte & 0x1F, None, OperandCount::OP2)
+                let opcode = opcode_byte & 0x1F;
+                // Validate: Long form opcodes start at 0x01, not 0x00
+                if opcode == 0x00 {
+                    return Err(format!("Invalid Long form opcode 0x00 at address {:04x}", addr));
+                }
+                (opcode, None, OperandCount::OP2)
             }
             InstructionForm::Short => {
                 // Short form: opcode in bottom 4 bits
