@@ -57,6 +57,8 @@ pub struct TxdDisassembler<'a> {
     first_pass: bool,
     /// TXD's pcindex counter for orphan fragment tracking
     pcindex: u32,
+    /// Track potential orphan fragments (routines reachable by fallthrough)
+    orphan_fragments: Vec<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -129,6 +131,7 @@ impl<'a> TxdDisassembler<'a> {
             routine_queue: Vec::new(),
             first_pass: true,
             pcindex: 0,
+            orphan_fragments: Vec::new(),
         }
     }
 
@@ -318,12 +321,39 @@ impl<'a> TxdDisassembler<'a> {
         }
     }
 
+    /// Simple heuristic to detect potential orphan fragments
+    fn is_potential_orphan(&self, address: u32) -> bool {
+        // Check if we can reach this address by falling through from a previous instruction
+        let check_start = if address > 20 { address - 20 } else { 0 };
+        
+        for check_addr in check_start..address {
+            if let Ok(inst) = Instruction::decode(&self.game.memory, check_addr as usize, self.version) {
+                let next_addr = check_addr + inst.size as u32;
+                
+                // If an instruction ends exactly at our address, check if it would fall through
+                if next_addr == address {
+                    // Check if it's a control flow instruction that wouldn't fall through
+                    let is_return = Self::is_return_instruction(&inst);
+                    let is_jump = inst.opcode == 0x0c && matches!(inst.form, InstructionForm::Short);
+                    
+                    if !is_return && !is_jump {
+                        // This address can be reached by falling through
+                        return true;
+                    }
+                }
+            }
+        }
+        
+        false
+    }
+    
     /// Add a routine to the discovery list
     fn add_routine(&mut self, addr: u32) {
         debug!("TXD_ADD_ROUTINE: {:04x}", addr);
         
         let rounded_addr = self.round_code(addr);
         if !self.routines.contains_key(&rounded_addr) {
+            
             if let Some(locals_count) = self.validate_routine(addr) {
                 let routine_info = RoutineInfo {
                     address: rounded_addr,
