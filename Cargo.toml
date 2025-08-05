@@ -95,3 +95,31 @@ path = "src/bin/analyze_txd_nested.rs"
 [[bin]]
 name = "verify-cafc-rejected"
 path = "src/bin/verify_cafc_rejected.rs"
+
+[[bin]]
+name = "verify-strict-superset"
+path = "src/bin/verify_strict_superset.rs"
+
+[[bin]]
+name = "dump-our-routines"
+path = "src/bin/dump_our_routines.rs"
+
+[[bin]]
+name = "validate-extra-routines"
+path = "src/bin/validate_extra_routines.rs"
+
+[[bin]]
+name = "debug-e114-validation"
+path = "src/bin/debug_e114_validation.rs"
+
+[[bin]]
+name = "check-routine-references"
+path = "src/bin/check_routine_references.rs"
+
+[[bin]]
+name = "debug-12a04"
+path = "src/bin/debug_12a04.rs"
+
+[[bin]]
+name = "categorize-missing"
+path = "src/bin/categorize_missing.rs"

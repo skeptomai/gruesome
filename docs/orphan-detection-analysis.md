@@ -213,3 +213,51 @@ Our implementation now correctly rejects alternate entry points in header areas.
 - Keep orphan detection optional
 - Test with both V3 and V4 games
 - Compare results with/without orphan detection
+
+## Final Analysis: TXD Comparison (August 2025)
+
+### Major Discovery: TXD Has False Positives
+
+After extensive analysis of the 36 routines TXD finds that we don't:
+
+1. **13 are legitimate routines** (data-referenced only)
+   - Examples: 12a04, 1b0d8, 1d854
+   - Have proper structure and terminators
+   - Referenced from object properties or other data structures
+   - We miss these because we only follow code flow
+
+2. **23 are INVALID routines** (TXD false positives)
+   - 7 hit invalid Long opcode 0x00 (e.g., 33c04)
+   - 16 have invalid locals count > 15 (e.g., 25b9c with locals=184)
+   - These are clearly not valid Z-Machine routines
+
+### Accuracy Comparison
+
+**Our Implementation:**
+- Finds 1009 routines (all validated as properly structured)
+- 0 false positives after Long opcode 0x00 fix
+- Correctly rejects invalid data as non-routines
+
+**TXD Implementation:**
+- Finds 982 routines (but 23 are invalid!)
+- Actual valid routines: ~959
+- Has false positives with invalid locals or opcodes
+
+### What We Do Better
+- Strict validation prevents false positives
+- Proper opcode validation per Z-Machine spec
+- Correctly reject routines with locals > 15
+
+### What TXD Does That We Don't
+- Scans object properties for routine references
+- Scans grammar/action tables
+- Finds routines only referenced in data structures
+
+### Next Steps
+To achieve true superset status, we need to implement scanning of:
+1. Object property tables
+2. Grammar tables
+3. Action routine tables
+4. Other Z-Machine data structures
+
+This would add the 13 legitimate routines we're missing without introducing TXD's false positives.
