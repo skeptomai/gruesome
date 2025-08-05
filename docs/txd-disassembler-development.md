@@ -149,3 +149,31 @@ Orphan fragments are code reachable by falling through rather than being called.
 - **V3 games**: Excellent - strict superset with minimal false positives
 - **V4+ games**: Functional but imperfect - finds majority of routines with some false positives
 - **Missing TXD features**: Orphan code detection, full two-pass validation
+
+## False Positive Analysis Tools (August 2025)
+
+### Created Tools
+1. **analyze_false_positives** - Examines suspect routine addresses, showing:
+   - Locals count
+   - First instructions decoded
+   - Invalid opcode detection
+   - Memory context
+
+2. **check_fallthrough** - Detects if an address can be reached by falling through:
+   - Scans backward for instructions that would continue to target address
+   - Identifies non-branching instructions that fall through
+   - Helps identify orphan code fragments
+
+3. **trace_false_positive** - Traces validation process for specific addresses
+
+### Key Insights from Tool Analysis
+1. False positives like caf8, cafc can be reached by falling through from previous instructions
+2. Many false positives start with invalid Long form opcode 0x00 (all zeros)
+3. Example: address 33c04 has locals=0 followed by all zeros, decoded as invalid Long 0x00
+4. Simple heuristics (invalid opcode rejection, fallthrough detection) are too aggressive
+5. Need TXD's proper two-pass orphan fragment detection with pcindex tracking
+
+### Attempted Solutions
+1. **Invalid opcode rejection**: Rejected Long form 0x00 - too aggressive, eliminated valid routines
+2. **Simple fallthrough detection**: Checked if address reachable by fallthrough - reduced to 198 routines (vs 982)
+3. Both approaches failed because they lack TXD's sophisticated context-aware validation

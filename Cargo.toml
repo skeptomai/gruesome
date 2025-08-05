@@ -35,3 +35,11 @@ path = "src/bin/trace_false_positive.rs"
 [[bin]]
 name = "check-fallthrough"
 path = "src/bin/check_fallthrough.rs"
+
+[[bin]]
+name = "test-orphan-v4"
+path = "src/bin/test_orphan_v4.rs"
+
+[[bin]]
+name = "test-v3-regression"
+path = "src/bin/test_v3_regression.rs"

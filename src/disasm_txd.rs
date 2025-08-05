@@ -59,6 +59,10 @@ pub struct TxdDisassembler<'a> {
     pcindex: u32,
     /// Track potential orphan fragments (routines reachable by fallthrough)
     orphan_fragments: Vec<u32>,
+    /// TXD's pctable for tracking validated orphan addresses
+    pctable: Vec<u32>,
+    /// Enable orphan detection (for testing without regression)
+    enable_orphan_detection: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -132,6 +136,8 @@ impl<'a> TxdDisassembler<'a> {
             first_pass: true,
             pcindex: 0,
             orphan_fragments: Vec::new(),
+            pctable: Vec::new(),
+            enable_orphan_detection: false, // Default off for safety
         }
     }
 
@@ -367,6 +373,12 @@ impl<'a> TxdDisassembler<'a> {
         }
     }
 
+    /// Enable orphan detection (must be called before discover_routines)
+    pub fn enable_orphan_detection(&mut self) {
+        self.enable_orphan_detection = true;
+        debug!("TXD_ORPHAN_DETECTION: Enabled");
+    }
+    
     /// Run the complete discovery process like TXD
     /// 
     /// For V3 games, this achieves a strict superset of TXD's findings.
@@ -394,6 +406,23 @@ impl<'a> TxdDisassembler<'a> {
         self.scan_strings_and_adjust_boundaries()?;
 
         debug!("TXD_DISCOVERY_COMPLETE: {} routines found", self.routines.len());
+        
+        // If orphan detection is enabled, do a second pass to filter orphans
+        if self.enable_orphan_detection && !self.pctable.is_empty() {
+            debug!("TXD_ORPHAN_FILTERING: Starting second pass to filter {} orphans", self.pctable.len());
+            
+            // Remove orphan addresses from our routine list
+            let mut filtered_count = 0;
+            for &orphan_addr in &self.pctable {
+                if self.routines.remove(&orphan_addr).is_some() {
+                    debug!("TXD_ORPHAN_REMOVED: {:04x}", orphan_addr);
+                    filtered_count += 1;
+                }
+            }
+            
+            debug!("TXD_ORPHAN_FILTERING: Removed {} orphan routines, {} remain", 
+                   filtered_count, self.routines.len());
+        }
         
         Ok(())
     }
@@ -600,11 +629,45 @@ impl<'a> TxdDisassembler<'a> {
         Ok(())
     }
     
+    /// Check if an address is an orphan fragment (can decode but no valid header)
+    /// This implements TXD's orphan detection from decode_routine lines 44-58
+    fn check_orphan_fragment(&mut self, addr: u32) -> bool {
+        // Save current pcindex
+        let saved_pcindex = self.pcindex;
+        self.pcindex = 0;
+        
+        // Try to decode from this address without header validation
+        let locals_count = self.game.memory[addr as usize];
+        if locals_count > 15 {
+            self.pcindex = saved_pcindex;
+            return false; // Not even a potential routine
+        }
+        
+        // Skip locals to get to first instruction
+        let _pc = addr + 1 + if self.version <= 4 { (locals_count as u32) * 2 } else { 0 };
+        
+        // Try single decode attempt to see if it reaches END_OF_ROUTINE
+        let (success, _) = self.decode_single_routine_attempt(addr, locals_count);
+        
+        let is_orphan = success && self.pcindex == 0;
+        self.pcindex = saved_pcindex;
+        
+        is_orphan
+    }
+    
     /// TXD's exact triple validation with pcindex constraint
     /// Returns (success, end_pc) where end_pc is where the routine ends
     fn txd_triple_validation(&mut self, addr: u32) -> (bool, u32) {
         let rounded_addr = self.round_code(addr);
         let mut routine_end_pc = rounded_addr;
+        
+        // Check if this address is in the orphan table (second pass check)
+        if self.enable_orphan_detection && !self.first_pass {
+            if self.pctable.contains(&addr) {
+                debug!("TXD_ORPHAN_SKIP: {:04x} is in orphan table", addr);
+                return (false, rounded_addr);
+            }
+        }
         
         if let Some(locals_count) = self.validate_routine(addr) {
             debug!("DECODE_START ");
@@ -634,10 +697,38 @@ impl<'a> TxdDisassembler<'a> {
                 (true, routine_end_pc)
             } else {
                 debug!("FAIL_DECODE");
+                
+                // TXD's orphan detection (decode_routine lines 44-58)
+                if self.enable_orphan_detection && self.first_pass {
+                    debug!("TXD_ORPHAN_CHECK: Checking {:04x} for orphan status", addr);
+                    // Try to decode from raw address to check if it's an orphan
+                    self.pcindex = 0;
+                    let (orphan_success, _) = self.decode_single_routine_attempt(addr, locals_count);
+                    debug!("TXD_ORPHAN_CHECK: {:04x} orphan_success={} pcindex={}", addr, orphan_success, self.pcindex);
+                    if orphan_success && self.pcindex == 0 {
+                        debug!("TXD_ORPHAN_FOUND: {:04x} is an orphan fragment", addr);
+                        self.pctable.push(addr);
+                    }
+                }
+                
                 (false, routine_end_pc)
             }
         } else {
             debug!("FAIL_DECODE");
+            
+            // Check for orphan even without valid header
+            if self.enable_orphan_detection && self.first_pass && addr < self.game.memory.len() as u32 {
+                let locals = self.game.memory[addr as usize];
+                if locals <= 15 {
+                    self.pcindex = 0;
+                    let (orphan_success, _) = self.decode_single_routine_attempt(addr, locals);
+                    if orphan_success && self.pcindex == 0 {
+                        debug!("TXD_ORPHAN_FOUND: {:04x} is an orphan fragment (no header)", addr);
+                        self.pctable.push(addr);
+                    }
+                }
+            }
+            
             (false, rounded_addr)
         }
     }
