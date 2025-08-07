@@ -355,7 +355,7 @@ impl<'a> TxdDisassembler<'a> {
     /// Check if an address can be reached by falling through from previous code
     fn is_reachable_by_fallthrough(&self, address: u32) -> bool {
         // Look backward to see if any instruction would naturally flow into this address
-        let check_start = if address > 10 { address - 10 } else { 0 };
+        let check_start = address.saturating_sub(10);
 
         for check_addr in check_start..address {
             if let Ok(inst) =
