@@ -17,9 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let memory = std::fs::read(filename)?;
     let game = Game::from_memory(memory)?;
 
-    println!(
-        "Checking if {address:04x} could be reached by fallthrough..."
-    );
+    println!("Checking if {address:04x} could be reached by fallthrough...");
 
     // Look backward from the address to find instructions that could fall through
     let mut check_addr = if address > 20 { address - 20 } else { 0 };
