@@ -76,7 +76,7 @@ impl<'a> GameFile<'a> {
     }
 
     /// default_properties creates PropertyDefault structure from memory maps property defaults
-    pub fn default_properties(&self) -> PropertyDefaults<u8, MAX_PROPERTIES_V3> {
+    pub fn default_properties(&self) -> PropertyDefaults<'_, u8, MAX_PROPERTIES_V3> {
         let prop_raw: &[u8; MAX_PROPERTIES_V3] =
             self.bytes_sized(self.memory_map.property_defaults);
         PropertyDefaults { prop_raw }
