@@ -123,8 +123,8 @@ fn check_packed_references(memory: &[u8], routine_addr: u32, version: u8) {
                 info!(
                     "    {:05x}: Context: {:02x} {:02x} [{:02x} {:02x}] {:02x} {:02x}",
                     loc,
-                    if loc >= 2 { memory[loc - 2] } else { 0 },
-                    if loc >= 1 { memory[loc - 1] } else { 0 },
+                    memory.get(loc.wrapping_sub(2)).copied().unwrap_or(0),
+                    memory.get(loc.wrapping_sub(1)).copied().unwrap_or(0),
                     memory[loc],
                     memory[loc + 1],
                     if loc + 2 < memory.len() {

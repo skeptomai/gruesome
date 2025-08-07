@@ -92,7 +92,7 @@ fn main() {
         for (loc, desc) in &locations {
             info!("  - At offset {:04x}: {}", loc, desc);
             // Show surrounding bytes for context
-            let start = if *loc >= 8 { loc - 8 } else { 0 };
+            let start = loc.saturating_sub(8);
             let end = (loc + 8).min(data.len());
             let context: Vec<String> = data[start..end]
                 .iter()

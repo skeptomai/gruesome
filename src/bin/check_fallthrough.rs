@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Checking if {address:04x} could be reached by fallthrough...");
 
     // Look backward from the address to find instructions that could fall through
-    let mut check_addr = if address > 20 { address - 20 } else { 0 };
+    let mut check_addr = address.saturating_sub(20);
 
     while check_addr < address {
         match Instruction::decode(&game.memory, check_addr as usize, game.header.version) {

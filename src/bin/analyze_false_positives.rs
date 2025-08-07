@@ -80,7 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Check what's around this address
     println!("\n  Context (16 bytes before and after):");
-    let start = if address >= 16 { address - 16 } else { 0 };
+    let start = address.saturating_sub(16);
     for offset in (start..address + 32).step_by(16) {
         if offset >= game.memory.len() as u32 {
             break;

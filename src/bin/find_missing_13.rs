@@ -75,8 +75,8 @@ fn analyze_reference_context(game: &Game, loc: usize, _packed_addr: u16) {
         info!(
             "    {:05x}: Context: {:02x} {:02x} [{:02x} {:02x}] {:02x} {:02x}",
             loc,
-            if loc >= 2 { game.memory[loc - 2] } else { 0 },
-            if loc >= 1 { game.memory[loc - 1] } else { 0 },
+            game.memory.get(loc.wrapping_sub(2)).copied().unwrap_or(0),
+            game.memory.get(loc.wrapping_sub(1)).copied().unwrap_or(0),
             game.memory[loc],
             game.memory[loc + 1],
             if loc + 2 < game.memory.len() {
