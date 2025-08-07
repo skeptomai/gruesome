@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // First, check if it's a valid routine
     let addr = 0x12a04;
     let locals = memory[addr];
-    println!("Address {:05x}: locals = {}", addr, locals);
+    println!("Address {addr:05x}: locals = {locals}");
 
     // Try to decode instructions
     let mut pc = addr + 1;
@@ -23,17 +23,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         pc += (locals as usize) * 2;
     }
 
-    println!("First instruction at: {:05x}", pc);
+    println!("First instruction at: {pc:05x}");
 
     // Decode several instructions
     for _i in 0..10 {
         match Instruction::decode(&memory, pc, game.header.version) {
             Ok(inst) => {
-                println!("  {:05x}: {:?}", pc, inst);
+                println!("  {pc:05x}: {inst:?}");
                 pc += inst.size;
             }
             Err(e) => {
-                println!("  {:05x}: ERROR: {}", pc, e);
+                println!("  {pc:05x}: ERROR: {e}");
                 break;
             }
         }
@@ -59,7 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         println!("\nNearby routines we found:");
         for r in nearby {
-            println!("  {:05x}", r);
+            println!("  {r:05x}");
         }
     }
 
@@ -69,7 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // but they're private. Let's check if any routine calls 12a04
 
     let packed_12a04 = 0x12a04 / 4; // V4 packing
-    println!("Looking for calls to packed address {:04x}", packed_12a04);
+    println!("Looking for calls to packed address {packed_12a04:04x}");
 
     let mut found_calls = 0;
     for &routine in &routines {
@@ -88,7 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         && !inst.operands.is_empty()
                         && inst.operands[0] == packed_12a04 as u16
                     {
-                        println!("  Found call from {:05x}", routine);
+                        println!("  Found call from {routine:05x}");
                         found_calls += 1;
                     }
                     pc += inst.size as u32;

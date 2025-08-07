@@ -42,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 rejection_reasons
                     .entry(addr)
                     .or_default()
-                    .push(format!("Invalid bounds: {}", e));
+                    .push(format!("Invalid bounds: {e}"));
             }
         }
     }
@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for &(start, end) in &routine_bounds {
             if start < addr && addr < end {
                 _is_nested = true;
-                reasons.push(format!("Inside routine {:05x}", start));
+                reasons.push(format!("Inside routine {start:05x}"));
                 break;
             }
         }

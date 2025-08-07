@@ -108,7 +108,7 @@ fn validate_routine(memory: &[u8], addr: u32, version: u8) -> ValidationResult {
     // Check locals count
     let locals = memory[pc];
     if locals > 15 {
-        return ValidationResult::Invalid(format!("Invalid locals count: {}", locals));
+        return ValidationResult::Invalid(format!("Invalid locals count: {locals}"));
     }
     pc += 1;
 
@@ -155,7 +155,7 @@ fn validate_routine(memory: &[u8], addr: u32, version: u8) -> ValidationResult {
                 if e.contains("Invalid Long form opcode 0x00") {
                     return ValidationResult::Invalid("Hits invalid Long opcode 0x00".to_string());
                 }
-                return ValidationResult::Invalid(format!("Decode error: {}", e));
+                return ValidationResult::Invalid(format!("Decode error: {e}"));
             }
         }
     }
@@ -165,13 +165,12 @@ fn validate_routine(memory: &[u8], addr: u32, version: u8) -> ValidationResult {
         ValidationResult::Invalid("No valid instructions".to_string())
     } else if !has_terminator {
         ValidationResult::Suspicious(format!(
-            "No terminator after {} instructions",
-            instruction_count
+            "No terminator after {instruction_count} instructions"
         ))
     } else if instruction_count == 1 {
         ValidationResult::Suspicious("Only 1 instruction".to_string())
     } else if instruction_count > 1000 {
-        ValidationResult::Suspicious(format!("Very long: {} instructions", instruction_count))
+        ValidationResult::Suspicious(format!("Very long: {instruction_count} instructions"))
     } else {
         ValidationResult::Valid
     }

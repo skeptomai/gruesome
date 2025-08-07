@@ -167,8 +167,7 @@ impl Instruction {
                 // - Addresses caf8, cafc: data incorrectly interpreted as code
                 if opcode == 0x00 {
                     return Err(format!(
-                        "Invalid Long form opcode 0x00 at address {:04x}",
-                        addr
+                        "Invalid Long form opcode 0x00 at address {addr:04x}"
                     ));
                 }
                 (opcode, None, OperandCount::OP2)

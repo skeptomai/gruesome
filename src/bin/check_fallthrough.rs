@@ -18,8 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let game = Game::from_memory(memory)?;
 
     println!(
-        "Checking if {:04x} could be reached by fallthrough...",
-        address
+        "Checking if {address:04x} could be reached by fallthrough..."
     );
 
     // Look backward from the address to find instructions that could fall through
@@ -43,10 +42,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         inst.opcode == 0x0a && matches!(inst.form, InstructionForm::Short);
 
                     if !is_return && !is_jump && !is_quit {
-                        println!("  FALLTHROUGH possible from {:04x}: {:?}", check_addr, inst);
+                        println!("  FALLTHROUGH possible from {check_addr:04x}: {inst:?}");
                         println!(
-                            "  Instruction at {:04x} would naturally continue to {:04x}",
-                            check_addr, address
+                            "  Instruction at {check_addr:04x} would naturally continue to {address:04x}"
                         );
                         return Ok(());
                     } else {

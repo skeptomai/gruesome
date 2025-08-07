@@ -26,8 +26,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Check what's at this address
     if (addr as usize) < game.memory.len() {
         let vars = game.memory[addr as usize];
-        println!("Address 0x{:04x}:", addr);
-        println!("  Locals count byte: {} (0x{:02x})", vars, vars);
+        println!("Address 0x{addr:04x}:");
+        println!("  Locals count byte: {vars} (0x{vars:02x})");
 
         if vars <= 15 {
             println!("  Valid locals count");
@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if (pc as usize + 1) < game.memory.len() {
                         let local_val = ((game.memory[pc as usize] as u16) << 8)
                             | (game.memory[(pc + 1) as usize] as u16);
-                        println!("    Local {}: 0x{:04x}", i, local_val);
+                        println!("    Local {i}: 0x{local_val:04x}");
                         pc += 2;
                     }
                 }
@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         println!();
     } else {
-        println!("Address 0x{:04x} is beyond file size", addr);
+        println!("Address 0x{addr:04x} is beyond file size");
     }
 
     Ok(())

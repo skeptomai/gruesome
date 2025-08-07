@@ -16,11 +16,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let memory = std::fs::read(filename)?;
     let game = Game::from_memory(memory)?;
-    println!("Analyzing address {:04x}:", address);
+    println!("Analyzing address {address:04x}:");
 
     // Check if it's a valid routine header
     let locals_count = game.memory[address as usize];
-    println!("  Locals count: {}", locals_count);
+    println!("  Locals count: {locals_count}");
 
     if locals_count > 15 {
         println!("  INVALID: Locals count > 15");
@@ -33,7 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         pc += (locals_count as u32) * 2;
     }
 
-    println!("  First instruction at: {:04x}", pc);
+    println!("  First instruction at: {pc:04x}");
 
     // Decode first few instructions
     println!("\n  Instructions:");
@@ -66,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 instruction_count += 1;
             }
             Err(e) => {
-                println!("    {:04x}: Failed to decode - {}", pc, e);
+                println!("    {pc:04x}: Failed to decode - {e}");
                 break;
             }
         }
@@ -86,12 +86,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             break;
         }
 
-        print!("    {:04x}: ", offset);
+        print!("    {offset:04x}: ");
         for i in 0..16 {
             let addr = offset + i;
             if addr < game.memory.len() as u32 {
                 let byte = game.memory[addr as usize];
-                print!("{:02x} ", byte);
+                print!("{byte:02x} ");
             }
         }
         println!();

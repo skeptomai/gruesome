@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     addrs.sort();
 
     for addr in addrs {
-        println!("{:x}", addr);
+        println!("{addr:x}");
     }
 
     Ok(())

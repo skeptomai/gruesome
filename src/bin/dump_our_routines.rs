@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut output = String::new();
     for &addr in &routines {
-        output.push_str(&format!("{:x}\n", addr));
+        output.push_str(&format!("{addr:x}\n"));
     }
 
     fs::write(output_file, output)?;

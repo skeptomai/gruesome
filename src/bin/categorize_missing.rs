@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fall_through.len()
     );
     for &addr in &fall_through {
-        println!("  {:05x}", addr);
+        println!("  {addr:05x}");
     }
 
     println!(
@@ -42,12 +42,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         data_referenced.len()
     );
     for &addr in &data_referenced {
-        println!("  {:05x}", addr);
+        println!("  {addr:05x}");
     }
 
     println!("\nOther issues: {} routines", other.len());
     for (addr, reason) in &other {
-        println!("  {:05x}: {}", addr, reason);
+        println!("  {addr:05x}: {reason}");
     }
 
     Ok(())
@@ -66,7 +66,7 @@ fn categorize_routine(memory: &[u8], addr: u32, version: u8) -> Category {
 
     let locals = memory[addr as usize];
     if locals > 15 {
-        return Category::Other(format!("Invalid locals: {}", locals));
+        return Category::Other(format!("Invalid locals: {locals}"));
     }
 
     let mut pc = addr as usize + 1;

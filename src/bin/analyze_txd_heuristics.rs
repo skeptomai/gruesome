@@ -95,8 +95,7 @@ fn analyze_txd_rejection_reasons(
         if let Some(&container) = all_routines.iter().find(|&&r| r < addr && addr < r + 1000) {
             let offset = addr - container;
             reasons.push(format!(
-                "Inside routine {:05x} at offset +{}",
-                container, offset
+                "Inside routine {container:05x} at offset +{offset}"
             ));
         }
     }
@@ -123,7 +122,7 @@ fn analyze_txd_rejection_reasons(
             // Pattern 2: Very short routine that just jumps
             if matches!((inst.form, inst.opcode), (InstructionForm::Short, 0x0c)) {
                 let jump_offset = inst.operands.first().copied().unwrap_or(0) as i16;
-                reasons.push(format!("Immediate jump to offset {}", jump_offset));
+                reasons.push(format!("Immediate jump to offset {jump_offset}"));
             }
 
             // Pattern 3: Falls through without proper termination
@@ -153,7 +152,7 @@ fn analyze_txd_rejection_reasons(
             }
 
             if !has_termination && inst_count > 0 {
-                reasons.push(format!("Falls through after {} instructions", inst_count));
+                reasons.push(format!("Falls through after {inst_count} instructions"));
             }
 
             // Pattern 4: Unreachable code (no calls to it)
@@ -163,7 +162,7 @@ fn analyze_txd_rejection_reasons(
             }
         }
         Err(e) => {
-            reasons.push(format!("Invalid first instruction: {}", e));
+            reasons.push(format!("Invalid first instruction: {e}"));
         }
     }
 

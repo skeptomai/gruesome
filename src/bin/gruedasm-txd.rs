@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Generate and print output
     let output = disasm.generate_output();
-    println!("{}", output);
+    println!("{output}");
 
     Ok(())
 }

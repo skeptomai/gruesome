@@ -8,15 +8,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let addr = 0xe114;
     let locals = memory[addr];
-    println!("Routine at {:05x}:", addr);
-    println!("  Locals: {}", locals);
+    println!("Routine at {addr:05x}:");
+    println!("  Locals: {locals}");
 
     let mut pc = addr + 1;
     if game.header.version <= 4 {
         pc += (locals as usize) * 2;
     }
 
-    println!("  First instruction at: {:05x}", pc);
+    println!("  First instruction at: {pc:05x}");
 
     // Decode all instructions
     let mut count = 0;
@@ -52,17 +52,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 count += 1;
             }
             Err(e) => {
-                println!("  {:05x}: FAILED - {}", pc, e);
+                println!("  {pc:05x}: FAILED - {e}");
                 break;
             }
         }
     }
 
     println!("\nSummary:");
-    println!("  Instructions decoded: {}", count);
-    println!("  Found return: {}", found_return);
-    println!("  Last valid PC: {:05x}", last_valid_pc);
-    println!("  Failed at PC: {:05x}", pc);
+    println!("  Instructions decoded: {count}");
+    println!("  Found return: {found_return}");
+    println!("  Last valid PC: {last_valid_pc:05x}");
+    println!("  Failed at PC: {pc:05x}");
 
     // Check memory at failure point
     if pc < memory.len() {
