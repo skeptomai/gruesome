@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let filename = &args[1];
-    
+
     // Load game file
     let mut file = File::open(filename)?;
     let mut memory = Vec::new();
@@ -28,7 +28,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let game = Game::from_memory(memory)?;
     let mut disasm = TxdDisassembler::new(&game);
 
-    debug!("Created TXD disassembler for version {} game", game.header.version);
+    debug!(
+        "Created TXD disassembler for version {} game",
+        game.header.version
+    );
 
     // Run discovery process
     disasm.discover_routines()?;
