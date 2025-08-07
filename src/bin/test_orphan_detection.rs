@@ -16,7 +16,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let game = Game::from_memory(memory)?;
     let mut disasm = TxdDisassembler::new(&game);
 
-    let routines = disasm.discover_routines()?;
+    disasm.discover_routines()?;
+    let routines = disasm.get_routine_addresses();
     info!("V3: Found {} routines (expected ~448)", routines.len());
 
     // Test v4
@@ -25,7 +26,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let game = Game::from_memory(memory)?;
     let mut disasm = TxdDisassembler::new(&game);
 
-    let routines = disasm.discover_routines()?;
+    disasm.discover_routines()?;
+    let routines = disasm.get_routine_addresses();
     info!(
         "V4: Found {} routines (target: 982, current: ~624)",
         routines.len()
