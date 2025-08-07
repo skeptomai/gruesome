@@ -69,7 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             pc += (locals as usize) * 2;
         }
 
-        for i in 0..3 {
+        for _i in 0..3 {
             match Instruction::decode(&game.memory, pc, game.header.version) {
                 Ok(inst) => {
                     info!(
@@ -127,8 +127,6 @@ fn get_routine_calls(game: &Game, routine_addr: u32) -> Vec<u32> {
                     // call_1n, call_2n, call_vn, call_vn2 (v5+)
                     (InstructionForm::Short, 0x0f)
                     | (InstructionForm::Variable, 0x1f)
-                    | (InstructionForm::Variable, 0x19)
-                    | (InstructionForm::Variable, 0x1a)
                         if game.header.version >= 5 =>
                     {
                         if !inst.operands.is_empty() && inst.operands[0] != 0 {
@@ -162,7 +160,7 @@ fn get_routine_calls(game: &Game, routine_addr: u32) -> Vec<u32> {
 
 fn check_in_txd_list(addr: u32) -> bool {
     // TXD routines from our file
-    let txd_routines = vec![
+    let txd_routines = [
         0xcaf4, 0xcb1c, 0xcb34, 0xcb54, 0xcba4, 0xcbc8, 0xcd10, 0xcd1c, 0xcf88, 0xd004, 0xd078,
         0xd164, 0xd184, 0xd198, 0xd1f0, 0xd254, 0xd61c, 0xd63c, 0xd6e8,
         0xd6f4,

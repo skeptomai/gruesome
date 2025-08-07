@@ -26,7 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("First instruction at: {:05x}", pc);
 
     // Decode several instructions
-    for i in 0..10 {
+    for _i in 0..10 {
         match Instruction::decode(&memory, pc, game.header.version) {
             Ok(inst) => {
                 println!("  {:05x}: {:?}", pc, inst);
@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Check nearby routines
         let mut nearby: Vec<u32> = routines
             .iter()
-            .filter(|&&r| r >= 0x12900 && r <= 0x12b00)
+            .filter(|&&r| (0x12900..=0x12b00).contains(&r))
             .cloned()
             .collect();
         nearby.sort();

@@ -35,7 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for i in 0..sorted_routines.len() {
         let addr = sorted_routines[i];
         let locals = game.memory[addr as usize];
-        let header_size = 1 + if game.header.version <= 4 {
+        let _header_size = 1 + if game.header.version <= 4 {
             (locals as usize) * 2
         } else {
             0
@@ -43,8 +43,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Check if this routine starts inside another routine's header/locals
         let mut is_alternate = false;
-        for j in 0..i {
-            let other_addr = sorted_routines[j];
+        for other_addr in sorted_routines.iter().take(i) {
+            let other_addr = *other_addr;
             let other_locals = game.memory[other_addr as usize];
             let other_header_size = 1 + if game.header.version <= 4 {
                 (other_locals as usize) * 2

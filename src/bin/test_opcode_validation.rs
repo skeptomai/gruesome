@@ -1,5 +1,4 @@
 use gruesome::instruction::{Instruction, InstructionForm};
-use gruesome::vm::Game;
 use log::info;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

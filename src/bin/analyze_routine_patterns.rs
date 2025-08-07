@@ -12,6 +12,7 @@ struct RoutinePattern {
     instruction_count: usize,
     first_instruction_invalid: bool,
     starts_with_ret_popped: bool,
+    #[allow(dead_code)]
     called_by_others: bool,
     reachable_by_fallthrough: bool,
 }
@@ -92,7 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let category = categorize_pattern(pattern);
             categorized
                 .entry(category)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(addr);
         }
     }

@@ -1,7 +1,5 @@
-use gruesome::disasm_txd::TxdDisassembler;
 use gruesome::vm::Game;
 use log::info;
-use std::collections::HashSet;
 use std::fs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

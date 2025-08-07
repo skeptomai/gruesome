@@ -56,7 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Report findings
     let mut patterns: Vec<_> = rejected_patterns.into_iter().collect();
-    patterns.sort_by_key(|(_, count)| -(*count as i32));
+    patterns.sort_by_key(|(_, count)| -{ *count });
 
     for (reason, count) in patterns {
         info!("{}: {} routines", reason, count);
@@ -122,7 +122,7 @@ fn analyze_txd_rejection_reasons(
 
             // Pattern 2: Very short routine that just jumps
             if matches!((inst.form, inst.opcode), (InstructionForm::Short, 0x0c)) {
-                let jump_offset = inst.operands.get(0).copied().unwrap_or(0) as i16;
+                let jump_offset = inst.operands.first().copied().unwrap_or(0) as i16;
                 reasons.push(format!("Immediate jump to offset {}", jump_offset));
             }
 

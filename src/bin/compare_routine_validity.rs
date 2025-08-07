@@ -59,7 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut valid_count = 0;
         let mut found_return = false;
 
-        for i in 0..10 {
+        for _i in 0..10 {
             if pc >= game.memory.len() {
                 info!("    [End of memory]");
                 break;

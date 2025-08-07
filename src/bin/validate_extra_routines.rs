@@ -124,7 +124,7 @@ fn validate_routine(memory: &[u8], addr: u32, version: u8) -> ValidationResult {
     // Decode instructions
     let mut instruction_count = 0;
     let mut has_terminator = false;
-    let mut max_pc = pc + 10000; // Reasonable routine size limit
+    let max_pc = pc + 10000; // Reasonable routine size limit
 
     while pc < memory.len() && pc < max_pc {
         match Instruction::decode(memory, pc, version) {

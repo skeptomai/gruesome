@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Err(e) => {
                 rejection_reasons
                     .entry(addr)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(format!("Invalid bounds: {}", e));
             }
         }
@@ -59,10 +59,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut reasons = Vec::new();
 
         // Filter 1: Inside another routine
-        let mut is_nested = false;
+        let mut _is_nested = false;
         for &(start, end) in &routine_bounds {
             if start < addr && addr < end {
-                is_nested = true;
+                _is_nested = true;
                 reasons.push(format!("Inside routine {:05x}", start));
                 break;
             }

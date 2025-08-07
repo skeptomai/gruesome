@@ -1,7 +1,5 @@
-use gruesome::disasm_txd::TxdDisassembler;
 use gruesome::vm::Game;
 use log::info;
-use std::collections::HashSet;
 use std::fs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -60,7 +58,7 @@ fn find_references(game: &Game, routine_addr: u32) {
     }
 }
 
-fn analyze_reference_context(game: &Game, loc: usize, packed_addr: u16) {
+fn analyze_reference_context(game: &Game, loc: usize, _packed_addr: u16) {
     // Check if it's in the object table area
     let obj_table_addr = ((game.memory[0x0A] as u16) << 8) | (game.memory[0x0B] as u16);
     let globals_addr = ((game.memory[0x0C] as u16) << 8) | (game.memory[0x0D] as u16);
