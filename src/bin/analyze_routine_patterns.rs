@@ -91,10 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for &addr in &extras {
         if let Some(pattern) = patterns.get(&addr) {
             let category = categorize_pattern(pattern);
-            categorized
-                .entry(category)
-                .or_default()
-                .push(addr);
+            categorized.entry(category).or_default().push(addr);
         }
     }
 

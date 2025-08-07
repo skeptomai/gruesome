@@ -1117,7 +1117,10 @@ impl<'a> TxdDisassembler<'a> {
         );
 
         // Check for low boundary expansion (TXD lines 1376-1388)
-        if addr < self.low_address && addr >= self.code_base && (addr as usize) < self.game.memory.len() {
+        if addr < self.low_address
+            && addr >= self.code_base
+            && (addr as usize) < self.game.memory.len()
+        {
             let vars = self.game.memory[addr as usize];
             debug!("TXD_CHECK_LOW: addr={:04x} vars={} ", addr, vars);
             if vars <= 15 {
@@ -1132,7 +1135,10 @@ impl<'a> TxdDisassembler<'a> {
         }
 
         // Check for high boundary expansion (TXD lines 1389-1401)
-        if addr > self.high_address && addr < self.file_size && (addr as usize) < self.game.memory.len() {
+        if addr > self.high_address
+            && addr < self.file_size
+            && (addr as usize) < self.game.memory.len()
+        {
             let vars = self.game.memory[addr as usize];
             debug!("TXD_CHECK_HIGH: addr={:04x} vars={} ", addr, vars);
             if vars <= 15 {
@@ -1279,7 +1285,8 @@ impl<'a> TxdDisassembler<'a> {
     fn check_operand_for_routine_address(&self, operand: u32) -> Option<u32> {
         // This is a heuristic - in a real implementation we'd be more sophisticated
         let addr = self.unpack_routine_address(operand as u16);
-        if addr >= self.code_base && addr < self.file_size && self.validate_routine(addr).is_some() {
+        if addr >= self.code_base && addr < self.file_size && self.validate_routine(addr).is_some()
+        {
             return Some(addr);
         }
         None
@@ -1534,7 +1541,9 @@ impl<'a> TxdDisassembler<'a> {
 
         let mut found_count = 0;
         for &routine_addr in &known_object_routines {
-            if !self.routines.contains_key(&routine_addr) && self.validate_routine(routine_addr).is_some() {
+            if !self.routines.contains_key(&routine_addr)
+                && self.validate_routine(routine_addr).is_some()
+            {
                 debug!(
                     "TXD_OBJECT_SCAN: Adding known object routine {:05x}",
                     routine_addr
@@ -1552,7 +1561,7 @@ impl<'a> TxdDisassembler<'a> {
 
         // The code below is left commented out as it's the beginning of object table scanning
         // implementation that hasn't been completed yet
-        
+
         /*
         // Get object table location from header
         let obj_table_addr =
@@ -1707,7 +1716,9 @@ impl<'a> TxdDisassembler<'a> {
 
         let mut found_count = 0;
         for &routine_addr in &known_grammar_routines {
-            if !self.routines.contains_key(&routine_addr) && self.validate_routine(routine_addr).is_some() {
+            if !self.routines.contains_key(&routine_addr)
+                && self.validate_routine(routine_addr).is_some()
+            {
                 debug!(
                     "TXD_GRAMMAR_SCAN: Adding known grammar routine {:05x}",
                     routine_addr

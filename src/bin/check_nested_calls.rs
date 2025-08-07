@@ -125,8 +125,7 @@ fn get_routine_calls(game: &Game, routine_addr: u32) -> Vec<u32> {
                         }
                     }
                     // call_1n, call_2n, call_vn, call_vn2 (v5+)
-                    (InstructionForm::Short, 0x0f)
-                    | (InstructionForm::Variable, 0x1f)
+                    (InstructionForm::Short, 0x0f) | (InstructionForm::Variable, 0x1f)
                         if game.header.version >= 5 =>
                     {
                         if !inst.operands.is_empty() && inst.operands[0] != 0 {
