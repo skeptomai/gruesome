@@ -881,7 +881,10 @@ mod tests {
         let vm = create_test_vm();
         assert_eq!(vm.pc, 0x5000);
         assert!(vm.stack.is_empty());
-        assert!(vm.call_stack.is_empty());
+        // For V1-5 games, there's an initial main frame on the call stack
+        assert_eq!(vm.call_stack.len(), 1);
+        assert_eq!(vm.call_stack[0].num_locals, 0);
+        assert_eq!(vm.call_stack[0].stack_base, 0);
     }
 
     #[test]

@@ -31,9 +31,9 @@ impl RoutineNames {
         names.insert(0x51f0, "GOTO");
         names.insert(0x552a, "MAIN-LOOP");
         names.insert(0x577c, "PERFORM");
-        names.insert(0x5880, "PARSER");
+        names.insert(0x5880, "PARSER-MAIN");
         names.insert(0x590c, "INPUT-LOOP");
-        names.insert(0x5c40, "(Unknown-5c40)");
+        names.insert(0x5c40, "PARSER");
         names.insert(0x6301, "BUFFER-PRINT");
         names.insert(0x6f76, "V-WALK");
         names.insert(0x7086, "LIT?");

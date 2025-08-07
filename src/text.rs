@@ -235,19 +235,21 @@ mod tests {
     #[test]
     fn test_simple_string() {
         // Create a simple test string "hello"
-        // h=8, e=5, l=12, l=12, o=15 (all +6 for Z-encoding)
-        // = 14, 11, 18, 18, 21
+        // h=7 (position in alphabet), e=4, l=11, l=11, o=14
+        // In Z-chars: h=13 (7+6), e=10 (4+6), l=17 (11+6), l=17, o=20 (14+6)
         let mut memory = vec![0u8; 100];
 
-        // First word: 14, 11, 18 = 01110 01011 10010
-        // = 0111 0010 1110 010 = 0x72E4
-        memory[10] = 0x72;
-        memory[11] = 0xE4;
+        // First word: 13, 10, 17
+        // Binary: 01101 01010 10001
+        // Full 16-bit: 0011 0101 0101 0001 = 0x3551
+        memory[10] = 0x35;
+        memory[11] = 0x51;
 
-        // Second word: 18, 21, padding = 10010 10101 00101
-        // Set bit 15 for end = 1001 0101 0100 101 = 0x9545
-        memory[12] = 0x95;
-        memory[13] = 0x45;
+        // Second word: 17, 20, padding(5)
+        // Binary: 10001 10100 00101
+        // With bit 15 set: 1100 0110 1000 0101 = 0xC685
+        memory[12] = 0xC6;
+        memory[13] = 0x85;
 
         let (result, len) = decode_string(&memory, 10, 0).unwrap();
         assert_eq!(result, "hello");
@@ -257,13 +259,15 @@ mod tests {
     #[test]
     fn test_string_with_space() {
         // Test "a b" = a, space, b
-        // a=7, space=0, b=8 (a/b +6 for encoding)
+        // a=0 (position in alphabet), space=0 (special Z-char), b=1 (position in alphabet)
+        // In Z-chars: a=6 (0+6), space=0, b=7 (1+6)
+        // Need padding to fill word
         let mut memory = vec![0u8; 100];
 
-        // 13, 0, 14 = 01101 00000 01110
-        // Set bit 15 = 1011 0100 0000 1110 = 0xB40E
-        memory[20] = 0xB4;
-        memory[21] = 0x0E;
+        // Word: 6, 0, 7 = 00110 00000 00111
+        // Set bit 15 for end = 1001 1000 0000 0111 = 0x9807
+        memory[20] = 0x98;
+        memory[21] = 0x07;
 
         let (result, len) = decode_string(&memory, 20, 0).unwrap();
         assert_eq!(result, "a b");
