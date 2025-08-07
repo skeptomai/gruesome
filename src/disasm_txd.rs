@@ -1242,11 +1242,11 @@ impl<'a> TxdDisassembler<'a> {
         let is_call = Self::is_call_instruction(instruction, self.version);
 
         // Also check for timer routines in READ (sread) instruction - V4+ only
-        let is_timed_read = self.version >= 4 && 
-            instruction.form == crate::instruction::InstructionForm::Variable &&
-            instruction.opcode == 0x04 && // sread
-            instruction.operands.len() >= 4 && // has timer routine operand
-            instruction.operands[3] != 0; // timer routine is non-zero
+        let is_timed_read = self.version >= 4
+            && instruction.form == crate::instruction::InstructionForm::Variable
+            && instruction.opcode == 0x04 // sread
+            && instruction.operands.len() >= 4 // has timer routine operand
+            && instruction.operands[3] != 0; // timer routine is non-zero
 
         if is_call {
             if let Some(target) = self.extract_routine_target(instruction, pc) {
@@ -1674,10 +1674,10 @@ impl<'a> TxdDisassembler<'a> {
                         // 1. Must be within reasonable code bounds
                         // 2. Must not already be found through code flow
                         // 3. Must be a valid routine
-                        if potential_addr >= self.code_base && 
-                           potential_addr < self.high_address &&  // Within discovered code region
-                           !self.routines.contains_key(&potential_addr) && // Not already found
-                           self.validate_routine(potential_addr).is_some()
+                        if potential_addr >= self.code_base
+                            && potential_addr < self.high_address // Within discovered code region
+                            && !self.routines.contains_key(&potential_addr) // Not already found
+                            && self.validate_routine(potential_addr).is_some()
                         {
                             debug!(
                                 "TXD_OBJECT_SCAN: Found routine {:05x} in object {} property {}",
