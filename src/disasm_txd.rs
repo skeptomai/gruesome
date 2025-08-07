@@ -493,11 +493,21 @@ impl<'a> TxdDisassembler<'a> {
         }
         
         // Generate labels for branch targets
+        // First, create a map of addresses to labels
+        let mut label_map = std::collections::HashMap::new();
         let mut label_counter = 1;
-        for inst in &mut instructions {
-            if branch_targets.contains(&inst.address) {
-                inst.label = Some(format!("L{:04}", label_counter));
+        for target in &branch_targets {
+            // Find if this target is within our routine
+            if instructions.iter().any(|inst| inst.address == *target) {
+                label_map.insert(*target, format!("L{:04}", label_counter));
                 label_counter += 1;
+            }
+        }
+        
+        // Now assign labels to instructions
+        for inst in &mut instructions {
+            if let Some(label) = label_map.get(&inst.address) {
+                inst.label = Some(label.clone());
             }
         }
         
@@ -1598,11 +1608,19 @@ impl<'a> TxdDisassembler<'a> {
 
         output.push_str("[Start of code]\n\n");
 
-        // TODO: Generate routine disassembly in TXD format
+        // Generate routine disassembly in TXD format
         let mut sorted_routines: Vec<_> = self.routines.iter().collect();
         sorted_routines.sort_by_key(|(addr, _)| *addr);
-
+        
+        // Create a mapping of routine addresses to routine numbers for CALL formatting
+        let mut routine_map = HashMap::new();
         let mut routine_num = 1;
+        for (addr, _) in &sorted_routines {
+            routine_map.insert(**addr, routine_num);
+            routine_num += 1;
+        }
+
+        routine_num = 1;
         for (addr, routine) in sorted_routines {
             // Check if this is the main routine
             let routine_prefix = if *addr == self.initial_pc {
@@ -1649,7 +1667,7 @@ impl<'a> TxdDisassembler<'a> {
                     }
                     
                     // Format the instruction
-                    let inst_str = self.format_instruction(&inst_info.instruction);
+                    let inst_str = self.format_instruction(&inst_info.instruction, inst_info.address, &routine.instructions, &routine_map);
                     output.push_str(&inst_str);
                     output.push('\n');
                 }
@@ -1852,8 +1870,8 @@ impl<'a> TxdDisassembler<'a> {
             OperandType::Variable => {
                 match operand {
                     0x00 => if is_store { "-(SP)".to_string() } else { "(SP)+".to_string() },  // Stack
-                    0x01..=0x0F => format!("L{:02}", operand - 1),  // Local variables (0-based)
-                    0x10..=0xFF => format!("G{:02x}", operand - 0x10),  // Global variables
+                    0x01..=0x0F => format!("L{:02}", operand - 1),  // Local variables (0-based, decimal)
+                    0x10..=0xFF => format!("G{:02x}", operand - 0x10),  // Global variables (hex)
                     _ => format!("V{:02x}", operand),  // Should not happen
                 }
             }
@@ -1865,7 +1883,8 @@ impl<'a> TxdDisassembler<'a> {
     }
 
     /// Format a complete instruction in TXD style
-    fn format_instruction(&self, instruction: &Instruction) -> String {
+    fn format_instruction(&self, instruction: &Instruction, instruction_address: u32, 
+                         routine_instructions: &[InstructionInfo], routine_map: &HashMap<u32, usize>) -> String {
         let mut result = String::new();
         
         // Get the opcode name
@@ -1874,25 +1893,52 @@ impl<'a> TxdDisassembler<'a> {
         // Left-pad to 16 characters for alignment
         result.push_str(&format!("{:<16}", opcode_name));
         
-        // Format operands - special handling for certain 1OP instructions
+        // Format operands - special handling for certain instructions
         if !instruction.operands.is_empty() {
+            let is_call = matches!(opcode_name.as_str(), "CALL" | "CALL_1S" | "CALL_2S" | "CALL_VS" | "CALL_VN" | "CALL_VS2" | "CALL_VN2");
+            
             let operand_strs: Vec<String> = instruction.operands.iter()
                 .zip(&instruction.operand_types)
                 .enumerate()
                 .map(|(i, (&val, &typ))| {
-                    // For INC, DEC, LOAD, and other 1OP instructions that take variable operands,
-                    // the operand is always a variable reference regardless of the type bits
-                    if instruction.form == InstructionForm::Short 
+                    // Special handling for CALL instructions - first operand is routine address
+                    if i == 0 && is_call {
+                        // Unpack the routine address
+                        let routine_addr = self.unpack_routine_address(val);
+                        // Look up the routine number
+                        if let Some(&routine_num) = routine_map.get(&routine_addr) {
+                            format!("R{:04}", routine_num)
+                        } else {
+                            // Not a known routine, show as hex address
+                            format!("#{:04x}", val)
+                        }
+                    }
+                    // For INC, DEC, LOAD, and other 1OP instructions that take variable operands
+                    else if instruction.form == InstructionForm::Short 
                         && instruction.operand_count == OperandCount::OP1
                         && matches!(instruction.opcode, 0x05 | 0x06 | 0x0E) {
                         // INC (0x05), DEC (0x06), LOAD (0x0E) always take variables
+                        self.format_operand(val, OperandType::Variable, false)
+                    }
+                    // STORE instruction takes variable as first operand
+                    else if i == 0 && opcode_name == "STORE" {
                         self.format_operand(val, OperandType::Variable, false)
                     } else {
                         self.format_operand(val, typ, false)
                     }
                 })
                 .collect();
-            result.push_str(&operand_strs.join(","));
+            
+            // Format with proper parentheses for CALL instructions
+            if is_call && operand_strs.len() > 1 {
+                // First operand is the routine, rest go in parentheses
+                result.push_str(&operand_strs[0]);
+                result.push_str(" (");
+                result.push_str(&operand_strs[1..].join(","));
+                result.push(')');
+            } else {
+                result.push_str(&operand_strs.join(","));
+            }
         }
         
         // Add store variable if present
@@ -1914,9 +1960,25 @@ impl<'a> TxdDisassembler<'a> {
                 0 => result.push_str("RFALSE"),
                 1 => result.push_str("RTRUE"),
                 _ => {
-                    // For now, just show the offset
-                    // TODO: Map to actual labels
-                    result.push_str(&format!("L{:04x}", branch.offset));
+                    // Calculate the actual branch target address
+                    let branch_target = instruction_address
+                        .wrapping_add(instruction.size as u32)
+                        .wrapping_add((branch.offset as i32) as u32)
+                        .wrapping_sub(2);
+                    
+                    // Find the label for this target
+                    if let Some(target_inst) = routine_instructions.iter()
+                        .find(|inst| inst.address == branch_target) {
+                        if let Some(ref label) = target_inst.label {
+                            result.push_str(label);
+                        } else {
+                            // No label found, show raw address
+                            result.push_str(&format!("{:04x}", branch_target));
+                        }
+                    } else {
+                        // Target is outside routine, show raw address
+                        result.push_str(&format!("{:04x}", branch_target));
+                    }
                 }
             }
         }
