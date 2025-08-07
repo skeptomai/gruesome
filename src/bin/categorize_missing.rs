@@ -6,7 +6,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let memory = fs::read("resources/test/amfv/amfv-r79-s851122.z4")?;
     let game = Game::from_memory(memory.clone())?;
 
-    // The 36 routines TXD finds that we don't
+    // Historical analysis: These were the 36 routines TXD found that we initially missed
+    // NOTE: As of v0.6.0, we now find ALL of these routines after fixing operand processing
+    // This tool remains for historical reference and validation purposes
     let missing_routines = vec![
         0x12a04, 0x12b18, 0x12b38, 0x1b0d8, 0x1b980, 0x1bf3c, 0x1d854, 0x1da50, 0x1dc1c, 0x1e138,
         0x1f250, 0x20ae8, 0x25b9c, 0x25bc0, 0x275a8, 0x27618, 0x27890, 0x279c4, 0x27b24, 0x2846c,
@@ -28,7 +30,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    println!("=== CATEGORIZATION OF 36 MISSING ROUTINES ===");
+    println!("=== HISTORICAL ANALYSIS: CATEGORIZATION OF 36 PREVIOUSLY MISSING ROUTINES ===");
+    println!("NOTE: As of v0.6.0, we now find ALL of these routines");
     println!(
         "\nFall-through (no proper terminator): {} routines",
         fall_through.len()

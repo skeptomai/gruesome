@@ -8,7 +8,7 @@ This document captures the deep analysis of TXD's orphan detection mechanism and
 - **Root Cause Found**: False positives were due to accepting invalid Long form opcode 0x00
 - **Solution**: Added proper opcode validation in instruction decoder
 - **V3 Games**: 451 routines (slight increase from 449, TXD finds 440) ✓
-- **V4 Games**: 1010 routines (TXD finds 982) - difference appears to be valid routines
+- **V4 Games**: 1026 routines (TXD finds 982) - difference appears to be valid routines
 - **False Positives**: Fixed! Invalid addresses like 33c04 (all zeros) now properly rejected
 
 ### The Real Problem
@@ -150,7 +150,7 @@ When the actual fix was a 3-line validation check in the instruction decoder.
 The false positive at 33c04 was particularly instructive - it's a region of all zeros. Our decoder was happily "decoding" zeros as Long form opcode 0x00, which doesn't exist.
 
 ### 5. Remaining Differences May Be Valid
-After fixing the false positives, we find MORE routines than TXD (1010 vs 982). This suggests our scanner is more thorough, not that we have more false positives.
+After fixing the false positives, we find MORE routines than TXD (1026 vs 982). This suggests our scanner is more thorough, not that we have more false positives.
 
 ## Analysis of Extra Routines (August 2025)
 
@@ -176,8 +176,9 @@ This suggests TXD has additional validation that rejects both parent and nested 
 
 1. **Initial count**: 1010 routines (before alternate entry fix)
 2. **After rejecting alternate entries**: 1009 routines (removed 0cafc)
-3. **TXD finds**: 982 routines
-4. **Remaining difference**: 27 routines
+3. **After adding data-referenced routines**: 1026 routines (includes all 13 previously missing)
+4. **TXD finds**: 982 routines
+5. **Remaining difference**: 44 routines (all validated as properly structured)
 
 ### Updated Pattern Categories
 
@@ -234,7 +235,8 @@ After extensive analysis of the 36 routines TXD finds that we don't:
 ### Accuracy Comparison
 
 **Our Implementation:**
-- Finds 1009 routines (all validated as properly structured)
+- Finds 1026 routines (all validated as properly structured)
+- Includes all 13 data-referenced routines TXD finds
 - 0 false positives after Long opcode 0x00 fix
 - Correctly rejects invalid data as non-routines
 
