@@ -1,4 +1,4 @@
-use crate::instruction::{Instruction, InstructionForm};
+use crate::instruction::{Instruction, InstructionForm, OperandCount, OperandType};
 use crate::vm::Game;
 use log::debug;
 use std::collections::HashMap;
@@ -82,13 +82,17 @@ struct RoutineInfo {
     locals_count: u8,
     validated: bool,
     instructions: Vec<InstructionInfo>,
+    /// Initial values for local variables (V1-4 only)
+    local_inits: Vec<u16>,
 }
 
 #[derive(Debug, Clone)]
 struct InstructionInfo {
     address: u32,
     instruction: Instruction,
-    targets: Vec<u32>, // Call targets or branch targets
+    targets: Vec<u32>, // Call targets or branch targets  
+    /// Label for this address if it's a branch target
+    label: Option<String>,
 }
 
 impl<'a> TxdDisassembler<'a> {
@@ -412,11 +416,98 @@ impl<'a> TxdDisassembler<'a> {
                     locals_count,
                     validated: false,
                     instructions: Vec::new(),
+                    local_inits: Vec::new(),
                 };
                 self.routines.insert(rounded_addr, routine_info);
                 self.routine_queue.push(rounded_addr);
             }
         }
+    }
+
+    /// Fully decode a routine and store all its instructions
+    fn decode_routine_fully(&mut self, routine_addr: u32) -> Result<(), String> {
+        let rounded_addr = self.round_code(routine_addr);
+        
+        // Get the routine info
+        let routine_info = match self.routines.get(&rounded_addr) {
+            Some(info) => info.clone(),
+            None => return Err(format!("Routine not found at {:04x}", rounded_addr)),
+        };
+        
+        let locals_count = routine_info.locals_count;
+        let mut pc = rounded_addr + 1;
+        let mut instructions = Vec::new();
+        let mut local_inits = Vec::new();
+        
+        // Read local variable initial values in V1-4
+        if self.version <= 4 {
+            for _ in 0..locals_count {
+                if pc as usize + 1 >= self.game.memory.len() {
+                    break;
+                }
+                let init_val = ((self.game.memory[pc as usize] as u16) << 8) 
+                    | (self.game.memory[pc as usize + 1] as u16);
+                local_inits.push(init_val);
+                pc += 2;
+            }
+        }
+        
+        // Decode all instructions in the routine
+        let mut branch_targets = Vec::new();
+        
+        while (pc as usize) < self.game.memory.len() {
+            match Instruction::decode(&self.game.memory, pc as usize, self.version) {
+                Ok(instruction) => {
+                    let old_pc = pc;
+                    
+                    // Track branch targets for label generation
+                    if let Some(branch_info) = &instruction.branch {
+                        if branch_info.offset >= 2 {
+                            // Calculate absolute branch target
+                            let branch_target = old_pc
+                                .wrapping_add(instruction.size as u32)
+                                .wrapping_add((branch_info.offset as i32) as u32)
+                                .wrapping_sub(2);
+                            branch_targets.push(branch_target);
+                        }
+                    }
+                    
+                    // Store instruction info
+                    let inst_info = InstructionInfo {
+                        address: old_pc,
+                        instruction: instruction.clone(),
+                        targets: Vec::new(), // Will be filled later if needed
+                        label: None, // Will be assigned after all instructions are decoded
+                    };
+                    instructions.push(inst_info);
+                    
+                    pc += instruction.size as u32;
+                    
+                    // Stop at return instructions
+                    if Self::is_return_instruction(&instruction) {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        
+        // Generate labels for branch targets
+        let mut label_counter = 1;
+        for inst in &mut instructions {
+            if branch_targets.contains(&inst.address) {
+                inst.label = Some(format!("L{:04}", label_counter));
+                label_counter += 1;
+            }
+        }
+        
+        // Update the routine info with decoded instructions
+        if let Some(routine_info) = self.routines.get_mut(&rounded_addr) {
+            routine_info.instructions = instructions;
+            routine_info.local_inits = local_inits;
+        }
+        
+        Ok(())
     }
 
     /// Check if an address falls inside another routine's header/locals area
@@ -514,6 +605,16 @@ impl<'a> TxdDisassembler<'a> {
 
         // Scan grammar tables for action routines
         self.scan_grammar_tables()?;
+
+        // After discovering all routines, decode their instructions
+        debug!("TXD_DECODE_PHASE: Decoding instructions for all routines");
+        let routine_addrs: Vec<u32> = self.routines.keys().cloned().collect();
+        for addr in routine_addrs {
+            if let Err(e) = self.decode_routine_fully(addr) {
+                debug!("Failed to decode routine at {:04x}: {}", addr, e);
+            }
+        }
+        debug!("TXD_DECODE_PHASE: Instruction decoding complete");
 
         Ok(())
     }
@@ -1518,11 +1619,42 @@ impl<'a> TxdDisassembler<'a> {
                 output.push('s');
             }
 
-            // TODO: Add local variable initial values for V1-4
-            output.push_str(" (0000)\n\n");
+            // Add local variable initial values for V1-4
+            output.push_str(" (");
+            if self.version <= 4 && !routine.local_inits.is_empty() {
+                let init_strs: Vec<String> = routine.local_inits
+                    .iter()
+                    .map(|&val| format!("{:04x}", val))
+                    .collect();
+                output.push_str(&init_strs.join(", "));
+            } else {
+                // Default to 0000 for each local
+                let zeros: Vec<String> = (0..routine.locals_count)
+                    .map(|_| "0000".to_string())
+                    .collect();
+                output.push_str(&zeros.join(", "));
+            }
+            output.push_str(")\n\n");
 
-            // TODO: Add instruction disassembly
-            output.push_str("       ; Routine disassembly not yet implemented\n\n");
+            // Add instruction disassembly
+            if routine.instructions.is_empty() {
+                output.push_str("       ; No instructions decoded\n\n");
+            } else {
+                for inst_info in &routine.instructions {
+                    // Add label if present
+                    if let Some(ref label) = inst_info.label {
+                        output.push_str(&format!("{}: ", label));
+                    } else {
+                        output.push_str("       ");
+                    }
+                    
+                    // Format the instruction
+                    let inst_str = self.format_instruction(&inst_info.instruction);
+                    output.push_str(&inst_str);
+                    output.push('\n');
+                }
+                output.push('\n');
+            }
 
             routine_num += 1;
         }
@@ -1714,6 +1846,104 @@ impl<'a> TxdDisassembler<'a> {
     }
 
     /// Scan grammar tables for action routines
+    /// Format an operand value in TXD style
+    fn format_operand(&self, operand: u16, operand_type: OperandType, is_store: bool) -> String {
+        match operand_type {
+            OperandType::Variable => {
+                match operand {
+                    0x00 => if is_store { "-(SP)".to_string() } else { "(SP)+".to_string() },  // Stack
+                    0x01..=0x0F => format!("L{:02}", operand - 1),  // Local variables (0-based)
+                    0x10..=0xFF => format!("G{:02x}", operand - 0x10),  // Global variables
+                    _ => format!("V{:02x}", operand),  // Should not happen
+                }
+            }
+            OperandType::SmallConstant | OperandType::LargeConstant => {
+                format!("#{:02x}", operand)
+            }
+            OperandType::Omitted => String::new(),
+        }
+    }
+
+    /// Format a complete instruction in TXD style
+    fn format_instruction(&self, instruction: &Instruction) -> String {
+        let mut result = String::new();
+        
+        // Get the opcode name
+        let opcode_name = self.get_opcode_name(instruction);
+        
+        // Left-pad to 16 characters for alignment
+        result.push_str(&format!("{:<16}", opcode_name));
+        
+        // Format operands - special handling for certain 1OP instructions
+        if !instruction.operands.is_empty() {
+            let operand_strs: Vec<String> = instruction.operands.iter()
+                .zip(&instruction.operand_types)
+                .enumerate()
+                .map(|(i, (&val, &typ))| {
+                    // For INC, DEC, LOAD, and other 1OP instructions that take variable operands,
+                    // the operand is always a variable reference regardless of the type bits
+                    if instruction.form == InstructionForm::Short 
+                        && instruction.operand_count == OperandCount::OP1
+                        && matches!(instruction.opcode, 0x05 | 0x06 | 0x0E) {
+                        // INC (0x05), DEC (0x06), LOAD (0x0E) always take variables
+                        self.format_operand(val, OperandType::Variable, false)
+                    } else {
+                        self.format_operand(val, typ, false)
+                    }
+                })
+                .collect();
+            result.push_str(&operand_strs.join(","));
+        }
+        
+        // Add store variable if present
+        if let Some(store_var) = instruction.store_var {
+            result.push_str(" -> ");
+            result.push_str(&self.format_operand(store_var as u16, OperandType::Variable, true));
+        }
+        
+        // Add branch info if present
+        if let Some(ref branch) = instruction.branch {
+            if branch.on_true {
+                result.push_str(" [TRUE] ");
+            } else {
+                result.push_str(" [FALSE] ");
+            }
+            
+            // Format branch target
+            match branch.offset {
+                0 => result.push_str("RFALSE"),
+                1 => result.push_str("RTRUE"),
+                _ => {
+                    // For now, just show the offset
+                    // TODO: Map to actual labels
+                    result.push_str(&format!("L{:04x}", branch.offset));
+                }
+            }
+        }
+        
+        // Add inline string for PRINT instructions
+        if let Some(ref text) = instruction.text {
+            result.push_str(&format!(" \"{}\"", text));
+        }
+        
+        result
+    }
+    
+    /// Get the opcode name in TXD format
+    fn get_opcode_name(&self, instruction: &Instruction) -> String {
+        // Use the existing opcode tables to get the correct name
+        let name = crate::opcode_tables::get_instruction_name(
+            instruction.opcode,
+            instruction.ext_opcode,
+            instruction.form,
+            instruction.operand_count,
+            self.version,
+        );
+        
+        // Convert to uppercase for TXD format
+        name.to_uppercase()
+    }
+
     fn scan_grammar_tables(&mut self) -> Result<(), String> {
         debug!("TXD_GRAMMAR_SCAN: Starting grammar table scan");
 
