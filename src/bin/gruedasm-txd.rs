@@ -1,4 +1,4 @@
-use gruesome::disasm_txd::{TxdDisassembler, OutputOptions};
+use gruesome::disasm_txd::{OutputOptions, TxdDisassembler};
 use gruesome::vm::Game;
 use log::debug;
 use std::env;
@@ -10,12 +10,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
 
     let args: Vec<String> = env::args().collect();
-    
+
     // Parse command line options
     let mut show_addresses = false;
     let mut dump_hex = false;
     let mut filename = None;
-    
+
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         i += 1;
     }
-    
+
     let filename = filename.unwrap_or_else(|| {
         eprintln!("Usage: {} [options] <game-file>", args[0]);
         eprintln!("Try '{} -h' for help", args[0]);
@@ -69,7 +69,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Created TXD disassembler for version {} game",
         game.header.version
     );
-    debug!("Output options: addresses={}, hex={}", show_addresses, dump_hex);
+    debug!(
+        "Output options: addresses={}, hex={}",
+        show_addresses, dump_hex
+    );
 
     // Run discovery process
     disasm.discover_routines()?;

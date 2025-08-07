@@ -110,7 +110,7 @@ struct RoutineInfo {
 struct InstructionInfo {
     address: u32,
     instruction: Instruction,
-    targets: Vec<u32>, // Call targets or branch targets  
+    targets: Vec<u32>, // Call targets or branch targets
     /// Label for this address if it's a branch target
     label: Option<String>,
 }
@@ -448,39 +448,39 @@ impl<'a> TxdDisassembler<'a> {
     /// Fully decode a routine and store all its instructions
     fn decode_routine_fully(&mut self, routine_addr: u32) -> Result<(), String> {
         let rounded_addr = self.round_code(routine_addr);
-        
+
         // Get the routine info
         let routine_info = match self.routines.get(&rounded_addr) {
             Some(info) => info.clone(),
             None => return Err(format!("Routine not found at {:04x}", rounded_addr)),
         };
-        
+
         let locals_count = routine_info.locals_count;
         let mut pc = rounded_addr + 1;
         let mut instructions = Vec::new();
         let mut local_inits = Vec::new();
-        
+
         // Read local variable initial values in V1-4
         if self.version <= 4 {
             for _ in 0..locals_count {
                 if pc as usize + 1 >= self.game.memory.len() {
                     break;
                 }
-                let init_val = ((self.game.memory[pc as usize] as u16) << 8) 
+                let init_val = ((self.game.memory[pc as usize] as u16) << 8)
                     | (self.game.memory[pc as usize + 1] as u16);
                 local_inits.push(init_val);
                 pc += 2;
             }
         }
-        
+
         // Decode all instructions in the routine
         let mut branch_targets = Vec::new();
-        
+
         while (pc as usize) < self.game.memory.len() {
             match Instruction::decode(&self.game.memory, pc as usize, self.version) {
                 Ok(instruction) => {
                     let old_pc = pc;
-                    
+
                     // Track branch targets for label generation
                     if let Some(branch_info) = &instruction.branch {
                         if branch_info.offset >= 2 {
@@ -492,18 +492,18 @@ impl<'a> TxdDisassembler<'a> {
                             branch_targets.push(branch_target);
                         }
                     }
-                    
+
                     // Store instruction info
                     let inst_info = InstructionInfo {
                         address: old_pc,
                         instruction: instruction.clone(),
                         targets: Vec::new(), // Will be filled later if needed
-                        label: None, // Will be assigned after all instructions are decoded
+                        label: None,         // Will be assigned after all instructions are decoded
                     };
                     instructions.push(inst_info);
-                    
+
                     pc += instruction.size as u32;
-                    
+
                     // Stop at return instructions
                     if Self::is_return_instruction(&instruction) {
                         break;
@@ -512,7 +512,7 @@ impl<'a> TxdDisassembler<'a> {
                 Err(_) => break,
             }
         }
-        
+
         // Generate labels for branch targets
         // First, create a map of addresses to labels
         let mut label_map = std::collections::HashMap::new();
@@ -524,20 +524,20 @@ impl<'a> TxdDisassembler<'a> {
                 label_counter += 1;
             }
         }
-        
+
         // Now assign labels to instructions
         for inst in &mut instructions {
             if let Some(label) = label_map.get(&inst.address) {
                 inst.label = Some(label.clone());
             }
         }
-        
+
         // Update the routine info with decoded instructions
         if let Some(routine_info) = self.routines.get_mut(&rounded_addr) {
             routine_info.instructions = instructions;
             routine_info.local_inits = local_inits;
         }
-        
+
         Ok(())
     }
 
@@ -1641,7 +1641,7 @@ impl<'a> TxdDisassembler<'a> {
         // Generate routine disassembly in TXD format
         let mut sorted_routines: Vec<_> = self.routines.iter().collect();
         sorted_routines.sort_by_key(|(addr, _)| *addr);
-        
+
         // Create a mapping of routine addresses to routine numbers for CALL formatting
         let mut routine_map = HashMap::new();
         let mut routine_num = 1;
@@ -1683,7 +1683,8 @@ impl<'a> TxdDisassembler<'a> {
             // Add local variable initial values for V1-4
             output.push_str(" (");
             if self.version <= 4 && !routine.local_inits.is_empty() {
-                let init_strs: Vec<String> = routine.local_inits
+                let init_strs: Vec<String> = routine
+                    .local_inits
                     .iter()
                     .map(|&val| format!("{:04x}", val))
                     .collect();
@@ -1713,9 +1714,14 @@ impl<'a> TxdDisassembler<'a> {
                             output.push_str("       ");
                         }
                     }
-                    
+
                     // Format the instruction
-                    let inst_str = self.format_instruction(&inst_info.instruction, inst_info.address, &routine.instructions, &routine_map);
+                    let inst_str = self.format_instruction(
+                        &inst_info.instruction,
+                        inst_info.address,
+                        &routine.instructions,
+                        &routine_map,
+                    );
                     output.push_str(&inst_str);
                     output.push('\n');
                 }
@@ -1730,7 +1736,7 @@ impl<'a> TxdDisassembler<'a> {
     }
 
     /// Scan object properties for routine references
-    /// 
+    ///
     /// NOTE: This is currently a simplified implementation using hardcoded addresses.
     /// A full implementation would parse the object table and scan all properties,
     /// but that requires complex heuristics to avoid false positives from data
@@ -1917,10 +1923,16 @@ impl<'a> TxdDisassembler<'a> {
         match operand_type {
             OperandType::Variable => {
                 match operand {
-                    0x00 => if is_store { "-(SP)".to_string() } else { "(SP)+".to_string() },  // Stack
-                    0x01..=0x0F => format!("L{:02}", operand - 1),  // Local variables (0-based, decimal)
-                    0x10..=0xFF => format!("G{:02x}", operand - 0x10),  // Global variables (hex)
-                    _ => format!("V{:02x}", operand),  // Should not happen
+                    0x00 => {
+                        if is_store {
+                            "-(SP)".to_string()
+                        } else {
+                            "(SP)+".to_string()
+                        }
+                    } // Stack
+                    0x01..=0x0F => format!("L{:02}", operand - 1), // Local variables (0-based, decimal)
+                    0x10..=0xFF => format!("G{:02x}", operand - 0x10), // Global variables (hex)
+                    _ => format!("V{:02x}", operand),              // Should not happen
                 }
             }
             OperandType::SmallConstant | OperandType::LargeConstant => {
@@ -1931,21 +1943,31 @@ impl<'a> TxdDisassembler<'a> {
     }
 
     /// Format a complete instruction in TXD style
-    fn format_instruction(&self, instruction: &Instruction, instruction_address: u32, 
-                         routine_instructions: &[InstructionInfo], routine_map: &HashMap<u32, usize>) -> String {
+    fn format_instruction(
+        &self,
+        instruction: &Instruction,
+        instruction_address: u32,
+        routine_instructions: &[InstructionInfo],
+        routine_map: &HashMap<u32, usize>,
+    ) -> String {
         let mut result = String::new();
-        
+
         // Get the opcode name
         let opcode_name = self.get_opcode_name(instruction);
-        
+
         // Left-pad to 16 characters for alignment
         result.push_str(&format!("{:<16}", opcode_name));
-        
+
         // Format operands - special handling for certain instructions
         if !instruction.operands.is_empty() {
-            let is_call = matches!(opcode_name.as_str(), "CALL" | "CALL_1S" | "CALL_2S" | "CALL_VS" | "CALL_VN" | "CALL_VS2" | "CALL_VN2");
-            
-            let operand_strs: Vec<String> = instruction.operands.iter()
+            let is_call = matches!(
+                opcode_name.as_str(),
+                "CALL" | "CALL_1S" | "CALL_2S" | "CALL_VS" | "CALL_VN" | "CALL_VS2" | "CALL_VN2"
+            );
+
+            let operand_strs: Vec<String> = instruction
+                .operands
+                .iter()
                 .zip(&instruction.operand_types)
                 .enumerate()
                 .map(|(i, (&val, &typ))| {
@@ -1967,9 +1989,10 @@ impl<'a> TxdDisassembler<'a> {
                         }
                     }
                     // For INC, DEC, LOAD, and other 1OP instructions that take variable operands
-                    else if instruction.form == InstructionForm::Short 
+                    else if instruction.form == InstructionForm::Short
                         && instruction.operand_count == OperandCount::OP1
-                        && matches!(instruction.opcode, 0x05 | 0x06 | 0x0E) {
+                        && matches!(instruction.opcode, 0x05 | 0x06 | 0x0E)
+                    {
                         // INC (0x05), DEC (0x06), LOAD (0x0E) always take variables
                         self.format_operand(val, OperandType::Variable, false)
                     }
@@ -1981,7 +2004,7 @@ impl<'a> TxdDisassembler<'a> {
                     }
                 })
                 .collect();
-            
+
             // Format with proper parentheses for CALL instructions
             if is_call && operand_strs.len() > 1 {
                 // First operand is the routine, rest go in parentheses
@@ -1993,13 +2016,13 @@ impl<'a> TxdDisassembler<'a> {
                 result.push_str(&operand_strs.join(","));
             }
         }
-        
+
         // Add store variable if present
         if let Some(store_var) = instruction.store_var {
             result.push_str(" -> ");
             result.push_str(&self.format_operand(store_var as u16, OperandType::Variable, true));
         }
-        
+
         // Add branch info if present
         if let Some(ref branch) = instruction.branch {
             if branch.on_true {
@@ -2007,7 +2030,7 @@ impl<'a> TxdDisassembler<'a> {
             } else {
                 result.push_str(" [FALSE] ");
             }
-            
+
             // Format branch target
             match branch.offset {
                 0 => result.push_str("RFALSE"),
@@ -2018,14 +2041,16 @@ impl<'a> TxdDisassembler<'a> {
                         .wrapping_add(instruction.size as u32)
                         .wrapping_add((branch.offset as i32) as u32)
                         .wrapping_sub(2);
-                    
+
                     if self.output_options.show_addresses {
                         // Address mode: always show raw address
                         result.push_str(&format!("{:x}", branch_target));
                     } else {
                         // Label mode: try to find label
-                        if let Some(target_inst) = routine_instructions.iter()
-                            .find(|inst| inst.address == branch_target) {
+                        if let Some(target_inst) = routine_instructions
+                            .iter()
+                            .find(|inst| inst.address == branch_target)
+                        {
                             if let Some(ref label) = target_inst.label {
                                 result.push_str(label);
                             } else {
@@ -2040,15 +2065,15 @@ impl<'a> TxdDisassembler<'a> {
                 }
             }
         }
-        
+
         // Add inline string for PRINT instructions
         if let Some(ref text) = instruction.text {
             result.push_str(&format!(" \"{}\"", text));
         }
-        
+
         result
     }
-    
+
     /// Get the opcode name in TXD format
     fn get_opcode_name(&self, instruction: &Instruction) -> String {
         // Use the existing opcode tables to get the correct name
@@ -2059,7 +2084,7 @@ impl<'a> TxdDisassembler<'a> {
             instruction.operand_count,
             self.version,
         );
-        
+
         // Convert to uppercase for TXD format
         name.to_uppercase()
     }
