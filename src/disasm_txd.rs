@@ -43,22 +43,14 @@ use std::collections::HashMap;
 /// - String region detection for V3 games to avoid false positives
 /// - Timer routine discovery from SREAD instructions (V4+)
 /// - Targeted scanning of known data-referenced routines (temporary implementation)
+///
 /// Output mode options for TXD disassembler
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct OutputOptions {
     /// Show addresses instead of labels (-n flag)
     pub show_addresses: bool,
     /// Dump hex bytes of instructions (-d flag)
     pub dump_hex: bool,
-}
-
-impl Default for OutputOptions {
-    fn default() -> Self {
-        OutputOptions {
-            show_addresses: false,
-            dump_hex: false,
-        }
-    }
 }
 
 pub struct TxdDisassembler<'a> {
