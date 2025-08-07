@@ -43,6 +43,24 @@ use std::collections::HashMap;
 /// - String region detection for V3 games to avoid false positives
 /// - Timer routine discovery from SREAD instructions (V4+)
 /// - Targeted scanning of known data-referenced routines (temporary implementation)
+/// Output mode options for TXD disassembler
+#[derive(Debug, Clone, Copy)]
+pub struct OutputOptions {
+    /// Show addresses instead of labels (-n flag)
+    pub show_addresses: bool,
+    /// Dump hex bytes of instructions (-d flag)
+    pub dump_hex: bool,
+}
+
+impl Default for OutputOptions {
+    fn default() -> Self {
+        OutputOptions {
+            show_addresses: false,
+            dump_hex: false,
+        }
+    }
+}
+
 pub struct TxdDisassembler<'a> {
     game: &'a Game,
     version: u8,
@@ -74,6 +92,8 @@ pub struct TxdDisassembler<'a> {
     pctable: Vec<u32>,
     /// Enable orphan detection (for testing without regression)
     enable_orphan_detection: bool,
+    /// Output formatting options
+    output_options: OutputOptions,
 }
 
 #[derive(Debug, Clone)]
@@ -157,6 +177,7 @@ impl<'a> TxdDisassembler<'a> {
             orphan_fragments: Vec::new(),
             pctable: Vec::new(),
             enable_orphan_detection: false, // Default off for safety
+            output_options: OutputOptions::default(),
         }
     }
 
@@ -552,6 +573,11 @@ impl<'a> TxdDisassembler<'a> {
     pub fn enable_orphan_detection(&mut self) {
         self.enable_orphan_detection = true;
         debug!("TXD_ORPHAN_DETECTION: Enabled");
+    }
+
+    /// Set output options
+    pub fn set_output_options(&mut self, options: OutputOptions) {
+        self.output_options = options;
     }
 
     /// Run the complete discovery process like TXD
@@ -1606,7 +1632,11 @@ impl<'a> TxdDisassembler<'a> {
             self.low_address, self.high_address
         ));
 
-        output.push_str("[Start of code]\n\n");
+        if self.output_options.show_addresses {
+            output.push_str(&format!("[Start of code at {:x}]\n\n", self.low_address));
+        } else {
+            output.push_str("[Start of code]\n\n");
+        }
 
         // Generate routine disassembly in TXD format
         let mut sorted_routines: Vec<_> = self.routines.iter().collect();
@@ -1622,17 +1652,30 @@ impl<'a> TxdDisassembler<'a> {
 
         routine_num = 1;
         for (addr, routine) in sorted_routines {
-            // Check if this is the main routine
-            let routine_prefix = if *addr == self.initial_pc {
-                "Main r"
+            // Format routine header based on mode
+            if self.output_options.show_addresses {
+                // Address mode: show address instead of R####
+                let routine_prefix = if *addr == self.initial_pc {
+                    "Main routine "
+                } else {
+                    "Routine "
+                };
+                output.push_str(&format!(
+                    "{}{:x}, {} local",
+                    routine_prefix, *addr, routine.locals_count
+                ));
             } else {
-                "R"
-            };
-
-            output.push_str(&format!(
-                "{}outine R{:04}, {} local",
-                routine_prefix, routine_num, routine.locals_count
-            ));
+                // Label mode: show R#### label
+                let routine_prefix = if *addr == self.initial_pc {
+                    "Main r"
+                } else {
+                    "R"
+                };
+                output.push_str(&format!(
+                    "{}outine R{:04}, {} local",
+                    routine_prefix, routine_num, routine.locals_count
+                ));
+            }
             if routine.locals_count != 1 {
                 output.push('s');
             }
@@ -1659,11 +1702,16 @@ impl<'a> TxdDisassembler<'a> {
                 output.push_str("       ; No instructions decoded\n\n");
             } else {
                 for inst_info in &routine.instructions {
-                    // Add label if present
-                    if let Some(ref label) = inst_info.label {
-                        output.push_str(&format!("{}: ", label));
+                    if self.output_options.show_addresses {
+                        // Address mode: show address at start of line
+                        output.push_str(&format!(" {:x}:  ", inst_info.address));
                     } else {
-                        output.push_str("       ");
+                        // Label mode: show label or spaces
+                        if let Some(ref label) = inst_info.label {
+                            output.push_str(&format!("{}: ", label));
+                        } else {
+                            output.push_str("       ");
+                        }
                     }
                     
                     // Format the instruction
@@ -1905,12 +1953,17 @@ impl<'a> TxdDisassembler<'a> {
                     if i == 0 && is_call {
                         // Unpack the routine address
                         let routine_addr = self.unpack_routine_address(val);
-                        // Look up the routine number
-                        if let Some(&routine_num) = routine_map.get(&routine_addr) {
-                            format!("R{:04}", routine_num)
+                        if self.output_options.show_addresses {
+                            // Address mode: show raw address
+                            format!("{:x}", routine_addr)
                         } else {
-                            // Not a known routine, show as hex address
-                            format!("#{:04x}", val)
+                            // Label mode: show routine label
+                            if let Some(&routine_num) = routine_map.get(&routine_addr) {
+                                format!("R{:04}", routine_num)
+                            } else {
+                                // Not a known routine, show as hex address
+                                format!("#{:04x}", val)
+                            }
                         }
                     }
                     // For INC, DEC, LOAD, and other 1OP instructions that take variable operands
@@ -1966,18 +2019,23 @@ impl<'a> TxdDisassembler<'a> {
                         .wrapping_add((branch.offset as i32) as u32)
                         .wrapping_sub(2);
                     
-                    // Find the label for this target
-                    if let Some(target_inst) = routine_instructions.iter()
-                        .find(|inst| inst.address == branch_target) {
-                        if let Some(ref label) = target_inst.label {
-                            result.push_str(label);
+                    if self.output_options.show_addresses {
+                        // Address mode: always show raw address
+                        result.push_str(&format!("{:x}", branch_target));
+                    } else {
+                        // Label mode: try to find label
+                        if let Some(target_inst) = routine_instructions.iter()
+                            .find(|inst| inst.address == branch_target) {
+                            if let Some(ref label) = target_inst.label {
+                                result.push_str(label);
+                            } else {
+                                // No label found, show raw address
+                                result.push_str(&format!("{:04x}", branch_target));
+                            }
                         } else {
-                            // No label found, show raw address
+                            // Target is outside routine, show raw address
                             result.push_str(&format!("{:04x}", branch_target));
                         }
-                    } else {
-                        // Target is outside routine, show raw address
-                        result.push_str(&format!("{:04x}", branch_target));
                     }
                 }
             }
