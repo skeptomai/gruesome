@@ -223,31 +223,31 @@ yes
     // Verify AMFV-specific output
     // The game title appears after the initial screen is dismissed
     assert!(
-        stdout.contains("MIND FOREVER VOYAGING") || 
-        stdout.contains("A Mind Forever Voyaging") ||
-        stdout.contains("science fiction story"),
+        stdout.contains("MIND FOREVER VOYAGING")
+            || stdout.contains("A Mind Forever Voyaging")
+            || stdout.contains("science fiction story"),
         "Missing game title or description"
     );
     assert!(
         stdout.contains("Copyright (c) 1985") || stdout.contains("Infocom"),
         "Missing copyright"
     );
-    
+
     // Check for Communications Mode and PPCC entry
     assert!(
-        stdout.contains("PRISM Project Control Center") || 
-        stdout.contains("PPCC") ||
-        stdout.contains("Communications Mode"),
+        stdout.contains("PRISM Project Control Center")
+            || stdout.contains("PPCC")
+            || stdout.contains("Communications Mode"),
         "Failed to find Communications Mode or PPCC reference"
     );
-    
+
     // When PPCC is entered, we should see the room description
     assert!(
-        stdout.contains("well-organized room") || 
-        stdout.contains("banks of terminals") ||
-        stdout.contains("equipment") ||
-        stdout.contains("PRISM") ||
-        stdout.contains("Control Center"),
+        stdout.contains("well-organized room")
+            || stdout.contains("banks of terminals")
+            || stdout.contains("equipment")
+            || stdout.contains("PRISM")
+            || stdout.contains("Control Center"),
         "PPCC room description or navigation not working"
     );
 }
@@ -298,19 +298,18 @@ yes
     // Check that we can navigate between different areas
     // PPCC and RCRD are communication outlet codes mentioned in the game
     assert!(
-        stdout.contains("PPCC") || 
-        stdout.contains("PRISM Project Control Center") ||
-        stdout.contains("Communications Mode"),
+        stdout.contains("PPCC")
+            || stdout.contains("PRISM Project Control Center")
+            || stdout.contains("Communications Mode"),
         "Cannot access PPCC or Communications Mode"
     );
-    
+
     // The game should respond to multiple commands
     assert!(
-        stdout.contains("locations") || 
-        stdout.contains("equipped") ||
-        stdout.contains("outlet") ||
-        stdout.contains("activate"),
+        stdout.contains("locations")
+            || stdout.contains("equipped")
+            || stdout.contains("outlet")
+            || stdout.contains("activate"),
         "Communications system not working properly"
     );
 }
-
