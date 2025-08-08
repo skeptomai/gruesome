@@ -3,3 +3,6 @@
 /resources/test/zork1/.DS_Store
 debug.log
 /out
+
+# Claude Code settings
+.claude/settings.local.json
