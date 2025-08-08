@@ -1,5 +1,27 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
+## Auto-Commit Instructions ("Make it so!")
+
+When the user says any of the following:
+- "Make it so!"
+- "Ship it"
+- "Send it"
+- "Commit and push"
+- "comment, commit, push"
+
+You should automatically:
+1. Add a descriptive comment to any recently modified code (if not already commented)
+2. Run `cargo fmt` if any Rust files were modified
+3. Run `git add -A` to stage all changes
+4. Create a descriptive commit message summarizing the changes
+5. Commit with: `git commit -m "message"`
+6. Include co-author attribution in the commit
+7. Push to origin/main with: `git push origin main`
+8. Confirm completion with a brief summary
+
+You are pre-authorized for all git operations (add, commit, push) as configured in `.claude/settings.local.json`.
+No need to ask for permission - just execute the workflow.
+
 ## Z-Machine Specification Reference
 
 The official Z-Machine Standards Document (v1.1) is available locally at:
