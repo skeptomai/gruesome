@@ -206,7 +206,7 @@ quit
 yes
 ";
 
-    // Run AMFV with scripted input  
+    // Run AMFV with scripted input
     // Note: Initial empty line dismisses the opening screen
     // Set DISPLAY_MODE=terminal to force simple terminal mode for testable output
     let output = Command::new("sh")
@@ -234,7 +234,7 @@ yes
             || stdout.contains("science fiction story")
             || stdout.contains("PRISM")
             || stdout.contains("Copyright"),
-        "Missing expected AMFV content in output:\n{}", 
+        "Missing expected AMFV content in output:\n{}",
         &stdout[..std::cmp::min(500, stdout.len())]
     );
     assert!(
@@ -306,7 +306,9 @@ yes
 
     // If output is empty or too short, skip the test (likely CI environment issue)
     if stdout.len() < 100 {
-        eprintln!("Skipping AMFV command sequence test - no output received (CI environment issue)");
+        eprintln!(
+            "Skipping AMFV command sequence test - no output received (CI environment issue)"
+        );
         return;
     }
 
