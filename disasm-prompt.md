@@ -1,96 +1,119 @@
-# Prompt for Claude to create a Z Machine Disassembler
+# Disassembler Development Context and Current State
 
-You are an accomplished C and Rust developer. You've developed an interpreter for Infocom's Z Engine interactive text adventures. The source code is in our working directory here and more importantly the specification is in @../Z-Engine-Standard in HTML form. You will use this source code as the basis for a new branch in this repository to build a disassembler for Z Engine gamefiles.  However, this source code will be informed by a full working disassembler that already exists, in C, in @../ztools/txd.c.
+## Previous Work Summary
+We successfully developed a TXD-compatible Z-Machine disassembler that matches the reference implementation's output exactly. The disassembler is in `src/disasm_txd.rs` and the CLI tool is `src/bin/gruedasm-txd.rs`.
 
-Here are some rules to follow:
+### Key Achievements
+1. **Full TXD Compatibility**: Our disassembler finds exactly 449 routines for Zork I and 1025 for AMFV, matching TXD
+2. **Instruction Decoding**: Complete v3 and v4+ instruction decoding with proper operand handling
+3. **Output Modes**: Support for both label mode (default) and address mode (-n flag)
+4. **Orphan Detection**: Sophisticated algorithm to find routines not directly called
+5. **CI/CD Integration**: Full test suite with integration tests for both gameplay and disassembler
 
-1. Refer to the Z machine specification, especially for topics like opcode definition, program counter start, base high memory versus initial program counter (PC), and how routines can start only on even addresses, at least for v3.
-2. Deeply analyze, instrument, and understand the working assembler, txd.c, written in C, before proceeding. Understand how it discovers routines by start address, and disassembles until finding a true return opcode. This is mandatory.
-3. Routines to be disassembled may be the result of CALL instructions, or maybe sound, input or interrupt routines not directly callable. Those are harder to directly find. Remember the rule about routines starting at packed even addresses.  
-4. Find the end of routines with actual opcode analysis, not estimate. All routines end with some form of return instruction. Follow the spec for this.
-5. Follow txd.c process of serial discovery, validation and filtering by stages.  In each stage, emit debug output.
-6. You may rebuild txd itself by running make, and may add additional debugging statements there.
-7. Your output must match txd's output and you must use txd's output for direct comparison, iteratively, as you develop.  Always verify your outputs against txd before continuing. 
-8. Analyze and implement txd's exact boundary scanning logic, complete with multi-pass and boundary expansion based on finding addresses based on call opcodes from high mem start to initial pc. Verify by your own analysis that this is what txd is doing. implement TXD's exact two-phase algorithm:
-  1. Phase 1: Scan code_base to initial_pc (conservative)
-  2. Phase 2: Only scan addresses discovered through call analysis
-where TXD:
-  1. Finds call targets in discovered routines
-  2. Expands boundaries to include those targets
-  3. Scans the new boundary areas
-  4. Repeats until no new boundaries
-Looking at TXD's exact algorithm:
-  TXD doesn't just
-  scan a fixed range - it has an iterative expansion algorithm that:
-     1. Starts with boundaries at initial_pc
-     2. Scans within current boundaries to find operands
-     3. When operands point outside boundaries but have valid headers, expands the boundaries
-     4. Repeats until no more boundary expansions happen
-     5. Then does a final high routine scan 
+## Current Project State
 
-TXD's Actual Scanning Algorithm:
+### Version Information
+- Current version: v0.6.2 (last release)
+- Z-Machine interpreter fully functional for v3 (Zork I) and v4+ (AMFV) games
+- Disassembler matches TXD output exactly
 
-  1. Initial boundary setup (lines 444-445): Start with low_address = code_base (4e38) and high_address = code_base (4e38)
-  2. Main scanning loop (line 466): while (decode.pc <= high_pc || decode.pc <= decode.initial_pc)
-    - This means scan from 4e38 up to AT LEAST initial_pc (4f05)
-    - But as boundaries expand, scan further
-  3. Boundary expansion: As operands are found that point outside current boundaries, expand to include them
+### Test Coverage
+- **Unit tests**: Text encoding, VM creation, instruction decoding
+- **Integration tests**: 
+  - `tests/integration_gameplay.rs` - Zork I and AMFV gameplay tests
+  - `tests/integration_disasm.rs` - Disassembler output validation
+- **Display tests**: `tests/display_v3_test.rs` and `tests/display_v4_test.rs`
 
-  So TXD does indeed scan the entire range from high memory start (4e38) to initial_pc (4f05) as the base range, then expands beyond that through operand analysis.
+### Key Files Modified Recently
+- `CLAUDE.md` - Added automation instructions for "Make it so!", "Engage!", and "Reengage!"
+- `.claude/settings.json` - Project-wide tool permissions (checked in)
+- `.claude/settings.local.json` - User-specific settings (gitignored)
+- Integration tests for AMFV gameplay with DISPLAY_MODE=terminal to avoid ratatui issues
 
-  This explains why:
-  - TXD starts boundaries at 4e38 (code_base)
-  - TXD scans through the range 4e38→4f05 finding many routines
-  - TXD then expands boundaries when it finds operands like 0x90ba, 0x9530, etc.
+## Automation Commands Configured
 
-TXD's Validation Logic
+### "Make it so!"
+Automatically commits and pushes changes:
+1. Runs cargo fmt if needed
+2. Stages all changes
+3. Creates descriptive commit
+4. Pushes to origin/main
 
-  1. Basic Header Validation (lines 560-562):
-  vars = read_data_byte(&decode.pc);
-  if (vars >= 0 && vars <= 15)  // Must have valid variable count
+### "Engage!"
+Creates a new release:
+1. Everything from "Make it so!"
+2. Increments version number
+3. Creates and pushes tag
+4. Creates GitHub release
+5. Monitors CI/release builds
 
-  2. Instruction Decoding Validation (line 574):
-  if (decode_code() == END_OF_ROUTINE) {
-      // SUCCESS - valid routine
-  } else {
-      // FAILURE - invalid routine
-  }
+### "Reengage!"
+Re-releases with same version:
+1. Moves existing tag to latest commit
+2. Deletes and recreates GitHub release
+3. Triggers fresh CI and binary builds
 
-  3. Return Instruction Detection (lines 1646-1648):
-  if (opcode.type == RETURN)
-      if (decode.pc > decode.high_pc)
-          return (END_OF_ROUTINE);
+## Technical Context
 
-  4. Valid Return Instructions (lines 987, 988, 947, 948, 990, 994, 996):
-  - RTRUE (0x00)
-  - RFALSE (0x01)
-  - RET (0x0B)
-  - JUMP (0x0C)
-  - PRINT_RET (0x03)
-  - RET_POPPED (0x08)
-  - QUIT (0x0A)
+### Display System Architecture
+- **v3 games**: Use simple terminal display
+- **v4+ games**: Default to ratatui TUI, but tests use DISPLAY_MODE=terminal
+- **Ratatui issues**: Outputs ANSI escape codes that make testing difficult
+- **Solution**: Force terminal mode in tests for clean text output
 
-  Key Insight: TXD validates by attempting to decode instructions sequentially until it finds a RETURN-type instruction. If decoding fails at any point OR no return is found,
-  the routine is invalid.
+### Z-Machine Implementation Details
+- **Object system**: Version-aware (v3: 255 objects, v4+: 65535 objects)
+- **Text encoding**: v3 uses 6 Z-characters, v4+ uses 9 Z-characters
+- **Timer support**: Full timed interrupt implementation
+- **Save/Restore**: Quetzal format support
+- **Display opcodes**: All implemented including split_window, set_cursor, etc.
 
-Revised Understanding of TXD's Validation
+### Disassembler Algorithm (TXD-compatible)
+1. **Phase 1**: Scan from code_base to initial_pc
+2. **Phase 2**: Iterative boundary expansion based on call targets
+3. **Orphan detection**: Find routines only referenced from data
+4. **Validation**: Decode until return instruction found
+5. **Output formatting**: Labels (default) or addresses (-n flag)
 
-  TXD's validation works like this:
+## Environment Setup
+- Z-Machine spec at: `/Users/cb/Projects/Z-Machine-Standard/`
+- TXD reference implementation: `../ztools/txd.c`
+- Test games:
+  - Zork I (v3): `resources/test/zork1/DATA/ZORK1.DAT`
+  - AMFV (v4): `resources/test/amfv/amfv-r79-s851122.z4`
 
-  1. Set decode.high_pc = decode.pc at start (line 686)
-  2. Track maximum PC during decoding - decode.high_pc gets updated to the highest PC reached (lines 1112-1113, 1446-1447, 1630-1631)
-  3. RETURN validation requires decode.pc > decode.high_pc (line 1647) - this is only true when PC advances beyond previous maximum
+## CI/CD Pipeline
+- GitHub Actions workflow in `.github/workflows/ci.yml`
+- Cross-platform builds (Linux, macOS, Windows)
+- Release workflow builds binaries automatically on tag push
+- Integration tests run on Ubuntu only
 
-  The key insight: decode.high_pc tracks the MAXIMUM PC reached during the entire decoding process, not just the starting PC. The condition decode.pc > decode.high_pc ensures
-  we've reached a new maximum PC position when hitting a RETURN.
+## Recent Bug Fixes
+- VAR opcode 0x13 disambiguation (get_next_prop vs output_stream)
+- Fixed scrolling issues in small terminals for v4+ games
+- Resolved input echo issues with proper Z-Machine spec compliance
 
+## Next Steps (if continuing)
+- Consider implementing v5+ extended opcodes (256+)
+- Add more v4+ game integration tests
+- Potentially add graphical game support (v6)
+- Enhanced debugging tools for game development
 
-1.  Your debug statements in the rust version must use log debug not eprintln
-2.  You may read, copy, list, wc, cargo run, make, cc without asking for additional permission to continue
-3.  For long or deep edits, ask before making the code edit. We'll often comment and commit before continuing so that we can revert and rollback if we get too deep in errors or off track algorithmically.
-4.  No cheerleading, no sycophancy, no "we made great progress" until we are 100% complete. Nothing in between counts.
-5.  You may run bash commands including cd to other directories, comm, echo, cargo run, cc, and make without further permission. Ask my permission before committing to git.
+## Commands to Resume Work
+```bash
+# Run the interpreter
+cargo run --bin gruesome resources/test/zork1/DATA/ZORK1.DAT
 
-Start by developing a design plan, create a list of top level tasks, and present those to me before beginning work.
+# Run the disassembler
+cargo run --bin gruedasm-txd resources/test/zork1/DATA/ZORK1.DAT
 
+# Run tests
+cargo test
+cargo test --test integration_gameplay
+cargo test --test integration_disasm
 
+# Check CI locally
+./check-ci.sh
+```
+
+This context should allow seamless continuation of the project development.
