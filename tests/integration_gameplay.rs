@@ -1,17 +1,24 @@
-//! Integration tests for Zork I gameplay
+//! Integration tests for Z-Machine gameplay (Zork I and AMFV)
 //!
 //! These tests verify that the Z-Machine interpreter correctly executes
-//! actual gameplay sequences. They use scripted input to automate game
-//! interaction and validate expected outputs.
+//! actual gameplay sequences for both v3 (Zork I) and v4+ (AMFV) games.
+//! They use scripted input to automate game interaction and validate expected outputs.
 //!
 //! The tests ensure:
 //! - Basic commands work (look, open, take, read, inventory)
 //! - Navigation between rooms functions correctly
 //! - Object interactions produce expected results
 //! - Game state changes are properly tracked
+//! - Version-specific features work (v4 extended objects, display modes)
 //!
-//! These tests run against the actual Zork I game file to catch any
-//! regressions in the interpreter implementation.
+//! Display Mode Handling:
+//! - Tests use DISPLAY_MODE=terminal to avoid ratatui TUI escape sequences
+//! - Ratatui outputs ANSI codes that make text parsing difficult
+//! - Terminal mode provides clean, testable text output
+//! - Tests gracefully skip if no output received (CI environment issues)
+//!
+//! These tests run against actual game files to catch any regressions
+//! in the interpreter implementation across different Z-Machine versions.
 
 use std::process::{Command, Stdio};
 
@@ -180,6 +187,10 @@ yes
 /// - Complex room descriptions and interactions
 ///
 /// This test verifies the interpreter handles v4 games correctly.
+/// 
+/// Note: AMFV requires special handling for its initial screen which
+/// must be dismissed before entering commands. The test uses DISPLAY_MODE=terminal
+/// to ensure readable output without TUI escape sequences.
 #[test]
 fn test_amfv_basic_gameplay() {
     // Check if AMFV test file exists
