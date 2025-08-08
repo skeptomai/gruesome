@@ -1,8 +1,32 @@
+//! Integration tests for Zork I gameplay
+//!
+//! These tests verify that the Z-Machine interpreter correctly executes
+//! actual gameplay sequences. They use scripted input to automate game
+//! interaction and validate expected outputs.
+//!
+//! The tests ensure:
+//! - Basic commands work (look, open, take, read, inventory)
+//! - Navigation between rooms functions correctly
+//! - Object interactions produce expected results
+//! - Game state changes are properly tracked
+//!
+//! These tests run against the actual Zork I game file to catch any
+//! regressions in the interpreter implementation.
+
 use std::process::{Command, Stdio};
 
+/// Test basic Zork I gameplay sequences
+///
+/// This test verifies fundamental game mechanics:
+/// 1. Starting location display (West of House)
+/// 2. Object interaction (opening mailbox)
+/// 3. Item manipulation (taking and reading leaflet)
+/// 4. Inventory management
+/// 5. Room navigation (moving south and east)
+/// 6. Clean game exit
 #[test]
 fn test_zork_gameplay_basic() {
-    // Build the game first
+    // Build the game first to ensure we have the latest binary
     let build_output = Command::new("cargo")
         .args(&["build", "--bin", "gruesome"])
         .output()
@@ -10,7 +34,8 @@ fn test_zork_gameplay_basic() {
 
     assert!(build_output.status.success(), "Failed to build gruesome");
 
-    // Create a simple test script
+    // Create a simple test script with commands separated by newlines
+    // Each command represents a player action in the game
     let script = "look
 open mailbox
 take leaflet
@@ -22,7 +47,8 @@ quit
 yes
 ";
 
-    // Run game with script as input
+    // Run game with script as input using shell piping
+    // Stderr is redirected to /dev/null to suppress debug output
     let output = Command::new("sh")
         .arg("-c")
         .arg(format!(
@@ -34,7 +60,8 @@ yes
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Verify expected outputs
+    // Verify expected outputs for each command
+    // These assertions check that the game properly processes each action
     assert!(
         stdout.contains("West of House"),
         "Missing starting location"
@@ -58,9 +85,20 @@ yes
     assert!(stdout.contains("Behind House"), "Failed to move east");
 }
 
+/// Test extended Zork I walkthrough sequence
+///
+/// This test verifies a longer gameplay sequence that includes:
+/// 1. Initial exploration and item collection
+/// 2. Entering the house through the window
+/// 3. Collecting important items (lamp and sword)
+/// 4. Activating the lamp for underground exploration
+/// 5. Basic navigation through multiple rooms
+///
+/// This ensures the interpreter maintains game state correctly
+/// across a longer sequence of commands and room transitions.
 #[test]
 fn test_zork_scripted_walkthrough() {
-    // This test runs a longer scripted walkthrough
+    // Build the interpreter to ensure we test the latest code
     let build_output = Command::new("cargo")
         .args(&["build", "--bin", "gruesome"])
         .output()
@@ -68,7 +106,9 @@ fn test_zork_scripted_walkthrough() {
 
     assert!(build_output.status.success(), "Failed to build gruesome");
 
-    // Create a script file with commands
+    // Extended script that explores more of the game
+    // This sequence is commonly used in walkthroughs and tests
+    // multiple game systems (movement, object manipulation, light)
     let script = "look
 open mailbox
 read leaflet
@@ -91,6 +131,7 @@ yes
 ";
 
     // Run game with script as input using echo to pipe commands
+    // We capture stdout but suppress stderr to avoid debug noise
     let output = Command::new("sh")
         .arg("-c")
         .arg(format!(
@@ -103,12 +144,17 @@ yes
         .expect("Failed to run game");
 
     // The game should have run without crashing
-    // We can't easily check the exit status as 'quit' might return non-zero
+    // Note: 'quit' command may return non-zero exit status by design
 
     // Convert output to string for validation
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Check for expected text in various locations
+    // Validate key checkpoints in the walkthrough
+    // These ensure the interpreter correctly handles:
+    // - Room descriptions and navigation
+    // - Object interactions and state changes
+    // - Inventory management
+    // - Light source activation (critical for underground areas)
     assert!(
         stdout.contains("West of House"),
         "Missing starting location"

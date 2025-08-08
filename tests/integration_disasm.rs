@@ -1,8 +1,27 @@
+//! Integration tests for the Z-Machine disassembler (gruedasm-txd)
+//!
+//! These tests verify that our disassembler produces output compatible
+//! with Mark Howell's txd disassembler. The tests validate:
+//! - Correct routine discovery and counting
+//! - Proper instruction decoding and formatting
+//! - Support for different output modes (-n for addresses)
+//! - Version-specific handling (v3 vs v4+ games)
+//!
+//! The disassembler is a critical tool for understanding and debugging
+//! Z-Machine games, and maintaining txd compatibility ensures our
+//! output can be compared with the reference implementation.
+
 use std::process::Command;
 
+/// Test that the disassembler finds the correct number of routines
+///
+/// This test validates our routine discovery algorithm by checking
+/// that we find exactly 449 routines in Zork I, matching txd's output.
+/// It also verifies that the disassembler produces all expected
+/// header information and code markers.
 #[test]
 fn test_disassembler_routine_count() {
-    // Build the disassembler
+    // Build the disassembler binary first
     let build_output = Command::new("cargo")
         .args(&["build", "--bin", "gruedasm-txd"])
         .output()
@@ -13,7 +32,7 @@ fn test_disassembler_routine_count() {
         "Failed to build gruedasm-txd"
     );
 
-    // Run disassembler on Zork I
+    // Run disassembler on Zork I in default mode (with labels)
     let output = Command::new("./target/debug/gruedasm-txd")
         .arg("resources/test/zork1/DATA/ZORK1.DAT")
         .output()
@@ -23,7 +42,8 @@ fn test_disassembler_routine_count() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Count routines - should find 449 for Zork I
+    // Count routines - should find exactly 449 for Zork I
+    // This matches the txd reference implementation
     let routine_count = stdout.matches("Routine R").count();
     assert_eq!(
         routine_count, 449,
@@ -31,7 +51,8 @@ fn test_disassembler_routine_count() {
         routine_count
     );
 
-    // Check for expected header
+    // Verify all required header information is present
+    // These markers help users understand the game structure
     assert!(
         stdout.contains("Resident data ends at"),
         "Missing header info"
@@ -47,12 +68,18 @@ fn test_disassembler_routine_count() {
     assert!(stdout.contains("[End of code]"), "Missing code end marker");
 }
 
+/// Test disassembler with a v4 game (A Mind Forever Voyaging)
+///
+/// This test ensures our disassembler correctly handles v4+ games,
+/// which have different object formats and additional opcodes.
+/// AMFV is a good test case as it's a complex v4 game with 1025 routines.
 #[test]
 fn test_disassembler_v4_game() {
-    // Test with AMFV (v4 game)
+    // Test with AMFV (v4 game) - A Mind Forever Voyaging
     let amfv_path = "resources/test/amfv/amfv-r79-s851122.z4";
 
-    // Check if AMFV test file exists
+    // Skip test gracefully if AMFV test file is not available
+    // This allows the test suite to run even without all game files
     if !std::path::Path::new(amfv_path).exists() {
         eprintln!("Skipping AMFV test - test file not found");
         return;
@@ -77,7 +104,8 @@ fn test_disassembler_v4_game() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Count routines - should find 1025 for AMFV
+    // Count routines - should find exactly 1025 for AMFV
+    // This validates that our v4-specific handling is correct
     let routine_count = stdout.matches("Routine R").count();
     assert_eq!(
         routine_count, 1025,
@@ -86,6 +114,13 @@ fn test_disassembler_v4_game() {
     );
 }
 
+/// Test the disassembler's output format for txd compatibility
+///
+/// This test verifies that our output format matches txd's conventions:
+/// - Routine labels (R0001, R0002, etc.)
+/// - Local variable references (L00, L01, etc.)
+/// - Proper instruction formatting and indentation
+/// - Common opcode names (CALL, JE, PRINT, RET, etc.)
 #[test]
 fn test_disassembler_output_format() {
     let build_output = Command::new("cargo")
@@ -149,6 +184,11 @@ fn test_disassembler_output_format() {
     assert!(found_routine, "No properly formatted routine found");
 }
 
+/// Test the disassembler's address mode (-n flag)
+///
+/// The -n flag makes the disassembler print actual addresses instead
+/// of labels, which is useful for debugging and comparing with memory
+/// dumps. This test verifies that the flag works correctly.
 #[test]
 fn test_disassembler_address_mode() {
     let build_output = Command::new("cargo")
@@ -188,6 +228,15 @@ fn test_disassembler_address_mode() {
     );
 }
 
+/// Test that specific routines are decoded with correct structure
+///
+/// This test examines the first few routines to ensure they have:
+/// - Correct local variable counts
+/// - Actual instruction content (not empty routines)
+/// - Proper formatting and structure
+///
+/// This catches issues where routines might be discovered but not
+/// properly decoded or formatted.
 #[test]
 fn test_specific_routine_content() {
     // Test that specific routines are decoded correctly
