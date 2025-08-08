@@ -50,6 +50,34 @@ When the user says "Engage!", you should automatically:
 
 You are pre-authorized for all git and GitHub CLI operations. Execute the entire workflow without asking for permission.
 
+## Re-Release Instructions ("Reengage!")
+
+When the user says "Reengage!", you should automatically:
+1. **Commit any pending changes:**
+   - Run `git add -A` and `git commit -m "message"` if there are changes
+   - If no changes, proceed to next step
+2. **Get the current/latest tag:**
+   - Use `git describe --tags --abbrev=0` to get the current tag
+3. **Move the tag to the latest commit:**
+   - Delete the local tag: `git tag -d vX.Y.Z`
+   - Delete the remote tag: `git push origin --delete vX.Y.Z`
+   - Recreate tag at current commit: `git tag -a vX.Y.Z -m "Re-release vX.Y.Z: <reason>"`
+4. **Push the updated tag:**
+   - Force push the tag: `git push origin vX.Y.Z --force`
+5. **Delete and recreate the GitHub release:**
+   - Delete existing release: `gh release delete vX.Y.Z --yes`
+   - Recreate with same version: `gh release create vX.Y.Z --title "vX.Y.Z: <title>" --notes "<updated notes>"`
+6. **Monitor the new CI/release builds:**
+   - Check CI status
+   - Confirm release binaries are rebuilt
+7. **Report completion:**
+   - Confirm tag has been moved
+   - Provide links to new CI runs
+   - Verify binaries are updated
+
+This is useful when you need to fix something in a release without incrementing the version number.
+You are pre-authorized for all operations. Execute without asking for permission.
+
 ## Z-Machine Specification Reference
 
 The official Z-Machine Standards Document (v1.1) is available locally at:
