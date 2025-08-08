@@ -78,6 +78,15 @@ When the user says "Reengage!", you should automatically:
 This is useful when you need to fix something in a release without incrementing the version number.
 You are pre-authorized for all operations. Execute without asking for permission.
 
+## Working Style and Behavioral Expectations
+
+1. **No cheerleading or sycophancy**: Don't say "we made great progress" or similar until tasks are 100% complete. Nothing in between counts.
+2. **Be direct and factual**: Focus on the technical work. Be concise. Skip the pleasantries.
+3. **Use proper debug logging**: In Rust code, use `log::debug!()` not `eprintln!()` for debug output
+4. **Ask before large changes**: For substantial code edits, ask first. We often commit before big changes to enable rollback.
+5. **Run commands freely**: Execute read, cargo run, cargo test, make, etc. without asking permission
+6. **Git requires permission**: Unless using the automation commands above, ask before git commits
+
 ## Z-Machine Specification Reference
 
 The official Z-Machine Standards Document (v1.1) is available locally at:

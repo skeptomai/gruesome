@@ -116,4 +116,14 @@ cargo test --test integration_disasm
 ./check-ci.sh
 ```
 
+## Working Style Expectations
+
+1. **Use log::debug! not eprintln!** for debug statements in Rust code
+2. **Run commands freely**: You may read, copy, list, wc, cargo run, make, cc without asking for permission
+3. **Ask before large edits**: For long or deep edits, ask before making the code edit. We'll often comment and commit before continuing so we can revert if needed
+4. **No cheerleading or sycophancy**: No "we made great progress" until 100% complete. Nothing in between counts
+5. **Direct and factual**: Be concise and focus on the technical work at hand
+6. **Permission-free operations**: You may run bash commands including cd, comm, echo, cargo run, cc, and make without further permission
+7. **Git workflow**: Ask permission before committing to git (unless using automation commands)
+
 This context should allow seamless continuation of the project development.
