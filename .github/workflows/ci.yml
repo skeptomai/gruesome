@@ -56,6 +56,16 @@ jobs:
     
     - name: Build binary  
       run: cargo build --verbose --bin gruesome
+    
+    - name: Build disassembler
+      run: cargo build --verbose --bin gruedasm-txd
+      if: matrix.os == 'ubuntu-latest'
+    
+    - name: Run integration tests
+      run: |
+        cargo test --test integration_gameplay
+        cargo test --test integration_disasm
+      if: matrix.os == 'ubuntu-latest'
 
   cross-compile:
     name: Cross-compile builds

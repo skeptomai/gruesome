@@ -57,18 +57,17 @@ fi
 
 # 2. Clippy check (only on Ubuntu in CI)
 print_step "Running clippy linter"
-if cargo clippy -- -D warnings 2>&1 | grep -q "error:"; then
+if cargo clippy -- -D warnings >/dev/null 2>&1; then
+    print_success "Clippy passed with no warnings"
+else
     print_error "Clippy found issues. Fix them before pushing."
     cargo clippy -- -D warnings
     FAILED=1
-else
-    cargo clippy -- -D warnings >/dev/null 2>&1
-    print_success "Clippy passed with no warnings"
 fi
 
 # 3. Run tests (all platforms in CI)
 print_step "Running tests"
-if cargo test --verbose 2>&1 | grep -q "test result: ok"; then
+if cargo test --verbose >/dev/null 2>&1; then
     print_success "All tests passed"
 else
     print_error "Some tests failed"
@@ -86,7 +85,35 @@ else
     FAILED=1
 fi
 
-# 5. Optional: Test Windows cross-compilation (separate job in CI)
+# 5. Build disassembler
+print_step "Building disassembler"
+if cargo build --verbose --bin gruedasm-txd >/dev/null 2>&1; then
+    print_success "Disassembler build successful"
+else
+    print_error "Disassembler build failed"
+    cargo build --verbose --bin gruedasm-txd
+    FAILED=1
+fi
+
+# 6. Run integration tests
+print_step "Running integration tests"
+if cargo test --test integration_gameplay >/dev/null 2>&1; then
+    print_success "Gameplay integration tests passed"
+else
+    print_error "Gameplay integration tests failed"
+    cargo test --test integration_gameplay
+    FAILED=1
+fi
+
+if cargo test --test integration_disasm >/dev/null 2>&1; then
+    print_success "Disassembler integration tests passed"
+else
+    print_error "Disassembler integration tests failed"
+    cargo test --test integration_disasm
+    FAILED=1
+fi
+
+# 7. Optional: Test Windows cross-compilation (separate job in CI)
 print_step "Cross-compilation check (optional)"
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     if command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1; then
