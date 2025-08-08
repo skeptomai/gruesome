@@ -22,6 +22,34 @@ You should automatically:
 You are pre-authorized for all git operations (add, commit, push) as configured in `.claude/settings.local.json`.
 No need to ask for permission - just execute the workflow.
 
+## Auto-Release Instructions ("Engage!")
+
+When the user says "Engage!", you should automatically:
+1. **First, complete all "Make it so!" steps** (comment, format, commit, push)
+2. **Determine the next version number:**
+   - Check current version with `git describe --tags --abbrev=0`
+   - Increment appropriately (patch for fixes, minor for features, major for breaking changes)
+   - Default to patch increment unless recent commits suggest otherwise
+3. **Create an annotated tag:**
+   - `git tag -a vX.Y.Z -m "Release vX.Y.Z: <summary>"`
+   - Include key changes in the tag message
+4. **Push the tag to trigger release:**
+   - `git push origin vX.Y.Z`
+5. **Create GitHub release:**
+   - Use `gh release create vX.Y.Z --title "vX.Y.Z: <title>" --notes "<release notes>"`
+   - Include changelog of significant changes
+   - The release workflow will automatically build binaries
+6. **Monitor CI:**
+   - Check CI status with `gh run list --workflow=CI --limit=1`
+   - Watch release build with `gh run list --workflow="Build Release Binaries" --limit=1`
+   - Report any failures immediately
+7. **Confirm success:**
+   - Report the new version number
+   - Provide links to the release and CI runs
+   - Confirm all binaries were built and uploaded
+
+You are pre-authorized for all git and GitHub CLI operations. Execute the entire workflow without asking for permission.
+
 ## Z-Machine Specification Reference
 
 The official Z-Machine Standards Document (v1.1) is available locally at:
