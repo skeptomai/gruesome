@@ -170,3 +170,147 @@ yes
         "Lamp didn't turn on"
     );
 }
+
+/// Test A Mind Forever Voyaging (v4 game) basic gameplay
+///
+/// AMFV is a science fiction game that uses v4-specific features:
+/// - Extended object format (14-byte entries, 63 properties)
+/// - Multi-line status window with mode and time display
+/// - Menu-driven interface in some sections
+/// - Complex room descriptions and interactions
+///
+/// This test verifies the interpreter handles v4 games correctly.
+#[test]
+fn test_amfv_basic_gameplay() {
+    // Check if AMFV test file exists
+    let amfv_path = "resources/test/amfv/amfv-r79-s851122.z4";
+    if !std::path::Path::new(amfv_path).exists() {
+        eprintln!("Skipping AMFV test - test file not found");
+        return;
+    }
+
+    // Build the interpreter
+    let build_output = Command::new("cargo")
+        .args(&["build", "--bin", "gruesome"])
+        .output()
+        .expect("Failed to build game");
+
+    assert!(build_output.status.success(), "Failed to build gruesome");
+
+    // AMFV opening sequence commands
+    // First we need to dismiss the initial screen with Enter, then navigate
+    let script = "
+ppcc
+look
+quit
+yes
+";
+
+    // Run AMFV with scripted input
+    // Note: Initial empty line dismisses the opening screen
+    // Set DISPLAY_MODE=terminal to force simple terminal mode for testable output
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(format!(
+            "echo '{}' | DISPLAY_MODE=terminal timeout 10 ./target/debug/gruesome {} 2>/dev/null",
+            script, amfv_path
+        ))
+        .output()
+        .expect("Failed to run AMFV");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Verify AMFV-specific output
+    // The game title appears after the initial screen is dismissed
+    assert!(
+        stdout.contains("MIND FOREVER VOYAGING") || 
+        stdout.contains("A Mind Forever Voyaging") ||
+        stdout.contains("science fiction story"),
+        "Missing game title or description"
+    );
+    assert!(
+        stdout.contains("Copyright (c) 1985") || stdout.contains("Infocom"),
+        "Missing copyright"
+    );
+    
+    // Check for Communications Mode and PPCC entry
+    assert!(
+        stdout.contains("PRISM Project Control Center") || 
+        stdout.contains("PPCC") ||
+        stdout.contains("Communications Mode"),
+        "Failed to find Communications Mode or PPCC reference"
+    );
+    
+    // When PPCC is entered, we should see the room description
+    assert!(
+        stdout.contains("well-organized room") || 
+        stdout.contains("banks of terminals") ||
+        stdout.contains("equipment") ||
+        stdout.contains("PRISM") ||
+        stdout.contains("Control Center"),
+        "PPCC room description or navigation not working"
+    );
+}
+
+/// Test AMFV with multiple commands
+///
+/// This test verifies that AMFV can handle a sequence of commands
+/// and maintains game state correctly for a v4 game.
+#[test]
+fn test_amfv_command_sequence() {
+    let amfv_path = "resources/test/amfv/amfv-r79-s851122.z4";
+    if !std::path::Path::new(amfv_path).exists() {
+        eprintln!("Skipping AMFV command sequence test - test file not found");
+        return;
+    }
+
+    let build_output = Command::new("cargo")
+        .args(&["build", "--bin", "gruesome"])
+        .output()
+        .expect("Failed to build game");
+
+    assert!(build_output.status.success(), "Failed to build gruesome");
+
+    // Test basic command sequence
+    // Empty line dismisses intro, then we can use PPCC and RCRD commands
+    let script = "
+ppcc
+rcrd
+ppcc
+look
+help
+quit
+yes
+";
+
+    // Set DISPLAY_MODE=terminal to force simple terminal mode for testable output
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(format!(
+            "echo '{}' | DISPLAY_MODE=terminal timeout 10 ./target/debug/gruesome {} 2>/dev/null",
+            script, amfv_path
+        ))
+        .output()
+        .expect("Failed to run AMFV");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Check that we can navigate between different areas
+    // PPCC and RCRD are communication outlet codes mentioned in the game
+    assert!(
+        stdout.contains("PPCC") || 
+        stdout.contains("PRISM Project Control Center") ||
+        stdout.contains("Communications Mode"),
+        "Cannot access PPCC or Communications Mode"
+    );
+    
+    // The game should respond to multiple commands
+    assert!(
+        stdout.contains("locations") || 
+        stdout.contains("equipped") ||
+        stdout.contains("outlet") ||
+        stdout.contains("activate"),
+        "Communications system not working properly"
+    );
+}
+
