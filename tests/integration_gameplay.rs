@@ -187,7 +187,7 @@ yes
 /// - Complex room descriptions and interactions
 ///
 /// This test verifies the interpreter handles v4 games correctly.
-/// 
+///
 /// Note: AMFV requires special handling for its initial screen which
 /// must be dismissed before entering commands. The test uses DISPLAY_MODE=terminal
 /// to ensure readable output without TUI escape sequences.
