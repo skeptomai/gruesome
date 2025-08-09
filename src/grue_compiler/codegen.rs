@@ -13,6 +13,59 @@ const HEADER_SIZE: usize = 64; // Fixed 64-byte header
 const DEFAULT_HIGH_MEMORY: u16 = 0x8000; // Start of high memory
 const DEFAULT_PC_START: u16 = 0x1000; // Initial program counter
 
+/// Z-Machine operand types
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OperandType {
+    LargeConstant, // 00: 16-bit constant
+    SmallConstant, // 01: 8-bit constant
+    Variable,      // 10: variable number
+    Omitted,       // 11: operand omitted
+}
+
+/// Z-Machine instruction formats
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum InstructionForm {
+    Long,     // 2OP instructions with long form
+    Short,    // 1OP and 0OP instructions
+    Variable, // VAR instructions
+    Extended, // EXT instructions (v5+)
+}
+
+/// Operand value that can be encoded
+#[derive(Debug, Clone)]
+pub enum Operand {
+    Constant(u16),      // Immediate value
+    Variable(u8),       // Variable number (0=stack, 1-15=locals, 16-255=globals)
+    LargeConstant(u16), // Always encoded as 16-bit
+    SmallConstant(u8),  // Always encoded as 8-bit
+}
+
+/// Types of unresolved references that need patching
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReferenceType {
+    Jump,         // Unconditional jump to label
+    Branch,       // Conditional branch to label
+    FunctionCall, // Call to function address
+    StringRef,    // Reference to string address
+}
+
+/// An unresolved reference that needs to be patched later
+#[derive(Debug, Clone)]
+pub struct UnresolvedReference {
+    pub reference_type: ReferenceType,
+    pub location: usize, // Byte offset in story data where patch is needed
+    pub target_id: IrId, // IR ID being referenced (label, function, string)
+    pub is_packed_address: bool, // Whether address needs to be packed
+    pub offset_size: u8, // Size of offset field (1 or 2 bytes)
+}
+
+/// Reference context for tracking what needs resolution
+#[derive(Debug, Clone)]
+pub struct ReferenceContext {
+    pub ir_id_to_address: HashMap<IrId, usize>, // Resolved addresses by IR ID
+    pub unresolved_refs: Vec<UnresolvedReference>, // References waiting for resolution
+}
+
 /// Code generation context
 pub struct ZMachineCodeGen {
     version: ZMachineVersion,
@@ -35,6 +88,9 @@ pub struct ZMachineCodeGen {
     // String encoding
     strings: Vec<(IrId, String)>, // Collected strings for encoding
     encoded_strings: HashMap<IrId, Vec<u8>>, // IR string ID -> encoded bytes
+
+    // Address resolution
+    reference_context: ReferenceContext,
 }
 
 impl ZMachineCodeGen {
@@ -52,6 +108,10 @@ impl ZMachineCodeGen {
             global_vars_addr: 0,
             strings: Vec::new(),
             encoded_strings: HashMap::new(),
+            reference_context: ReferenceContext {
+                ir_id_to_address: HashMap::new(),
+                unresolved_refs: Vec::new(),
+            },
         }
     }
 
@@ -264,6 +324,9 @@ impl ZMachineCodeGen {
             let func_addr = self.current_address;
             self.function_addresses.insert(function.id, func_addr);
 
+            // Record function address for resolution
+            self.record_address(function.id, func_addr);
+
             // Generate function header (local variable count + types)
             self.generate_function_header(function)?;
 
@@ -322,38 +385,49 @@ impl ZMachineCodeGen {
     /// Generate code for a single IR instruction
     fn generate_instruction(&mut self, instruction: &IrInstruction) -> Result<(), CompilerError> {
         match instruction {
-            IrInstruction::LoadImmediate {
-                target: _target,
-                value,
-            } => {
+            IrInstruction::LoadImmediate { target: _, value } => {
                 self.generate_load_immediate(value)?;
             }
 
             IrInstruction::BinaryOp {
-                target: _target,
+                target: _,
                 op,
-                left: _left,
-                right: _right,
+                left: _,
+                right: _,
             } => {
-                self.generate_binary_op(op)?;
+                // TODO: Map IR IDs to actual operands
+                // For now, use placeholder operands
+                let left_op = Operand::Variable(1); // Local variable 1
+                let right_op = Operand::Variable(2); // Local variable 2
+                let store_var = Some(0); // Store to stack top
+
+                self.generate_binary_op(op, left_op, right_op, store_var)?;
             }
 
             IrInstruction::Call {
-                target: _target,
-                function: _function,
-                args: _args,
+                target: _,
+                function,
+                args: _,
             } => {
-                self.generate_call()?;
+                // Generate call with unresolved function reference
+                self.generate_call_with_reference(*function)?;
             }
 
             IrInstruction::Return { value } => {
-                self.emit_return(*value)?;
+                if let Some(_ir_value) = value {
+                    // Return with value - use ret opcode with operand
+                    let operands = vec![Operand::Variable(0)]; // Return stack top
+                    self.emit_instruction(0x0B, &operands, None, None)?;
+                } else {
+                    // Return without value - use rtrue (0OP)
+                    self.emit_instruction(0x00, &[], None, None)?; // rtrue
+                }
             }
 
             IrInstruction::Branch {
-                condition: _condition,
+                condition: _,
                 true_label,
-                false_label: _false_label,
+                false_label: _,
             } => {
                 self.generate_branch(*true_label)?;
             }
@@ -363,7 +437,34 @@ impl ZMachineCodeGen {
             }
 
             IrInstruction::Label { id } => {
+                // Record label address for resolution
                 self.label_addresses.insert(*id, self.current_address);
+                self.record_address(*id, self.current_address);
+            }
+
+            IrInstruction::LoadVar {
+                target: _,
+                var_id: _,
+            } => {
+                // Load variable value to stack
+                // TODO: Map IR variable ID to Z-Machine variable number
+                let operands = vec![Operand::Variable(1)]; // Load local variable 1
+                self.emit_instruction(0x09, &operands, Some(0), None)?; // load to stack
+            }
+
+            IrInstruction::StoreVar {
+                var_id: _,
+                source: _,
+            } => {
+                // Store stack top to variable
+                // TODO: Map IR variable ID to Z-Machine variable number
+                let operands = vec![Operand::Variable(0), Operand::Variable(1)]; // stack -> local 1
+                self.emit_instruction(0x0D, &operands, None, None)?; // store
+            }
+
+            IrInstruction::Print { value: _ } => {
+                // Print value - for now just print a newline
+                self.emit_instruction(0x0B, &[], None, None)?; // new_line (0OP)
             }
 
             _ => {
@@ -382,41 +483,112 @@ impl ZMachineCodeGen {
     fn generate_load_immediate(&mut self, value: &IrValue) -> Result<(), CompilerError> {
         match value {
             IrValue::Integer(n) => {
-                // Use store instruction to load immediate value
-                self.emit_byte(0x2D)?; // store opcode
-                self.emit_word(*n as u16)?; // immediate value
-                self.emit_byte(0x00)?; // store to local 0 (top of stack)
+                // Use store instruction: store <constant> -> (variable)
+                // opcode 0x0D = store (1OP form)
+                let operands = vec![Operand::Constant(*n as u16)];
+                self.emit_instruction(0x0D, &operands, None, None)?;
+            }
+            IrValue::Boolean(b) => {
+                // Store boolean as 0 or 1
+                let value = if *b { 1 } else { 0 };
+                let operands = vec![Operand::SmallConstant(value)];
+                self.emit_instruction(0x0D, &operands, None, None)?;
+            }
+            IrValue::String(_s) => {
+                // TODO: Handle string constants (need string table lookup)
+                return Err(CompilerError::CodeGenError(
+                    "String immediates not yet implemented".to_string(),
+                ));
             }
             _ => {
                 return Err(CompilerError::CodeGenError(
-                    "Only integer immediates currently supported".to_string(),
+                    "Unsupported immediate value type".to_string(),
                 ));
             }
         }
         Ok(())
     }
 
-    /// Generate binary operation
-    fn generate_binary_op(&mut self, op: &IrBinaryOp) -> Result<(), CompilerError> {
-        match op {
-            IrBinaryOp::Add => self.emit_byte(0x14)?,      // add opcode
-            IrBinaryOp::Subtract => self.emit_byte(0x15)?, // sub opcode
-            IrBinaryOp::Multiply => self.emit_byte(0x16)?, // mul opcode
-            IrBinaryOp::Divide => self.emit_byte(0x17)?,   // div opcode
+    /// Generate binary operation with proper operands and result storage
+    fn generate_binary_op(
+        &mut self,
+        op: &IrBinaryOp,
+        left_operand: Operand,
+        right_operand: Operand,
+        store_var: Option<u8>,
+    ) -> Result<(), CompilerError> {
+        let opcode = match op {
+            IrBinaryOp::Add => 0x14,      // add (2OP:20)
+            IrBinaryOp::Subtract => 0x15, // sub (2OP:21)
+            IrBinaryOp::Multiply => 0x16, // mul (2OP:22)
+            IrBinaryOp::Divide => 0x17,   // div (2OP:23)
+            IrBinaryOp::Modulo => 0x18,   // mod (2OP:24)
+            IrBinaryOp::Equal => 0x01,    // je (2OP:1) - jump if equal
+            IrBinaryOp::Less => 0x02,     // jl (2OP:2) - jump if less
+            IrBinaryOp::Greater => 0x03,  // jg (2OP:3) - jump if greater
+            IrBinaryOp::And => 0x09,      // and (2OP:9)
+            IrBinaryOp::Or => 0x08,       // or (2OP:8)
             _ => {
                 return Err(CompilerError::CodeGenError(format!(
                     "Binary operation {:?} not yet implemented",
                     op
                 )));
             }
+        };
+
+        let operands = vec![left_operand, right_operand];
+
+        // Comparison ops may need branch offset instead of store
+        match op {
+            IrBinaryOp::Equal | IrBinaryOp::Less | IrBinaryOp::Greater => {
+                // These are branch instructions, not store instructions
+                // TODO: Handle branch offset properly
+                self.emit_instruction(opcode, &operands, None, Some(0))?;
+            }
+            _ => {
+                // Arithmetic operations store result
+                self.emit_instruction(opcode, &operands, store_var, None)?;
+            }
         }
+
         Ok(())
     }
 
-    /// Generate function call
-    fn generate_call(&mut self) -> Result<(), CompilerError> {
-        // TODO: Implement proper call instruction with arguments
-        self.emit_byte(0x20)?; // call_vs opcode (variable form)
+    /// Generate function call with proper operands
+    fn generate_call(
+        &mut self,
+        function_addr: Operand,
+        args: &[Operand],
+        store_var: Option<u8>,
+    ) -> Result<(), CompilerError> {
+        // Choose appropriate call instruction based on argument count
+        let opcode = match args.len() {
+            0 => 0x20, // call_1n (1OP:32) - call with no args
+            1 => 0x21, // call_1s (1OP:33) - call with 1 arg, store result
+            _ => 0x00, // call_vs (VAR:0) - call with multiple args
+        };
+
+        let mut operands = vec![function_addr];
+        operands.extend_from_slice(args);
+
+        self.emit_instruction(opcode, &operands, store_var, None)
+    }
+
+    /// Generate function call with unresolved reference
+    fn generate_call_with_reference(&mut self, function_id: IrId) -> Result<(), CompilerError> {
+        // Emit call instruction with placeholder function address
+        self.emit_byte(0xE0)?; // call_vs opcode (VAR form)
+        self.emit_byte(0x00)?; // Operand types: all large constants
+
+        // Add unresolved reference for function address (needs packed address)
+        self.add_unresolved_reference(ReferenceType::FunctionCall, function_id, true)?;
+
+        // Emit placeholder function address
+        self.emit_word(0x0000)?;
+
+        // Store result to stack (variable 0)
+        self.emit_byte(0x00)?;
+
         Ok(())
     }
 
@@ -434,29 +606,29 @@ impl ZMachineCodeGen {
     }
 
     /// Generate branch instruction
-    fn generate_branch(&mut self, _true_label: IrId) -> Result<(), CompilerError> {
-        // TODO: Implement proper branching with condition and label resolution
-        // For now, emit a simple jump
+    fn generate_branch(&mut self, true_label: IrId) -> Result<(), CompilerError> {
+        // For now, emit a simple unconditional branch using jump
+        // TODO: Support proper conditional branching with condition operand
         self.emit_byte(0x8C)?; // jump opcode (1OP form)
 
-        // Emit placeholder for branch offset (will be resolved later)
-        self.emit_word(0x0000)?;
+        // Add unresolved reference for the jump target
+        self.add_unresolved_reference(ReferenceType::Jump, true_label, false)?;
 
-        // Record that we need to resolve this label
-        // TODO: Track unresolved branches for later patching
+        // Emit placeholder offset (will be resolved later)
+        self.emit_word(0x0000)?;
 
         Ok(())
     }
 
     /// Generate unconditional jump
-    fn generate_jump(&mut self, _label: IrId) -> Result<(), CompilerError> {
+    fn generate_jump(&mut self, label: IrId) -> Result<(), CompilerError> {
         self.emit_byte(0x8C)?; // jump opcode (1OP form)
 
-        // Emit placeholder for jump offset (will be resolved later)
-        self.emit_word(0x0000)?;
+        // Add unresolved reference for the jump target
+        self.add_unresolved_reference(ReferenceType::Jump, label, false)?;
 
-        // Record that we need to resolve this label
-        // TODO: Track unresolved jumps for later patching
+        // Emit placeholder offset (will be resolved later)
+        self.emit_word(0x0000)?;
 
         Ok(())
     }
@@ -507,10 +679,226 @@ impl ZMachineCodeGen {
 
     /// Resolve all address references and patch jumps/branches
     fn resolve_addresses(&mut self) -> Result<(), CompilerError> {
-        // TODO: Implement address resolution for jumps, branches, and function calls
-        // This requires tracking unresolved references during code generation
+        // Process all unresolved references
+        let unresolved_refs = self.reference_context.unresolved_refs.clone();
+
+        for reference in unresolved_refs {
+            self.resolve_single_reference(&reference)?;
+        }
+
+        // Clear resolved references
+        self.reference_context.unresolved_refs.clear();
 
         Ok(())
+    }
+
+    /// Resolve a single reference by patching the story data
+    fn resolve_single_reference(
+        &mut self,
+        reference: &UnresolvedReference,
+    ) -> Result<(), CompilerError> {
+        // Look up the target address
+        let target_address = match self
+            .reference_context
+            .ir_id_to_address
+            .get(&reference.target_id)
+        {
+            Some(&addr) => addr,
+            None => {
+                return Err(CompilerError::CodeGenError(format!(
+                    "Cannot resolve reference to IR ID {}: target address not found",
+                    reference.target_id
+                )));
+            }
+        };
+
+        match reference.reference_type {
+            ReferenceType::Jump => {
+                self.patch_jump_offset(reference.location, target_address)?;
+            }
+            ReferenceType::Branch => {
+                self.patch_branch_offset(reference.location, target_address)?;
+            }
+            ReferenceType::FunctionCall => {
+                let packed_addr = if reference.is_packed_address {
+                    self.pack_routine_address(target_address)?
+                } else {
+                    target_address as u16
+                };
+                self.patch_address(reference.location, packed_addr, 2)?; // Function addresses are 2 bytes
+            }
+            ReferenceType::StringRef => {
+                let packed_addr = if reference.is_packed_address {
+                    self.pack_string_address(target_address)?
+                } else {
+                    target_address as u16
+                };
+                self.patch_address(reference.location, packed_addr, 2)?; // String addresses are 2 bytes
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Patch a jump offset at the given location
+    pub fn patch_jump_offset(
+        &mut self,
+        location: usize,
+        target_address: usize,
+    ) -> Result<(), CompilerError> {
+        let current_pc = location + 2; // Jump instruction PC after the jump
+        let offset = (target_address as i32) - (current_pc as i32);
+
+        if offset < -32768 || offset > 32767 {
+            return Err(CompilerError::CodeGenError(format!(
+                "Jump offset {} too large for 16-bit signed integer",
+                offset
+            )));
+        }
+
+        // Write as signed 16-bit offset
+        self.patch_address(location, offset as u16, 2)
+    }
+
+    /// Patch a branch offset at the given location  
+    fn patch_branch_offset(
+        &mut self,
+        location: usize,
+        target_address: usize,
+    ) -> Result<(), CompilerError> {
+        let current_pc = location + 1; // Branch instruction PC after the branch byte
+        let offset = (target_address as i32) - (current_pc as i32);
+
+        // Branch offsets are more complex due to 1-byte vs 2-byte encoding
+        if offset >= 0 && offset <= 63 {
+            // 1-byte format: preserve condition bit, set size bit, write offset
+            let existing_byte = self.story_data[location];
+            let condition_bit = existing_byte & 0x80;
+            let new_byte = condition_bit | 0x40 | (offset as u8 & 0x3F);
+            self.story_data[location] = new_byte;
+        } else if offset >= -8192 && offset <= 8191 {
+            // 2-byte format: preserve condition bit, clear size bit, write 14-bit offset
+            let existing_byte = self.story_data[location];
+            let condition_bit = existing_byte & 0x80;
+            let branch_word = condition_bit as u16 | ((offset as u16) & 0x3FFF);
+
+            self.story_data[location] = (branch_word >> 8) as u8;
+            self.story_data[location + 1] = branch_word as u8;
+        } else {
+            return Err(CompilerError::CodeGenError(format!(
+                "Branch offset {} too large for Z-Machine branch instruction",
+                offset
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Generic address patching helper
+    pub fn patch_address(
+        &mut self,
+        location: usize,
+        address: u16,
+        size: usize,
+    ) -> Result<(), CompilerError> {
+        if location + size > self.story_data.len() {
+            return Err(CompilerError::CodeGenError(format!(
+                "Cannot patch address at location {}: beyond story data bounds",
+                location
+            )));
+        }
+
+        match size {
+            1 => {
+                self.story_data[location] = address as u8;
+            }
+            2 => {
+                self.story_data[location] = (address >> 8) as u8;
+                self.story_data[location + 1] = address as u8;
+            }
+            _ => {
+                return Err(CompilerError::CodeGenError(format!(
+                    "Unsupported patch size: {} bytes",
+                    size
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Pack a routine address according to Z-Machine version
+    fn pack_routine_address(&self, byte_address: usize) -> Result<u16, CompilerError> {
+        match self.version {
+            ZMachineVersion::V3 => {
+                // v3: packed address = byte address / 2
+                if byte_address % 2 != 0 {
+                    return Err(CompilerError::CodeGenError(
+                        "Routine address must be even for v3".to_string(),
+                    ));
+                }
+                Ok((byte_address / 2) as u16)
+            }
+            ZMachineVersion::V5 => {
+                // v5: packed address = byte address / 4
+                if byte_address % 4 != 0 {
+                    return Err(CompilerError::CodeGenError(
+                        "Routine address must be multiple of 4 for v5".to_string(),
+                    ));
+                }
+                Ok((byte_address / 4) as u16)
+            }
+        }
+    }
+
+    /// Pack a string address according to Z-Machine version
+    fn pack_string_address(&self, byte_address: usize) -> Result<u16, CompilerError> {
+        match self.version {
+            ZMachineVersion::V3 => {
+                // v3: packed address = byte address / 2
+                if byte_address % 2 != 0 {
+                    return Err(CompilerError::CodeGenError(
+                        "String address must be even for v3".to_string(),
+                    ));
+                }
+                Ok((byte_address / 2) as u16)
+            }
+            ZMachineVersion::V5 => {
+                // v5: packed address = byte address / 4
+                if byte_address % 4 != 0 {
+                    return Err(CompilerError::CodeGenError(
+                        "String address must be multiple of 4 for v5".to_string(),
+                    ));
+                }
+                Ok((byte_address / 4) as u16)
+            }
+        }
+    }
+
+    /// Add an unresolved reference to be patched later
+    pub fn add_unresolved_reference(
+        &mut self,
+        reference_type: ReferenceType,
+        target_id: IrId,
+        is_packed: bool,
+    ) -> Result<(), CompilerError> {
+        let reference = UnresolvedReference {
+            reference_type,
+            location: self.current_address,
+            target_id,
+            is_packed_address: is_packed,
+            offset_size: 2, // Default to 2 bytes
+        };
+
+        self.reference_context.unresolved_refs.push(reference);
+        Ok(())
+    }
+
+    /// Record a resolved address for an IR ID
+    pub fn record_address(&mut self, ir_id: IrId, address: usize) {
+        self.reference_context
+            .ir_id_to_address
+            .insert(ir_id, address);
     }
 
     // Utility methods for code emission
@@ -543,6 +931,249 @@ impl ZMachineCodeGen {
         if self.story_data.len() < required {
             self.story_data.resize(required, 0);
         }
+    }
+
+    // Z-Machine instruction encoding methods
+
+    /// Encode a complete Z-Machine instruction with proper operand types
+    pub fn emit_instruction(
+        &mut self,
+        opcode: u8,
+        operands: &[Operand],
+        store_var: Option<u8>,
+        branch_offset: Option<i16>,
+    ) -> Result<(), CompilerError> {
+        let form = self.determine_instruction_form(operands.len(), opcode);
+
+        match form {
+            InstructionForm::Long => {
+                self.emit_long_form(opcode, operands, store_var, branch_offset)?
+            }
+            InstructionForm::Short => {
+                self.emit_short_form(opcode, operands, store_var, branch_offset)?
+            }
+            InstructionForm::Variable => {
+                self.emit_variable_form(opcode, operands, store_var, branch_offset)?
+            }
+            InstructionForm::Extended => {
+                return Err(CompilerError::CodeGenError(
+                    "Extended form instructions not yet supported".to_string(),
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Determine instruction form based on operand count and opcode
+    pub fn determine_instruction_form(&self, operand_count: usize, opcode: u8) -> InstructionForm {
+        match operand_count {
+            0 => InstructionForm::Short, // 0OP
+            1 => InstructionForm::Short, // 1OP
+            2 => {
+                // Could be 2OP (long form) or VAR form
+                // For now, prefer long form for 2 operands
+                if opcode < 0x80 {
+                    InstructionForm::Long
+                } else {
+                    InstructionForm::Variable
+                }
+            }
+            _ => InstructionForm::Variable, // VAR form for 3+ operands
+        }
+    }
+
+    /// Emit long form instruction (2OP)
+    fn emit_long_form(
+        &mut self,
+        opcode: u8,
+        operands: &[Operand],
+        store_var: Option<u8>,
+        branch_offset: Option<i16>,
+    ) -> Result<(), CompilerError> {
+        if operands.len() != 2 {
+            return Err(CompilerError::CodeGenError(format!(
+                "Long form requires exactly 2 operands, got {}",
+                operands.len()
+            )));
+        }
+
+        // Long form: bits 7-6 = operand types, bits 5-0 = opcode
+        let op1_type = self.get_operand_type(&operands[0]);
+        let op2_type = self.get_operand_type(&operands[1]);
+
+        let instruction_byte = ((op1_type as u8) << 6) | ((op2_type as u8) << 5) | (opcode & 0x1F);
+        self.emit_byte(instruction_byte)?;
+
+        // Emit operands
+        self.emit_operand(&operands[0])?;
+        self.emit_operand(&operands[1])?;
+
+        // Emit store variable if needed
+        if let Some(store) = store_var {
+            self.emit_byte(store)?;
+        }
+
+        // Emit branch offset if needed
+        if let Some(offset) = branch_offset {
+            self.emit_branch_offset(offset)?;
+        }
+
+        Ok(())
+    }
+
+    /// Emit short form instruction (0OP or 1OP)
+    fn emit_short_form(
+        &mut self,
+        opcode: u8,
+        operands: &[Operand],
+        store_var: Option<u8>,
+        branch_offset: Option<i16>,
+    ) -> Result<(), CompilerError> {
+        if operands.len() > 1 {
+            return Err(CompilerError::CodeGenError(format!(
+                "Short form requires 0 or 1 operands, got {}",
+                operands.len()
+            )));
+        }
+
+        let instruction_byte = if operands.is_empty() {
+            // 0OP form: bits 7-6 = 11, bits 5-4 = 00, bits 3-0 = opcode
+            0xB0 | (opcode & 0x0F)
+        } else {
+            // 1OP form: bits 7-6 = 10, bits 5-4 = operand type, bits 3-0 = opcode
+            let op_type = self.get_operand_type(&operands[0]);
+            0x80 | ((op_type as u8) << 4) | (opcode & 0x0F)
+        };
+
+        self.emit_byte(instruction_byte)?;
+
+        // Emit operand if present
+        if !operands.is_empty() {
+            self.emit_operand(&operands[0])?;
+        }
+
+        // Emit store variable if needed
+        if let Some(store) = store_var {
+            self.emit_byte(store)?;
+        }
+
+        // Emit branch offset if needed
+        if let Some(offset) = branch_offset {
+            self.emit_branch_offset(offset)?;
+        }
+
+        Ok(())
+    }
+
+    /// Emit variable form instruction (VAR)
+    fn emit_variable_form(
+        &mut self,
+        opcode: u8,
+        operands: &[Operand],
+        store_var: Option<u8>,
+        branch_offset: Option<i16>,
+    ) -> Result<(), CompilerError> {
+        if operands.len() > 4 {
+            return Err(CompilerError::CodeGenError(format!(
+                "Variable form supports max 4 operands, got {}",
+                operands.len()
+            )));
+        }
+
+        // Variable form: bits 7-6 = 11, bit 5 = 0, bits 4-0 = opcode
+        let instruction_byte = 0xC0 | (opcode & 0x1F);
+        self.emit_byte(instruction_byte)?;
+
+        // Emit operand types byte
+        let mut types_byte = 0u8;
+        for (i, operand) in operands.iter().enumerate() {
+            let op_type = self.get_operand_type(operand);
+            types_byte |= (op_type as u8) << (6 - i * 2);
+        }
+
+        // Fill remaining slots with "omitted"
+        for i in operands.len()..4 {
+            types_byte |= (OperandType::Omitted as u8) << (6 - i * 2);
+        }
+
+        self.emit_byte(types_byte)?;
+
+        // Emit operands
+        for operand in operands {
+            self.emit_operand(operand)?;
+        }
+
+        // Emit store variable if needed
+        if let Some(store) = store_var {
+            self.emit_byte(store)?;
+        }
+
+        // Emit branch offset if needed
+        if let Some(offset) = branch_offset {
+            self.emit_branch_offset(offset)?;
+        }
+
+        Ok(())
+    }
+
+    /// Get operand type for encoding
+    pub fn get_operand_type(&self, operand: &Operand) -> OperandType {
+        match operand {
+            Operand::SmallConstant(_) => OperandType::SmallConstant,
+            Operand::LargeConstant(_) => OperandType::LargeConstant,
+            Operand::Variable(_) => OperandType::Variable,
+            Operand::Constant(value) => {
+                // Choose optimal encoding based on value
+                if *value <= 255 {
+                    OperandType::SmallConstant
+                } else {
+                    OperandType::LargeConstant
+                }
+            }
+        }
+    }
+
+    /// Emit a single operand
+    fn emit_operand(&mut self, operand: &Operand) -> Result<(), CompilerError> {
+        match operand {
+            Operand::SmallConstant(value) | Operand::Variable(value) => {
+                self.emit_byte(*value)?;
+            }
+            Operand::LargeConstant(value) => {
+                self.emit_word(*value)?;
+            }
+            Operand::Constant(value) => {
+                // Choose encoding based on value size
+                if *value <= 255 {
+                    self.emit_byte(*value as u8)?;
+                } else {
+                    self.emit_word(*value)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Emit branch offset (1 or 2 bytes depending on size)
+    pub fn emit_branch_offset(&mut self, offset: i16) -> Result<(), CompilerError> {
+        // Z-Machine branch format:
+        // - Bit 7: branch condition (1 = branch on true, 0 = branch on false)
+        // - Bit 6: 0 = 2-byte offset, 1 = 1-byte offset
+        // - Bits 5-0 or 13-0: signed offset
+
+        // For now, assume positive condition and handle offset size
+        if offset >= 0 && offset <= 63 {
+            // 1-byte format: bit 7 = condition, bit 6 = 1, bits 5-0 = offset
+            let branch_byte = 0x80 | 0x40 | (offset as u8 & 0x3F);
+            self.emit_byte(branch_byte)?;
+        } else {
+            // 2-byte format: bit 7 = condition, bit 6 = 0, bits 13-0 = offset
+            let branch_word = 0x8000 | ((offset as u16) & 0x3FFF);
+            self.emit_word(branch_word)?;
+        }
+
+        Ok(())
     }
 }
 
