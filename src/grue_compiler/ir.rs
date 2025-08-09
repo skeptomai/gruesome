@@ -336,6 +336,7 @@ pub struct IrGenerator {
     symbol_ids: HashMap<String, IrId>, // Symbol name -> IR ID mapping
     current_locals: Vec<IrLocal>,      // Track local variables in current function
     next_local_slot: u8,               // Next available local variable slot
+    builtin_functions: HashMap<IrId, String>, // Function ID -> Function name for builtins
 }
 
 impl Default for IrGenerator {
@@ -351,6 +352,7 @@ impl IrGenerator {
             symbol_ids: HashMap::new(),
             current_locals: Vec::new(),
             next_local_slot: 1, // Slot 0 reserved for return value
+            builtin_functions: HashMap::new(),
         }
     }
 
@@ -363,6 +365,11 @@ impl IrGenerator {
         }
 
         Ok(ir_program)
+    }
+
+    /// Get builtin functions discovered during IR generation
+    pub fn get_builtin_functions(&self) -> &HashMap<IrId, String> {
+        &self.builtin_functions
     }
 
     fn next_id(&mut self) -> IrId {
@@ -928,6 +935,7 @@ impl IrGenerator {
                     // For built-in functions like print, create a placeholder ID
                     let placeholder_id = self.next_id();
                     self.symbol_ids.insert(name.clone(), placeholder_id);
+                    self.builtin_functions.insert(placeholder_id, name.clone());
                     placeholder_id
                 };
 

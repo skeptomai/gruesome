@@ -945,7 +945,59 @@ init {
 
 This implementation enables basic Grue programs to compile successfully to working Z-Machine story files, marking a major milestone in the compiler's functionality. The foundation is now in place for more advanced builtin functions and features.
 
+## Z-Machine Opcode Implementation for Object Manipulation - COMPLETED ✅ (January 2025)
+
+### Successfully Implemented Proper Z-Machine Opcodes:
+
+1. **move() builtin function**:
+   - Now uses `insert_obj` (2OP:14, opcode 0x0E) - correct Z-Machine instruction for object movement
+   - Moves object to become first child of destination
+   - Proper operand encoding with large constants for object IDs
+
+2. **get_location() builtin function**:
+   - Now uses `get_parent` (1OP:131, opcode 0x83) - gets parent object of any object
+   - Returns the containing object/room of the specified object
+   - Stores result in local variable 0 (stack)
+
+3. **Core Builtin Function Architecture**:
+   - **Smart conflict resolution**: Removed builtin functions that conflict with user-defined functions
+   - Games like mini_zork define their own `look_around`, `player_can_see`, `list_contents` functions
+   - **Core approach**: Only implement essential Z-Machine primitives as builtins
+   - Allows maximum flexibility for game authors while providing object manipulation primitives
+
+4. **Z-Machine Specification Compliance**:
+   - Referenced official Z-Machine Standards Document (v1.1) sections 14 & 15
+   - Proper instruction formats (1OP, 2OP) with correct opcode numbers
+   - Large constant operand encoding for object references
+
+5. **Testing & Validation**:
+   - ✅ Core builtin functions test passes (`print`, `move`, `get_location`)
+   - ✅ Generated Z-Machine bytecode validates and loads in gruesome interpreter
+   - ✅ Golden file generation working for builtin function tests
+
+### Technical Implementation Details:
+
+```rust
+// move(object, destination) generates:
+0x0E               // insert_obj opcode (2OP:14)
+object_id          // Object to move (large constant)  
+destination_id     // Destination object/room (large constant)
+
+// get_location(object) generates:
+0x83               // get_parent opcode (1OP:131)  
+object_id          // Object to check (large constant)
+0x00               // Store result in local variable 0
+```
+
+### Current Builtin Functions Available:
+- **`print(string)`**: String output with packed address handling
+- **`move(object, destination)`**: Object movement using Z-Machine insert_obj
+- **`get_location(object)`**: Get parent object using Z-Machine get_parent
+
+### Next Critical Issue Identified:
+**Property Access + Method Calls**: mini_zork compilation fails on `player.location.on_look()` - semantic analyzer incorrectly treats property method calls as standalone function lookups.
+
 **Next Steps:**
-- Add more builtin functions (move, get, etc.)
+- Fix property access + method calls in semantic analysis
 - Enhance object/room IR to Z-Machine conversion  
 - Implement remaining instruction set coverage

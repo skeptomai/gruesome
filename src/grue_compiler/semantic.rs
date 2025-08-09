@@ -99,8 +99,12 @@ impl SemanticAnalyzer {
             ("calculate", vec![Type::Int, Type::Int], Some(Type::Int)), // For test
             ("process", vec![Type::Any], None),
             ("update", vec![], None),
+            // Core builtin functions for object manipulation
+            // Note: Many functions are intentionally left as user-defined
+            // to allow games to customize their behavior (look_around, player_can_see, etc.)
+            ("move", vec![Type::Any, Type::Any], None),
+            ("get_location", vec![Type::Any], Some(Type::Any)),
             // Remove test-specific functions that might conflict
-            // ("look_around", vec![], None),
             // ("handle_take", vec![Type::String], None),
             // ("handle_look", vec![], None),
             // ("announce_entry", vec![], None),

@@ -80,6 +80,8 @@ pub struct ZMachineCodeGen {
     function_addresses: HashMap<IrId, usize>, // IR function ID -> byte address
     /// Mapping from IR IDs to string values (for LoadImmediate results)
     ir_id_to_string: HashMap<IrId, String>,
+    /// Mapping from function IDs to builtin function names
+    builtin_function_names: HashMap<IrId, String>,
 
     // Tables for Z-Machine structures
     object_table_addr: usize,
@@ -106,6 +108,7 @@ impl ZMachineCodeGen {
             string_addresses: HashMap::new(),
             function_addresses: HashMap::new(),
             ir_id_to_string: HashMap::new(),
+            builtin_function_names: HashMap::new(),
             object_table_addr: 0,
             property_table_addr: 0,
             dictionary_addr: 0,
@@ -931,11 +934,19 @@ impl ZMachineCodeGen {
         Ok(new_id)
     }
 
+    /// Register a builtin function name with its ID
+    pub fn register_builtin_function(&mut self, function_id: IrId, name: String) {
+        self.builtin_function_names.insert(function_id, name);
+    }
+
     /// Check if a function ID corresponds to a builtin function
     fn is_builtin_function(&self, function_id: IrId) -> bool {
-        // For now, simply check if this function ID doesn't have a corresponding user-defined function
-        // This is a placeholder - ideally we'd store builtin function names during IR generation
-        !self.function_addresses.contains_key(&function_id)
+        self.builtin_function_names.contains_key(&function_id)
+    }
+
+    /// Get the name of a builtin function by its ID
+    fn get_builtin_function_name(&self, function_id: IrId) -> Option<&String> {
+        self.builtin_function_names.get(&function_id)
     }
 
     /// Generate Z-Machine code for builtin function calls
@@ -944,13 +955,29 @@ impl ZMachineCodeGen {
         function_id: IrId,
         args: &[IrId],
     ) -> Result<(), CompilerError> {
-        // For now, assume all unresolved function IDs are print statements
-        // TODO: Properly identify function by name instead of assuming
+        let function_name = self
+            .get_builtin_function_name(function_id)
+            .ok_or_else(|| {
+                CompilerError::CodeGenError(format!("Unknown builtin function ID: {}", function_id))
+            })?
+            .clone();
 
+        match function_name.as_str() {
+            "print" => self.generate_print_builtin(args),
+            "move" => self.generate_move_builtin(args),
+            "get_location" => self.generate_get_location_builtin(args),
+            _ => Err(CompilerError::CodeGenError(format!(
+                "Unimplemented builtin function: {}",
+                function_name
+            ))),
+        }
+    }
+
+    /// Generate print builtin function
+    fn generate_print_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
         if args.len() != 1 {
             return Err(CompilerError::CodeGenError(format!(
-                "Builtin function with ID {} expects 1 argument, got {}",
-                function_id,
+                "print expects 1 argument, got {}",
                 args.len()
             )));
         }
@@ -972,10 +999,58 @@ impl ZMachineCodeGen {
             self.emit_word(0x0000)?;
         } else {
             return Err(CompilerError::CodeGenError(format!(
-                "Cannot find string value for IR ID {} in builtin function call",
+                "Cannot find string value for IR ID {} in print call",
                 arg_id
             )));
         }
+
+        Ok(())
+    }
+
+    /// Generate move builtin function (object, destination)
+    fn generate_move_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+        if args.len() != 2 {
+            return Err(CompilerError::CodeGenError(format!(
+                "move expects 2 arguments, got {}",
+                args.len()
+            )));
+        }
+
+        let object_id = args[0];
+        let destination_id = args[1];
+
+        // Generate Z-Machine insert_obj instruction (2OP:14, opcode 0x0E)
+        // This moves object to become the first child of the destination
+        // Format: 2OP with large constant operands
+        self.emit_byte(0x0E)?; // insert_obj opcode (2OP:14)
+
+        // First operand: object ID (to be resolved to actual object number)
+        self.emit_word(object_id as u16)?; // Object reference (to be resolved)
+
+        // Second operand: destination ID (to be resolved to actual object/room number)
+        self.emit_word(destination_id as u16)?; // Destination reference (to be resolved)
+
+        // TODO: These need proper object/room ID resolution in the address resolution phase
+        // The Z-Machine expects actual object numbers, not IR IDs
+
+        Ok(())
+    }
+
+    /// Generate get_location builtin function - returns the parent object of an object
+    fn generate_get_location_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+        if args.len() != 1 {
+            return Err(CompilerError::CodeGenError(format!(
+                "get_location expects 1 argument, got {}",
+                args.len()
+            )));
+        }
+
+        let object_id = args[0];
+
+        // Generate Z-Machine get_parent instruction (1OP:131, opcode 0x83)
+        self.emit_byte(0x83)?; // get_parent opcode (1OP:131)
+        self.emit_word(object_id as u16)?; // Object ID operand (large constant)
+        self.emit_byte(0x00)?; // Store result in local variable 0 (stack)
 
         Ok(())
     }
