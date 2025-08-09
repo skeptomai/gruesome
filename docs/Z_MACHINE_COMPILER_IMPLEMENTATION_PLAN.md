@@ -24,9 +24,13 @@ Source Code → Lexer → Parser → AST → Code Generator → Z-Machine Byteco
 
 #### ZILF (ZIL Implementation of the Future)
 - **Language**: C#-based toolchain
-- **Input**: ZIL (Zork Implementation Language) - Lisp-like syntax
+- **Input**: ZIL (Zork Implementation Language) - [Lisp](https://lisp-lang.org/)-like syntax
 - **Process**: ZIL → Z-Machine Assembly (ZAPF) → Z-code
 - **Status**: Active, open-source, cross-platform
+- **Links**: 
+  - [ZILF GitHub Repository](https://github.com/taradinoc/zilf)
+  - [ZILF Documentation](https://docs.zilf.io/)
+  - [ZIL Language Reference](https://docs.zilf.io/en/latest/zil-language-reference/)
 - **Key Insight**: Two-stage compilation (high-level → assembly → bytecode) works well
 
 #### Inform 6 Compiler
@@ -34,6 +38,10 @@ Source Code → Lexer → Parser → AST → Code Generator → Z-Machine Byteco
 - **Input**: Inform 6 language (C-like syntax)
 - **Output**: Z-Machine or Glulx bytecode
 - **Architecture**: Traditional compiler stages (lexer, parser, code generator)
+- **Links**:
+  - [Inform 6 Compiler Source](https://github.com/DavidKinder/Inform6)
+  - [Inform 6 Documentation](https://www.inform-fiction.org/manual/index.html)
+  - [Inform 6 Language Guide](https://www.inform-fiction.org/manual/html/contents.html)
 - **Key Components**:
   - Lexical analysis (`lexer.c`)
   - Syntax parsing (`syntax.c`, `expressp.c`)
@@ -43,8 +51,12 @@ Source Code → Lexer → Parser → AST → Code Generator → Z-Machine Byteco
 
 #### Historical Infocom Tools
 - **ZILCH**: Original Infocom compiler (not available)
-- **ZIL**: Original language (Lisp-based, MDL derivative)
+- **ZIL**: Original language ([Lisp](https://lisp-lang.org/)-based, [MDL](https://en.wikipedia.org/wiki/MDL_programming_language) derivative)
 - **Documentation**: "Learning ZIL" manual provides language specification
+- **Links**:
+  - [Learning ZIL Manual](https://www.xlisp.org/zil.htm)
+  - [ZIL Language History](https://www.ifwiki.org/ZIL)
+  - [Infocom Development Tools](https://www.ifarchive.org/indexes/if-archiveXinfocomXcompilers.html)
 
 ### 2.2 Z-Machine Specification Analysis
 
@@ -55,6 +67,12 @@ Source Code → Lexer → Parser → AST → Code Generator → Z-Machine Byteco
 4. **Dictionary Format** (Section 13): Text encoding and word lookup
 5. **Routine Format** (Section 5): Local variable headers, packed addresses
 6. **Text Encoding** (Section 3): ZSCII character set, abbreviation system
+
+#### Z-Machine Specification Links:
+- [Z-Machine Standards Document v1.1](https://www.inform-fiction.org/zmachine/standards/z1point1/index.html)
+- [Z-Machine Opcode Reference](https://www.inform-fiction.org/zmachine/standards/z1point1/sect15.html)
+- [Z-Machine Memory Map](https://www.inform-fiction.org/zmachine/standards/z1point1/sect01.html)
+- [Object System Specification](https://www.inform-fiction.org/zmachine/standards/z1point1/sect12.html)
 
 ## 3. Implementation Strategy
 
@@ -319,7 +337,7 @@ init {
 ```
 
 **Why This Hybrid Approach:**
-1. **Familiar Syntax**: Rust/JavaScript-like syntax for developers
+1. **Familiar Syntax**: [Rust](https://www.rust-lang.org/)/[JavaScript](https://developer.mozilla.org/en-US/docs/Web/JavaScript)-like syntax for developers
 2. **Declarative Structure**: World definition is clear and readable  
 3. **Imperative Logic**: Complex game logic uses familiar control flow
 4. **IF-Optimized**: Built-in constructs for rooms, objects, actions
@@ -872,9 +890,9 @@ fn test_simple_game_compilation() {
 #### 4.5.2 Compatibility Testing
 - Test generated games with existing Z-Machine interpreters:
   - Our own `gruesome` interpreter
-  - Frotz (reference implementation)
-  - Inform's built-in interpreter
-  - Web-based interpreters (Parchment)
+  - [Frotz (reference implementation)](https://gitlab.com/DavidGriffith/frotz)
+  - [Inform's built-in interpreter](https://github.com/DavidKinder/Windows-Inform7)
+  - [Web-based interpreters (Parchment)](https://github.com/curiousdannii/parchment)
 
 #### 4.5.3 TXD Disassembler Validation
 ```bash
@@ -1030,11 +1048,11 @@ The parser handles the full complexity of the Grue language syntax, including ad
 - [ ] Memory efficiency for large game compilation
 
 ### 7.3 Compatibility Requirements
-- [ ] Games run correctly in Frotz
+- [ ] Games run correctly in [Frotz](https://gitlab.com/DavidGriffith/frotz)
 - [ ] Games run correctly in our `gruesome` interpreter
-- [ ] Generated code follows Z-Machine specification exactly
+- [ ] Generated code follows [Z-Machine specification](https://www.inform-fiction.org/zmachine/standards/z1point1/index.html) exactly
 - [ ] Support for save/restore functionality
-- [ ] Compatible with standard IF testing tools
+- [ ] Compatible with standard [IF testing tools](https://www.ifwiki.org/Testing)
 
 ## 8. Future Extensions
 
@@ -1088,30 +1106,30 @@ The parser handles the full complexity of the Grue language syntax, including ad
 ## 10. Resource Requirements
 
 ### 10.1 Development Environment
-- Existing Rust toolchain and Z-Machine project
-- Access to Z-Machine specification and test games
+- Existing [Rust toolchain](https://www.rust-lang.org/tools/install) and Z-Machine project
+- Access to [Z-Machine specification](https://www.inform-fiction.org/zmachine/standards/z1point1/index.html) and test games
 - Reference interpreters for validation
-- TXD disassembler for code verification
+- [TXD disassembler](https://www.ifarchive.org/indexes/if-archiveXprogrammingXinfocomXinterpretersXtools.html) for code verification
 
 ### 10.2 Testing Resources
-- Collection of Z-Machine story files for reference
+- [Collection of Z-Machine story files](https://www.ifarchive.org/indexes/if-archiveXgamesXzcode.html) for reference
 - Multiple interpreter implementations
 - Automated testing infrastructure
 - Performance benchmarking tools
 
 ### 10.3 Documentation
-- Z-Machine specification (available locally)
-- Inform 6 compiler source code (reference)
-- ZILF documentation and examples
-- Interactive fiction development resources
+- [Z-Machine specification](https://www.inform-fiction.org/zmachine/standards/z1point1/index.html) (available locally)
+- [Inform 6 compiler source code](https://github.com/DavidKinder/Inform6) (reference)
+- [ZILF documentation and examples](https://docs.zilf.io/)
+- [Interactive fiction development resources](https://www.ifwiki.org/)
 
 ## 11. Conclusion
 
-The `grue-compiler` project builds upon our strong foundation in Z-Machine interpretation and disassembly to create a modern, efficient compiler for interactive fiction development. By following proven architectures from ZILF and Inform 6, while implementing in Rust for safety and performance, we can create a valuable tool for the interactive fiction community.
+The `grue-compiler` project builds upon our strong foundation in Z-Machine interpretation and disassembly to create a modern, efficient compiler for interactive fiction development. By following proven architectures from [ZILF](https://github.com/taradinoc/zilf) and [Inform 6](https://github.com/DavidKinder/Inform6), while implementing in [Rust](https://www.rust-lang.org/) for safety and performance, we can create a valuable tool for the [interactive fiction community](https://www.ifwiki.org/).
 
 The two-stage compilation approach (high-level language → assembly → bytecode) provides flexibility and maintainability, while our existing Z-Machine expertise ensures compatibility and correctness.
 
-Success in this project will demonstrate mastery of compiler construction, Z-Machine architecture, and interactive fiction development, creating a useful tool for modern IF authors while preserving compatibility with the rich ecosystem of existing Z-Machine interpreters and tools.
+Success in this project will demonstrate mastery of [compiler construction](https://craftinginterpreters.com/), Z-Machine architecture, and interactive fiction development, creating a useful tool for modern IF authors while preserving compatibility with the rich ecosystem of existing Z-Machine interpreters and tools.
 
 ---
 
