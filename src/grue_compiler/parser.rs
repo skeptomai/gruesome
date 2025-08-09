@@ -452,7 +452,7 @@ impl Parser {
             || (self.check(&TokenKind::Minus)
                 && self
                     .peek_next()
-                    .map_or(false, |t| matches!(t.kind, TokenKind::Greater)))
+                    .is_some_and(|t| matches!(t.kind, TokenKind::Greater)))
         {
             // Handle both '=>' and '->' arrows
             if self.check(&TokenKind::Arrow) {

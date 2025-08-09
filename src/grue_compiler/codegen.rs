@@ -250,7 +250,7 @@ impl ZMachineCodeGen {
         }
 
         // Set specific globals from IR
-        for global in &ir.globals {
+        for _global in &ir.globals {
             // TODO: Map IR globals to Z-Machine global variables
             // For now, just ensure the space is allocated
         }
@@ -434,7 +434,7 @@ impl ZMachineCodeGen {
     }
 
     /// Generate branch instruction
-    fn generate_branch(&mut self, true_label: IrId) -> Result<(), CompilerError> {
+    fn generate_branch(&mut self, _true_label: IrId) -> Result<(), CompilerError> {
         // TODO: Implement proper branching with condition and label resolution
         // For now, emit a simple jump
         self.emit_byte(0x8C)?; // jump opcode (1OP form)
@@ -449,7 +449,7 @@ impl ZMachineCodeGen {
     }
 
     /// Generate unconditional jump
-    fn generate_jump(&mut self, label: IrId) -> Result<(), CompilerError> {
+    fn generate_jump(&mut self, _label: IrId) -> Result<(), CompilerError> {
         self.emit_byte(0x8C)?; // jump opcode (1OP form)
 
         // Emit placeholder for jump offset (will be resolved later)

@@ -401,6 +401,7 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
+    #[allow(clippy::only_used_in_recursion)] // TODO: Will use obj parameter when property validation is implemented
     fn analyze_object(&mut self, obj: &mut ObjectDecl) -> Result<(), CompilerError> {
         // TODO: Validate object properties and their types
 
@@ -651,11 +652,8 @@ impl SemanticAnalyzer {
                     | BinaryOp::Greater
                     | BinaryOp::GreaterEqual => {
                         // Type check the operands are compatible for comparison
-                        if self.types_compatible_for_operations(&left_type, &right_type) {
-                            Ok(Type::Bool)
-                        } else {
-                            Ok(Type::Bool) // Still return bool even with type mismatch
-                        }
+                        // Always return bool for comparison operators, regardless of operand compatibility
+                        Ok(Type::Bool)
                     }
 
                     // Logical operators expect and return boolean

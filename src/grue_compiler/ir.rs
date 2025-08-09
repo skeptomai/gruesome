@@ -1028,11 +1028,6 @@ impl IrGenerator {
                 });
                 Ok(temp_id)
             }
-            _ => {
-                // Fallback for any remaining unimplemented expression types
-                let temp_id = self.next_id();
-                Ok(temp_id)
-            }
         }
     }
 
