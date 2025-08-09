@@ -104,6 +104,10 @@ impl SemanticAnalyzer {
             // to allow games to customize their behavior (look_around, player_can_see, etc.)
             ("move", vec![Type::Any, Type::Any], None),
             ("get_location", vec![Type::Any], Some(Type::Any)),
+            // Core Z-Machine object primitives - low-level operations only
+            ("get_child", vec![Type::Any], Some(Type::Any)),
+            ("get_sibling", vec![Type::Any], Some(Type::Any)),
+            ("test_attr", vec![Type::Any, Type::Int], Some(Type::Bool)),
             // Remove test-specific functions that might conflict
             // ("handle_take", vec![Type::String], None),
             // ("handle_look", vec![], None),
@@ -739,6 +743,24 @@ impl SemanticAnalyzer {
                 self.analyze_expression(object)?;
                 // TODO: Validate property exists on object type
                 Ok(Type::Any) // For now, assume any property access is valid
+            }
+
+            Expr::MethodCall {
+                object,
+                method: _,
+                arguments,
+            } => {
+                // Analyze the object expression
+                self.analyze_expression(object)?;
+
+                // Analyze all arguments
+                for arg in arguments.iter_mut() {
+                    self.analyze_expression(arg)?;
+                }
+
+                // For now, assume all method calls are valid and return Any
+                // TODO: Implement proper method resolution based on object type
+                Ok(Type::Any)
             }
 
             Expr::Ternary {

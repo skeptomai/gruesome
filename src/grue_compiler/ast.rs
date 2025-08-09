@@ -191,6 +191,12 @@ pub enum Expr {
         name: String,
         arguments: Vec<Expr>,
     },
+    // Method calls: object.property()
+    MethodCall {
+        object: Box<Expr>,
+        method: String,
+        arguments: Vec<Expr>,
+    },
 
     // Binary operations
     Binary {

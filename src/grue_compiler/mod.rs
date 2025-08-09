@@ -70,6 +70,12 @@ impl GrueCompiler {
 
         // Phase 5: Code Generation
         let mut code_generator = codegen::ZMachineCodeGen::new(version);
+
+        // Transfer builtin function information from IR generator to code generator
+        for (function_id, function_name) in ir_generator.get_builtin_functions() {
+            code_generator.register_builtin_function(*function_id, function_name.clone());
+        }
+
         let story_data = code_generator.generate(ir_program)?;
 
         Ok(story_data)

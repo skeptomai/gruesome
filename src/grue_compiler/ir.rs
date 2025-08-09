@@ -356,6 +356,14 @@ impl IrGenerator {
         }
     }
 
+    /// Check if a function name is a known builtin function
+    fn is_builtin_function(&self, name: &str) -> bool {
+        matches!(
+            name,
+            "print" | "move" | "get_location" | "get_child" | "get_sibling" | "test_attr"
+        )
+    }
+
     pub fn generate(&mut self, ast: Program) -> Result<IrProgram, CompilerError> {
         let mut ir_program = IrProgram::new();
 
@@ -410,8 +418,22 @@ impl IrGenerator {
         &mut self,
         func: crate::grue_compiler::ast::FunctionDecl,
     ) -> Result<IrFunction, CompilerError> {
-        let func_id = self.next_id();
-        self.symbol_ids.insert(func.name.clone(), func_id);
+        // Check if we already have a placeholder ID for this function
+        let func_id = if let Some(&existing_id) = self.symbol_ids.get(&func.name) {
+            println!(
+                "DEBUG: Reusing existing function ID {} for '{}'",
+                existing_id, func.name
+            );
+            existing_id
+        } else {
+            let new_id = self.next_id();
+            self.symbol_ids.insert(func.name.clone(), new_id);
+            println!(
+                "DEBUG: Created new function ID {} for '{}'",
+                new_id, func.name
+            );
+            new_id
+        };
 
         // Reset local variable state for this function
         self.current_locals.clear();
@@ -675,6 +697,11 @@ impl IrGenerator {
                 let else_label = self.next_id();
                 let end_label = self.next_id();
 
+                println!(
+                    "DEBUG: IR if statement: then={}, else={}, end={}",
+                    then_label, else_label, end_label
+                );
+
                 // Branch based on condition
                 block.add_instruction(IrInstruction::Branch {
                     condition: condition_temp,
@@ -932,10 +959,21 @@ impl IrGenerator {
                 let func_id = if let Some(&id) = self.symbol_ids.get(&name) {
                     id
                 } else {
-                    // For built-in functions like print, create a placeholder ID
+                    // Only register as builtin if it's actually a builtin function
                     let placeholder_id = self.next_id();
                     self.symbol_ids.insert(name.clone(), placeholder_id);
-                    self.builtin_functions.insert(placeholder_id, name.clone());
+                    if self.is_builtin_function(&name) {
+                        self.builtin_functions.insert(placeholder_id, name.clone());
+                        println!(
+                            "DEBUG: Registered builtin function ID {} -> '{}'",
+                            placeholder_id, name
+                        );
+                    } else {
+                        println!(
+                            "DEBUG: Created function placeholder ID {} -> '{}' (user-defined)",
+                            placeholder_id, name
+                        );
+                    }
                     placeholder_id
                 };
 
@@ -947,6 +985,67 @@ impl IrGenerator {
                 });
 
                 Ok(temp_id)
+            }
+            Expr::MethodCall {
+                object,
+                method,
+                arguments,
+            } => {
+                // Method call: object.method(args)
+                // This should be handled as: get property from object, if callable then call it
+
+                // Generate arguments first
+                let mut arg_temps = Vec::new();
+                for arg in arguments {
+                    let arg_temp = self.generate_expression(arg, block)?;
+                    arg_temps.push(arg_temp);
+                }
+
+                // Generate object expression
+                let object_temp = self.generate_expression(*object, block)?;
+
+                // Generate property access to get the method function
+                let property_temp = self.next_id();
+                block.add_instruction(IrInstruction::GetProperty {
+                    target: property_temp,
+                    object: object_temp,
+                    property: method.clone(),
+                });
+
+                // Generate conditional call - only call if property is non-zero (valid function address)
+                let result_temp = self.next_id();
+                let then_label = self.next_id();
+                let else_label = self.next_id();
+                let end_label = self.next_id();
+
+                // Branch: if property_temp != 0, goto then_label, else goto else_label
+                block.add_instruction(IrInstruction::Branch {
+                    condition: property_temp,
+                    true_label: then_label,
+                    false_label: else_label,
+                });
+
+                // Then branch: call the function stored in the property
+                block.add_instruction(IrInstruction::Label { id: then_label });
+                // TODO: Implement indirect function call via property value
+                // For now, set result to 0
+                block.add_instruction(IrInstruction::LoadImmediate {
+                    target: result_temp,
+                    value: IrValue::Integer(0),
+                });
+                block.add_instruction(IrInstruction::Jump { label: end_label });
+
+                // Else branch: property doesn't exist or isn't callable, return 0
+                block.add_instruction(IrInstruction::Label { id: else_label });
+                block.add_instruction(IrInstruction::LoadImmediate {
+                    target: result_temp,
+                    value: IrValue::Integer(0),
+                });
+
+                // End label
+                block.add_instruction(IrInstruction::Label { id: end_label });
+
+                Ok(result_temp)
             }
             Expr::PropertyAccess { object, property } => {
                 // Property access: object.property

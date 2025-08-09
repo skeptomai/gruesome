@@ -840,14 +840,11 @@ impl Parser {
                     Expr::Identifier(name) => {
                         expr = Expr::FunctionCall { name, arguments };
                     }
-                    Expr::PropertyAccess {
-                        object: _,
-                        property,
-                    } => {
-                        // For now, treat method calls as simple function calls with the property name
-                        // TODO: Implement proper method call semantics
-                        expr = Expr::FunctionCall {
-                            name: property,
+                    Expr::PropertyAccess { object, property } => {
+                        // Convert to method call with proper object context
+                        expr = Expr::MethodCall {
+                            object,
+                            method: property,
                             arguments,
                         };
                     }
