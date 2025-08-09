@@ -1,7 +1,7 @@
 // Z-Machine Code Generator (stub for now)
 
 use crate::grue_compiler::error::CompilerError;
-use crate::grue_compiler::ir::IRProgram;
+use crate::grue_compiler::ir::IrProgram;
 use crate::grue_compiler::ZMachineVersion;
 
 pub struct ZMachineCodeGen {
@@ -13,7 +13,7 @@ impl ZMachineCodeGen {
         ZMachineCodeGen { version }
     }
 
-    pub fn generate(&mut self, _ir: IRProgram) -> Result<Vec<u8>, CompilerError> {
+    pub fn generate(&mut self, _ir: IrProgram) -> Result<Vec<u8>, CompilerError> {
         // TODO: Implement code generation
         // For now, return a minimal valid Z-Machine file
 

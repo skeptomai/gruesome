@@ -65,7 +65,7 @@ impl GrueCompiler {
         let analyzed_ast = analyzer.analyze(ast)?;
 
         // Phase 4: IR Generation
-        let mut ir_generator = ir::IRGenerator::new();
+        let mut ir_generator = ir::IrGenerator::new();
         let ir_program = ir_generator.generate(analyzed_ast)?;
 
         // Phase 5: Code Generation
