@@ -78,6 +78,8 @@ pub struct ZMachineCodeGen {
     label_addresses: HashMap<IrId, usize>, // IR label ID -> byte address
     string_addresses: HashMap<IrId, usize>, // IR string ID -> byte address
     function_addresses: HashMap<IrId, usize>, // IR function ID -> byte address
+    /// Mapping from IR IDs to string values (for LoadImmediate results)
+    ir_id_to_string: HashMap<IrId, String>,
 
     // Tables for Z-Machine structures
     object_table_addr: usize,
@@ -88,6 +90,7 @@ pub struct ZMachineCodeGen {
     // String encoding
     strings: Vec<(IrId, String)>, // Collected strings for encoding
     encoded_strings: HashMap<IrId, Vec<u8>>, // IR string ID -> encoded bytes
+    next_string_id: IrId,         // Next available string ID
 
     // Address resolution
     reference_context: ReferenceContext,
@@ -102,12 +105,14 @@ impl ZMachineCodeGen {
             label_addresses: HashMap::new(),
             string_addresses: HashMap::new(),
             function_addresses: HashMap::new(),
+            ir_id_to_string: HashMap::new(),
             object_table_addr: 0,
             property_table_addr: 0,
             dictionary_addr: 0,
             global_vars_addr: 0,
             strings: Vec::new(),
             encoded_strings: HashMap::new(),
+            next_string_id: 1000, // Start string IDs from 1000 to avoid conflicts
             reference_context: ReferenceContext {
                 ir_id_to_address: HashMap::new(),
                 unresolved_refs: Vec::new(),
@@ -142,6 +147,9 @@ impl ZMachineCodeGen {
 
         // Phase 8: Write Z-Machine header
         self.write_header()?;
+
+        // Phase 8.5: Update string addresses for any dynamically discovered strings
+        self.update_string_addresses();
 
         // Phase 9: Resolve all addresses and patch jumps
         self.resolve_addresses()?;
@@ -246,9 +254,16 @@ impl ZMachineCodeGen {
         addr += 1000; // Rough estimate for dictionary
 
         // Reserve space for encoded strings
-        for encoded in self.encoded_strings.values() {
-            self.string_addresses.insert(0, addr); // TODO: Use actual string ID
-            addr += encoded.len();
+        let string_data: Vec<(IrId, usize)> = self
+            .encoded_strings
+            .iter()
+            .map(|(id, encoded)| (*id, encoded.len()))
+            .collect();
+
+        for (string_id, length) in string_data {
+            self.string_addresses.insert(string_id, addr);
+            self.record_address(string_id, addr); // Record in reference context
+            addr += length;
         }
 
         // Code starts after all data structures
@@ -385,7 +400,11 @@ impl ZMachineCodeGen {
     /// Generate code for a single IR instruction
     fn generate_instruction(&mut self, instruction: &IrInstruction) -> Result<(), CompilerError> {
         match instruction {
-            IrInstruction::LoadImmediate { target: _, value } => {
+            IrInstruction::LoadImmediate { target, value } => {
+                // Store mapping for string values so we can resolve them in function calls
+                if let IrValue::String(s) = value {
+                    self.ir_id_to_string.insert(*target, s.clone());
+                }
                 self.generate_load_immediate(value)?;
             }
 
@@ -407,10 +426,15 @@ impl ZMachineCodeGen {
             IrInstruction::Call {
                 target: _,
                 function,
-                args: _,
+                args,
             } => {
-                // Generate call with unresolved function reference
-                self.generate_call_with_reference(*function)?;
+                // Check if this is a builtin function
+                if self.is_builtin_function(*function) {
+                    self.generate_builtin_function_call(*function, args)?;
+                } else {
+                    // Generate call with unresolved function reference
+                    self.generate_call_with_reference(*function)?;
+                }
             }
 
             IrInstruction::Return { value } => {
@@ -494,11 +518,17 @@ impl ZMachineCodeGen {
                 let operands = vec![Operand::SmallConstant(value)];
                 self.emit_instruction(0x0D, &operands, None, None)?;
             }
-            IrValue::String(_s) => {
-                // TODO: Handle string constants (need string table lookup)
-                return Err(CompilerError::CodeGenError(
-                    "String immediates not yet implemented".to_string(),
-                ));
+            IrValue::String(s) => {
+                // For string literals in LoadImmediate, we need to add them to the string table
+                // and create an unresolved reference to be patched later
+                let string_id = self.find_or_create_string_id(s)?;
+
+                // Add unresolved reference for string address
+                self.add_unresolved_reference(ReferenceType::StringRef, string_id, true)?;
+
+                // Emit a placeholder - this will be patched during address resolution
+                let operands = vec![Operand::Constant(0)]; // Placeholder
+                self.emit_instruction(0x0D, &operands, None, None)?; // store instruction
             }
             _ => {
                 return Err(CompilerError::CodeGenError(
@@ -872,6 +902,117 @@ impl ZMachineCodeGen {
                 }
                 Ok((byte_address / 4) as u16)
             }
+        }
+    }
+
+    /// Find or create a string ID for the given string
+    fn find_or_create_string_id(&mut self, s: &str) -> Result<IrId, CompilerError> {
+        // Check if string already exists
+        for (id, existing_string) in &self.strings {
+            if existing_string == s {
+                return Ok(*id);
+            }
+        }
+
+        // Create new string ID
+        let new_id = self.next_string_id;
+        self.next_string_id += 1;
+
+        // Add to strings collection
+        self.strings.push((new_id, s.to_string()));
+
+        // Encode the string
+        let encoded = self.encode_string(s)?;
+        self.encoded_strings.insert(new_id, encoded);
+
+        // NOTE: String addresses will be assigned during layout_memory_structures
+        // or when we rebuild the layout after discovering new strings
+
+        Ok(new_id)
+    }
+
+    /// Check if a function ID corresponds to a builtin function
+    fn is_builtin_function(&self, function_id: IrId) -> bool {
+        // For now, simply check if this function ID doesn't have a corresponding user-defined function
+        // This is a placeholder - ideally we'd store builtin function names during IR generation
+        !self.function_addresses.contains_key(&function_id)
+    }
+
+    /// Generate Z-Machine code for builtin function calls
+    fn generate_builtin_function_call(
+        &mut self,
+        function_id: IrId,
+        args: &[IrId],
+    ) -> Result<(), CompilerError> {
+        // For now, assume all unresolved function IDs are print statements
+        // TODO: Properly identify function by name instead of assuming
+
+        if args.len() != 1 {
+            return Err(CompilerError::CodeGenError(format!(
+                "Builtin function with ID {} expects 1 argument, got {}",
+                function_id,
+                args.len()
+            )));
+        }
+
+        let arg_id = args[0];
+
+        // Look up the string value from the IR ID
+        if let Some(string_value) = self.ir_id_to_string.get(&arg_id).cloned() {
+            // Create a string ID for this string and generate print instruction
+            let string_id = self.find_or_create_string_id(&string_value)?;
+
+            // Generate print_paddr instruction
+            self.emit_byte(0xB3)?; // print_paddr opcode (1OP form)
+
+            // Add unresolved reference for the string address
+            self.add_unresolved_reference(ReferenceType::StringRef, string_id, true)?;
+
+            // Emit placeholder string address (will be resolved later)
+            self.emit_word(0x0000)?;
+        } else {
+            return Err(CompilerError::CodeGenError(format!(
+                "Cannot find string value for IR ID {} in builtin function call",
+                arg_id
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Update string addresses after new strings have been added
+    fn update_string_addresses(&mut self) {
+        // Calculate addresses for all encoded strings
+        let mut addr = self.dictionary_addr + 1000; // Start after dictionary
+
+        // For v3, ensure even alignment for strings
+        if matches!(self.version, ZMachineVersion::V3) && addr % 2 == 1 {
+            addr += 1;
+        }
+
+        self.string_addresses.clear();
+
+        // Collect string data to avoid borrowing issues
+        let string_data: Vec<(IrId, usize)> = self
+            .encoded_strings
+            .iter()
+            .map(|(id, encoded)| (*id, encoded.len()))
+            .collect();
+
+        for (string_id, length) in string_data {
+            // Ensure even alignment for v3
+            if matches!(self.version, ZMachineVersion::V3) && addr % 2 == 1 {
+                addr += 1;
+            }
+
+            self.string_addresses.insert(string_id, addr);
+            self.record_address(string_id, addr); // Record in reference context
+            addr += length;
+        }
+
+        // Update current_address if needed
+        if addr > self.current_address {
+            self.current_address = addr;
         }
     }
 
