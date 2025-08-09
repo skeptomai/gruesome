@@ -101,8 +101,9 @@ pub struct Parameter {
     pub param_type: Option<Type>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Type {
+    Any, // For unknown or inferred types
     Bool,
     Int,
     String,
