@@ -429,4 +429,202 @@ mod tests {
         // IDs should be different
         assert_ne!(func.id, func.body.id);
     }
+
+    #[test]
+    fn test_if_statement_ir() {
+        let source = r#"
+            fn test_if() {
+                if true {
+                    print("true branch");
+                } else {
+                    print("false branch");
+                }
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        assert_eq!(ir.functions.len(), 1);
+        let func = &ir.functions[0];
+        let instructions = &func.body.instructions;
+
+        // Should contain Branch instruction
+        let branches = instructions
+            .iter()
+            .filter(|inst| matches!(inst, IrInstruction::Branch { .. }))
+            .count();
+        assert!(branches >= 1, "Should have at least one branch instruction");
+
+        // Should contain Label instructions for control flow
+        let labels = instructions
+            .iter()
+            .filter(|inst| matches!(inst, IrInstruction::Label { .. }))
+            .count();
+        assert!(labels >= 3, "Should have labels for then, else, and end");
+    }
+
+    #[test]
+    fn test_while_loop_ir() {
+        let source = r#"
+            fn test_while() {
+                let i = 0;
+                while i < 10 {
+                    i = i + 1;
+                }
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        assert_eq!(ir.functions.len(), 1);
+        let func = &ir.functions[0];
+        let instructions = &func.body.instructions;
+
+        // Should contain Branch instruction for loop condition
+        let branches = instructions
+            .iter()
+            .filter(|inst| matches!(inst, IrInstruction::Branch { .. }))
+            .count();
+        assert!(
+            branches >= 1,
+            "Should have branch instruction for loop condition"
+        );
+
+        // Should contain Jump instructions for loop control
+        let jumps = instructions
+            .iter()
+            .filter(|inst| matches!(inst, IrInstruction::Jump { .. }))
+            .count();
+        assert!(
+            jumps >= 1,
+            "Should have jump instruction for loop iteration"
+        );
+    }
+
+    #[test]
+    fn test_assignment_statement_ir() {
+        let source = r#"
+            fn test_assignment() {
+                let x = 5;
+                x = 10;
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        assert_eq!(ir.functions.len(), 1);
+        let func = &ir.functions[0];
+        let instructions = &func.body.instructions;
+
+        // Should contain StoreVar instructions for both declaration and assignment
+        let stores = instructions
+            .iter()
+            .filter(|inst| matches!(inst, IrInstruction::StoreVar { .. }))
+            .count();
+        assert!(
+            stores >= 2,
+            "Should have store instructions for declaration and assignment"
+        );
+    }
+
+    #[test]
+    fn test_ternary_expression_ir() {
+        let source = r#"
+            fn test_ternary() {
+                let result = true ? "yes" : "no";
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        assert_eq!(ir.functions.len(), 1);
+        let func = &ir.functions[0];
+        let instructions = &func.body.instructions;
+
+        // Should contain Branch instruction for ternary condition
+        let branches = instructions
+            .iter()
+            .filter(|inst| matches!(inst, IrInstruction::Branch { .. }))
+            .count();
+        assert!(
+            branches >= 1,
+            "Should have branch instruction for ternary condition"
+        );
+
+        // Should contain labels for true and false branches
+        let labels = instructions
+            .iter()
+            .filter(|inst| matches!(inst, IrInstruction::Label { .. }))
+            .count();
+        assert!(
+            labels >= 3,
+            "Should have labels for true, false, and end branches"
+        );
+    }
+
+    #[test]
+    fn test_property_access_ir() {
+        let source = r#"
+            fn test_properties() {
+                let obj = player;
+                let pos = obj.position;
+                obj.visited = true;
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        assert_eq!(ir.functions.len(), 1);
+        let func = &ir.functions[0];
+        let instructions = &func.body.instructions;
+
+        // Should contain GetProperty instruction
+        let get_props = instructions
+            .iter()
+            .filter(|inst| matches!(inst, IrInstruction::GetProperty { .. }))
+            .count();
+        assert!(get_props >= 1, "Should have GetProperty instruction");
+
+        // Should contain SetProperty instruction
+        let set_props = instructions
+            .iter()
+            .filter(|inst| matches!(inst, IrInstruction::SetProperty { .. }))
+            .count();
+        assert!(set_props >= 1, "Should have SetProperty instruction");
+    }
+
+    #[test]
+    fn test_for_loop_ir() {
+        let source = r#"
+            fn test_for() {
+                let items = [1, 2, 3];
+                for item in items {
+                    print("Item: " + item);
+                }
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        assert_eq!(ir.functions.len(), 1);
+        let func = &ir.functions[0];
+        let instructions = &func.body.instructions;
+
+        // Should contain GetArrayElement instruction for iterating
+        let array_gets = instructions
+            .iter()
+            .filter(|inst| matches!(inst, IrInstruction::GetArrayElement { .. }))
+            .count();
+        assert!(array_gets >= 1, "Should have GetArrayElement instruction");
+
+        // Should contain loop control instructions
+        let branches = instructions
+            .iter()
+            .filter(|inst| matches!(inst, IrInstruction::Branch { .. }))
+            .count();
+        assert!(
+            branches >= 1,
+            "Should have branch instruction for loop condition"
+        );
+    }
 }

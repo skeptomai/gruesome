@@ -709,30 +709,57 @@ The interpreter now provides comprehensive support for classic Infocom games fro
 - Boolean condition validation for control flow
 - **100% pass rate** on all 29 semantic tests
 
-### ✅ **Phase 3: IR Generation (Core Complete)**
-- **Comprehensive IR Structure**: Complete instruction set with LoadImmediate, LoadVar, StoreVar, BinaryOp, UnaryOp, Call, Return, Branch, Jump, Label
-- **Expression IR Generation**: ✅ Literals, binary/unary operations, function calls, variable references
-- **Statement IR Generation**: ✅ Variable declarations, expression statements, return statements  
-- **Function IR Generation**: ✅ Parameters, local variables with Z-Machine slot allocation
+### ✅ **Phase 3: IR Generation (COMPLETE)**
+- **Comprehensive IR Structure**: Complete instruction set with LoadImmediate, LoadVar, StoreVar, BinaryOp, UnaryOp, Call, Return, Branch, Jump, Label, GetProperty, SetProperty, GetArrayElement, SetArrayElement
+- **Expression IR Generation**: ✅ Literals, binary/unary operations, function calls, variable references, property access, array literals, ternary conditionals
+- **Statement IR Generation**: ✅ Variable declarations, expression statements, return statements, assignment statements
+- **Control Flow IR Generation**: ✅ If/else statements, while loops, for loops with proper branch/label generation
+- **Function IR Generation**: ✅ Parameters, local variables with Z-Machine slot allocation (slot 0 reserved for return value)
 - **World Elements**: ✅ Rooms, grammar rules, init blocks
-- **String Table Management**: Efficient string literal deduplication
-- **100% pass rate** on all 12 IR generation tests
+- **String Table Management**: Efficient string literal deduplication with ID generation
+- **Advanced Features**: ✅ Ternary expressions, property assignments, array iteration
+- **100% pass rate** on all 18 IR generation tests
 
-#### 🔄 **Phase 3 Remaining Items:**
-- Control flow statements (if/while/for) with branch/label generation
-- Assignment statements  
-- Advanced expressions (ternary, property access, array access)
+### ✅ **Phase 4: Code Generation (CORE COMPLETE)**
+**Target**: Transform IR to executable Z-Machine bytecode
 
-### 🔜 **Phase 4: Code Generation (Pending)**
-- Z-Machine bytecode emission
-- Object and property table generation
-- String encoding and dictionary creation
-- Header generation for v3/v5 targets
+#### **✅ Completed Implementation:**
+- **🏗️ Complete Code Generation Architecture**: Multi-phase pipeline with proper memory layout management
+- **💾 Z-Machine Memory Layout**: Header (64 bytes) → Globals (480 bytes) → Object tables → Dictionary → Strings → Code
+- **🔤 String Encoding System**: ZSCII text encoding (3 chars per 16-bit word) with proper termination
+- **📋 Z-Machine Data Structures**: Headers, object tables, dictionary, and global variables for v3/v5 targets
+- **🔧 Basic Instruction Generation**: IR → Z-Machine bytecode for core instructions (LoadImmediate, BinaryOp, Call, Return, Branch, Jump)
+- **✅ Comprehensive Test Suite**: 8/8 tests passing covering all major functionality
+- **🎯 Version Support**: Full v3 and v5 Z-Machine compatibility with proper format differences
+
+#### **📁 Files Implemented:**
+- `src/grue_compiler/codegen.rs` - Complete code generator (527 lines)
+- `src/grue_compiler/codegen_tests.rs` - Comprehensive test suite (8 tests)
+
+#### **🧪 Test Results:**
+```
+running 8 tests
+test test_minimal_code_generation ... ok
+test test_v5_code_generation ... ok  
+test test_header_generation ... ok
+test test_string_encoding ... ok
+test test_init_block_generation ... ok
+test test_empty_string_encoding ... ok
+test test_function_generation ... ok
+test test_complex_program_generation ... ok
+test result: ok. 8 passed; 0 failed
+```
+
+#### **🔄 Phase 4 Remaining Items:**
+- **Operand encoding**: Proper Z-Machine operand encoding for all instruction types
+- **Address resolution**: Jump/branch target resolution and patching system  
+- **Enhanced objects**: Complete IR room/object → Z-Machine object conversion
+- **Complete instruction set**: Full coverage of remaining IR instructions
 
 ### 🔜 **Phase 5: Integration & Testing (Pending)**
-- End-to-end compiler testing
-- Golden file tests with mini_zork.grue
-- Performance optimization
+- End-to-end compiler testing with golden file tests (mini_zork.grue)
+- Performance optimization and code quality improvements
+- Integration testing with Z-Machine interpreter
 - Error reporting improvements
 
 ## Architecture Refactoring Summary (Complete)

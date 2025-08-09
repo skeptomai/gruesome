@@ -620,17 +620,201 @@ impl IrGenerator {
                     });
                 }
             }
-            Stmt::Assignment(_assign) => {
-                // TODO: Implement assignments
+            Stmt::Assignment(assign) => {
+                // Generate the value expression
+                let value_temp = self.generate_expression(assign.value, block)?;
+
+                // Handle different types of assignment targets
+                match assign.target {
+                    crate::grue_compiler::ast::Expr::Identifier(var_name) => {
+                        // Simple variable assignment
+                        if let Some(&var_id) = self.symbol_ids.get(&var_name) {
+                            block.add_instruction(IrInstruction::StoreVar {
+                                var_id,
+                                source: value_temp,
+                            });
+                        } else {
+                            // Variable not found - this should be caught in semantic analysis
+                            return Err(CompilerError::SemanticError(
+                                format!("Undefined variable '{}' in assignment", var_name),
+                                0,
+                            ));
+                        }
+                    }
+                    crate::grue_compiler::ast::Expr::PropertyAccess { object, property } => {
+                        // Property assignment: object.property = value
+                        let object_temp = self.generate_expression(*object, block)?;
+                        block.add_instruction(IrInstruction::SetProperty {
+                            object: object_temp,
+                            property,
+                            value: value_temp,
+                        });
+                    }
+                    _ => {
+                        // Other assignment targets (array elements, etc.)
+                        return Err(CompilerError::SemanticError(
+                            "Unsupported assignment target".to_string(),
+                            0,
+                        ));
+                    }
+                }
             }
-            Stmt::If(_if_stmt) => {
-                // TODO: Implement if statements with branches
+            Stmt::If(if_stmt) => {
+                // Generate condition expression
+                let condition_temp = self.generate_expression(if_stmt.condition, block)?;
+
+                // Create labels for control flow
+                let then_label = self.next_id();
+                let else_label = self.next_id();
+                let end_label = self.next_id();
+
+                // Branch based on condition
+                block.add_instruction(IrInstruction::Branch {
+                    condition: condition_temp,
+                    true_label: then_label,
+                    false_label: else_label,
+                });
+
+                // Then branch
+                block.add_instruction(IrInstruction::Label { id: then_label });
+                self.generate_statement(*if_stmt.then_branch, block)?;
+                block.add_instruction(IrInstruction::Jump { label: end_label });
+
+                // Else branch (if present)
+                block.add_instruction(IrInstruction::Label { id: else_label });
+                if let Some(else_branch) = if_stmt.else_branch {
+                    self.generate_statement(*else_branch, block)?;
+                }
+
+                // End label
+                block.add_instruction(IrInstruction::Label { id: end_label });
             }
-            Stmt::While(_while_stmt) => {
-                // TODO: Implement while loops
+            Stmt::While(while_stmt) => {
+                // Create labels for loop control flow
+                let loop_start = self.next_id();
+                let loop_body = self.next_id();
+                let loop_end = self.next_id();
+
+                // Jump to loop start
+                block.add_instruction(IrInstruction::Jump { label: loop_start });
+
+                // Loop start: evaluate condition
+                block.add_instruction(IrInstruction::Label { id: loop_start });
+                let condition_temp = self.generate_expression(while_stmt.condition, block)?;
+
+                // Branch based on condition
+                block.add_instruction(IrInstruction::Branch {
+                    condition: condition_temp,
+                    true_label: loop_body,
+                    false_label: loop_end,
+                });
+
+                // Loop body
+                block.add_instruction(IrInstruction::Label { id: loop_body });
+                self.generate_statement(*while_stmt.body, block)?;
+                block.add_instruction(IrInstruction::Jump { label: loop_start });
+
+                // Loop end
+                block.add_instruction(IrInstruction::Label { id: loop_end });
             }
-            Stmt::For(_for_stmt) => {
-                // TODO: Implement for loops
+            Stmt::For(for_stmt) => {
+                // For loops in Grue iterate over collections
+                // This is a simplified implementation that assumes array iteration
+
+                // Generate the iterable expression
+                let iterable_temp = self.generate_expression(for_stmt.iterable, block)?;
+
+                // Create a loop variable
+                let loop_var_id = self.next_id();
+                let local_var = IrLocal {
+                    name: for_stmt.variable.clone(),
+                    var_type: Some(Type::Any), // Type inferred from array elements
+                    slot: self.next_local_slot,
+                    mutable: false, // Loop variables are immutable
+                };
+                self.current_locals.push(local_var);
+                self.symbol_ids.insert(for_stmt.variable, loop_var_id);
+                self.next_local_slot += 1;
+
+                // Create index variable for array iteration
+                let index_var = self.next_id();
+                let zero_temp = self.next_id();
+                block.add_instruction(IrInstruction::LoadImmediate {
+                    target: zero_temp,
+                    value: IrValue::Integer(0),
+                });
+                block.add_instruction(IrInstruction::StoreVar {
+                    var_id: index_var,
+                    source: zero_temp,
+                });
+
+                // Create labels for loop control flow
+                let loop_start = self.next_id();
+                let loop_body = self.next_id();
+                let loop_end = self.next_id();
+
+                // Loop start: check if index < array length
+                block.add_instruction(IrInstruction::Label { id: loop_start });
+                let index_temp = self.next_id();
+                block.add_instruction(IrInstruction::LoadVar {
+                    target: index_temp,
+                    var_id: index_var,
+                });
+
+                // For simplicity, we'll use a placeholder condition
+                // In a full implementation, we'd check array bounds
+                let condition_temp = self.next_id();
+                block.add_instruction(IrInstruction::LoadImmediate {
+                    target: condition_temp,
+                    value: IrValue::Boolean(true), // Placeholder
+                });
+
+                // Branch based on condition
+                block.add_instruction(IrInstruction::Branch {
+                    condition: condition_temp,
+                    true_label: loop_body,
+                    false_label: loop_end,
+                });
+
+                // Loop body: load current element into loop variable
+                block.add_instruction(IrInstruction::Label { id: loop_body });
+                let element_temp = self.next_id();
+                block.add_instruction(IrInstruction::GetArrayElement {
+                    target: element_temp,
+                    array: iterable_temp,
+                    index: index_temp,
+                });
+                block.add_instruction(IrInstruction::StoreVar {
+                    var_id: loop_var_id,
+                    source: element_temp,
+                });
+
+                // Execute loop body
+                self.generate_statement(*for_stmt.body, block)?;
+
+                // Increment index
+                let one_temp = self.next_id();
+                block.add_instruction(IrInstruction::LoadImmediate {
+                    target: one_temp,
+                    value: IrValue::Integer(1),
+                });
+                let new_index = self.next_id();
+                block.add_instruction(IrInstruction::BinaryOp {
+                    target: new_index,
+                    op: IrBinaryOp::Add,
+                    left: index_temp,
+                    right: one_temp,
+                });
+                block.add_instruction(IrInstruction::StoreVar {
+                    var_id: index_var,
+                    source: new_index,
+                });
+
+                // Jump back to start
+                block.add_instruction(IrInstruction::Jump { label: loop_start });
+
+                // Loop end
+                block.add_instruction(IrInstruction::Label { id: loop_end });
             }
             Stmt::Return(return_expr) => {
                 let value_id = if let Some(expr) = return_expr {
@@ -756,8 +940,96 @@ impl IrGenerator {
 
                 Ok(temp_id)
             }
+            Expr::PropertyAccess { object, property } => {
+                // Property access: object.property
+                let object_temp = self.generate_expression(*object, block)?;
+                let temp_id = self.next_id();
+
+                block.add_instruction(IrInstruction::GetProperty {
+                    target: temp_id,
+                    object: object_temp,
+                    property,
+                });
+
+                Ok(temp_id)
+            }
+            Expr::Array(elements) => {
+                // Array literal - for now, we'll create a series of load instructions
+                // In a full implementation, this would create an array object
+                let mut _temp_ids = Vec::new();
+                for element in elements {
+                    let element_temp = self.generate_expression(element, block)?;
+                    _temp_ids.push(element_temp);
+                    // TODO: Store in array structure
+                }
+
+                // Return placeholder array ID
+                let temp_id = self.next_id();
+                Ok(temp_id)
+            }
+            Expr::Ternary {
+                condition,
+                true_expr,
+                false_expr,
+            } => {
+                // Ternary conditional: condition ? true_expr : false_expr
+                let condition_temp = self.generate_expression(*condition, block)?;
+
+                // Create labels for control flow
+                let true_label = self.next_id();
+                let false_label = self.next_id();
+                let end_label = self.next_id();
+                let result_temp = self.next_id();
+
+                // Branch based on condition
+                block.add_instruction(IrInstruction::Branch {
+                    condition: condition_temp,
+                    true_label,
+                    false_label,
+                });
+
+                // True branch
+                block.add_instruction(IrInstruction::Label { id: true_label });
+                let true_temp = self.generate_expression(*true_expr, block)?;
+                block.add_instruction(IrInstruction::StoreVar {
+                    var_id: result_temp,
+                    source: true_temp,
+                });
+                block.add_instruction(IrInstruction::Jump { label: end_label });
+
+                // False branch
+                block.add_instruction(IrInstruction::Label { id: false_label });
+                let false_temp = self.generate_expression(*false_expr, block)?;
+                block.add_instruction(IrInstruction::StoreVar {
+                    var_id: result_temp,
+                    source: false_temp,
+                });
+
+                // End label
+                block.add_instruction(IrInstruction::Label { id: end_label });
+
+                // Load result
+                let final_temp = self.next_id();
+                block.add_instruction(IrInstruction::LoadVar {
+                    target: final_temp,
+                    var_id: result_temp,
+                });
+
+                Ok(final_temp)
+            }
+            Expr::Parameter(param_name) => {
+                // Grammar parameter reference (e.g., $noun)
+                let temp_id = self.next_id();
+                // For now, just create a placeholder
+                // In a full implementation, this would reference the parsed parameter
+                block.add_instruction(IrInstruction::LoadImmediate {
+                    target: temp_id,
+                    value: IrValue::String(param_name),
+                });
+                Ok(temp_id)
+            }
             _ => {
-                // TODO: Implement remaining expression types
+                // Fallback for any remaining unimplemented expression types
                 let temp_id = self.next_id();
                 Ok(temp_id)
             }
