@@ -123,3 +123,7 @@ path = "src/bin/debug_12a04.rs"
 [[bin]]
 name = "categorize-missing"
 path = "src/bin/categorize_missing.rs"
+
+[[bin]]
+name = "grue-compiler"
+path = "src/bin/grue_compiler.rs"

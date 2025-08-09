@@ -18,6 +18,7 @@ pub mod display_trait;
 pub mod display_v3;
 pub mod game;
 pub mod gamememorymap;
+pub mod grue_compiler;
 pub mod header;
 pub mod input_v3;
 pub mod input_v4;

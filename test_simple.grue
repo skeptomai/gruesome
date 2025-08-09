@@ -1,0 +1,4 @@
+// Simple test program
+init {
+    print("Hello, World!");
+}

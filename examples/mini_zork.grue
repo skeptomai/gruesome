@@ -1,0 +1,418 @@
+// Mini Zork - Sample Grue Game for Compiler Testing
+// This game implements the classic opening of Zork I
+// to validate our Z-Machine compiler implementation
+
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house, with a boarded front door."
+        
+        object mailbox {
+            names: ["small mailbox", "mailbox", "box"]
+            desc: "The small mailbox is " + (mailbox.open ? "open" : "closed") + "."
+            openable: true
+            container: true
+            
+            contains {
+                object leaflet {
+                    names: ["leaflet", "paper"]
+                    desc: "\"WELCOME TO ZORK!\n\nZORK is a game of adventure, danger, and low cunning. In it you will explore some of the most amazing territory ever seen by mortals. No computer should be without one!\""
+                }
+            }
+        }
+        
+        exits: {
+            north: north_of_house,
+            south: south_of_house,
+            east: blocked("The door is boarded and you can't remove the boards.")
+        }
+        
+        on_enter: {
+            if !west_of_house.visited {
+                print("Welcome to Zork!");
+            }
+        }
+    }
+    
+    room north_of_house "North of House" {
+        desc: "You are facing the north side of a white house. There is no door here, and all the windows are boarded up. To the north a narrow path winds through the trees."
+        exits: { 
+            south: west_of_house,
+            north: forest_path
+        }
+    }
+    
+    room south_of_house "South of House" {
+        desc: "You are facing the south side of a white house. A path leads to the east."
+        exits: { 
+            north: west_of_house,
+            east: behind_house
+        }
+    }
+    
+    room behind_house "Behind House" {
+        desc: "You are behind the white house. A path leads into the forest to the east. In one corner of the house there is a small window which is slightly ajar."
+        
+        object window {
+            names: ["window", "small window"]
+            desc: "The window is " + (window.open ? "open" : "slightly ajar") + "."
+            openable: true
+        }
+        
+        exits: {
+            west: south_of_house,
+            east: forest,
+            south: clearing
+        }
+        
+        on_look: {
+            if window.open {
+                print("Through the open window you can see into what appears to be a kitchen.");
+            }
+        }
+    }
+    
+    room forest_path "Forest Path" {
+        desc: "This is a path winding through a dimly lit forest. The path heads north-south here. One particularly large tree with some low branches stands at the edge of the path."
+        exits: {
+            north: north_of_house,
+            south: forest,
+            up: tree
+        }
+    }
+    
+    room tree "Up a Tree" {
+        desc: "You are about 10 feet above the ground nestled among some large branches. The nearest branch above you is above your reach."
+        
+        object nest {
+            names: ["bird's nest", "nest"]
+            desc: "In the bird's nest is a large egg encrusted with precious jewels."
+            container: true
+            
+            contains {
+                object egg {
+                    names: ["jewel-encrusted egg", "egg", "large egg"]
+                    desc: "The egg is covered with fine gold inlay, and ornamented in lapis lazuli and mother-of-pearl. Unlike most eggs, this one is hinged and closed with a delicate looking clasp."
+                    openable: true
+                    container: true
+                    valuable: true
+                }
+            }
+        }
+        
+        exits: {
+            down: forest_path
+        }
+    }
+    
+    room forest "Forest" {
+        desc: "This is a forest, with trees in all directions. To the east, there appears to be sunlight."
+        exits: {
+            north: forest_path,
+            east: clearing,
+            west: behind_house
+        }
+    }
+    
+    room clearing "Forest Clearing" {
+        desc: "You are in a clearing, with a forest surrounding you on all sides. A path leads south."
+        exits: {
+            north: behind_house,
+            south: forest
+        }
+    }
+}
+
+grammar {
+    verb "look" {
+        default => look_around(),
+        "at" + noun => examine($2)
+    }
+    
+    verb "examine" {
+        noun => examine($noun)
+    }
+    
+    verb "open" {
+        noun => handle_open($noun)
+    }
+    
+    verb "close" {
+        noun => handle_close($noun)  
+    }
+    
+    verb "take" {
+        noun => handle_take($noun),
+        "all" => take_all()
+    }
+    
+    verb "drop" {
+        noun => handle_drop($noun)
+    }
+    
+    verb "inventory" {
+        default => show_inventory()
+    }
+    
+    verb "go" {
+        noun => handle_go($noun)
+    }
+    
+    verb "north" {
+        default => handle_go("north")
+    }
+    
+    verb "south" {
+        default => handle_go("south")
+    }
+    
+    verb "east" {
+        default => handle_go("east")
+    }
+    
+    verb "west" {
+        default => handle_go("west")
+    }
+    
+    verb "up" {
+        default => handle_go("up")
+    }
+    
+    verb "down" {
+        default => handle_go("down")
+    }
+    
+    verb "climb" {
+        noun => handle_climb($noun)
+    }
+    
+    verb "read" {
+        noun => handle_read($noun)
+    }
+}
+
+fn look_around() {
+    print(player.location.desc);
+    list_objects(player.location);
+    
+    // Call location-specific look handler if it exists
+    if player.location.on_look {
+        player.location.on_look();
+    }
+}
+
+fn examine(obj) {
+    if obj.location == player.location || obj.location == player {
+        print(obj.desc);
+    } else {
+        print("You can't see any such thing.");
+    }
+}
+
+fn handle_open(obj) {
+    if !player_can_see(obj) {
+        print("You can't see any such thing.");
+        return;
+    }
+    
+    if !obj.openable {
+        print("You can't open that.");
+        return;
+    }
+    
+    if obj.open {
+        print("It's already open.");
+    } else {
+        obj.open = true;
+        print("Opened.");
+        
+        if obj.container && !obj.empty() {
+            print("The " + obj.name + " contains:");
+            list_contents(obj);
+        }
+    }
+}
+
+fn handle_close(obj) {
+    if !player_can_see(obj) {
+        print("You can't see any such thing.");
+        return;
+    }
+    
+    if !obj.openable {
+        print("You can't close that.");
+        return;
+    }
+    
+    if !obj.open {
+        print("It's already closed.");
+    } else {
+        obj.open = false;
+        print("Closed.");
+    }
+}
+
+fn handle_take(obj) {
+    if obj.location == player {
+        print("You already have that.");
+        return;
+    }
+    
+    if !player_can_see(obj) {
+        print("You can't see any such thing.");
+        return;
+    }
+    
+    // Check if object is inside a closed container
+    if obj.location.container && !obj.location.open {
+        print("The " + obj.location.name + " is closed.");
+        return;
+    }
+    
+    move(obj, player);
+    print("Taken.");
+}
+
+fn handle_drop(obj) {
+    if obj.location != player {
+        print("You don't have that.");
+        return;
+    }
+    
+    move(obj, player.location);
+    print("Dropped.");
+}
+
+fn show_inventory() {
+    let items = player.contents();
+    if items.empty() {
+        print("You are empty-handed.");
+    } else {
+        print("You are carrying:");
+        for item in items {
+            print("  " + item.name);
+        }
+    }
+}
+
+fn handle_go(direction) {
+    let exit = player.location.exits[direction];
+    
+    if exit.none() {
+        print("You can't go that way.");
+        return;
+    }
+    
+    if exit.blocked {
+        print(exit.message);
+        return;
+    }
+    
+    // Call location on_exit handler if it exists
+    if player.location.on_exit {
+        player.location.on_exit();
+    }
+    
+    move(player, exit.destination);
+    player.location.visited = true;
+    
+    // Call location on_enter handler if it exists  
+    if player.location.on_enter {
+        player.location.on_enter();
+    }
+    
+    look_around();
+}
+
+fn handle_climb(obj) {
+    if obj == tree && player.location == forest_path {
+        handle_go("up");
+    } else {
+        print("You can't climb that.");
+    }
+}
+
+fn handle_read(obj) {
+    if !player_can_see(obj) {
+        print("You can't see any such thing.");
+        return;
+    }
+    
+    if obj == leaflet {
+        print(leaflet.desc);
+    } else {
+        print("There's nothing to read on that.");
+    }
+}
+
+fn player_can_see(obj) -> bool {
+    // Player can see objects in current location or in inventory
+    if obj.location == player.location || obj.location == player {
+        return true;
+    }
+    
+    // Can see objects in open containers in current location
+    if obj.location.container && 
+       obj.location.open && 
+       obj.location.location == player.location {
+        return true;
+    }
+    
+    return false;
+}
+
+fn list_objects(location) {
+    let objects = location.contents();
+    let visible_objects = [];
+    
+    for obj in objects {
+        if obj != player {  // Don't list the player object
+            visible_objects.add(obj);
+        }
+    }
+    
+    if !visible_objects.empty() {
+        for obj in visible_objects {
+            print("There is " + obj.name + " here.");
+        }
+    }
+}
+
+fn list_contents(container) {
+    let contents = container.contents();
+    for item in contents {
+        print("  " + item.name);
+    }
+}
+
+fn take_all() {
+    let objects = player.location.contents();
+    let taken = 0;
+    
+    for obj in objects {
+        if obj != player && obj.takeable != false {
+            move(obj, player);
+            print(obj.name + ": Taken.");
+            taken = taken + 1;
+        }
+    }
+    
+    if taken == 0 {
+        print("There's nothing here to take.");
+    }
+}
+
+init {
+    // Set up initial game state
+    player.location = west_of_house;
+    west_of_house.visited = true;
+    
+    // Print game banner
+    print("ZORK I: The Great Underground Empire");
+    print("Copyright (c) 2025 Grue Games. All rights reserved.");
+    print("ZORK is a registered trademark of Infocom, Inc.");
+    print("Revision 1 / Serial number 250109");
+    print("");
+    
+    // Show initial location
+    look_around();
+}
