@@ -365,11 +365,16 @@ impl IrGenerator {
     }
 
     pub fn generate(&mut self, ast: Program) -> Result<IrProgram, CompilerError> {
+        log::debug!(
+            "IR GENERATOR: Starting IR generation for {} items",
+            ast.items.len()
+        );
         let mut ir_program = IrProgram::new();
 
         // Generate IR for each top-level item
-        for item in ast.items {
-            self.generate_item(item, &mut ir_program)?;
+        for (i, item) in ast.items.iter().enumerate() {
+            log::debug!("IR GENERATOR: Processing item {}: {:?}", i, item);
+            self.generate_item(item.clone(), &mut ir_program)?;
         }
 
         Ok(ir_program)
@@ -606,8 +611,17 @@ impl IrGenerator {
         let block_id = self.next_id();
         let mut ir_block = IrBlock::new(block_id);
 
-        for stmt in block.statements {
-            self.generate_statement(stmt, &mut ir_block)?;
+        log::debug!(
+            "IR generate_block: Processing {} statements",
+            block.statements.len()
+        );
+        for (i, stmt) in block.statements.iter().enumerate() {
+            log::debug!(
+                "IR generate_block: Processing statement {} of type {:?}",
+                i,
+                stmt
+            );
+            self.generate_statement(stmt.clone(), &mut ir_block)?;
         }
 
         Ok(ir_block)
@@ -619,6 +633,8 @@ impl IrGenerator {
         block: &mut IrBlock,
     ) -> Result<(), CompilerError> {
         use crate::grue_compiler::ast::Stmt;
+
+        log::debug!("IR generate_statement: Processing statement {:?}", stmt);
 
         match stmt {
             Stmt::Expression(expr) => {
@@ -697,9 +713,11 @@ impl IrGenerator {
                 let else_label = self.next_id();
                 let end_label = self.next_id();
 
-                println!(
-                    "DEBUG: IR if statement: then={}, else={}, end={}",
-                    then_label, else_label, end_label
+                log::debug!(
+                    "IR if statement: then={}, else={}, end={}",
+                    then_label,
+                    else_label,
+                    end_label
                 );
 
                 // Branch based on condition
@@ -710,17 +728,21 @@ impl IrGenerator {
                 });
 
                 // Then branch
+                log::debug!("IR if: Adding then label {}", then_label);
                 block.add_instruction(IrInstruction::Label { id: then_label });
                 self.generate_statement(*if_stmt.then_branch, block)?;
+                log::debug!("IR if: Adding jump to end label {}", end_label);
                 block.add_instruction(IrInstruction::Jump { label: end_label });
 
                 // Else branch (if present)
+                log::debug!("IR if: Adding else label {}", else_label);
                 block.add_instruction(IrInstruction::Label { id: else_label });
                 if let Some(else_branch) = if_stmt.else_branch {
                     self.generate_statement(*else_branch, block)?;
                 }
 
                 // End label
+                log::debug!("IR if: Adding end label {}", end_label);
                 block.add_instruction(IrInstruction::Label { id: end_label });
             }
             Stmt::While(while_stmt) => {

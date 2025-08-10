@@ -1932,3 +1932,101 @@ object_id          // Object to check (large constant)
 - Fix property access + method calls in semantic analysis
 - Enhance object/room IR to Z-Machine conversion  
 - Implement remaining instruction set coverage
+
+---
+
+## 🚀 Next Development Opportunities (v0.8.0 Planning)
+
+### **1. Property Access + Method Calls (Critical Issue)** 🔴
+**Status:** **BLOCKING** - Prevents `mini_zork.grue` compilation  
+**Issue:** Semantic analyzer incorrectly treats `player.location.on_look()` as standalone function lookup  
+**Impact:** Can't compile real Grue programs with object method calls  
+**Effort:** Medium (semantic analysis fix)
+
+**Problem Example:**
+```grue
+// This fails compilation:
+player.location.on_look();
+```
+
+**Root Cause:** Semantic analyzer treats `on_look` as a standalone function instead of a method call on `player.location`.
+
+**Solution Required:** Fix semantic analysis to properly handle property access chains followed by method calls.
+
+### **2. Enhanced Object/Room System** 🟡
+**Status:** **High Priority** - Core gameplay features  
+**Missing:** Complete IR → Z-Machine object conversion, room relationships, property inheritance  
+**Impact:** Limited game world complexity  
+**Effort:** High (IR generation + code generation)
+
+**Areas to Implement:**
+- Object property system with inheritance
+- Room relationship management (exits, containment)
+- Dynamic object property modification
+- Object attribute manipulation (visible, takeable, etc.)
+
+### **3. Complete Instruction Set Coverage** 🟡
+**Status:** **High Priority** - Compiler completeness  
+**Missing:** Full coverage of remaining IR instructions in code generation  
+**Current:** Basic instructions working (LoadImmediate, BinaryOp, Call, Return, Branch, Jump)  
+**Needed:** GetProperty, SetProperty, GetArrayElement, SetArrayElement, UnaryOp  
+**Effort:** Medium (code generation)
+
+**Missing Instructions:**
+- Property access instructions (get_prop, put_prop)
+- Array manipulation instructions
+- Unary operations (not, neg, etc.)
+- Advanced control flow (switch/case equivalents)
+
+### **4. Advanced Language Features** 🟢
+**Status:** **Enhancement** - Language expressiveness  
+**Missing:** Arrays, more builtin functions, advanced control flow  
+**Examples:** Extended builtin library, array operations, advanced string manipulation  
+**Effort:** Medium-High (all phases)
+
+**Language Extensions:**
+- Array literals and operations
+- String interpolation
+- Advanced control flow (switch, pattern matching)
+- Conditional compilation directives
+- Import/include system
+
+### **5. Error Reporting & Diagnostics** 🟢
+**Status:** **Quality of Life** - Developer experience  
+**Missing:** Better error messages, source location tracking, helpful suggestions  
+**Impact:** Easier debugging for Grue developers  
+**Effort:** Medium (error handling improvements)
+
+**Improvements Needed:**
+- Source line/column tracking through all compiler phases
+- Better error messages with context and suggestions
+- Warning system for potential issues
+- Color-coded diagnostic output
+
+### **6. Optimization & Performance** 🟢
+**Status:** **Polish** - Efficiency improvements  
+**Areas:** Code size optimization, faster compilation, better Z-Machine bytecode  
+**Effort:** Low-Medium (incremental improvements)
+
+**Optimization Areas:**
+- Dead code elimination
+- String deduplication and compression
+- Instruction peephole optimization
+- Memory layout optimization
+- Compilation speed improvements
+
+### **Priority Recommendations:**
+
+**Immediate (v0.8.0):**
+1. **Fix Property Access + Method Calls** - Critical blocker
+2. **Complete Instruction Set** - Core functionality gaps
+
+**Next Release (v0.9.0):**
+3. **Enhanced Object/Room System** - Game complexity
+4. **Error Reporting** - Developer experience
+
+**Future Releases:**
+5. **Advanced Language Features** - Language expressiveness
+6. **Optimization** - Performance and polish
+
+This roadmap provides a clear path to a fully-featured Grue compiler while prioritizing the most impactful improvements first.

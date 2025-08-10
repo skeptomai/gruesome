@@ -1,0 +1,11 @@
+// Test explicit returns
+fn test_func() {
+    print("in function");
+    return;
+}
+
+init {
+    print("before");
+    test_func();
+    print("after");
+}

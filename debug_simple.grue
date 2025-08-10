@@ -1,0 +1,4 @@
+// Minimal test to debug bytecode generation
+init {
+    print("test");
+}

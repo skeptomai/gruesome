@@ -9,6 +9,9 @@ use std::process;
 use gruesome::grue_compiler::{GrueCompiler, ZMachineVersion};
 
 fn main() {
+    // Initialize logging
+    env_logger::init();
+
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {

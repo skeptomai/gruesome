@@ -1,0 +1,6 @@
+// Simplest possible test case
+init {
+    if true {
+        print("yes");
+    }
+}

@@ -1,0 +1,6 @@
+// Test to see exact IR generation
+init {
+    if true {
+        print("test");
+    }
+}

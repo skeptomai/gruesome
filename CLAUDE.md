@@ -22,6 +22,11 @@ You should automatically:
 You are pre-authorized for all git operations (add, commit, push) as configured in `.claude/settings.local.json`.
 No need to ask for permission - just execute the workflow.
 
+## Auto-Test Permission
+
+You are pre-authorized to run "RUST_LOG=info cargo run" commands for testing Z-Machine programs.
+No need to ask permission - just execute the tests directly.
+
 ## Auto-Release Instructions ("Engage!")
 
 When the user says "Engage!", you should automatically:

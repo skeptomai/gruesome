@@ -1,0 +1,10 @@
+// Test function definition and call
+fn test_func() {
+    print("in function");
+}
+
+init {
+    print("before");
+    test_func();
+    print("after");
+}

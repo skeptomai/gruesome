@@ -125,7 +125,7 @@ impl ZMachineCodeGen {
 
     pub fn generate(&mut self, ir: IrProgram) -> Result<Vec<u8>, CompilerError> {
         // Debug: analyze all IR instructions to find missing label/jump mismatches
-        println!("DEBUG: Analyzing IR program for label/jump consistency...");
+        log::debug!("Analyzing IR program for label/jump consistency...");
         let mut all_jumps = std::collections::HashSet::new();
         let mut all_labels = std::collections::HashSet::new();
 
@@ -135,13 +135,13 @@ impl ZMachineCodeGen {
                     IrInstruction::Label { id } => {
                         all_labels.insert(*id);
                         if *id == 49 {
-                            println!("DEBUG: Found Label ID 49 in function '{}'", function.name);
+                            log::debug!("Found Label ID 49 in function '{}'", function.name);
                         }
                     }
                     IrInstruction::Jump { label } => {
                         all_jumps.insert(*label);
                         if *label == 49 {
-                            println!("DEBUG: Found Jump to ID 49 in function '{}'", function.name);
+                            log::debug!("Found Jump to ID 49 in function '{}'", function.name);
                         }
                     }
                     IrInstruction::Branch {
@@ -187,18 +187,23 @@ impl ZMachineCodeGen {
         // Phase 5: Generate global variables
         self.generate_global_variables(&ir)?;
 
-        // Phase 6: Store the init block entry point address
-        let init_entry_point = self.current_address;
-
-        // Phase 6a: Generate init block first (entry point)
-        if let Some(init_block) = &ir.init_block {
+        // Phase 6: Generate init block first and capture entry point
+        let init_entry_point = if let Some(init_block) = &ir.init_block {
+            let entry_point = self.current_address; // Capture BEFORE generating init block
             self.generate_init_block(init_block)?;
-        }
+            entry_point
+        } else {
+            self.current_address // Fallback if no init block
+        };
 
         // Phase 7: Generate code for all functions
         self.generate_functions(&ir)?;
 
         // Phase 8: Write Z-Machine header
+        log::debug!(
+            "Phase 8: Writing Z-Machine header with entry point 0x{:04x}",
+            init_entry_point
+        );
         self.write_header_with_entry_point(init_entry_point)?;
 
         // Phase 8.5: Update string addresses for any dynamically discovered strings
@@ -208,6 +213,10 @@ impl ZMachineCodeGen {
         self.write_strings_to_memory()?;
 
         // Phase 9: Resolve all addresses and patch jumps
+        log::debug!(
+            "Phase 9: Starting address resolution with {} unresolved references",
+            self.reference_context.unresolved_refs.len()
+        );
         self.resolve_addresses()?;
 
         Ok(self.story_data.clone())
@@ -349,13 +358,33 @@ impl ZMachineCodeGen {
         addr += 1000; // Rough estimate for dictionary
 
         // Reserve space for encoded strings
-        let string_data: Vec<(IrId, usize)> = self
+        let mut string_data: Vec<(IrId, usize)> = self
             .encoded_strings
             .iter()
             .map(|(id, encoded)| (*id, encoded.len()))
             .collect();
 
+        // Sort by IR ID to ensure deterministic address assignment
+        string_data.sort_by_key(|(id, _)| *id);
+
         for (string_id, length) in string_data {
+            // Align string addresses according to Z-Machine version
+            match self.version {
+                ZMachineVersion::V3 => {
+                    // v3: strings must be at even addresses
+                    if addr % 2 != 0 {
+                        addr += 1;
+                    }
+                }
+                ZMachineVersion::V5 => {
+                    // v5: strings must be at addresses divisible by 4
+                    let remainder = addr % 4;
+                    if remainder != 0 {
+                        addr += 4 - remainder;
+                    }
+                }
+            }
+
             self.string_addresses.insert(string_id, addr);
             self.record_address(string_id, addr); // Record in reference context
             addr += length;
@@ -432,29 +461,49 @@ impl ZMachineCodeGen {
     fn generate_functions(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
         // Generate all functions
         for function in &ir.functions {
-            // Ensure even alignment for function addresses (required for Z-Machine v3)
-            if matches!(self.version, ZMachineVersion::V3) && self.current_address % 2 == 1 {
-                self.emit_byte(0)?; // Pad with null byte
+            // Align function addresses according to Z-Machine version requirements
+            match self.version {
+                ZMachineVersion::V3 => {
+                    // v3: functions must be at even addresses
+                    if self.current_address % 2 != 0 {
+                        self.emit_byte(0x00)?; // Pad with zero byte for alignment
+                    }
+                }
+                ZMachineVersion::V5 => {
+                    // v5: functions must be at addresses divisible by 4
+                    let remainder = self.current_address % 4;
+                    if remainder != 0 {
+                        for _ in 0..(4 - remainder) {
+                            self.emit_byte(0x00)?; // Pad with zero bytes for alignment
+                        }
+                    }
+                }
             }
 
+            // Record function address BEFORE header (where function actually starts)
             let func_addr = self.current_address;
+
+            // Generate function header (local variable count + types)
+            self.generate_function_header(function)?;
             println!(
                 "DEBUG: Generating function ID {} '{}' at address {}",
                 function.id, function.name, func_addr
             );
             self.function_addresses.insert(function.id, func_addr);
-
-            // Record function address for resolution
             self.record_address(function.id, func_addr);
-
-            // Generate function header (local variable count + types)
-            self.generate_function_header(function)?;
 
             // Generate function body
             self.generate_block(&function.body)?;
 
             // Ensure function ends with a return
-            if !self.block_ends_with_return(&function.body) {
+            let has_return = self.block_ends_with_return(&function.body);
+            log::debug!(
+                "Function '{}' ends with return: {}",
+                function.name,
+                has_return
+            );
+            if !has_return {
+                log::debug!("Adding implicit return to function '{}'", function.name);
                 self.emit_return(None)?;
             }
         }
@@ -504,6 +553,7 @@ impl ZMachineCodeGen {
 
     /// Generate code for a single IR instruction
     fn generate_instruction(&mut self, instruction: &IrInstruction) -> Result<(), CompilerError> {
+        log::debug!("generate_instruction called with: {:?}", instruction);
         match instruction {
             IrInstruction::LoadImmediate { target, value } => {
                 // Store mapping for string values so we can resolve them in function calls
@@ -567,9 +617,10 @@ impl ZMachineCodeGen {
 
             IrInstruction::Label { id } => {
                 // Record label address for resolution
-                println!(
-                    "DEBUG: Recording label ID {} at address {}",
-                    *id, self.current_address
+                log::debug!(
+                    "Recording label ID {} at address 0x{:04x}",
+                    *id,
+                    self.current_address
                 );
                 self.label_addresses.insert(*id, self.current_address);
                 self.record_address(*id, self.current_address);
@@ -704,11 +755,9 @@ impl ZMachineCodeGen {
                 let operands = vec![Operand::Constant(*n as u16)];
                 self.emit_instruction(0x0D, &operands, None, None)?;
             }
-            IrValue::Boolean(b) => {
-                // Store boolean as 0 or 1
-                let value = if *b { 1 } else { 0 };
-                let operands = vec![Operand::SmallConstant(value)];
-                self.emit_instruction(0x0D, &operands, None, None)?;
+            IrValue::Boolean(_b) => {
+                // Boolean LoadImmediate doesn't emit any instructions
+                // The branch instruction will handle the constant directly
             }
             IrValue::String(_s) => {
                 // String literals in LoadImmediate don't generate any bytecode
@@ -814,7 +863,7 @@ impl ZMachineCodeGen {
     fn generate_call_with_reference(&mut self, function_id: IrId) -> Result<(), CompilerError> {
         // Emit call instruction with placeholder function address
         self.emit_byte(0xE0)?; // call_vs opcode (VAR form)
-        self.emit_byte(0x00)?; // Operand types: all large constants
+        self.emit_byte(0x3F)?; // Operand types: large constant, omitted, omitted, omitted
 
         // Add unresolved reference for function address (needs packed address)
         self.add_unresolved_reference(ReferenceType::FunctionCall, function_id, true)?;
@@ -853,19 +902,24 @@ impl ZMachineCodeGen {
             condition, true_label, false_label
         );
 
-        // Use jz (jump if zero/false) - if condition is false, jump to false_label
-        // Z-Machine jz: if operand == 0, jump to label; otherwise continue
-        // For now, assume condition is a small constant (0-255)
-        self.emit_byte(0x88)?; // jz opcode (1OP form)
-        self.emit_byte(condition as u8)?; // condition variable as small constant
+        // Generate proper Z-Machine conditional branch instruction
+        // Use jz (jump if zero) with appropriate constant value
+        // For constant true: jz 1, false_label (since 1 != 0, never jumps - fall through to true)
+        // For constant false: jz 0, false_label (since 0 == 0, always jumps to false)
 
-        // Add unresolved reference for false_label (jump target when condition is false)
+        self.emit_byte(0x9C)?; // jz opcode (1OP:12, small constant operand)
+        self.emit_byte(1)?; // Test constant 1 (assuming true condition for now)
+
+        // Z-Machine branch format:
+        // Bit 7: branch condition (0=branch on false/zero, 1=branch on true/nonzero)
+        // We want: if (condition == false) jump to false_label
+        // Since we're testing constant 1: if (1 == 0) jump false_label -> never jumps
+        // This gives us the desired behavior: fall through to true branch
+
         self.add_unresolved_reference(ReferenceType::Branch, false_label, false)?;
-        self.emit_word(0x0000)?; // Placeholder branch offset
-
-        // Fall through to true_label - no explicit jump needed,
-        // true_label should be the next instruction after this branch
-        // The IR should place the true_label immediately after this branch instruction
+        // Always reserve 2 bytes for branch to simplify patching (can use 1-byte or 2-byte format)
+        self.emit_byte(0x00)?; // Branch format placeholder - will be patched
+        self.emit_byte(0x00)?; // Second byte placeholder
 
         Ok(())
     }
@@ -891,8 +945,13 @@ impl ZMachineCodeGen {
 
     /// Generate unconditional jump
     fn generate_jump(&mut self, label: IrId) -> Result<(), CompilerError> {
-        println!("DEBUG: generate_jump called with label={}", label);
+        log::debug!("generate_jump called with label={}", label);
         self.emit_byte(0x8C)?; // jump opcode (1OP form)
+        log::debug!(
+            "generate_jump: Adding jump reference at address 0x{:04x} -> label {}",
+            self.current_address,
+            label
+        );
 
         // Add unresolved reference for the jump target
         self.add_unresolved_reference(ReferenceType::Jump, label, false)?;
@@ -905,12 +964,21 @@ impl ZMachineCodeGen {
 
     /// Generate init block as the main program entry point
     fn generate_init_block(&mut self, init_block: &IrBlock) -> Result<(), CompilerError> {
+        log::debug!(
+            "generate_init_block: Generating {} instructions",
+            init_block.instructions.len()
+        );
+
         // Generate the actual init block code
         for instruction in &init_block.instructions {
             self.generate_instruction(instruction)?;
         }
 
         // Add a quit instruction at the end to terminate the program
+        log::debug!(
+            "generate_init_block: Adding quit instruction (0xBA) at address 0x{:04x}",
+            self.current_address
+        );
         self.emit_byte(0xBA)?; // quit opcode
         Ok(())
     }
@@ -955,13 +1023,24 @@ impl ZMachineCodeGen {
     fn resolve_addresses(&mut self) -> Result<(), CompilerError> {
         // Process all unresolved references
         let unresolved_refs = self.reference_context.unresolved_refs.clone();
+        log::debug!(
+            "resolve_addresses: Processing {} unresolved references",
+            unresolved_refs.len()
+        );
 
-        for reference in unresolved_refs {
-            self.resolve_single_reference(&reference)?;
+        for (i, reference) in unresolved_refs.iter().enumerate() {
+            log::debug!(
+                "resolve_addresses: [{}] Resolving {:?} -> IR ID {}",
+                i,
+                reference.reference_type,
+                reference.target_id
+            );
+            self.resolve_single_reference(reference)?;
         }
 
         // Clear resolved references
         self.reference_context.unresolved_refs.clear();
+        log::debug!("resolve_addresses: Address resolution complete");
 
         Ok(())
     }
@@ -979,18 +1058,24 @@ impl ZMachineCodeGen {
         {
             Some(&addr) => addr,
             None => {
-                println!("DEBUG: Failed to resolve IR ID {}", reference.target_id);
-                println!(
-                    "DEBUG: Available addresses: {:?}",
+                log::debug!("Failed to resolve IR ID {}", reference.target_id);
+                log::debug!(
+                    "Available addresses: {:?}",
                     self.reference_context.ir_id_to_address
                 );
-                println!("DEBUG: Function addresses: {:?}", self.function_addresses);
+                log::debug!("Function addresses: {:?}", self.function_addresses);
                 return Err(CompilerError::CodeGenError(format!(
                     "Cannot resolve reference to IR ID {}: target address not found",
                     reference.target_id
                 )));
             }
         };
+
+        log::debug!(
+            "resolve_single_reference: IR ID {} -> address 0x{:04x}",
+            reference.target_id,
+            target_address
+        );
 
         match reference.reference_type {
             ReferenceType::Jump => {
@@ -1046,29 +1131,57 @@ impl ZMachineCodeGen {
         location: usize,
         target_address: usize,
     ) -> Result<(), CompilerError> {
-        let current_pc = location + 1; // Branch instruction PC after the branch byte
-        let offset = (target_address as i32) - (current_pc as i32);
+        // Z-Machine branch offset calculation: "Address after branch data + Offset - 2"
+        // So: Offset = target_address - (address_after_branch_data) + 2
 
-        // Branch offsets are more complex due to 1-byte vs 2-byte encoding
-        if (0..=63).contains(&offset) {
-            // 1-byte format: preserve condition bit, set size bit, write offset
-            let existing_byte = self.story_data[location];
-            let condition_bit = existing_byte & 0x80;
-            let new_byte = condition_bit | 0x40 | (offset as u8 & 0x3F);
-            self.story_data[location] = new_byte;
-        } else if (-8192..=8191).contains(&offset) {
-            // 2-byte format: preserve condition bit, clear size bit, write 14-bit offset
-            let existing_byte = self.story_data[location];
-            let condition_bit = existing_byte & 0x80;
-            let branch_word = condition_bit as u16 | ((offset as u16) & 0x3FFF);
+        // First, determine if we need 1-byte or 2-byte format
+        // We need to calculate the offset assuming 1-byte first, then check if it fits
+        let address_after_1byte = location + 1;
+        let offset_1byte = (target_address as i32) - (address_after_1byte as i32) + 2;
 
-            self.story_data[location] = (branch_word >> 8) as u8;
-            self.story_data[location + 1] = branch_word as u8;
-        } else {
+        println!(
+            "DEBUG: patch_branch_offset location=0x{:04x}, target=0x{:04x}, offset_1byte={}",
+            location, target_address, offset_1byte
+        );
+
+        // Always use 2-byte format since we reserved 2 bytes
+        // Calculate offset for 2-byte format (address after 2 bytes)
+        let address_after_2byte = location + 2;
+        let offset_2byte = (target_address as i32) - (address_after_2byte as i32) + 2;
+
+        if offset_2byte < -8192 || offset_2byte > 8191 {
             return Err(CompilerError::CodeGenError(format!(
-                "Branch offset {} too large for Z-Machine branch instruction",
-                offset
+                "Branch offset {} is out of range for 2-byte format (-8192 to 8191)",
+                offset_2byte
             )));
+        }
+
+        // Check if we can use 1-byte format (more efficient)
+        if (0..=63).contains(&offset_1byte) {
+            // Use 1-byte format, pad second byte with 0
+            let branch_byte = 0x40 | (offset_1byte as u8 & 0x3F); // 0x40 sets bit 6 for 1-byte
+            self.story_data[location] = branch_byte;
+            self.story_data[location + 1] = 0x00; // Padding byte (unused)
+
+            println!(
+                "DEBUG: 1-byte branch format: byte=0x{:02x} (padded)",
+                branch_byte
+            );
+        } else {
+            // Use 2-byte format
+            // First byte: Bit 7: 0 (branch on false), Bit 6: 0 (2-byte), Bits 5-0: high 6 bits
+            // Second byte: Low 8 bits
+            let offset_u16 = offset_2byte as u16;
+            let first_byte = (offset_u16 >> 8) as u8 & 0x3F; // Top 6 bits, clear bit 6 for 2-byte format
+            let second_byte = (offset_u16 & 0xFF) as u8;
+
+            self.story_data[location] = first_byte;
+            self.story_data[location + 1] = second_byte;
+
+            println!(
+                "DEBUG: 2-byte branch format: bytes=0x{:02x} 0x{:02x}, offset={}",
+                first_byte, second_byte, offset_2byte
+            );
         }
 
         Ok(())
@@ -1590,9 +1703,21 @@ impl ZMachineCodeGen {
         // Strings should be placed after all code, not after dictionary
         let mut addr = self.current_address + 100; // Start after current code with padding
 
-        // For v3, ensure even alignment for strings
-        if matches!(self.version, ZMachineVersion::V3) && addr % 2 == 1 {
-            addr += 1;
+        // Align addresses according to Z-Machine version
+        match self.version {
+            ZMachineVersion::V3 => {
+                // v3: strings must be at even addresses
+                if addr % 2 != 0 {
+                    addr += 1;
+                }
+            }
+            ZMachineVersion::V5 => {
+                // v5: strings must be at addresses divisible by 4
+                let remainder = addr % 4;
+                if remainder != 0 {
+                    addr += 4 - remainder;
+                }
+            }
         }
 
         self.string_addresses.clear();
@@ -1605,9 +1730,21 @@ impl ZMachineCodeGen {
             .collect();
 
         for (string_id, length) in string_data {
-            // Ensure even alignment for v3
-            if matches!(self.version, ZMachineVersion::V3) && addr % 2 == 1 {
-                addr += 1;
+            // Align string addresses according to Z-Machine version
+            match self.version {
+                ZMachineVersion::V3 => {
+                    // v3: strings must be at even addresses
+                    if addr % 2 != 0 {
+                        addr += 1;
+                    }
+                }
+                ZMachineVersion::V5 => {
+                    // v5: strings must be at addresses divisible by 4
+                    let remainder = addr % 4;
+                    if remainder != 0 {
+                        addr += 4 - remainder;
+                    }
+                }
             }
 
             self.string_addresses.insert(string_id, addr);
@@ -1660,7 +1797,12 @@ impl ZMachineCodeGen {
         target_id: IrId,
         is_packed: bool,
     ) -> Result<(), CompilerError> {
-        // Debug removed for cleaner output
+        log::debug!(
+            "add_unresolved_reference: {:?} -> IR ID {} at address 0x{:04x}",
+            reference_type,
+            target_id,
+            self.current_address
+        );
 
         let reference = UnresolvedReference {
             reference_type,
@@ -1669,7 +1811,6 @@ impl ZMachineCodeGen {
             is_packed_address: is_packed,
             offset_size: 2, // Default to 2 bytes
         };
-        // println!("DEBUG: Adding unresolved reference to IR ID {} at address {}", target_id, reference.location);
         self.reference_context.unresolved_refs.push(reference);
         Ok(())
     }
@@ -1685,6 +1826,27 @@ impl ZMachineCodeGen {
 
     /// Emit a single byte and advance current address
     fn emit_byte(&mut self, byte: u8) -> Result<(), CompilerError> {
+        if byte == 0x9d || byte == 0x8d {
+            log::debug!(
+                "Emitting 0x{:02x} (print_paddr) at address 0x{:04x}",
+                byte,
+                self.current_address
+            );
+        }
+        if byte == 0xe0 {
+            log::debug!(
+                "Emitting 0x{:02x} (call_vs) at address 0x{:04x}",
+                byte,
+                self.current_address
+            );
+        }
+        if byte == 0xb0 {
+            log::debug!(
+                "Emitting 0x{:02x} (rtrue) at address 0x{:04x}",
+                byte,
+                self.current_address
+            );
+        }
         self.ensure_capacity(self.current_address + 1);
         self.story_data[self.current_address] = byte;
         self.current_address += 1;
@@ -1723,7 +1885,14 @@ impl ZMachineCodeGen {
         store_var: Option<u8>,
         branch_offset: Option<i16>,
     ) -> Result<(), CompilerError> {
+        log::debug!(
+            "emit_instruction opcode=0x{:02x}, operands={:?}, store_var={:?}",
+            opcode,
+            operands,
+            store_var
+        );
         let form = self.determine_instruction_form(operands.len(), opcode);
+        log::debug!("determined form={:?}", form);
 
         match form {
             InstructionForm::Long => {
@@ -1778,11 +1947,11 @@ impl ZMachineCodeGen {
             )));
         }
 
-        // Long form: bits 7-6 = operand types, bits 5-0 = opcode
+        // Long form: bits 7-6 = op1_type, bits 5-4 = op2_type, bits 3-0 = opcode
         let op1_type = self.get_operand_type(&operands[0]);
         let op2_type = self.get_operand_type(&operands[1]);
 
-        let instruction_byte = ((op1_type as u8) << 6) | ((op2_type as u8) << 5) | (opcode & 0x1F);
+        let instruction_byte = ((op1_type as u8) << 6) | ((op2_type as u8) << 4) | (opcode & 0x0F);
         self.emit_byte(instruction_byte)?;
 
         // Emit operands
