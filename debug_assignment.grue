@@ -1,6 +1,0 @@
-// Test with two print statements to see if multiple instructions cause the issue
-
-init {
-    print("First statement");
-    print("Second statement");
-}

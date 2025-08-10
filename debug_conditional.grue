@@ -1,8 +1,0 @@
-// Phase 1: Minimal conditional test case
-// Starting with simplest possible if statement
-
-init {
-    if true {
-        print("true branch");
-    }
-}

@@ -1,4 +1,0 @@
-// Simplest test case for init block termination
-init {
-    print("test");
-}

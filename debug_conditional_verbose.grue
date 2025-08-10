@@ -1,9 +1,0 @@
-// Test conditional with more output for debugging
-
-init {
-    print("Before conditional");
-    if true {
-        print("Inside true branch");
-    }
-    print("After conditional");
-}

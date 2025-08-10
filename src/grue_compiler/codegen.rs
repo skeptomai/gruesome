@@ -124,53 +124,6 @@ impl ZMachineCodeGen {
     }
 
     pub fn generate(&mut self, ir: IrProgram) -> Result<Vec<u8>, CompilerError> {
-        // Debug: analyze all IR instructions to find missing label/jump mismatches
-        log::debug!("Analyzing IR program for label/jump consistency...");
-        let mut all_jumps = std::collections::HashSet::new();
-        let mut all_labels = std::collections::HashSet::new();
-
-        for function in &ir.functions {
-            for instr in &function.body.instructions {
-                match instr {
-                    IrInstruction::Label { id } => {
-                        all_labels.insert(*id);
-                        if *id == 49 {
-                            log::debug!("Found Label ID 49 in function '{}'", function.name);
-                        }
-                    }
-                    IrInstruction::Jump { label } => {
-                        all_jumps.insert(*label);
-                        if *label == 49 {
-                            log::debug!("Found Jump to ID 49 in function '{}'", function.name);
-                        }
-                    }
-                    IrInstruction::Branch {
-                        condition: _,
-                        true_label,
-                        false_label,
-                    } => {
-                        all_jumps.insert(*true_label);
-                        all_jumps.insert(*false_label);
-                        if *true_label == 49 || *false_label == 49 {
-                            println!(
-                                "DEBUG: Found Branch to ID 49 in function '{}'",
-                                function.name
-                            );
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        let missing_labels: Vec<_> = all_jumps.difference(&all_labels).collect();
-        if !missing_labels.is_empty() {
-            println!(
-                "DEBUG: Missing labels for jump targets: {:?}",
-                missing_labels
-            );
-        }
-
         // Phase 1: Collect and encode all strings
         self.collect_strings(&ir)?;
         self.encode_all_strings()?;
@@ -485,10 +438,6 @@ impl ZMachineCodeGen {
 
             // Generate function header (local variable count + types)
             self.generate_function_header(function)?;
-            println!(
-                "DEBUG: Generating function ID {} '{}' at address {}",
-                function.id, function.name, func_addr
-            );
             self.function_addresses.insert(function.id, func_addr);
             self.record_address(function.id, func_addr);
 
@@ -553,7 +502,6 @@ impl ZMachineCodeGen {
 
     /// Generate code for a single IR instruction
     fn generate_instruction(&mut self, instruction: &IrInstruction) -> Result<(), CompilerError> {
-        log::debug!("generate_instruction called with: {:?}", instruction);
         match instruction {
             IrInstruction::LoadImmediate { target, value } => {
                 // Store mapping for string values so we can resolve them in function calls
@@ -893,15 +841,10 @@ impl ZMachineCodeGen {
     /// Generate proper conditional branch instruction
     fn generate_conditional_branch(
         &mut self,
-        condition: IrId,
-        true_label: IrId,
+        _condition: IrId,
+        _true_label: IrId,
         false_label: IrId,
     ) -> Result<(), CompilerError> {
-        println!(
-            "DEBUG: generate_conditional_branch condition={}, true={}, false={}",
-            condition, true_label, false_label
-        );
-
         // Generate proper Z-Machine conditional branch instruction
         // Use jz (jump if zero) with appropriate constant value
         // For constant true: jz 1, false_label (since 1 != 0, never jumps - fall through to true)
@@ -928,10 +871,6 @@ impl ZMachineCodeGen {
     fn generate_branch(&mut self, true_label: IrId) -> Result<(), CompilerError> {
         // For now, emit a simple unconditional branch using jump
         // TODO: Support proper conditional branching with condition operand
-        println!(
-            "DEBUG: generate_branch called with true_label={}",
-            true_label
-        );
         self.emit_byte(0x8C)?; // jump opcode (1OP form)
 
         // Add unresolved reference for the jump target
@@ -1139,17 +1078,12 @@ impl ZMachineCodeGen {
         let address_after_1byte = location + 1;
         let offset_1byte = (target_address as i32) - (address_after_1byte as i32) + 2;
 
-        println!(
-            "DEBUG: patch_branch_offset location=0x{:04x}, target=0x{:04x}, offset_1byte={}",
-            location, target_address, offset_1byte
-        );
-
         // Always use 2-byte format since we reserved 2 bytes
         // Calculate offset for 2-byte format (address after 2 bytes)
         let address_after_2byte = location + 2;
         let offset_2byte = (target_address as i32) - (address_after_2byte as i32) + 2;
 
-        if offset_2byte < -8192 || offset_2byte > 8191 {
+        if !(-8192..=8191).contains(&offset_2byte) {
             return Err(CompilerError::CodeGenError(format!(
                 "Branch offset {} is out of range for 2-byte format (-8192 to 8191)",
                 offset_2byte
@@ -1162,11 +1096,6 @@ impl ZMachineCodeGen {
             let branch_byte = 0x40 | (offset_1byte as u8 & 0x3F); // 0x40 sets bit 6 for 1-byte
             self.story_data[location] = branch_byte;
             self.story_data[location + 1] = 0x00; // Padding byte (unused)
-
-            println!(
-                "DEBUG: 1-byte branch format: byte=0x{:02x} (padded)",
-                branch_byte
-            );
         } else {
             // Use 2-byte format
             // First byte: Bit 7: 0 (branch on false), Bit 6: 0 (2-byte), Bits 5-0: high 6 bits
@@ -1177,11 +1106,6 @@ impl ZMachineCodeGen {
 
             self.story_data[location] = first_byte;
             self.story_data[location + 1] = second_byte;
-
-            println!(
-                "DEBUG: 2-byte branch format: bytes=0x{:02x} 0x{:02x}, offset={}",
-                first_byte, second_byte, offset_2byte
-            );
         }
 
         Ok(())

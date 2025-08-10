@@ -372,8 +372,7 @@ impl IrGenerator {
         let mut ir_program = IrProgram::new();
 
         // Generate IR for each top-level item
-        for (i, item) in ast.items.iter().enumerate() {
-            log::debug!("IR GENERATOR: Processing item {}: {:?}", i, item);
+        for item in ast.items.iter() {
             self.generate_item(item.clone(), &mut ir_program)?;
         }
 
@@ -425,18 +424,10 @@ impl IrGenerator {
     ) -> Result<IrFunction, CompilerError> {
         // Check if we already have a placeholder ID for this function
         let func_id = if let Some(&existing_id) = self.symbol_ids.get(&func.name) {
-            println!(
-                "DEBUG: Reusing existing function ID {} for '{}'",
-                existing_id, func.name
-            );
             existing_id
         } else {
             let new_id = self.next_id();
             self.symbol_ids.insert(func.name.clone(), new_id);
-            println!(
-                "DEBUG: Created new function ID {} for '{}'",
-                new_id, func.name
-            );
             new_id
         };
 
@@ -633,8 +624,6 @@ impl IrGenerator {
         block: &mut IrBlock,
     ) -> Result<(), CompilerError> {
         use crate::grue_compiler::ast::Stmt;
-
-        log::debug!("IR generate_statement: Processing statement {:?}", stmt);
 
         match stmt {
             Stmt::Expression(expr) => {
@@ -986,15 +975,6 @@ impl IrGenerator {
                     self.symbol_ids.insert(name.clone(), placeholder_id);
                     if self.is_builtin_function(&name) {
                         self.builtin_functions.insert(placeholder_id, name.clone());
-                        println!(
-                            "DEBUG: Registered builtin function ID {} -> '{}'",
-                            placeholder_id, name
-                        );
-                    } else {
-                        println!(
-                            "DEBUG: Created function placeholder ID {} -> '{}' (user-defined)",
-                            placeholder_id, name
-                        );
                     }
                     placeholder_id
                 };

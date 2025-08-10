@@ -1,4 +1,3 @@
-// Simple test program
 init {
-    print("Hello, World!");
+    print("Simple test program");
 }
