@@ -1,7 +1,7 @@
 // Comprehensive parser tests for Grue language
 
 #[cfg(test)]
-mod tests {
+mod parser_tests {
     use crate::grue_compiler::ast::*;
     use crate::grue_compiler::lexer::Lexer;
     use crate::grue_compiler::parser::Parser;
@@ -138,11 +138,11 @@ mod tests {
 
                 assert_eq!(obj.properties.len(), 2);
                 match obj.properties.get("openable").unwrap() {
-                    PropertyValue::Boolean(val) => assert_eq!(*val, true),
+                    PropertyValue::Boolean(val) => assert!(*val),
                     _ => panic!("Expected boolean property"),
                 }
                 match obj.properties.get("container").unwrap() {
-                    PropertyValue::Boolean(val) => assert_eq!(*val, false),
+                    PropertyValue::Boolean(val) => assert!(!(*val)),
                     _ => panic!("Expected boolean property"),
                 }
             }
@@ -369,7 +369,7 @@ mod tests {
                 match &func_decl.body.statements[0] {
                     Stmt::VarDecl(var_decl) => {
                         assert_eq!(var_decl.name, "constant_var");
-                        assert_eq!(var_decl.mutable, false);
+                        assert!(!var_decl.mutable);
                         match &var_decl.var_type {
                             Some(Type::Int) => {}
                             _ => panic!("Expected int type"),
@@ -386,7 +386,7 @@ mod tests {
                 match &func_decl.body.statements[1] {
                     Stmt::VarDecl(var_decl) => {
                         assert_eq!(var_decl.name, "mutable_var");
-                        assert_eq!(var_decl.mutable, true);
+                        assert!(var_decl.mutable);
                         assert!(var_decl.var_type.is_none());
                         match &var_decl.initializer {
                             Some(Expr::String(s)) => assert_eq!(s, "hello"),
@@ -400,7 +400,7 @@ mod tests {
                 match &func_decl.body.statements[2] {
                     Stmt::VarDecl(var_decl) => {
                         assert_eq!(var_decl.name, "uninitialized");
-                        assert_eq!(var_decl.mutable, true);
+                        assert!(var_decl.mutable);
                         match &var_decl.var_type {
                             Some(Type::Bool) => {}
                             _ => panic!("Expected bool type"),
@@ -558,10 +558,10 @@ mod tests {
 
                 // Method call: player.location.on_look()
                 match &func_decl.body.statements[0] {
-                    Stmt::Expression(Expr::FunctionCall { name, .. }) => {
-                        assert_eq!(name, "on_look"); // Simplified method call
+                    Stmt::Expression(Expr::MethodCall { method, .. }) => {
+                        assert_eq!(method, "on_look");
                     }
-                    _ => panic!("Expected function call expression"),
+                    _ => panic!("Expected method call expression"),
                 }
 
                 // Property assignment: obj.property = value
@@ -589,11 +589,13 @@ mod tests {
 
                 // Method call with argument
                 match &func_decl.body.statements[3] {
-                    Stmt::Expression(Expr::FunctionCall { name, arguments }) => {
-                        assert_eq!(name, "push"); // Simplified method call
+                    Stmt::Expression(Expr::MethodCall {
+                        method, arguments, ..
+                    }) => {
+                        assert_eq!(method, "push");
                         assert_eq!(arguments.len(), 1);
                     }
-                    _ => panic!("Expected function call expression"),
+                    _ => panic!("Expected method call expression"),
                 }
             }
             _ => panic!("Expected function declaration"),

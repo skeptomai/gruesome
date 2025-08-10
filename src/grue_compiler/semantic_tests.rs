@@ -1,7 +1,7 @@
 // Comprehensive semantic analysis tests for Grue language
 
 #[cfg(test)]
-mod tests {
+mod semantic_tests {
     use crate::grue_compiler::ast::*;
     use crate::grue_compiler::error::CompilerError;
     use crate::grue_compiler::lexer::Lexer;

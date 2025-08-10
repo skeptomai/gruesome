@@ -23,7 +23,7 @@ use std::process::Command;
 fn test_disassembler_routine_count() {
     // Build the disassembler binary first
     let build_output = Command::new("cargo")
-        .args(&["build", "--bin", "gruedasm-txd"])
+        .args(["build", "--bin", "gruedasm-txd"])
         .output()
         .expect("Failed to build disassembler");
 
@@ -86,7 +86,7 @@ fn test_disassembler_v4_game() {
     }
 
     let build_output = Command::new("cargo")
-        .args(&["build", "--bin", "gruedasm-txd"])
+        .args(["build", "--bin", "gruedasm-txd"])
         .output()
         .expect("Failed to build disassembler");
 
@@ -124,7 +124,7 @@ fn test_disassembler_v4_game() {
 #[test]
 fn test_disassembler_output_format() {
     let build_output = Command::new("cargo")
-        .args(&["build", "--bin", "gruedasm-txd"])
+        .args(["build", "--bin", "gruedasm-txd"])
         .output()
         .expect("Failed to build disassembler");
 
@@ -192,7 +192,7 @@ fn test_disassembler_output_format() {
 #[test]
 fn test_disassembler_address_mode() {
     let build_output = Command::new("cargo")
-        .args(&["build", "--bin", "gruedasm-txd"])
+        .args(["build", "--bin", "gruedasm-txd"])
         .output()
         .expect("Failed to build disassembler");
 
@@ -203,7 +203,7 @@ fn test_disassembler_address_mode() {
 
     // Test with -n flag (address mode)
     let output = Command::new("./target/debug/gruedasm-txd")
-        .args(&["-n", "resources/test/zork1/DATA/ZORK1.DAT"])
+        .args(["-n", "resources/test/zork1/DATA/ZORK1.DAT"])
         .output()
         .expect("Failed to run disassembler");
 
@@ -241,7 +241,7 @@ fn test_disassembler_address_mode() {
 fn test_specific_routine_content() {
     // Test that specific routines are decoded correctly
     let build_output = Command::new("cargo")
-        .args(&["build", "--bin", "gruedasm-txd"])
+        .args(["build", "--bin", "gruedasm-txd"])
         .output()
         .expect("Failed to build disassembler");
 

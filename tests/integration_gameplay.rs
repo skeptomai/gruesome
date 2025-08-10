@@ -35,7 +35,7 @@ use std::process::{Command, Stdio};
 fn test_zork_gameplay_basic() {
     // Build the game first to ensure we have the latest binary
     let build_output = Command::new("cargo")
-        .args(&["build", "--bin", "gruesome"])
+        .args(["build", "--bin", "gruesome"])
         .output()
         .expect("Failed to build game");
 
@@ -107,7 +107,7 @@ yes
 fn test_zork_scripted_walkthrough() {
     // Build the interpreter to ensure we test the latest code
     let build_output = Command::new("cargo")
-        .args(&["build", "--bin", "gruesome"])
+        .args(["build", "--bin", "gruesome"])
         .output()
         .expect("Failed to build game");
 
@@ -202,7 +202,7 @@ fn test_amfv_basic_gameplay() {
 
     // Build the interpreter
     let build_output = Command::new("cargo")
-        .args(&["build", "--bin", "gruesome"])
+        .args(["build", "--bin", "gruesome"])
         .output()
         .expect("Failed to build game");
 
@@ -285,7 +285,7 @@ fn test_amfv_command_sequence() {
     }
 
     let build_output = Command::new("cargo")
-        .args(&["build", "--bin", "gruesome"])
+        .args(["build", "--bin", "gruesome"])
         .output()
         .expect("Failed to build game");
 

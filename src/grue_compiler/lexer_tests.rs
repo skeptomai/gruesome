@@ -1,7 +1,7 @@
 // Comprehensive lexer tests
 
 #[cfg(test)]
-mod tests {
+mod lexer_tests {
     use crate::grue_compiler::lexer::{Lexer, TokenKind};
 
     fn tokenize_input(input: &str) -> Vec<TokenKind> {

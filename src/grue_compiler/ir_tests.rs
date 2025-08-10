@@ -1,7 +1,7 @@
 // IR Generation Tests for Grue Language
 
 #[cfg(test)]
-mod tests {
+mod ir_tests {
     use crate::grue_compiler::ast::*;
     use crate::grue_compiler::error::CompilerError;
     use crate::grue_compiler::ir::*;

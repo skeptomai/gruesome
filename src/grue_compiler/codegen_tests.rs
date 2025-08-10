@@ -1,7 +1,7 @@
 // Code Generation Tests for Grue Compiler
 
 #[cfg(test)]
-mod tests {
+mod codegen_tests {
     use crate::grue_compiler::ast::Type;
     use crate::grue_compiler::codegen::{
         InstructionForm, Operand, OperandType, ReferenceType, ZMachineCodeGen,
@@ -469,10 +469,7 @@ mod tests {
             codegen.reference_context.unresolved_refs[1].reference_type,
             ReferenceType::FunctionCall
         );
-        assert_eq!(
-            codegen.reference_context.unresolved_refs[1].is_packed_address,
-            true
-        );
+        assert!(codegen.reference_context.unresolved_refs[1].is_packed_address);
     }
 
     #[test]

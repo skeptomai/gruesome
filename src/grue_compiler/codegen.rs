@@ -239,13 +239,20 @@ impl ZMachineCodeGen {
     fn collect_strings_from_block(&mut self, block: &IrBlock) -> Result<(), CompilerError> {
         for instruction in &block.instructions {
             match instruction {
-                IrInstruction::LoadImmediate { target, value } => {
-                    if let IrValue::String(s) = value {
-                        // Register the string for this IR ID
-                        self.ir_id_to_string.insert(*target, s.clone());
-                        // Add to strings collection for encoding
-                        self.strings.push((*target, s.clone()));
-                    }
+                IrInstruction::LoadImmediate {
+                    target,
+                    value: IrValue::String(s),
+                } => {
+                    // Register the string for this IR ID
+                    self.ir_id_to_string.insert(*target, s.clone());
+                    // Add to strings collection for encoding
+                    self.strings.push((*target, s.clone()));
+                }
+                IrInstruction::LoadImmediate {
+                    target: _,
+                    value: _,
+                } => {
+                    // Non-string LoadImmediate - no action needed
                 }
                 // Handle other instructions that might contain blocks
                 _ => {
@@ -763,12 +770,6 @@ impl ZMachineCodeGen {
             IrBinaryOp::GreaterEqual => 0x03, // Use jg for now (placeholder)
             IrBinaryOp::And => 0x09,          // and (2OP:9)
             IrBinaryOp::Or => 0x08,           // or (2OP:8)
-            _ => {
-                return Err(CompilerError::CodeGenError(format!(
-                    "Binary operation {:?} not yet implemented",
-                    op
-                )));
-            }
         };
 
         let operands = vec![left_operand, right_operand];
@@ -1028,7 +1029,7 @@ impl ZMachineCodeGen {
         let current_pc = location + 2; // Jump instruction PC after the jump
         let offset = (target_address as i32) - (current_pc as i32);
 
-        if offset < -32768 || offset > 32767 {
+        if !(-32768..=32767).contains(&offset) {
             return Err(CompilerError::CodeGenError(format!(
                 "Jump offset {} too large for 16-bit signed integer",
                 offset
@@ -1049,13 +1050,13 @@ impl ZMachineCodeGen {
         let offset = (target_address as i32) - (current_pc as i32);
 
         // Branch offsets are more complex due to 1-byte vs 2-byte encoding
-        if offset >= 0 && offset <= 63 {
+        if (0..=63).contains(&offset) {
             // 1-byte format: preserve condition bit, set size bit, write offset
             let existing_byte = self.story_data[location];
             let condition_bit = existing_byte & 0x80;
             let new_byte = condition_bit | 0x40 | (offset as u8 & 0x3F);
             self.story_data[location] = new_byte;
-        } else if offset >= -8192 && offset <= 8191 {
+        } else if (-8192..=8191).contains(&offset) {
             // 2-byte format: preserve condition bit, clear size bit, write 14-bit offset
             let existing_byte = self.story_data[location];
             let condition_bit = existing_byte & 0x80;
@@ -1942,7 +1943,7 @@ impl ZMachineCodeGen {
         // - Bits 5-0 or 13-0: signed offset
 
         // For now, assume positive condition and handle offset size
-        if offset >= 0 && offset <= 63 {
+        if (0..=63).contains(&offset) {
             // 1-byte format: bit 7 = condition, bit 6 = 1, bits 5-0 = offset
             let branch_byte = 0x80 | 0x40 | (offset as u8 & 0x3F);
             self.emit_byte(branch_byte)?;

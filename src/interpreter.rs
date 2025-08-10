@@ -386,7 +386,7 @@ impl Interpreter {
             };
 
             // Debug: trace execution flow around the problematic area
-            if pc >= 0x06a0 && pc <= 0x06d0 {
+            if (0x06a0..=0x06d0).contains(&pc) {
                 debug!(
                     "TRACE: PC=0x{:05x}, opcode=0x{:02x}, form={:?}, operand_count={:?}",
                     pc, instruction.opcode, instruction.form, instruction.operand_count
@@ -945,7 +945,7 @@ impl Interpreter {
                 let (text, _) = crate::text::decode_string(
                     &self.vm.game.memory,
                     addr,
-                    self.vm.game.header.abbrev_table as usize,
+                    self.vm.game.header.abbrev_table,
                 )?;
                 print!("{}", text);
                 io::stdout().flush().ok();
