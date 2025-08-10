@@ -204,6 +204,9 @@ impl ZMachineCodeGen {
         // Phase 8.5: Update string addresses for any dynamically discovered strings
         self.update_string_addresses();
 
+        // Phase 8.6: Write all encoded strings to story data
+        self.write_strings_to_memory()?;
+
         // Phase 9: Resolve all addresses and patch jumps
         self.resolve_addresses()?;
 
@@ -700,17 +703,10 @@ impl ZMachineCodeGen {
                 let operands = vec![Operand::SmallConstant(value)];
                 self.emit_instruction(0x0D, &operands, None, None)?;
             }
-            IrValue::String(s) => {
-                // For string literals in LoadImmediate, we need to add them to the string table
-                // and create an unresolved reference to be patched later
-                let string_id = self.find_or_create_string_id(s)?;
-
-                // Add unresolved reference for string address
-                self.add_unresolved_reference(ReferenceType::StringRef, string_id, true)?;
-
-                // Emit a placeholder - this will be patched during address resolution
-                let operands = vec![Operand::Constant(0)]; // Placeholder
-                self.emit_instruction(0x0D, &operands, None, None)?; // store instruction
+            IrValue::String(_s) => {
+                // String literals in LoadImmediate don't generate any bytecode
+                // They are just metadata that gets stored in ir_id_to_string
+                // The actual string usage happens in print calls, not load immediates
             }
             _ => {
                 return Err(CompilerError::CodeGenError(
@@ -1254,7 +1250,7 @@ impl ZMachineCodeGen {
             let string_id = self.find_or_create_string_id(&string_value)?;
 
             // Generate print_paddr instruction
-            self.emit_byte(0xB3)?; // print_paddr opcode (1OP form)
+            self.emit_byte(0x8D)?; // print_paddr opcode (1OP:0x0D, large constant)
 
             // Add unresolved reference for the string address
             self.add_unresolved_reference(ReferenceType::StringRef, string_id, true)?;
@@ -1268,7 +1264,7 @@ impl ZMachineCodeGen {
             self.ir_id_to_string.insert(string_id, placeholder_string);
 
             // Generate print_paddr instruction with placeholder
-            self.emit_byte(0xB3)?; // print_paddr opcode (1OP form)
+            self.emit_byte(0x8D)?; // print_paddr opcode (1OP:0x0D, large constant)
             self.add_unresolved_reference(ReferenceType::StringRef, string_id, true)?;
             self.emit_word(0x0000)?; // Placeholder address
         }
@@ -1590,7 +1586,8 @@ impl ZMachineCodeGen {
     /// Update string addresses after new strings have been added
     fn update_string_addresses(&mut self) {
         // Calculate addresses for all encoded strings
-        let mut addr = self.dictionary_addr + 1000; // Start after dictionary
+        // Strings should be placed after all code, not after dictionary
+        let mut addr = self.current_address + 100; // Start after current code with padding
 
         // For v3, ensure even alignment for strings
         if matches!(self.version, ZMachineVersion::V3) && addr % 2 == 1 {
@@ -1621,6 +1618,38 @@ impl ZMachineCodeGen {
         if addr > self.current_address {
             self.current_address = addr;
         }
+    }
+
+    /// Write all encoded strings to their assigned memory locations
+    fn write_strings_to_memory(&mut self) -> Result<(), CompilerError> {
+        // Write each encoded string to its assigned address
+        for (string_id, encoded_bytes) in &self.encoded_strings {
+            if let Some(&address) = self.string_addresses.get(string_id) {
+                // Ensure we have enough space in story_data
+                let required_size = address + encoded_bytes.len();
+                if self.story_data.len() < required_size {
+                    self.story_data.resize(required_size, 0);
+                }
+
+                // Write the encoded bytes to the story data
+                for (i, &byte) in encoded_bytes.iter().enumerate() {
+                    self.story_data[address + i] = byte;
+                }
+
+                // Also record this address in the IR ID mapping for reference resolution
+                self.reference_context
+                    .ir_id_to_address
+                    .insert(*string_id, address);
+
+                // Successfully wrote string to memory
+            } else {
+                return Err(CompilerError::CodeGenError(format!(
+                    "String ID {} has no assigned address",
+                    string_id
+                )));
+            }
+        }
+        Ok(())
     }
 
     /// Add an unresolved reference to be patched later

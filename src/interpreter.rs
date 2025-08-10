@@ -385,6 +385,14 @@ impl Interpreter {
                 }
             };
 
+            // Debug: trace execution flow around the problematic area
+            if pc >= 0x06a0 && pc <= 0x06d0 {
+                debug!(
+                    "TRACE: PC=0x{:05x}, opcode=0x{:02x}, form={:?}, operand_count={:?}",
+                    pc, instruction.opcode, instruction.form, instruction.operand_count
+                );
+            }
+
             // Check if we should single-step this instruction
             let should_step = self.single_step
                 && match self.step_range {
@@ -930,6 +938,19 @@ impl Interpreter {
                 self.vm.pc = new_pc;
                 Ok(ExecutionResult::Branched)
             }
+            0x0D => {
+                // print_paddr - print string at packed address
+                let packed_addr = operand;
+                let addr = self.unpack_routine_address(packed_addr); // Same unpacking as routines
+                let (text, _) = crate::text::decode_string(
+                    &self.vm.game.memory,
+                    addr,
+                    self.vm.game.header.abbrev_table as usize,
+                )?;
+                print!("{}", text);
+                io::stdout().flush().ok();
+                Ok(ExecutionResult::Continue)
+            }
             _ => Err(format!(
                 "Unimplemented 1OP instruction: {:02x}",
                 inst.opcode
@@ -1182,6 +1203,24 @@ impl Interpreter {
         operands: &[u16],
     ) -> Result<ExecutionResult, String> {
         match inst.opcode {
+            0x00 => {
+                // call_vs - Call routine with variable number of arguments
+                if operands.is_empty() {
+                    return Err("call_vs requires at least 1 operand (routine address)".to_string());
+                }
+
+                let routine_addr = operands[0];
+                debug!(
+                    "VAR call_vs: routine_addr=0x{:04x}, args={:?}",
+                    routine_addr,
+                    &operands[1..]
+                );
+
+                // Call with remaining operands as arguments
+                let args = &operands[1..];
+                self.do_call(routine_addr, args, inst.store_var)?;
+                Ok(ExecutionResult::Called)
+            }
             0x04 => {
                 // sread (V1-4) with timer support (V3+)
                 // Proper implementation that reads from stdin
