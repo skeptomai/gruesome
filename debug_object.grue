@@ -1,0 +1,10 @@
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+    }
+}
+
+init {
+    player.location = test_room;
+    print("Done");
+}

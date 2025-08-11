@@ -367,6 +367,25 @@ impl SemanticAnalyzer {
         // Enter room scope
         self.push_scope(ScopeType::Room);
 
+        // Add room's objects to the current room scope for easy access
+        if let Some(object_names) = self.room_objects.get(&room.identifier).cloned() {
+            log::debug!("Adding objects to room scope for '{}': {:?}", room.identifier, object_names);
+            for obj_name in &object_names {
+                // Find the object symbol in global scope and add to room scope
+                if let Some(global_symbol) = self.lookup_symbol_in_global_scope(obj_name) {
+                    let obj_symbol = global_symbol.clone();
+                    self.current_scope
+                        .symbols
+                        .insert(obj_name.clone(), obj_symbol);
+                    log::debug!("Added object '{}' to room scope", obj_name);
+                } else {
+                    log::debug!("Could not find object '{}' in global scope", obj_name);
+                }
+            }
+        } else {
+            log::debug!("No objects found for room '{}'", room.identifier);
+        }
+
         // Validate exit targets
         for (direction, target) in &room.exits {
             match target {
@@ -409,10 +428,11 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
-    #[allow(clippy::only_used_in_recursion)] // TODO: Will use obj parameter when property validation is implemented
     fn analyze_object(&mut self, obj: &mut ObjectDecl) -> Result<(), CompilerError> {
-        // TODO: Validate object properties and their types
-
+        // For now, properties are simple values (Boolean, Integer, String)
+        // In the future, when we support expressions in properties, 
+        // we would analyze them here.
+        
         // Analyze nested objects
         for nested_obj in &mut obj.contains {
             self.analyze_object(nested_obj)?;
@@ -830,6 +850,18 @@ impl SemanticAnalyzer {
         }
 
         None
+    }
+
+    fn lookup_symbol_in_global_scope(&self, name: &str) -> Option<&Symbol> {
+        // Navigate to global scope
+        let mut current = &*self.current_scope;
+        
+        while let Some(parent) = &current.parent {
+            current = parent;
+        }
+        
+        // Now current should be the global scope
+        current.symbols.get(name)
     }
 
     fn is_function_defined(&self, name: &str) -> bool {

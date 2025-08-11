@@ -386,11 +386,12 @@ impl Interpreter {
             };
 
             // Debug: trace execution flow around the problematic area
-            if (0x06a0..=0x06d0).contains(&pc) {
+            if (0x0680..=0x06d0).contains(&pc) {
                 debug!(
                     "TRACE: PC=0x{:05x}, opcode=0x{:02x}, form={:?}, operand_count={:?}",
                     pc, instruction.opcode, instruction.form, instruction.operand_count
                 );
+                debug!("TRACE: Stack depth: {}", self.vm.stack.len());
             }
 
             // Check if we should single-step this instruction

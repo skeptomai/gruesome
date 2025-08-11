@@ -337,6 +337,7 @@ pub struct IrGenerator {
     current_locals: Vec<IrLocal>,      // Track local variables in current function
     next_local_slot: u8,               // Next available local variable slot
     builtin_functions: HashMap<IrId, String>, // Function ID -> Function name for builtins
+    object_numbers: HashMap<String, u16>, // Object name -> Object number mapping
 }
 
 impl Default for IrGenerator {
@@ -347,12 +348,17 @@ impl Default for IrGenerator {
 
 impl IrGenerator {
     pub fn new() -> Self {
+        let mut object_numbers = HashMap::new();
+        // Player is always object #1
+        object_numbers.insert("player".to_string(), 1);
+
         IrGenerator {
             id_counter: 1, // Start from 1, 0 is reserved
             symbol_ids: HashMap::new(),
             current_locals: Vec::new(),
             next_local_slot: 1, // Slot 0 reserved for return value
             builtin_functions: HashMap::new(),
+            object_numbers,
         }
     }
 
@@ -382,6 +388,10 @@ impl IrGenerator {
     /// Get builtin functions discovered during IR generation
     pub fn get_builtin_functions(&self) -> &HashMap<IrId, String> {
         &self.builtin_functions
+    }
+
+    pub fn get_object_numbers(&self) -> &HashMap<String, u16> {
+        &self.object_numbers
     }
 
     fn next_id(&mut self) -> IrId {
@@ -487,12 +497,36 @@ impl IrGenerator {
         Ok(())
     }
 
+    fn register_object_and_nested(&mut self, obj: &crate::grue_compiler::ast::ObjectDecl) -> Result<(), CompilerError> {
+        // Register the object itself
+        let obj_id = self.next_id();
+        self.symbol_ids.insert(obj.identifier.clone(), obj_id);
+        
+        // Assign object number 
+        let object_number = self.object_numbers.len() as u16 + 1;
+        self.object_numbers.insert(obj.identifier.clone(), object_number);
+        
+        log::debug!("Registered object '{}' with ID {} and object number {}", obj.identifier, obj_id, object_number);
+        
+        // Process nested objects recursively
+        for nested_obj in &obj.contains {
+            self.register_object_and_nested(nested_obj)?;
+        }
+        
+        Ok(())
+    }
+
     fn generate_room(
         &mut self,
         room: crate::grue_compiler::ast::RoomDecl,
     ) -> Result<IrRoom, CompilerError> {
         let room_id = self.next_id();
         self.symbol_ids.insert(room.identifier.clone(), room_id);
+
+        // Assign object number (rooms start from #2, player is #1)
+        let object_number = self.object_numbers.len() as u16 + 1;
+        self.object_numbers
+            .insert(room.identifier.clone(), object_number);
 
         let mut exits = HashMap::new();
         for (direction, target) in room.exits {
@@ -508,6 +542,14 @@ impl IrGenerator {
             exits.insert(direction, ir_target);
         }
 
+        // Process room objects FIRST - add them to symbol_ids for identifier resolution
+        // This must happen before processing handlers that might reference these objects
+        log::debug!("Processing {} objects for room '{}'", room.objects.len(), room.identifier);
+        for obj in &room.objects {
+            self.register_object_and_nested(obj)?;
+        }
+
+        // Now process handlers - objects are available for reference
         let on_enter = if let Some(block) = room.on_enter {
             Some(self.generate_block(block)?)
         } else {
@@ -913,17 +955,27 @@ impl IrGenerator {
                 Ok(temp_id)
             }
             Expr::Identifier(name) => {
-                // Look up variable and load its value
                 let temp_id = self.next_id();
 
-                if let Some(&var_id) = self.symbol_ids.get(&name) {
+                // Check if this is an object identifier first
+                if let Some(&object_number) = self.object_numbers.get(&name) {
+                    // This is an object - load its number as a constant
+                    block.add_instruction(IrInstruction::LoadImmediate {
+                        target: temp_id,
+                        value: IrValue::Integer(object_number as i16),
+                    });
+                } else if let Some(&var_id) = self.symbol_ids.get(&name) {
+                    // This is a variable - load its value
                     block.add_instruction(IrInstruction::LoadVar {
                         target: temp_id,
                         var_id,
                     });
                 } else {
-                    // Variable not found, but we still need to return a temp for now
-                    // In a complete implementation, this would be caught during semantic analysis
+                    // Identifier not found - this should be caught during semantic analysis
+                    return Err(CompilerError::SemanticError(
+                        format!("Undefined identifier '{}'", name),
+                        0,
+                    ));
                 }
 
                 Ok(temp_id)

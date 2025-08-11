@@ -33,7 +33,7 @@ const GOLDEN_TESTS: &[GoldenTest] = &[
     },
     GoldenTest {
         name: "test_simple_v3",
-        source_file: "test_simple.grue",
+        source_file: "examples/test_simple.grue",
         expected_output_file: Some("tests/golden_files/test_simple_v3.z3"),
         should_compile: true,
         target_version: ZMachineVersion::V3,
@@ -299,13 +299,13 @@ fn test_mini_zork_compilation_v5() {
 #[test]
 fn test_simple_compilation() {
     let project_root = get_project_root();
-    let source_path = project_root.join("test_simple.grue");
+    let source_path = project_root.join("examples/test_simple.grue");
 
-    println!("🧪 Testing test_simple.grue compilation...");
+    println!("🧪 Testing examples/test_simple.grue compilation...");
 
     // Compile the source file
     let story_data = compile_grue_file(&source_path, ZMachineVersion::V3)
-        .expect("Failed to compile test_simple.grue");
+        .expect("Failed to compile examples/test_simple.grue");
 
     // Validate the generated Z-Machine file
     validate_z_machine_file(&story_data, ZMachineVersion::V3)

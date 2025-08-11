@@ -1,0 +1,10 @@
+// Test 4: Basic room definition (no player assignment)  
+world {
+    room start_room "Starting Room" {
+        desc: "You are in a simple room."
+    }
+}
+
+init {
+    print("Room defined successfully");
+}

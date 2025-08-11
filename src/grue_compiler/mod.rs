@@ -76,6 +76,9 @@ impl GrueCompiler {
             code_generator.register_builtin_function(*function_id, function_name.clone());
         }
 
+        // Transfer object numbers from IR generator to code generator
+        code_generator.set_object_numbers(ir_generator.get_object_numbers().clone());
+
         let story_data = code_generator.generate(ir_program)?;
 
         Ok(story_data)

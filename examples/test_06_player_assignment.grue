@@ -1,0 +1,12 @@
+// Test 6: The actual failing player location assignment
+world {
+    room start_room "Starting Room" {
+        desc: "You are in a simple room."
+    }
+}
+
+init {
+    print("About to set player location...");
+    player.location = start_room;
+    print("Player location set successfully!");
+}

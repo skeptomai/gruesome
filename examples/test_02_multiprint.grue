@@ -1,0 +1,6 @@
+// Test 2: Multiple print statements
+init {
+    print("Line 1");
+    print("Line 2");  
+    print("Line 3");
+}

@@ -444,14 +444,26 @@ impl VM {
         // Get property table address
         let prop_addr_offset = if self.game.header.version <= 3 { 7 } else { 12 };
         let prop_table_addr = self.read_word((obj_addr + prop_addr_offset) as u32) as usize;
+        debug!(
+            "put_property: obj_addr=0x{:04x}, prop_table_addr=0x{:04x}",
+            obj_addr, prop_table_addr
+        );
 
         // Skip the description byte length
         let desc_len = self.game.memory[prop_table_addr] as usize;
         let mut prop_addr = prop_table_addr + 1 + desc_len * 2;
+        debug!(
+            "put_property: desc_len={}, prop_addr=0x{:04x}",
+            desc_len, prop_addr
+        );
 
         // Search for the property
         loop {
             let size_byte = self.game.memory[prop_addr];
+            debug!(
+                "put_property: checking prop_addr=0x{:04x}, size_byte=0x{:02x}",
+                prop_addr, size_byte
+            );
             if size_byte == 0 {
                 return Err(format!(
                     "Property {prop_num} not found for object {obj_num}"
@@ -459,6 +471,10 @@ impl VM {
             }
 
             let (prop_id, prop_size, size_bytes) = self.get_property_info(prop_addr)?;
+            debug!(
+                "put_property: prop_id={}, prop_size={}, size_bytes={}",
+                prop_id, prop_size, size_bytes
+            );
 
             if prop_id == prop_num {
                 // Found the property - write the value

@@ -1,0 +1,4 @@
+// Test 1: Most basic functionality
+init {
+    print("Test 1: Basic print works");
+}

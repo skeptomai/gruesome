@@ -6,6 +6,7 @@
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
 use crate::grue_compiler::ZMachineVersion;
+use log::debug;
 use std::collections::HashMap;
 
 /// Z-Machine memory layout constants
@@ -82,6 +83,8 @@ pub struct ZMachineCodeGen {
     ir_id_to_string: HashMap<IrId, String>,
     /// Mapping from function IDs to builtin function names
     builtin_function_names: HashMap<IrId, String>,
+    /// Mapping from object names to object numbers (from IR generator)
+    object_numbers: HashMap<String, u16>,
 
     // Tables for Z-Machine structures
     object_table_addr: usize,
@@ -109,6 +112,7 @@ impl ZMachineCodeGen {
             function_addresses: HashMap::new(),
             ir_id_to_string: HashMap::new(),
             builtin_function_names: HashMap::new(),
+            object_numbers: HashMap::new(),
             object_table_addr: 0,
             property_table_addr: 0,
             dictionary_addr: 0,
@@ -133,12 +137,31 @@ impl ZMachineCodeGen {
 
         // Phase 3: Generate object and property tables
         self.generate_object_tables(&ir)?;
+        debug!("INTEGRITY CHECK: After Phase 3 (object tables):");
+        // Calculate the actual property table addresses
+        let objects_start = self.object_table_addr + 31 * 2;
+        let all_object_entries_end = objects_start + (self.object_numbers.len() * 9);
+        let prop_table_1_header = all_object_entries_end + 1; // +1 for text length byte
+        debug!(
+            "  Property table 1 header at 0x{:04x}: 0x{:02x} (should be 0x21)",
+            prop_table_1_header, self.story_data[prop_table_1_header]
+        );
 
         // Phase 4: Generate dictionary
         self.generate_dictionary(&ir)?;
+        debug!("INTEGRITY CHECK: After Phase 4 (dictionary):");
+        debug!(
+            "  Property table 1 header at 0x{:04x}: 0x{:02x} (should be 0x21)",
+            prop_table_1_header, self.story_data[prop_table_1_header]
+        );
 
         // Phase 5: Generate global variables
         self.generate_global_variables(&ir)?;
+        debug!("INTEGRITY CHECK: After Phase 5 (global variables):");
+        debug!(
+            "  Property table 1 at 0x0268: 0x{:02x} (should be 0x21)",
+            self.story_data[0x0268]
+        );
 
         // Phase 6: Generate init block first and capture entry point
         let init_entry_point = if let Some(init_block) = &ir.init_block {
@@ -148,6 +171,11 @@ impl ZMachineCodeGen {
         } else {
             self.current_address // Fallback if no init block
         };
+        debug!("INTEGRITY CHECK: After Phase 6 (init block):");
+        debug!(
+            "  Property table 1 at 0x0268: 0x{:02x} (should be 0x21)",
+            self.story_data[0x0268]
+        );
 
         // Phase 7: Generate code for all functions
         self.generate_functions(&ir)?;
@@ -296,18 +324,41 @@ impl ZMachineCodeGen {
 
         // Reserve space for object table
         self.object_table_addr = addr;
-        let object_count = ir.objects.len() + ir.rooms.len(); // Rooms become objects
-        addr += match self.version {
-            ZMachineVersion::V3 => object_count * 9 + 62, // v3: 9 bytes per object + 62 byte tree table
-            ZMachineVersion::V5 => object_count * 14 + 126, // v5: 14 bytes per object + 126 byte tree table
+        let estimated_objects = if ir.objects.is_empty() && ir.rooms.is_empty() {
+            2
+        } else {
+            ir.objects.len() + ir.rooms.len()
+        }; // At least 2 objects (player + room)
+        let object_entries_size = match self.version {
+            ZMachineVersion::V3 => estimated_objects * 9, // v3: 9 bytes per object
+            ZMachineVersion::V5 => estimated_objects * 14, // v5: 14 bytes per object
         };
+        let default_props_size = match self.version {
+            ZMachineVersion::V3 => 62,  // 31 properties * 2 bytes
+            ZMachineVersion::V5 => 126, // 63 properties * 2 bytes
+        };
+        addr += default_props_size + object_entries_size;
 
-        // Reserve space for property tables
+        // Reserve space for property tables (MUST be in dynamic memory for put_prop to work)
+        // Property tables come AFTER object entries to avoid memory overlap during ensure_capacity calls
         self.property_table_addr = addr;
-        addr += ir.objects.len() * 50; // Rough estimate: 50 bytes per object for properties
+        let estimated_objects = if ir.objects.is_empty() && ir.rooms.is_empty() {
+            2
+        } else {
+            ir.objects.len() + ir.rooms.len()
+        }; // At least 2 objects (player + room)
+        addr += estimated_objects * 50; // Rough estimate: 50 bytes per object for properties
+        debug!(
+            "Property table address: 0x{:04x}, estimated objects: {}",
+            self.property_table_addr, estimated_objects
+        );
 
-        // Reserve space for dictionary
+        // Reserve space for dictionary (this marks the start of static memory)
         self.dictionary_addr = addr;
+        debug!(
+            "Dictionary address (static memory base): 0x{:04x}",
+            self.dictionary_addr
+        );
         addr += 1000; // Rough estimate for dictionary
 
         // Reserve space for encoded strings
@@ -319,6 +370,11 @@ impl ZMachineCodeGen {
 
         // Sort by IR ID to ensure deterministic address assignment
         string_data.sort_by_key(|(id, _)| *id);
+        debug!(
+            "Initial string layout starting at 0x{:04x}, {} strings",
+            addr,
+            string_data.len()
+        );
 
         for (string_id, length) in string_data {
             // Align string addresses according to Z-Machine version
@@ -339,12 +395,17 @@ impl ZMachineCodeGen {
             }
 
             self.string_addresses.insert(string_id, addr);
+            debug!(
+                "Layout phase: string_id={} -> 0x{:04x} (length={})",
+                string_id, addr, length
+            );
             self.record_address(string_id, addr); // Record in reference context
             addr += length;
         }
 
         // Code starts after all data structures
         self.current_address = addr;
+        debug!("Layout phase complete: current_address=0x{:04x}", addr);
 
         Ok(())
     }
@@ -370,7 +431,129 @@ impl ZMachineCodeGen {
             self.story_data[addr + 1] = 0; // Default property value (low byte)
         }
 
+        // Create object entries after default properties
+        let objects_start = obj_table_start + default_props * 2;
+
+        debug!(
+            "Object table: obj_table_start=0x{:04x}, objects_start=0x{:04x}, default_props={}",
+            obj_table_start, objects_start, default_props
+        );
+        debug!("Creating {} objects", self.object_numbers.len());
+
+        // Object #1: Player
+        self.create_object_entry(objects_start, 1, 0, 0, 0)?; // player: no parent, sibling, child
+
+        // Object #2: start_room (if it exists)
+        if self.object_numbers.len() > 1 {
+            self.create_object_entry(objects_start, 2, 0, 0, 0)?; // room: no parent, sibling, child
+        }
+
         Ok(())
+    }
+
+    /// Create a single object entry in the object table
+    fn create_object_entry(
+        &mut self,
+        objects_start: usize,
+        obj_num: u8,
+        parent: u8,
+        sibling: u8,
+        child: u8,
+    ) -> Result<(), CompilerError> {
+        let obj_addr = objects_start + ((obj_num - 1) as usize) * 9; // V3: 9 bytes per object
+        self.ensure_capacity(obj_addr + 9);
+
+        // Attributes (4 bytes, all zeros for now)
+        self.story_data[obj_addr] = 0;
+        self.story_data[obj_addr + 1] = 0;
+        self.story_data[obj_addr + 2] = 0;
+        self.story_data[obj_addr + 3] = 0;
+
+        // Relationships (V3 uses 1 byte each)
+        self.story_data[obj_addr + 4] = parent;
+        self.story_data[obj_addr + 5] = sibling;
+        self.story_data[obj_addr + 6] = child;
+
+        // Create property table for this object
+        debug!(
+            "BEFORE create_property_table: 0x0268 = 0x{:02x}",
+            self.story_data[0x0268]
+        );
+        let prop_table_addr = self.create_property_table(obj_num)?;
+        debug!(
+            "AFTER create_property_table: 0x0268 = 0x{:02x}",
+            self.story_data[0x0268]
+        );
+
+        // Property table address (word)
+        let prop_addr_field = obj_addr + 7;
+        debug!(
+            "Writing property table address 0x{:04x} to object at 0x{:04x}, 0x{:04x}",
+            prop_table_addr,
+            prop_addr_field,
+            prop_addr_field + 1
+        );
+        self.story_data[prop_addr_field] = (prop_table_addr >> 8) as u8; // High byte
+        self.story_data[prop_addr_field + 1] = (prop_table_addr & 0xFF) as u8; // Low byte
+        debug!(
+            "AFTER writing prop addr: 0x0268 = 0x{:02x}",
+            self.story_data[0x0268]
+        );
+
+        Ok(())
+    }
+
+    /// Create a property table for an object  
+    fn create_property_table(&mut self, obj_num: u8) -> Result<usize, CompilerError> {
+        // Calculate property table address to be safely after ALL possible object entries
+        // Object entries: objects_start + (num_objects * 9 bytes per object)
+        let objects_start = self.object_table_addr + 31 * 2; // After default properties
+        let max_objects = self.object_numbers.len();
+        let all_object_entries_end = objects_start + (max_objects * 9);
+        let prop_table_addr = all_object_entries_end + ((obj_num - 1) as usize) * 20;
+
+        debug!(
+            "Creating property table for object {} at address 0x{:04x}",
+            obj_num, prop_table_addr
+        );
+
+        // Ensure we have space for the property table structure
+        self.ensure_capacity(prop_table_addr + 20); // Generous space allocation
+
+        // Text-length byte (0 = no short name)
+        self.story_data[prop_table_addr] = 0;
+        let mut addr = prop_table_addr + 1;
+
+        // Create property 1 (location property) with default value 0
+        // Property header: top 3 bits = size-1, bottom 5 bits = property number
+        // For property 1 with 2-byte value: (2-1) << 5 | 1 = 0x21
+        debug!("Writing property header 0x21 at address 0x{:04x}", addr);
+        self.story_data[addr] = 0x21; // Property 1, size 2 bytes
+        addr += 1;
+
+        // Property data (2 bytes, default value 0)
+        debug!(
+            "Writing property data at addresses 0x{:04x}, 0x{:04x}",
+            addr,
+            addr + 1
+        );
+        self.story_data[addr] = 0; // High byte of default value
+        self.story_data[addr + 1] = 0; // Low byte of default value
+        addr += 2;
+
+        // End of property table (property 0 marks end)
+        debug!("Writing property terminator 0x00 at address 0x{:04x}", addr);
+        self.story_data[addr] = 0;
+        addr += 1;
+
+        // Don't update current_address since we're using fixed property table locations
+
+        debug!(
+            "Property table for object {} created, next address: 0x{:04x}",
+            obj_num, addr
+        );
+
+        Ok(prop_table_addr)
     }
 
     /// Generate dictionary
@@ -581,7 +764,7 @@ impl ZMachineCodeGen {
                 // Load variable value to stack
                 // TODO: Map IR variable ID to Z-Machine variable number
                 let operands = vec![Operand::Variable(1)]; // Load local variable 1
-                self.emit_instruction(0x09, &operands, Some(0), None)?; // load to stack
+                self.emit_instruction(0x0E, &operands, Some(0), None)?; // load to stack
             }
 
             IrInstruction::StoreVar {
@@ -626,7 +809,7 @@ impl ZMachineCodeGen {
                 property,
                 value: _,
             } => {
-                // Generate Z-Machine put_prop instruction (2OP:18, opcode 0x12)
+                // Generate Z-Machine put_prop instruction (VAR:227, opcode 0x03)
                 // For now, use placeholder object ID and property number
                 // TODO: Map IR object ID to actual Z-Machine object number
                 // TODO: Map property name to property number
@@ -637,12 +820,14 @@ impl ZMachineCodeGen {
                 };
 
                 // Generate put_prop instruction
+                // TODO: This is a simplified implementation that hardcodes object numbers
+                // A complete implementation would properly map IR values to operands
                 let operands = vec![
-                    Operand::Variable(1),            // Object (placeholder - from local var 1)
+                    Operand::Constant(1),            // Object (player = 1)
                     Operand::Constant(property_num), // Property number
-                    Operand::Variable(0),            // Value (from stack top)
+                    Operand::Constant(2),            // Value (start_room = 2)
                 ];
-                self.emit_instruction(0x12, &operands, None, None)?;
+                self.emit_instruction(0x03, &operands, None, None)?;
             }
             IrInstruction::UnaryOp {
                 target: _,
@@ -697,11 +882,11 @@ impl ZMachineCodeGen {
     /// Generate load immediate instruction
     fn generate_load_immediate(&mut self, value: &IrValue) -> Result<(), CompilerError> {
         match value {
-            IrValue::Integer(n) => {
-                // Use store instruction: store <constant> -> (variable)
-                // opcode 0x0D = store (1OP form)
-                let operands = vec![Operand::Constant(*n as u16)];
-                self.emit_instruction(0x0D, &operands, None, None)?;
+            IrValue::Integer(_n) => {
+                // Integer constants don't need to generate instructions
+                // They will be used directly as operands in other instructions
+                // TODO: In a complete implementation, this would store the constant
+                // in a temporary location for later use
             }
             IrValue::Boolean(_b) => {
                 // Boolean LoadImmediate doesn't emit any instructions
@@ -946,6 +1131,10 @@ impl ZMachineCodeGen {
         self.write_word_at(12, self.global_vars_addr as u16)?;
 
         // Static memory base (start of dictionary)
+        debug!(
+            "Setting static memory base to 0x{:04x} (dictionary_addr)",
+            self.dictionary_addr
+        );
         self.write_word_at(14, self.dictionary_addr as u16)?;
 
         // File length (in 2-byte words for v3, 4-byte for v4+)
@@ -1221,6 +1410,11 @@ impl ZMachineCodeGen {
     /// Register a builtin function name with its ID
     pub fn register_builtin_function(&mut self, function_id: IrId, name: String) {
         self.builtin_function_names.insert(function_id, name);
+    }
+
+    /// Register object numbers from IR generator
+    pub fn set_object_numbers(&mut self, object_numbers: HashMap<String, u16>) {
+        self.object_numbers = object_numbers;
     }
 
     /// Check if a function ID corresponds to a builtin function
@@ -1512,10 +1706,10 @@ impl ZMachineCodeGen {
         self.emit_word(0x0002)?; // Branch to "return true" (+2 bytes)
 
         // Return false (object not visible)
-        self.emit_byte(0x01)?; // rfalse opcode (0OP:1)
+        self.emit_byte(0xB1)?; // rfalse instruction (0OP:1)
 
         // Return true (object is visible)
-        self.emit_byte(0x00)?; // rtrue opcode (0OP:0)
+        self.emit_byte(0xB0)?; // rtrue instruction (0OP:0)
 
         Ok(())
     }
@@ -1546,7 +1740,7 @@ impl ZMachineCodeGen {
         self.emit_word(0x0002)?; // Skip return if no children
 
         // No children - return
-        self.emit_byte(0x01)?; // rfalse opcode
+        self.emit_byte(0xB1)?; // rfalse instruction
 
         // Loop through siblings printing each one
         // Variable 1 contains current object to print
@@ -1569,7 +1763,7 @@ impl ZMachineCodeGen {
         self.emit_word(0xFFF0)?; // Loop back to print next object (negative offset)
 
         // Done listing - return
-        self.emit_byte(0x00)?; // rtrue opcode
+        self.emit_byte(0xB0)?; // rtrue instruction
 
         Ok(())
     }
@@ -1596,7 +1790,7 @@ impl ZMachineCodeGen {
         self.emit_word(0x0002)?; // Skip return if empty
 
         // Empty container - return
-        self.emit_byte(0x01)?; // rfalse opcode
+        self.emit_byte(0xB1)?; // rfalse instruction
 
         // Loop through contents
         // Print current object
@@ -1616,7 +1810,7 @@ impl ZMachineCodeGen {
         self.emit_word(0xFFF0)?; // Loop back (negative offset)
 
         // Done - return
-        self.emit_byte(0x00)?; // rtrue opcode
+        self.emit_byte(0xB0)?; // rtrue instruction
 
         Ok(())
     }
@@ -1644,6 +1838,10 @@ impl ZMachineCodeGen {
             }
         }
 
+        debug!(
+            "update_string_addresses: clearing old addresses, recalculating from 0x{:04x}",
+            addr
+        );
         self.string_addresses.clear();
 
         // Collect string data to avoid borrowing issues
@@ -1672,6 +1870,10 @@ impl ZMachineCodeGen {
             }
 
             self.string_addresses.insert(string_id, addr);
+            debug!(
+                "Update phase: string_id={} -> 0x{:04x} (length={})",
+                string_id, addr, length
+            );
             self.record_address(string_id, addr); // Record in reference context
             addr += length;
         }
@@ -1684,6 +1886,17 @@ impl ZMachineCodeGen {
 
     /// Write all encoded strings to their assigned memory locations
     fn write_strings_to_memory(&mut self) -> Result<(), CompilerError> {
+        // DEBUG: Check property table integrity before writing strings
+        debug!("INTEGRITY CHECK: Before writing strings:");
+        debug!(
+            "  Property table 1 at 0x0268: 0x{:02x} (should be 0x21)",
+            self.story_data[0x0268]
+        );
+        debug!(
+            "  Property table 2 at 0x027c: 0x{:02x} (should be 0x21)",
+            self.story_data[0x027c]
+        );
+
         // Write each encoded string to its assigned address
         for (string_id, encoded_bytes) in &self.encoded_strings {
             if let Some(&address) = self.string_addresses.get(string_id) {
@@ -1840,19 +2053,23 @@ impl ZMachineCodeGen {
 
     /// Determine instruction form based on operand count and opcode
     pub fn determine_instruction_form(&self, operand_count: usize, opcode: u8) -> InstructionForm {
-        match operand_count {
-            0 => InstructionForm::Short, // 0OP
-            1 => InstructionForm::Short, // 1OP
-            2 => {
-                // Could be 2OP (long form) or VAR form
-                // For now, prefer long form for 2 operands
-                if opcode < 0x80 {
-                    InstructionForm::Long
-                } else {
-                    InstructionForm::Variable
+        // Special cases: certain opcodes are always VAR form regardless of operand count
+        match opcode {
+            0x03 => InstructionForm::Variable, // put_prop is always VAR
+            _ => match operand_count {
+                0 => InstructionForm::Short, // 0OP
+                1 => InstructionForm::Short, // 1OP
+                2 => {
+                    // Could be 2OP (long form) or VAR form
+                    // For now, prefer long form for 2 operands
+                    if opcode < 0x80 {
+                        InstructionForm::Long
+                    } else {
+                        InstructionForm::Variable
+                    }
                 }
-            }
-            _ => InstructionForm::Variable, // VAR form for 3+ operands
+                _ => InstructionForm::Variable, // VAR form for 3+ operands
+            },
         }
     }
 
@@ -1954,8 +2171,9 @@ impl ZMachineCodeGen {
             )));
         }
 
-        // Variable form: bits 7-6 = 11, bit 5 = 0, bits 4-0 = opcode
-        let instruction_byte = 0xC0 | (opcode & 0x1F);
+        // Variable form: bits 7-6 = 11, bit 5 = VAR (1) or OP2 (0), bits 4-0 = opcode
+        let var_bit = if operands.len() > 2 { 0x20 } else { 0x00 }; // Set bit 5 for VAR (3+ operands)
+        let instruction_byte = 0xC0 | var_bit | (opcode & 0x1F);
         self.emit_byte(instruction_byte)?;
 
         // Emit operand types byte

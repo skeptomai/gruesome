@@ -1,0 +1,10 @@
+// Test 3: Function definition and call
+fn greet() {
+    print("Hello from function!");
+}
+
+init {
+    print("Before function call");
+    greet();
+    print("After function call");
+}
