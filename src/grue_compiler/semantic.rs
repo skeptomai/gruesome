@@ -369,7 +369,11 @@ impl SemanticAnalyzer {
 
         // Add room's objects to the current room scope for easy access
         if let Some(object_names) = self.room_objects.get(&room.identifier).cloned() {
-            log::debug!("Adding objects to room scope for '{}': {:?}", room.identifier, object_names);
+            log::debug!(
+                "Adding objects to room scope for '{}': {:?}",
+                room.identifier,
+                object_names
+            );
             for obj_name in &object_names {
                 // Find the object symbol in global scope and add to room scope
                 if let Some(global_symbol) = self.lookup_symbol_in_global_scope(obj_name) {
@@ -428,11 +432,12 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn analyze_object(&mut self, obj: &mut ObjectDecl) -> Result<(), CompilerError> {
         // For now, properties are simple values (Boolean, Integer, String)
-        // In the future, when we support expressions in properties, 
+        // In the future, when we support expressions in properties,
         // we would analyze them here.
-        
+
         // Analyze nested objects
         for nested_obj in &mut obj.contains {
             self.analyze_object(nested_obj)?;
@@ -855,11 +860,11 @@ impl SemanticAnalyzer {
     fn lookup_symbol_in_global_scope(&self, name: &str) -> Option<&Symbol> {
         // Navigate to global scope
         let mut current = &*self.current_scope;
-        
+
         while let Some(parent) = &current.parent {
             current = parent;
         }
-        
+
         // Now current should be the global scope
         current.symbols.get(name)
     }

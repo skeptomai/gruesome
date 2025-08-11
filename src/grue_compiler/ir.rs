@@ -497,22 +497,31 @@ impl IrGenerator {
         Ok(())
     }
 
-    fn register_object_and_nested(&mut self, obj: &crate::grue_compiler::ast::ObjectDecl) -> Result<(), CompilerError> {
+    fn register_object_and_nested(
+        &mut self,
+        obj: &crate::grue_compiler::ast::ObjectDecl,
+    ) -> Result<(), CompilerError> {
         // Register the object itself
         let obj_id = self.next_id();
         self.symbol_ids.insert(obj.identifier.clone(), obj_id);
-        
-        // Assign object number 
+
+        // Assign object number
         let object_number = self.object_numbers.len() as u16 + 1;
-        self.object_numbers.insert(obj.identifier.clone(), object_number);
-        
-        log::debug!("Registered object '{}' with ID {} and object number {}", obj.identifier, obj_id, object_number);
-        
+        self.object_numbers
+            .insert(obj.identifier.clone(), object_number);
+
+        log::debug!(
+            "Registered object '{}' with ID {} and object number {}",
+            obj.identifier,
+            obj_id,
+            object_number
+        );
+
         // Process nested objects recursively
         for nested_obj in &obj.contains {
             self.register_object_and_nested(nested_obj)?;
         }
-        
+
         Ok(())
     }
 
@@ -544,7 +553,11 @@ impl IrGenerator {
 
         // Process room objects FIRST - add them to symbol_ids for identifier resolution
         // This must happen before processing handlers that might reference these objects
-        log::debug!("Processing {} objects for room '{}'", room.objects.len(), room.identifier);
+        log::debug!(
+            "Processing {} objects for room '{}'",
+            room.objects.len(),
+            room.identifier
+        );
         for obj in &room.objects {
             self.register_object_and_nested(obj)?;
         }

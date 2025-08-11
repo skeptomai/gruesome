@@ -95,7 +95,17 @@ else
     FAILED=1
 fi
 
-# 6. Run integration tests
+# 6. Build Grue compiler
+print_step "Building Grue compiler"
+if cargo build --verbose --bin grue-compiler >/dev/null 2>&1; then
+    print_success "Grue compiler build successful"
+else
+    print_error "Grue compiler build failed"
+    cargo build --verbose --bin grue-compiler
+    FAILED=1
+fi
+
+# 7. Run integration tests
 print_step "Running integration tests"
 if cargo test --test integration_gameplay >/dev/null 2>&1; then
     print_success "Gameplay integration tests passed"
@@ -113,7 +123,7 @@ else
     FAILED=1
 fi
 
-# 7. Optional: Test Windows cross-compilation (separate job in CI)
+# 8. Optional: Test Windows cross-compilation (separate job in CI)
 print_step "Cross-compilation check (optional)"
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     if command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1; then

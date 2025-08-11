@@ -27,13 +27,21 @@ jobs:
     - name: Build for aarch64-apple-darwin
       run: |
         cargo build --release --target aarch64-apple-darwin --bin gruesome
+        cargo build --release --target aarch64-apple-darwin --bin grue-compiler
+        cargo build --release --target aarch64-apple-darwin --bin gruedasm-txd
         mkdir -p artifacts
         cp target/aarch64-apple-darwin/release/gruesome artifacts/gruesome-aarch64-apple-darwin
+        cp target/aarch64-apple-darwin/release/grue-compiler artifacts/grue-compiler-aarch64-apple-darwin
+        cp target/aarch64-apple-darwin/release/gruedasm-txd artifacts/gruedasm-txd-aarch64-apple-darwin
     
     - name: Build for x86_64-apple-darwin
       run: |
         cargo build --release --target x86_64-apple-darwin --bin gruesome
+        cargo build --release --target x86_64-apple-darwin --bin grue-compiler
+        cargo build --release --target x86_64-apple-darwin --bin gruedasm-txd
         cp target/x86_64-apple-darwin/release/gruesome artifacts/gruesome-x86_64-apple-darwin
+        cp target/x86_64-apple-darwin/release/grue-compiler artifacts/grue-compiler-x86_64-apple-darwin
+        cp target/x86_64-apple-darwin/release/gruedasm-txd artifacts/gruedasm-txd-x86_64-apple-darwin
     
     - name: Create universal binary
       run: |
@@ -42,11 +50,25 @@ jobs:
           artifacts/gruesome-x86_64-apple-darwin \
           -output artifacts/gruesome-universal-apple-darwin
         
-        # Verify the universal binary
-        lipo -info artifacts/gruesome-universal-apple-darwin
+        lipo -create \
+          artifacts/grue-compiler-aarch64-apple-darwin \
+          artifacts/grue-compiler-x86_64-apple-darwin \
+          -output artifacts/grue-compiler-universal-apple-darwin
         
-        # Make it executable
+        lipo -create \
+          artifacts/gruedasm-txd-aarch64-apple-darwin \
+          artifacts/gruedasm-txd-x86_64-apple-darwin \
+          -output artifacts/gruedasm-txd-universal-apple-darwin
+        
+        # Verify the universal binaries
+        lipo -info artifacts/gruesome-universal-apple-darwin
+        lipo -info artifacts/grue-compiler-universal-apple-darwin
+        lipo -info artifacts/gruedasm-txd-universal-apple-darwin
+        
+        # Make them executable
         chmod +x artifacts/gruesome-universal-apple-darwin
+        chmod +x artifacts/grue-compiler-universal-apple-darwin
+        chmod +x artifacts/gruedasm-txd-universal-apple-darwin
     
     - name: Upload macOS artifacts
       uses: actions/upload-artifact@v4
@@ -56,6 +78,12 @@ jobs:
           artifacts/gruesome-aarch64-apple-darwin
           artifacts/gruesome-x86_64-apple-darwin
           artifacts/gruesome-universal-apple-darwin
+          artifacts/grue-compiler-aarch64-apple-darwin
+          artifacts/grue-compiler-x86_64-apple-darwin
+          artifacts/grue-compiler-universal-apple-darwin
+          artifacts/gruedasm-txd-aarch64-apple-darwin
+          artifacts/gruedasm-txd-x86_64-apple-darwin
+          artifacts/gruedasm-txd-universal-apple-darwin
 
   build-windows:
     name: Build Windows binary
@@ -77,14 +105,21 @@ jobs:
     - name: Build for Windows
       run: |
         cargo build --release --target x86_64-pc-windows-gnu --bin gruesome
+        cargo build --release --target x86_64-pc-windows-gnu --bin grue-compiler
+        cargo build --release --target x86_64-pc-windows-gnu --bin gruedasm-txd
         mkdir -p artifacts
         cp target/x86_64-pc-windows-gnu/release/gruesome.exe artifacts/gruesome-x86_64-pc-windows-gnu.exe
+        cp target/x86_64-pc-windows-gnu/release/grue-compiler.exe artifacts/grue-compiler-x86_64-pc-windows-gnu.exe
+        cp target/x86_64-pc-windows-gnu/release/gruedasm-txd.exe artifacts/gruedasm-txd-x86_64-pc-windows-gnu.exe
     
     - name: Upload Windows artifacts
       uses: actions/upload-artifact@v4
       with:
         name: windows-binaries
-        path: artifacts/gruesome-x86_64-pc-windows-gnu.exe
+        path: |
+          artifacts/gruesome-x86_64-pc-windows-gnu.exe
+          artifacts/grue-compiler-x86_64-pc-windows-gnu.exe
+          artifacts/gruedasm-txd-x86_64-pc-windows-gnu.exe
 
   create-release:
     name: Create Release
@@ -118,7 +153,15 @@ jobs:
           artifacts/macos-binaries/gruesome-aarch64-apple-darwin
           artifacts/macos-binaries/gruesome-x86_64-apple-darwin
           artifacts/macos-binaries/gruesome-universal-apple-darwin
+          artifacts/macos-binaries/grue-compiler-aarch64-apple-darwin
+          artifacts/macos-binaries/grue-compiler-x86_64-apple-darwin
+          artifacts/macos-binaries/grue-compiler-universal-apple-darwin
+          artifacts/macos-binaries/gruedasm-txd-aarch64-apple-darwin
+          artifacts/macos-binaries/gruedasm-txd-x86_64-apple-darwin
+          artifacts/macos-binaries/gruedasm-txd-universal-apple-darwin
           artifacts/windows-binaries/gruesome-x86_64-pc-windows-gnu.exe
+          artifacts/windows-binaries/grue-compiler-x86_64-pc-windows-gnu.exe
+          artifacts/windows-binaries/gruedasm-txd-x86_64-pc-windows-gnu.exe
           artifacts/README.txt
         draft: true
         prerelease: false
