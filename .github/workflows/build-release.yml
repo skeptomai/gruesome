@@ -138,7 +138,7 @@ jobs:
     
     - name: Prepare README.txt
       run: |
-        cp RUNTIME_README.md artifacts/README.txt
+        cp README.md artifacts/README.txt
     
     - name: List artifacts
       run: |
