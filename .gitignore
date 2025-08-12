@@ -4,5 +4,8 @@
 debug.log
 /out
 
+# Test artifacts - regenerated from source
+/tests/golden_files/
+
 # Claude Code settings
 .claude/settings.local.json
