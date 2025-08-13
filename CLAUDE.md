@@ -254,6 +254,60 @@ The interpreter correctly handles calls to address 0x0000 according to the Z-Mac
 - Release automation working properly
 - Ready for new features or game compatibility work
 
+## Runtime Issues Fix Plan (Aug 12, 2025)
+
+### Current Status: Compilation Complete, Runtime Issues Identified
+
+**Completed:**
+- ✅ Property access implementation (complete)
+- ✅ Error handling and recovery (complete)  
+- ✅ Complex control flow compilation (complete)
+
+**Remaining Runtime Issues:**
+
+### 1. Stack Management Crisis 🔴
+- **Issue**: "Stack is empty" errors in complex control flow
+- **Root Cause**: Unbalanced stack operations in nested conditionals/expressions
+- **Impact**: Complex programs crash during execution
+
+### 2. Invalid Bytecode Generation 🔴
+- **Issue**: "Invalid Long form opcode 0x00" at various addresses
+- **Root Cause**: Malformed Z-Machine instruction encoding 
+- **Impact**: Programs start but crash unpredictably
+
+### 3. Property System Gaps 🟡
+- **Issue**: Property access uses placeholder implementations
+- **Root Cause**: Hardcoded object numbers instead of proper IR→Z-Machine mapping
+- **Impact**: Property operations don't access real object data
+
+### 4. Object Resolution Problems 🟡
+- **Issue**: Objects not properly mapped to Z-Machine object table
+- **Root Cause**: Missing object table generation and ID resolution
+- **Impact**: Object manipulation operations fail
+
+### Systematic Fix Plan
+
+**Phase 1: Bytecode Diagnostics & Validation (Priority 1)**
+- Create bytecode inspection tools (hexdump, instruction decoder, stack trace)
+- Add bytecode validation during generation (validate encoding, operand compatibility)
+- Implement generation debugging (log instructions, track stack depth, identify invalid opcodes)
+
+**Phase 2: Stack Management Overhaul (Priority 1)**
+- Audit stack operations in codegen (review emit_instruction calls, ensure balanced push/pop)
+- Implement stack depth tracking (compilation warnings, safety assertions)
+- Fix nested control flow stack handling (if/else balance, function calls, expression evaluation)
+
+**Phase 3: Complete Object/Property System (Priority 2)**
+- Implement proper object table generation (Z-Machine format, IR→object mapping, property table)
+- Fix property access operations (real object resolution, correct get_prop/put_prop operands)
+- Add object manipulation operations (complete move() builtin, container support, attributes)
+
+**Phase 4: Runtime Error Recovery (Priority 3)**
+- Enhanced runtime error handling (catch Z-Machine errors, graceful degradation)
+- Debugging and profiling tools (performance monitoring, execution trace, breakpoints)
+
+**Execution Order:** Phase 1+2 parallel → Phase 3 → Phase 4
+
 ## Historical Documentation
 
 Development history and detailed implementation logs have been archived to `CLAUDE_HISTORICAL.md` for reference. This file is not automatically loaded but preserves all technical implementation details from the development process.

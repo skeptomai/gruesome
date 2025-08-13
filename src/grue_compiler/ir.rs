@@ -366,7 +366,13 @@ impl IrGenerator {
     fn is_builtin_function(&self, name: &str) -> bool {
         matches!(
             name,
-            "print" | "move" | "get_location" | "get_child" | "get_sibling" | "test_attr"
+            "print"
+                | "move"
+                | "get_location"
+                | "get_child"
+                | "get_sibling"
+                | "test_attr"
+                | "to_string"
         )
     }
 

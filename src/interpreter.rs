@@ -1757,6 +1757,24 @@ impl Interpreter {
 
                 self.do_branch(inst, condition)
             }
+            0x19 => {
+                // call_vn - Call routine with variable number of arguments (void, no return)
+                if operands.is_empty() {
+                    return Err("call_vn requires at least 1 operand (routine address)".to_string());
+                }
+
+                let routine_addr = operands[0];
+                debug!(
+                    "VAR call_vn: routine_addr=0x{:04x}, args={:?}",
+                    routine_addr,
+                    &operands[1..]
+                );
+
+                // Call with remaining operands as arguments, no return value storage
+                let args = &operands[1..];
+                self.do_call(routine_addr, args, None)?; // None = no return value storage
+                Ok(ExecutionResult::Called)
+            }
             _ => {
                 let pc = self.vm.pc - inst.size as u32;
                 debug!(

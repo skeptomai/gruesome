@@ -7,5 +7,10 @@ debug.log
 # Test artifacts - regenerated from source
 /tests/golden_files/
 
+# Compiled outputs - should be in examples/ or out/ directories
+/*.z3
+/*.z5
+/*.grue
+
 # Claude Code settings
 .claude/settings.local.json

@@ -1,0 +1,134 @@
+// Complex Control Flow Test
+// Tests nested conditionals, early returns, complex boolean logic
+
+world {
+    room control_test_room "Control Test Room" {
+        desc: "A room for testing control flow."
+        exits: {}
+    }
+}
+
+fn test_nested_conditionals(level) {
+    print("Testing nested conditionals at level " + to_string(level));
+    
+    if (level > 0) {
+        print("Level " + to_string(level) + " - outer condition true");
+        
+        if (level > 1) {
+            print("Level " + to_string(level) + " - middle condition true");
+            
+            if (level > 2) {
+                print("Level " + to_string(level) + " - inner condition true");
+                if (level > 3) {
+                    print("Level " + to_string(level) + " - deepest condition true");
+                } else {
+                    print("Level " + to_string(level) + " - deepest condition false");
+                }
+            } else {
+                print("Level " + to_string(level) + " - inner condition false");
+            }
+        } else {
+            print("Level " + to_string(level) + " - middle condition false");
+        }
+    } else {
+        print("Level " + to_string(level) + " - outer condition false");
+    }
+}
+
+fn test_early_returns(value) {
+    print("Testing early returns with value " + to_string(value));
+    
+    if (value < 0) {
+        print("Negative value - returning early");
+        return;
+    }
+    
+    print("Value is non-negative, continuing...");
+    
+    if (value == 0) {
+        print("Zero value - returning early");
+        return;
+    }
+    
+    print("Value is positive, continuing...");
+    
+    if (value > 100) {
+        print("Large value - returning early");
+        return;
+    }
+    
+    print("Normal value - completing function");
+}
+
+fn test_complex_boolean_logic(a, b, c) {
+    print("Testing complex boolean logic");
+    print("a=" + to_string(a) + " b=" + to_string(b) + " c=" + to_string(c));
+    
+    // Complex AND/OR combinations
+    if ((a > 0) && (b > 0) && (c > 0)) {
+        print("All positive");
+    } else if ((a > 0) || (b > 0) || (c > 0)) {
+        print("At least one positive");
+    } else {
+        print("All non-positive");
+    }
+    
+    // Nested boolean expressions
+    if (((a > b) && (b > c)) || ((c > b) && (b > a))) {
+        print("b is in the middle");
+    } else if ((a == b) && (b == c)) {
+        print("All values equal");
+    } else {
+        print("Other relationship");
+    }
+}
+
+fn test_cascading_if_else(score) {
+    print("Testing cascading if-else with score " + to_string(score));
+    
+    if (score >= 90) {
+        print("Grade: A");
+    } else if (score >= 80) {
+        print("Grade: B");
+    } else if (score >= 70) {
+        print("Grade: C");
+    } else if (score >= 60) {
+        print("Grade: D");
+    } else {
+        print("Grade: F");
+    }
+}
+
+init {
+    print("Complex Control Flow Test");
+    print("========================");
+    
+    // Test various levels of nesting
+    test_nested_conditionals(0);
+    test_nested_conditionals(2);
+    test_nested_conditionals(4);
+    
+    print("");
+    
+    // Test early returns
+    test_early_returns(-5);
+    test_early_returns(0);
+    test_early_returns(50);
+    test_early_returns(150);
+    
+    print("");
+    
+    // Test complex boolean logic
+    test_complex_boolean_logic(1, 2, 3);
+    test_complex_boolean_logic(-1, 0, 1);
+    test_complex_boolean_logic(5, 5, 5);
+    
+    print("");
+    
+    // Test cascading conditions
+    test_cascading_if_else(95);
+    test_cascading_if_else(75);
+    test_cascading_if_else(45);
+    
+    print("All control flow tests completed!");
+}

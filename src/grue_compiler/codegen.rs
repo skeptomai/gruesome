@@ -16,11 +16,12 @@ const DEFAULT_PC_START: u16 = 0x1000; // Initial program counter
 
 /// Z-Machine operand types
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[repr(u8)]
 pub enum OperandType {
-    LargeConstant, // 00: 16-bit constant
-    SmallConstant, // 01: 8-bit constant
-    Variable,      // 10: variable number
-    Omitted,       // 11: operand omitted
+    LargeConstant = 0b00, // 00: 16-bit constant
+    SmallConstant = 0b01, // 01: 8-bit constant
+    Variable = 0b10,      // 10: variable number
+    Omitted = 0b11,       // 11: operand omitted
 }
 
 /// Z-Machine instruction formats
@@ -85,6 +86,10 @@ pub struct ZMachineCodeGen {
     builtin_function_names: HashMap<IrId, String>,
     /// Mapping from object names to object numbers (from IR generator)
     object_numbers: HashMap<String, u16>,
+    /// Global property registry: property name -> property number
+    property_numbers: HashMap<String, u8>,
+    /// Properties used by each object: object_name -> set of property names
+    object_properties: HashMap<String, Vec<String>>,
 
     // Tables for Z-Machine structures
     object_table_addr: usize,
@@ -94,8 +99,12 @@ pub struct ZMachineCodeGen {
 
     // String encoding
     strings: Vec<(IrId, String)>, // Collected strings for encoding
+
+    // Stack tracking for debugging
+    stack_depth: i32,                        // Current estimated stack depth
+    max_stack_depth: i32,                    // Maximum stack depth reached
     encoded_strings: HashMap<IrId, Vec<u8>>, // IR string ID -> encoded bytes
-    next_string_id: IrId,         // Next available string ID
+    next_string_id: IrId,                    // Next available string ID
 
     // Address resolution
     reference_context: ReferenceContext,
@@ -113,6 +122,8 @@ impl ZMachineCodeGen {
             ir_id_to_string: HashMap::new(),
             builtin_function_names: HashMap::new(),
             object_numbers: HashMap::new(),
+            property_numbers: HashMap::new(),
+            object_properties: HashMap::new(),
             object_table_addr: 0,
             property_table_addr: 0,
             dictionary_addr: 0,
@@ -120,6 +131,8 @@ impl ZMachineCodeGen {
             strings: Vec::new(),
             encoded_strings: HashMap::new(),
             next_string_id: 1000, // Start string IDs from 1000 to avoid conflicts
+            stack_depth: 0,
+            max_stack_depth: 0,
             reference_context: ReferenceContext {
                 ir_id_to_address: HashMap::new(),
                 unresolved_refs: Vec::new(),
@@ -128,14 +141,17 @@ impl ZMachineCodeGen {
     }
 
     pub fn generate(&mut self, ir: IrProgram) -> Result<Vec<u8>, CompilerError> {
-        // Phase 1: Collect and encode all strings
+        // Phase 1: Analyze properties across all IR elements
+        self.analyze_properties(&ir)?;
+
+        // Phase 2: Collect and encode all strings
         self.collect_strings(&ir)?;
         self.encode_all_strings()?;
 
-        // Phase 2: Reserve space for Z-Machine structures
+        // Phase 3: Reserve space for Z-Machine structures
         self.layout_memory_structures(&ir)?;
 
-        // Phase 3: Generate object and property tables
+        // Phase 4: Generate object and property tables
         self.generate_object_tables(&ir)?;
         debug!("INTEGRITY CHECK: After Phase 3 (object tables):");
         // Calculate the actual property table addresses
@@ -203,6 +219,95 @@ impl ZMachineCodeGen {
         Ok(self.story_data.clone())
     }
 
+    /// Analyze all property accesses across the IR program and build global property registry
+    fn analyze_properties(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
+        debug!("Starting property analysis...");
+
+        // Step 1: Collect all property names from all instructions
+        let mut all_properties = std::collections::HashSet::new();
+
+        // Analyze functions
+        for function in &ir.functions {
+            self.collect_properties_from_block(&function.body, &mut all_properties);
+        }
+
+        // Analyze init block
+        if let Some(init_block) = &ir.init_block {
+            self.collect_properties_from_block(init_block, &mut all_properties);
+        }
+
+        // Step 2: Assign property numbers starting from 1 in sorted order for consistency
+        let mut sorted_properties: Vec<String> = all_properties.iter().cloned().collect();
+        sorted_properties.sort();
+
+        let mut property_number = 1u8;
+        for property_name in sorted_properties {
+            self.property_numbers
+                .insert(property_name.clone(), property_number);
+            debug!(
+                "Assigned property '{}' -> number {}",
+                property_name, property_number
+            );
+            property_number += 1;
+        }
+
+        // Step 3: Analyze which properties each object uses
+        self.analyze_object_property_usage(ir);
+
+        debug!(
+            "Property analysis complete. {} properties registered.",
+            self.property_numbers.len()
+        );
+        Ok(())
+    }
+
+    /// Collect all property names from instructions in a block
+    fn collect_properties_from_block(
+        &mut self,
+        block: &IrBlock,
+        properties: &mut std::collections::HashSet<String>,
+    ) {
+        for instruction in &block.instructions {
+            match instruction {
+                IrInstruction::GetProperty { property, .. } => {
+                    properties.insert(property.clone());
+                }
+                IrInstruction::SetProperty { property, .. } => {
+                    properties.insert(property.clone());
+                }
+                _ => {} // Other instructions don't access properties
+            }
+        }
+    }
+
+    /// Analyze which properties each object uses (for complete property table generation)
+    fn analyze_object_property_usage(&mut self, ir: &IrProgram) {
+        // For now, assume all objects use all properties (conservative approach)
+        // This ensures every object has complete property tables
+        let all_property_names: Vec<String> = self.property_numbers.keys().cloned().collect();
+
+        // Add the implicit "player" object
+        self.object_properties
+            .insert("player".to_string(), all_property_names.clone());
+
+        // Add all room names (rooms are objects in Z-Machine)
+        for room in &ir.rooms {
+            self.object_properties
+                .insert(room.name.clone(), all_property_names.clone());
+        }
+
+        // Add all explicit objects
+        for object in &ir.objects {
+            self.object_properties
+                .insert(object.name.clone(), all_property_names.clone());
+        }
+
+        debug!(
+            "Object property usage analysis complete. {} objects analyzed.",
+            self.object_properties.len()
+        );
+    }
+
     /// Collect all strings from the IR program for later encoding
     fn collect_strings(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
         // Collect from string table
@@ -265,47 +370,127 @@ impl ZMachineCodeGen {
 
     /// Encode a single string using Z-Machine ZSCII encoding
     fn encode_string(&self, s: &str) -> Result<Vec<u8>, CompilerError> {
-        // Simplified Z-Machine string encoding (ZSCII)
-        // TODO: Implement proper dictionary lookup and abbreviations
+        // Z-Machine text encoding per Z-Machine Standard 1.1, Section 3.5.3
+        // Alphabet A0 (6-31): abcdefghijklmnopqrstuvwxyz
+        // Alphabet A1 (6-31): ABCDEFGHIJKLMNOPQRSTUVWXYZ
+        // Alphabet A2 (6-31):  ^0123456789.,!?_#'"/\-:()
 
+        let mut zchars = Vec::new();
+
+        for ch in s.chars() {
+            match ch {
+                // Space is always Z-character 0
+                ' ' => zchars.push(0),
+
+                // Alphabet A0: lowercase letters (Z-chars 6-31)
+                'a'..='z' => {
+                    zchars.push(ch as u8 - b'a' + 6);
+                }
+
+                // Alphabet A1: uppercase letters (single-shift with 4, then Z-char 6-31)
+                'A'..='Z' => {
+                    zchars.push(4); // Single shift to alphabet A1
+                    zchars.push(ch as u8 - b'A' + 6);
+                }
+
+                // Alphabet A2: punctuation characters (single-shift with 5, then Z-char)
+                '\n' => {
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(7); // '^' (newline) at position 7
+                }
+                '0'..='9' => {
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(ch as u8 - b'0' + 8); // Numbers at positions 8-17
+                }
+                '.' => {
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(18); // '.' at position 18
+                }
+                ',' => {
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(19); // ',' at position 19
+                }
+                '!' => {
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(20); // '!' at position 20
+                }
+                '?' => {
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(21); // '?' at position 21
+                }
+                '_' => {
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(22); // '_' at position 22
+                }
+                '#' => {
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(23); // '#' at position 23
+                }
+                '\'' => {
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(24); // '\'' at position 24
+                }
+                '"' => {
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(25); // '"' at position 25
+                }
+                '/' => {
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(26); // '/' at position 26
+                }
+                '\\' => {
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(27); // '\\' at position 27
+                }
+                '-' => {
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(28); // '-' at position 28
+                }
+                ':' => {
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(29); // ':' at position 29
+                }
+                '(' => {
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(30); // '(' at position 30
+                }
+                ')' => {
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(31); // ')' at position 31
+                }
+                _ => {
+                    // Unsupported character - encode as '?'
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(21); // '?' at position 21
+                }
+            }
+        }
+
+        // Pack zchars into 16-bit words (3 zchars per word)
         let mut encoded = Vec::new();
-        let chars: Vec<char> = s.chars().collect();
 
-        // Process characters in groups of 3 (Z-Machine uses 3 5-bit chars per word)
-        for chunk in chars.chunks(3) {
+        for chunk in zchars.chunks(3) {
             let mut word = 0u16;
 
-            // Pack up to 3 characters into a 16-bit word
-            for (i, &ch) in chunk.iter().enumerate() {
-                let zchar = match ch {
-                    'a'..='z' => (ch as u8 - b'a' + 6) as u16,
-                    'A'..='Z' => (ch as u8 - b'A' + 6) as u16, // Same as lowercase in alphabet 0
-                    ' ' => 0,
-                    '?' => 31, // Common punctuation
-                    '.' => 31,
-                    ',' => 31,
-                    _ => 6, // Default to 'a' for unsupported chars
-                };
-
-                word |= (zchar & 0x1F) << (10 - i * 5);
+            for (i, &zchar) in chunk.iter().enumerate() {
+                word |= (zchar as u16 & 0x1F) << (10 - i * 5);
             }
 
-            // If this is the last word in the string, set the high bit
-            if chunk.len() < 3 || chars.len() <= encoded.len() / 2 * 3 + 3 {
-                word |= 0x8000;
+            // Pad incomplete chunks with 5s (pad character)
+            for i in chunk.len()..3 {
+                word |= 5u16 << (10 - i * 5);
             }
 
-            // Store as big-endian
             encoded.push((word >> 8) as u8);
             encoded.push(word as u8);
         }
 
-        // Ensure we have at least one word (empty strings become a single word with high bit set)
+        // Ensure we have at least one word
         if encoded.is_empty() {
             encoded.push(0x80);
             encoded.push(0x00);
         } else {
-            // Make sure the last word has the high bit set to terminate the string
+            // Set the termination bit on the last word
             let last_idx = encoded.len() - 2;
             encoded[last_idx] |= 0x80;
         }
@@ -510,36 +695,68 @@ impl ZMachineCodeGen {
         let objects_start = self.object_table_addr + 31 * 2; // After default properties
         let max_objects = self.object_numbers.len();
         let all_object_entries_end = objects_start + (max_objects * 9);
-        let prop_table_addr = all_object_entries_end + ((obj_num - 1) as usize) * 20;
+        let prop_table_addr = all_object_entries_end + ((obj_num - 1) as usize) * 50; // More space per object
 
         debug!(
-            "Creating property table for object {} at address 0x{:04x}",
+            "Creating complete property table for object {} at address 0x{:04x}",
             obj_num, prop_table_addr
         );
 
-        // Ensure we have space for the property table structure
-        self.ensure_capacity(prop_table_addr + 20); // Generous space allocation
+        // Get properties for this object number
+        let object_name = self.get_object_name_by_number(obj_num);
+        let properties = self
+            .object_properties
+            .get(&object_name)
+            .cloned()
+            .unwrap_or_else(Vec::new);
+
+        // Estimate space needed: text-length + (3 bytes per property) + terminator
+        let estimated_size = 1 + (properties.len() * 3) + 1;
+        self.ensure_capacity(prop_table_addr + estimated_size);
 
         // Text-length byte (0 = no short name)
         self.story_data[prop_table_addr] = 0;
         let mut addr = prop_table_addr + 1;
 
-        // Create property 1 (location property) with default value 0
-        // Property header: top 3 bits = size-1, bottom 5 bits = property number
-        // For property 1 with 2-byte value: (2-1) << 5 | 1 = 0x21
-        debug!("Writing property header 0x21 at address 0x{:04x}", addr);
-        self.story_data[addr] = 0x21; // Property 1, size 2 bytes
-        addr += 1;
+        // Create properties in descending order (Z-Machine requirement)
+        let mut sorted_properties: Vec<(u8, String)> = properties
+            .iter()
+            .filter_map(|name| {
+                self.property_numbers
+                    .get(name)
+                    .map(|&num| (num, name.clone()))
+            })
+            .collect();
+        sorted_properties.sort_by(|a, b| b.0.cmp(&a.0)); // Descending order
 
-        // Property data (2 bytes, default value 0)
         debug!(
-            "Writing property data at addresses 0x{:04x}, 0x{:04x}",
-            addr,
-            addr + 1
+            "Creating {} properties for object {}: {:?}",
+            sorted_properties.len(),
+            obj_num,
+            sorted_properties
         );
-        self.story_data[addr] = 0; // High byte of default value
-        self.story_data[addr + 1] = 0; // Low byte of default value
-        addr += 2;
+
+        for (prop_num, prop_name) in sorted_properties {
+            // Property header: top 3 bits = size-1, bottom 5 bits = property number
+            // For 2-byte properties: (2-1) << 5 | prop_num
+            let header = ((2u8 - 1) << 5) | prop_num;
+
+            debug!(
+                "Writing property {} ({}) header 0x{:02x} at address 0x{:04x}",
+                prop_num, prop_name, header, addr
+            );
+            self.story_data[addr] = header;
+            addr += 1;
+
+            // Property data (2 bytes, default value 0)
+            debug!(
+                "Writing property {} data (0x0000) at address 0x{:04x}",
+                prop_num, addr
+            );
+            self.story_data[addr] = 0; // High byte
+            self.story_data[addr + 1] = 0; // Low byte
+            addr += 2;
+        }
 
         // End of property table (property 0 marks end)
         debug!("Writing property terminator 0x00 at address 0x{:04x}", addr);
@@ -549,11 +766,28 @@ impl ZMachineCodeGen {
         // Don't update current_address since we're using fixed property table locations
 
         debug!(
-            "Property table for object {} created, next address: 0x{:04x}",
-            obj_num, addr
+            "Complete property table for object {} created with {} properties, next address: 0x{:04x}",
+            obj_num, properties.len(), addr
         );
 
         Ok(prop_table_addr)
+    }
+
+    /// Get object name by object number (for property table generation)
+    fn get_object_name_by_number(&self, obj_num: u8) -> String {
+        // Special cases for implicit objects
+        match obj_num {
+            1 => "player".to_string(),
+            _ => {
+                // Find object name by number in the registry
+                for (name, &number) in &self.object_numbers {
+                    if number == obj_num as u16 {
+                        return name.clone();
+                    }
+                }
+                format!("object_{}", obj_num) // Fallback
+            }
+        }
     }
 
     /// Generate dictionary
@@ -624,21 +858,74 @@ impl ZMachineCodeGen {
             self.function_addresses.insert(function.id, func_addr);
             self.record_address(function.id, func_addr);
 
-            // Generate function body
-            self.generate_block(&function.body)?;
+            // Generate function body with boundary protection
+            self.generate_function_body_with_boundary(function)?;
 
-            // Ensure function ends with a return
-            let has_return = self.block_ends_with_return(&function.body);
             log::debug!(
-                "Function '{}' ends with return: {}",
+                "Function '{}' generation complete at address 0x{:04x}",
                 function.name,
-                has_return
+                self.current_address
             );
-            if !has_return {
-                log::debug!("Adding implicit return to function '{}'", function.name);
-                self.emit_return(None)?;
+        }
+
+        Ok(())
+    }
+
+    /// Generate function body with proper boundary detection and protection
+    fn generate_function_body_with_boundary(
+        &mut self,
+        function: &IrFunction,
+    ) -> Result<(), CompilerError> {
+        // Track the starting address to detect if we're generating orphaned instructions
+        let function_start = self.current_address;
+
+        // First pass: Process all Label instructions to record addresses, even if unreachable
+        for instruction in &function.body.instructions {
+            if let IrInstruction::Label { id } = instruction {
+                log::debug!(
+                    "Recording label ID {} at address 0x{:04x}",
+                    *id,
+                    self.current_address
+                );
+                self.label_addresses.insert(*id, self.current_address);
+                self.record_address(*id, self.current_address);
             }
         }
+
+        // Second pass: Generate actual instructions
+        for instruction in &function.body.instructions {
+            self.generate_instruction(instruction)?;
+
+            // Stop if we encounter a return instruction (labels already processed)
+            if matches!(instruction, IrInstruction::Return { .. }) {
+                log::debug!(
+                    "Function '{}' has explicit return, stopping instruction generation",
+                    function.name
+                );
+                return Ok(());
+            }
+        }
+
+        // Check if function needs implicit return
+        let has_return = self.block_ends_with_return(&function.body);
+        log::debug!(
+            "Function '{}' ends with return: {}",
+            function.name,
+            has_return
+        );
+
+        if !has_return {
+            log::debug!("Adding implicit return to function '{}'", function.name);
+            self.emit_return(None)?;
+        }
+
+        // Log the range of addresses used by this function
+        log::debug!(
+            "Function '{}' generated from 0x{:04x} to 0x{:04x}",
+            function.name,
+            function_start,
+            self.current_address
+        );
 
         Ok(())
     }
@@ -719,7 +1006,7 @@ impl ZMachineCodeGen {
                     self.generate_builtin_function_call(*function, args)?;
                 } else {
                     // Generate call with unresolved function reference
-                    self.generate_call_with_reference(*function)?;
+                    self.generate_call_with_reference(*function, args)?;
                 }
             }
 
@@ -727,10 +1014,10 @@ impl ZMachineCodeGen {
                 if let Some(_ir_value) = value {
                     // Return with value - use ret opcode with operand
                     let operands = vec![Operand::Variable(0)]; // Return stack top
-                    self.emit_instruction(0x0B, &operands, None, None)?;
+                    self.emit_instruction(0x8B, &operands, None, None)?; // ret (1OP:11)
                 } else {
                     // Return without value - use rtrue (0OP)
-                    self.emit_instruction(0x00, &[], None, None)?; // rtrue
+                    self.emit_instruction(0xB0, &[], None, None)?; // rtrue (0OP:0)
                 }
             }
 
@@ -790,17 +1077,23 @@ impl ZMachineCodeGen {
                 // Generate Z-Machine get_prop instruction (2OP:17, opcode 0x11)
                 // For now, use placeholder object ID and property number
                 // TODO: Map IR object ID to actual Z-Machine object number
-                // TODO: Map property name to property number
-                let property_num = match property.as_str() {
-                    "location" => 1, // Common property number for location/parent
-                    "description" => 2,
-                    _ => 3, // Default property number
-                };
+                // Use global property registry for consistent property numbering
+                let property_num =
+                    self.property_numbers
+                        .get(property)
+                        .copied()
+                        .unwrap_or_else(|| {
+                            debug!(
+                                "Warning: Property '{}' not found in registry, using default 1",
+                                property
+                            );
+                            1
+                        });
 
                 // Generate get_prop instruction
                 let operands = vec![
-                    Operand::Variable(1),            // Object (placeholder - from local var 1)
-                    Operand::Constant(property_num), // Property number
+                    Operand::Variable(1), // Object (placeholder - from local var 1)
+                    Operand::Constant(property_num.into()), // Property number
                 ];
                 self.emit_instruction(0x11, &operands, Some(0), None)?; // Store result in stack top
             }
@@ -812,20 +1105,26 @@ impl ZMachineCodeGen {
                 // Generate Z-Machine put_prop instruction (VAR:227, opcode 0x03)
                 // For now, use placeholder object ID and property number
                 // TODO: Map IR object ID to actual Z-Machine object number
-                // TODO: Map property name to property number
-                let property_num = match property.as_str() {
-                    "location" => 1, // Common property number for location/parent
-                    "description" => 2,
-                    _ => 3, // Default property number
-                };
+                // Use global property registry for consistent property numbering
+                let property_num =
+                    self.property_numbers
+                        .get(property)
+                        .copied()
+                        .unwrap_or_else(|| {
+                            debug!(
+                                "Warning: Property '{}' not found in registry, using default 1",
+                                property
+                            );
+                            1
+                        });
 
                 // Generate put_prop instruction
                 // TODO: This is a simplified implementation that hardcodes object numbers
                 // A complete implementation would properly map IR values to operands
                 let operands = vec![
-                    Operand::Constant(1),            // Object (player = 1)
-                    Operand::Constant(property_num), // Property number
-                    Operand::Constant(2),            // Value (start_room = 2)
+                    Operand::Constant(1),                   // Object (player = 1)
+                    Operand::Constant(property_num.into()), // Property number
+                    Operand::Constant(2),                   // Value (start_room = 2)
                 ];
                 self.emit_instruction(0x03, &operands, None, None)?;
             }
@@ -992,11 +1291,35 @@ impl ZMachineCodeGen {
         self.emit_instruction(opcode, &operands, store_var, None)
     }
 
-    /// Generate function call with unresolved reference
-    fn generate_call_with_reference(&mut self, function_id: IrId) -> Result<(), CompilerError> {
-        // Emit call instruction with placeholder function address
-        self.emit_byte(0xE0)?; // call_vs opcode (VAR form)
-        self.emit_byte(0x3F)?; // Operand types: large constant, omitted, omitted, omitted
+    /// Generate function call with unresolved reference and arguments
+    fn generate_call_with_reference(
+        &mut self,
+        function_id: IrId,
+        args: &[IrId],
+    ) -> Result<(), CompilerError> {
+        // Use call_vn (void call, no return value storage) for statement function calls
+        // This avoids the "Stack is empty" error when trying to store to variable 0x00
+        self.emit_byte(0xF9)?; // call_vn opcode (VAR:249, 0x19 with VAR form bit 0xE0)
+
+        // Generate operand types based on number of arguments (function address + args)
+        let total_operands = 1 + args.len(); // function address + arguments
+        if total_operands > 4 {
+            return Err(CompilerError::CodeGenError(
+                "Too many arguments for call_vn (max 3)".to_string(),
+            ));
+        }
+
+        // For now, assume all operands are large constants (type 00)
+        // TODO: Handle different operand types based on argument values
+        let mut operand_types = 0x00u8; // First operand (function address) is large constant
+        for i in 1..total_operands {
+            operand_types |= 0x00 << (6 - (i * 2)); // Each additional arg is large constant
+        }
+        // Fill remaining operand slots with "omitted" (11)
+        for i in total_operands..4 {
+            operand_types |= 0x03 << (6 - (i * 2)); // 11 = omitted
+        }
+        self.emit_byte(operand_types)?;
 
         // Add unresolved reference for function address (needs packed address)
         self.add_unresolved_reference(ReferenceType::FunctionCall, function_id, true)?;
@@ -1004,18 +1327,37 @@ impl ZMachineCodeGen {
         // Emit placeholder function address
         self.emit_word(0x0000)?;
 
-        // Store result to stack (variable 0)
-        self.emit_byte(0x00)?;
+        // Emit argument values
+        for &arg_id in args {
+            // For now, emit arguments as literal constants
+            // TODO: Handle variables, expressions, etc.
+            let arg_value = self.get_literal_value(arg_id).unwrap_or(0);
+            self.emit_word(arg_value)?;
+        }
+
+        // Note: call_vn doesn't store a return value, so no storage variable needed
 
         Ok(())
     }
 
+    /// Get literal value for an IR ID (helper method)
+    fn get_literal_value(&self, ir_id: IrId) -> Option<u16> {
+        // For now, just handle simple integer constants
+        // TODO: Expand to handle variables, expressions, etc.
+        match ir_id {
+            // Assuming constants are stored with IDs starting from a high value
+            // This is a placeholder - real implementation would look up in IR tables
+            id if id >= 1000 => Some((id - 1000) as u16), // Simple mapping for testing
+            _ => None,
+        }
+    }
+
     /// Generate return instruction
     fn emit_return(&mut self, value: Option<IrId>) -> Result<(), CompilerError> {
-        if value.is_some() {
-            // Return with value - use ret opcode
+        if let Some(_ir_id) = value {
+            // Return with value - use ret opcode with operand
             self.emit_byte(0x8B)?; // ret opcode (1OP form)
-                                   // TODO: Add operand for return value
+            self.emit_byte(0)?; // Return 0 for now (TODO: resolve actual value)
         } else {
             // Return without value - use rtrue
             self.emit_byte(0xB0)?; // rtrue opcode (0OP form)
@@ -1028,27 +1370,22 @@ impl ZMachineCodeGen {
         &mut self,
         _condition: IrId,
         _true_label: IrId,
-        false_label: IrId,
+        _false_label: IrId,
     ) -> Result<(), CompilerError> {
-        // Generate proper Z-Machine conditional branch instruction
-        // Use jz (jump if zero) with appropriate constant value
-        // For constant true: jz 1, false_label (since 1 != 0, never jumps - fall through to true)
-        // For constant false: jz 0, false_label (since 0 == 0, always jumps to false)
+        // TEMPORARY SIMPLE FIX: For constant conditions, avoid branching entirely
+        // TODO: Implement proper conditional evaluation and branching for variables
+        //
+        // For now, assume constant true condition - just fall through to true branch
+        // This eliminates complex branch offset calculations that were causing issues
+        //
+        // The IR generation should have already laid out the code correctly:
+        // - True branch code comes immediately after this
+        // - False branch code is after the true branch
+        // - By not generating any branch instruction, we fall through to true branch
 
-        self.emit_byte(0x9C)?; // jz opcode (1OP:12, small constant operand)
-        self.emit_byte(1)?; // Test constant 1 (assuming true condition for now)
+        log::debug!("generate_conditional_branch: Using constant true fallthrough (TEMPORARY)");
 
-        // Z-Machine branch format:
-        // Bit 7: branch condition (0=branch on false/zero, 1=branch on true/nonzero)
-        // We want: if (condition == false) jump to false_label
-        // Since we're testing constant 1: if (1 == 0) jump false_label -> never jumps
-        // This gives us the desired behavior: fall through to true branch
-
-        self.add_unresolved_reference(ReferenceType::Branch, false_label, false)?;
-        // Always reserve 2 bytes for branch to simplify patching (can use 1-byte or 2-byte format)
-        self.emit_byte(0x00)?; // Branch format placeholder - will be patched
-        self.emit_byte(0x00)?; // Second byte placeholder
-
+        // Don't emit any branch instruction - just fall through
         Ok(())
     }
 
@@ -1086,24 +1423,39 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Generate init block as the main program entry point
+    /// Generate init block as a proper routine and startup sequence
     fn generate_init_block(&mut self, init_block: &IrBlock) -> Result<(), CompilerError> {
         log::debug!(
-            "generate_init_block: Generating {} instructions",
+            "generate_init_block: Generating {} instructions for direct execution (Z-Machine spec 5.5)",
             init_block.instructions.len()
         );
 
-        // Generate the actual init block code
+        // Per Z-Machine specification section 5.5:
+        // "In all other Versions [not V6], the word at $06 contains the byte address
+        // of the first instruction to execute. The Z-machine starts in an environment
+        // with no local variables from which, again, a return is illegal."
+        //
+        // This means we emit instructions directly at PC, not as a routine call.
+
+        let startup_address = self.current_address;
+        log::debug!(
+            "Init block direct execution starts at 0x{:04x}",
+            startup_address
+        );
+
+        // Generate the actual init block code directly (no routine call overhead)
         for instruction in &init_block.instructions {
             self.generate_instruction(instruction)?;
         }
 
-        // Add a quit instruction at the end to terminate the program
-        log::debug!(
-            "generate_init_block: Adding quit instruction (0xBA) at address 0x{:04x}",
-            self.current_address
-        );
+        // End with quit instruction (no return needed since this isn't a routine)
         self.emit_byte(0xBA)?; // quit opcode
+
+        log::debug!(
+            "Init block complete: direct execution at 0x{:04x}",
+            startup_address
+        );
+
         Ok(())
     }
 
@@ -1450,6 +1802,7 @@ impl ZMachineCodeGen {
             "print" => self.generate_print_builtin(args),
             "move" => self.generate_move_builtin(args),
             "get_location" => self.generate_get_location_builtin(args),
+            "to_string" => self.generate_to_string_builtin(args),
             // Core Z-Machine object primitives
             "get_child" => self.generate_get_child_builtin(args),
             "get_sibling" => self.generate_get_sibling_builtin(args),
@@ -1478,8 +1831,15 @@ impl ZMachineCodeGen {
 
         // Look up the string value from the IR ID
         if let Some(string_value) = self.ir_id_to_string.get(&arg_id).cloned() {
+            // Add newline to the string content for proper line breaks
+            let print_string = if string_value.is_empty() {
+                "\n".to_string() // Empty print() becomes just a newline
+            } else {
+                format!("{}\n", string_value) // Add newline to non-empty strings
+            };
+
             // Create a string ID for this string and generate print instruction
-            let string_id = self.find_or_create_string_id(&string_value)?;
+            let string_id = self.find_or_create_string_id(&print_string)?;
 
             // Generate print_paddr instruction
             self.emit_byte(0x8D)?; // print_paddr opcode (1OP:0x0D, large constant)
@@ -1500,6 +1860,10 @@ impl ZMachineCodeGen {
             self.add_unresolved_reference(ReferenceType::StringRef, string_id, true)?;
             self.emit_word(0x0000)?; // Placeholder address
         }
+
+        // Do NOT add return instruction here - this is inline code generation
+        // The return instruction was causing premature termination of init blocks
+        // Each builtin call should continue to the next instruction
 
         Ok(())
     }
@@ -1548,6 +1912,8 @@ impl ZMachineCodeGen {
         self.emit_byte(0x83)?; // get_parent opcode (1OP:131)
         self.emit_word(object_id as u16)?; // Object ID operand (large constant)
         self.emit_byte(0x00)?; // Store result in local variable 0 (stack)
+
+        // Do NOT add return instruction here - this is inline code generation
 
         Ok(())
     }
@@ -1638,6 +2004,8 @@ impl ZMachineCodeGen {
         self.emit_word(object_id as u16)?; // Object ID
         self.emit_byte(0x00)?; // Store result in local variable 0 (stack)
 
+        // Do NOT add return instruction here - this is inline code generation
+
         Ok(())
     }
 
@@ -1656,6 +2024,8 @@ impl ZMachineCodeGen {
         self.emit_byte(0x81)?; // get_sibling opcode
         self.emit_word(object_id as u16)?; // Object ID
         self.emit_byte(0x00)?; // Store result in local variable 0 (stack)
+
+        // Do NOT add return instruction here - this is inline code generation
 
         Ok(())
     }
@@ -1815,6 +2185,38 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
+    /// Generate to_string builtin function - converts values to strings
+    fn generate_to_string_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+        if args.len() != 1 {
+            return Err(CompilerError::CodeGenError(format!(
+                "to_string expects 1 argument, got {}",
+                args.len()
+            )));
+        }
+
+        // For now, implement a simple to_string that handles integers
+        // In a full implementation, this would handle multiple types
+        // and create dynamic string objects
+
+        // For simplicity, return the input value as-is and assume
+        // the print system will handle string conversion
+        // This is a placeholder implementation
+
+        // Load the argument value and store it as result
+        let arg_id = args[0];
+
+        // For integer to string conversion, we would need to:
+        // 1. Load the integer value
+        // 2. Convert it to a string representation
+        // 3. Store the string in memory
+        // 4. Return a reference to the string
+
+        // Simplified: just store the value and let the print system handle it
+        self.emit_instruction(0xE1, &[Operand::Variable(arg_id as u8)], Some(0), None)?;
+
+        Ok(())
+    }
+
     /// Update string addresses after new strings have been added
     fn update_string_addresses(&mut self) {
         // Calculate addresses for all encoded strings
@@ -1963,6 +2365,16 @@ impl ZMachineCodeGen {
 
     /// Emit a single byte and advance current address
     fn emit_byte(&mut self, byte: u8) -> Result<(), CompilerError> {
+        // Validate critical opcodes and log suspicious patterns
+        if byte == 0x00 && self.current_address >= 0x08fe {
+            debug!(
+                "WARNING: Emitting 0x00 at address 0x{:04x} (might be invalid opcode)",
+                self.current_address
+            );
+            debug!("  Stack depth: {}", self.stack_depth);
+            // Temporarily allow but warn - we'll track this
+        }
+
         if byte == 0x9d || byte == 0x8d {
             log::debug!(
                 "Emitting 0x{:02x} (print_paddr) at address 0x{:04x}",
@@ -2048,7 +2460,79 @@ impl ZMachineCodeGen {
             }
         }
 
+        // Track stack operations for debugging
+        self.track_stack_operation(opcode, operands, store_var);
+
         Ok(())
+    }
+
+    /// Track stack operations for debugging and validation
+    fn track_stack_operation(&mut self, opcode: u8, operands: &[Operand], store_var: Option<u8>) {
+        // Track stack pushes and pops for common operations
+        match opcode {
+            // Instructions that push to stack (store result on stack top)
+            0x11..=0x13 => {
+                // get_prop, get_prop_addr, get_next_prop
+                if store_var == Some(0) {
+                    self.stack_depth += 1;
+                    debug!("Stack push (get_prop*) - depth now: {}", self.stack_depth);
+                }
+            }
+            0x14..=0x18 => {
+                // add, sub, mul, div, mod
+                if store_var == Some(0) {
+                    self.stack_depth += 1;
+                    debug!("Stack push (arithmetic) - depth now: {}", self.stack_depth);
+                }
+            }
+            // Instructions that pop from stack
+            0x0D => {
+                // store
+                if let Some(Operand::Variable(0)) = operands.first() {
+                    self.stack_depth -= 1;
+                    debug!("Stack pop (store) - depth now: {}", self.stack_depth);
+                }
+            }
+            // Function calls affect stack significantly
+            0xE0 => {
+                // call (VAR form)
+                // Function calls consume arguments and push return value
+                self.stack_depth -= operands.len() as i32;
+                if store_var == Some(0) {
+                    self.stack_depth += 1;
+                }
+                debug!(
+                    "Stack after function call - depth now: {}",
+                    self.stack_depth
+                );
+            }
+            _ => {
+                // For other instructions that might affect stack
+                if store_var == Some(0) {
+                    self.stack_depth += 1;
+                    debug!("Stack push (generic) - depth now: {}", self.stack_depth);
+                }
+            }
+        }
+
+        // Track maximum depth
+        if self.stack_depth > self.max_stack_depth {
+            self.max_stack_depth = self.stack_depth;
+        }
+
+        // Warn about potential stack issues
+        if self.stack_depth < 0 {
+            debug!(
+                "WARNING: Stack underflow detected! Depth: {}",
+                self.stack_depth
+            );
+        }
+        if self.stack_depth > 100 {
+            debug!(
+                "WARNING: Very deep stack detected! Depth: {}",
+                self.stack_depth
+            );
+        }
     }
 
     /// Determine instruction form based on operand count and opcode

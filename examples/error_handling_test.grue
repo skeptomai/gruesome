@@ -1,0 +1,51 @@
+// Error Handling Test
+// Tests various error conditions and recovery scenarios
+
+world {
+    room error_test_room "Error Test Room" {
+        desc: "A room for testing error handling."
+        exits: {}
+    }
+}
+
+fn test_division_by_zero() {
+    print("Testing division by zero...");
+    let result = 10 / 0;  // Should handle gracefully
+    print("Result: " + to_string(result));
+}
+
+fn test_undefined_variable() {
+    print("Testing defined variable access...");
+    let defined_var = 42;
+    print("Value: " + to_string(defined_var));  // Should work fine
+}
+
+fn test_type_mismatch() {
+    print("Testing type mismatches...");
+    let str_val = "hello";
+    let num_result = str_val + 5;  // String + number
+    print("Result: " + to_string(num_result));
+}
+
+fn test_nested_errors() {
+    print("Testing nested error conditions...");
+    if (true) {
+        let inner_val = 1 / 0;
+        if (inner_val > 0) {
+            print("Nested success: " + to_string(inner_val));
+        }
+    }
+}
+
+init {
+    print("Error Handling Comprehensive Test");
+    print("=================================");
+    
+    // Each test should either work or fail gracefully without crashing
+    test_division_by_zero();
+    test_undefined_variable(); 
+    test_type_mismatch();
+    test_nested_errors();
+    
+    print("Error handling tests completed!");
+}

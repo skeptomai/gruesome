@@ -1,0 +1,72 @@
+// Property Access Test
+// Tests reading and writing object properties
+
+world {
+    room test_room "Test Room" {
+        desc: "A room for testing properties."
+        exits: {}
+        
+        object test_obj {
+            names: ["test", "object", "item"]
+            desc: "A test object with various properties."
+            portable: true
+            weight: 5
+            color: "red"
+        }
+    }
+}
+
+fn test_property_access() {
+    print("=== Property Access Tests ===");
+    
+    // Test getting properties
+    print("Testing property reading...");
+    let obj_desc = test_obj.desc;
+    print("Object description: " + obj_desc);
+    
+    let obj_weight = test_obj.weight;
+    print("Object weight: " + to_string(obj_weight));
+    
+    let obj_portable = test_obj.portable;
+    if (obj_portable) {
+        print("Object is portable");
+    } else {
+        print("Object is not portable");
+    }
+    
+    // Test setting properties  
+    print("Testing property assignment...");
+    test_obj.weight = 10;
+    test_obj.color = "blue";
+    test_obj.portable = false;
+    
+    // Verify changes
+    print("New weight: " + to_string(test_obj.weight));
+    print("New color: " + test_obj.color);
+    if (test_obj.portable) {
+        print("Object is still portable");
+    } else {
+        print("Object is no longer portable");
+    }
+}
+
+fn test_room_properties() {
+    print("=== Room Property Tests ===");
+    
+    let room_desc = test_room.desc;
+    print("Room description: " + room_desc);
+    
+    // Test room property modification
+    test_room.desc = "An updated test room.";
+    print("Updated room description: " + test_room.desc);
+}
+
+init {
+    print("Property Access Comprehensive Test");
+    print("==================================");
+    
+    test_property_access();
+    test_room_properties();
+    
+    print("All property tests completed!");
+}

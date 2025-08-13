@@ -1,0 +1,11 @@
+// Text encoding test - all supported characters
+init {
+    print("Text Encoding Test");
+    print("Lowercase: abcdefghijklmnopqrstuvwxyz");
+    print("Uppercase: ABCDEFGHIJKLMNOPQRSTUVWXYZ");  
+    print("Numbers: 0123456789");
+    print("Punctuation: .,!?_#'\"");
+    print("Symbols: /-:()");
+    print("Special: Dash-test and/or question?");
+    print("Test completed!");
+}

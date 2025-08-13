@@ -1,0 +1,12 @@
+// Test the Zork banner with proper text encoding
+init {
+    print("ZORK I: The Great Underground Empire");
+    print("Copyright (c) 2025 Grue Games. All rights reserved.");
+    print("ZORK is a registered trademark of Infocom, Inc.");
+    print("Revision 1 / Serial number 250109");
+    print("");
+    print("You are standing in an open field west of a white house,");
+    print("with a boarded front door.");
+    print("");
+    print("Text encoding test: All characters work! :-)");
+}

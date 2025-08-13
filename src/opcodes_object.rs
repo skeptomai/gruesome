@@ -222,7 +222,11 @@ impl Interpreter {
             (0x13, crate::instruction::OperandCount::OP2) => {
                 // get_next_prop
                 let obj_num = operands[0];
-                let prop_num = operands[1] as u8;
+                let prop_num = if operands.len() >= 2 {
+                    operands[1] as u8
+                } else {
+                    0u8
+                };
                 let next_prop = self.vm.get_next_property(obj_num, prop_num)? as u16;
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, next_prop)?;

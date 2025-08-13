@@ -1,0 +1,16 @@
+// Minimal test to isolate bytecode generation issues
+
+world {
+    room test_room "Test" {
+        desc: "Test room."
+        exits: {}
+    }
+}
+
+fn simple_print() {
+    print("Hello");
+}
+
+init {
+    simple_print();
+}
