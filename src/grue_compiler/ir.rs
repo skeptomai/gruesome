@@ -20,6 +20,44 @@ pub struct IrProgram {
     pub grammar: Vec<IrGrammar>,
     pub init_block: Option<IrBlock>,
     pub string_table: HashMap<String, IrId>, // String literal -> ID mapping
+    pub property_defaults: IrPropertyDefaults, // Z-Machine property defaults table
+}
+
+/// Z-Machine property defaults table (31 words for V1-3, 63 for V4+)
+#[derive(Debug, Clone)]
+pub struct IrPropertyDefaults {
+    pub defaults: HashMap<u8, u16>, // Property number -> default value
+}
+
+impl IrPropertyDefaults {
+    pub fn new() -> Self {
+        Self {
+            defaults: HashMap::new(),
+        }
+    }
+
+    pub fn set_default(&mut self, property_num: u8, default_value: u16) {
+        self.defaults.insert(property_num, default_value);
+    }
+
+    pub fn get_default(&self, property_num: u8) -> u16 {
+        self.defaults.get(&property_num).copied().unwrap_or(0)
+    }
+
+    /// Get all property defaults up to the maximum property number (for Z-Machine table generation)
+    pub fn get_table(&self, max_properties: u8) -> Vec<u16> {
+        let mut table = Vec::new();
+        for prop_num in 1..=max_properties {
+            table.push(self.get_default(prop_num));
+        }
+        table
+    }
+}
+
+impl Default for IrPropertyDefaults {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// IR Function representation
@@ -72,16 +110,267 @@ pub struct IrRoom {
     pub on_look: Option<IrBlock>,
 }
 
-/// IR Object representation
+/// IR Object representation with Z-Machine compatibility
 #[derive(Debug, Clone)]
 pub struct IrObject {
     pub id: IrId,
     pub name: String,
-    pub names: Vec<String>, // Vocabulary names
+    pub short_name: String, // Z-Machine object short name (up to 765 Z-chars)
+    pub names: Vec<String>, // Vocabulary names for parser
     pub description: String,
-    pub properties: HashMap<String, IrValue>,
-    pub parent: Option<IrId>, // Parent object or room
-    pub children: Vec<IrId>,  // Child objects
+    pub attributes: IrAttributes, // Z-Machine attributes (32 for V1-3, 48 for V4+)
+    pub properties: IrProperties, // Z-Machine numbered properties
+    pub parent: Option<IrId>,     // Parent object or room
+    pub sibling: Option<IrId>,    // Next sibling in object tree
+    pub child: Option<IrId>,      // First child in object tree
+}
+
+/// Z-Machine attributes - bitflags numbered from 0
+#[derive(Debug, Clone)]
+pub struct IrAttributes {
+    pub flags: u64, // Supports up to 48 attributes for V4+ (only 32 for V1-3)
+}
+
+impl IrAttributes {
+    pub fn new() -> Self {
+        Self { flags: 0 }
+    }
+
+    pub fn set(&mut self, attr: u8, value: bool) {
+        if attr < 48 {
+            if value {
+                self.flags |= 1u64 << attr;
+            } else {
+                self.flags &= !(1u64 << attr);
+            }
+        }
+    }
+
+    pub fn get(&self, attr: u8) -> bool {
+        if attr < 48 {
+            (self.flags & (1u64 << attr)) != 0
+        } else {
+            false
+        }
+    }
+}
+
+impl Default for IrAttributes {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Z-Machine properties - numbered from 1 upward
+#[derive(Debug, Clone)]
+pub struct IrProperties {
+    pub properties: HashMap<u8, IrPropertyValue>, // Property number -> value
+}
+
+impl IrProperties {
+    pub fn new() -> Self {
+        Self {
+            properties: HashMap::new(),
+        }
+    }
+
+    pub fn set_byte(&mut self, prop_num: u8, value: u8) {
+        self.properties
+            .insert(prop_num, IrPropertyValue::Byte(value));
+    }
+
+    pub fn set_word(&mut self, prop_num: u8, value: u16) {
+        self.properties
+            .insert(prop_num, IrPropertyValue::Word(value));
+    }
+
+    pub fn set_bytes(&mut self, prop_num: u8, value: Vec<u8>) {
+        self.properties
+            .insert(prop_num, IrPropertyValue::Bytes(value));
+    }
+
+    pub fn set_string(&mut self, prop_num: u8, value: String) {
+        self.properties
+            .insert(prop_num, IrPropertyValue::String(value));
+    }
+
+    pub fn get(&self, prop_num: u8) -> Option<&IrPropertyValue> {
+        self.properties.get(&prop_num)
+    }
+
+    pub fn get_as_word(&self, prop_num: u8) -> Option<u16> {
+        match self.properties.get(&prop_num) {
+            Some(IrPropertyValue::Word(value)) => Some(*value),
+            Some(IrPropertyValue::Byte(value)) => Some(*value as u16),
+            _ => None,
+        }
+    }
+
+    pub fn has_property(&self, prop_num: u8) -> bool {
+        self.properties.contains_key(&prop_num)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&u8, &IrPropertyValue)> {
+        self.properties.iter()
+    }
+}
+
+impl Default for IrProperties {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Property values can be 1, 2, or many bytes
+#[derive(Debug, Clone)]
+pub enum IrPropertyValue {
+    Byte(u8),       // 1-byte property
+    Word(u16),      // 2-byte property
+    Bytes(Vec<u8>), // Multi-byte property
+    String(String), // String property (will be converted to bytes)
+}
+
+/// Property manager for handling inheritance and dynamic property access
+#[derive(Debug, Clone)]
+pub struct PropertyManager {
+    /// Property name to number mapping
+    property_numbers: HashMap<String, u8>,
+    /// Standard property mappings
+    standard_properties: HashMap<StandardProperty, u8>,
+    /// Next available property number
+    next_property_number: u8,
+}
+
+impl PropertyManager {
+    pub fn new() -> Self {
+        let mut manager = Self {
+            property_numbers: HashMap::new(),
+            standard_properties: HashMap::new(),
+            next_property_number: 1,
+        };
+
+        // Register standard properties
+        manager.register_standard_property(StandardProperty::ShortName);
+        manager.register_standard_property(StandardProperty::LongName);
+        manager.register_standard_property(StandardProperty::Initial);
+        manager.register_standard_property(StandardProperty::Before);
+        manager.register_standard_property(StandardProperty::After);
+        manager.register_standard_property(StandardProperty::Life);
+        manager.register_standard_property(StandardProperty::Description);
+        manager.register_standard_property(StandardProperty::Capacity);
+        manager.register_standard_property(StandardProperty::Value);
+        manager.register_standard_property(StandardProperty::Size);
+        manager.register_standard_property(StandardProperty::Article);
+        manager.register_standard_property(StandardProperty::Adjective);
+
+        manager
+    }
+
+    fn register_standard_property(&mut self, prop: StandardProperty) {
+        let prop_num = self.next_property_number;
+        self.standard_properties.insert(prop, prop_num);
+
+        let prop_name = match prop {
+            StandardProperty::ShortName => "short_name",
+            StandardProperty::LongName => "long_name",
+            StandardProperty::Initial => "initial",
+            StandardProperty::Before => "before",
+            StandardProperty::After => "after",
+            StandardProperty::Life => "life",
+            StandardProperty::Description => "description",
+            StandardProperty::Capacity => "capacity",
+            StandardProperty::Value => "value",
+            StandardProperty::Size => "size",
+            StandardProperty::Article => "article",
+            StandardProperty::Adjective => "adjective",
+        };
+
+        self.property_numbers
+            .insert(prop_name.to_string(), prop_num);
+        self.next_property_number += 1;
+    }
+
+    pub fn get_property_number(&mut self, property_name: &str) -> u8 {
+        if let Some(&existing_num) = self.property_numbers.get(property_name) {
+            existing_num
+        } else {
+            let new_num = self.next_property_number;
+            self.property_numbers
+                .insert(property_name.to_string(), new_num);
+            self.next_property_number += 1;
+            new_num
+        }
+    }
+
+    pub fn get_standard_property_number(&self, prop: StandardProperty) -> Option<u8> {
+        self.standard_properties.get(&prop).copied()
+    }
+
+    /// Get property value with inheritance from defaults
+    pub fn get_property_with_inheritance(
+        &self,
+        object: &IrObject,
+        property_num: u8,
+        defaults: &IrPropertyDefaults,
+    ) -> Option<IrPropertyValue> {
+        // First check if object has the property directly
+        if let Some(value) = object.properties.get(property_num) {
+            return Some(value.clone());
+        }
+
+        // If not found, use default value
+        let default_value = defaults.get_default(property_num);
+        if default_value != 0 {
+            Some(IrPropertyValue::Word(default_value))
+        } else {
+            None
+        }
+    }
+}
+
+impl Default for PropertyManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Standard Z-Machine attribute definitions
+#[derive(Debug, Clone, Copy)]
+pub enum StandardAttribute {
+    // Common attributes used in Zork and other games
+    Invisible = 0,    // Object is not listed in room descriptions
+    Container = 1,    // Object can contain other objects
+    Openable = 2,     // Object can be opened/closed
+    Open = 3,         // Object is currently open
+    Takeable = 4,     // Object can be picked up
+    Moved = 5,        // Object has been moved from initial location
+    Worn = 6,         // Object is being worn
+    LightSource = 7,  // Object provides light
+    Visited = 8,      // Room has been visited
+    Locked = 9,       // Object is locked
+    Edible = 10,      // Object can be eaten
+    Treasure = 11,    // Object is a treasure for scoring
+    Special = 12,     // Object has special behavior
+    Transparent = 13, // Can see through object to contents
+    On = 14,          // Object is switched on (for light sources, etc.)
+    Workflag = 15,    // Temporary flag for game logic
+}
+
+/// Standard Z-Machine property numbers
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StandardProperty {
+    ShortName = 1,   // Object's short name (displayed name)
+    LongName = 2,    // Object's long description
+    Initial = 3,     // Initial room description mention
+    Before = 4,      // Before routine address
+    After = 5,       // After routine address
+    Life = 6,        // Life routine address (for NPCs)
+    Description = 7, // Room description
+    Capacity = 8,    // Container capacity
+    Value = 9,       // Object value for scoring
+    Size = 10,       // Object size
+    Article = 11,    // Article to use with object
+    Adjective = 12,  // Adjectives for parsing
 }
 
 /// Exit target in IR
@@ -191,6 +480,34 @@ pub enum IrInstruction {
         value: IrId,
     },
 
+    /// Numbered property access (Z-Machine style)
+    GetPropertyByNumber {
+        target: IrId,
+        object: IrId,
+        property_num: u8,
+    },
+
+    /// Numbered property assignment (Z-Machine style)
+    SetPropertyByNumber {
+        object: IrId,
+        property_num: u8,
+        value: IrId,
+    },
+
+    /// Get next property number (for property iteration)
+    GetNextProperty {
+        target: IrId,
+        object: IrId,
+        current_property: u8, // 0 for first property
+    },
+
+    /// Test if object has a property
+    TestProperty {
+        target: IrId,
+        object: IrId,
+        property_num: u8,
+    },
+
     /// Array access
     GetArrayElement {
         target: IrId,
@@ -262,6 +579,7 @@ impl IrProgram {
             grammar: Vec::new(),
             init_block: None,
             string_table: HashMap::new(),
+            property_defaults: IrPropertyDefaults::new(),
         }
     }
 
@@ -338,6 +656,7 @@ pub struct IrGenerator {
     next_local_slot: u8,               // Next available local variable slot
     builtin_functions: HashMap<IrId, String>, // Function ID -> Function name for builtins
     object_numbers: HashMap<String, u16>, // Object name -> Object number mapping
+    property_manager: PropertyManager, // Manages property numbering and inheritance
 }
 
 impl Default for IrGenerator {
@@ -359,6 +678,7 @@ impl IrGenerator {
             next_local_slot: 1, // Slot 0 reserved for return value
             builtin_functions: HashMap::new(),
             object_numbers,
+            property_manager: PropertyManager::new(),
         }
     }
 
@@ -398,6 +718,24 @@ impl IrGenerator {
 
     pub fn get_object_numbers(&self) -> &HashMap<String, u16> {
         &self.object_numbers
+    }
+
+    /// Check if a property name corresponds to a standard Z-Machine property
+    fn get_standard_property(&self, property_name: &str) -> Option<StandardProperty> {
+        match property_name {
+            "short_name" | "name" => Some(StandardProperty::ShortName),
+            "long_name" | "desc" | "description" => Some(StandardProperty::LongName),
+            "initial" => Some(StandardProperty::Initial),
+            "before" => Some(StandardProperty::Before),
+            "after" => Some(StandardProperty::After),
+            "life" => Some(StandardProperty::Life),
+            "capacity" => Some(StandardProperty::Capacity),
+            "value" => Some(StandardProperty::Value),
+            "size" => Some(StandardProperty::Size),
+            "article" => Some(StandardProperty::Article),
+            "adjective" => Some(StandardProperty::Adjective),
+            _ => None,
+        }
     }
 
     fn next_id(&mut self) -> IrId {
@@ -496,11 +834,204 @@ impl IrGenerator {
         world: crate::grue_compiler::ast::WorldDecl,
         ir_program: &mut IrProgram,
     ) -> Result<(), CompilerError> {
-        for room in world.rooms {
-            let ir_room = self.generate_room(room)?;
-            ir_program.rooms.push(ir_room);
+        // First pass: register all rooms and objects for symbol resolution
+        for room in &world.rooms {
+            let room_id = self.next_id();
+            self.symbol_ids.insert(room.identifier.clone(), room_id);
+
+            let object_number = self.object_numbers.len() as u16 + 1;
+            self.object_numbers
+                .insert(room.identifier.clone(), object_number);
+
+            // Register all objects in the room
+            for obj in &room.objects {
+                self.register_object_and_nested(obj)?;
+            }
         }
+
+        // Second pass: generate actual IR objects and rooms
+        for room in world.rooms {
+            let ir_room = self.generate_room(room.clone())?;
+            let room_id = ir_room.id; // Save the room ID before moving ir_room
+            ir_program.rooms.push(ir_room);
+
+            // Generate IR objects for this room
+            for obj in room.objects {
+                let ir_objects = self.generate_object(obj, Some(room_id))?;
+                ir_program.objects.extend(ir_objects);
+            }
+        }
+
+        // Set up property defaults for common properties
+        self.setup_property_defaults(ir_program);
+
         Ok(())
+    }
+
+    /// Set up default values for standard Z-Machine properties
+    fn setup_property_defaults(&self, ir_program: &mut IrProgram) {
+        // Set sensible defaults for common properties
+        if let Some(short_name_num) = self
+            .property_manager
+            .get_standard_property_number(StandardProperty::ShortName)
+        {
+            ir_program.property_defaults.set_default(short_name_num, 0); // Empty string by default
+        }
+
+        if let Some(capacity_num) = self
+            .property_manager
+            .get_standard_property_number(StandardProperty::Capacity)
+        {
+            ir_program.property_defaults.set_default(capacity_num, 100); // Default container capacity
+        }
+
+        if let Some(value_num) = self
+            .property_manager
+            .get_standard_property_number(StandardProperty::Value)
+        {
+            ir_program.property_defaults.set_default(value_num, 0); // Default object value
+        }
+
+        if let Some(size_num) = self
+            .property_manager
+            .get_standard_property_number(StandardProperty::Size)
+        {
+            ir_program.property_defaults.set_default(size_num, 5); // Default object size
+        }
+    }
+
+    fn generate_object(
+        &mut self,
+        obj: crate::grue_compiler::ast::ObjectDecl,
+        parent_id: Option<IrId>,
+    ) -> Result<Vec<IrObject>, CompilerError> {
+        let mut result = Vec::new();
+
+        // Get the object ID that was registered earlier
+        let obj_id = *self
+            .symbol_ids
+            .get(&obj.identifier)
+            .ok_or_else(|| CompilerError::UndefinedSymbol(obj.identifier.clone(), 0))?;
+
+        // Convert named attributes to Z-Machine attributes
+        let mut attributes = IrAttributes::new();
+        for attr_name in &obj.attributes {
+            match attr_name.as_str() {
+                "openable" => attributes.set(StandardAttribute::Openable as u8, true),
+                "container" => attributes.set(StandardAttribute::Container as u8, true),
+                "takeable" => attributes.set(StandardAttribute::Takeable as u8, true),
+                "light_source" => attributes.set(StandardAttribute::LightSource as u8, true),
+                "treasure" => attributes.set(StandardAttribute::Treasure as u8, true),
+                "edible" => attributes.set(StandardAttribute::Edible as u8, true),
+                "worn" => attributes.set(StandardAttribute::Worn as u8, true),
+                "locked" => attributes.set(StandardAttribute::Locked as u8, true),
+                "transparent" => attributes.set(StandardAttribute::Transparent as u8, true),
+                _ => {
+                    log::warn!(
+                        "Unknown attribute '{}' on object '{}'",
+                        attr_name,
+                        obj.identifier
+                    );
+                }
+            }
+        }
+
+        // Set attributes based on properties (for backward compatibility)
+        for (prop_name, prop_value) in &obj.properties {
+            match prop_name.as_str() {
+                "openable" => {
+                    if let crate::grue_compiler::ast::PropertyValue::Boolean(true) = prop_value {
+                        attributes.set(StandardAttribute::Openable as u8, true);
+                    }
+                }
+                "open" => {
+                    if let crate::grue_compiler::ast::PropertyValue::Boolean(true) = prop_value {
+                        attributes.set(StandardAttribute::Open as u8, true);
+                    }
+                }
+                "container" => {
+                    if let crate::grue_compiler::ast::PropertyValue::Boolean(true) = prop_value {
+                        attributes.set(StandardAttribute::Container as u8, true);
+                    }
+                }
+                _ => {} // Other properties handled below
+            }
+        }
+
+        // Convert properties to Z-Machine properties
+        let mut properties = IrProperties::new();
+
+        // Set standard properties
+        properties.set_string(StandardProperty::ShortName as u8, obj.identifier.clone());
+        properties.set_string(StandardProperty::LongName as u8, obj.description.clone());
+
+        // Convert numbered properties
+        for (prop_num, prop_value) in &obj.numbered_properties {
+            match prop_value {
+                crate::grue_compiler::ast::PropertyValue::Byte(val) => {
+                    properties.set_byte(*prop_num, *val);
+                }
+                crate::grue_compiler::ast::PropertyValue::Integer(val) => {
+                    if *val >= 0 {
+                        properties.set_word(*prop_num, *val as u16);
+                    }
+                }
+                crate::grue_compiler::ast::PropertyValue::String(val) => {
+                    properties.set_string(*prop_num, val.clone());
+                }
+                crate::grue_compiler::ast::PropertyValue::Bytes(val) => {
+                    properties.set_bytes(*prop_num, val.clone());
+                }
+                _ => {} // Other types not supported in numbered properties
+            }
+        }
+
+        // Process contains relationship - convert to parent/child relationships
+        let mut child_objects = Vec::new();
+        for contained_obj in obj.contains {
+            let child_ir_objects = self.generate_object(contained_obj, Some(obj_id))?;
+            for child in &child_ir_objects {
+                child_objects.push(child.id);
+            }
+            result.extend(child_ir_objects);
+        }
+
+        // Build the sibling chain for children
+        let first_child = child_objects.first().copied();
+        for i in 0..child_objects.len() {
+            let next_sibling = if i + 1 < child_objects.len() {
+                Some(child_objects[i + 1])
+            } else {
+                None
+            };
+
+            // Find the child in result and update its sibling
+            if let Some(child) = result.iter_mut().find(|obj| obj.id == child_objects[i]) {
+                child.sibling = next_sibling;
+            }
+        }
+
+        let short_name = obj
+            .names
+            .first()
+            .cloned()
+            .unwrap_or_else(|| obj.identifier.clone());
+
+        let ir_object = IrObject {
+            id: obj_id,
+            name: obj.identifier,
+            short_name,
+            names: obj.names,
+            description: obj.description,
+            attributes,
+            properties,
+            parent: parent_id,
+            sibling: None, // Will be set when building sibling chains
+            child: first_child,
+        };
+
+        result.insert(0, ir_object);
+        Ok(result)
     }
 
     fn register_object_and_nested(
@@ -619,6 +1150,34 @@ impl IrGenerator {
                         crate::grue_compiler::ast::PatternElement::Noun => IrPatternElement::Noun,
                         crate::grue_compiler::ast::PatternElement::Default => {
                             IrPatternElement::Default
+                        }
+                        // Enhanced parser elements (for future implementation)
+                        crate::grue_compiler::ast::PatternElement::Adjective => {
+                            IrPatternElement::Noun
+                        } // Treat as noun for now
+                        crate::grue_compiler::ast::PatternElement::MultiWordNoun => {
+                            IrPatternElement::Noun
+                        }
+                        crate::grue_compiler::ast::PatternElement::Preposition => {
+                            IrPatternElement::Literal("in".to_string())
+                        } // Default preposition
+                        crate::grue_compiler::ast::PatternElement::MultipleObjects => {
+                            IrPatternElement::Noun
+                        }
+                        crate::grue_compiler::ast::PatternElement::DirectObject => {
+                            IrPatternElement::Noun
+                        }
+                        crate::grue_compiler::ast::PatternElement::IndirectObject => {
+                            IrPatternElement::Noun
+                        }
+                        crate::grue_compiler::ast::PatternElement::OptionalAdjective => {
+                            IrPatternElement::Default
+                        } // Optional
+                        crate::grue_compiler::ast::PatternElement::AnyPreposition => {
+                            IrPatternElement::Literal("with".to_string())
+                        }
+                        crate::grue_compiler::ast::PatternElement::NumberedNoun => {
+                            IrPatternElement::Noun
                         }
                     })
                     .collect();
@@ -739,11 +1298,34 @@ impl IrGenerator {
                     crate::grue_compiler::ast::Expr::PropertyAccess { object, property } => {
                         // Property assignment: object.property = value
                         let object_temp = self.generate_expression(*object, block)?;
-                        block.add_instruction(IrInstruction::SetProperty {
-                            object: object_temp,
-                            property,
-                            value: value_temp,
-                        });
+
+                        // Check if this is a standard property that should use numbered access
+                        if let Some(standard_prop) = self.get_standard_property(&property) {
+                            if let Some(prop_num) = self
+                                .property_manager
+                                .get_standard_property_number(standard_prop)
+                            {
+                                block.add_instruction(IrInstruction::SetPropertyByNumber {
+                                    object: object_temp,
+                                    property_num: prop_num,
+                                    value: value_temp,
+                                });
+                            } else {
+                                // Fallback to string-based access if no number is registered
+                                block.add_instruction(IrInstruction::SetProperty {
+                                    object: object_temp,
+                                    property,
+                                    value: value_temp,
+                                });
+                            }
+                        } else {
+                            // For now, still support named property access for backward compatibility
+                            block.add_instruction(IrInstruction::SetProperty {
+                                object: object_temp,
+                                property,
+                                value: value_temp,
+                            });
+                        }
                     }
                     _ => {
                         // Other assignment targets (array elements, etc.)
@@ -1125,11 +1707,33 @@ impl IrGenerator {
                 let object_temp = self.generate_expression(*object, block)?;
                 let temp_id = self.next_id();
 
-                block.add_instruction(IrInstruction::GetProperty {
-                    target: temp_id,
-                    object: object_temp,
-                    property,
-                });
+                // Check if this is a standard property that should use numbered access
+                if let Some(standard_prop) = self.get_standard_property(&property) {
+                    if let Some(prop_num) = self
+                        .property_manager
+                        .get_standard_property_number(standard_prop)
+                    {
+                        block.add_instruction(IrInstruction::GetPropertyByNumber {
+                            target: temp_id,
+                            object: object_temp,
+                            property_num: prop_num,
+                        });
+                    } else {
+                        // Fallback to string-based access if no number is registered
+                        block.add_instruction(IrInstruction::GetProperty {
+                            target: temp_id,
+                            object: object_temp,
+                            property,
+                        });
+                    }
+                } else {
+                    // For now, still support named property access for backward compatibility
+                    block.add_instruction(IrInstruction::GetProperty {
+                        target: temp_id,
+                        object: object_temp,
+                        property,
+                    });
+                }
 
                 Ok(temp_id)
             }
@@ -1205,6 +1809,48 @@ impl IrGenerator {
                 block.add_instruction(IrInstruction::LoadImmediate {
                     target: temp_id,
                     value: IrValue::String(param_name),
+                });
+                Ok(temp_id)
+            }
+
+            // Enhanced parser expressions (for future Phase 1.3 implementation)
+            Expr::ParsedObject {
+                adjectives: _,
+                noun,
+                article: _,
+            } => {
+                // For now, treat as simple string identifier
+                let temp_id = self.next_id();
+                block.add_instruction(IrInstruction::LoadImmediate {
+                    target: temp_id,
+                    value: IrValue::String(noun),
+                });
+                Ok(temp_id)
+            }
+
+            Expr::MultipleObjects(objects) => {
+                // For now, just use the first object
+                if let Some(first_obj) = objects.into_iter().next() {
+                    self.generate_expression(first_obj, block)
+                } else {
+                    let temp_id = self.next_id();
+                    block.add_instruction(IrInstruction::LoadImmediate {
+                        target: temp_id,
+                        value: IrValue::Null,
+                    });
+                    Ok(temp_id)
+                }
+            }
+
+            Expr::DisambiguationContext {
+                candidates: _,
+                query,
+            } => {
+                // For now, treat as simple string
+                let temp_id = self.next_id();
+                block.add_instruction(IrInstruction::LoadImmediate {
+                    target: temp_id,
+                    value: IrValue::String(query),
                 });
                 Ok(temp_id)
             }

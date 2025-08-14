@@ -308,6 +308,92 @@ The interpreter correctly handles calls to address 0x0000 according to the Z-Mac
 
 **Execution Order:** Phase 1+2 parallel → Phase 3 → Phase 4
 
+## Zork I-Level Features Battle Plan (Aug 13, 2025)
+
+### Current Grue Capabilities vs Zork I Requirements
+
+**What We Have ✅:**
+- Basic text adventure structure (rooms, objects, movement)
+- Simple property system (openable, container, takeable)
+- Basic built-in functions (print, move, get_location)
+- Grammar system with verb patterns
+- Container relationships and inventory management
+- Simple conditionals and control flow
+- Z-Machine V3/V5 bytecode generation
+
+**Critical Gaps for Zork I Complexity 🔴:**
+
+### 1. **Advanced Object System** 
+- **Missing**: Complex object relationships, inheritance, class hierarchies
+- **Zork I has**: 200+ objects with sophisticated attribute systems
+- **Current**: Only basic properties (open/closed, container/non-container)
+
+### 2. **Comprehensive Attribute System**
+- **Missing**: Full Z-Machine attribute support (32 attributes per object)
+- **Zork I uses**: Attributes for light sources, weapons, treasures, scenery
+- **Current**: Hardcoded boolean properties only
+
+### 3. **Advanced Property System** 
+- **Missing**: Numbered properties, property inheritance, dynamic property modification
+- **Zork I has**: Complex property tables for descriptions, capacity, value
+- **Current**: Basic string properties only
+
+### 4. **Sophisticated Parser**
+- **Missing**: Multi-word nouns, adjectives, prepositions, disambiguation
+- **Zork I needs**: "get lamp from trophy case", "examine rusty knife"
+- **Current**: Single-word noun matching only
+
+### 5. **Game State Management**
+- **Missing**: Save/restore, scoring system, turn counters, timers
+- **Zork I has**: Complex state tracking, multiple endings, score calculation
+- **Current**: No persistent state beyond object locations
+
+### 6. **Advanced Text Features**
+- **Missing**: Dynamic text generation, string manipulation, formatted output
+- **Zork I uses**: Complex description assembly, conditional text
+- **Current**: Static string literals only
+
+## Implementation Battle Plan
+
+### **Phase 1: Core Infrastructure (2-3 weeks)**
+**Priority: Critical - Foundation for everything else**
+- [x] Enhanced Object System (32-attribute support, inheritance) - **COMPLETED**
+- [ ] Advanced Property System (numbered properties, dynamic modification)
+- [ ] Robust Parser Engine (multi-word nouns, disambiguation)
+
+### **Phase 2: Game Mechanics (2-3 weeks)**
+**Priority: High - Essential gameplay features**
+- [ ] State Management System (save/restore, scoring, turn counters)
+- [ ] Advanced Text System (dynamic generation, conditional text)
+- [ ] Environmental Systems (light/darkness, capacity, complex interactions)
+
+### **Phase 3: Advanced Features (2-3 weeks)**
+**Priority: Medium - Polish and sophistication**
+- [ ] AI and NPCs (movement, dialogue, interaction)
+- [ ] Complex Puzzles (multi-step sequences, transformations)
+- [ ] Polish and Optimization (performance, memory management)
+
+### **Phase 4: Testing and Validation (1-2 weeks)**
+**Priority: Critical - Ensuring production readiness**
+- [ ] Comprehensive Testing (full Zork I recreation, stress testing)
+- [ ] Cross-platform validation and production hardening
+
+### Success Metrics
+- **Capability**: Support all Zork I game mechanics (200+ objects, complex puzzles)
+- **Compatibility**: Generate Z-Machine files playable in standard interpreters  
+- **Performance**: Handle complex games without runtime errors
+- **Completeness**: Successfully compile and run full Zork I recreation
+
+### Milestone Tracking
+- **Phase 1 Start**: Aug 13, 2025
+- **Phase 1 Complete**: [ ] TBD
+- **Phase 2 Start**: [ ] TBD  
+- **Phase 2 Complete**: [ ] TBD
+- **Phase 3 Start**: [ ] TBD
+- **Phase 3 Complete**: [ ] TBD
+- **Phase 4 Start**: [ ] TBD
+- **Phase 4 Complete**: [ ] TBD
+
 ## Historical Documentation
 
 Development history and detailed implementation logs have been archived to `CLAUDE_HISTORICAL.md` for reference. This file is not automatically loaded but preserves all technical implementation details from the development process.

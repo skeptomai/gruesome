@@ -18,6 +18,9 @@ mod codegen_tests {
             grammar: Vec::new(),
             init_block: None,
             string_table: std::collections::HashMap::new(),
+            property_defaults: IrPropertyDefaults {
+                defaults: std::collections::HashMap::new(),
+            },
         }
     }
 

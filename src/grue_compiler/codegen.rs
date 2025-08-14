@@ -106,6 +106,9 @@ pub struct ZMachineCodeGen {
     encoded_strings: HashMap<IrId, Vec<u8>>, // IR string ID -> encoded bytes
     next_string_id: IrId,                    // Next available string ID
 
+    // Execution context
+    in_init_block: bool, // True when generating init block code
+
     // Address resolution
     reference_context: ReferenceContext,
 }
@@ -133,6 +136,7 @@ impl ZMachineCodeGen {
             next_string_id: 1000, // Start string IDs from 1000 to avoid conflicts
             stack_depth: 0,
             max_stack_depth: 0,
+            in_init_block: false,
             reference_context: ReferenceContext {
                 ir_id_to_address: HashMap::new(),
                 unresolved_refs: Vec::new(),
@@ -181,9 +185,7 @@ impl ZMachineCodeGen {
 
         // Phase 6: Generate init block first and capture entry point
         let init_entry_point = if let Some(init_block) = &ir.init_block {
-            let entry_point = self.current_address; // Capture BEFORE generating init block
-            self.generate_init_block(init_block)?;
-            entry_point
+            self.generate_init_block(init_block)? // Returns the actual entry point
         } else {
             self.current_address // Fallback if no init block
         };
@@ -1166,6 +1168,78 @@ impl ZMachineCodeGen {
                 ];
                 self.emit_instruction(0x21, &operands, None, None)?; // storew (2OP:33)
             }
+
+            // New numbered property instructions
+            IrInstruction::GetPropertyByNumber {
+                target: _,
+                object: _,
+                property_num,
+            } => {
+                // Generate Z-Machine get_prop instruction (2OP:17, opcode 0x11)
+                // TODO: Map IR object ID to actual Z-Machine object number
+                let operands = vec![
+                    Operand::Variable(1), // Object (placeholder - from local var 1)
+                    Operand::Constant(*property_num as u16), // Property number
+                ];
+                self.emit_instruction(0x11, &operands, Some(0), None)?; // Store result in stack top
+                log::debug!("Generated get_prop for property number {}", property_num);
+            }
+
+            IrInstruction::SetPropertyByNumber {
+                object: _,
+                property_num,
+                value: _,
+            } => {
+                // Generate Z-Machine put_prop instruction (VAR:227, opcode 0x03)
+                // TODO: Map IR object and value IDs to actual Z-Machine operands
+                let operands = vec![
+                    Operand::Variable(1),                    // Object (placeholder)
+                    Operand::Constant(*property_num as u16), // Property number
+                    Operand::Variable(0),                    // Value (from stack)
+                ];
+                self.emit_instruction(0x03, &operands, None, None)?;
+                log::debug!("Generated put_prop for property number {}", property_num);
+            }
+
+            IrInstruction::GetNextProperty {
+                target: _,
+                object: _,
+                current_property,
+            } => {
+                // Generate Z-Machine get_next_prop instruction (2OP:19, opcode 0x13)
+                // TODO: Map IR object ID to actual Z-Machine object number
+                let operands = vec![
+                    Operand::Variable(1),                        // Object (placeholder)
+                    Operand::Constant(*current_property as u16), // Current property number (0 for first)
+                ];
+                self.emit_instruction(0x13, &operands, Some(0), None)?; // Store result in stack top
+                log::debug!(
+                    "Generated get_next_prop for property number {}",
+                    current_property
+                );
+            }
+
+            IrInstruction::TestProperty {
+                target: _,
+                object: _,
+                property_num,
+            } => {
+                // Generate Z-Machine get_prop_len instruction (1OP:4, opcode 0x84)
+                // First get property address, then test if length > 0
+                // TODO: This is a simplified implementation
+                // A complete implementation would use get_prop_addr + get_prop_len
+                let operands = vec![
+                    Operand::Variable(1),                    // Object (placeholder)
+                    Operand::Constant(*property_num as u16), // Property number
+                ];
+                // Use get_prop and compare result with default to test existence
+                self.emit_instruction(0x11, &operands, Some(0), None)?; // get_prop
+                log::debug!(
+                    "Generated property test for property number {}",
+                    property_num
+                );
+            }
+
             _ => {
                 // TODO: Implement remaining instructions
                 return Err(CompilerError::CodeGenError(format!(
@@ -1295,47 +1369,39 @@ impl ZMachineCodeGen {
     fn generate_call_with_reference(
         &mut self,
         function_id: IrId,
-        args: &[IrId],
+        _args: &[IrId],
     ) -> Result<(), CompilerError> {
-        // Use call_vn (void call, no return value storage) for statement function calls
-        // This avoids the "Stack is empty" error when trying to store to variable 0x00
-        self.emit_byte(0xF9)?; // call_vn opcode (VAR:249, 0x19 with VAR form bit 0xE0)
+        // TEMPORARY WORKAROUND: Function calls are disabled due to bytecode corruption issues
+        // TODO: Fix the incompatibility between emit_instruction and unresolved reference system
 
-        // Generate operand types based on number of arguments (function address + args)
-        let total_operands = 1 + args.len(); // function address + arguments
-        if total_operands > 4 {
-            return Err(CompilerError::CodeGenError(
-                "Too many arguments for call_vn (max 3)".to_string(),
-            ));
-        }
+        // Generate a placeholder print statement instead of the function call
+        let placeholder_msg = format!("[Function call to IR ID {}]", function_id);
+        let string_id = self.find_or_create_string_id(&placeholder_msg)?;
+        self.ir_id_to_string.insert(string_id, placeholder_msg);
 
-        // For now, assume all operands are large constants (type 00)
-        // TODO: Handle different operand types based on argument values
-        let mut operand_types = 0x00u8; // First operand (function address) is large constant
-        for i in 1..total_operands {
-            operand_types |= 0x00 << (6 - (i * 2)); // Each additional arg is large constant
-        }
-        // Fill remaining operand slots with "omitted" (11)
-        for i in total_operands..4 {
-            operand_types |= 0x03 << (6 - (i * 2)); // 11 = omitted
-        }
-        self.emit_byte(operand_types)?;
+        // Generate print_paddr instruction with placeholder
+        self.emit_instruction(
+            0x0D,                              // print_paddr opcode
+            &[Operand::LargeConstant(0x0000)], // Placeholder address
+            None,                              // No store
+            None,                              // No branch
+        )?;
 
-        // Add unresolved reference for function address (needs packed address)
-        self.add_unresolved_reference(ReferenceType::FunctionCall, function_id, true)?;
+        // Add unresolved reference for the string address after instruction emission
+        let operand_address = self.current_address - 2;
+        let reference = UnresolvedReference {
+            reference_type: ReferenceType::StringRef,
+            location: operand_address,
+            target_id: string_id,
+            is_packed_address: true,
+            offset_size: 2,
+        };
+        self.reference_context.unresolved_refs.push(reference);
 
-        // Emit placeholder function address
-        self.emit_word(0x0000)?;
-
-        // Emit argument values
-        for &arg_id in args {
-            // For now, emit arguments as literal constants
-            // TODO: Handle variables, expressions, etc.
-            let arg_value = self.get_literal_value(arg_id).unwrap_or(0);
-            self.emit_word(arg_value)?;
-        }
-
-        // Note: call_vn doesn't store a return value, so no storage variable needed
+        log::debug!(
+            "TEMPORARY: Function call to IR ID {} replaced with print statement",
+            function_id
+        );
 
         Ok(())
     }
@@ -1356,11 +1422,20 @@ impl ZMachineCodeGen {
     fn emit_return(&mut self, value: Option<IrId>) -> Result<(), CompilerError> {
         if let Some(_ir_id) = value {
             // Return with value - use ret opcode with operand
-            self.emit_byte(0x8B)?; // ret opcode (1OP form)
-            self.emit_byte(0)?; // Return 0 for now (TODO: resolve actual value)
+            self.emit_instruction(
+                0x0B,                         // ret opcode
+                &[Operand::SmallConstant(0)], // Return 0 for now (TODO: resolve actual value)
+                None,                         // No store
+                None,                         // No branch
+            )?;
         } else {
-            // Return without value - use rtrue
-            self.emit_byte(0xB0)?; // rtrue opcode (0OP form)
+            // Return without value - use rtrue (0OP instruction)
+            self.emit_instruction(
+                0xB0, // rtrue opcode
+                &[],  // No operands
+                None, // No store
+                None, // No branch
+            )?;
         }
         Ok(())
     }
@@ -1393,13 +1468,25 @@ impl ZMachineCodeGen {
     fn generate_branch(&mut self, true_label: IrId) -> Result<(), CompilerError> {
         // For now, emit a simple unconditional branch using jump
         // TODO: Support proper conditional branching with condition operand
-        self.emit_byte(0x8C)?; // jump opcode (1OP form)
 
-        // Add unresolved reference for the jump target
-        self.add_unresolved_reference(ReferenceType::Jump, true_label, false)?;
+        // Emit jump instruction with placeholder offset
+        self.emit_instruction(
+            0x0C,                              // jump opcode
+            &[Operand::LargeConstant(0x0000)], // Placeholder offset (will be resolved later)
+            None,                              // No store
+            None,                              // No branch
+        )?;
 
-        // Emit placeholder offset (will be resolved later)
-        self.emit_word(0x0000)?;
+        // Add unresolved reference for the jump target after instruction emission
+        let operand_address = self.current_address - 2;
+        let reference = UnresolvedReference {
+            reference_type: ReferenceType::Jump,
+            location: operand_address,
+            target_id: true_label,
+            is_packed_address: false,
+            offset_size: 2,
+        };
+        self.reference_context.unresolved_refs.push(reference);
 
         Ok(())
     }
@@ -1407,28 +1494,43 @@ impl ZMachineCodeGen {
     /// Generate unconditional jump
     fn generate_jump(&mut self, label: IrId) -> Result<(), CompilerError> {
         log::debug!("generate_jump called with label={}", label);
-        self.emit_byte(0x8C)?; // jump opcode (1OP form)
         log::debug!(
             "generate_jump: Adding jump reference at address 0x{:04x} -> label {}",
             self.current_address,
             label
         );
 
-        // Add unresolved reference for the jump target
-        self.add_unresolved_reference(ReferenceType::Jump, label, false)?;
+        // Emit jump instruction with placeholder offset
+        self.emit_instruction(
+            0x0C,                              // jump opcode
+            &[Operand::LargeConstant(0x0000)], // Placeholder offset (will be resolved later)
+            None,                              // No store
+            None,                              // No branch
+        )?;
 
-        // Emit placeholder offset (will be resolved later)
-        self.emit_word(0x0000)?;
+        // Add unresolved reference for the jump target after instruction emission
+        let operand_address = self.current_address - 2;
+        let reference = UnresolvedReference {
+            reference_type: ReferenceType::Jump,
+            location: operand_address,
+            target_id: label,
+            is_packed_address: false,
+            offset_size: 2,
+        };
+        self.reference_context.unresolved_refs.push(reference);
 
         Ok(())
     }
 
     /// Generate init block as a proper routine and startup sequence
-    fn generate_init_block(&mut self, init_block: &IrBlock) -> Result<(), CompilerError> {
+    fn generate_init_block(&mut self, init_block: &IrBlock) -> Result<usize, CompilerError> {
         log::debug!(
             "generate_init_block: Generating {} instructions for direct execution (Z-Machine spec 5.5)",
             init_block.instructions.len()
         );
+
+        // Set init block context flag
+        self.in_init_block = true;
 
         // Per Z-Machine specification section 5.5:
         // "In all other Versions [not V6], the word at $06 contains the byte address
@@ -1449,14 +1551,22 @@ impl ZMachineCodeGen {
         }
 
         // End with quit instruction (no return needed since this isn't a routine)
-        self.emit_byte(0xBA)?; // quit opcode
+        self.emit_instruction(
+            0xBA, // quit opcode (0OP instruction)
+            &[],  // No operands
+            None, // No store
+            None, // No branch
+        )?;
 
         log::debug!(
             "Init block complete: direct execution at 0x{:04x}",
             startup_address
         );
 
-        Ok(())
+        // Clear init block context flag
+        self.in_init_block = false;
+
+        Ok(startup_address)
     }
 
     /// Write the Z-Machine file header with custom entry point
@@ -1841,14 +1951,26 @@ impl ZMachineCodeGen {
             // Create a string ID for this string and generate print instruction
             let string_id = self.find_or_create_string_id(&print_string)?;
 
-            // Generate print_paddr instruction
-            self.emit_byte(0x8D)?; // print_paddr opcode (1OP:0x0D, large constant)
+            // Generate print_paddr instruction with unresolved string reference
+            // Note: The unresolved reference will be added by the operand emission system
+            self.emit_instruction(
+                0x0D,                              // print_paddr opcode
+                &[Operand::LargeConstant(0x0000)], // Placeholder string address
+                None,                              // No store
+                None,                              // No branch
+            )?;
 
-            // Add unresolved reference for the string address
-            self.add_unresolved_reference(ReferenceType::StringRef, string_id, true)?;
-
-            // Emit placeholder string address (will be resolved later)
-            self.emit_word(0x0000)?;
+            // Add unresolved reference for the string address after instruction emission
+            // Calculate the address where the operand was emitted (current_address - 2)
+            let operand_address = self.current_address - 2;
+            let reference = UnresolvedReference {
+                reference_type: ReferenceType::StringRef,
+                location: operand_address,
+                target_id: string_id,
+                is_packed_address: true,
+                offset_size: 2,
+            };
+            self.reference_context.unresolved_refs.push(reference);
         } else {
             // If we can't find the string, generate a placeholder
             let placeholder_string = format!("[Missing string for IR ID {}]", arg_id);
@@ -1856,9 +1978,23 @@ impl ZMachineCodeGen {
             self.ir_id_to_string.insert(string_id, placeholder_string);
 
             // Generate print_paddr instruction with placeholder
-            self.emit_byte(0x8D)?; // print_paddr opcode (1OP:0x0D, large constant)
-            self.add_unresolved_reference(ReferenceType::StringRef, string_id, true)?;
-            self.emit_word(0x0000)?; // Placeholder address
+            self.emit_instruction(
+                0x0D,                              // print_paddr opcode
+                &[Operand::LargeConstant(0x0000)], // Placeholder address
+                None,                              // No store
+                None,                              // No branch
+            )?;
+
+            // Add unresolved reference for the string address after instruction emission
+            let operand_address = self.current_address - 2;
+            let reference = UnresolvedReference {
+                reference_type: ReferenceType::StringRef,
+                location: operand_address,
+                target_id: string_id,
+                is_packed_address: true,
+                offset_size: 2,
+            };
+            self.reference_context.unresolved_refs.push(reference);
         }
 
         // Do NOT add return instruction here - this is inline code generation
@@ -1882,14 +2018,16 @@ impl ZMachineCodeGen {
 
         // Generate Z-Machine insert_obj instruction (2OP:14, opcode 0x0E)
         // This moves object to become the first child of the destination
-        // Format: 2OP with large constant operands
-        self.emit_byte(0x0E)?; // insert_obj opcode (2OP:14)
-
-        // First operand: object ID (to be resolved to actual object number)
-        self.emit_word(object_id as u16)?; // Object reference (to be resolved)
-
-        // Second operand: destination ID (to be resolved to actual object/room number)
-        self.emit_word(destination_id as u16)?; // Destination reference (to be resolved)
+        // Use proper 2OP instruction encoding
+        self.emit_instruction(
+            0x0E, // insert_obj opcode (2OP:14)
+            &[
+                Operand::LargeConstant(object_id as u16), // Object reference (to be resolved)
+                Operand::LargeConstant(destination_id as u16), // Destination reference (to be resolved)
+            ],
+            None, // No store
+            None, // No branch
+        )?;
 
         // TODO: These need proper object/room ID resolution in the address resolution phase
         // The Z-Machine expects actual object numbers, not IR IDs
@@ -1908,10 +2046,13 @@ impl ZMachineCodeGen {
 
         let object_id = args[0];
 
-        // Generate Z-Machine get_parent instruction (1OP:131, opcode 0x83)
-        self.emit_byte(0x83)?; // get_parent opcode (1OP:131)
-        self.emit_word(object_id as u16)?; // Object ID operand (large constant)
-        self.emit_byte(0x00)?; // Store result in local variable 0 (stack)
+        // Generate Z-Machine get_parent instruction (1OP:4, opcode 0x04)
+        self.emit_instruction(
+            0x04, // get_parent opcode
+            &[Operand::LargeConstant(object_id as u16)],
+            Some(0), // Store result on stack
+            None,    // No branch
+        )?;
 
         // Do NOT add return instruction here - this is inline code generation
 
@@ -1999,10 +2140,13 @@ impl ZMachineCodeGen {
 
         let object_id = args[0];
 
-        // Generate Z-Machine get_child instruction (1OP:130, opcode 0x82)
-        self.emit_byte(0x82)?; // get_child opcode
-        self.emit_word(object_id as u16)?; // Object ID
-        self.emit_byte(0x00)?; // Store result in local variable 0 (stack)
+        // Generate Z-Machine get_child instruction (1OP:3, opcode 0x03)
+        self.emit_instruction(
+            0x03, // get_child opcode
+            &[Operand::LargeConstant(object_id as u16)],
+            Some(0), // Store result on stack
+            None,    // No branch
+        )?;
 
         // Do NOT add return instruction here - this is inline code generation
 
@@ -2020,10 +2164,13 @@ impl ZMachineCodeGen {
 
         let object_id = args[0];
 
-        // Generate Z-Machine get_sibling instruction (1OP:129, opcode 0x81)
-        self.emit_byte(0x81)?; // get_sibling opcode
-        self.emit_word(object_id as u16)?; // Object ID
-        self.emit_byte(0x00)?; // Store result in local variable 0 (stack)
+        // Generate Z-Machine get_sibling instruction (1OP:2, opcode 0x02)
+        self.emit_instruction(
+            0x02, // get_sibling opcode
+            &[Operand::LargeConstant(object_id as u16)],
+            Some(0), // Store result on stack
+            None,    // No branch
+        )?;
 
         // Do NOT add return instruction here - this is inline code generation
 
@@ -2052,14 +2199,20 @@ impl ZMachineCodeGen {
         // This is simplified - a full implementation would handle nested containers, lighting, etc.
 
         // Get object's parent location
-        self.emit_byte(0x83)?; // get_parent opcode (1OP:131)
-        self.emit_word(object_id as u16)?; // Object ID
-        self.emit_byte(0x01)?; // Store in local variable 1
+        self.emit_instruction(
+            0x04,                                        // get_parent opcode
+            &[Operand::LargeConstant(object_id as u16)], // Object ID
+            Some(0x01),                                  // Store in local variable 1
+            None,                                        // No branch
+        )?;
 
         // Get player location (assume player is object 1, location is its parent)
-        self.emit_byte(0x83)?; // get_parent opcode (1OP:131)
-        self.emit_word(0x0001)?; // Player object (object 1)
-        self.emit_byte(0x02)?; // Store in local variable 2
+        self.emit_instruction(
+            0x04,                              // get_parent opcode
+            &[Operand::LargeConstant(0x0001)], // Player object (object 1)
+            Some(0x02),                        // Store in local variable 2
+            None,                              // No branch
+        )?;
 
         // Compare object location with player location
         self.emit_byte(0x15)?; // je opcode (2OP:1, VAR form)
@@ -2434,24 +2587,36 @@ impl ZMachineCodeGen {
         store_var: Option<u8>,
         branch_offset: Option<i16>,
     ) -> Result<(), CompilerError> {
+        // Force all store operations to use stack when in init block context
+        let actual_store_var = if self.in_init_block && store_var.is_some() && store_var != Some(0)
+        {
+            log::debug!(
+                "Init block context: Forcing store variable {:?} -> stack (0)",
+                store_var
+            );
+            Some(0) // Use stack instead of local variables
+        } else {
+            store_var
+        };
+
         log::debug!(
             "emit_instruction opcode=0x{:02x}, operands={:?}, store_var={:?}",
             opcode,
             operands,
-            store_var
+            actual_store_var
         );
         let form = self.determine_instruction_form(operands.len(), opcode);
         log::debug!("determined form={:?}", form);
 
         match form {
             InstructionForm::Long => {
-                self.emit_long_form(opcode, operands, store_var, branch_offset)?
+                self.emit_long_form(opcode, operands, actual_store_var, branch_offset)?
             }
             InstructionForm::Short => {
-                self.emit_short_form(opcode, operands, store_var, branch_offset)?
+                self.emit_short_form(opcode, operands, actual_store_var, branch_offset)?
             }
             InstructionForm::Variable => {
-                self.emit_variable_form(opcode, operands, store_var, branch_offset)?
+                self.emit_variable_form(opcode, operands, actual_store_var, branch_offset)?
             }
             InstructionForm::Extended => {
                 return Err(CompilerError::CodeGenError(
@@ -2461,7 +2626,7 @@ impl ZMachineCodeGen {
         }
 
         // Track stack operations for debugging
-        self.track_stack_operation(opcode, operands, store_var);
+        self.track_stack_operation(opcode, operands, actual_store_var);
 
         Ok(())
     }

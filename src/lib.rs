@@ -31,6 +31,7 @@ pub mod opcodes_math;
 pub mod opcodes_memory;
 pub mod opcodes_object;
 pub mod opcodes_stack;
+pub mod parser_engine;
 pub mod property_defaults;
 pub mod quetzal;
 pub mod routine;

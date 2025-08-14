@@ -212,6 +212,8 @@ impl Parser {
             names,
             description,
             properties,
+            attributes: Vec::new(), // TODO: Parse from object syntax
+            numbered_properties: HashMap::new(), // TODO: Parse from object syntax
             contains,
         })
     }
@@ -341,7 +343,10 @@ impl Parser {
 
         self.consume(TokenKind::RightBrace, "Expected '}' after grammar body")?;
 
-        Ok(GrammarDecl { verbs })
+        Ok(GrammarDecl {
+            verbs,
+            vocabulary: None, // TODO: Parse vocabulary declarations in future
+        })
     }
 
     fn parse_verb_decl(&mut self) -> Result<VerbDecl, CompilerError> {

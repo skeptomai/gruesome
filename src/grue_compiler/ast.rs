@@ -39,6 +39,8 @@ pub struct ObjectDecl {
     pub names: Vec<String>,
     pub description: String,
     pub properties: HashMap<String, PropertyValue>,
+    pub attributes: Vec<String>, // Named attributes (e.g., "openable", "container")
+    pub numbered_properties: HashMap<u8, PropertyValue>, // Z-Machine numbered properties
     pub contains: Vec<ObjectDecl>,
 }
 
@@ -53,12 +55,24 @@ pub enum PropertyValue {
     Boolean(bool),
     Integer(i16),
     String(String),
+    Byte(u8),       // For numbered properties
+    Bytes(Vec<u8>), // For multi-byte numbered properties
 }
 
 // Grammar declarations
 #[derive(Debug, Clone)]
 pub struct GrammarDecl {
     pub verbs: Vec<VerbDecl>,
+    pub vocabulary: Option<VocabularyDecl>, // Optional vocabulary definitions
+}
+
+#[derive(Debug, Clone)]
+pub struct VocabularyDecl {
+    pub adjectives: Vec<String>,   // "red", "small", "open", "closed"
+    pub prepositions: Vec<String>, // "in", "on", "under", "with", "from"
+    pub pronouns: Vec<String>,     // "it", "them", "him", "her"
+    pub articles: Vec<String>,     // "the", "a", "an", "some"
+    pub conjunctions: Vec<String>, // "and", "then", "but"
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +92,19 @@ pub enum PatternElement {
     Literal(String),
     Noun,
     Default,
+
+    // Enhanced parser elements for Zork I-level parsing
+    Adjective,       // "red", "small", "open", etc.
+    MultiWordNoun,   // "small mailbox", "jewel-encrusted egg"
+    Preposition,     // "in", "on", "under", "with", "from"
+    MultipleObjects, // "all", "everything", "lamp and key"
+    DirectObject,    // First object in sentence
+    IndirectObject,  // Second object (for "put X in Y")
+
+    // Advanced pattern matching
+    OptionalAdjective, // Optional adjective before noun
+    AnyPreposition,    // Match any preposition from a set
+    NumberedNoun,      // "first lamp", "second book"
 }
 
 #[derive(Debug, Clone)]
@@ -179,6 +206,21 @@ pub enum Expr {
     String(String),
     Identifier(String),
     Parameter(String), // $noun, $2, etc.
+
+    // Enhanced parser parameters for advanced pattern matching
+    ParsedObject {
+        adjectives: Vec<String>, // Parsed adjectives
+        noun: String,            // Base noun
+        article: Option<String>, // Optional article ("the", "a")
+    },
+
+    MultipleObjects(Vec<Expr>), // For "lamp and key" or "all"
+
+    // Disambiguation context
+    DisambiguationContext {
+        candidates: Vec<Expr>, // Possible object matches
+        query: String,         // Original user input
+    },
 
     // Property access: object.property
     PropertyAccess {

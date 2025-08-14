@@ -815,6 +815,37 @@ impl SemanticAnalyzer {
                 // TODO: Validate parameter exists in current grammar context
                 Ok(Type::Any)
             }
+
+            // Enhanced parser expressions (for future Phase 1.3 implementation)
+            Expr::ParsedObject {
+                adjectives: _,
+                noun: _,
+                article: _,
+            } => {
+                // Parsed objects always resolve to Object type
+                Ok(Type::Object)
+            }
+
+            Expr::MultipleObjects(objects) => {
+                // Analyze each object in the list
+                for obj in objects {
+                    self.analyze_expression(obj)?;
+                }
+                // Multiple objects return Array<Object> type
+                Ok(Type::Array(Box::new(Type::Object)))
+            }
+
+            Expr::DisambiguationContext {
+                candidates,
+                query: _,
+            } => {
+                // Analyze each candidate
+                for candidate in candidates {
+                    self.analyze_expression(candidate)?;
+                }
+                // Disambiguation context returns Object type (the resolved object)
+                Ok(Type::Object)
+            }
         }
     }
 

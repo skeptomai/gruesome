@@ -105,7 +105,18 @@ else
     FAILED=1
 fi
 
-# 7. Run integration tests
+# 7. Test Grue compiler examples
+print_step "Testing Grue compiler examples"
+if ./scripts/ci_test.sh >/dev/null 2>&1; then
+    print_success "All Grue compiler examples working"
+else
+    print_error "Grue compiler examples test failed"
+    echo "Running detailed test to show failures:"
+    ./scripts/ci_test.sh
+    FAILED=1
+fi
+
+# 8. Run integration tests
 print_step "Running integration tests"
 if cargo test --test integration_gameplay >/dev/null 2>&1; then
     print_success "Gameplay integration tests passed"
