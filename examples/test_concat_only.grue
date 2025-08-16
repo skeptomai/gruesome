@@ -1,0 +1,16 @@
+// Test concatenation without function calls
+// Uses only string literals to test the concatenation mechanism
+
+world {
+    room test_room "Test Room" {
+        desc: "A room for testing."
+        exits: {}
+    }
+}
+
+init {
+    print("Testing concatenation");
+    print("Hello" + " " + "World");
+    print("This" + " " + "should" + " " + "work");
+    print("All tests completed!");
+}

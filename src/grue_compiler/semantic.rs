@@ -86,6 +86,7 @@ impl SemanticAnalyzer {
             ("error", vec![Type::String], None),
             ("to_string", vec![Type::Any], Some(Type::String)),
             ("to_int", vec![Type::String], Some(Type::Int)),
+            ("random", vec![Type::Int], Some(Type::Int)),
             (
                 "length",
                 vec![Type::Array(Box::new(Type::Any))],
@@ -107,7 +108,56 @@ impl SemanticAnalyzer {
             // Core Z-Machine object primitives - low-level operations only
             ("get_child", vec![Type::Any], Some(Type::Any)),
             ("get_sibling", vec![Type::Any], Some(Type::Any)),
+            ("get_prop", vec![Type::Any, Type::Int], Some(Type::Any)),
             ("test_attr", vec![Type::Any, Type::Int], Some(Type::Bool)),
+            ("set_attr", vec![Type::Any, Type::Int], None),
+            ("clear_attr", vec![Type::Any, Type::Int], None),
+            // String utility functions
+            ("indexOf", vec![Type::String, Type::String], Some(Type::Int)),
+            ("slice", vec![Type::String, Type::Int], Some(Type::String)),
+            (
+                "substring",
+                vec![Type::String, Type::Int, Type::Int],
+                Some(Type::String),
+            ),
+            ("toLowerCase", vec![Type::String], Some(Type::String)),
+            ("toUpperCase", vec![Type::String], Some(Type::String)),
+            ("trim", vec![Type::String], Some(Type::String)),
+            ("charAt", vec![Type::String, Type::Int], Some(Type::String)),
+            (
+                "split",
+                vec![Type::String, Type::String],
+                Some(Type::Array(Box::new(Type::String))),
+            ),
+            (
+                "replace",
+                vec![Type::String, Type::String, Type::String],
+                Some(Type::String),
+            ),
+            (
+                "startsWith",
+                vec![Type::String, Type::String],
+                Some(Type::Bool),
+            ),
+            (
+                "endsWith",
+                vec![Type::String, Type::String],
+                Some(Type::Bool),
+            ),
+            // Math utility functions
+            ("abs", vec![Type::Int], Some(Type::Int)),
+            ("min", vec![Type::Int, Type::Int], Some(Type::Int)),
+            ("max", vec![Type::Int, Type::Int], Some(Type::Int)),
+            ("round", vec![Type::Any], Some(Type::Int)),
+            ("floor", vec![Type::Any], Some(Type::Int)),
+            ("ceil", vec![Type::Any], Some(Type::Int)),
+            // Type checking functions
+            ("is_string", vec![Type::Any], Some(Type::Bool)),
+            ("is_int", vec![Type::Any], Some(Type::Bool)),
+            ("is_bool", vec![Type::Any], Some(Type::Bool)),
+            ("is_array", vec![Type::Any], Some(Type::Bool)),
+            ("is_object", vec![Type::Any], Some(Type::Bool)),
+            ("typeof", vec![Type::Any], Some(Type::String)),
             // Remove test-specific functions that might conflict
             // ("handle_take", vec![Type::String], None),
             // ("handle_look", vec![], None),
@@ -761,31 +811,252 @@ impl SemanticAnalyzer {
                 }
             }
 
-            Expr::PropertyAccess {
+            Expr::PropertyAccess { object, property } => {
+                let object_type = self.analyze_expression(object)?;
+
+                // Handle array properties
+                match &object_type {
+                    Type::Array(_) => match property.as_str() {
+                        "length" | "size" => Ok(Type::Int),
+                        _ => {
+                            Err(CompilerError::SemanticError(
+                                format!("Unknown property '{}' for array type", property),
+                                0,
+                            ))
+                        }
+                    },
+                    _ => {
+                        // For non-array types, assume any property access is valid
+                        // TODO: Validate property exists on object type
+                        Ok(Type::Any)
+                    }
+                }
+            }
+
+            Expr::NullSafePropertyAccess {
                 object,
                 property: _,
             } => {
-                self.analyze_expression(object)?;
-                // TODO: Validate property exists on object type
-                Ok(Type::Any) // For now, assume any property access is valid
+                // Null-safe property access: object?.property
+                // Analyze the object but don't fail if it's null/undefined
+                let _object_type = self.analyze_expression(object)?;
+
+                // For null-safe access, we always return Any type since it could be null
+                // TODO: In a full implementation, this would return Option<T> where T is the property type
+                Ok(Type::Any)
             }
 
             Expr::MethodCall {
                 object,
-                method: _,
+                method,
                 arguments,
             } => {
                 // Analyze the object expression
-                self.analyze_expression(object)?;
+                let object_type = self.analyze_expression(object)?;
 
                 // Analyze all arguments
                 for arg in arguments.iter_mut() {
                     self.analyze_expression(arg)?;
                 }
 
-                // For now, assume all method calls are valid and return Any
-                // TODO: Implement proper method resolution based on object type
-                Ok(Type::Any)
+                // Implement method resolution based on object type
+                match &object_type {
+                    Type::Array(element_type) => {
+                        match method.as_str() {
+                            "add" | "push" => {
+                                // add(element) - should take compatible element type
+                                if arguments.len() != 1 {
+                                    return Err(CompilerError::SemanticError(
+                                        format!(
+                                            "Array.{} expects 1 argument, got {}",
+                                            method,
+                                            arguments.len()
+                                        ),
+                                        0,
+                                    ));
+                                }
+                                // Return void (no result)
+                                Ok(Type::Any)
+                            }
+                            "remove" | "removeAt" => {
+                                // remove(index) - should take integer index
+                                if arguments.len() != 1 {
+                                    return Err(CompilerError::SemanticError(
+                                        format!(
+                                            "Array.{} expects 1 argument, got {}",
+                                            method,
+                                            arguments.len()
+                                        ),
+                                        0,
+                                    ));
+                                }
+                                // Return removed element type
+                                Ok((**element_type).clone())
+                            }
+                            "length" | "size" => {
+                                // length() - no arguments, returns integer
+                                if !arguments.is_empty() {
+                                    return Err(CompilerError::SemanticError(
+                                        format!(
+                                            "Array.{} expects 0 arguments, got {}",
+                                            method,
+                                            arguments.len()
+                                        ),
+                                        0,
+                                    ));
+                                }
+                                Ok(Type::Int)
+                            }
+                            "empty" | "isEmpty" => {
+                                // empty() - no arguments, returns boolean
+                                if !arguments.is_empty() {
+                                    return Err(CompilerError::SemanticError(
+                                        format!(
+                                            "Array.{} expects 0 arguments, got {}",
+                                            method,
+                                            arguments.len()
+                                        ),
+                                        0,
+                                    ));
+                                }
+                                Ok(Type::Bool)
+                            }
+                            "contains" => {
+                                // contains(element) - takes element type, returns boolean
+                                if arguments.len() != 1 {
+                                    return Err(CompilerError::SemanticError(
+                                        format!(
+                                            "Array.{} expects 1 argument, got {}",
+                                            method,
+                                            arguments.len()
+                                        ),
+                                        0,
+                                    ));
+                                }
+                                Ok(Type::Bool)
+                            }
+                            "filter" => {
+                                // filter(predicate_function) - takes function, returns array of same type
+                                if arguments.len() != 1 {
+                                    return Err(CompilerError::SemanticError(
+                                        format!(
+                                            "Array.filter expects 1 argument, got {}",
+                                            arguments.len()
+                                        ),
+                                        0,
+                                    ));
+                                }
+                                // Return array of same type
+                                Ok(Type::Array(element_type.clone()))
+                            }
+                            "map" => {
+                                // map(transform_function) - takes function, returns array (could be different type)
+                                if arguments.len() != 1 {
+                                    return Err(CompilerError::SemanticError(
+                                        format!(
+                                            "Array.map expects 1 argument, got {}",
+                                            arguments.len()
+                                        ),
+                                        0,
+                                    ));
+                                }
+                                // Return array of Any type since we don't know transform result
+                                Ok(Type::Array(Box::new(Type::Any)))
+                            }
+                            "forEach" => {
+                                // forEach(callback_function) - takes function, returns void
+                                if arguments.len() != 1 {
+                                    return Err(CompilerError::SemanticError(
+                                        format!(
+                                            "Array.forEach expects 1 argument, got {}",
+                                            arguments.len()
+                                        ),
+                                        0,
+                                    ));
+                                }
+                                // Return void/nothing
+                                Ok(Type::Any)
+                            }
+                            "find" => {
+                                // find(predicate_function) - takes function, returns element or null
+                                if arguments.len() != 1 {
+                                    return Err(CompilerError::SemanticError(
+                                        format!(
+                                            "Array.find expects 1 argument, got {}",
+                                            arguments.len()
+                                        ),
+                                        0,
+                                    ));
+                                }
+                                // Return element type (could be null)
+                                Ok((**element_type).clone())
+                            }
+                            "indexOf" => {
+                                // indexOf(element) - takes element, returns index
+                                if arguments.len() != 1 {
+                                    return Err(CompilerError::SemanticError(
+                                        format!(
+                                            "Array.indexOf expects 1 argument, got {}",
+                                            arguments.len()
+                                        ),
+                                        0,
+                                    ));
+                                }
+                                Ok(Type::Int)
+                            }
+                            "join" => {
+                                // join(separator) - takes string, returns string
+                                if arguments.len() != 1 {
+                                    return Err(CompilerError::SemanticError(
+                                        format!(
+                                            "Array.join expects 1 argument, got {}",
+                                            arguments.len()
+                                        ),
+                                        0,
+                                    ));
+                                }
+                                Ok(Type::String)
+                            }
+                            "reverse" => {
+                                // reverse() - no arguments, returns array of same type
+                                if !arguments.is_empty() {
+                                    return Err(CompilerError::SemanticError(
+                                        format!(
+                                            "Array.reverse expects 0 arguments, got {}",
+                                            arguments.len()
+                                        ),
+                                        0,
+                                    ));
+                                }
+                                Ok(Type::Array(element_type.clone()))
+                            }
+                            "sort" => {
+                                // sort() - no arguments (or optional comparator), returns array of same type
+                                if arguments.len() > 1 {
+                                    return Err(CompilerError::SemanticError(
+                                        format!(
+                                            "Array.sort expects 0 or 1 arguments, got {}",
+                                            arguments.len()
+                                        ),
+                                        0,
+                                    ));
+                                }
+                                Ok(Type::Array(element_type.clone()))
+                            }
+                            _ => {
+                                Err(CompilerError::SemanticError(
+                                    format!("Unknown method '{}' for array type", method),
+                                    0,
+                                ))
+                            }
+                        }
+                    }
+                    _ => {
+                        // For non-array types, assume all method calls are valid and return Any
+                        // TODO: Implement method resolution for other types (objects, etc.)
+                        Ok(Type::Any)
+                    }
+                }
             }
 
             Expr::Ternary {

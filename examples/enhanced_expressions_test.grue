@@ -1,0 +1,38 @@
+// Test enhanced expressions and method chaining
+fn main() {
+    // Test 1: Complex property access chains
+    let location_info = player.location.name;
+    let container_check = player.location.container;
+    
+    // Test 2: Null-safe navigation
+    let safe_name = player?.location?.name;
+    let safe_container = player?.location?.container;
+    
+    // Test 3: Array method chaining
+    let numbers = [1, 2, 3];
+    numbers.add(4);
+    let length = numbers.length;
+    let final_size = numbers.length;
+    
+    // Test 4: Mixed expressions
+    if player?.location?.container {
+        print("Player is in a container");
+    }
+    
+    // Test 5: Complex chaining in expressions
+    let total_items = numbers.length + [10, 20].length;
+    
+    // Test 6: Null-safe vs regular access
+    if safe_name {
+        print("Safe access succeeded: " + safe_name);
+    }
+    
+    if location_info {
+        print("Regular access: " + location_info);
+    }
+    
+    // Test 7: Method calls on array literals
+    let inline_length = [1, 2, 3, 4, 5].length;
+    
+    print("Tests completed - inline length: " + to_string(inline_length));
+}

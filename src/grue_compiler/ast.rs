@@ -42,6 +42,10 @@ pub struct ObjectDecl {
     pub attributes: Vec<String>, // Named attributes (e.g., "openable", "container")
     pub numbered_properties: HashMap<u8, PropertyValue>, // Z-Machine numbered properties
     pub contains: Vec<ObjectDecl>,
+
+    // Enhanced object system integration
+    pub object_type: Option<ObjectTypeDecl>, // Optional explicit type declaration
+    pub inheritance: Option<String>,         // Inherit from another object type
 }
 
 #[derive(Debug, Clone)]
@@ -57,6 +61,38 @@ pub enum PropertyValue {
     String(String),
     Byte(u8),       // For numbered properties
     Bytes(Vec<u8>), // For multi-byte numbered properties
+    Object(String), // Reference to another object
+    Room(String),   // Reference to a room
+}
+
+/// Object type declaration for enhanced object system
+#[derive(Debug, Clone)]
+pub enum ObjectTypeDecl {
+    Item,
+    Container {
+        openable: bool,
+        lockable: bool,
+        capacity: Option<u8>,
+    },
+    Supporter {
+        capacity: Option<u8>,
+    },
+    Room {
+        light: bool,
+    },
+    Door {
+        connects: (String, String), // Two rooms this door connects
+        openable: bool,
+        lockable: bool,
+        key: Option<String>,
+    },
+    Scenery,
+    Character {
+        proper_named: bool,
+    },
+    LightSource {
+        portable: bool,
+    },
 }
 
 // Grammar declarations
@@ -224,6 +260,12 @@ pub enum Expr {
 
     // Property access: object.property
     PropertyAccess {
+        object: Box<Expr>,
+        property: String,
+    },
+
+    // Null-safe property access: object?.property
+    NullSafePropertyAccess {
         object: Box<Expr>,
         property: String,
     },

@@ -1,0 +1,19 @@
+// Test triple string concatenation
+// Tests the exact pattern from control_flow_test.grue
+
+world {
+    room test_room "Test Room" {
+        desc: "A room for testing."
+        exits: {}
+    }
+}
+
+fn test_triple(level) {
+    print("Level " + to_string(level) + " - triple concat test");
+}
+
+init {
+    print("Testing triple concatenation");
+    test_triple(5);
+    print("All tests completed!");
+}

@@ -1,0 +1,22 @@
+// Simple For Loop Test
+world {
+    room start "Test Room" {
+        desc: "A room for testing loops."
+    }
+}
+
+fn test_for_loop() {
+    print("Testing for loop...");
+    
+    // Simple for loop test
+    for i in [1, 2, 3] {
+        print("Number: " + to_string(i));
+    }
+    
+    print("For loop test complete!");
+}
+
+init {
+    print("For loop demo loaded!");
+    test_for_loop();
+}

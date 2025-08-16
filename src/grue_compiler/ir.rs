@@ -5,6 +5,7 @@
 
 use crate::grue_compiler::ast::{Program, Type};
 use crate::grue_compiler::error::CompilerError;
+use crate::grue_compiler::object_system::ComprehensiveObject;
 use std::collections::HashMap;
 
 /// Unique identifier for IR instructions, labels, and temporary variables
@@ -123,6 +124,9 @@ pub struct IrObject {
     pub parent: Option<IrId>,     // Parent object or room
     pub sibling: Option<IrId>,    // Next sibling in object tree
     pub child: Option<IrId>,      // First child in object tree
+
+    // Enhanced object system integration
+    pub comprehensive_object: Option<ComprehensiveObject>, // Full object definition
 }
 
 /// Z-Machine attributes - bitflags numbered from 0
@@ -420,13 +424,22 @@ pub struct IrBlock {
 #[derive(Debug, Clone)]
 pub enum IrInstruction {
     /// Load immediate value into temporary
-    LoadImmediate { target: IrId, value: IrValue },
+    LoadImmediate {
+        target: IrId,
+        value: IrValue,
+    },
 
     /// Load variable value into temporary
-    LoadVar { target: IrId, var_id: IrId },
+    LoadVar {
+        target: IrId,
+        var_id: IrId,
+    },
 
     /// Store temporary value into variable
-    StoreVar { var_id: IrId, source: IrId },
+    StoreVar {
+        var_id: IrId,
+        source: IrId,
+    },
 
     /// Binary operation
     BinaryOp {
@@ -451,7 +464,9 @@ pub enum IrInstruction {
     },
 
     /// Return from function
-    Return { value: Option<IrId> },
+    Return {
+        value: Option<IrId>,
+    },
 
     /// Conditional jump
     Branch {
@@ -461,10 +476,14 @@ pub enum IrInstruction {
     },
 
     /// Unconditional jump
-    Jump { label: IrId },
+    Jump {
+        label: IrId,
+    },
 
     /// Label (jump target)
-    Label { id: IrId },
+    Label {
+        id: IrId,
+    },
 
     /// Property access
     GetProperty {
@@ -522,8 +541,169 @@ pub enum IrInstruction {
         value: IrId,
     },
 
+    /// Array operations
+    ArrayAdd {
+        array: IrId,
+        value: IrId,
+    },
+    ArrayRemove {
+        target: IrId, // Result storage
+        array: IrId,
+        index: IrId,
+    },
+    ArrayLength {
+        target: IrId,
+        array: IrId,
+    },
+    ArrayEmpty {
+        target: IrId,
+        array: IrId,
+    },
+    ArrayContains {
+        target: IrId,
+        array: IrId,
+        value: IrId,
+    },
+
+    /// Advanced array operations
+    ArrayFilter {
+        target: IrId,
+        array: IrId,
+        predicate: IrId, // Function to call for each element
+    },
+    ArrayMap {
+        target: IrId,
+        array: IrId,
+        transform: IrId, // Function to call for each element
+    },
+    ArrayForEach {
+        array: IrId,
+        callback: IrId, // Function to call for each element
+    },
+    ArrayFind {
+        target: IrId,
+        array: IrId,
+        predicate: IrId, // Function to call for each element
+    },
+    ArrayIndexOf {
+        target: IrId,
+        array: IrId,
+        value: IrId,
+    },
+    ArrayJoin {
+        target: IrId,
+        array: IrId,
+        separator: IrId,
+    },
+    ArrayReverse {
+        target: IrId,
+        array: IrId,
+    },
+    ArraySort {
+        target: IrId,
+        array: IrId,
+        comparator: Option<IrId>, // Optional comparison function
+    },
+
+    /// String utility operations
+    StringIndexOf {
+        target: IrId,
+        string: IrId,
+        substring: IrId,
+    },
+    StringSlice {
+        target: IrId,
+        string: IrId,
+        start: IrId,
+    },
+    StringSubstring {
+        target: IrId,
+        string: IrId,
+        start: IrId,
+        end: IrId,
+    },
+    StringToLowerCase {
+        target: IrId,
+        string: IrId,
+    },
+    StringToUpperCase {
+        target: IrId,
+        string: IrId,
+    },
+    StringTrim {
+        target: IrId,
+        string: IrId,
+    },
+    StringCharAt {
+        target: IrId,
+        string: IrId,
+        index: IrId,
+    },
+    StringSplit {
+        target: IrId,
+        string: IrId,
+        delimiter: IrId,
+    },
+    StringReplace {
+        target: IrId,
+        string: IrId,
+        search: IrId,
+        replacement: IrId,
+    },
+    StringStartsWith {
+        target: IrId,
+        string: IrId,
+        prefix: IrId,
+    },
+    StringEndsWith {
+        target: IrId,
+        string: IrId,
+        suffix: IrId,
+    },
+
+    /// Math utility operations
+    MathAbs {
+        target: IrId,
+        value: IrId,
+    },
+    MathMin {
+        target: IrId,
+        a: IrId,
+        b: IrId,
+    },
+    MathMax {
+        target: IrId,
+        a: IrId,
+        b: IrId,
+    },
+    MathRound {
+        target: IrId,
+        value: IrId,
+    },
+    MathFloor {
+        target: IrId,
+        value: IrId,
+    },
+    MathCeil {
+        target: IrId,
+        value: IrId,
+    },
+
+    /// Type checking operations
+    TypeCheck {
+        target: IrId,
+        value: IrId,
+        type_name: String, // "string", "int", "bool", "array", "object"
+    },
+    TypeOf {
+        target: IrId,
+        value: IrId,
+    },
+
     /// Print string
-    Print { value: IrId },
+    Print {
+        value: IrId,
+    },
 
     /// No-operation (used for optimization)
     Nop,
@@ -691,8 +871,38 @@ impl IrGenerator {
                 | "get_location"
                 | "get_child"
                 | "get_sibling"
+                | "get_prop"
                 | "test_attr"
+                | "set_attr"
+                | "clear_attr"
                 | "to_string"
+                | "random"
+                // String utility functions
+                | "indexOf"
+                | "slice"
+                | "substring"
+                | "toLowerCase"
+                | "toUpperCase"
+                | "trim"
+                | "charAt"
+                | "split"
+                | "replace"
+                | "startsWith"
+                | "endsWith"
+                // Math utility functions
+                | "abs"
+                | "min"
+                | "max"
+                | "round"
+                | "floor"
+                | "ceil"
+                // Type checking functions
+                | "is_string"
+                | "is_int"
+                | "is_bool"
+                | "is_array"
+                | "is_object"
+                | "typeof"
         )
     }
 
@@ -965,6 +1175,42 @@ impl IrGenerator {
         properties.set_string(StandardProperty::ShortName as u8, obj.identifier.clone());
         properties.set_string(StandardProperty::LongName as u8, obj.description.clone());
 
+        // Convert AST properties to Z-Machine properties using property manager
+        for (prop_name, prop_value) in &obj.properties {
+            let prop_num = self.property_manager.get_property_number(prop_name);
+            match prop_value {
+                crate::grue_compiler::ast::PropertyValue::Boolean(val) => {
+                    properties.set_byte(prop_num, if *val { 1 } else { 0 });
+                }
+                crate::grue_compiler::ast::PropertyValue::Integer(val) => {
+                    if *val >= 0 {
+                        properties.set_word(prop_num, *val as u16);
+                    }
+                }
+                crate::grue_compiler::ast::PropertyValue::String(val) => {
+                    properties.set_string(prop_num, val.clone());
+                }
+                crate::grue_compiler::ast::PropertyValue::Byte(val) => {
+                    properties.set_byte(prop_num, *val);
+                }
+                crate::grue_compiler::ast::PropertyValue::Bytes(val) => {
+                    properties.set_bytes(prop_num, val.clone());
+                }
+                crate::grue_compiler::ast::PropertyValue::Object(obj_name) => {
+                    // Convert object reference to object number when available
+                    if let Some(&obj_num) = self.object_numbers.get(obj_name) {
+                        properties.set_word(prop_num, obj_num);
+                    }
+                }
+                crate::grue_compiler::ast::PropertyValue::Room(room_name) => {
+                    // Convert room reference to room number when available
+                    if let Some(&room_num) = self.object_numbers.get(room_name) {
+                        properties.set_word(prop_num, room_num);
+                    }
+                }
+            }
+        }
+
         // Convert numbered properties
         for (prop_num, prop_value) in &obj.numbered_properties {
             match prop_value {
@@ -982,7 +1228,21 @@ impl IrGenerator {
                 crate::grue_compiler::ast::PropertyValue::Bytes(val) => {
                     properties.set_bytes(*prop_num, val.clone());
                 }
-                _ => {} // Other types not supported in numbered properties
+                crate::grue_compiler::ast::PropertyValue::Object(obj_name) => {
+                    // Convert object reference to object number when available
+                    if let Some(&obj_num) = self.object_numbers.get(obj_name) {
+                        properties.set_word(*prop_num, obj_num);
+                    }
+                }
+                crate::grue_compiler::ast::PropertyValue::Room(room_name) => {
+                    // Convert room reference to room number when available
+                    if let Some(&room_num) = self.object_numbers.get(room_name) {
+                        properties.set_word(*prop_num, room_num);
+                    }
+                }
+                crate::grue_compiler::ast::PropertyValue::Boolean(_) => {
+                    // Already handled above, but included for exhaustiveness
+                }
             }
         }
 
@@ -1028,6 +1288,7 @@ impl IrGenerator {
             parent: parent_id,
             sibling: None, // Will be set when building sibling chains
             child: first_child,
+            comprehensive_object: None, // Will be set when enhanced object system is integrated
         };
 
         result.insert(0, ir_object);
@@ -1619,16 +1880,17 @@ impl IrGenerator {
                     arg_temps.push(arg_temp);
                 }
 
+                // Check if this is a built-in function that needs special IR handling
+                if self.is_builtin_function(&name) {
+                    return self.generate_builtin_function_call(&name, &arg_temps, block);
+                }
+
                 // Look up function ID (or create placeholder)
                 let func_id = if let Some(&id) = self.symbol_ids.get(&name) {
                     id
                 } else {
-                    // Only register as builtin if it's actually a builtin function
                     let placeholder_id = self.next_id();
                     self.symbol_ids.insert(name.clone(), placeholder_id);
-                    if self.is_builtin_function(&name) {
-                        self.builtin_functions.insert(placeholder_id, name.clone());
-                    }
                     placeholder_id
                 };
 
@@ -1646,6 +1908,22 @@ impl IrGenerator {
                 method,
                 arguments,
             } => {
+                // Check if this is an array method call before moving the object
+                let is_array = self.is_array_type(&object);
+
+                // Generate object expression
+                let object_temp = self.generate_expression(*object, block)?;
+
+                // For array methods, generate built-in operations instead of property-based calls
+                if is_array {
+                    return self.generate_array_method_call(
+                        object_temp,
+                        &method,
+                        &arguments,
+                        block,
+                    );
+                }
+
                 // Method call: object.method(args)
                 // This should be handled as: get property from object, if callable then call it
 
@@ -1655,9 +1933,6 @@ impl IrGenerator {
                     let arg_temp = self.generate_expression(arg, block)?;
                     arg_temps.push(arg_temp);
                 }
-
-                // Generate object expression
-                let object_temp = self.generate_expression(*object, block)?;
 
                 // Generate property access to get the method function
                 let property_temp = self.next_id();
@@ -1704,8 +1979,28 @@ impl IrGenerator {
             }
             Expr::PropertyAccess { object, property } => {
                 // Property access: object.property
+                let is_array = self.is_array_type(&object);
                 let object_temp = self.generate_expression(*object, block)?;
                 let temp_id = self.next_id();
+
+                // Check if this is an array property access
+                if is_array {
+                    match property.as_str() {
+                        "length" | "size" => {
+                            block.add_instruction(IrInstruction::ArrayLength {
+                                target: temp_id,
+                                array: object_temp,
+                            });
+                            return Ok(temp_id);
+                        }
+                        _ => {
+                            return Err(CompilerError::CodeGenError(format!(
+                                "Unknown array property: {}",
+                                property
+                            )));
+                        }
+                    }
+                }
 
                 // Check if this is a standard property that should use numbered access
                 if let Some(standard_prop) = self.get_standard_property(&property) {
@@ -1737,6 +2032,104 @@ impl IrGenerator {
 
                 Ok(temp_id)
             }
+
+            Expr::NullSafePropertyAccess { object, property } => {
+                // Null-safe property access: object?.property
+                let is_array = self.is_array_type(&object);
+                let object_temp = self.generate_expression(*object, block)?;
+                let temp_id = self.next_id();
+
+                // For null-safe access, we need to check if the object is null/valid first
+                let null_check_label = self.next_id();
+                let valid_label = self.next_id();
+                let end_label = self.next_id();
+
+                // Check if object is null (0)
+                let zero_temp = self.next_id();
+                block.add_instruction(IrInstruction::LoadImmediate {
+                    target: zero_temp,
+                    value: IrValue::Integer(0),
+                });
+
+                // Compare object with zero
+                let condition_temp = self.next_id();
+                block.add_instruction(IrInstruction::BinaryOp {
+                    target: condition_temp,
+                    op: IrBinaryOp::NotEqual,
+                    left: object_temp,
+                    right: zero_temp,
+                });
+
+                // Branch: if object != 0, goto valid_label, else goto null_check_label
+                block.add_instruction(IrInstruction::Branch {
+                    condition: condition_temp,
+                    true_label: valid_label,
+                    false_label: null_check_label,
+                });
+
+                // Null case: return null/0
+                block.add_instruction(IrInstruction::Label {
+                    id: null_check_label,
+                });
+                block.add_instruction(IrInstruction::LoadImmediate {
+                    target: temp_id,
+                    value: IrValue::Integer(0),
+                });
+                block.add_instruction(IrInstruction::Jump { label: end_label });
+
+                // Valid case: perform normal property access
+                block.add_instruction(IrInstruction::Label { id: valid_label });
+                if is_array {
+                    match property.as_str() {
+                        "length" | "size" => {
+                            block.add_instruction(IrInstruction::ArrayLength {
+                                target: temp_id,
+                                array: object_temp,
+                            });
+                        }
+                        _ => {
+                            return Err(CompilerError::CodeGenError(format!(
+                                "Unknown array property: {}",
+                                property
+                            )));
+                        }
+                    }
+                } else {
+                    // Check if this is a standard property that should use numbered access
+                    if let Some(standard_prop) = self.get_standard_property(&property) {
+                        if let Some(prop_num) = self
+                            .property_manager
+                            .get_standard_property_number(standard_prop)
+                        {
+                            block.add_instruction(IrInstruction::GetPropertyByNumber {
+                                target: temp_id,
+                                object: object_temp,
+                                property_num: prop_num,
+                            });
+                        } else {
+                            // Fallback to string-based access
+                            block.add_instruction(IrInstruction::GetProperty {
+                                target: temp_id,
+                                object: object_temp,
+                                property: property.clone(),
+                            });
+                        }
+                    } else {
+                        // For now, still support named property access for backward compatibility
+                        block.add_instruction(IrInstruction::GetProperty {
+                            target: temp_id,
+                            object: object_temp,
+                            property: property.clone(),
+                        });
+                    }
+                }
+
+                // End label
+                block.add_instruction(IrInstruction::Label { id: end_label });
+
+                Ok(temp_id)
+            }
+
             Expr::Array(elements) => {
                 // Array literal - for now, we'll create a series of load instructions
                 // In a full implementation, this would create an array object
@@ -1873,6 +2266,556 @@ impl IrGenerator {
                 Ok(IrValue::Null)
             }
         }
+    }
+
+    /// Check if an expression represents an array type
+    fn is_array_type(&self, expr: &crate::grue_compiler::ast::Expr) -> bool {
+        use crate::grue_compiler::ast::Expr;
+        match expr {
+            Expr::Array(_) => true,
+            Expr::Identifier(name) => {
+                // Only consider identifiers that are likely to be arrays
+                // This is a simplified heuristic - in a full implementation,
+                // we'd track variable types through semantic analysis
+                name.contains("array")
+                    || name.contains("list")
+                    || name.contains("items")
+                    || name.contains("numbers")
+                    || name.contains("strings")
+                    || name.contains("elements")
+            }
+            _ => false,
+        }
+    }
+
+    /// Generate IR for array method calls
+    fn generate_array_method_call(
+        &mut self,
+        array_temp: IrId,
+        method: &str,
+        arguments: &[crate::grue_compiler::ast::Expr],
+        block: &mut IrBlock,
+    ) -> Result<IrId, CompilerError> {
+        match method {
+            "add" | "push" => {
+                if arguments.len() != 1 {
+                    return Err(CompilerError::CodeGenError(format!(
+                        "Array.{} expects 1 argument",
+                        method
+                    )));
+                }
+                let value_temp = self.generate_expression(arguments[0].clone(), block)?;
+                block.add_instruction(IrInstruction::ArrayAdd {
+                    array: array_temp,
+                    value: value_temp,
+                });
+                // add() doesn't return a value, so return a dummy temp
+                let dummy_temp = self.next_id();
+                block.add_instruction(IrInstruction::LoadImmediate {
+                    target: dummy_temp,
+                    value: IrValue::Integer(0),
+                });
+                Ok(dummy_temp)
+            }
+            "remove" | "removeAt" => {
+                if arguments.len() != 1 {
+                    return Err(CompilerError::CodeGenError(format!(
+                        "Array.{} expects 1 argument",
+                        method
+                    )));
+                }
+                let index_temp = self.generate_expression(arguments[0].clone(), block)?;
+                let result_temp = self.next_id();
+                block.add_instruction(IrInstruction::ArrayRemove {
+                    target: result_temp,
+                    array: array_temp,
+                    index: index_temp,
+                });
+                Ok(result_temp)
+            }
+            "length" | "size" => {
+                if !arguments.is_empty() {
+                    return Err(CompilerError::CodeGenError(format!(
+                        "Array.{} expects 0 arguments",
+                        method
+                    )));
+                }
+                let result_temp = self.next_id();
+                block.add_instruction(IrInstruction::ArrayLength {
+                    target: result_temp,
+                    array: array_temp,
+                });
+                Ok(result_temp)
+            }
+            "empty" | "isEmpty" => {
+                if !arguments.is_empty() {
+                    return Err(CompilerError::CodeGenError(format!(
+                        "Array.{} expects 0 arguments",
+                        method
+                    )));
+                }
+                let result_temp = self.next_id();
+                block.add_instruction(IrInstruction::ArrayEmpty {
+                    target: result_temp,
+                    array: array_temp,
+                });
+                Ok(result_temp)
+            }
+            "contains" => {
+                if arguments.len() != 1 {
+                    return Err(CompilerError::CodeGenError(format!(
+                        "Array.{} expects 1 argument",
+                        method
+                    )));
+                }
+                let value_temp = self.generate_expression(arguments[0].clone(), block)?;
+                let result_temp = self.next_id();
+                block.add_instruction(IrInstruction::ArrayContains {
+                    target: result_temp,
+                    array: array_temp,
+                    value: value_temp,
+                });
+                Ok(result_temp)
+            }
+            "filter" => {
+                if arguments.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "Array.filter expects 1 argument".to_string(),
+                    ));
+                }
+                let predicate_temp = self.generate_expression(arguments[0].clone(), block)?;
+                let result_temp = self.next_id();
+                block.add_instruction(IrInstruction::ArrayFilter {
+                    target: result_temp,
+                    array: array_temp,
+                    predicate: predicate_temp,
+                });
+                Ok(result_temp)
+            }
+            "map" => {
+                if arguments.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "Array.map expects 1 argument".to_string(),
+                    ));
+                }
+                let transform_temp = self.generate_expression(arguments[0].clone(), block)?;
+                let result_temp = self.next_id();
+                block.add_instruction(IrInstruction::ArrayMap {
+                    target: result_temp,
+                    array: array_temp,
+                    transform: transform_temp,
+                });
+                Ok(result_temp)
+            }
+            "forEach" => {
+                if arguments.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "Array.forEach expects 1 argument".to_string(),
+                    ));
+                }
+                let callback_temp = self.generate_expression(arguments[0].clone(), block)?;
+                block.add_instruction(IrInstruction::ArrayForEach {
+                    array: array_temp,
+                    callback: callback_temp,
+                });
+                // forEach doesn't return a value
+                let dummy_temp = self.next_id();
+                block.add_instruction(IrInstruction::LoadImmediate {
+                    target: dummy_temp,
+                    value: IrValue::Integer(0),
+                });
+                Ok(dummy_temp)
+            }
+            "find" => {
+                if arguments.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "Array.find expects 1 argument".to_string(),
+                    ));
+                }
+                let predicate_temp = self.generate_expression(arguments[0].clone(), block)?;
+                let result_temp = self.next_id();
+                block.add_instruction(IrInstruction::ArrayFind {
+                    target: result_temp,
+                    array: array_temp,
+                    predicate: predicate_temp,
+                });
+                Ok(result_temp)
+            }
+            "indexOf" => {
+                if arguments.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "Array.indexOf expects 1 argument".to_string(),
+                    ));
+                }
+                let value_temp = self.generate_expression(arguments[0].clone(), block)?;
+                let result_temp = self.next_id();
+                block.add_instruction(IrInstruction::ArrayIndexOf {
+                    target: result_temp,
+                    array: array_temp,
+                    value: value_temp,
+                });
+                Ok(result_temp)
+            }
+            "join" => {
+                if arguments.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "Array.join expects 1 argument".to_string(),
+                    ));
+                }
+                let separator_temp = self.generate_expression(arguments[0].clone(), block)?;
+                let result_temp = self.next_id();
+                block.add_instruction(IrInstruction::ArrayJoin {
+                    target: result_temp,
+                    array: array_temp,
+                    separator: separator_temp,
+                });
+                Ok(result_temp)
+            }
+            "reverse" => {
+                if !arguments.is_empty() {
+                    return Err(CompilerError::CodeGenError(
+                        "Array.reverse expects 0 arguments".to_string(),
+                    ));
+                }
+                let result_temp = self.next_id();
+                block.add_instruction(IrInstruction::ArrayReverse {
+                    target: result_temp,
+                    array: array_temp,
+                });
+                Ok(result_temp)
+            }
+            "sort" => {
+                if arguments.len() > 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "Array.sort expects 0 or 1 arguments".to_string(),
+                    ));
+                }
+                let comparator = if arguments.is_empty() {
+                    None
+                } else {
+                    Some(self.generate_expression(arguments[0].clone(), block)?)
+                };
+                let result_temp = self.next_id();
+                block.add_instruction(IrInstruction::ArraySort {
+                    target: result_temp,
+                    array: array_temp,
+                    comparator,
+                });
+                Ok(result_temp)
+            }
+            _ => {
+                Err(CompilerError::CodeGenError(format!(
+                    "Unknown array method: {}",
+                    method
+                )))
+            }
+        }
+    }
+
+    fn generate_builtin_function_call(
+        &mut self,
+        name: &str,
+        arg_temps: &[IrId],
+        block: &mut IrBlock,
+    ) -> Result<IrId, CompilerError> {
+        let temp_id = self.next_id();
+
+        match name {
+            // String utility functions
+            "indexOf" => {
+                if arg_temps.len() != 2 {
+                    return Err(CompilerError::CodeGenError(
+                        "indexOf expects 2 arguments".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::StringIndexOf {
+                    target: temp_id,
+                    string: arg_temps[0],
+                    substring: arg_temps[1],
+                });
+            }
+            "slice" => {
+                if arg_temps.len() != 2 {
+                    return Err(CompilerError::CodeGenError(
+                        "slice expects 2 arguments".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::StringSlice {
+                    target: temp_id,
+                    string: arg_temps[0],
+                    start: arg_temps[1],
+                });
+            }
+            "substring" => {
+                if arg_temps.len() != 3 {
+                    return Err(CompilerError::CodeGenError(
+                        "substring expects 3 arguments".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::StringSubstring {
+                    target: temp_id,
+                    string: arg_temps[0],
+                    start: arg_temps[1],
+                    end: arg_temps[2],
+                });
+            }
+            "toLowerCase" => {
+                if arg_temps.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "toLowerCase expects 1 argument".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::StringToLowerCase {
+                    target: temp_id,
+                    string: arg_temps[0],
+                });
+            }
+            "toUpperCase" => {
+                if arg_temps.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "toUpperCase expects 1 argument".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::StringToUpperCase {
+                    target: temp_id,
+                    string: arg_temps[0],
+                });
+            }
+            "trim" => {
+                if arg_temps.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "trim expects 1 argument".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::StringTrim {
+                    target: temp_id,
+                    string: arg_temps[0],
+                });
+            }
+            "charAt" => {
+                if arg_temps.len() != 2 {
+                    return Err(CompilerError::CodeGenError(
+                        "charAt expects 2 arguments".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::StringCharAt {
+                    target: temp_id,
+                    string: arg_temps[0],
+                    index: arg_temps[1],
+                });
+            }
+            "split" => {
+                if arg_temps.len() != 2 {
+                    return Err(CompilerError::CodeGenError(
+                        "split expects 2 arguments".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::StringSplit {
+                    target: temp_id,
+                    string: arg_temps[0],
+                    delimiter: arg_temps[1],
+                });
+            }
+            "replace" => {
+                if arg_temps.len() != 3 {
+                    return Err(CompilerError::CodeGenError(
+                        "replace expects 3 arguments".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::StringReplace {
+                    target: temp_id,
+                    string: arg_temps[0],
+                    search: arg_temps[1],
+                    replacement: arg_temps[2],
+                });
+            }
+            "startsWith" => {
+                if arg_temps.len() != 2 {
+                    return Err(CompilerError::CodeGenError(
+                        "startsWith expects 2 arguments".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::StringStartsWith {
+                    target: temp_id,
+                    string: arg_temps[0],
+                    prefix: arg_temps[1],
+                });
+            }
+            "endsWith" => {
+                if arg_temps.len() != 2 {
+                    return Err(CompilerError::CodeGenError(
+                        "endsWith expects 2 arguments".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::StringEndsWith {
+                    target: temp_id,
+                    string: arg_temps[0],
+                    suffix: arg_temps[1],
+                });
+            }
+            // Math utility functions
+            "abs" => {
+                if arg_temps.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "abs expects 1 argument".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::MathAbs {
+                    target: temp_id,
+                    value: arg_temps[0],
+                });
+            }
+            "min" => {
+                if arg_temps.len() != 2 {
+                    return Err(CompilerError::CodeGenError(
+                        "min expects 2 arguments".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::MathMin {
+                    target: temp_id,
+                    a: arg_temps[0],
+                    b: arg_temps[1],
+                });
+            }
+            "max" => {
+                if arg_temps.len() != 2 {
+                    return Err(CompilerError::CodeGenError(
+                        "max expects 2 arguments".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::MathMax {
+                    target: temp_id,
+                    a: arg_temps[0],
+                    b: arg_temps[1],
+                });
+            }
+            "round" => {
+                if arg_temps.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "round expects 1 argument".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::MathRound {
+                    target: temp_id,
+                    value: arg_temps[0],
+                });
+            }
+            "floor" => {
+                if arg_temps.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "floor expects 1 argument".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::MathFloor {
+                    target: temp_id,
+                    value: arg_temps[0],
+                });
+            }
+            "ceil" => {
+                if arg_temps.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "ceil expects 1 argument".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::MathCeil {
+                    target: temp_id,
+                    value: arg_temps[0],
+                });
+            }
+            // Type checking functions
+            "is_string" => {
+                if arg_temps.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "is_string expects 1 argument".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::TypeCheck {
+                    target: temp_id,
+                    value: arg_temps[0],
+                    type_name: "string".to_string(),
+                });
+            }
+            "is_int" => {
+                if arg_temps.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "is_int expects 1 argument".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::TypeCheck {
+                    target: temp_id,
+                    value: arg_temps[0],
+                    type_name: "int".to_string(),
+                });
+            }
+            "is_bool" => {
+                if arg_temps.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "is_bool expects 1 argument".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::TypeCheck {
+                    target: temp_id,
+                    value: arg_temps[0],
+                    type_name: "bool".to_string(),
+                });
+            }
+            "is_array" => {
+                if arg_temps.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "is_array expects 1 argument".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::TypeCheck {
+                    target: temp_id,
+                    value: arg_temps[0],
+                    type_name: "array".to_string(),
+                });
+            }
+            "is_object" => {
+                if arg_temps.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "is_object expects 1 argument".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::TypeCheck {
+                    target: temp_id,
+                    value: arg_temps[0],
+                    type_name: "object".to_string(),
+                });
+            }
+            "typeof" => {
+                if arg_temps.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "typeof expects 1 argument".to_string(),
+                    ));
+                }
+                block.add_instruction(IrInstruction::TypeOf {
+                    target: temp_id,
+                    value: arg_temps[0],
+                });
+            }
+            // For other builtin functions, use standard call mechanism
+            _ => {
+                // Look up function ID (or create placeholder)
+                let func_id = if let Some(&id) = self.symbol_ids.get(name) {
+                    id
+                } else {
+                    let placeholder_id = self.next_id();
+                    self.symbol_ids.insert(name.to_string(), placeholder_id);
+                    self.builtin_functions
+                        .insert(placeholder_id, name.to_string());
+                    placeholder_id
+                };
+
+                block.add_instruction(IrInstruction::Call {
+                    target: Some(temp_id),
+                    function: func_id,
+                    args: arg_temps.to_vec(),
+                });
+            }
+        }
+
+        Ok(temp_id)
     }
 }
 

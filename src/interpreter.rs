@@ -917,6 +917,45 @@ impl Interpreter {
 
                 self.do_branch(inst, condition)
             }
+            0x01 => {
+                // get_sibling - Get next sibling object
+                // Z-Machine spec: get_sibling object -> (result) ?(label)
+                let obj_num = operand;
+
+                debug!("get_sibling: obj={}", obj_num);
+
+                let sibling = self.vm.get_sibling(obj_num)?;
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, sibling)?;
+                }
+                self.do_branch(inst, sibling != 0)
+            }
+            0x02 => {
+                // get_child - Get first child object
+                // Z-Machine spec: get_child object -> (result) ?(label)
+                let obj_num = operand;
+
+                debug!("get_child: obj={}", obj_num);
+
+                let child = self.vm.get_child(obj_num)?;
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, child)?;
+                }
+                self.do_branch(inst, child != 0)
+            }
+            0x03 => {
+                // get_parent - Get parent object
+                // Z-Machine spec: get_parent object -> (result)
+                let obj_num = operand;
+
+                debug!("get_parent: obj={}", obj_num);
+
+                let parent = self.vm.get_parent(obj_num)?;
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, parent)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
             0x05 => {
                 // inc
                 let var_num = inst.operands[0] as u8;
@@ -929,6 +968,16 @@ impl Interpreter {
                 let var_num = inst.operands[0] as u8;
                 let value = self.vm.read_variable(var_num)?;
                 self.vm.write_variable(var_num, value.wrapping_sub(1))?;
+                Ok(ExecutionResult::Continue)
+            }
+            0x09 => {
+                // remove_obj - Remove object from hierarchy
+                // Z-Machine spec: remove_obj object
+                let obj_num = operand;
+
+                debug!("remove_obj: obj={}", obj_num);
+
+                self.vm.remove_object(obj_num)?;
                 Ok(ExecutionResult::Continue)
             }
             0x0C => {
@@ -1029,6 +1078,25 @@ impl Interpreter {
                 let condition = (new_value as i16) > (op2 as i16);
                 self.do_branch(inst, condition)
             }
+            0x06 => {
+                // jin - Jump if object is inside another
+                // Z-Machine spec: jin obj1 obj2 ?(label)
+                // Jump if obj1 is a direct child of obj2 (i.e., parent of obj1 is obj2)
+                let obj1 = op1;
+                let obj2 = op2;
+
+                debug!("jin: checking if obj {} is inside obj {}", obj1, obj2);
+
+                let parent = self.vm.get_parent(obj1)?;
+                let condition = parent == obj2;
+
+                debug!(
+                    "jin: obj {} parent is {}, condition = {}",
+                    obj1, parent, condition
+                );
+
+                self.do_branch(inst, condition)
+            }
             0x07 => {
                 // test
                 // Bitwise AND and test if all bits in op2 are set in op1
@@ -1042,6 +1110,83 @@ impl Interpreter {
                     );
                 }
                 self.do_branch(inst, result)
+            }
+            0x0A => {
+                // test_attr - Test object attribute
+                // Z-Machine spec: test_attr object attribute ?(label)
+                let obj_num = op1;
+                let attr_num = op2 as u8;
+
+                debug!("test_attr: obj={}, attr={}", obj_num, attr_num);
+
+                let result = self.vm.test_attribute(obj_num, attr_num)?;
+                self.do_branch(inst, result)
+            }
+            0x0B => {
+                // set_attr - Set object attribute
+                // Z-Machine spec: set_attr object attribute
+                let obj_num = op1;
+                let attr_num = op2 as u8;
+
+                debug!("set_attr: obj={}, attr={}", obj_num, attr_num);
+
+                self.vm.set_attribute(obj_num, attr_num, true)?;
+                Ok(ExecutionResult::Continue)
+            }
+            0x0C => {
+                // clear_attr - Clear object attribute
+                // Z-Machine spec: clear_attr object attribute
+                let obj_num = op1;
+                let attr_num = op2 as u8;
+
+                debug!("clear_attr: obj={}, attr={}", obj_num, attr_num);
+
+                self.vm.set_attribute(obj_num, attr_num, false)?;
+                Ok(ExecutionResult::Continue)
+            }
+            0x0E => {
+                // insert_obj - Insert object into hierarchy
+                // Z-Machine spec: insert_obj object destination
+                let obj_num = op1;
+                let dest_num = op2;
+
+                debug!("insert_obj: obj={}, dest={}", obj_num, dest_num);
+
+                self.vm.insert_object(obj_num, dest_num)?;
+                Ok(ExecutionResult::Continue)
+            }
+            0x0F => {
+                // loadw - Load word from array
+                // Z-Machine spec: loadw array word-index -> (result)
+                // Loads array[word-index] (word at byte offset word-index*2)
+                let array_addr = op1 as u32;
+                let word_index = op2;
+                let byte_addr = array_addr + (word_index as u32 * 2);
+
+                debug!(
+                    "loadw: array_addr=0x{:04x}, word_index={}, byte_addr=0x{:04x}",
+                    array_addr, word_index, byte_addr
+                );
+
+                let value = self.vm.read_word(byte_addr);
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, value)?;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+            0x11 => {
+                // get_prop - Get object property
+                // Z-Machine spec: get_prop object property -> (result)
+                let obj_num = op1;
+                let prop_num = op2 as u8;
+
+                debug!("get_prop: obj={}, prop={}", obj_num, prop_num);
+
+                let value = self.vm.get_property(obj_num, prop_num)?;
+                if let Some(store_var) = inst.store_var {
+                    self.vm.write_variable(store_var, value)?;
+                }
+                Ok(ExecutionResult::Continue)
             }
             0x19 => {
                 // call_2s
@@ -1099,6 +1244,12 @@ impl Interpreter {
         inst: &Instruction,
         operands: &[u16],
     ) -> Result<ExecutionResult, String> {
+        // Special case: RANDOM (0x07) is a VAR instruction that should always
+        // be handled by execute_var, even when it has one operand
+        if inst.opcode == 0x07 {
+            return self.execute_var(inst, operands);
+        }
+
         // Handle edge cases first
         if operands.is_empty() {
             let pc = self.vm.pc - inst.size as u32;
@@ -1221,6 +1372,46 @@ impl Interpreter {
                 let args = &operands[1..];
                 self.do_call(routine_addr, args, inst.store_var)?;
                 Ok(ExecutionResult::Called)
+            }
+            0x01 => {
+                // storew - Store word to array
+                // Z-Machine spec: storew array word-index value
+                // Stores value at array[word-index] (word at byte offset word-index*2)
+                if operands.len() < 3 {
+                    return Err("storew requires 3 operands (array, word-index, value)".to_string());
+                }
+
+                let array_addr = operands[0] as u32;
+                let word_index = operands[1];
+                let value = operands[2];
+                let byte_addr = array_addr + (word_index as u32 * 2);
+
+                debug!("storew: array_addr=0x{:04x}, word_index={}, value=0x{:04x}, byte_addr=0x{:04x}", 
+                       array_addr, word_index, value, byte_addr);
+
+                self.vm.write_word(byte_addr, value)?;
+                Ok(ExecutionResult::Continue)
+            }
+            0x03 => {
+                // put_prop - Set object property
+                // Z-Machine spec: put_prop object property value
+                if operands.len() < 3 {
+                    return Err(
+                        "put_prop requires 3 operands (object, property, value)".to_string()
+                    );
+                }
+
+                let obj_num = operands[0];
+                let prop_num = operands[1] as u8;
+                let value = operands[2];
+
+                debug!(
+                    "put_prop: obj={}, prop={}, value={}",
+                    obj_num, prop_num, value
+                );
+
+                self.vm.put_property(obj_num, prop_num, value)?;
+                Ok(ExecutionResult::Continue)
             }
             0x04 => {
                 // sread (V1-4) with timer support (V3+)

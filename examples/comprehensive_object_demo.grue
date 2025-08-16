@@ -1,0 +1,158 @@
+// Comprehensive Object System Demonstration
+// This example showcases the new comprehensive object system with:
+// - Standard Z-Machine attributes
+// - Numbered properties 
+// - Object inheritance and types
+// - Advanced object relationships
+
+world {
+    room start {
+        display_name: "Demonstration Room"
+        description: "This room demonstrates the comprehensive object system."
+        
+        // Container with advanced properties
+        object treasure_chest {
+            names: ["treasure chest", "chest", "box"]
+            description: "An ornate wooden chest with brass fittings."
+            
+            // Nested objects with different types
+            object gold_coin {
+                names: ["gold coin", "coin", "doubloon"]  
+                description: "A gleaming gold coin."
+                takeable: true
+                value: 10
+            }
+            
+            object brass_key {
+                names: ["brass key", "key"]
+                description: "A small brass key."
+                takeable: true
+                // This key unlocks something else
+            }
+        }
+        
+        // Light source object
+        object brass_lamp {
+            names: ["brass lamp", "lamp", "lantern"]
+            description: "A sturdy brass lamp."
+            takeable: true
+            light: true  // Provides light
+            switchable: true  // Can be turned on/off
+        }
+        
+        // Scenery object (non-takeable)
+        object stone_wall {
+            names: ["stone wall", "wall", "stones"]  
+            description: "The wall is made of ancient stone blocks."
+            scenery: true  // Cannot be taken
+        }
+        
+        // Supporter object  
+        object wooden_table {
+            names: ["wooden table", "table", "desk"]
+            description: "A sturdy oak table."
+            supporter: true  // Things can be placed on it
+            capacity: 3
+            
+            object scroll {
+                names: ["ancient scroll", "scroll", "parchment"]
+                description: "An ancient parchment scroll."
+                takeable: true
+                readable: true
+            }
+        }
+        
+        exits: {
+            north: north_room
+        }
+    }
+    
+    room north_room {
+        display_name: "North Chamber"  
+        description: "A darker chamber to the north."
+        
+        // Character/NPC
+        object wise_sage {
+            names: ["wise sage", "sage", "old man", "hermit"]
+            description: "An elderly sage with twinkling eyes."
+            animate: true  // This is a living being
+            proper: true   // Proper name (don't use articles)
+        }
+        
+        // Door object connecting rooms
+        object heavy_door {
+            names: ["heavy door", "door", "oak door"]
+            description: "A massive oak door with iron hinges."
+            openable: true
+            lockable: true
+            locked: true
+            // This door requires the brass key from the chest
+        }
+        
+        exits: {
+            south: start
+        }
+    }
+}
+
+// Test functions for object system
+function test_object_attributes() {
+    // Test standard attribute checks
+    if (treasure_chest.openable) {
+        print("The chest can be opened.");
+    }
+    
+    if (brass_lamp.light) {
+        print("The lamp provides light.");
+    }
+    
+    if (wise_sage.animate) {
+        print("The sage is alive.");
+    }
+}
+
+function test_object_properties() {
+    // Test capacity properties
+    let chest_capacity = treasure_chest.capacity;
+    print("Chest capacity: " + to_string(chest_capacity));
+    
+    // Test value properties
+    let coin_value = gold_coin.value;
+    print("Coin value: " + to_string(coin_value));
+}
+
+function test_object_relationships() {
+    // Test containment
+    if (gold_coin.location == treasure_chest) {
+        print("The coin is in the chest.");
+    }
+    
+    // Test support relationship
+    if (scroll.location == wooden_table) {
+        print("The scroll is on the table.");
+    }
+}
+
+function demonstrate_comprehensive_objects() {
+    print("=== Comprehensive Object System Demo ===");
+    print("");
+    
+    print("Testing object attributes...");
+    test_object_attributes();
+    print("");
+    
+    print("Testing object properties...");  
+    test_object_properties();
+    print("");
+    
+    print("Testing object relationships...");
+    test_object_relationships();
+    print("");
+    
+    print("Demo complete!");
+}
+
+init {
+    print("Comprehensive Object System loaded successfully!");
+    print("Use 'demonstrate_comprehensive_objects()' to see the new features.");
+}

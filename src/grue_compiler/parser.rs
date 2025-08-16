@@ -215,6 +215,8 @@ impl Parser {
             attributes: Vec::new(), // TODO: Parse from object syntax
             numbered_properties: HashMap::new(), // TODO: Parse from object syntax
             contains,
+            object_type: None, // TODO: Parse object type declaration
+            inheritance: None, // TODO: Parse inheritance specification
         })
     }
 
@@ -632,8 +634,7 @@ impl Parser {
     fn parse_for_stmt(&mut self) -> Result<Stmt, CompilerError> {
         self.consume(TokenKind::For, "Expected 'for'")?;
         let variable = self.consume_identifier("Expected loop variable name")?;
-        // Skip 'in' keyword - simplified for now
-        self.advance();
+        self.consume(TokenKind::In, "Expected 'in' after loop variable")?;
         let iterable = self.parse_expression()?;
         let body = Box::new(self.parse_statement()?);
 
@@ -865,6 +866,13 @@ impl Parser {
                 self.advance();
                 let property = self.consume_property_name()?;
                 expr = Expr::PropertyAccess {
+                    object: Box::new(expr),
+                    property,
+                };
+            } else if self.check(&TokenKind::QuestionDot) {
+                self.advance();
+                let property = self.consume_property_name()?;
+                expr = Expr::NullSafePropertyAccess {
                     object: Box::new(expr),
                     property,
                 };

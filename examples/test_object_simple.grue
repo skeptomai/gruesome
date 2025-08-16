@@ -1,0 +1,14 @@
+world {
+    room start "Test Room" {
+        desc: "A simple test room."
+        
+        object coin {
+            names: ["gold coin", "coin"]
+            desc: "A shiny coin."
+        }
+    }
+}
+
+init {
+    print("Simple test loaded!");
+}

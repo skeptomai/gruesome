@@ -6,6 +6,7 @@ pub mod codegen;
 pub mod error;
 pub mod ir;
 pub mod lexer;
+pub mod object_system;
 pub mod parser;
 pub mod semantic;
 

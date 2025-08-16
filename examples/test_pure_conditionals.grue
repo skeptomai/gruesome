@@ -1,0 +1,44 @@
+// Test deeply nested conditionals without string concatenation
+// Tests the exact conditional structure from control_flow_test.grue
+
+world {
+    room test_room "Test Room" {
+        desc: "A room for testing."
+        exits: {}
+    }
+}
+
+fn test_nested_conditionals(level) {
+    print("Testing nested conditionals");
+    
+    if (level > 0) {
+        print("Level > 0 - outer condition true");
+        
+        if (level > 1) {
+            print("Level > 1 - middle condition true");
+            
+            if (level > 2) {
+                print("Level > 2 - inner condition true");
+                if (level > 3) {
+                    print("Level > 3 - deepest condition true");
+                } else {
+                    print("Level <= 3 - deepest condition false");
+                }
+            } else {
+                print("Level <= 2 - inner condition false");
+            }
+        } else {
+            print("Level <= 1 - middle condition false");
+        }
+    } else {
+        print("Level <= 0 - outer condition false");
+    }
+}
+
+init {
+    print("Testing pure conditionals");
+    test_nested_conditionals(0);
+    test_nested_conditionals(2);
+    test_nested_conditionals(4);
+    print("All tests completed!");
+}

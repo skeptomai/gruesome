@@ -1,0 +1,36 @@
+// Test edge cases for expression chaining
+fn complex_chaining() {
+    // Deep property chains
+    let deep_access = player.location.name;
+    let deep_null_safe = player?.location?.name;
+    
+    // Mixed chaining with method calls
+    let items = ["test"];
+    items.add("item2");
+    let result = items.length;
+    
+    // Chaining in conditionals
+    if items.length > 0 {
+        if items.contains("test") {
+            print("Found test item");
+        }
+    }
+    
+    // Chaining in return statements
+    return items.length;
+}
+
+fn main() {
+    let result = complex_chaining();
+    print("Complex chaining result: " + to_string(result));
+    
+    // Test array operations with chaining
+    let data = [100, 200, 300];
+    data.add(400);
+    
+    if data.length > 3 {
+        let removed = data.remove(0);
+        print("Removed: " + to_string(removed));
+        print("New length: " + to_string(data.length));
+    }
+}

@@ -1,0 +1,17 @@
+// For Loop Test
+world {
+    room start "Test Room" {
+        desc: "A room for testing loops."
+    }
+}
+
+init {
+    print("For loop demo starting...");
+    
+    // Direct for loop test in init
+    for i in [1, 2, 3] {
+        print("Number: " + to_string(i));
+    }
+    
+    print("For loop demo complete!");
+}

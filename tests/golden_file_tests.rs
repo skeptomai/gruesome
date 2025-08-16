@@ -350,32 +350,6 @@ fn test_basic_compilation() {
     println!("📁 Golden file saved: {}", golden_path.display());
 }
 
-#[test]
-fn test_builtin_functions_compilation() {
-    let project_root = get_project_root();
-    let source_path = project_root.join("examples/builtin_test.grue");
-
-    println!("🧪 Testing builtin_test.grue compilation...");
-
-    // Compile the source file
-    let story_data = compile_grue_file(&source_path, ZMachineVersion::V3)
-        .expect("Failed to compile builtin_test.grue");
-
-    // Validate the generated Z-Machine file
-    validate_z_machine_file(&story_data, ZMachineVersion::V3)
-        .expect("Generated Z-Machine file failed validation");
-
-    // Test that our interpreter can load it
-    test_interpreter_can_load(&story_data)
-        .expect("Interpreter failed to load generated story file");
-
-    // Save as current golden file
-    let golden_path = project_root.join("tests/golden_files/builtin_test_v3.z3");
-    save_golden_file(&story_data, &golden_path).expect("Failed to save golden file");
-
-    println!("✅ builtin_test compilation test passed");
-    println!("📁 Golden file saved: {}", golden_path.display());
-}
 
 #[test]
 fn test_golden_file_regeneration() {

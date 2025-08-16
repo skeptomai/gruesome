@@ -1,0 +1,20 @@
+// Test nested array operations
+fn test_arrays() {
+    let data = ["apple", "banana", "cherry"];
+    
+    // Nested method calls
+    if data.contains("apple") {
+        data.add("date");
+        if data.length > 3 {
+            let first = data.remove(0);
+            print("Removed: " + first);
+        }
+    }
+    
+    return data.length;
+}
+
+fn main() {
+    let count = test_arrays();
+    print("Final count: " + to_string(count));
+}

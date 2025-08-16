@@ -39,6 +39,7 @@ pub enum TokenKind {
     Else,
     While,
     For,
+    In,
     Return,
     Let,
     Var,
@@ -79,6 +80,7 @@ pub enum TokenKind {
     Or,           // ||
     Not,          // !
     Question,     // ?
+    QuestionDot,  // ?.
 
     // Parameters
     Parameter(String), // $noun, $2, etc.
@@ -209,7 +211,12 @@ impl Lexer {
                     }
                     '?' => {
                         self.advance();
-                        TokenKind::Question
+                        if self.current_char == Some('.') {
+                            self.advance();
+                            TokenKind::QuestionDot
+                        } else {
+                            TokenKind::Question
+                        }
                     }
                     '\n' => {
                         self.advance();
@@ -477,6 +484,7 @@ impl Lexer {
             "else" => TokenKind::Else,
             "while" => TokenKind::While,
             "for" => TokenKind::For,
+            "in" => TokenKind::In,
             "return" => TokenKind::Return,
             "let" => TokenKind::Let,
             "var" => TokenKind::Var,

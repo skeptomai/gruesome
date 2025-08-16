@@ -9,6 +9,19 @@ use crate::grue_compiler::ZMachineVersion;
 use log::debug;
 use std::collections::HashMap;
 
+/// Temporary structure to hold object data for table generation
+#[derive(Debug, Clone)]
+struct ObjectData {
+    id: IrId,
+    name: String,
+    short_name: String,
+    attributes: IrAttributes,
+    properties: IrProperties,
+    parent: Option<IrId>,
+    sibling: Option<IrId>,
+    child: Option<IrId>,
+}
+
 /// Z-Machine memory layout constants
 const HEADER_SIZE: usize = 64; // Fixed 64-byte header
 const DEFAULT_HIGH_MEMORY: u16 = 0x8000; // Start of high memory
@@ -94,6 +107,7 @@ pub struct ZMachineCodeGen {
     // Tables for Z-Machine structures
     object_table_addr: usize,
     property_table_addr: usize,
+    current_property_addr: usize, // Current property table allocation pointer
     dictionary_addr: usize,
     global_vars_addr: usize,
 
@@ -129,6 +143,7 @@ impl ZMachineCodeGen {
             object_properties: HashMap::new(),
             object_table_addr: 0,
             property_table_addr: 0,
+            current_property_addr: 0,
             dictionary_addr: 0,
             global_vars_addr: 0,
             strings: Vec::new(),
@@ -527,8 +542,9 @@ impl ZMachineCodeGen {
         addr += default_props_size + object_entries_size;
 
         // Reserve space for property tables (MUST be in dynamic memory for put_prop to work)
-        // Property tables come AFTER object entries to avoid memory overlap during ensure_capacity calls
+        // Property tables come AFTER object entries but BEFORE dictionary to stay in dynamic memory
         self.property_table_addr = addr;
+        self.current_property_addr = addr; // Initialize property allocation pointer
         let estimated_objects = if ir.objects.is_empty() && ir.rooms.is_empty() {
             2
         } else {
@@ -536,11 +552,12 @@ impl ZMachineCodeGen {
         }; // At least 2 objects (player + room)
         addr += estimated_objects * 50; // Rough estimate: 50 bytes per object for properties
         debug!(
-            "Property table address: 0x{:04x}, estimated objects: {}",
-            self.property_table_addr, estimated_objects
+            "Property table address: 0x{:04x}, estimated objects: {}, allocation starts at: 0x{:04x}",
+            self.property_table_addr, estimated_objects, self.current_property_addr
         );
 
         // Reserve space for dictionary (this marks the start of static memory)
+        // Dictionary comes AFTER property tables to ensure properties stay in dynamic memory
         self.dictionary_addr = addr;
         debug!(
             "Dictionary address (static memory base): 0x{:04x}",
@@ -598,43 +615,126 @@ impl ZMachineCodeGen {
     }
 
     /// Generate object and property tables
-    fn generate_object_tables(&mut self, _ir: &IrProgram) -> Result<(), CompilerError> {
-        // TODO: Implement object table generation
-        // For now, create minimal object table
+    fn generate_object_tables(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
+        debug!("Starting Z-Machine object table generation...");
 
         let obj_table_start = self.object_table_addr;
-        self.ensure_capacity(obj_table_start + 100);
+        self.ensure_capacity(obj_table_start + 1000); // Ensure sufficient space
 
-        // Write minimal object tree (31 or 63 default property values)
+        // Step 1: Generate property defaults table
         let default_props = match self.version {
             ZMachineVersion::V3 => 31,
             ZMachineVersion::V5 => 63,
         };
 
+        debug!(
+            "Generating property defaults table ({} entries)",
+            default_props
+        );
         for i in 0..default_props {
             let addr = obj_table_start + i * 2;
             self.ensure_capacity(addr + 2);
-            self.story_data[addr] = 0; // Default property value (high byte)
-            self.story_data[addr + 1] = 0; // Default property value (low byte)
+
+            // Use IR property defaults if available, otherwise 0
+            let prop_num = (i + 1) as u8;
+            let default_value = ir.property_defaults.get_default(prop_num);
+
+            self.story_data[addr] = (default_value >> 8) as u8; // High byte
+            self.story_data[addr + 1] = (default_value & 0xFF) as u8; // Low byte
         }
 
-        // Create object entries after default properties
+        // Step 2: Create object entries for all IR objects (rooms + objects)
         let objects_start = obj_table_start + default_props * 2;
+        debug!("Object entries start at 0x{:04x}", objects_start);
+
+        // Collect all objects (rooms and objects) from IR
+        let mut all_objects = Vec::new();
+
+        // Add rooms as objects (rooms are just objects with specific properties)
+        for room in &ir.rooms {
+            let mut room_properties = IrProperties::new();
+
+            // Add essential room properties that games commonly access
+            // Get property numbers from the global property registry
+            let desc_prop = *self.property_numbers.get("desc").unwrap_or(&1);
+            let visited_prop = *self.property_numbers.get("visited").unwrap_or(&2);
+            let location_prop = *self.property_numbers.get("location").unwrap_or(&8);
+            let on_look_prop = *self.property_numbers.get("on_look").unwrap_or(&13);
+
+            // Set default property values for rooms
+            room_properties.set_string(desc_prop, room.description.clone());
+            room_properties.set_byte(visited_prop, 0); // Initially not visited
+            room_properties.set_word(location_prop, 0); // Rooms don't have a location
+            room_properties.set_byte(on_look_prop, 0); // No special on_look handler by default
+
+            all_objects.push(ObjectData {
+                id: room.id,
+                name: room.name.clone(),
+                short_name: room.display_name.clone(),
+                attributes: IrAttributes::new(), // Rooms have default attributes
+                properties: room_properties,
+                parent: None,
+                sibling: None,
+                child: None,
+            });
+        }
+
+        // Add regular objects
+        for object in &ir.objects {
+            let mut object_properties = object.properties.clone();
+
+            // Ensure all objects have essential properties that games commonly access
+            let location_prop = *self.property_numbers.get("location").unwrap_or(&8);
+            let desc_prop = *self.property_numbers.get("desc").unwrap_or(&1);
+
+            // Add location property if missing (default to 0 = no location)
+            if !object_properties.properties.contains_key(&location_prop) {
+                object_properties.set_word(location_prop, 0);
+            }
+
+            // Add desc property if missing (use short_name as fallback)
+            if !object_properties.properties.contains_key(&desc_prop) {
+                object_properties.set_string(desc_prop, object.short_name.clone());
+            }
+
+            all_objects.push(ObjectData {
+                id: object.id,
+                name: object.name.clone(),
+                short_name: object.short_name.clone(),
+                attributes: object.attributes.clone(),
+                properties: object_properties,
+                parent: object.parent,
+                sibling: object.sibling,
+                child: object.child,
+            });
+        }
 
         debug!(
-            "Object table: obj_table_start=0x{:04x}, objects_start=0x{:04x}, default_props={}",
-            obj_table_start, objects_start, default_props
+            "Total objects to generate: {} ({} rooms + {} objects)",
+            all_objects.len(),
+            ir.rooms.len(),
+            ir.objects.len()
         );
-        debug!("Creating {} objects", self.object_numbers.len());
 
-        // Object #1: Player
-        self.create_object_entry(objects_start, 1, 0, 0, 0)?; // player: no parent, sibling, child
-
-        // Object #2: start_room (if it exists)
-        if self.object_numbers.len() > 1 {
-            self.create_object_entry(objects_start, 2, 0, 0, 0)?; // room: no parent, sibling, child
+        // Step 3: Build object ID mapping table
+        let mut object_id_to_number: HashMap<IrId, u8> = HashMap::new();
+        for (index, object) in all_objects.iter().enumerate() {
+            let obj_num = (index + 1) as u8; // Objects are numbered starting from 1
+            object_id_to_number.insert(object.id, obj_num);
         }
 
+        // Step 4: Create object table entries
+        for (index, object) in all_objects.iter().enumerate() {
+            let obj_num = (index + 1) as u8; // Objects are numbered starting from 1
+            self.create_object_entry_from_ir_with_mapping(
+                objects_start,
+                obj_num,
+                object,
+                &object_id_to_number,
+            )?;
+        }
+
+        debug!("Object table generation complete");
         Ok(())
     }
 
@@ -690,14 +790,67 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
+    /// Create a single object entry from IR object data
+    fn create_object_entry_from_ir_with_mapping(
+        &mut self,
+        objects_start: usize,
+        obj_num: u8,
+        object: &ObjectData,
+        object_id_to_number: &HashMap<IrId, u8>,
+    ) -> Result<(), CompilerError> {
+        let obj_addr = objects_start + ((obj_num - 1) as usize) * 9; // V3: 9 bytes per object
+        self.ensure_capacity(obj_addr + 9);
+
+        // Attributes (4 bytes for V3)
+        // Convert IR attributes to Z-Machine format
+        let attrs = object.attributes.flags;
+        self.story_data[obj_addr] = ((attrs >> 24) & 0xFF) as u8; // Bits 31-24
+        self.story_data[obj_addr + 1] = ((attrs >> 16) & 0xFF) as u8; // Bits 23-16
+        self.story_data[obj_addr + 2] = ((attrs >> 8) & 0xFF) as u8; // Bits 15-8
+        self.story_data[obj_addr + 3] = (attrs & 0xFF) as u8; // Bits 7-0
+
+        // Parent/sibling/child relationships (V3 uses 1 byte each)
+        // Resolve IR IDs to actual Z-Machine object numbers
+        let parent = object
+            .parent
+            .and_then(|id| object_id_to_number.get(&id))
+            .copied()
+            .unwrap_or(0);
+        let sibling = object
+            .sibling
+            .and_then(|id| object_id_to_number.get(&id))
+            .copied()
+            .unwrap_or(0);
+        let child = object
+            .child
+            .and_then(|id| object_id_to_number.get(&id))
+            .copied()
+            .unwrap_or(0);
+
+        self.story_data[obj_addr + 4] = parent;
+        self.story_data[obj_addr + 5] = sibling;
+        self.story_data[obj_addr + 6] = child;
+
+        // Create property table for this object with actual IR properties
+        let prop_table_addr = self.create_property_table_from_ir(obj_num, object)?;
+
+        // Property table address (word)
+        let prop_addr_field = obj_addr + 7;
+        self.story_data[prop_addr_field] = (prop_table_addr >> 8) as u8; // High byte
+        self.story_data[prop_addr_field + 1] = (prop_table_addr & 0xFF) as u8; // Low byte
+
+        debug!(
+            "Created object #{}: '{}' at addr 0x{:04x}, attributes=0x{:08x}, prop_table=0x{:04x}",
+            obj_num, object.short_name, obj_addr, attrs, prop_table_addr
+        );
+
+        Ok(())
+    }
+
     /// Create a property table for an object  
     fn create_property_table(&mut self, obj_num: u8) -> Result<usize, CompilerError> {
-        // Calculate property table address to be safely after ALL possible object entries
-        // Object entries: objects_start + (num_objects * 9 bytes per object)
-        let objects_start = self.object_table_addr + 31 * 2; // After default properties
-        let max_objects = self.object_numbers.len();
-        let all_object_entries_end = objects_start + (max_objects * 9);
-        let prop_table_addr = all_object_entries_end + ((obj_num - 1) as usize) * 50; // More space per object
+        // Use the allocated property table region in dynamic memory
+        let prop_table_addr = self.current_property_addr;
 
         debug!(
             "Creating complete property table for object {} at address 0x{:04x}",
@@ -765,7 +918,8 @@ impl ZMachineCodeGen {
         self.story_data[addr] = 0;
         addr += 1;
 
-        // Don't update current_address since we're using fixed property table locations
+        // Update current property allocation pointer for next property table
+        self.current_property_addr = addr;
 
         debug!(
             "Complete property table for object {} created with {} properties, next address: 0x{:04x}",
@@ -773,6 +927,141 @@ impl ZMachineCodeGen {
         );
 
         Ok(prop_table_addr)
+    }
+
+    /// Create a property table for an object using IR property data
+    fn create_property_table_from_ir(
+        &mut self,
+        obj_num: u8,
+        object: &ObjectData,
+    ) -> Result<usize, CompilerError> {
+        // Use the allocated property table region in dynamic memory
+        let prop_table_addr = self.current_property_addr;
+        self.ensure_capacity(prop_table_addr + 100);
+
+        let mut addr = prop_table_addr;
+
+        // Write object name (short description) as Z-Machine encoded string
+        let name_bytes = self.encode_object_name(&object.short_name);
+        // Text length must be in words (2-byte units) as per Z-Machine spec
+        // Round up to ensure we have enough space
+        let text_length = name_bytes.len().div_ceil(2);
+
+        // Text length byte
+        self.story_data[addr] = text_length as u8;
+        debug!(
+            "Object '{}': name_bytes.len()={}, text_length={}, addr=0x{:04x}",
+            object.short_name,
+            name_bytes.len(),
+            text_length,
+            addr
+        );
+        addr += 1;
+
+        // Write encoded name bytes and pad to word boundary
+        for &byte in &name_bytes {
+            self.story_data[addr] = byte;
+            addr += 1;
+        }
+        // Pad to word boundary if necessary
+        if name_bytes.len() % 2 == 1 {
+            self.story_data[addr] = 0; // Pad byte
+            addr += 1;
+        }
+
+        // Write properties in descending order (required by Z-Machine spec)
+        let mut properties: Vec<_> = object.properties.properties.iter().collect();
+        properties.sort_by(|a, b| b.0.cmp(a.0)); // Sort by property number, descending
+
+        for (&prop_num, prop_value) in properties {
+            // Write property size/number byte
+            let (size_byte, prop_data) = self.encode_property_value(prop_num, prop_value);
+            debug!(
+                "Writing property {}: size_byte=0x{:02x}, data_len={}",
+                prop_num,
+                size_byte,
+                prop_data.len()
+            );
+
+            // Ensure capacity for property header + data + terminator
+            self.ensure_capacity(addr + 1 + prop_data.len() + 1);
+
+            self.story_data[addr] = size_byte;
+            addr += 1;
+
+            // Write property data
+            for &byte in &prop_data {
+                self.story_data[addr] = byte;
+                addr += 1;
+            }
+        }
+
+        // Terminator (property 0)
+        self.story_data[addr] = 0;
+        addr += 1;
+
+        // Update current property allocation pointer for next property table
+        self.current_property_addr = addr;
+
+        debug!(
+            "Property table for '{}' (object #{}) created at 0x{:04x} with {} properties: {:?}",
+            object.short_name,
+            obj_num,
+            prop_table_addr,
+            object.properties.properties.len(),
+            object.properties.properties.keys().collect::<Vec<_>>()
+        );
+
+        Ok(prop_table_addr)
+    }
+
+    /// Encode an object name as Z-Machine text
+    fn encode_object_name(&self, name: &str) -> Vec<u8> {
+        // For now, simple ASCII encoding (should be proper Z-Machine text encoding)
+        let mut bytes = Vec::new();
+        for chunk in name.bytes().collect::<Vec<_>>().chunks(2) {
+            let word = if chunk.len() == 2 {
+                ((chunk[0] as u16) << 8) | (chunk[1] as u16)
+            } else {
+                (chunk[0] as u16) << 8
+            };
+            bytes.push((word >> 8) as u8);
+            bytes.push((word & 0xFF) as u8);
+        }
+        // Add terminator if odd length
+        if name.len() % 2 == 1 {
+            bytes.push(0);
+        }
+        bytes
+    }
+
+    /// Encode a property value for Z-Machine format
+    fn encode_property_value(&self, prop_num: u8, prop_value: &IrPropertyValue) -> (u8, Vec<u8>) {
+        match prop_value {
+            IrPropertyValue::Byte(val) => {
+                // V3: size in top 3 bits (000=1 byte), prop num in bottom 5 bits
+                let size_byte = prop_num; // Size 1 (000) + property number
+                (size_byte, vec![*val])
+            }
+            IrPropertyValue::Word(val) => {
+                // V3: size in top 3 bits (001=2 bytes), prop num in bottom 5 bits
+                let size_byte = (1 << 5) | prop_num; // Size 2 (001) + property number
+                (size_byte, vec![(val >> 8) as u8, (val & 0xFF) as u8])
+            }
+            IrPropertyValue::Bytes(bytes) => {
+                // Variable size data
+                let size = bytes.len().min(7) + 1; // Z-Machine V3 max size is 8
+                let size_byte = ((size as u8) << 5) | prop_num;
+                (size_byte, bytes.clone())
+            }
+            IrPropertyValue::String(s) => {
+                // Encode string as bytes (simplified)
+                let bytes: Vec<u8> = s.bytes().collect();
+                let size = bytes.len().min(7) + 1;
+                let size_byte = ((size as u8) << 5) | prop_num;
+                (size_byte, bytes)
+            }
+        }
     }
 
     /// Get object name by object number (for property table generation)
@@ -984,31 +1273,46 @@ impl ZMachineCodeGen {
             }
 
             IrInstruction::BinaryOp {
-                target: _,
+                target,
                 op,
-                left: _,
-                right: _,
+                left,
+                right,
             } => {
-                // TODO: Map IR IDs to actual operands
-                // For now, use placeholder operands
-                let left_op = Operand::Variable(1); // Local variable 1
-                let right_op = Operand::Variable(2); // Local variable 2
-                let store_var = Some(0); // Store to stack top
+                // Check if this is string concatenation (Add operation with strings)
+                if matches!(op, IrBinaryOp::Add) {
+                    let left_is_string = self.ir_id_to_string.contains_key(left);
+                    let right_is_string = self.ir_id_to_string.contains_key(right);
 
-                self.generate_binary_op(op, left_op, right_op, store_var)?;
+                    if left_is_string || right_is_string {
+                        // This is string concatenation
+                        self.generate_string_concatenation(*target, *left, *right)?;
+                    } else {
+                        // Regular arithmetic addition
+                        let left_op = Operand::Variable(1); // Local variable 1
+                        let right_op = Operand::Variable(2); // Local variable 2
+                        let store_var = Some(0); // Store to stack top
+                        self.generate_binary_op(op, left_op, right_op, store_var)?;
+                    }
+                } else {
+                    // Other binary operations (comparison, arithmetic)
+                    let left_op = Operand::Variable(1); // Local variable 1
+                    let right_op = Operand::Variable(2); // Local variable 2
+                    let store_var = Some(0); // Store to stack top
+                    self.generate_binary_op(op, left_op, right_op, store_var)?;
+                }
             }
 
             IrInstruction::Call {
-                target: _,
+                target,
                 function,
                 args,
             } => {
                 // Check if this is a builtin function
                 if self.is_builtin_function(*function) {
-                    self.generate_builtin_function_call(*function, args)?;
+                    self.generate_builtin_function_call(*function, args, *target)?;
                 } else {
                     // Generate call with unresolved function reference
-                    self.generate_call_with_reference(*function, args)?;
+                    self.generate_call_with_reference(*function, args, *target)?;
                 }
             }
 
@@ -1091,6 +1395,10 @@ impl ZMachineCodeGen {
                             );
                             1
                         });
+                debug!(
+                    "GET_PROP: property '{}' -> number {}",
+                    property, property_num
+                );
 
                 // Generate get_prop instruction
                 let operands = vec![
@@ -1119,6 +1427,10 @@ impl ZMachineCodeGen {
                             );
                             1
                         });
+                debug!(
+                    "PUT_PROP: property '{}' -> number {}",
+                    property, property_num
+                );
 
                 // Generate put_prop instruction
                 // TODO: This is a simplified implementation that hardcodes object numbers
@@ -1146,8 +1458,9 @@ impl ZMachineCodeGen {
                 array: _,
                 index: _,
             } => {
-                // Generate Z-Machine array access (loadw or loadb depending on array type)
-                // For now, use loadw (load word from array)
+                // Generate Z-Machine loadw instruction (2OP:15)
+                // loadw array_base index -> result
+                // TODO: Convert IR IDs to proper operands instead of using placeholders
                 let operands = vec![
                     Operand::Variable(1), // Array base address (placeholder)
                     Operand::Variable(2), // Index (placeholder)
@@ -1159,14 +1472,15 @@ impl ZMachineCodeGen {
                 index: _,
                 value: _,
             } => {
-                // Generate Z-Machine array store (storew or storeb depending on array type)
-                // For now, use storew (store word to array)
+                // Generate Z-Machine storew instruction (VAR:1)
+                // storew array_base index value
+                // TODO: Convert IR IDs to proper operands instead of using placeholders
                 let operands = vec![
                     Operand::Variable(1), // Array base address (placeholder)
                     Operand::Variable(2), // Index (placeholder)
-                    Operand::Variable(0), // Value (from stack)
+                    Operand::Variable(0), // Value (from stack, placeholder)
                 ];
-                self.emit_instruction(0x21, &operands, None, None)?; // storew (2OP:33)
+                self.emit_instruction(0x01, &operands, None, None)?; // storew (VAR:1)
             }
 
             // New numbered property instructions
@@ -1238,6 +1552,378 @@ impl ZMachineCodeGen {
                     "Generated property test for property number {}",
                     property_num
                 );
+            }
+
+            IrInstruction::ArrayAdd { array, value } => {
+                // Array add operation - for now, use placeholder Z-Machine instructions
+                // This would need proper array management in a full implementation
+                log::debug!("Array add: array={}, value={}", array, value);
+
+                // For simplicity, we'll treat this as a no-op for now
+                // In a full implementation, this would manipulate dynamic array structures
+                let operands = vec![
+                    Operand::Variable(1), // Array placeholder
+                    Operand::Variable(2), // Value placeholder
+                ];
+                self.emit_instruction(0x10, &operands, None, None)?; // placeholder instruction
+            }
+
+            IrInstruction::ArrayRemove {
+                target,
+                array,
+                index,
+            } => {
+                // Array remove operation - remove element at index and return it
+                log::debug!(
+                    "Array remove: target={}, array={}, index={}",
+                    target,
+                    array,
+                    index
+                );
+
+                // For simplicity, return 0 as removed value
+                // In a full implementation, this would access array elements
+                let operands = vec![
+                    Operand::Variable(1), // Array placeholder
+                    Operand::Variable(2), // Index placeholder
+                ];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder with result
+            }
+
+            IrInstruction::ArrayLength { target, array } => {
+                // Array length operation - return number of elements
+                log::debug!("Array length: target={}, array={}", target, array);
+
+                // For simplicity, return fixed length
+                // In a full implementation, this would read array metadata
+                let operands = vec![
+                    Operand::Variable(1), // Array placeholder
+                ];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder with result
+            }
+
+            IrInstruction::ArrayEmpty { target, array } => {
+                // Array empty check - return true if array has no elements
+                log::debug!("Array empty: target={}, array={}", target, array);
+
+                // For simplicity, return false (not empty)
+                // In a full implementation, this would check array size
+                let operands = vec![
+                    Operand::Variable(1), // Array placeholder
+                ];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder with result
+            }
+
+            IrInstruction::ArrayContains {
+                target,
+                array,
+                value,
+            } => {
+                // Array contains operation - check if value exists in array
+                log::debug!(
+                    "Array contains: target={}, array={}, value={}",
+                    target,
+                    array,
+                    value
+                );
+
+                // For simplicity, return false (not found)
+                // In a full implementation, this would search array elements
+                let operands = vec![
+                    Operand::Variable(1), // Array placeholder
+                    Operand::Variable(2), // Value placeholder
+                ];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder with result
+            }
+
+            // Advanced array operations
+            IrInstruction::ArrayFilter {
+                target,
+                array,
+                predicate,
+            } => {
+                log::debug!(
+                    "Array filter: target={}, array={}, predicate={}",
+                    target,
+                    array,
+                    predicate
+                );
+                let operands = vec![Operand::Variable(1), Operand::Variable(2)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::ArrayMap {
+                target,
+                array,
+                transform,
+            } => {
+                log::debug!(
+                    "Array map: target={}, array={}, transform={}",
+                    target,
+                    array,
+                    transform
+                );
+                let operands = vec![Operand::Variable(1), Operand::Variable(2)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::ArrayForEach { array, callback } => {
+                log::debug!("Array forEach: array={}, callback={}", array, callback);
+                let operands = vec![Operand::Variable(1), Operand::Variable(2)];
+                self.emit_instruction(0x10, &operands, None, None)?; // placeholder (no return)
+            }
+            IrInstruction::ArrayFind {
+                target,
+                array,
+                predicate,
+            } => {
+                log::debug!(
+                    "Array find: target={}, array={}, predicate={}",
+                    target,
+                    array,
+                    predicate
+                );
+                let operands = vec![Operand::Variable(1), Operand::Variable(2)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::ArrayIndexOf {
+                target,
+                array,
+                value,
+            } => {
+                log::debug!(
+                    "Array indexOf: target={}, array={}, value={}",
+                    target,
+                    array,
+                    value
+                );
+                let operands = vec![Operand::Variable(1), Operand::Variable(2)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::ArrayJoin {
+                target,
+                array,
+                separator,
+            } => {
+                log::debug!(
+                    "Array join: target={}, array={}, separator={}",
+                    target,
+                    array,
+                    separator
+                );
+                let operands = vec![Operand::Variable(1), Operand::Variable(2)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::ArrayReverse { target, array } => {
+                log::debug!("Array reverse: target={}, array={}", target, array);
+                let operands = vec![Operand::Variable(1)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::ArraySort {
+                target,
+                array,
+                comparator,
+            } => {
+                log::debug!(
+                    "Array sort: target={}, array={}, comparator={:?}",
+                    target,
+                    array,
+                    comparator
+                );
+                let operands = vec![Operand::Variable(1)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+
+            // String utility operations
+            IrInstruction::StringIndexOf {
+                target,
+                string,
+                substring,
+            } => {
+                log::debug!(
+                    "String indexOf: target={}, string={}, substring={}",
+                    target,
+                    string,
+                    substring
+                );
+                let operands = vec![Operand::Variable(1), Operand::Variable(2)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::StringSlice {
+                target,
+                string,
+                start,
+            } => {
+                log::debug!(
+                    "String slice: target={}, string={}, start={}",
+                    target,
+                    string,
+                    start
+                );
+                let operands = vec![Operand::Variable(1), Operand::Variable(2)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::StringSubstring {
+                target,
+                string,
+                start,
+                end,
+            } => {
+                log::debug!(
+                    "String substring: target={}, string={}, start={}, end={}",
+                    target,
+                    string,
+                    start,
+                    end
+                );
+                let operands = vec![
+                    Operand::Variable(1),
+                    Operand::Variable(2),
+                    Operand::Variable(3),
+                ];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::StringToLowerCase { target, string } => {
+                log::debug!("String toLowerCase: target={}, string={}", target, string);
+                let operands = vec![Operand::Variable(1)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::StringToUpperCase { target, string } => {
+                log::debug!("String toUpperCase: target={}, string={}", target, string);
+                let operands = vec![Operand::Variable(1)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::StringTrim { target, string } => {
+                log::debug!("String trim: target={}, string={}", target, string);
+                let operands = vec![Operand::Variable(1)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::StringCharAt {
+                target,
+                string,
+                index,
+            } => {
+                log::debug!(
+                    "String charAt: target={}, string={}, index={}",
+                    target,
+                    string,
+                    index
+                );
+                let operands = vec![Operand::Variable(1), Operand::Variable(2)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::StringSplit {
+                target,
+                string,
+                delimiter,
+            } => {
+                log::debug!(
+                    "String split: target={}, string={}, delimiter={}",
+                    target,
+                    string,
+                    delimiter
+                );
+                let operands = vec![Operand::Variable(1), Operand::Variable(2)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::StringReplace {
+                target,
+                string,
+                search,
+                replacement,
+            } => {
+                log::debug!(
+                    "String replace: target={}, string={}, search={}, replacement={}",
+                    target,
+                    string,
+                    search,
+                    replacement
+                );
+                let operands = vec![
+                    Operand::Variable(1),
+                    Operand::Variable(2),
+                    Operand::Variable(3),
+                ];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::StringStartsWith {
+                target,
+                string,
+                prefix,
+            } => {
+                log::debug!(
+                    "String startsWith: target={}, string={}, prefix={}",
+                    target,
+                    string,
+                    prefix
+                );
+                let operands = vec![Operand::Variable(1), Operand::Variable(2)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::StringEndsWith {
+                target,
+                string,
+                suffix,
+            } => {
+                log::debug!(
+                    "String endsWith: target={}, string={}, suffix={}",
+                    target,
+                    string,
+                    suffix
+                );
+                let operands = vec![Operand::Variable(1), Operand::Variable(2)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+
+            // Math utility operations
+            IrInstruction::MathAbs { target, value } => {
+                log::debug!("Math abs: target={}, value={}", target, value);
+                let operands = vec![Operand::Variable(1)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::MathMin { target, a, b } => {
+                log::debug!("Math min: target={}, a={}, b={}", target, a, b);
+                let operands = vec![Operand::Variable(1), Operand::Variable(2)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::MathMax { target, a, b } => {
+                log::debug!("Math max: target={}, a={}, b={}", target, a, b);
+                let operands = vec![Operand::Variable(1), Operand::Variable(2)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::MathRound { target, value } => {
+                log::debug!("Math round: target={}, value={}", target, value);
+                let operands = vec![Operand::Variable(1)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::MathFloor { target, value } => {
+                log::debug!("Math floor: target={}, value={}", target, value);
+                let operands = vec![Operand::Variable(1)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::MathCeil { target, value } => {
+                log::debug!("Math ceil: target={}, value={}", target, value);
+                let operands = vec![Operand::Variable(1)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+
+            // Type checking operations
+            IrInstruction::TypeCheck {
+                target,
+                value,
+                type_name,
+            } => {
+                log::debug!(
+                    "Type check: target={}, value={}, type={}",
+                    target,
+                    value,
+                    type_name
+                );
+                let operands = vec![Operand::Variable(1)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
+            }
+            IrInstruction::TypeOf { target, value } => {
+                log::debug!("TypeOf: target={}, value={}", target, value);
+                let operands = vec![Operand::Variable(1)];
+                self.emit_instruction(0x10, &operands, Some(0), None)?; // placeholder
             }
 
             _ => {
@@ -1370,37 +2056,29 @@ impl ZMachineCodeGen {
         &mut self,
         function_id: IrId,
         _args: &[IrId],
+        target: Option<IrId>,
     ) -> Result<(), CompilerError> {
-        // TEMPORARY WORKAROUND: Function calls are disabled due to bytecode corruption issues
-        // TODO: Fix the incompatibility between emit_instruction and unresolved reference system
+        // Generate a no-op function call that returns immediately
+        // This maintains proper stack balance for the caller without executing actual function code
 
-        // Generate a placeholder print statement instead of the function call
-        let placeholder_msg = format!("[Function call to IR ID {}]", function_id);
-        let string_id = self.find_or_create_string_id(&placeholder_msg)?;
-        self.ir_id_to_string.insert(string_id, placeholder_msg);
+        // If we have a target, register it as producing a string value for concatenation
+        if let Some(target_id) = target {
+            let placeholder_msg = format!("{{FUNC:{}}}", function_id);
+            self.ir_id_to_string.insert(target_id, placeholder_msg);
+        }
 
-        // Generate print_paddr instruction with placeholder
+        // Generate rtrue instruction - this acts like an empty function that returns successfully
         self.emit_instruction(
-            0x0D,                              // print_paddr opcode
-            &[Operand::LargeConstant(0x0000)], // Placeholder address
-            None,                              // No store
-            None,                              // No branch
+            0xB0, // rtrue opcode (0OP:176) - return true immediately
+            &[],  // No operands
+            None, // No store
+            None, // No branch
         )?;
 
-        // Add unresolved reference for the string address after instruction emission
-        let operand_address = self.current_address - 2;
-        let reference = UnresolvedReference {
-            reference_type: ReferenceType::StringRef,
-            location: operand_address,
-            target_id: string_id,
-            is_packed_address: true,
-            offset_size: 2,
-        };
-        self.reference_context.unresolved_refs.push(reference);
-
         log::debug!(
-            "TEMPORARY: Function call to IR ID {} replaced with print statement",
-            function_id
+            "NO-OP: Function call to IR ID {} replaced with rtrue, target: {:?}",
+            function_id,
+            target
         );
 
         Ok(())
@@ -1894,6 +2572,7 @@ impl ZMachineCodeGen {
         &mut self,
         function_id: IrId,
         args: &[IrId],
+        target: Option<IrId>,
     ) -> Result<(), CompilerError> {
         let function_name = self
             .get_builtin_function_name(function_id)
@@ -1912,11 +2591,16 @@ impl ZMachineCodeGen {
             "print" => self.generate_print_builtin(args),
             "move" => self.generate_move_builtin(args),
             "get_location" => self.generate_get_location_builtin(args),
-            "to_string" => self.generate_to_string_builtin(args),
+            "to_string" => self.generate_to_string_builtin(args, target),
             // Core Z-Machine object primitives
             "get_child" => self.generate_get_child_builtin(args),
             "get_sibling" => self.generate_get_sibling_builtin(args),
+            "get_prop" => self.generate_get_prop_builtin(args),
             "test_attr" => self.generate_test_attr_builtin(args),
+            "set_attr" => self.generate_set_attr_builtin(args),
+            "clear_attr" => self.generate_clear_attr_builtin(args),
+            // Advanced Z-Machine opcodes
+            "random" => self.generate_random_builtin(args, target),
             // Game logic builtins
             "player_can_see" => self.generate_player_can_see_builtin(args),
             "list_objects" => self.generate_list_objects_builtin(args),
@@ -2125,6 +2809,72 @@ impl ZMachineCodeGen {
             Operand::Variable(attr_num as u8),  // Attribute number
         ];
         self.emit_instruction(0x0A, &operands, Some(0), None)?; // Store result in stack
+
+        Ok(())
+    }
+
+    /// Generate set_attr builtin function - sets an object attribute to true
+    fn generate_set_attr_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+        if args.len() != 2 {
+            return Err(CompilerError::CodeGenError(format!(
+                "set_attr expects 2 arguments, got {}",
+                args.len()
+            )));
+        }
+
+        let object_id = args[0];
+        let attr_num = args[1];
+
+        // Generate Z-Machine set_attr instruction (2OP:11, opcode 0x0B)
+        let operands = vec![
+            Operand::Variable(object_id as u8), // Object
+            Operand::Variable(attr_num as u8),  // Attribute number
+        ];
+        self.emit_instruction(0x0B, &operands, None, None)?; // No return value
+
+        Ok(())
+    }
+
+    /// Generate clear_attr builtin function - sets an object attribute to false
+    fn generate_clear_attr_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+        if args.len() != 2 {
+            return Err(CompilerError::CodeGenError(format!(
+                "clear_attr expects 2 arguments, got {}",
+                args.len()
+            )));
+        }
+
+        let object_id = args[0];
+        let attr_num = args[1];
+
+        // Generate Z-Machine clear_attr instruction (2OP:12, opcode 0x0C)
+        let operands = vec![
+            Operand::Variable(object_id as u8), // Object
+            Operand::Variable(attr_num as u8),  // Attribute number
+        ];
+        self.emit_instruction(0x0C, &operands, None, None)?; // No return value
+
+        Ok(())
+    }
+
+    /// Generate get_prop builtin function - gets a property value from an object
+    fn generate_get_prop_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+        if args.len() != 2 {
+            return Err(CompilerError::CodeGenError(format!(
+                "get_prop expects 2 arguments, got {}",
+                args.len()
+            )));
+        }
+
+        let object_id = args[0];
+        let prop_num = args[1];
+
+        // Generate Z-Machine get_prop instruction (2OP:17, opcode 0x11)
+        let operands = vec![
+            Operand::Variable(object_id as u8), // Object
+            Operand::Variable(prop_num as u8),  // Property number
+        ];
+        self.emit_instruction(0x11, &operands, Some(0), None)?; // Store result on stack
 
         Ok(())
     }
@@ -2339,7 +3089,11 @@ impl ZMachineCodeGen {
     }
 
     /// Generate to_string builtin function - converts values to strings
-    fn generate_to_string_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+    fn generate_to_string_builtin(
+        &mut self,
+        args: &[IrId],
+        target: Option<IrId>,
+    ) -> Result<(), CompilerError> {
         if args.len() != 1 {
             return Err(CompilerError::CodeGenError(format!(
                 "to_string expects 1 argument, got {}",
@@ -2347,27 +3101,110 @@ impl ZMachineCodeGen {
             )));
         }
 
-        // For now, implement a simple to_string that handles integers
-        // In a full implementation, this would handle multiple types
-        // and create dynamic string objects
+        // Create a placeholder string for to_string conversion
+        let placeholder_str = "[NUM]";
+        let _string_id = self.find_or_create_string_id(placeholder_str)?;
 
-        // For simplicity, return the input value as-is and assume
-        // the print system will handle string conversion
-        // This is a placeholder implementation
+        // If we have a target, register it as producing a string value
+        if let Some(target_id) = target {
+            self.ir_id_to_string
+                .insert(target_id, placeholder_str.to_string());
+        }
 
-        // Load the argument value and store it as result
-        let arg_id = args[0];
-
-        // For integer to string conversion, we would need to:
-        // 1. Load the integer value
-        // 2. Convert it to a string representation
-        // 3. Store the string in memory
-        // 4. Return a reference to the string
-
-        // Simplified: just store the value and let the print system handle it
-        self.emit_instruction(0xE1, &[Operand::Variable(arg_id as u8)], Some(0), None)?;
+        // to_string is a compile-time operation that produces string values
+        // No runtime instructions needed - the result is used via ir_id_to_string mapping
 
         Ok(())
+    }
+
+    /// Generate random builtin function - implements Z-Machine RANDOM opcode
+    fn generate_random_builtin(
+        &mut self,
+        args: &[IrId],
+        target: Option<IrId>,
+    ) -> Result<(), CompilerError> {
+        if args.len() != 1 {
+            return Err(CompilerError::CodeGenError(format!(
+                "random expects 1 argument, got {}",
+                args.len()
+            )));
+        }
+
+        debug!("Generating RANDOM opcode with range argument");
+
+        // For now, use a placeholder operand - in a full implementation,
+        // we need to properly handle the IR argument values
+        let range_operand = Operand::SmallConstant(6); // Placeholder for now
+        let store_var = Some(0); // Store result on stack
+
+        self.emit_instruction(
+            0x07,             // RANDOM opcode (VAR:231)
+            &[range_operand], // Range operand
+            store_var,        // Store result in variable 0 (stack)
+            None,             // No branch
+        )?;
+
+        // If we have a target, this will be used for further operations
+        if let Some(target_id) = target {
+            // Register that this target contains a numeric value
+            // For string concatenation, we'd need to convert this to string
+            let placeholder_str = "[RANDOM_RESULT]";
+            self.ir_id_to_string
+                .insert(target_id, placeholder_str.to_string());
+        }
+
+        debug!("Generated RANDOM instruction successfully");
+        Ok(())
+    }
+
+    /// Generate string concatenation for two IR values
+    fn generate_string_concatenation(
+        &mut self,
+        target: IrId,
+        left: IrId,
+        right: IrId,
+    ) -> Result<(), CompilerError> {
+        // For string concatenation, we need to:
+        // 1. Get the string values for left and right operands
+        // 2. Concatenate them into a new string
+        // 3. Store the new string and return its address
+
+        let left_str = self.get_string_value(left)?;
+        let right_str = self.get_string_value(right)?;
+
+        // Concatenate the strings
+        let concatenated = format!("{}{}", left_str, right_str);
+
+        // Create a new string entry for the concatenated result
+        let _concat_string_id = self.find_or_create_string_id(&concatenated)?;
+        self.ir_id_to_string.insert(target, concatenated);
+
+        // String concatenation is a compile-time operation
+        // No runtime instructions needed - the concatenated string will be used directly
+        // by print operations via its string ID
+
+        debug!(
+            "String concatenation: {} + {} -> {} (ID: {})",
+            left_str,
+            right_str,
+            self.ir_id_to_string
+                .get(&target)
+                .unwrap_or(&"<unknown>".to_string()),
+            target
+        );
+
+        Ok(())
+    }
+
+    /// Get string value for an IR ID (handles both string literals and function return values)
+    fn get_string_value(&self, ir_id: IrId) -> Result<String, CompilerError> {
+        if let Some(string_val) = self.ir_id_to_string.get(&ir_id) {
+            Ok(string_val.clone())
+        } else {
+            // This might be a to_string() result or other dynamic string
+            // For now, use a placeholder that represents the dynamic value
+            Ok(format!("[Dynamic-{}]", ir_id))
+        }
     }
 
     /// Update string addresses after new strings have been added
@@ -2700,11 +3537,22 @@ impl ZMachineCodeGen {
         }
     }
 
+    /// Check if an opcode is a true VAR opcode (always requires VAR form encoding)
+    fn is_true_var_opcode(opcode: u8) -> bool {
+        match opcode {
+            0x01 => true, // STOREW
+            0x03 => true, // PUT_PROP
+            0x07 => true, // RANDOM
+            _ => false,
+        }
+    }
+
     /// Determine instruction form based on operand count and opcode
     pub fn determine_instruction_form(&self, operand_count: usize, opcode: u8) -> InstructionForm {
         // Special cases: certain opcodes are always VAR form regardless of operand count
         match opcode {
             0x03 => InstructionForm::Variable, // put_prop is always VAR
+            0x07 => InstructionForm::Variable, // random is always VAR
             _ => match operand_count {
                 0 => InstructionForm::Short, // 0OP
                 1 => InstructionForm::Short, // 1OP
@@ -2737,11 +3585,20 @@ impl ZMachineCodeGen {
             )));
         }
 
-        // Long form: bits 7-6 = op1_type, bits 5-4 = op2_type, bits 3-0 = opcode
-        let op1_type = self.get_operand_type(&operands[0]);
-        let op2_type = self.get_operand_type(&operands[1]);
+        // Long form: bit 6 = op1_type, bit 5 = op2_type, bits 4-0 = opcode
+        // In Long form: 0 = small constant, 1 = variable (only these 2 types allowed)
+        let op1_bit = if matches!(operands[0], Operand::Variable(_)) {
+            1
+        } else {
+            0
+        };
+        let op2_bit = if matches!(operands[1], Operand::Variable(_)) {
+            1
+        } else {
+            0
+        };
 
-        let instruction_byte = ((op1_type as u8) << 6) | ((op2_type as u8) << 4) | (opcode & 0x0F);
+        let instruction_byte = (op1_bit << 6) | (op2_bit << 5) | (opcode & 0x1F);
         self.emit_byte(instruction_byte)?;
 
         // Emit operands
@@ -2821,7 +3678,12 @@ impl ZMachineCodeGen {
         }
 
         // Variable form: bits 7-6 = 11, bit 5 = VAR (1) or OP2 (0), bits 4-0 = opcode
-        let var_bit = if operands.len() > 2 { 0x20 } else { 0x00 }; // Set bit 5 for VAR (3+ operands)
+        // Bit 5 should be set for true VAR opcodes (like RANDOM), regardless of operand count
+        let var_bit = if Self::is_true_var_opcode(opcode) {
+            0x20
+        } else {
+            0x00
+        };
         let instruction_byte = 0xC0 | var_bit | (opcode & 0x1F);
         self.emit_byte(instruction_byte)?;
 

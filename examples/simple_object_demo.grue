@@ -1,0 +1,67 @@
+// Simple Object System Demonstration
+// This example works with our current parser while showcasing object capabilities
+
+world {
+    room start {
+        display_name: "Object Demo Room"
+        description: "This room demonstrates our object system."
+        
+        object treasure_chest {
+            names: ["treasure chest", "chest", "box"]
+            description: "An ornate wooden chest."
+            
+            object gold_coin {
+                names: ["gold coin", "coin"]  
+                description: "A gleaming gold coin."
+            }
+            
+            object brass_key {
+                names: ["brass key", "key"]
+                description: "A small brass key."
+            }
+        }
+        
+        object brass_lamp {
+            names: ["brass lamp", "lamp"]
+            description: "A sturdy brass lamp."
+        }
+        
+        exits: {
+            north: north_room
+        }
+    }
+    
+    room north_room {
+        display_name: "North Chamber"  
+        description: "A chamber to the north."
+        
+        object sage {
+            names: ["wise sage", "sage"]
+            description: "An elderly sage."
+        }
+        
+        exits: {
+            south: start
+        }
+    }
+}
+
+function test_objects() {
+    print("=== Object System Test ===");
+    print("Objects created successfully!");
+    
+    // Test object movement
+    move(gold_coin, start);
+    print("Moved gold coin to start room.");
+    
+    // Test object location
+    let coin_location = get_location(gold_coin);
+    print("Coin location ID: " + to_string(coin_location));
+    
+    print("Test complete!");
+}
+
+init {
+    print("Simple Object System Demo loaded!");
+    test_objects();
+}

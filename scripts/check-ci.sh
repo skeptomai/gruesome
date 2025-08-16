@@ -105,8 +105,19 @@ else
     FAILED=1
 fi
 
-# 7. Test Grue compiler examples
+# 7. Test Grue compiler examples  
 print_step "Testing Grue compiler examples"
+
+# First run key examples test (property fixes validation)
+if ./scripts/test_key_examples.sh >/dev/null 2>&1; then
+    print_success "Key examples working (property fixes validated)"
+else
+    print_error "Key examples test failed"
+    ./scripts/test_key_examples.sh
+    FAILED=1
+fi
+
+# Then run full CI test suite
 if ./scripts/ci_test.sh >/dev/null 2>&1; then
     print_success "All Grue compiler examples working"
 else

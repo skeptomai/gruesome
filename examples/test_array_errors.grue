@@ -1,0 +1,21 @@
+// Test that array error cases are caught
+fn main() {
+    let numbers = [1, 2, 3];
+    
+    // These should cause semantic errors (uncomment to test):
+    
+    // Wrong number of arguments
+    // numbers.add(1, 2);  // Should error: add expects 1 argument
+    // numbers.length(5);  // Should error: length expects 0 arguments
+    
+    // Unknown methods
+    // numbers.invalid();  // Should error: unknown method
+    
+    // Unknown properties  
+    // let x = numbers.invalid; // Should error: unknown property
+    
+    // Valid operations that should work
+    numbers.add(4);
+    let len = numbers.length;
+    print("Length: " + to_string(len));
+}
