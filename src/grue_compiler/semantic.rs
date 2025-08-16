@@ -818,12 +818,10 @@ impl SemanticAnalyzer {
                 match &object_type {
                     Type::Array(_) => match property.as_str() {
                         "length" | "size" => Ok(Type::Int),
-                        _ => {
-                            Err(CompilerError::SemanticError(
-                                format!("Unknown property '{}' for array type", property),
-                                0,
-                            ))
-                        }
+                        _ => Err(CompilerError::SemanticError(
+                            format!("Unknown property '{}' for array type", property),
+                            0,
+                        )),
                     },
                     _ => {
                         // For non-array types, assume any property access is valid
@@ -1043,12 +1041,10 @@ impl SemanticAnalyzer {
                                 }
                                 Ok(Type::Array(element_type.clone()))
                             }
-                            _ => {
-                                Err(CompilerError::SemanticError(
-                                    format!("Unknown method '{}' for array type", method),
-                                    0,
-                                ))
-                            }
+                            _ => Err(CompilerError::SemanticError(
+                                format!("Unknown method '{}' for array type", method),
+                                0,
+                            )),
                         }
                     }
                     _ => {

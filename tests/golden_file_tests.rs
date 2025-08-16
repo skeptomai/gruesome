@@ -350,7 +350,6 @@ fn test_basic_compilation() {
     println!("📁 Golden file saved: {}", golden_path.display());
 }
 
-
 #[test]
 fn test_golden_file_regeneration() {
     println!("🧪 Running all golden file tests...");

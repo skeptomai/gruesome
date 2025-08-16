@@ -2503,12 +2503,10 @@ impl IrGenerator {
                 });
                 Ok(result_temp)
             }
-            _ => {
-                Err(CompilerError::CodeGenError(format!(
-                    "Unknown array method: {}",
-                    method
-                )))
-            }
+            _ => Err(CompilerError::CodeGenError(format!(
+                "Unknown array method: {}",
+                method
+            ))),
         }
     }
 
