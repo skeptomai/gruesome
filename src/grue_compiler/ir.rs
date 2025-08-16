@@ -404,6 +404,17 @@ pub enum IrPatternElement {
     Literal(String),
     Noun,
     Default,
+
+    // Enhanced parser elements for Zork I-level parsing
+    Adjective,
+    MultiWordNoun,
+    Preposition,
+    MultipleObjects,
+    DirectObject,
+    IndirectObject,
+    OptionalAdjective,
+    AnyPreposition,
+    NumberedNoun,
 }
 
 /// Handler for grammar patterns
@@ -1412,33 +1423,33 @@ impl IrGenerator {
                         crate::grue_compiler::ast::PatternElement::Default => {
                             IrPatternElement::Default
                         }
-                        // Enhanced parser elements (for future implementation)
+                        // Enhanced parser elements - full support for Zork I-level parsing
                         crate::grue_compiler::ast::PatternElement::Adjective => {
-                            IrPatternElement::Noun
-                        } // Treat as noun for now
+                            IrPatternElement::Adjective
+                        }
                         crate::grue_compiler::ast::PatternElement::MultiWordNoun => {
-                            IrPatternElement::Noun
+                            IrPatternElement::MultiWordNoun
                         }
                         crate::grue_compiler::ast::PatternElement::Preposition => {
-                            IrPatternElement::Literal("in".to_string())
-                        } // Default preposition
+                            IrPatternElement::Preposition
+                        }
                         crate::grue_compiler::ast::PatternElement::MultipleObjects => {
-                            IrPatternElement::Noun
+                            IrPatternElement::MultipleObjects
                         }
                         crate::grue_compiler::ast::PatternElement::DirectObject => {
-                            IrPatternElement::Noun
+                            IrPatternElement::DirectObject
                         }
                         crate::grue_compiler::ast::PatternElement::IndirectObject => {
-                            IrPatternElement::Noun
+                            IrPatternElement::IndirectObject
                         }
                         crate::grue_compiler::ast::PatternElement::OptionalAdjective => {
-                            IrPatternElement::Default
-                        } // Optional
+                            IrPatternElement::OptionalAdjective
+                        }
                         crate::grue_compiler::ast::PatternElement::AnyPreposition => {
-                            IrPatternElement::Literal("with".to_string())
+                            IrPatternElement::AnyPreposition
                         }
                         crate::grue_compiler::ast::PatternElement::NumberedNoun => {
-                            IrPatternElement::Noun
+                            IrPatternElement::NumberedNoun
                         }
                     })
                     .collect();

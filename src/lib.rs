@@ -35,6 +35,7 @@ pub mod parser_engine;
 pub mod property_defaults;
 pub mod quetzal;
 pub mod routine;
+pub mod runtime_parser;
 pub mod text;
 pub mod timed_input;
 pub mod util;

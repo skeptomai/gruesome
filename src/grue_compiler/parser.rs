@@ -393,6 +393,43 @@ impl Parser {
                     pattern.push(PatternElement::Default);
                     self.advance();
                 }
+                // Enhanced parser elements for Zork I-level parsing
+                TokenKind::Identifier(name) if name == "adjective" => {
+                    pattern.push(PatternElement::Adjective);
+                    self.advance();
+                }
+                TokenKind::Identifier(name) if name == "multi_word_noun" => {
+                    pattern.push(PatternElement::MultiWordNoun);
+                    self.advance();
+                }
+                TokenKind::Identifier(name) if name == "preposition" => {
+                    pattern.push(PatternElement::Preposition);
+                    self.advance();
+                }
+                TokenKind::Identifier(name) if name == "multiple_objects" => {
+                    pattern.push(PatternElement::MultipleObjects);
+                    self.advance();
+                }
+                TokenKind::Identifier(name) if name == "direct_object" => {
+                    pattern.push(PatternElement::DirectObject);
+                    self.advance();
+                }
+                TokenKind::Identifier(name) if name == "indirect_object" => {
+                    pattern.push(PatternElement::IndirectObject);
+                    self.advance();
+                }
+                TokenKind::Identifier(name) if name == "optional_adjective" => {
+                    pattern.push(PatternElement::OptionalAdjective);
+                    self.advance();
+                }
+                TokenKind::Identifier(name) if name == "any_preposition" => {
+                    pattern.push(PatternElement::AnyPreposition);
+                    self.advance();
+                }
+                TokenKind::Identifier(name) if name == "numbered_noun" => {
+                    pattern.push(PatternElement::NumberedNoun);
+                    self.advance();
+                }
                 TokenKind::Plus => {
                     self.advance(); // Skip '+' connector
                 }
