@@ -924,7 +924,18 @@ impl IrGenerator {
         );
         let mut ir_program = IrProgram::new();
 
-        // Generate IR for each top-level item
+        // TWO-PASS APPROACH: First pass registers all function definitions to populate symbol table
+        // This ensures function calls can resolve to actual definitions, not placeholders
+        for item in ast.items.iter() {
+            if let crate::grue_compiler::ast::Item::Function(func) = item {
+                // Register function name in symbol table (but don't generate IR body yet)
+                let func_id = self.next_id();
+                self.symbol_ids.insert(func.name.clone(), func_id);
+                log::debug!("PASS 1: Registered function '{}' with ID {}", func.name, func_id);
+            }
+        }
+
+        // SECOND PASS: Generate IR for all items (functions will now use registered IDs)
         for item in ast.items.iter() {
             self.generate_item(item.clone(), &mut ir_program)?;
         }
@@ -997,13 +1008,14 @@ impl IrGenerator {
         &mut self,
         func: crate::grue_compiler::ast::FunctionDecl,
     ) -> Result<IrFunction, CompilerError> {
-        // Check if we already have a placeholder ID for this function
+        // Function should already be registered in symbol table from first pass
         let func_id = if let Some(&existing_id) = self.symbol_ids.get(&func.name) {
             existing_id
         } else {
-            let new_id = self.next_id();
-            self.symbol_ids.insert(func.name.clone(), new_id);
-            new_id
+            return Err(CompilerError::SemanticError(format!(
+                "Function '{}' not found in symbol table. This indicates a bug in the two-pass system.",
+                func.name
+            ), 0));
         };
 
         // Reset local variable state for this function
@@ -1896,13 +1908,14 @@ impl IrGenerator {
                     return self.generate_builtin_function_call(&name, &arg_temps, block);
                 }
 
-                // Look up function ID (or create placeholder)
+                // Look up function ID (should be pre-registered)
                 let func_id = if let Some(&id) = self.symbol_ids.get(&name) {
                     id
                 } else {
-                    let placeholder_id = self.next_id();
-                    self.symbol_ids.insert(name.clone(), placeholder_id);
-                    placeholder_id
+                    return Err(CompilerError::SemanticError(format!(
+                        "Function '{}' not found. All functions must be defined before use.",
+                        name
+                    ), 0));
                 };
 
                 let temp_id = self.next_id();

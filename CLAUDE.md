@@ -399,11 +399,79 @@ The interpreter correctly handles calls to address 0x0000 according to the Z-Mac
 - **Phase 3 Target**: Advanced features and polish (Nov 2025)
 - **Phase 4 Target**: Full Zork I recreation (Dec 2025)
 
-### Current Implementation Status (Aug 14, 2025)
-📍 **Position**: Ready to begin Phase 1 with solid foundation
-🎯 **Next Step**: Advanced Z-Machine opcodes (LOADW, STOREW, object attributes)
-📊 **Success Rate**: 100% (27/27 examples working)
-📋 **See**: `ZORK_IMPLEMENTATION_ROADMAP.md` for detailed current plan
+### Current Implementation Status (Aug 16, 2025)
+📍 **Position**: Debugging critical bytecode corruption in address resolution
+🎯 **Next Step**: Fix instruction stream corruption in reference patching system
+📊 **Success Rate**: Temporary regression - basic compilation corrupted during execution
+📋 **See**: Current analysis below for detailed investigation results
+
+## Current Critical Bug Investigation (Aug 16, 2025) - 🔴 IN PROGRESS
+
+### Root Cause Analysis: Address Patching Memory Corruption
+
+**Issue**: "Invalid object number: 989" runtime error in simple test cases
+**Actual Problem**: Address resolution phase corrupting instruction bytecode stream
+
+### Technical Investigation Results:
+
+#### 1. Error Manifestation
+- **Runtime Error**: "Invalid object number: 989" during execution of `debug_object_error.z3`
+- **Object 989**: = 0x03DD (packed string address) being interpreted as object number
+- **Symptom**: Address resolution patches corrupting nearby instruction bytes
+
+#### 2. Memory Corruption Discovery
+**Original Expected Layout:**
+```
+0x0732: 0x82 (print_paddr)
+0x0733: 0x00 (operand placeholder)  
+0x0734: 0x00 (operand placeholder)
+0x0735: 0xE4 (VAR sread instruction)
+0x0736: 0x0F (operand types)
+```
+
+**Actual Patched Layout:**
+```
+0x0732: 0x82 (print_paddr) ✓
+0x0733: 0x03 (patched string address high byte) ✓
+0x0734: 0xDD (patched string address low byte) ✓ - WAS CORRUPTION
+0x0735: 0xE4 (VAR sread instruction) ✓
+0x0736: 0x0F (operand types) ✓
+```
+
+#### 3. Address Resolution Trace
+**Critical Patch Events:**
+- String ID 9002 (prompt "> ") resolved to address 0x07BA
+- Packed address: 0x07BA / 2 = 0x03DD  
+- Patch location: 0x0733 (2 bytes: 0x03 0xDD)
+- **Result**: Correct patching, NOT corruption as initially thought
+
+#### 4. Real Issue: Control Flow Problems
+**Discovery**: The patching is working correctly. The issue is **execution flow**:
+- Print instruction executes successfully (shows "Simple test - no objects")
+- Jump instruction at 0x0741: `0x8C 0xFF 0xF0` (jump with offset -16)
+- **Target calculation**: PC=0x0744, offset=-16 → target=0x0732 (correct)
+- **Problem**: Something after this is interpreting 0x03DD as an object number
+
+#### 5. Next Investigation Steps
+1. **Trace actual PC during execution** - where exactly does the object error occur?
+2. **Verify jump target calculation** - is the jump landing in the right place?
+3. **Check instruction following patterns** - what instruction is using 989 as object?
+4. **Validate main loop generation** - are the generated instructions semantically correct?
+
+### Current Status
+- ✅ **Identified**: Address patching is working correctly (not corrupted)
+- ✅ **Isolated**: Error occurs after successful print execution  
+- ✅ **Located**: Issue is in post-print control flow execution
+- 🔄 **Next**: Trace exact PC location when object error occurs
+- 🔄 **Fix**: Correct the instruction that's misinterpreting string address as object
+
+### Working Theory
+The interpreter is correctly executing the initial sequence but hitting a control flow issue where:
+1. A jump or control transfer lands at wrong address, OR
+2. An instruction is incorrectly interpreting a string address operand as an object number, OR  
+3. The main loop generation has semantic errors in instruction sequencing
+
+**Priority**: High - blocking all basic game execution
 
 ## Historical Documentation
 

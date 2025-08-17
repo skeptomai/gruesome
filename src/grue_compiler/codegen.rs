@@ -88,6 +88,10 @@ pub struct ZMachineCodeGen {
     // Memory layout
     story_data: Vec<u8>,
     current_address: usize,
+    
+    // Input buffer addresses
+    text_buffer_addr: usize,
+    parse_buffer_addr: usize,
 
     // Code generation state
     label_addresses: HashMap<IrId, usize>, // IR label ID -> byte address
@@ -133,6 +137,8 @@ impl ZMachineCodeGen {
             version,
             story_data: vec![0; HEADER_SIZE],
             current_address: HEADER_SIZE,
+            text_buffer_addr: 0,
+            parse_buffer_addr: 0,
             label_addresses: HashMap::new(),
             string_addresses: HashMap::new(),
             function_addresses: HashMap::new(),
@@ -163,8 +169,9 @@ impl ZMachineCodeGen {
         // Phase 1: Analyze properties across all IR elements
         self.analyze_properties(&ir)?;
 
-        // Phase 2: Collect and encode all strings
+        // Phase 2: Collect and encode all strings (including main loop strings)
         self.collect_strings(&ir)?;
+        self.add_main_loop_strings()?; // Add main loop strings
         self.encode_all_strings()?;
 
         // Phase 3: Reserve space for Z-Machine structures
@@ -198,13 +205,16 @@ impl ZMachineCodeGen {
             self.story_data[0x0268]
         );
 
-        // Phase 6: Generate init block first and capture entry point
+        // Phase 6: Generate automatic main game loop first
+        self.generate_main_loop(&ir)?;
+
+        // Phase 6.5: Generate init block and capture entry point
         let init_entry_point = if let Some(init_block) = &ir.init_block {
             self.generate_init_block(init_block)? // Returns the actual entry point
         } else {
             self.current_address // Fallback if no init block
         };
-        debug!("INTEGRITY CHECK: After Phase 6 (init block):");
+        debug!("INTEGRITY CHECK: After Phase 6.5 (init block):");
         debug!(
             "  Property table 1 at 0x0268: 0x{:02x} (should be 0x21)",
             self.story_data[0x0268]
@@ -344,6 +354,17 @@ impl ZMachineCodeGen {
 
         // TODO: Collect strings from other IR elements (rooms, objects, etc.)
 
+        Ok(())
+    }
+
+    /// Add main loop strings to the collection
+    fn add_main_loop_strings(&mut self) -> Result<(), CompilerError> {
+        // Add prompt string for main loop
+        let prompt_string_id = 9002u32;
+        let prompt_text = "> ";
+        self.strings.push((prompt_string_id, prompt_text.to_string()));
+        
+        debug!("Added main loop strings: prompt='> '");
         Ok(())
     }
 
@@ -523,6 +544,25 @@ impl ZMachineCodeGen {
         // Reserve space for global variables (480 bytes for 240 globals)
         self.global_vars_addr = addr;
         addr += 480;
+
+        // Reserve space for input buffers (for main loop)
+        // Text buffer: 64 bytes (2 header + 62 text)
+        self.text_buffer_addr = addr;
+        addr += 64;
+        // Parse buffer: 34 bytes (2 header + 32 parse data)  
+        self.parse_buffer_addr = addr;
+        addr += 34;
+        
+        debug!("Allocated input buffers at: text=0x{:04x}, parse=0x{:04x}", self.text_buffer_addr, self.parse_buffer_addr);
+        
+        // Initialize the buffers with proper headers
+        if self.story_data.len() <= self.text_buffer_addr + 64 {
+            self.story_data.resize(self.text_buffer_addr + 64 + 34, 0);
+        }
+        self.story_data[self.text_buffer_addr] = 62; // Max input length
+        self.story_data[self.text_buffer_addr + 1] = 0; // Current length
+        self.story_data[self.parse_buffer_addr] = 8; // Max words
+        self.story_data[self.parse_buffer_addr + 1] = 0; // Current words
 
         // Reserve space for object table
         self.object_table_addr = addr;
@@ -1115,6 +1155,102 @@ impl ZMachineCodeGen {
             // For now, just ensure the space is allocated
         }
 
+        Ok(())
+    }
+
+    /// Generate the automatic main game loop
+    fn generate_main_loop(&mut self, _ir: &IrProgram) -> Result<(), CompilerError> {
+        debug!("Generating automatic main game loop");
+        
+        // Align function address according to Z-Machine version requirements
+        match self.version {
+            ZMachineVersion::V3 => {
+                // v3: functions must be at even addresses
+                if self.current_address % 2 != 0 {
+                    self.emit_byte(0x00)?; // Pad with zero byte for alignment
+                }
+            }
+            ZMachineVersion::V5 => {
+                // v5: functions must be at addresses divisible by 4
+                let remainder = self.current_address % 4;
+                if remainder != 0 {
+                    for _ in 0..(4 - remainder) {
+                        self.emit_byte(0x00)?; // Pad with zero bytes for alignment
+                    }
+                }
+            }
+        }
+        
+        // Record main loop routine address for function calls
+        let main_loop_id = 9000u32; // Use high ID to avoid conflicts
+        let main_loop_routine_address = self.current_address;
+        
+        debug!("Main loop routine starts at address 0x{:04x}", main_loop_routine_address);
+        
+        // Main loop should be a routine with 0 locals (like Zork I)
+        self.emit_byte(0x00)?; // Routine header: 0 locals
+        
+        // Record the routine address (including header) for function calls
+        self.function_addresses.insert(main_loop_id, main_loop_routine_address);
+        self.record_address(main_loop_id, main_loop_routine_address); // Record for reference resolution
+        
+        // 1. Print prompt "> "  
+        let prompt_string_id = 9002u32;
+        
+        self.emit_instruction(
+            0xB2, // print_paddr (print packed address string)
+            &[Operand::LargeConstant(0x0000)], // Placeholder for prompt string address
+            None, // No store
+            None, // No branch
+        )?;
+        
+        // Add unresolved reference for prompt string
+        self.reference_context.unresolved_refs.push(UnresolvedReference {
+            reference_type: ReferenceType::StringRef,
+            location: self.current_address - 2,
+            target_id: prompt_string_id,
+            is_packed_address: true,
+            offset_size: 2,
+        });
+        
+        // 2. Use properly allocated buffer addresses from layout phase
+        let text_buffer_addr = self.text_buffer_addr as u16;
+        let parse_buffer_addr = self.parse_buffer_addr as u16;
+        
+        debug!("Using input buffers: text=0x{:04x}, parse=0x{:04x}", text_buffer_addr, parse_buffer_addr);
+        
+        // 3. Read user input using Z-Machine sread instruction
+        self.emit_instruction(
+            0x04, // sread opcode (VAR instruction)
+            &[
+                Operand::LargeConstant(text_buffer_addr as u16),
+                Operand::LargeConstant(parse_buffer_addr as u16),
+            ],
+            None, // No store
+            None, // No branch
+        )?;
+        
+        // 4. For now, just echo back what was typed (MVP implementation)
+        // TODO: Add proper command parsing and dispatch
+        
+        // 5. Jump back to loop start
+        self.emit_instruction(
+            0x0C, // jump opcode (correct opcode)
+            &[Operand::LargeConstant(0x0000)], // Placeholder for loop start address
+            None, // No store  
+            None, // No branch
+        )?;
+        
+        // Add unresolved reference for loop jump
+        self.reference_context.unresolved_refs.push(UnresolvedReference {
+            reference_type: ReferenceType::Jump,
+            location: self.current_address - 2,
+            target_id: main_loop_id, // Jump back to main loop start
+            is_packed_address: false,
+            offset_size: 2,
+        });
+        
+        debug!("Main loop generation complete at 0x{:04x}", self.current_address);
         Ok(())
     }
 
@@ -2040,8 +2176,8 @@ impl ZMachineCodeGen {
     ) -> Result<(), CompilerError> {
         // Choose appropriate call instruction based on argument count
         let opcode = match args.len() {
-            0 => 0x20, // call_1n (1OP:32) - call with no args
-            1 => 0x21, // call_1s (1OP:33) - call with 1 arg, store result
+            0 => 0x08, // call_1s (1OP:136) - call routine with no args, store result
+            1 => 0x00, // call_vs (VAR:0) - call with 1 arg, store result  
             _ => 0x00, // call_vs (VAR:0) - call with multiple args
         };
 
@@ -2055,30 +2191,47 @@ impl ZMachineCodeGen {
     fn generate_call_with_reference(
         &mut self,
         function_id: IrId,
-        _args: &[IrId],
+        args: &[IrId],
         target: Option<IrId>,
     ) -> Result<(), CompilerError> {
-        // Generate a no-op function call that returns immediately
-        // This maintains proper stack balance for the caller without executing actual function code
-
-        // If we have a target, register it as producing a string value for concatenation
-        if let Some(target_id) = target {
-            let placeholder_msg = format!("{{FUNC:{}}}", function_id);
-            self.ir_id_to_string.insert(target_id, placeholder_msg);
+        // Generate a proper function call with placeholder address that will be resolved later
+        // This is the correct approach - not rtrue hacks or compile errors
+        
+        // Convert IR args to operands  
+        let mut operands = vec![Operand::LargeConstant(0x0000)]; // Placeholder for function address
+        for &arg_id in args {
+            if let Some(literal_value) = self.get_literal_value(arg_id) {
+                operands.push(Operand::LargeConstant(literal_value));
+            } else {
+                operands.push(Operand::LargeConstant(0x0000)); // Placeholder for non-literal args
+            }
         }
 
-        // Generate rtrue instruction - this acts like an empty function that returns successfully
-        self.emit_instruction(
-            0xB0, // rtrue opcode (0OP:176) - return true immediately
-            &[],  // No operands
-            None, // No store
-            None, // No branch
-        )?;
+        // Choose appropriate call instruction based on argument count
+        let opcode = match args.len() {
+            0 => 0x20, // call_1n (1OP:32) - call with no args, no store
+            _ => 0x00, // call_vs (VAR:0) - call with args, store result
+        };
+
+        // Determine store variable for return value
+        let store_var = target.map(|_| 0x00); // Placeholder store variable
+
+        // Generate the call instruction with placeholder address
+        self.emit_instruction(opcode, &operands, store_var, None)?;
+
+        // Add unresolved reference for function address
+        self.reference_context.unresolved_refs.push(UnresolvedReference {
+            reference_type: ReferenceType::FunctionCall,
+            location: self.current_address - operands.len() * 2, // Point to function address operand
+            target_id: function_id,
+            is_packed_address: true, // Function addresses are packed in Z-Machine
+            offset_size: 2,
+        });
 
         log::debug!(
-            "NO-OP: Function call to IR ID {} replaced with rtrue, target: {:?}",
+            "Generated call to function ID {} with unresolved reference at 0x{:04x}",
             function_id,
-            target
+            self.current_address - operands.len() * 2
         );
 
         Ok(())
@@ -2203,42 +2356,85 @@ impl ZMachineCodeGen {
     /// Generate init block as a proper routine and startup sequence
     fn generate_init_block(&mut self, init_block: &IrBlock) -> Result<usize, CompilerError> {
         log::debug!(
-            "generate_init_block: Generating {} instructions for direct execution (Z-Machine spec 5.5)",
+            "generate_init_block: Generating init routine with {} instructions (Z-Machine pure architecture)",
             init_block.instructions.len()
         );
 
         // Set init block context flag
         self.in_init_block = true;
 
-        // Per Z-Machine specification section 5.5:
-        // "In all other Versions [not V6], the word at $06 contains the byte address
-        // of the first instruction to execute. The Z-machine starts in an environment
-        // with no local variables from which, again, a return is illegal."
-        //
-        // This means we emit instructions directly at PC, not as a routine call.
-
+        // Generate init as a proper routine (like Zork I architecture)
+        // This creates: Header → CALL init_routine() → CALL main_loop()
+        
+        // First, emit a CALL to init routine at startup address
         let startup_address = self.current_address;
         log::debug!(
-            "Init block direct execution starts at 0x{:04x}",
+            "Startup CALL instruction at 0x{:04x}",
             startup_address
         );
 
-        // Generate the actual init block code directly (no routine call overhead)
+        let init_routine_id = 8000u32; // Unique ID for init routine
+        self.emit_instruction(
+            0x08, // call_1s opcode (1OP:136) - call with 1 operand, store result
+            &[Operand::LargeConstant(0x0000)], // Placeholder for init routine address
+            Some(0), // Store return value on stack (even though we don't use it)
+            None, // No branch
+        )?;
+        
+        // Add unresolved reference for init routine call
+        self.reference_context.unresolved_refs.push(UnresolvedReference {
+            reference_type: ReferenceType::FunctionCall,
+            location: self.current_address - 3, // Point to the address operand (account for store variable)
+            target_id: init_routine_id,
+            is_packed_address: true, // Function calls use packed addresses
+            offset_size: 2,
+        });
+
+        // Now generate the actual init routine
+        // Ensure routine is at even address for V3
+        if self.current_address % 2 != 0 {
+            self.emit_byte(0x00)?; // Pad with zero byte for alignment
+        }
+        
+        let init_routine_address = self.current_address;
+        log::debug!(
+            "Init routine starts at 0x{:04x}",
+            init_routine_address
+        );
+
+        // Record init routine address for call resolution
+        self.function_addresses.insert(init_routine_id, init_routine_address);
+        self.record_address(init_routine_id, init_routine_address);
+
+        // Generate routine header (0 locals for init)
+        self.emit_byte(0x00)?; // Routine header: 0 locals
+
+        // Generate the actual init block code
         for instruction in &init_block.instructions {
             self.generate_instruction(instruction)?;
         }
 
-        // End with quit instruction (no return needed since this isn't a routine)
+        // At end of init routine, call the main game loop routine
+        let main_loop_id = 9000u32; // Same ID as used in generate_main_loop
         self.emit_instruction(
-            0xBA, // quit opcode (0OP instruction)
-            &[],  // No operands
-            None, // No store
+            0x08, // call_1s opcode (1OP:136) - call with 1 operand, store result
+            &[Operand::LargeConstant(0x0000)], // Placeholder for main loop routine address
+            Some(0), // Store return value on stack (even though we don't use it)
             None, // No branch
         )?;
+        
+        // Add unresolved reference for main loop call
+        self.reference_context.unresolved_refs.push(UnresolvedReference {
+            reference_type: ReferenceType::FunctionCall,
+            location: self.current_address - 3, // Point to the address operand (account for store variable)
+            target_id: main_loop_id,
+            is_packed_address: true, // Function calls use packed addresses
+            offset_size: 2,
+        });
 
         log::debug!(
-            "Init block complete: direct execution at 0x{:04x}",
-            startup_address
+            "Init routine complete at 0x{:04x}",
+            init_routine_address
         );
 
         // Clear init block context flag
@@ -2379,8 +2575,24 @@ impl ZMachineCodeGen {
         location: usize,
         target_address: usize,
     ) -> Result<(), CompilerError> {
-        let current_pc = location + 2; // Jump instruction PC after the jump
-        let offset = (target_address as i32) - (current_pc as i32);
+        // The location points to where the jump operand starts
+        // For a jump instruction: [opcode] [operand_high] [operand_low]
+        // When the interpreter executes the jump, PC points to the next instruction
+        // The interpreter advances PC by instruction.size BEFORE executing
+        // For a 3-byte jump instruction: location points to operand, instruction starts 1 byte before
+        let instruction_start = location - 1; 
+        let instruction_size = 3; // Jump instruction is always 3 bytes (opcode + 2-byte operand)
+        let current_pc = instruction_start + instruction_size; // PC after advancing
+        
+        // Z-Machine jump: new_pc = vm.pc + offset - 2
+        // We want: target = current_pc + offset - 2
+        // So: offset = target - current_pc + 2
+        let offset = (target_address as i32) - (current_pc as i32) + 2;
+
+        log::debug!(
+            "patch_jump_offset: location=0x{:04x}, target=0x{:04x}, current_pc=0x{:04x}, offset={}",
+            location, target_address, current_pc, offset
+        );
 
         if !(-32768..=32767).contains(&offset) {
             return Err(CompilerError::CodeGenError(format!(
@@ -2456,9 +2668,12 @@ impl ZMachineCodeGen {
 
         match size {
             1 => {
+                debug!("patch_address: writing 0x{:02x} at location 0x{:04x}", address as u8, location);
                 self.story_data[location] = address as u8;
             }
             2 => {
+                debug!("patch_address: writing 0x{:04x} (bytes 0x{:02x} 0x{:02x}) at location 0x{:04x}", 
+                       address, (address >> 8) as u8, address as u8, location);
                 self.story_data[location] = (address >> 8) as u8;
                 self.story_data[location + 1] = address as u8;
             }
@@ -3386,6 +3601,12 @@ impl ZMachineCodeGen {
                 self.current_address
             );
         }
+        
+        // Debug critical addresses
+        if self.current_address >= 0x0730 && self.current_address <= 0x0740 {
+            debug!("emit_byte: 0x{:02x} at address 0x{:04x}", byte, self.current_address);
+        }
+        
         self.ensure_capacity(self.current_address + 1);
         self.story_data[self.current_address] = byte;
         self.current_address += 1;
@@ -3542,6 +3763,7 @@ impl ZMachineCodeGen {
         match opcode {
             0x01 => true, // STOREW
             0x03 => true, // PUT_PROP
+            0x04 => true, // SREAD
             0x07 => true, // RANDOM
             _ => false,
         }
@@ -3552,6 +3774,7 @@ impl ZMachineCodeGen {
         // Special cases: certain opcodes are always VAR form regardless of operand count
         match opcode {
             0x03 => InstructionForm::Variable, // put_prop is always VAR
+            0x04 => InstructionForm::Variable, // sread is always VAR
             0x07 => InstructionForm::Variable, // random is always VAR
             _ => match operand_count {
                 0 => InstructionForm::Short, // 0OP
@@ -3685,6 +3908,8 @@ impl ZMachineCodeGen {
             0x00
         };
         let instruction_byte = 0xC0 | var_bit | (opcode & 0x1F);
+        debug!("emit_variable_form: opcode=0x{:02x}, var_bit=0x{:02x}, instruction_byte=0x{:02x} at address 0x{:04x}", 
+               opcode, var_bit, instruction_byte, self.current_address);
         self.emit_byte(instruction_byte)?;
 
         // Emit operand types byte
