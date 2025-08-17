@@ -518,10 +518,12 @@ mod codegen_tests {
         let result = codegen.patch_jump_offset(100, 150);
         assert!(result.is_ok());
 
-        // Check that the offset was written (150 - 102 = 48)
+        // Check that the offset was written (150 - 102 + 2 = 50)
+        // Z-Machine jump formula: new_pc = current_pc + offset - 2
+        // So: offset = target - current_pc + 2 = 150 - 102 + 2 = 50
         let written_offset =
             ((codegen.story_data[100] as u16) << 8) | (codegen.story_data[101] as u16);
-        assert_eq!(written_offset, 48);
+        assert_eq!(written_offset, 50);
     }
 
     #[test]

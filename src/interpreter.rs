@@ -2251,17 +2251,32 @@ impl Interpreter {
         let mut new_frame = frame;
         new_frame.num_locals = num_locals as u8;
 
-        // Set PC to start of routine code
-        self.vm.pc = addr + 1;
-
-        // Initialize locals
+        // Initialize locals and set PC correctly based on Z-Machine version
         if self.vm.game.header.version <= 4 {
-            // V1-4: Read initial values from routine header
+            // V1-V4: Header = local_count (1 byte) + default_values (2 bytes each)
+            // Set PC past local count byte, then read default values
+            self.vm.pc = addr + 1;
+
+            debug!(
+                "do_call: addr=0x{:05x}, num_locals={}, initial_pc=0x{:05x}",
+                addr, num_locals, self.vm.pc
+            );
+
+            // Read initial values from routine header
             for i in 0..num_locals {
                 let value = self.vm.read_word(self.vm.pc);
                 new_frame.locals[i] = value;
+                debug!(
+                    "do_call: local[{}] = 0x{:04x}, pc=0x{:05x}",
+                    i, value, self.vm.pc
+                );
                 self.vm.pc += 2;
             }
+            debug!(
+                "do_call: final_pc=0x{:05x} after reading {} locals",
+                self.vm.pc, num_locals
+            );
+            // PC now points to first instruction after all default values
 
             // CRITICAL: Arguments overwrite the first N locals in V1-4
             // This is the key part that was missing!
@@ -2271,7 +2286,11 @@ impl Interpreter {
                 }
             }
         } else {
-            // V5+: Initialize to zero, except for arguments
+            // V5+: Header = local_count (1 byte) only, no default values
+            // Set PC directly to first instruction after local count
+            self.vm.pc = addr + 1;
+
+            // Initialize locals to zero, except for arguments
             new_frame.locals[..num_locals.min(args.len())]
                 .copy_from_slice(&args[..num_locals.min(args.len())]);
         }

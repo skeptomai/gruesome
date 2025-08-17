@@ -931,7 +931,11 @@ impl IrGenerator {
                 // Register function name in symbol table (but don't generate IR body yet)
                 let func_id = self.next_id();
                 self.symbol_ids.insert(func.name.clone(), func_id);
-                log::debug!("PASS 1: Registered function '{}' with ID {}", func.name, func_id);
+                log::debug!(
+                    "PASS 1: Registered function '{}' with ID {}",
+                    func.name,
+                    func_id
+                );
             }
         }
 
@@ -1912,10 +1916,13 @@ impl IrGenerator {
                 let func_id = if let Some(&id) = self.symbol_ids.get(&name) {
                     id
                 } else {
-                    return Err(CompilerError::SemanticError(format!(
-                        "Function '{}' not found. All functions must be defined before use.",
-                        name
-                    ), 0));
+                    return Err(CompilerError::SemanticError(
+                        format!(
+                            "Function '{}' not found. All functions must be defined before use.",
+                            name
+                        ),
+                        0,
+                    ));
                 };
 
                 let temp_id = self.next_id();

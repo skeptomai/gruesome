@@ -9,6 +9,25 @@ use crate::grue_compiler::ZMachineVersion;
 use log::debug;
 use std::collections::HashMap;
 
+/// Information about the layout of an emitted Z-Machine instruction
+///
+/// This tracks the exact byte locations of different instruction components,
+/// eliminating the need for hardcoded offset calculations when creating
+/// references for later patching.
+#[derive(Debug, Clone)]
+pub struct InstructionLayout {
+    /// Starting address of the instruction
+    pub instruction_start: usize,
+    /// Location of the first operand (if any)
+    pub operand_location: Option<usize>,
+    /// Location of the store variable byte (if any)
+    pub store_location: Option<usize>,
+    /// Location of the branch offset (if any)
+    pub branch_location: Option<usize>,
+    /// Total size of the instruction in bytes
+    pub total_size: usize,
+}
+
 /// Temporary structure to hold object data for table generation
 #[derive(Debug, Clone)]
 struct ObjectData {
@@ -88,7 +107,7 @@ pub struct ZMachineCodeGen {
     // Memory layout
     story_data: Vec<u8>,
     current_address: usize,
-    
+
     // Input buffer addresses
     text_buffer_addr: usize,
     parse_buffer_addr: usize,
@@ -362,8 +381,9 @@ impl ZMachineCodeGen {
         // Add prompt string for main loop
         let prompt_string_id = 9002u32;
         let prompt_text = "> ";
-        self.strings.push((prompt_string_id, prompt_text.to_string()));
-        
+        self.strings
+            .push((prompt_string_id, prompt_text.to_string()));
+
         debug!("Added main loop strings: prompt='> '");
         Ok(())
     }
@@ -549,12 +569,15 @@ impl ZMachineCodeGen {
         // Text buffer: 64 bytes (2 header + 62 text)
         self.text_buffer_addr = addr;
         addr += 64;
-        // Parse buffer: 34 bytes (2 header + 32 parse data)  
+        // Parse buffer: 34 bytes (2 header + 32 parse data)
         self.parse_buffer_addr = addr;
         addr += 34;
-        
-        debug!("Allocated input buffers at: text=0x{:04x}, parse=0x{:04x}", self.text_buffer_addr, self.parse_buffer_addr);
-        
+
+        debug!(
+            "Allocated input buffers at: text=0x{:04x}, parse=0x{:04x}",
+            self.text_buffer_addr, self.parse_buffer_addr
+        );
+
         // Initialize the buffers with proper headers
         if self.story_data.len() <= self.text_buffer_addr + 64 {
             self.story_data.resize(self.text_buffer_addr + 64 + 34, 0);
@@ -1161,7 +1184,7 @@ impl ZMachineCodeGen {
     /// Generate the automatic main game loop
     fn generate_main_loop(&mut self, _ir: &IrProgram) -> Result<(), CompilerError> {
         debug!("Generating automatic main game loop");
-        
+
         // Align function address according to Z-Machine version requirements
         match self.version {
             ZMachineVersion::V3 => {
@@ -1180,77 +1203,101 @@ impl ZMachineCodeGen {
                 }
             }
         }
-        
+
         // Record main loop routine address for function calls
         let main_loop_id = 9000u32; // Use high ID to avoid conflicts
         let main_loop_routine_address = self.current_address;
-        
-        debug!("Main loop routine starts at address 0x{:04x}", main_loop_routine_address);
-        
+
+        debug!(
+            "Main loop routine starts at address 0x{:04x}",
+            main_loop_routine_address
+        );
+
         // Main loop should be a routine with 0 locals (like Zork I)
         self.emit_byte(0x00)?; // Routine header: 0 locals
-        
+
         // Record the routine address (including header) for function calls
-        self.function_addresses.insert(main_loop_id, main_loop_routine_address);
+        self.function_addresses
+            .insert(main_loop_id, main_loop_routine_address);
         self.record_address(main_loop_id, main_loop_routine_address); // Record for reference resolution
-        
-        // 1. Print prompt "> "  
+
+        // Record the first instruction address for jump targets
+        let main_loop_first_instruction = self.current_address;
+        let main_loop_jump_id = main_loop_id + 1; // Different ID for jump target
+        self.record_address(main_loop_jump_id, main_loop_first_instruction);
+
+        // 1. Print prompt "> "
         let prompt_string_id = 9002u32;
-        
-        self.emit_instruction(
-            0xB2, // print_paddr (print packed address string)
+
+        let layout = self.emit_instruction(
+            0x0D,                              // print_paddr (print packed address string)
             &[Operand::LargeConstant(0x0000)], // Placeholder for prompt string address
-            None, // No store
-            None, // No branch
+            None,                              // No store
+            None,                              // No branch
         )?;
-        
-        // Add unresolved reference for prompt string
-        self.reference_context.unresolved_refs.push(UnresolvedReference {
-            reference_type: ReferenceType::StringRef,
-            location: self.current_address - 2,
-            target_id: prompt_string_id,
-            is_packed_address: true,
-            offset_size: 2,
-        });
-        
+
+        // Add unresolved reference for prompt string using layout-tracked operand location
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: ReferenceType::StringRef,
+                location: layout
+                    .operand_location
+                    .expect("print_paddr instruction must have operand"),
+                target_id: prompt_string_id,
+                is_packed_address: true,
+                offset_size: 2,
+            });
+
         // 2. Use properly allocated buffer addresses from layout phase
         let text_buffer_addr = self.text_buffer_addr as u16;
         let parse_buffer_addr = self.parse_buffer_addr as u16;
-        
-        debug!("Using input buffers: text=0x{:04x}, parse=0x{:04x}", text_buffer_addr, parse_buffer_addr);
-        
+
+        debug!(
+            "Using input buffers: text=0x{:04x}, parse=0x{:04x}",
+            text_buffer_addr, parse_buffer_addr
+        );
+
         // 3. Read user input using Z-Machine sread instruction
         self.emit_instruction(
             0x04, // sread opcode (VAR instruction)
             &[
-                Operand::LargeConstant(text_buffer_addr as u16),
-                Operand::LargeConstant(parse_buffer_addr as u16),
+                Operand::LargeConstant(text_buffer_addr),
+                Operand::LargeConstant(parse_buffer_addr),
             ],
             None, // No store
             None, // No branch
         )?;
-        
+
         // 4. For now, just echo back what was typed (MVP implementation)
         // TODO: Add proper command parsing and dispatch
-        
-        // 5. Jump back to loop start
-        self.emit_instruction(
-            0x0C, // jump opcode (correct opcode)
+
+        // 5. Jump back to loop start (first instruction, not routine header)
+        let main_loop_jump_id = main_loop_id + 1; // Use same calculation as above
+        let layout = self.emit_instruction(
+            0x0C,                              // jump opcode (correct opcode)
             &[Operand::LargeConstant(0x0000)], // Placeholder for loop start address
-            None, // No store  
-            None, // No branch
+            None,                              // No store
+            None,                              // No branch
         )?;
-        
-        // Add unresolved reference for loop jump
-        self.reference_context.unresolved_refs.push(UnresolvedReference {
-            reference_type: ReferenceType::Jump,
-            location: self.current_address - 2,
-            target_id: main_loop_id, // Jump back to main loop start
-            is_packed_address: false,
-            offset_size: 2,
-        });
-        
-        debug!("Main loop generation complete at 0x{:04x}", self.current_address);
+
+        // Add unresolved reference for loop jump using layout-tracked operand location
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: ReferenceType::Jump,
+                location: layout
+                    .operand_location
+                    .expect("jump instruction must have operand"),
+                target_id: main_loop_jump_id, // Jump back to main loop first instruction (not routine header)
+                is_packed_address: false,
+                offset_size: 2,
+            });
+
+        debug!(
+            "Main loop generation complete at 0x{:04x}",
+            self.current_address
+        );
         Ok(())
     }
 
@@ -2177,14 +2224,15 @@ impl ZMachineCodeGen {
         // Choose appropriate call instruction based on argument count
         let opcode = match args.len() {
             0 => 0x08, // call_1s (1OP:136) - call routine with no args, store result
-            1 => 0x00, // call_vs (VAR:0) - call with 1 arg, store result  
+            1 => 0x00, // call_vs (VAR:0) - call with 1 arg, store result
             _ => 0x00, // call_vs (VAR:0) - call with multiple args
         };
 
         let mut operands = vec![function_addr];
         operands.extend_from_slice(args);
 
-        self.emit_instruction(opcode, &operands, store_var, None)
+        self.emit_instruction(opcode, &operands, store_var, None)?;
+        Ok(())
     }
 
     /// Generate function call with unresolved reference and arguments
@@ -2196,8 +2244,8 @@ impl ZMachineCodeGen {
     ) -> Result<(), CompilerError> {
         // Generate a proper function call with placeholder address that will be resolved later
         // This is the correct approach - not rtrue hacks or compile errors
-        
-        // Convert IR args to operands  
+
+        // Convert IR args to operands
         let mut operands = vec![Operand::LargeConstant(0x0000)]; // Placeholder for function address
         for &arg_id in args {
             if let Some(literal_value) = self.get_literal_value(arg_id) {
@@ -2220,13 +2268,15 @@ impl ZMachineCodeGen {
         self.emit_instruction(opcode, &operands, store_var, None)?;
 
         // Add unresolved reference for function address
-        self.reference_context.unresolved_refs.push(UnresolvedReference {
-            reference_type: ReferenceType::FunctionCall,
-            location: self.current_address - operands.len() * 2, // Point to function address operand
-            target_id: function_id,
-            is_packed_address: true, // Function addresses are packed in Z-Machine
-            offset_size: 2,
-        });
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: ReferenceType::FunctionCall,
+                location: self.current_address - operands.len() * 2, // Point to function address operand
+                target_id: function_id,
+                is_packed_address: true, // Function addresses are packed in Z-Machine
+                offset_size: 2,
+            });
 
         log::debug!(
             "Generated call to function ID {} with unresolved reference at 0x{:04x}",
@@ -2301,15 +2351,17 @@ impl ZMachineCodeGen {
         // TODO: Support proper conditional branching with condition operand
 
         // Emit jump instruction with placeholder offset
-        self.emit_instruction(
+        let layout = self.emit_instruction(
             0x0C,                              // jump opcode
             &[Operand::LargeConstant(0x0000)], // Placeholder offset (will be resolved later)
             None,                              // No store
             None,                              // No branch
         )?;
 
-        // Add unresolved reference for the jump target after instruction emission
-        let operand_address = self.current_address - 2;
+        // Add unresolved reference for the jump target using layout-tracked operand location
+        let operand_address = layout
+            .operand_location
+            .expect("jump instruction must have operand");
         let reference = UnresolvedReference {
             reference_type: ReferenceType::Jump,
             location: operand_address,
@@ -2332,15 +2384,17 @@ impl ZMachineCodeGen {
         );
 
         // Emit jump instruction with placeholder offset
-        self.emit_instruction(
+        let layout = self.emit_instruction(
             0x0C,                              // jump opcode
             &[Operand::LargeConstant(0x0000)], // Placeholder offset (will be resolved later)
             None,                              // No store
             None,                              // No branch
         )?;
 
-        // Add unresolved reference for the jump target after instruction emission
-        let operand_address = self.current_address - 2;
+        // Add unresolved reference for the jump target using layout-tracked operand location
+        let operand_address = layout
+            .operand_location
+            .expect("jump instruction must have operand");
         let reference = UnresolvedReference {
             reference_type: ReferenceType::Jump,
             location: operand_address,
@@ -2365,45 +2419,58 @@ impl ZMachineCodeGen {
 
         // Generate init as a proper routine (like Zork I architecture)
         // This creates: Header → CALL init_routine() → CALL main_loop()
-        
+
         // First, emit a CALL to init routine at startup address
         let startup_address = self.current_address;
-        log::debug!(
-            "Startup CALL instruction at 0x{:04x}",
-            startup_address
-        );
+        log::debug!("Startup CALL instruction at 0x{:04x}", startup_address);
 
         let init_routine_id = 8000u32; // Unique ID for init routine
-        self.emit_instruction(
+        let layout = self.emit_instruction(
             0x08, // call_1s opcode (1OP:136) - call with 1 operand, store result
             &[Operand::LargeConstant(0x0000)], // Placeholder for init routine address
             Some(0), // Store return value on stack (even though we don't use it)
             None, // No branch
         )?;
-        
-        // Add unresolved reference for init routine call
-        self.reference_context.unresolved_refs.push(UnresolvedReference {
-            reference_type: ReferenceType::FunctionCall,
-            location: self.current_address - 3, // Point to the address operand (account for store variable)
-            target_id: init_routine_id,
-            is_packed_address: true, // Function calls use packed addresses
-            offset_size: 2,
-        });
+
+        // Add unresolved reference for init routine call using layout-tracked operand location
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: ReferenceType::FunctionCall,
+                location: layout
+                    .operand_location
+                    .expect("call instruction must have operand"),
+                target_id: init_routine_id,
+                is_packed_address: true, // Function calls use packed addresses
+                offset_size: 2,
+            });
 
         // Now generate the actual init routine
-        // Ensure routine is at even address for V3
-        if self.current_address % 2 != 0 {
-            self.emit_byte(0x00)?; // Pad with zero byte for alignment
+        // Align init routine address according to Z-Machine version requirements
+        match self.version {
+            ZMachineVersion::V3 => {
+                // v3: functions must be at even addresses
+                if self.current_address % 2 != 0 {
+                    self.emit_byte(0x00)?; // Pad with zero byte for alignment
+                }
+            }
+            ZMachineVersion::V5 => {
+                // v5: functions must be at addresses divisible by 4
+                let remainder = self.current_address % 4;
+                if remainder != 0 {
+                    for _ in 0..(4 - remainder) {
+                        self.emit_byte(0x00)?; // Pad with zero bytes for alignment
+                    }
+                }
+            }
         }
-        
+
         let init_routine_address = self.current_address;
-        log::debug!(
-            "Init routine starts at 0x{:04x}",
-            init_routine_address
-        );
+        log::debug!("Init routine starts at 0x{:04x}", init_routine_address);
 
         // Record init routine address for call resolution
-        self.function_addresses.insert(init_routine_id, init_routine_address);
+        self.function_addresses
+            .insert(init_routine_id, init_routine_address);
         self.record_address(init_routine_id, init_routine_address);
 
         // Generate routine header (0 locals for init)
@@ -2416,26 +2483,27 @@ impl ZMachineCodeGen {
 
         // At end of init routine, call the main game loop routine
         let main_loop_id = 9000u32; // Same ID as used in generate_main_loop
-        self.emit_instruction(
+        let layout = self.emit_instruction(
             0x08, // call_1s opcode (1OP:136) - call with 1 operand, store result
             &[Operand::LargeConstant(0x0000)], // Placeholder for main loop routine address
             Some(0), // Store return value on stack (even though we don't use it)
             None, // No branch
         )?;
-        
-        // Add unresolved reference for main loop call
-        self.reference_context.unresolved_refs.push(UnresolvedReference {
-            reference_type: ReferenceType::FunctionCall,
-            location: self.current_address - 3, // Point to the address operand (account for store variable)
-            target_id: main_loop_id,
-            is_packed_address: true, // Function calls use packed addresses
-            offset_size: 2,
-        });
 
-        log::debug!(
-            "Init routine complete at 0x{:04x}",
-            init_routine_address
-        );
+        // Add unresolved reference for main loop call using layout-tracked operand location
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: ReferenceType::FunctionCall,
+                location: layout
+                    .operand_location
+                    .expect("call instruction must have operand"),
+                target_id: main_loop_id,
+                is_packed_address: true, // Function calls use packed addresses
+                offset_size: 2,
+            });
+
+        log::debug!("Init routine complete at 0x{:04x}", init_routine_address);
 
         // Clear init block context flag
         self.in_init_block = false;
@@ -2580,10 +2648,10 @@ impl ZMachineCodeGen {
         // When the interpreter executes the jump, PC points to the next instruction
         // The interpreter advances PC by instruction.size BEFORE executing
         // For a 3-byte jump instruction: location points to operand, instruction starts 1 byte before
-        let instruction_start = location - 1; 
+        let instruction_start = location - 1;
         let instruction_size = 3; // Jump instruction is always 3 bytes (opcode + 2-byte operand)
         let current_pc = instruction_start + instruction_size; // PC after advancing
-        
+
         // Z-Machine jump: new_pc = vm.pc + offset - 2
         // We want: target = current_pc + offset - 2
         // So: offset = target - current_pc + 2
@@ -2591,7 +2659,10 @@ impl ZMachineCodeGen {
 
         log::debug!(
             "patch_jump_offset: location=0x{:04x}, target=0x{:04x}, current_pc=0x{:04x}, offset={}",
-            location, target_address, current_pc, offset
+            location,
+            target_address,
+            current_pc,
+            offset
         );
 
         if !(-32768..=32767).contains(&offset) {
@@ -2668,7 +2739,10 @@ impl ZMachineCodeGen {
 
         match size {
             1 => {
-                debug!("patch_address: writing 0x{:02x} at location 0x{:04x}", address as u8, location);
+                debug!(
+                    "patch_address: writing 0x{:02x} at location 0x{:04x}",
+                    address as u8, location
+                );
                 self.story_data[location] = address as u8;
             }
             2 => {
@@ -2852,16 +2926,17 @@ impl ZMachineCodeGen {
 
             // Generate print_paddr instruction with unresolved string reference
             // Note: The unresolved reference will be added by the operand emission system
-            self.emit_instruction(
+            let layout = self.emit_instruction(
                 0x0D,                              // print_paddr opcode
                 &[Operand::LargeConstant(0x0000)], // Placeholder string address
                 None,                              // No store
                 None,                              // No branch
             )?;
 
-            // Add unresolved reference for the string address after instruction emission
-            // Calculate the address where the operand was emitted (current_address - 2)
-            let operand_address = self.current_address - 2;
+            // Add unresolved reference for the string address using layout-tracked operand location
+            let operand_address = layout
+                .operand_location
+                .expect("print_paddr instruction must have operand");
             let reference = UnresolvedReference {
                 reference_type: ReferenceType::StringRef,
                 location: operand_address,
@@ -2877,15 +2952,17 @@ impl ZMachineCodeGen {
             self.ir_id_to_string.insert(string_id, placeholder_string);
 
             // Generate print_paddr instruction with placeholder
-            self.emit_instruction(
+            let layout = self.emit_instruction(
                 0x0D,                              // print_paddr opcode
                 &[Operand::LargeConstant(0x0000)], // Placeholder address
                 None,                              // No store
                 None,                              // No branch
             )?;
 
-            // Add unresolved reference for the string address after instruction emission
-            let operand_address = self.current_address - 2;
+            // Add unresolved reference for the string address using layout-tracked operand location
+            let operand_address = layout
+                .operand_location
+                .expect("print_paddr instruction must have operand");
             let reference = UnresolvedReference {
                 reference_type: ReferenceType::StringRef,
                 location: operand_address,
@@ -3601,12 +3678,15 @@ impl ZMachineCodeGen {
                 self.current_address
             );
         }
-        
+
         // Debug critical addresses
         if self.current_address >= 0x0730 && self.current_address <= 0x0740 {
-            debug!("emit_byte: 0x{:02x} at address 0x{:04x}", byte, self.current_address);
+            debug!(
+                "emit_byte: 0x{:02x} at address 0x{:04x}",
+                byte, self.current_address
+            );
         }
-        
+
         self.ensure_capacity(self.current_address + 1);
         self.story_data[self.current_address] = byte;
         self.current_address += 1;
@@ -3638,13 +3718,31 @@ impl ZMachineCodeGen {
     // Z-Machine instruction encoding methods
 
     /// Encode a complete Z-Machine instruction with proper operand types
+    /// Emit a Z-Machine instruction and return its layout information
+    ///
+    /// This function generates the bytecode for a Z-Machine instruction and returns
+    /// detailed information about where each component (operands, store variable, etc.)
+    /// was placed in memory. This eliminates the need for hardcoded offset calculations
+    /// when creating references for later patching.
+    ///
+    /// # Returns
+    ///
+    /// `InstructionLayout` containing the exact byte locations of instruction components,
+    /// or an error if instruction generation fails.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let layout = self.emit_instruction(0x8D, &[Operand::LargeConstant(0x0000)], None, None)?;
+    /// // Use layout.operand_location for reference patching instead of current_address - 2
+    /// ```
     pub fn emit_instruction(
         &mut self,
         opcode: u8,
         operands: &[Operand],
         store_var: Option<u8>,
         branch_offset: Option<i16>,
-    ) -> Result<(), CompilerError> {
+    ) -> Result<InstructionLayout, CompilerError> {
         // Force all store operations to use stack when in init block context
         let actual_store_var = if self.in_init_block && store_var.is_some() && store_var != Some(0)
         {
@@ -3663,30 +3761,46 @@ impl ZMachineCodeGen {
             operands,
             actual_store_var
         );
+
+        // Record instruction start address
+        let instruction_start = self.current_address;
+
         let form = self.determine_instruction_form(operands.len(), opcode);
         log::debug!("determined form={:?}", form);
 
-        match form {
-            InstructionForm::Long => {
-                self.emit_long_form(opcode, operands, actual_store_var, branch_offset)?
-            }
-            InstructionForm::Short => {
-                self.emit_short_form(opcode, operands, actual_store_var, branch_offset)?
-            }
-            InstructionForm::Variable => {
-                self.emit_variable_form(opcode, operands, actual_store_var, branch_offset)?
-            }
+        let layout = match form {
+            InstructionForm::Long => self.emit_long_form_with_layout(
+                instruction_start,
+                opcode,
+                operands,
+                actual_store_var,
+                branch_offset,
+            )?,
+            InstructionForm::Short => self.emit_short_form_with_layout(
+                instruction_start,
+                opcode,
+                operands,
+                actual_store_var,
+                branch_offset,
+            )?,
+            InstructionForm::Variable => self.emit_variable_form_with_layout(
+                instruction_start,
+                opcode,
+                operands,
+                actual_store_var,
+                branch_offset,
+            )?,
             InstructionForm::Extended => {
                 return Err(CompilerError::CodeGenError(
                     "Extended form instructions not yet supported".to_string(),
                 ));
             }
-        }
+        };
 
         // Track stack operations for debugging
         self.track_stack_operation(opcode, operands, actual_store_var);
 
-        Ok(())
+        Ok(layout)
     }
 
     /// Track stack operations for debugging and validation
@@ -3885,6 +3999,72 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
+    /// Emit short form instruction with layout tracking
+    ///
+    /// This is the layout-aware version of emit_short_form that tracks where
+    /// each instruction component is placed for accurate reference resolution.
+    fn emit_short_form_with_layout(
+        &mut self,
+        instruction_start: usize,
+        opcode: u8,
+        operands: &[Operand],
+        store_var: Option<u8>,
+        branch_offset: Option<i16>,
+    ) -> Result<InstructionLayout, CompilerError> {
+        if operands.len() > 1 {
+            return Err(CompilerError::CodeGenError(format!(
+                "Short form requires 0 or 1 operands, got {}",
+                operands.len()
+            )));
+        }
+
+        let instruction_byte = if operands.is_empty() {
+            // 0OP form: bits 7-6 = 11, bits 5-4 = 00, bits 3-0 = opcode
+            0xB0 | (opcode & 0x0F)
+        } else {
+            // 1OP form: bits 7-6 = 10, bits 5-4 = operand type, bits 3-0 = opcode
+            let op_type = self.get_operand_type(&operands[0]);
+            0x80 | ((op_type as u8) << 4) | (opcode & 0x0F)
+        };
+
+        self.emit_byte(instruction_byte)?;
+
+        // Track operand location
+        let operand_location = if !operands.is_empty() {
+            let loc = self.current_address;
+            self.emit_operand(&operands[0])?;
+            Some(loc)
+        } else {
+            None
+        };
+
+        // Track store variable location
+        let store_location = if let Some(store) = store_var {
+            let loc = self.current_address;
+            self.emit_byte(store)?;
+            Some(loc)
+        } else {
+            None
+        };
+
+        // Track branch offset location
+        let branch_location = if let Some(offset) = branch_offset {
+            let loc = self.current_address;
+            self.emit_branch_offset(offset)?;
+            Some(loc)
+        } else {
+            None
+        };
+
+        Ok(InstructionLayout {
+            instruction_start,
+            operand_location,
+            store_location,
+            branch_location,
+            total_size: self.current_address - instruction_start,
+        })
+    }
+
     /// Emit variable form instruction (VAR)
     fn emit_variable_form(
         &mut self,
@@ -3942,6 +4122,158 @@ impl ZMachineCodeGen {
         }
 
         Ok(())
+    }
+
+    /// Emit variable form instruction with layout tracking
+    ///
+    /// This is the layout-aware version of emit_variable_form that tracks where
+    /// each instruction component is placed for accurate reference resolution.
+    fn emit_variable_form_with_layout(
+        &mut self,
+        instruction_start: usize,
+        opcode: u8,
+        operands: &[Operand],
+        store_var: Option<u8>,
+        branch_offset: Option<i16>,
+    ) -> Result<InstructionLayout, CompilerError> {
+        if operands.len() > 4 {
+            return Err(CompilerError::CodeGenError(format!(
+                "Variable form supports max 4 operands, got {}",
+                operands.len()
+            )));
+        }
+
+        // Determine if we need VAR (0x20) or VAR2 (0x3C) bit pattern
+        let var_bit = if opcode < 0x20 { 0x20 } else { 0x00 };
+        let instruction_byte = 0xC0 | var_bit | (opcode & 0x1F);
+
+        debug!("emit_variable_form: opcode=0x{:02x}, var_bit=0x{:02x}, instruction_byte=0x{:02x} at address 0x{:04x}", 
+               opcode, var_bit, instruction_byte, self.current_address);
+
+        self.emit_byte(instruction_byte)?;
+
+        // Build operand types byte
+        let mut types_byte = 0u8;
+        for (i, operand) in operands.iter().enumerate() {
+            let op_type = self.get_operand_type(operand);
+            types_byte |= (op_type as u8) << (6 - i * 2);
+        }
+
+        // Fill remaining operand type slots with "omitted"
+        for i in operands.len()..4 {
+            types_byte |= (OperandType::Omitted as u8) << (6 - i * 2);
+        }
+
+        self.emit_byte(types_byte)?;
+
+        // Track first operand location (most commonly needed for references)
+        let operand_location = if !operands.is_empty() {
+            let loc = self.current_address;
+            // Emit all operands
+            for operand in operands {
+                self.emit_operand(operand)?;
+            }
+            Some(loc)
+        } else {
+            None
+        };
+
+        // Track store variable location
+        let store_location = if let Some(store) = store_var {
+            let loc = self.current_address;
+            self.emit_byte(store)?;
+            Some(loc)
+        } else {
+            None
+        };
+
+        // Track branch offset location
+        let branch_location = if let Some(offset) = branch_offset {
+            let loc = self.current_address;
+            self.emit_branch_offset(offset)?;
+            Some(loc)
+        } else {
+            None
+        };
+
+        Ok(InstructionLayout {
+            instruction_start,
+            operand_location,
+            store_location,
+            branch_location,
+            total_size: self.current_address - instruction_start,
+        })
+    }
+
+    /// Emit long form instruction with layout tracking
+    ///
+    /// This is the layout-aware version of emit_long_form that tracks where
+    /// each instruction component is placed for accurate reference resolution.
+    fn emit_long_form_with_layout(
+        &mut self,
+        instruction_start: usize,
+        opcode: u8,
+        operands: &[Operand],
+        store_var: Option<u8>,
+        branch_offset: Option<i16>,
+    ) -> Result<InstructionLayout, CompilerError> {
+        if operands.len() != 2 {
+            return Err(CompilerError::CodeGenError(format!(
+                "Long form requires exactly 2 operands, got {}",
+                operands.len()
+            )));
+        }
+
+        let op1_type = self.get_operand_type(&operands[0]);
+        let op2_type = self.get_operand_type(&operands[1]);
+
+        // Long form: bits 7-6 = 00 or 01, bit 6 = op1 type, bit 5 = op2 type, bits 4-0 = opcode
+        let op1_bit = if op1_type == OperandType::Variable {
+            0x40
+        } else {
+            0x00
+        };
+        let op2_bit = if op2_type == OperandType::Variable {
+            0x20
+        } else {
+            0x00
+        };
+        let instruction_byte = op1_bit | op2_bit | (opcode & 0x1F);
+
+        self.emit_byte(instruction_byte)?;
+
+        // Track first operand location
+        let operand_location = Some(self.current_address);
+
+        // Emit operands
+        self.emit_operand(&operands[0])?;
+        self.emit_operand(&operands[1])?;
+
+        // Track store variable location
+        let store_location = if let Some(store) = store_var {
+            let loc = self.current_address;
+            self.emit_byte(store)?;
+            Some(loc)
+        } else {
+            None
+        };
+
+        // Track branch offset location
+        let branch_location = if let Some(offset) = branch_offset {
+            let loc = self.current_address;
+            self.emit_branch_offset(offset)?;
+            Some(loc)
+        } else {
+            None
+        };
+
+        Ok(InstructionLayout {
+            instruction_start,
+            operand_location,
+            store_location,
+            branch_location,
+            total_size: self.current_address - instruction_start,
+        })
     }
 
     /// Get operand type for encoding

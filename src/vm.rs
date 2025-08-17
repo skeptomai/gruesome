@@ -296,8 +296,14 @@ impl VM {
             65535
         };
         if obj_num > max_objects {
-            eprintln!(">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}", self.pc);
-            log::debug!("OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}", self.pc);
+            eprintln!(
+                ">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
+                self.pc
+            );
+            log::debug!(
+                "OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
+                self.pc
+            );
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
@@ -370,8 +376,14 @@ impl VM {
             65535
         };
         if obj_num > max_objects {
-            eprintln!(">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}", self.pc);
-            log::debug!("OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}", self.pc);
+            eprintln!(
+                ">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
+                self.pc
+            );
+            log::debug!(
+                "OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
+                self.pc
+            );
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
@@ -511,8 +523,14 @@ impl VM {
             65535
         };
         if obj_num > max_objects {
-            eprintln!(">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}", self.pc);
-            log::debug!("OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}", self.pc);
+            eprintln!(
+                ">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
+                self.pc
+            );
+            log::debug!(
+                "OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
+                self.pc
+            );
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
@@ -606,7 +624,13 @@ impl VM {
 
     /// Set or clear an object attribute
     pub fn set_attribute(&mut self, obj_num: u16, attr_num: u8, value: bool) -> Result<(), String> {
-        log::debug!("set_attribute called: PC=0x{:04x}, obj={}, attr={}, value={}", self.pc, obj_num, attr_num, value);
+        log::debug!(
+            "set_attribute called: PC=0x{:04x}, obj={}, attr={}, value={}",
+            self.pc,
+            obj_num,
+            attr_num,
+            value
+        );
         if obj_num == 0 {
             return Ok(()); // Cannot set attributes on object 0
         }
@@ -827,8 +851,14 @@ impl VM {
             65535
         };
         if obj_num > max_objects {
-            eprintln!(">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}", self.pc);
-            log::debug!("OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}", self.pc);
+            eprintln!(
+                ">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
+                self.pc
+            );
+            log::debug!(
+                "OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
+                self.pc
+            );
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
