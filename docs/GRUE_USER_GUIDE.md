@@ -99,11 +99,12 @@ The compiler binary is `grue-compiler`. To compile a `.grue` file:
 cargo run --bin grue-compiler your_game.grue
 
 # Specify target version explicitly
-cargo run --bin grue-compiler -- --target v3 your_game.grue
-cargo run --bin grue-compiler -- --target v5 your_game.grue
+cargo run --bin grue-compiler -- --version v3 your_game.grue
+cargo run --bin grue-compiler -- --version v4 your_game.grue
+cargo run --bin grue-compiler -- --version v5 your_game.grue
 ```
 
-This creates a `.z3` (or `.z5`) file - your compiled game!
+This creates a `.z3`, `.z4`, or `.z5` file - your compiled game!
 
 ### Step 3: Test Compilation
 

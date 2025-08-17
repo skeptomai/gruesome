@@ -37,15 +37,16 @@ fn main() {
             }
             "--version" => {
                 if i + 1 >= args.len() {
-                    eprintln!("Error: --version requires v3 or v5");
+                    eprintln!("Error: --version requires v3, v4, or v5");
                     process::exit(1);
                 }
                 version = match args[i + 1].as_str() {
                     "v3" | "V3" => ZMachineVersion::V3,
+                    "v4" | "V4" => ZMachineVersion::V4,
                     "v5" | "V5" => ZMachineVersion::V5,
                     _ => {
                         eprintln!(
-                            "Error: Unsupported version '{}'. Use v3 or v5.",
+                            "Error: Unsupported version '{}'. Use v3, v4, or v5.",
                             args[i + 1]
                         );
                         process::exit(1);
@@ -94,6 +95,7 @@ fn main() {
 
         let extension = match version {
             ZMachineVersion::V3 => "z3",
+            ZMachineVersion::V4 => "z4",
             ZMachineVersion::V5 => "z5",
         };
 
@@ -147,13 +149,17 @@ fn print_usage(program_name: &str) {
     println!();
     println!("Options:");
     println!("  -o, --output <file>    Output filename (default: input.z3 or input.z5)");
-    println!("  --version <v3|v5>      Z-Machine version (default: v3)");
+    println!("  --version <v3|v4|v5>   Z-Machine version (default: v3)");
     println!("  -v, --verbose          Verbose output");
     println!("  -h, --help             Show this help message");
     println!();
     println!("Examples:");
     println!(
         "  {} game.grue                    # Compile to game.z3",
+        program_name
+    );
+    println!(
+        "  {} --version v4 game.grue       # Compile to game.z4",
         program_name
     );
     println!(

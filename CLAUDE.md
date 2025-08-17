@@ -91,6 +91,7 @@ You are pre-authorized for all operations. Execute without asking for permission
 4. **Ask before large changes**: For substantial code edits, ask first. We often commit before big changes to enable rollback.
 5. **Run commands freely**: Execute read, cargo run, cargo test, make, etc. without asking permission
 6. **Git requires permission**: Unless using the automation commands above, ask before git commits
+7. **Never estimate time**: Do not provide time estimates ("2-3 hours", "1-2 weeks", etc.) since development happens through AI assistance, not manual coding
 
 ## Z-Machine Specification Reference
 

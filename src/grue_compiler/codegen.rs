@@ -596,11 +596,11 @@ impl ZMachineCodeGen {
         }; // At least 2 objects (player + room)
         let object_entries_size = match self.version {
             ZMachineVersion::V3 => estimated_objects * 9, // v3: 9 bytes per object
-            ZMachineVersion::V5 => estimated_objects * 14, // v5: 14 bytes per object
+            ZMachineVersion::V4 | ZMachineVersion::V5 => estimated_objects * 14, // v4/v5: 14 bytes per object
         };
         let default_props_size = match self.version {
-            ZMachineVersion::V3 => 62,  // 31 properties * 2 bytes
-            ZMachineVersion::V5 => 126, // 63 properties * 2 bytes
+            ZMachineVersion::V3 => 62, // 31 properties * 2 bytes
+            ZMachineVersion::V4 | ZMachineVersion::V5 => 126, // 63 properties * 2 bytes
         };
         addr += default_props_size + object_entries_size;
 
@@ -652,11 +652,10 @@ impl ZMachineCodeGen {
                         addr += 1;
                     }
                 }
-                ZMachineVersion::V5 => {
-                    // v5: strings must be at addresses divisible by 4
-                    let remainder = addr % 4;
-                    if remainder != 0 {
-                        addr += 4 - remainder;
+                ZMachineVersion::V4 | ZMachineVersion::V5 => {
+                    // v4/v5: strings must be at 4-byte boundaries
+                    while addr % 4 != 0 {
+                        addr += 1;
                     }
                 }
             }
@@ -687,7 +686,7 @@ impl ZMachineCodeGen {
         // Step 1: Generate property defaults table
         let default_props = match self.version {
             ZMachineVersion::V3 => 31,
-            ZMachineVersion::V5 => 63,
+            ZMachineVersion::V4 | ZMachineVersion::V5 => 63,
         };
 
         debug!(
@@ -1193,13 +1192,10 @@ impl ZMachineCodeGen {
                     self.emit_byte(0x00)?; // Pad with zero byte for alignment
                 }
             }
-            ZMachineVersion::V5 => {
-                // v5: functions must be at addresses divisible by 4
-                let remainder = self.current_address % 4;
-                if remainder != 0 {
-                    for _ in 0..(4 - remainder) {
-                        self.emit_byte(0x00)?; // Pad with zero bytes for alignment
-                    }
+            ZMachineVersion::V4 | ZMachineVersion::V5 => {
+                // v4/v5: functions must be at 4-byte boundaries
+                while self.current_address % 4 != 0 {
+                    self.emit_byte(0x00)?; // Pad with zero bytes for alignment
                 }
             }
         }
@@ -1313,13 +1309,10 @@ impl ZMachineCodeGen {
                         self.emit_byte(0x00)?; // Pad with zero byte for alignment
                     }
                 }
-                ZMachineVersion::V5 => {
-                    // v5: functions must be at addresses divisible by 4
-                    let remainder = self.current_address % 4;
-                    if remainder != 0 {
-                        for _ in 0..(4 - remainder) {
-                            self.emit_byte(0x00)?; // Pad with zero bytes for alignment
-                        }
+                ZMachineVersion::V4 | ZMachineVersion::V5 => {
+                    // v4/v5: functions must be at 4-byte boundaries
+                    while self.current_address % 4 != 0 {
+                        self.emit_byte(0x00)?; // Pad with zero bytes for alignment
                     }
                 }
             }
@@ -2454,13 +2447,10 @@ impl ZMachineCodeGen {
                     self.emit_byte(0x00)?; // Pad with zero byte for alignment
                 }
             }
-            ZMachineVersion::V5 => {
-                // v5: functions must be at addresses divisible by 4
-                let remainder = self.current_address % 4;
-                if remainder != 0 {
-                    for _ in 0..(4 - remainder) {
-                        self.emit_byte(0x00)?; // Pad with zero bytes for alignment
-                    }
+            ZMachineVersion::V4 | ZMachineVersion::V5 => {
+                // v4/v5: functions must be at 4-byte boundaries
+                while self.current_address % 4 != 0 {
+                    self.emit_byte(0x00)?; // Pad with zero bytes for alignment
                 }
             }
         }
@@ -2516,6 +2506,7 @@ impl ZMachineCodeGen {
         // Z-Machine header fields
         self.story_data[0] = match self.version {
             ZMachineVersion::V3 => 3,
+            ZMachineVersion::V4 => 4,
             ZMachineVersion::V5 => 5,
         };
 
@@ -2541,10 +2532,10 @@ impl ZMachineCodeGen {
         );
         self.write_word_at(14, self.dictionary_addr as u16)?;
 
-        // File length (in 2-byte words for v3, 4-byte for v4+)
+        // File length (in 2-byte words for v3, 4-byte words for v4+)
         let file_len = match self.version {
             ZMachineVersion::V3 => (self.story_data.len() / 2) as u16,
-            ZMachineVersion::V5 => (self.story_data.len() / 4) as u16,
+            ZMachineVersion::V4 | ZMachineVersion::V5 => (self.story_data.len() / 4) as u16,
         };
         self.write_word_at(26, file_len)?;
 
@@ -2774,11 +2765,11 @@ impl ZMachineCodeGen {
                 }
                 Ok((byte_address / 2) as u16)
             }
-            ZMachineVersion::V5 => {
-                // v5: packed address = byte address / 4
+            ZMachineVersion::V4 | ZMachineVersion::V5 => {
+                // v4/v5: packed address = byte address / 4
                 if byte_address % 4 != 0 {
                     return Err(CompilerError::CodeGenError(
-                        "Routine address must be multiple of 4 for v5".to_string(),
+                        "Routine address must be multiple of 4 for v4/v5".to_string(),
                     ));
                 }
                 Ok((byte_address / 4) as u16)
@@ -2798,11 +2789,11 @@ impl ZMachineCodeGen {
                 }
                 Ok((byte_address / 2) as u16)
             }
-            ZMachineVersion::V5 => {
-                // v5: packed address = byte address / 4
+            ZMachineVersion::V4 | ZMachineVersion::V5 => {
+                // v4/v5: packed address = byte address / 4
                 if byte_address % 4 != 0 {
                     return Err(CompilerError::CodeGenError(
-                        "String address must be multiple of 4 for v5".to_string(),
+                        "String address must be multiple of 4 for v4/v5".to_string(),
                     ));
                 }
                 Ok((byte_address / 4) as u16)
@@ -3513,11 +3504,10 @@ impl ZMachineCodeGen {
                     addr += 1;
                 }
             }
-            ZMachineVersion::V5 => {
-                // v5: strings must be at addresses divisible by 4
-                let remainder = addr % 4;
-                if remainder != 0 {
-                    addr += 4 - remainder;
+            ZMachineVersion::V4 | ZMachineVersion::V5 => {
+                // v4/v5: strings must be at 4-byte boundaries
+                while addr % 4 != 0 {
+                    addr += 1;
                 }
             }
         }
@@ -3544,11 +3534,10 @@ impl ZMachineCodeGen {
                         addr += 1;
                     }
                 }
-                ZMachineVersion::V5 => {
-                    // v5: strings must be at addresses divisible by 4
-                    let remainder = addr % 4;
-                    if remainder != 0 {
-                        addr += 4 - remainder;
+                ZMachineVersion::V4 | ZMachineVersion::V5 => {
+                    // v4/v5: strings must be at 4-byte boundaries
+                    while addr % 4 != 0 {
+                        addr += 1;
                     }
                 }
             }

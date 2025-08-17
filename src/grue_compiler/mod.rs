@@ -18,6 +18,7 @@ pub use error::CompilerError;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ZMachineVersion {
     V3,
+    V4,
     V5,
 }
 
@@ -25,6 +26,7 @@ impl fmt::Display for ZMachineVersion {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ZMachineVersion::V3 => write!(f, "v3"),
+            ZMachineVersion::V4 => write!(f, "v4"),
             ZMachineVersion::V5 => write!(f, "v5"),
         }
     }

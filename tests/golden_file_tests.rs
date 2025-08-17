@@ -25,6 +25,13 @@ const GOLDEN_TESTS: &[GoldenTest] = &[
         target_version: ZMachineVersion::V3,
     },
     GoldenTest {
+        name: "basic_test_v4",
+        source_file: "examples/basic_test.grue",
+        expected_output_file: Some("tests/golden_files/basic_test_v4.z4"),
+        should_compile: true,
+        target_version: ZMachineVersion::V4,
+    },
+    GoldenTest {
         name: "basic_test_v5",
         source_file: "examples/basic_test.grue",
         expected_output_file: Some("tests/golden_files/basic_test_v5.z5"),
@@ -39,11 +46,25 @@ const GOLDEN_TESTS: &[GoldenTest] = &[
         target_version: ZMachineVersion::V3,
     },
     GoldenTest {
+        name: "test_simple_v4",
+        source_file: "examples/test_simple.grue",
+        expected_output_file: Some("tests/golden_files/test_simple_v4.z4"),
+        should_compile: true,
+        target_version: ZMachineVersion::V4,
+    },
+    GoldenTest {
         name: "mini_zork_v3",
         source_file: "examples/mini_zork.grue",
         expected_output_file: Some("tests/golden_files/mini_zork_v3.z3"),
         should_compile: false, // Known to fail until we implement more built-ins
         target_version: ZMachineVersion::V3,
+    },
+    GoldenTest {
+        name: "mini_zork_v4",
+        source_file: "examples/mini_zork.grue",
+        expected_output_file: Some("tests/golden_files/mini_zork_v4.z4"),
+        should_compile: false, // Known to fail until we implement more built-ins
+        target_version: ZMachineVersion::V4,
     },
 ];
 
@@ -111,6 +132,7 @@ fn validate_z_machine_file(
     let version = story_data[0];
     let expected_version_byte = match expected_version {
         ZMachineVersion::V3 => 3,
+        ZMachineVersion::V4 => 4,
         ZMachineVersion::V5 => 5,
     };
 

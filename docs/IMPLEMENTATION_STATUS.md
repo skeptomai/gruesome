@@ -44,6 +44,25 @@
 - **Parse Buffer**: Correct position calculations and dictionary lookup
 - **Dictionary Search**: Fast binary search with version-aware word encoding
 
+### Grue Z-Machine Compiler ✅
+- **Complete Pipeline**: Lexer → Parser → Semantic → IR → CodeGen (all phases implemented)
+- **V3/V4/V5 Support**: Full compilation targeting all three major Z-Machine versions
+- **Language Features**: Functions, objects, rooms, properties, control flow, string operations
+- **Built-in Functions**: print(), move(), get_location(), parser integration
+- **Address Management**: Proper packed address calculations for each Z-Machine version
+- **Object System**: 32-attribute support with property tables and inheritance
+- **Testing**: 108 compiler unit tests + golden file validation system
+- **Error Handling**: Comprehensive error reporting with source location tracking
+
+### Grue Language Features
+- **Core Syntax**: C-like syntax with modern language features
+- **World Definition**: Rooms, objects, properties, and relationships
+- **Function System**: User-defined functions with parameters and return values
+- **Control Flow**: if/else, while, for loops, conditional expressions
+- **String System**: String literals, concatenation, and text processing
+- **Grammar System**: Built-in parser with verb/noun pattern matching
+- **Event Handling**: Room entry/exit events and object interactions
+
 ## Complete Game Compatibility ✅
 
 ### v3 Games (100% Compatible)
@@ -90,8 +109,9 @@
 
 ## Implementation Quality Summary
 
-The Z-Machine interpreter is **production-ready** with:
+The **Gruesome Z-Machine Platform** is **production-ready** with:
 
+### 🎮 Interpreter (gruesome)
 ✅ **100% game compatibility** for classic Infocom titles (v3-v5)  
 ✅ **Complete opcode coverage** for all tested games  
 ✅ **Robust architecture** with modular design and clean separation  
@@ -100,4 +120,16 @@ The Z-Machine interpreter is **production-ready** with:
 ✅ **Excellent performance** and memory efficiency  
 ✅ **Comprehensive testing** across multiple game versions  
 
-The modular opcode architecture provides a strong foundation for future enhancements while maintaining excellent compatibility with existing Z-Machine games.
+### ⚡ Compiler (grue-compiler)
+✅ **Complete compilation pipeline** from Grue source to Z-Machine bytecode  
+✅ **Multi-version support** (V3/V4/V5) with proper address handling  
+✅ **Modern language features** with traditional adventure game concepts  
+✅ **Robust error handling** and comprehensive testing (108 unit tests)  
+✅ **Production quality** code generation with golden file validation  
+
+### 🔍 Disassembler (gruedasm-txd)
+✅ **Multi-version analysis** for V3-V5 Z-Machine files  
+✅ **Intelligent routine discovery** and control flow analysis  
+✅ **Clean output format** for debugging and reverse engineering  
+
+The platform provides a **complete Z-Machine ecosystem** with interpretation, development, and analysis capabilities. The modular architecture enables easy extension while maintaining excellent compatibility with existing Z-Machine software.

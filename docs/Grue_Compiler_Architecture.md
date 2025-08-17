@@ -45,7 +45,7 @@ Grue Source Code
        ↓
    [Code Generator] → Z-Machine Bytecode
        ↓
-   Z-Machine Story File (.z3/.z5)
+   Z-Machine Story File (.z3/.z4/.z5)
 ```
 
 ## Phase-by-Phase Architecture
