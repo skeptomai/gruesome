@@ -3,7 +3,7 @@
 // The IR is designed to be a lower-level representation that's closer to Z-Machine
 // instructions while still maintaining some high-level constructs for optimization.
 
-use crate::grue_compiler::ast::{Program, Type};
+use crate::grue_compiler::ast::{Program, ProgramMode, Type};
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::object_system::ComprehensiveObject;
 use std::collections::HashMap;
@@ -22,6 +22,13 @@ pub struct IrProgram {
     pub init_block: Option<IrBlock>,
     pub string_table: HashMap<String, IrId>, // String literal -> ID mapping
     pub property_defaults: IrPropertyDefaults, // Z-Machine property defaults table
+    pub program_mode: ProgramMode,           // Program execution mode
+}
+
+impl IrProgram {
+    pub fn get_main_function(&self) -> Option<&IrFunction> {
+        self.functions.iter().find(|func| func.name == "main")
+    }
 }
 
 /// Z-Machine property defaults table (31 words for V1-3, 63 for V4+)
@@ -771,6 +778,7 @@ impl IrProgram {
             init_block: None,
             string_table: HashMap::new(),
             property_defaults: IrPropertyDefaults::new(),
+            program_mode: ProgramMode::Script, // Default mode, will be overridden
         }
     }
 
@@ -924,6 +932,11 @@ impl IrGenerator {
         );
         let mut ir_program = IrProgram::new();
 
+        // Detect program mode from AST
+        let program_mode = ast.detect_program_mode();
+        ir_program.program_mode = program_mode.clone();
+        log::debug!("Detected program mode: {:?}", program_mode);
+
         // TWO-PASS APPROACH: First pass registers all function definitions to populate symbol table
         // This ensures function calls can resolve to actual definitions, not placeholders
         for item in ast.items.iter() {
@@ -1002,6 +1015,10 @@ impl IrGenerator {
             Item::Init(init) => {
                 let ir_block = self.generate_block(init.body)?;
                 ir_program.init_block = Some(ir_block);
+            }
+            Item::Mode(_mode) => {
+                // Mode declarations are handled during program mode detection in generate()
+                // No IR generation needed for the mode declaration itself
             }
         }
 

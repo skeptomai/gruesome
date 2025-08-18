@@ -306,6 +306,10 @@ impl SemanticAnalyzer {
                 Item::Init(_) => {
                     // Init blocks don't create symbols
                 }
+
+                Item::Mode(_) => {
+                    // Mode declarations don't create symbols in the global scope
+                }
             }
         }
 
@@ -360,6 +364,11 @@ impl SemanticAnalyzer {
 
             Item::Init(init) => {
                 self.analyze_block(&mut init.body)?;
+            }
+
+            Item::Mode(_mode) => {
+                // Mode declarations are handled during program mode detection
+                // No additional semantic analysis needed
             }
         }
 

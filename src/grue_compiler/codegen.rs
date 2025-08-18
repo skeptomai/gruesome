@@ -224,12 +224,12 @@ impl ZMachineCodeGen {
             self.story_data[0x0268]
         );
 
-        // Phase 6: Generate automatic main game loop first
-        self.generate_main_loop(&ir)?;
+        // Phase 6: Generate program flow based on detected mode
+        self.generate_program_flow(&ir)?;
 
         // Phase 6.5: Generate init block and capture entry point
         let init_entry_point = if let Some(init_block) = &ir.init_block {
-            self.generate_init_block(init_block)? // Returns the actual entry point
+            self.generate_init_block(init_block, &ir)? // Returns the actual entry point
         } else {
             self.current_address // Fallback if no init block
         };
@@ -1180,11 +1180,84 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Generate the automatic main game loop
-    fn generate_main_loop(&mut self, _ir: &IrProgram) -> Result<(), CompilerError> {
-        debug!("Generating automatic main game loop");
+    /// Generate program flow based on program mode
+    fn generate_program_flow(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
+        debug!("Generating program flow for mode: {:?}", ir.program_mode);
 
-        // Align function address according to Z-Machine version requirements
+        match ir.program_mode {
+            crate::grue_compiler::ast::ProgramMode::Script => {
+                // Script mode: No main loop needed, program will quit after init
+                debug!("Script mode: No main loop generated");
+                Ok(())
+            }
+            crate::grue_compiler::ast::ProgramMode::Interactive => {
+                // Interactive mode: Generate automatic main loop
+                debug!("Interactive mode: Generating automatic main loop");
+                self.generate_main_loop(ir)
+            }
+            crate::grue_compiler::ast::ProgramMode::Custom => {
+                // Custom mode: Generate call to user's main function
+                debug!("Custom mode: Will call user's main function");
+                self.generate_custom_main_call(ir)
+            }
+        }
+    }
+
+    /// Generate call to user's main function (for custom mode)
+    fn generate_custom_main_call(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
+        debug!("Generating custom main function call");
+
+        if let Some(main_function) = ir.get_main_function() {
+            debug!("Found main function with ID {}", main_function.id);
+
+            // Align function address according to Z-Machine version requirements
+            self.align_function_address()?;
+
+            let main_call_routine_address = self.current_address;
+            let main_call_id = 9000u32; // Use high ID to avoid conflicts
+
+            // Create a routine that calls the user's main function
+            self.emit_byte(0x00)?; // Routine header: 0 locals
+
+            // Record the routine address for reference resolution
+            self.function_addresses
+                .insert(main_call_id, main_call_routine_address);
+            self.record_address(main_call_id, main_call_routine_address);
+
+            // Call the user's main function
+            let layout = self.emit_instruction(
+                0xE0,                              // call_1s (call with 1 operand, store result)
+                &[Operand::LargeConstant(0x0000)], // Placeholder for main function address
+                Some(0x00),                        // Store result in local variable 0 (discarded)
+                None,                              // No branch
+            )?;
+
+            // Add unresolved reference for main function call
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: ReferenceType::FunctionCall,
+                    location: layout
+                        .operand_location
+                        .expect("call instruction must have operand"),
+                    target_id: main_function.id,
+                    is_packed_address: true, // Function calls use packed addresses
+                    offset_size: 2,
+                });
+
+            // After main function returns, quit the program
+            self.emit_byte(0xBA)?; // quit opcode
+
+            Ok(())
+        } else {
+            Err(CompilerError::CodeGenError(
+                "Custom mode requires main() function, but none was found".to_string(),
+            ))
+        }
+    }
+
+    /// Align function address according to Z-Machine version requirements
+    fn align_function_address(&mut self) -> Result<(), CompilerError> {
         match self.version {
             ZMachineVersion::V3 => {
                 // v3: functions must be at even addresses
@@ -1199,6 +1272,15 @@ impl ZMachineCodeGen {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// Generate the automatic main game loop
+    fn generate_main_loop(&mut self, _ir: &IrProgram) -> Result<(), CompilerError> {
+        debug!("Generating automatic main game loop");
+
+        // Align function address according to Z-Machine version requirements
+        self.align_function_address()?;
 
         // Record main loop routine address for function calls
         let main_loop_id = 9000u32; // Use high ID to avoid conflicts
@@ -2401,7 +2483,11 @@ impl ZMachineCodeGen {
     }
 
     /// Generate init block as a proper routine and startup sequence
-    fn generate_init_block(&mut self, init_block: &IrBlock) -> Result<usize, CompilerError> {
+    fn generate_init_block(
+        &mut self,
+        init_block: &IrBlock,
+        ir: &IrProgram,
+    ) -> Result<usize, CompilerError> {
         log::debug!(
             "generate_init_block: Generating init routine with {} instructions (Z-Machine pure architecture)",
             init_block.instructions.len()
@@ -2471,27 +2557,42 @@ impl ZMachineCodeGen {
             self.generate_instruction(instruction)?;
         }
 
-        // At end of init routine, call the main game loop routine
-        let main_loop_id = 9000u32; // Same ID as used in generate_main_loop
-        let layout = self.emit_instruction(
-            0x08, // call_1s opcode (1OP:136) - call with 1 operand, store result
-            &[Operand::LargeConstant(0x0000)], // Placeholder for main loop routine address
-            Some(0), // Store return value on stack (even though we don't use it)
-            None, // No branch
-        )?;
+        // Handle program flow after init block based on program mode
+        match ir.program_mode {
+            crate::grue_compiler::ast::ProgramMode::Script => {
+                // Script mode: Just quit after init block
+                log::debug!("Script mode: Adding quit instruction after init block");
+                self.emit_byte(0xBA)?; // quit opcode
+            }
+            crate::grue_compiler::ast::ProgramMode::Interactive
+            | crate::grue_compiler::ast::ProgramMode::Custom => {
+                // Interactive or Custom mode: Call the generated main routine
+                log::debug!(
+                    "{:?} mode: Adding call to main routine after init block",
+                    ir.program_mode
+                );
+                let main_loop_id = 9000u32; // Same ID as used in generate_program_flow
+                let layout = self.emit_instruction(
+                    0x08, // call_1s opcode (1OP:136) - call with 1 operand, store result
+                    &[Operand::LargeConstant(0x0000)], // Placeholder for main routine address
+                    Some(0), // Store return value on stack (even though we don't use it)
+                    None, // No branch
+                )?;
 
-        // Add unresolved reference for main loop call using layout-tracked operand location
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: ReferenceType::FunctionCall,
-                location: layout
-                    .operand_location
-                    .expect("call instruction must have operand"),
-                target_id: main_loop_id,
-                is_packed_address: true, // Function calls use packed addresses
-                offset_size: 2,
-            });
+                // Add unresolved reference for main routine call
+                self.reference_context
+                    .unresolved_refs
+                    .push(UnresolvedReference {
+                        reference_type: ReferenceType::FunctionCall,
+                        location: layout
+                            .operand_location
+                            .expect("call instruction must have operand"),
+                        target_id: main_loop_id,
+                        is_packed_address: true, // Function calls use packed addresses
+                        offset_size: 2,
+                    });
+            }
+        }
 
         log::debug!("Init routine complete at 0x{:04x}", init_routine_address);
 

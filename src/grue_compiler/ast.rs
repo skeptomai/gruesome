@@ -7,12 +7,68 @@ pub struct Program {
     pub items: Vec<Item>,
 }
 
+impl Program {
+    pub fn has_grammar(&self) -> bool {
+        self.items
+            .iter()
+            .any(|item| matches!(item, Item::Grammar(_)))
+    }
+
+    pub fn has_main_function(&self) -> bool {
+        self.items.iter().any(|item| {
+            if let Item::Function(func) = item {
+                func.name == "main"
+            } else {
+                false
+            }
+        })
+    }
+
+    pub fn get_explicit_mode(&self) -> Option<ProgramMode> {
+        self.items.iter().find_map(|item| {
+            if let Item::Mode(mode_decl) = item {
+                Some(mode_decl.mode.clone())
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn detect_program_mode(&self) -> ProgramMode {
+        if let Some(explicit_mode) = self.get_explicit_mode() {
+            return explicit_mode;
+        }
+
+        if self.has_main_function() {
+            ProgramMode::Custom
+        } else if self.has_grammar() {
+            ProgramMode::Interactive
+        } else {
+            ProgramMode::Script
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Item {
     World(WorldDecl),
     Grammar(GrammarDecl),
     Function(FunctionDecl),
     Init(InitDecl),
+    Mode(ModeDecl),
+}
+
+// Program mode declaration
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModeDecl {
+    pub mode: ProgramMode,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ProgramMode {
+    Script,      // init → quit
+    Interactive, // init → auto main loop
+    Custom,      // init → call main()
 }
 
 // World declarations

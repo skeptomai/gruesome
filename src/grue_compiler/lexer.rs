@@ -49,6 +49,7 @@ pub enum TokenKind {
     Move,
     Player,
     Location,
+    Mode,
 
     // Symbols
     LeftBrace,    // {
@@ -494,6 +495,7 @@ impl Lexer {
             "move" => TokenKind::Move,
             "player" => TokenKind::Player,
             "location" => TokenKind::Location,
+            "mode" => TokenKind::Mode,
             _ => TokenKind::Identifier(identifier),
         }
     }

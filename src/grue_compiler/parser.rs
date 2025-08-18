@@ -37,10 +37,11 @@ impl Parser {
             TokenKind::Grammar => Ok(Item::Grammar(self.parse_grammar_decl()?)),
             TokenKind::Function => Ok(Item::Function(self.parse_function_decl()?)),
             TokenKind::Init => Ok(Item::Init(self.parse_init_decl()?)),
+            TokenKind::Mode => Ok(Item::Mode(self.parse_mode_decl()?)),
             _ => {
                 let token = self.peek();
                 Err(CompilerError::ExpectedToken(
-                    "world, grammar, fn, or init".to_string(),
+                    "world, grammar, fn, init, or mode".to_string(),
                     format!("{:?}", token.kind),
                     token.position,
                 ))
@@ -554,6 +555,46 @@ impl Parser {
         let body = self.parse_block()?;
 
         Ok(InitDecl { body })
+    }
+
+    fn parse_mode_decl(&mut self) -> Result<ModeDecl, CompilerError> {
+        self.consume(TokenKind::Mode, "Expected 'mode'")?;
+        self.consume(TokenKind::Colon, "Expected ':' after 'mode'")?;
+
+        let mode = match &self.peek().kind {
+            TokenKind::Identifier(name) => match name.as_str() {
+                "script" => {
+                    self.advance();
+                    ProgramMode::Script
+                }
+                "interactive" => {
+                    self.advance();
+                    ProgramMode::Interactive
+                }
+                "custom" => {
+                    self.advance();
+                    ProgramMode::Custom
+                }
+                _ => {
+                    let token = self.peek();
+                    return Err(CompilerError::ExpectedToken(
+                        "script, interactive, or custom".to_string(),
+                        format!("{:?}", token.kind),
+                        token.position,
+                    ));
+                }
+            },
+            _ => {
+                let token = self.peek();
+                return Err(CompilerError::ExpectedToken(
+                    "mode identifier".to_string(),
+                    format!("{:?}", token.kind),
+                    token.position,
+                ));
+            }
+        };
+
+        Ok(ModeDecl { mode })
     }
 
     fn parse_block(&mut self) -> Result<BlockStmt, CompilerError> {
