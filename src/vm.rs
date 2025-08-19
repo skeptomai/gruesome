@@ -130,6 +130,10 @@ impl VM {
 
     /// Peek at the top of the stack without removing it
     pub fn peek(&self) -> Result<u16, String> {
+        if self.stack.is_empty() {
+            log::debug!("Stack peek attempted on empty stack. Stack size: {}, PC: {:04x}", self.stack.len(), self.pc);
+            return Err("Stack is empty".to_string());
+        }
         self.stack
             .last()
             .copied()

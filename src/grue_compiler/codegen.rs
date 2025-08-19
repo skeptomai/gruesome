@@ -3032,6 +3032,11 @@ impl ZMachineCodeGen {
         let arg_id = args[0];
 
         // Look up the string value from the IR ID
+        log::debug!("generate_print_builtin: Looking up string for IR ID {}", arg_id);
+        log::debug!("  Available string IDs = {:?}", self.ir_id_to_string.keys().collect::<Vec<_>>());
+        log::debug!("  Available integer IDs = {:?}", self.ir_id_to_integer.keys().collect::<Vec<_>>());
+        
+        // Check if this is a string literal
         if let Some(string_value) = self.ir_id_to_string.get(&arg_id).cloned() {
             // Add newline to the string content for proper line breaks
             let print_string = if string_value.is_empty() {
@@ -3065,10 +3070,16 @@ impl ZMachineCodeGen {
             };
             self.reference_context.unresolved_refs.push(reference);
         } else {
-            // If we can't find the string, generate a placeholder
-            let placeholder_string = format!("[Missing string for IR ID {}]", arg_id);
+            // This is not a string literal - it's a dynamic expression that needs runtime evaluation
+            // For print() with non-string arguments, we need to evaluate the expression and convert to string
+            log::debug!("IR ID {} is not a string literal - generating runtime evaluation for print", arg_id);
+            
+            // First, generate code to evaluate the expression and store result in a variable
+            // then use print_num or similar instruction to print the result
+            
+            // For now, generate a placeholder to avoid compile errors - this needs proper expression evaluation
+            let placeholder_string = format!("?Missing dynamic expression for IR ID {}?", arg_id);
             let string_id = self.find_or_create_string_id(&placeholder_string)?;
-            self.ir_id_to_string.insert(string_id, placeholder_string);
 
             // Generate print_paddr instruction with placeholder
             let layout = self.emit_instruction(
