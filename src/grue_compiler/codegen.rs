@@ -2405,23 +2405,30 @@ impl ZMachineCodeGen {
     fn resolve_ir_id_to_operand(&self, ir_id: IrId) -> Result<Operand, CompilerError> {
         // First check if it's an integer literal
         if let Some(literal_value) = self.get_literal_value(ir_id) {
-            log::debug!("resolve_ir_id_to_operand: IR ID {} resolved to LargeConstant({})", ir_id, literal_value);
+            log::debug!(
+                "resolve_ir_id_to_operand: IR ID {} resolved to LargeConstant({})",
+                ir_id,
+                literal_value
+            );
             return Ok(Operand::LargeConstant(literal_value));
         }
-        
+
         // Check if it's a string literal (shouldn't be used in binary ops, but handle gracefully)
         if self.ir_id_to_string.contains_key(&ir_id) {
             return Err(CompilerError::CodeGenError(format!(
-                "Cannot use string literal (IR ID {}) as operand in binary operation", 
+                "Cannot use string literal (IR ID {}) as operand in binary operation",
                 ir_id
             )));
         }
-        
+
         // For now, assume it's a local variable access
-        // TODO: This is a simplification - we need proper variable scoping to map 
+        // TODO: This is a simplification - we need proper variable scoping to map
         // parameter names to their correct local variable numbers
         // For the immediate fix, assume the first parameter is local variable 1
-        log::debug!("resolve_ir_id_to_operand: IR ID {} resolved to Variable(1) - assuming parameter", ir_id);
+        log::debug!(
+            "resolve_ir_id_to_operand: IR ID {} resolved to Variable(1) - assuming parameter",
+            ir_id
+        );
         Ok(Operand::Variable(1)) // This is a temporary fix
     }
 
@@ -3056,10 +3063,19 @@ impl ZMachineCodeGen {
         let arg_id = args[0];
 
         // Look up the string value from the IR ID
-        log::debug!("generate_print_builtin: Looking up string for IR ID {}", arg_id);
-        log::debug!("  Available string IDs = {:?}", self.ir_id_to_string.keys().collect::<Vec<_>>());
-        log::debug!("  Available integer IDs = {:?}", self.ir_id_to_integer.keys().collect::<Vec<_>>());
-        
+        log::debug!(
+            "generate_print_builtin: Looking up string for IR ID {}",
+            arg_id
+        );
+        log::debug!(
+            "  Available string IDs = {:?}",
+            self.ir_id_to_string.keys().collect::<Vec<_>>()
+        );
+        log::debug!(
+            "  Available integer IDs = {:?}",
+            self.ir_id_to_integer.keys().collect::<Vec<_>>()
+        );
+
         // Check if this is a string literal
         if let Some(string_value) = self.ir_id_to_string.get(&arg_id).cloned() {
             // Add newline to the string content for proper line breaks
@@ -3096,11 +3112,14 @@ impl ZMachineCodeGen {
         } else {
             // This is not a string literal - it's a dynamic expression that needs runtime evaluation
             // For print() with non-string arguments, we need to evaluate the expression and convert to string
-            log::debug!("IR ID {} is not a string literal - generating runtime evaluation for print", arg_id);
-            
+            log::debug!(
+                "IR ID {} is not a string literal - generating runtime evaluation for print",
+                arg_id
+            );
+
             // First, generate code to evaluate the expression and store result in a variable
             // then use print_num or similar instruction to print the result
-            
+
             // For now, generate a placeholder to avoid compile errors - this needs proper expression evaluation
             let placeholder_string = format!("?Missing dynamic expression for IR ID {}?", arg_id);
             let string_id = self.find_or_create_string_id(&placeholder_string)?;
