@@ -6,9 +6,11 @@ world {
             names: ["wooden box", "box"]
             desc: "A wooden box."
             
-            object key {
-                names: ["brass key", "key"]
-                desc: "A brass key."
+            contains {
+                object key {
+                    names: ["brass key", "key"]
+                    desc: "A brass key."
+                }
             }
         }
     }

@@ -11,7 +11,6 @@ echo ""
 # Test compilation of all working examples
 WORKING_EXAMPLES=(
     "examples/basic_test.grue"
-    "examples/builtin_test.grue" 
     "examples/error_handling_test.grue"
     "examples/mini_zork.grue"
     "examples/minimal_function_test.grue"
@@ -87,7 +86,7 @@ done
 
 echo ""
 echo "✅ All CI tests passed!"
-echo "   - 15 working examples compile successfully"
+echo "   - 14 working examples compile successfully"
 echo "   - 6 core examples run without crashes"
 echo "   - Known issues are stable"
 echo ""

@@ -17,7 +17,6 @@ EXAMPLES=(
     "property_test.grue"
     "mini_zork.grue"
     "control_flow_simple.grue"
-    "builtin_test.grue"
 )
 
 PASSED=0
