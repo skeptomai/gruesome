@@ -1561,16 +1561,16 @@ impl ZMachineCodeGen {
                         // This is string concatenation
                         self.generate_string_concatenation(*target, *left, *right)?;
                     } else {
-                        // Regular arithmetic addition
-                        let left_op = Operand::Variable(1); // Local variable 1
-                        let right_op = Operand::Variable(2); // Local variable 2
+                        // Regular arithmetic addition - resolve actual operands
+                        let left_op = self.resolve_ir_id_to_operand(*left)?;
+                        let right_op = self.resolve_ir_id_to_operand(*right)?;
                         let store_var = Some(0); // Store to stack top
                         self.generate_binary_op(op, left_op, right_op, store_var)?;
                     }
                 } else {
-                    // Other binary operations (comparison, arithmetic)
-                    let left_op = Operand::Variable(1); // Local variable 1
-                    let right_op = Operand::Variable(2); // Local variable 2
+                    // Other binary operations (comparison, arithmetic) - resolve actual operands
+                    let left_op = self.resolve_ir_id_to_operand(*left)?;
+                    let right_op = self.resolve_ir_id_to_operand(*right)?;
                     let store_var = Some(0); // Store to stack top
                     self.generate_binary_op(op, left_op, right_op, store_var)?;
                 }
@@ -2399,6 +2399,30 @@ impl ZMachineCodeGen {
             id if id >= 1000 => Some((id - 1000) as u16), // Simple mapping for testing
             _ => None,
         }
+    }
+
+    /// Resolve an IR ID to the appropriate Z-Machine operand
+    fn resolve_ir_id_to_operand(&self, ir_id: IrId) -> Result<Operand, CompilerError> {
+        // First check if it's an integer literal
+        if let Some(literal_value) = self.get_literal_value(ir_id) {
+            log::debug!("resolve_ir_id_to_operand: IR ID {} resolved to LargeConstant({})", ir_id, literal_value);
+            return Ok(Operand::LargeConstant(literal_value));
+        }
+        
+        // Check if it's a string literal (shouldn't be used in binary ops, but handle gracefully)
+        if self.ir_id_to_string.contains_key(&ir_id) {
+            return Err(CompilerError::CodeGenError(format!(
+                "Cannot use string literal (IR ID {}) as operand in binary operation", 
+                ir_id
+            )));
+        }
+        
+        // For now, assume it's a local variable access
+        // TODO: This is a simplification - we need proper variable scoping to map 
+        // parameter names to their correct local variable numbers
+        // For the immediate fix, assume the first parameter is local variable 1
+        log::debug!("resolve_ir_id_to_operand: IR ID {} resolved to Variable(1) - assuming parameter", ir_id);
+        Ok(Operand::Variable(1)) // This is a temporary fix
     }
 
     /// Generate return instruction
