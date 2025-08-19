@@ -118,6 +118,8 @@ pub struct ZMachineCodeGen {
     function_addresses: HashMap<IrId, usize>, // IR function ID -> byte address
     /// Mapping from IR IDs to string values (for LoadImmediate results)
     ir_id_to_string: HashMap<IrId, String>,
+    /// Mapping from IR IDs to integer values (for LoadImmediate results)
+    ir_id_to_integer: HashMap<IrId, i16>,
     /// Mapping from function IDs to builtin function names
     builtin_function_names: HashMap<IrId, String>,
     /// Mapping from object names to object numbers (from IR generator)
@@ -162,6 +164,7 @@ impl ZMachineCodeGen {
             string_addresses: HashMap::new(),
             function_addresses: HashMap::new(),
             ir_id_to_string: HashMap::new(),
+            ir_id_to_integer: HashMap::new(),
             builtin_function_names: HashMap::new(),
             object_numbers: HashMap::new(),
             property_numbers: HashMap::new(),
@@ -388,7 +391,7 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Collect strings from all LoadImmediate instructions in a block
+    /// Collect strings and integers from all LoadImmediate instructions in a block
     fn collect_strings_from_block(&mut self, block: &IrBlock) -> Result<(), CompilerError> {
         for instruction in &block.instructions {
             match instruction {
@@ -402,10 +405,17 @@ impl ZMachineCodeGen {
                     self.strings.push((*target, s.clone()));
                 }
                 IrInstruction::LoadImmediate {
+                    target,
+                    value: IrValue::Integer(i),
+                } => {
+                    // Register the integer for this IR ID
+                    self.ir_id_to_integer.insert(*target, *i);
+                }
+                IrInstruction::LoadImmediate {
                     target: _,
                     value: _,
                 } => {
-                    // Non-string LoadImmediate - no action needed
+                    // Other LoadImmediate types - no action needed
                 }
                 // Handle other instructions that might contain blocks
                 _ => {
@@ -1523,9 +1533,15 @@ impl ZMachineCodeGen {
     fn generate_instruction(&mut self, instruction: &IrInstruction) -> Result<(), CompilerError> {
         match instruction {
             IrInstruction::LoadImmediate { target, value } => {
-                // Store mapping for string values so we can resolve them in function calls
-                if let IrValue::String(s) = value {
-                    self.ir_id_to_string.insert(*target, s.clone());
+                // Store mapping for string and integer values so we can resolve them in function calls
+                match value {
+                    IrValue::String(s) => {
+                        self.ir_id_to_string.insert(*target, s.clone());
+                    }
+                    IrValue::Integer(i) => {
+                        self.ir_id_to_integer.insert(*target, *i);
+                    }
+                    _ => {}
                 }
                 self.generate_load_immediate(value)?;
             }
@@ -2299,8 +2315,8 @@ impl ZMachineCodeGen {
         // Choose appropriate call instruction based on argument count
         let opcode = match args.len() {
             0 => 0x08, // call_1s (1OP:136) - call routine with no args, store result
-            1 => 0x00, // call_vs (VAR:0) - call with 1 arg, store result
-            _ => 0x00, // call_vs (VAR:0) - call with multiple args
+            1 => 0xE0, // call_vs (VAR:224) - call with 1 arg, store result
+            _ => 0xE0, // call_vs (VAR:224) - call with multiple args
         };
 
         let mut operands = vec![function_addr];
@@ -2333,7 +2349,7 @@ impl ZMachineCodeGen {
         // Choose appropriate call instruction based on argument count
         let opcode = match args.len() {
             0 => 0x20, // call_1n (1OP:32) - call with no args, no store
-            _ => 0x00, // call_vs (VAR:0) - call with args, store result
+            _ => 0xE0, // call_vs (VAR:224) - call with args, store result
         };
 
         // Determine store variable for return value
@@ -2367,11 +2383,19 @@ impl ZMachineCodeGen {
 
     /// Get literal value for an IR ID (helper method)
     fn get_literal_value(&self, ir_id: IrId) -> Option<u16> {
-        // For now, just handle simple integer constants
-        // TODO: Expand to handle variables, expressions, etc.
+        // Check if this IR ID corresponds to an integer literal
+        if let Some(&integer_value) = self.ir_id_to_integer.get(&ir_id) {
+            // Convert to u16, handling negative values appropriately
+            if integer_value >= 0 {
+                return Some(integer_value as u16);
+            } else {
+                // For negative values, use 0 as fallback
+                return Some(0);
+            }
+        }
+
+        // Check legacy mapping for backward compatibility
         match ir_id {
-            // Assuming constants are stored with IDs starting from a high value
-            // This is a placeholder - real implementation would look up in IR tables
             id if id >= 1000 => Some((id - 1000) as u16), // Simple mapping for testing
             _ => None,
         }
@@ -3968,6 +3992,7 @@ impl ZMachineCodeGen {
     /// Check if an opcode is a true VAR opcode (always requires VAR form encoding)
     fn is_true_var_opcode(opcode: u8) -> bool {
         match opcode {
+            0xE0 => true, // CALL_VS (VAR:224)
             0x01 => true, // STOREW
             0x03 => true, // PUT_PROP
             0x04 => true, // SREAD
