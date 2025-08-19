@@ -2340,14 +2340,17 @@ impl ZMachineCodeGen {
         let store_var = target.map(|_| 0x00); // Placeholder store variable
 
         // Generate the call instruction with placeholder address
-        self.emit_instruction(opcode, &operands, store_var, None)?;
+        let layout = self.emit_instruction(opcode, &operands, store_var, None)?;
 
-        // Add unresolved reference for function address
+        // Add unresolved reference for function address using correct operand location
+        let operand_location = layout
+            .operand_location
+            .expect("Call instruction must have operand location");
         self.reference_context
             .unresolved_refs
             .push(UnresolvedReference {
                 reference_type: ReferenceType::FunctionCall,
-                location: self.current_address - operands.len() * 2, // Point to function address operand
+                location: operand_location,
                 target_id: function_id,
                 is_packed_address: true, // Function addresses are packed in Z-Machine
                 offset_size: 2,
@@ -2356,7 +2359,7 @@ impl ZMachineCodeGen {
         log::debug!(
             "Generated call to function ID {} with unresolved reference at 0x{:04x}",
             function_id,
-            self.current_address - operands.len() * 2
+            operand_location
         );
 
         Ok(())
@@ -3969,6 +3972,7 @@ impl ZMachineCodeGen {
             0x03 => true, // PUT_PROP
             0x04 => true, // SREAD
             0x07 => true, // RANDOM
+            0x20 => true, // CALL_1N
             _ => false,
         }
     }
@@ -3980,6 +3984,7 @@ impl ZMachineCodeGen {
             0x03 => InstructionForm::Variable, // put_prop is always VAR
             0x04 => InstructionForm::Variable, // sread is always VAR
             0x07 => InstructionForm::Variable, // random is always VAR
+            0x20 => InstructionForm::Variable, // call_1n is always VAR
             _ => match operand_count {
                 0 => InstructionForm::Short, // 0OP
                 1 => InstructionForm::Short, // 1OP
@@ -4234,7 +4239,11 @@ impl ZMachineCodeGen {
         }
 
         // Determine if we need VAR (0x20) or VAR2 (0x3C) bit pattern
-        let var_bit = if opcode < 0x20 { 0x20 } else { 0x00 };
+        let var_bit = if Self::is_true_var_opcode(opcode) {
+            0x20
+        } else {
+            0x00
+        };
         let instruction_byte = 0xC0 | var_bit | (opcode & 0x1F);
 
         debug!("emit_variable_form: opcode=0x{:02x}, var_bit=0x{:02x}, instruction_byte=0x{:02x} at address 0x{:04x}", 
