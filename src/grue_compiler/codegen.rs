@@ -676,6 +676,20 @@ impl ZMachineCodeGen {
                 string_id, addr, length
             );
             self.record_address(string_id, addr); // Record in reference context
+            
+            // CRITICAL: Write string data immediately during layout phase
+            // This prevents overlaps with code generation
+            if let Some(encoded_bytes) = self.encoded_strings.get(&string_id).cloned() {
+                self.ensure_capacity(addr + encoded_bytes.len());
+                for (i, &byte) in encoded_bytes.iter().enumerate() {
+                    self.story_data[addr + i] = byte;
+                }
+                debug!(
+                    "Layout phase: Wrote string_id={} to memory at 0x{:04x} (length={})",
+                    string_id, addr, encoded_bytes.len()
+                );
+            }
+            
             addr += length;
         }
 
@@ -1166,6 +1180,15 @@ impl ZMachineCodeGen {
         self.story_data[dict_start + 1] = 0; // Number of entries (high byte)
         self.story_data[dict_start + 2] = 0; // Number of entries (low byte)
 
+        // CRITICAL: Update current_address to reflect actual end of all data structures
+        // This eliminates gaps between data structures and code generation
+        let dict_end = self.dictionary_addr + 3; // Minimal dictionary is 3 bytes
+        let max_data_end = std::cmp::max(self.current_property_addr, dict_end);
+        // Respect existing current_address if it's already beyond our data structures
+        self.current_address = std::cmp::max(self.current_address, max_data_end);
+        debug!("Data structures complete, current_address updated to: 0x{:04x} (property_end: 0x{:04x}, dict_end: 0x{:04x})", 
+               self.current_address, self.current_property_addr, dict_end);
+
         Ok(())
     }
 
@@ -1186,6 +1209,13 @@ impl ZMachineCodeGen {
             // TODO: Map IR globals to Z-Machine global variables
             // For now, just ensure the space is allocated
         }
+
+        // CRITICAL: Update current_address to reflect actual end of global variables
+        // This eliminates gaps between global variables and subsequent data structures
+        let globals_end = globals_start + 480; // 240 globals * 2 bytes each
+        self.current_address = std::cmp::max(self.current_address, globals_end);
+        debug!("Global variables complete, current_address updated to: 0x{:04x} (globals_end: 0x{:04x})", 
+               self.current_address, globals_end);
 
         Ok(())
     }
@@ -3674,8 +3704,25 @@ impl ZMachineCodeGen {
 
     /// Update string addresses after new strings have been added
     fn update_string_addresses(&mut self) {
-        // Calculate addresses for all encoded strings
-        // Strings should be placed after all code, not after dictionary
+        // CRITICAL: Only assign addresses to truly new strings that don't have addresses yet
+        // Strings allocated during layout phase should be preserved to prevent memory conflicts
+        
+        // Find strings that don't have addresses yet
+        let mut new_strings: Vec<(IrId, usize)> = Vec::new();
+        for (string_id, encoded_bytes) in &self.encoded_strings {
+            if !self.string_addresses.contains_key(string_id) {
+                new_strings.push((*string_id, encoded_bytes.len()));
+                debug!("Found new string during code generation: ID={}", string_id);
+            }
+        }
+        
+        if new_strings.is_empty() {
+            debug!("No new strings to allocate - preserving layout-time allocations");
+            return;
+        }
+        
+        // Calculate addresses for new strings only
+        // Place them after all code, not after dictionary
         let mut addr = self.current_address + 100; // Start after current code with padding
 
         // Align addresses according to Z-Machine version
@@ -3694,20 +3741,16 @@ impl ZMachineCodeGen {
             }
         }
 
+        // Sort by IR ID to ensure deterministic address assignment
+        new_strings.sort_by_key(|(id, _)| *id);
+
         debug!(
-            "update_string_addresses: clearing old addresses, recalculating from 0x{:04x}",
+            "Update phase: allocating {} new strings starting at 0x{:04x}",
+            new_strings.len(),
             addr
         );
-        self.string_addresses.clear();
 
-        // Collect string data to avoid borrowing issues
-        let string_data: Vec<(IrId, usize)> = self
-            .encoded_strings
-            .iter()
-            .map(|(id, encoded)| (*id, encoded.len()))
-            .collect();
-
-        for (string_id, length) in string_data {
+        for (string_id, length) in new_strings {
             // Align string addresses according to Z-Machine version
             match self.version {
                 ZMachineVersion::V3 => {
@@ -3726,7 +3769,7 @@ impl ZMachineCodeGen {
 
             self.string_addresses.insert(string_id, addr);
             debug!(
-                "Update phase: string_id={} -> 0x{:04x} (length={})",
+                "Update phase: NEW string_id={} -> 0x{:04x} (length={})",
                 string_id, addr, length
             );
             self.record_address(string_id, addr); // Record in reference context
@@ -3752,26 +3795,24 @@ impl ZMachineCodeGen {
             self.story_data[0x027c]
         );
 
-        // Write each encoded string to its assigned address
+        // Strings are already written during layout phase - just verify they're there
+        debug!("Verifying strings are already written during layout phase...");
         for (string_id, encoded_bytes) in &self.encoded_strings {
             if let Some(&address) = self.string_addresses.get(string_id) {
-                // Ensure we have enough space in story_data
-                let required_size = address + encoded_bytes.len();
-                if self.story_data.len() < required_size {
-                    self.story_data.resize(required_size, 0);
+                // Verify the string data is already there
+                if self.story_data.len() >= address + encoded_bytes.len() {
+                    debug!("String ID {} already written at 0x{:04x}", string_id, address);
+                } else {
+                    return Err(CompilerError::CodeGenError(format!(
+                        "String ID {} expected at 0x{:04x} but memory not allocated",
+                        string_id, address
+                    )));
                 }
 
-                // Write the encoded bytes to the story data
-                for (i, &byte) in encoded_bytes.iter().enumerate() {
-                    self.story_data[address + i] = byte;
-                }
-
-                // Also record this address in the IR ID mapping for reference resolution
+                // Record this address in the IR ID mapping for reference resolution
                 self.reference_context
                     .ir_id_to_address
                     .insert(*string_id, address);
-
-                // Successfully wrote string to memory
             } else {
                 return Err(CompilerError::CodeGenError(format!(
                     "String ID {} has no assigned address",
@@ -3779,6 +3820,19 @@ impl ZMachineCodeGen {
                 )));
             }
         }
+        
+        // CRITICAL: Update current_address to reflect actual end of string data
+        // This eliminates gaps between string data and code generation
+        let mut max_string_end = self.current_address; // Start with current value
+        for (string_id, encoded_bytes) in &self.encoded_strings {
+            if let Some(&address) = self.string_addresses.get(string_id) {
+                let string_end = address + encoded_bytes.len();
+                max_string_end = std::cmp::max(max_string_end, string_end);
+            }
+        }
+        self.current_address = max_string_end;
+        debug!("Strings complete, current_address updated to: 0x{:04x}", self.current_address);
+        
         Ok(())
     }
 
