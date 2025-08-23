@@ -241,6 +241,69 @@ builtin print(string)
 - **v3**: 6 Z-characters per word, even-aligned strings, 255 objects max
 - **v5**: 9 Z-characters per word, 4-byte aligned routines/strings, 65535 objects max
 
+### Object Numbering System
+
+The Grue compiler uses a dual numbering system that distinguishes between internal compiler IDs and final Z-Machine object numbers. Understanding this distinction is crucial for developers working on object-related features.
+
+#### Two Independent Numbering Systems
+
+**1. IR ID (Internal Compiler Use)**
+- **Purpose**: Internal tracking within the IR (Intermediate Representation) system
+- **Range**: 32-bit unsigned integers (0 to 4,294,967,295)
+- **Assignment**: Based on source code order and compiler-generated objects
+- **Example**: User objects get IDs 1-100, built-in objects use high IDs (9999+)
+
+**2. Z-Machine Object Number (Final Bytecode)**
+- **Purpose**: Actual object references used in Z-Machine bytecode
+- **Range**: 8-bit unsigned integers (1 to 255 for v3, 1 to 65535 for v5)
+- **Assignment**: Sequential starting from 1, following Z-Machine conventions
+- **Example**: Player=1, First room=2, Second room=3, etc.
+
+#### Critical Architectural Decision: Player Object Creation
+
+The compiler automatically creates a player object as **Z-Machine object #1** to ensure compatibility with Z-Machine conventions and external interpreters like Frotz:
+
+```rust
+// Player object gets high IR ID to avoid conflicts
+all_objects.push(ObjectData {
+    id: 9999u32, // IR ID: arbitrary high number
+    name: "player".to_string(),
+    short_name: "yourself".to_string(),
+    properties: player_properties,
+    // ... other fields
+});
+
+// But becomes Z-Machine object #1 through sequential mapping
+for (index, object) in all_objects.iter().enumerate() {
+    let obj_num = (index + 1) as u8; // Player: index=0 → obj_num=1
+    object_id_to_number.insert(object.id, obj_num);
+}
+```
+
+#### Why This Matters
+
+This dual numbering system solves several critical problems:
+
+**1. Frotz Compatibility**: External Z-Machine interpreters expect object #1 to exist when property access occurs. Without a player object, `get_prop` calls fail with "object 0" errors.
+
+**2. Z-Machine Convention**: Interactive fiction traditionally uses object #1 for the player character, object #2+ for rooms and items.
+
+**3. IR Flexibility**: High IR IDs (9999+) for built-in objects prevent conflicts with user-defined objects that get lower IDs based on source code order.
+
+**4. Reference Resolution**: During compilation, `player.location` references are resolved:
+   - IR: `player` (IR ID 9999) → property access instruction
+   - Z-Machine: Object #1 → `get_prop 1, property_number`
+
+#### Object Creation Sequence
+
+1. **Player Object**: Created first with IR ID 9999 → becomes Z-Machine object #1
+2. **Rooms**: Added from IR in order → become Z-Machine objects #2, #3, #4...
+3. **Regular Objects**: Added from IR in order → continue sequential numbering
+4. **Mapping Table**: Built to translate IR IDs to Z-Machine object numbers
+5. **Bytecode Generation**: All object references use final Z-Machine numbers
+
+This architecture ensures both internal compiler flexibility and external Z-Machine compatibility.
+
 ## Advanced Features
 
 ### Two-Pass Compilation

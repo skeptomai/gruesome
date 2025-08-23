@@ -198,6 +198,14 @@ impl Interpreter {
                 // get_prop
                 let obj_num = operands[0];
                 let prop_num = operands[1] as u8;
+
+                // Debug logging for object 0 case (the Frotz compatibility issue)
+                if obj_num == 0 {
+                    debug!("WARNING: get_prop called with object 0 at PC {:05x} - this should not happen!", self.vm.pc);
+                    debug!("  Property number: {}", prop_num);
+                    debug!("  This likely means Variable(16) returned 0 instead of 1 (player object number)");
+                }
+
                 let value = self.vm.get_property(obj_num, prop_num)?;
 
                 if let Some(store_var) = inst.store_var {

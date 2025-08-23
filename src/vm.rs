@@ -193,6 +193,13 @@ impl VM {
         let value = self.read_word(addr);
 
         // Debug logging for critical globals
+        if var == 0x10 {
+            // Global G00 - Player object reference
+            debug!(
+                "Reading global 0x{:02x} (G00/player) from addr 0x{:04x} = 0x{:04x} ({}) at PC {:05x}",
+                var, addr, value, value, self.pc
+            );
+        }
         if var == 0x52 {
             // LIT variable
             debug!(
@@ -247,6 +254,12 @@ impl VM {
         };
 
         // Debug logging for critical variable reads
+        if var == 0x10 {
+            debug!(
+                "read_variable(0x{:02x}) [Variable(16)/G00] at PC {:05x} returning value: {:?}",
+                var, self.pc, result
+            );
+        }
         if var == 0x52 && self.pc >= 0x8d50 && self.pc <= 0x8d60 {
             debug!(
                 "read_variable(0x{:02x}) at PC {:05x} returning value: {:?}",
