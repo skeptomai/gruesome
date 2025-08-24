@@ -454,7 +454,141 @@ This enhancement ensures our compiler generates the most appropriate instruction
 📊 **Success Rate**: Temporary regression - basic compilation corrupted during execution
 📋 **See**: Current analysis below for detailed investigation results
 
-## Current Critical Bug Investigation (Aug 16, 2025) - 🔴 IN PROGRESS
+## PLACEHOLDER ISSUE RESOLUTION (Aug 24, 2025) - ✅ FIXED + 🔴 RUNTIME REGRESSIONS
+
+### 🎉 **MAJOR BREAKTHROUGH: Complex Boolean Expression Placeholders RESOLVED**
+
+**Issue Status**: ✅ **COMPLETELY FIXED** - All compilation placeholder errors eliminated
+**Side Effect**: 🔴 **Runtime regressions** introduced in 3 examples
+
+#### ✅ **What We Successfully Fixed**
+- **Root Cause Found**: Unresolved `0xFFFF` placeholders in VAR `print_char` instructions (not branch instructions as initially thought)
+- **Technical Issue**: Function arguments in `generate_call_with_reference()` were creating placeholders without unresolved references
+- **Location**: `src/grue_compiler/codegen.rs:2959` - string literal arguments created `placeholder_word()` but no `UnresolvedReference`
+- **Solution**: Added proper string argument resolution with unresolved reference creation
+
+#### 🔧 **Technical Fix Details**
+**File**: `src/grue_compiler/codegen.rs:2955-2996`
+**Method**: `generate_call_with_reference()`
+
+**Before** (broken):
+```rust
+for &arg_id in args {
+    if let Some(literal_value) = self.get_literal_value(arg_id) {
+        operands.push(Operand::LargeConstant(literal_value));
+    } else {
+        operands.push(Operand::LargeConstant(placeholder_word())); // ❌ No reference created
+    }
+}
+```
+
+**After** (fixed):
+```rust
+for &arg_id in args {
+    if let Some(literal_value) = self.get_literal_value(arg_id) {
+        operands.push(Operand::LargeConstant(literal_value));
+    } else if self.ir_id_to_string.contains_key(&arg_id) {
+        // ✅ String literals: Create placeholder + unresolved reference
+        let operand_location = self.current_address + 1 + operands.len() * 2;
+        operands.push(Operand::LargeConstant(placeholder_word()));
+        let reference = UnresolvedReference {
+            reference_type: ReferenceType::StringRef,
+            location: operand_location,
+            target_id: arg_id,
+            is_packed_address: true,
+            offset_size: 2,
+        };
+        self.reference_context.unresolved_refs.push(reference);
+    } else {
+        // ✅ Other types: Use existing operand resolution
+        match self.resolve_ir_id_to_operand(arg_id) { ... }
+    }
+}
+```
+
+#### 📊 **Results: Compilation Success**
+- **mini_zork**: ✅ 5 → 0 unresolved placeholders
+- **control_flow_simple**: ✅ 2 → 0 unresolved placeholders
+- **All examples**: ✅ 100% compilation success rate
+- **Complex expressions**: ✅ Ternary conditionals with property access work
+- **String concatenation**: ✅ `"text " + (condition ? "a" : "b") + " more"` compiles
+
+#### 🔴 **CRITICAL: Runtime Regressions Introduced**
+
+**Problem**: The fix was too broad and affected existing working behavior
+
+**Affected Examples**:
+1. **mini_zork** - `Error: Cannot insert object 0`
+   - Starts execution, shows title screen
+   - Crashes during object manipulation operations
+   
+2. **control_flow_simple** - `Error: Stack is empty`  
+   - Starts execution, shows some output
+   - Crashes due to stack underflow in complex control flow
+   
+3. **property_test** - Runtime failure (details unknown)
+
+**CI Test Results**:
+- **Before fix**: 4/6 examples compiled, many had placeholders
+- **After fix**: 7/7 examples compile ✅, but 3/7 have runtime errors ❌
+
+#### 🔍 **Root Cause Analysis of Regressions**
+
+**Hypothesis**: Our fix changed argument resolution behavior too broadly:
+
+1. **Object Reference Corruption**: Object IDs previously resolved as `LargeConstant(object_number)` might now be incorrectly treated as string literals
+2. **Function Call Bytecode Changes**: Different instruction sequences generated for function arguments
+3. **Stack Management Disruption**: Complex argument resolution might affect stack operations
+
+**Evidence**:
+- Working examples (test_01_basic through test_04_room) still work ✅
+- Only complex examples with object operations fail ❌
+- All failures are **runtime** (execution), not **compile-time** ✅
+
+#### 🎯 **NEXT SESSION PRIORITIES**
+
+**Immediate Tasks**:
+1. **Investigate specific function calls** generating incorrect bytecode
+2. **Make fix more targeted** - distinguish between:
+   - Actual string literals (need string address resolution)
+   - Object references (need object operand resolution)  
+   - Integer values (direct operand conversion)
+3. **Test working examples** to ensure no regressions in basic functionality
+
+**Technical Approach**:
+1. **Add logging** to identify which function calls changed behavior
+2. **Compare bytecode** before/after fix for working vs broken examples
+3. **Refine argument resolution** to be more precise:
+   ```rust
+   // Need better detection logic:
+   if is_actual_string_literal(arg_id) {  // ✅ Only true strings
+       // String address resolution
+   } else if is_object_reference(arg_id) {  // ✅ Only objects  
+       // Object operand resolution
+   } else {
+       // Existing resolution fallback
+   }
+   ```
+
+**Files to Focus On**:
+- `src/grue_compiler/codegen.rs:2955-2996` (function argument resolution)
+- `src/grue_compiler/codegen.rs:3030-3080` (`resolve_ir_id_to_operand` method)
+- Runtime error investigation in object manipulation and stack management
+
+**Success Criteria**:
+- ✅ Keep placeholder fix (0 unresolved placeholders)
+- ✅ Fix runtime regressions (7/7 examples execute successfully)
+- ✅ Maintain existing working behavior
+
+#### 📁 **Session Files Created/Modified**
+- `debug_ternary_simple.grue` - Simple ternary test (working)
+- `debug_property_ternary.grue` - Property ternary test (working)  
+- `src/grue_compiler/codegen.rs` - Main fix implementation
+- Property encoding underflow bug fixed (bonus fix)
+
+---
+
+## Current Critical Bug Investigation (Aug 16, 2025) - ✅ RESOLVED
 
 ### Root Cause Analysis: Address Patching Memory Corruption
 

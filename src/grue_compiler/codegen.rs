@@ -1672,14 +1672,24 @@ impl ZMachineCodeGen {
             IrPropertyValue::Bytes(bytes) => {
                 // V3: size_byte = 32 * (data_bytes - 1) + prop_num
                 let data_len = bytes.len().min(8); // Z-Machine V3 max size is 8
-                let size_byte = 32 * (data_len - 1) + prop_num as usize;
+                                                   // Handle empty byte arrays to avoid underflow
+                let size_byte = if data_len > 0 {
+                    32 * (data_len - 1) + prop_num as usize
+                } else {
+                    prop_num as usize // Empty bytes: just the property number
+                };
                 (size_byte as u8, bytes.clone())
             }
             IrPropertyValue::String(s) => {
                 // Encode string as bytes (simplified)
                 let bytes: Vec<u8> = s.bytes().collect();
                 let data_len = bytes.len().min(8);
-                let size_byte = 32 * (data_len - 1) + prop_num as usize;
+                // Handle empty strings to avoid underflow
+                let size_byte = if data_len > 0 {
+                    32 * (data_len - 1) + prop_num as usize
+                } else {
+                    prop_num as usize // Empty string: just the property number
+                };
                 (size_byte as u8, bytes)
             }
         }
@@ -2943,10 +2953,55 @@ impl ZMachineCodeGen {
         // Convert IR args to operands
         let mut operands = vec![Operand::LargeConstant(placeholder_word())]; // Placeholder for function address
         for &arg_id in args {
+            // Handle different types of arguments appropriately
+            // CRITICAL: Check order must match resolve_ir_id_to_operand to prevent misclassification
             if let Some(literal_value) = self.get_literal_value(arg_id) {
+                // Integer literals can be used directly as operands
                 operands.push(Operand::LargeConstant(literal_value));
+            } else if let Some(&object_number) = self.ir_id_to_object_number.get(&arg_id) {
+                // Object references should be handled as direct operands, not string refs
+                log::debug!(
+                    "Function arg: IR ID {} resolved to object number {}",
+                    arg_id,
+                    object_number
+                );
+                operands.push(Operand::LargeConstant(object_number));
+            } else if self.ir_id_to_string.contains_key(&arg_id) {
+                // String literals need to be converted to packed string addresses
+                // Create an unresolved string reference that will be patched later
+                let operand_location = self.current_address + 1 + operands.len() * 2; // Calculate operand location
+                operands.push(Operand::LargeConstant(placeholder_word()));
+
+                // Create unresolved reference for this string argument
+                let reference = UnresolvedReference {
+                    reference_type: ReferenceType::StringRef,
+                    location: operand_location,
+                    target_id: arg_id,
+                    is_packed_address: true, // String addresses are packed
+                    offset_size: 2,
+                };
+                self.reference_context.unresolved_refs.push(reference);
+
+                log::debug!(
+                    "Added string argument reference: IR ID {} at location 0x{:04x}",
+                    arg_id,
+                    operand_location
+                );
             } else {
-                operands.push(Operand::LargeConstant(placeholder_word())); // Placeholder for non-literal args
+                // Try the existing operand resolution system for other types
+                match self.resolve_ir_id_to_operand(arg_id) {
+                    Ok(operand) => {
+                        operands.push(operand);
+                    }
+                    Err(err) => {
+                        log::warn!(
+                            "Could not resolve function argument IR ID {} - error: {:?} - using placeholder", 
+                            arg_id, err
+                        );
+                        operands.push(Operand::LargeConstant(placeholder_word()));
+                        // TODO: Create unresolved reference for this placeholder
+                    }
+                }
             }
         }
 
@@ -4479,18 +4534,27 @@ impl ZMachineCodeGen {
             )));
         }
 
-        let object_id = args[0];
-        let destination_id = args[1];
+        let object_ir_id = args[0];
+        let destination_ir_id = args[1];
+
+        // Resolve IR IDs to proper operands - CRITICAL FIX
+        let object_operand = self.resolve_ir_id_to_operand(object_ir_id)?;
+        let destination_operand = self.resolve_ir_id_to_operand(destination_ir_id)?;
+
+        log::debug!(
+            "generate_move_builtin: object IR {} -> {:?}, destination IR {} -> {:?}",
+            object_ir_id,
+            object_operand,
+            destination_ir_id,
+            destination_operand
+        );
 
         // Generate Z-Machine insert_obj instruction (2OP:14, opcode 0x0E)
         // This moves object to become the first child of the destination
         // Use proper 2OP instruction encoding
         self.emit_instruction(
             0x0E, // insert_obj opcode (2OP:14)
-            &[
-                Operand::LargeConstant(object_id as u16), // Object reference (to be resolved)
-                Operand::LargeConstant(destination_id as u16), // Destination reference (to be resolved)
-            ],
+            &[object_operand, destination_operand],
             None, // No store
             None, // No branch
         )?;
@@ -4510,12 +4574,15 @@ impl ZMachineCodeGen {
             )));
         }
 
-        let object_id = args[0];
+        let object_ir_id = args[0];
+
+        // Resolve IR ID to proper operand - CRITICAL FIX
+        let object_operand = self.resolve_ir_id_to_operand(object_ir_id)?;
 
         // Generate Z-Machine get_parent instruction (1OP:4, opcode 0x04)
         self.emit_instruction(
             0x04, // get_parent opcode
-            &[Operand::LargeConstant(object_id as u16)],
+            &[object_operand],
             Some(0), // Store result on stack
             None,    // No branch
         )?;
@@ -4670,12 +4737,15 @@ impl ZMachineCodeGen {
             )));
         }
 
-        let object_id = args[0];
+        let object_ir_id = args[0];
+
+        // Resolve IR ID to proper operand - CRITICAL FIX
+        let object_operand = self.resolve_ir_id_to_operand(object_ir_id)?;
 
         // Generate Z-Machine get_child instruction (1OP:3, opcode 0x03)
         self.emit_instruction(
             0x03, // get_child opcode
-            &[Operand::LargeConstant(object_id as u16)],
+            &[object_operand],
             Some(0), // Store result on stack
             None,    // No branch
         )?;
@@ -4694,12 +4764,15 @@ impl ZMachineCodeGen {
             )));
         }
 
-        let object_id = args[0];
+        let object_ir_id = args[0];
+
+        // Resolve IR ID to proper operand - CRITICAL FIX
+        let object_operand = self.resolve_ir_id_to_operand(object_ir_id)?;
 
         // Generate Z-Machine get_sibling instruction (1OP:2, opcode 0x02)
         self.emit_instruction(
             0x02, // get_sibling opcode
-            &[Operand::LargeConstant(object_id as u16)],
+            &[object_operand],
             Some(0), // Store result on stack
             None,    // No branch
         )?;
@@ -4719,7 +4792,10 @@ impl ZMachineCodeGen {
             )));
         }
 
-        let object_id = args[0];
+        let object_ir_id = args[0];
+
+        // Resolve IR ID to proper operand - CRITICAL FIX
+        let object_operand = self.resolve_ir_id_to_operand(object_ir_id)?;
 
         // Visibility check algorithm:
         // 1. Get object's parent (location)
@@ -4732,10 +4808,10 @@ impl ZMachineCodeGen {
 
         // Get object's parent location
         self.emit_instruction(
-            0x04,                                        // get_parent opcode
-            &[Operand::LargeConstant(object_id as u16)], // Object ID
-            Some(0x01),                                  // Store in local variable 1
-            None,                                        // No branch
+            0x04,              // get_parent opcode
+            &[object_operand], // Object operand (resolved)
+            Some(0x01),        // Store in local variable 1
+            None,              // No branch
         )?;
 
         // Get player location (assume player is object 1, location is its parent)
