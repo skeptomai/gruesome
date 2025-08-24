@@ -120,6 +120,10 @@ pub struct ZMachineCodeGen {
     ir_id_to_string: HashMap<IrId, String>,
     /// Mapping from IR IDs to integer values (for LoadImmediate results)
     ir_id_to_integer: HashMap<IrId, i16>,
+    /// Mapping from IR IDs to stack variables (for instruction results on stack)
+    ir_id_to_stack_var: HashMap<IrId, u8>,
+    /// Mapping from IR IDs to Z-Machine object numbers (for object references)
+    ir_id_to_object_number: HashMap<IrId, u16>,
     /// Mapping from function IDs to builtin function names
     builtin_function_names: HashMap<IrId, String>,
     /// Mapping from object names to object numbers (from IR generator)
@@ -165,6 +169,8 @@ impl ZMachineCodeGen {
             function_addresses: HashMap::new(),
             ir_id_to_string: HashMap::new(),
             ir_id_to_integer: HashMap::new(),
+            ir_id_to_stack_var: HashMap::new(),
+            ir_id_to_object_number: HashMap::new(),
             builtin_function_names: HashMap::new(),
             object_numbers: HashMap::new(),
             property_numbers: HashMap::new(),
@@ -192,6 +198,7 @@ impl ZMachineCodeGen {
         // This eliminates memory conflicts and gaps that plagued the hybrid approach
 
         // Phase 1: Analyze and prepare all data
+        self.setup_object_mappings(&ir);
         self.analyze_properties(&ir)?;
         self.collect_strings(&ir)?;
         self.add_main_loop_strings()?;
@@ -377,7 +384,8 @@ impl ZMachineCodeGen {
         let object_table_size = default_props_size + object_entries_size;
 
         // Property tables come immediately after object table
-        let property_start = start_addr + object_table_size;
+        // Add extra padding to ensure no overlap with objects
+        let property_start = start_addr + object_table_size + 32; // Add 32 bytes padding
         self.property_table_addr = property_start;
         self.current_property_addr = property_start;
 
@@ -2183,7 +2191,7 @@ impl ZMachineCodeGen {
             }
 
             IrInstruction::GetProperty {
-                target: _,
+                target,
                 object,
                 property,
             } => {
@@ -2213,15 +2221,16 @@ impl ZMachineCodeGen {
                     Operand::Constant(property_num.into()),  // Property number
                 ];
                 self.emit_instruction(0x11, &operands, Some(0), None)?; // Store result in stack top
+                
+                // Track that this IR ID maps to stack Variable(0)
+                self.ir_id_to_stack_var.insert(*target, 0);
             }
             IrInstruction::SetProperty {
-                object: _,
+                object,
                 property,
-                value: _,
+                value,
             } => {
                 // Generate Z-Machine put_prop instruction (VAR:227, opcode 0x03)
-                // For now, use placeholder object ID and property number
-                // TODO: Map IR object ID to actual Z-Machine object number
                 // Use global property registry for consistent property numbering
                 let property_num =
                     self.property_numbers
@@ -2239,13 +2248,11 @@ impl ZMachineCodeGen {
                     property, property_num
                 );
 
-                // Generate put_prop instruction
-                // TODO: This is a simplified implementation that hardcodes object numbers
-                // A complete implementation would properly map IR values to operands
+                // Generate put_prop instruction with properly resolved operands
                 let operands = vec![
-                    Operand::Constant(1),                   // Object (player = 1)
-                    Operand::Constant(property_num.into()), // Property number
-                    Operand::Constant(2),                   // Value (start_room = 2)
+                    self.resolve_ir_id_to_operand(*object)?, // Object (properly resolved from IR)
+                    Operand::Constant(property_num.into()),  // Property number
+                    self.resolve_ir_id_to_operand(*value)?,  // Value (properly resolved from IR)
                 ];
                 self.emit_instruction(0x03, &operands, None, None)?;
             }
@@ -2955,6 +2962,24 @@ impl ZMachineCodeGen {
                 ir_id
             )));
         }
+        
+        // Check if this IR ID maps to a stack variable (e.g., result of GetProperty)
+        if let Some(&stack_var) = self.ir_id_to_stack_var.get(&ir_id) {
+            log::debug!(
+                "resolve_ir_id_to_operand: IR ID {} resolved to Variable({}) [Stack result]",
+                ir_id, stack_var
+            );
+            return Ok(Operand::Variable(stack_var));
+        }
+
+        // Check if this IR ID represents an object reference
+        if let Some(&object_number) = self.ir_id_to_object_number.get(&ir_id) {
+            log::debug!(
+                "resolve_ir_id_to_operand: IR ID {} resolved to LargeConstant({}) [Object reference]",
+                ir_id, object_number
+            );
+            return Ok(Operand::LargeConstant(object_number));
+        }
 
         // CRITICAL FIX: Check if this IR ID represents an object reference
         // For global objects like 'player', return the global variable that contains the object number
@@ -2968,6 +2993,29 @@ impl ZMachineCodeGen {
             ir_id
         );
         Ok(Operand::LargeConstant(1)) // Direct player object number
+    }
+
+    /// Set up IR ID to object number mappings for proper identifier resolution
+    fn setup_object_mappings(&mut self, ir: &IrProgram) {
+        // Create reverse mapping from IR IDs to object numbers
+        // Use both symbol_ids (name -> IR ID) and object_numbers (name -> obj num)
+        for (name, &ir_id) in &ir.symbol_ids {
+            if let Some(&object_number) = ir.object_numbers.get(name) {
+                self.ir_id_to_object_number.insert(ir_id, object_number);
+                log::debug!(
+                    "setup_object_mappings: IR ID {} ('{}') -> Object #{}",
+                    ir_id, name, object_number
+                );
+            }
+        }
+
+        // Also copy the object_numbers mapping for legacy compatibility
+        self.object_numbers = ir.object_numbers.clone();
+
+        log::debug!(
+            "Object mapping setup complete: {} IR ID -> object number mappings created",
+            self.ir_id_to_object_number.len()
+        );
     }
 
     /// Generate return instruction

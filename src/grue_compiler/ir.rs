@@ -23,6 +23,10 @@ pub struct IrProgram {
     pub string_table: HashMap<String, IrId>, // String literal -> ID mapping
     pub property_defaults: IrPropertyDefaults, // Z-Machine property defaults table
     pub program_mode: ProgramMode,           // Program execution mode
+    /// Mapping from symbol names to IR IDs (for identifier resolution)
+    pub symbol_ids: HashMap<String, IrId>,
+    /// Mapping from object names to Z-Machine object numbers
+    pub object_numbers: HashMap<String, u16>,
 }
 
 impl IrProgram {
@@ -779,6 +783,8 @@ impl IrProgram {
             string_table: HashMap::new(),
             property_defaults: IrPropertyDefaults::new(),
             program_mode: ProgramMode::Script, // Default mode, will be overridden
+            symbol_ids: HashMap::new(),
+            object_numbers: HashMap::new(),
         }
     }
 
@@ -956,6 +962,10 @@ impl IrGenerator {
         for item in ast.items.iter() {
             self.generate_item(item.clone(), &mut ir_program)?;
         }
+
+        // Copy symbol mappings from generator to IR program for use in codegen
+        ir_program.symbol_ids = self.symbol_ids.clone();
+        ir_program.object_numbers = self.object_numbers.clone();
 
         Ok(ir_program)
     }
@@ -1374,10 +1384,23 @@ impl IrGenerator {
         let room_id = self.next_id();
         self.symbol_ids.insert(room.identifier.clone(), room_id);
 
-        // Assign object number (rooms start from #2, player is #1)
-        let object_number = self.object_numbers.len() as u16 + 1;
-        self.object_numbers
-            .insert(room.identifier.clone(), object_number);
+        // Object numbers should already be assigned during registration pass
+        // Don't reassign if already exists (avoids duplicate assignment bug)
+        if let Some(&existing_number) = self.object_numbers.get(&room.identifier) {
+            log::debug!(
+                "IR generate_room: Room '{}' already has object number {} from registration pass",
+                room.identifier, existing_number
+            );
+        } else {
+            // Fallback: assign object number if not already assigned
+            let object_number = self.object_numbers.len() as u16 + 1;
+            log::debug!(
+                "IR generate_room: Assigning object number {} to room '{}' (fallback)",
+                object_number, room.identifier
+            );
+            self.object_numbers
+                .insert(room.identifier.clone(), object_number);
+        }
 
         let mut exits = HashMap::new();
         for (direction, target) in room.exits {
