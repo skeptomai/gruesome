@@ -1389,14 +1389,16 @@ impl IrGenerator {
         if let Some(&existing_number) = self.object_numbers.get(&room.identifier) {
             log::debug!(
                 "IR generate_room: Room '{}' already has object number {} from registration pass",
-                room.identifier, existing_number
+                room.identifier,
+                existing_number
             );
         } else {
             // Fallback: assign object number if not already assigned
             let object_number = self.object_numbers.len() as u16 + 1;
             log::debug!(
                 "IR generate_room: Assigning object number {} to room '{}' (fallback)",
-                object_number, room.identifier
+                object_number,
+                room.identifier
             );
             self.object_numbers
                 .insert(room.identifier.clone(), object_number);

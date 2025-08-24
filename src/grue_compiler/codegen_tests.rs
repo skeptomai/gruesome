@@ -22,6 +22,8 @@ mod codegen_tests {
                 defaults: std::collections::HashMap::new(),
             },
             program_mode: crate::grue_compiler::ast::ProgramMode::Script,
+            symbol_ids: std::collections::HashMap::new(),
+            object_numbers: std::collections::HashMap::new(),
         }
     }
 

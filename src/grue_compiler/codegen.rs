@@ -9,6 +9,19 @@ use crate::grue_compiler::ZMachineVersion;
 use log::debug;
 use std::collections::HashMap;
 
+/// Distinctive placeholder byte for unresolved references
+/// 0xFF is chosen because:
+/// 1. In Z-Machine, 0xFF as an instruction byte would be an invalid Extended form instruction
+/// 2. As operand data, 0xFFFF would represent -1 or 65535, which are uncommon values
+/// 3. It's easily recognizable in hex dumps as "unresolved"
+/// 4. Creates a clear pattern when examining bytecode (FFFF stands out)
+const PLACEHOLDER_BYTE: u8 = 0xFF;
+
+/// Create a 16-bit placeholder value using the distinctive placeholder byte
+const fn placeholder_word() -> u16 {
+    ((PLACEHOLDER_BYTE as u16) << 8) | (PLACEHOLDER_BYTE as u16)
+}
+
 /// Information about the layout of an emitted Z-Machine instruction
 ///
 /// This tracks the exact byte locations of different instruction components,
@@ -132,6 +145,8 @@ pub struct ZMachineCodeGen {
     ir_id_to_stack_var: HashMap<IrId, u8>,
     /// Mapping from IR IDs to Z-Machine object numbers (for object references)
     ir_id_to_object_number: HashMap<IrId, u16>,
+    /// Mapping from IR IDs to binary operations (for conditional branch optimization)
+    ir_id_to_binary_op: HashMap<IrId, (IrBinaryOp, IrId, IrId)>, // (operator, left_operand, right_operand)
     /// Mapping from function IDs to builtin function names
     builtin_function_names: HashMap<IrId, String>,
     /// Mapping from object names to object numbers (from IR generator)
@@ -185,6 +200,7 @@ impl ZMachineCodeGen {
             ir_id_to_integer: HashMap::new(),
             ir_id_to_stack_var: HashMap::new(),
             ir_id_to_object_number: HashMap::new(),
+            ir_id_to_binary_op: HashMap::new(),
             builtin_function_names: HashMap::new(),
             object_numbers: HashMap::new(),
             property_numbers: HashMap::new(),
@@ -675,10 +691,10 @@ impl ZMachineCodeGen {
 
         // Generate call to main loop routine
         let layout = self.emit_instruction(
-            0x20,                              // call_vs opcode (VAR form of call)
-            &[Operand::LargeConstant(0x0000)], // Placeholder for main loop routine address
-            None,                              // No store (main loop doesn't return)
-            None,                              // No branch
+            0x20,                                          // call_vs opcode (VAR form of call)
+            &[Operand::LargeConstant(placeholder_word())], // Placeholder for main loop routine address
+            None,                                          // No store (main loop doesn't return)
+            None,                                          // No branch
         )?;
 
         // Add unresolved reference for main loop call
@@ -1793,10 +1809,10 @@ impl ZMachineCodeGen {
 
             // Call the user's main function
             let layout = self.emit_instruction(
-                0xE0,                              // call_1s (call with 1 operand, store result)
-                &[Operand::LargeConstant(0x0000)], // Placeholder for main function address
-                Some(0x00),                        // Store result in local variable 0 (discarded)
-                None,                              // No branch
+                0xE0,                                          // call_1s (call with 1 operand, store result)
+                &[Operand::LargeConstant(placeholder_word())], // Placeholder for main function address
+                Some(0x00), // Store result in local variable 0 (discarded)
+                None,       // No branch
             )?;
 
             // Add unresolved reference for main function call
@@ -1875,10 +1891,10 @@ impl ZMachineCodeGen {
         let prompt_string_id = 9002u32;
 
         let layout = self.emit_instruction(
-            0x0D,                              // print_paddr (print packed address string)
-            &[Operand::LargeConstant(0x0000)], // Placeholder for prompt string address
-            None,                              // No store
-            None,                              // No branch
+            0x0D,                                          // print_paddr (print packed address string)
+            &[Operand::LargeConstant(placeholder_word())], // Placeholder for prompt string address
+            None,                                          // No store
+            None,                                          // No branch
         )?;
 
         // Add unresolved reference for prompt string using layout-tracked operand location
@@ -1920,10 +1936,10 @@ impl ZMachineCodeGen {
         // 5. Jump back to loop start (first instruction, not routine header)
         let main_loop_jump_id = main_loop_id + 1; // Use same calculation as above
         let layout = self.emit_instruction(
-            0x0C,                              // jump opcode (correct opcode)
-            &[Operand::LargeConstant(0x0000)], // Placeholder for loop start address
-            None,                              // No store
-            None,                              // No branch
+            0x0C,                                          // jump opcode (correct opcode)
+            &[Operand::LargeConstant(placeholder_word())], // Placeholder for loop start address
+            None,                                          // No store
+            None,                                          // No branch
         )?;
 
         // Add unresolved reference for loop jump using layout-tracked operand location
@@ -1995,18 +2011,9 @@ impl ZMachineCodeGen {
         // Track the starting address to detect if we're generating orphaned instructions
         let function_start = self.current_address;
 
-        // First pass: Process all Label instructions to record addresses, even if unreachable
-        for instruction in &function.body.instructions {
-            if let IrInstruction::Label { id } = instruction {
-                log::debug!(
-                    "Recording label ID {} at address 0x{:04x}",
-                    *id,
-                    self.current_address
-                );
-                self.label_addresses.insert(*id, self.current_address);
-                self.record_address(*id, self.current_address);
-            }
-        }
+        // First pass: Pre-calculate all instruction addresses including labels
+        log::debug!("Pre-calculating addresses for function '{}'", function.name);
+        self.pre_calculate_addresses(&function.body.instructions)?;
 
         // Second pass: Generate actual instructions
         for instruction in &function.body.instructions {
@@ -2095,17 +2102,20 @@ impl ZMachineCodeGen {
                 match value {
                     IrValue::String(s) => {
                         self.ir_id_to_string.insert(*target, s.clone());
-                        self.constant_values.insert(*target, ConstantValue::String(s.clone()));
+                        self.constant_values
+                            .insert(*target, ConstantValue::String(s.clone()));
                     }
                     IrValue::Integer(i) => {
                         self.ir_id_to_integer.insert(*target, *i);
-                        self.constant_values.insert(*target, ConstantValue::Integer(*i));
+                        self.constant_values
+                            .insert(*target, ConstantValue::Integer(*i));
                     }
                     IrValue::Boolean(b) => {
                         // Convert boolean to integer for compatibility
                         let int_val = if *b { 1 } else { 0 };
                         self.ir_id_to_integer.insert(*target, int_val);
-                        self.constant_values.insert(*target, ConstantValue::Boolean(*b));
+                        self.constant_values
+                            .insert(*target, ConstantValue::Boolean(*b));
                     }
                     _ => {}
                 }
@@ -2118,28 +2128,52 @@ impl ZMachineCodeGen {
                 left,
                 right,
             } => {
-                // Check if this is string concatenation (Add operation with strings)
-                if matches!(op, IrBinaryOp::Add) {
-                    let left_is_string = self.ir_id_to_string.contains_key(left);
-                    let right_is_string = self.ir_id_to_string.contains_key(right);
+                // Store binary operation mapping for conditional branch optimization
+                self.ir_id_to_binary_op
+                    .insert(*target, (op.clone(), *left, *right));
 
-                    if left_is_string || right_is_string {
-                        // This is string concatenation
-                        self.generate_string_concatenation(*target, *left, *right)?;
+                // OPTIMIZATION: Skip generating comparison instructions for operations that will
+                // be handled directly in emit_conditional_branch_instruction. This prevents
+                // duplicate instructions and unresolved branch placeholders.
+                if matches!(
+                    op,
+                    IrBinaryOp::Greater
+                        | IrBinaryOp::Less
+                        | IrBinaryOp::Equal
+                        | IrBinaryOp::LessEqual
+                        | IrBinaryOp::GreaterEqual
+                        | IrBinaryOp::NotEqual
+                ) {
+                    log::debug!("Skipping BinaryOp comparison {:?} target={} - will be handled directly in conditional branches", op, target);
+                    // Don't generate any Z-Machine instruction here - the comparison will be
+                    // generated directly as a conditional branch instruction when needed
+                    // Just return without processing this instruction further
+                }
+                // Only process non-comparison binary operations
+                else {
+                    // Check if this is string concatenation (Add operation with strings)
+                    if matches!(op, IrBinaryOp::Add) {
+                        let left_is_string = self.ir_id_to_string.contains_key(left);
+                        let right_is_string = self.ir_id_to_string.contains_key(right);
+
+                        if left_is_string || right_is_string {
+                            // This is string concatenation
+                            self.generate_string_concatenation(*target, *left, *right)?;
+                        } else {
+                            // Regular arithmetic addition - resolve actual operands
+                            let left_op = self.resolve_ir_id_to_operand(*left)?;
+                            let right_op = self.resolve_ir_id_to_operand(*right)?;
+                            let store_var = Some(0); // Store to stack top
+                            self.generate_binary_op(op, left_op, right_op, store_var)?;
+                        }
                     } else {
-                        // Regular arithmetic addition - resolve actual operands
+                        // Other binary operations (comparison, arithmetic) - resolve actual operands
                         let left_op = self.resolve_ir_id_to_operand(*left)?;
                         let right_op = self.resolve_ir_id_to_operand(*right)?;
                         let store_var = Some(0); // Store to stack top
                         self.generate_binary_op(op, left_op, right_op, store_var)?;
                     }
-                } else {
-                    // Other binary operations (comparison, arithmetic) - resolve actual operands
-                    let left_op = self.resolve_ir_id_to_operand(*left)?;
-                    let right_op = self.resolve_ir_id_to_operand(*right)?;
-                    let store_var = Some(0); // Store to stack top
-                    self.generate_binary_op(op, left_op, right_op, store_var)?;
-                }
+                } // End of else block for non-comparison operations
             }
 
             IrInstruction::Call {
@@ -2188,7 +2222,7 @@ impl ZMachineCodeGen {
                 );
                 self.label_addresses.insert(*id, self.current_address);
                 self.record_address(*id, self.current_address);
-                
+
                 // Track label at current address for jump optimization
                 self.labels_at_current_address.push(*id);
             }
@@ -2249,7 +2283,7 @@ impl ZMachineCodeGen {
                     Operand::Constant(property_num.into()),  // Property number
                 ];
                 self.emit_instruction(0x11, &operands, Some(0), None)?; // Store result in stack top
-                
+
                 // Track that this IR ID maps to stack Variable(0)
                 self.ir_id_to_stack_var.insert(*target, 0);
             }
@@ -2907,12 +2941,12 @@ impl ZMachineCodeGen {
         // This is the correct approach - not rtrue hacks or compile errors
 
         // Convert IR args to operands
-        let mut operands = vec![Operand::LargeConstant(0x0000)]; // Placeholder for function address
+        let mut operands = vec![Operand::LargeConstant(placeholder_word())]; // Placeholder for function address
         for &arg_id in args {
             if let Some(literal_value) = self.get_literal_value(arg_id) {
                 operands.push(Operand::LargeConstant(literal_value));
             } else {
-                operands.push(Operand::LargeConstant(0x0000)); // Placeholder for non-literal args
+                operands.push(Operand::LargeConstant(placeholder_word())); // Placeholder for non-literal args
             }
         }
 
@@ -2990,12 +3024,13 @@ impl ZMachineCodeGen {
                 ir_id
             )));
         }
-        
+
         // Check if this IR ID maps to a stack variable (e.g., result of GetProperty)
         if let Some(&stack_var) = self.ir_id_to_stack_var.get(&ir_id) {
             log::debug!(
                 "resolve_ir_id_to_operand: IR ID {} resolved to Variable({}) [Stack result]",
-                ir_id, stack_var
+                ir_id,
+                stack_var
             );
             return Ok(Operand::Variable(stack_var));
         }
@@ -3032,7 +3067,9 @@ impl ZMachineCodeGen {
                 self.ir_id_to_object_number.insert(ir_id, object_number);
                 log::debug!(
                     "setup_object_mappings: IR ID {} ('{}') -> Object #{}",
-                    ir_id, name, object_number
+                    ir_id,
+                    name,
+                    object_number
                 );
             }
         }
@@ -3077,12 +3114,14 @@ impl ZMachineCodeGen {
     ) -> Result<(), CompilerError> {
         log::debug!(
             "generate_conditional_branch: condition={}, true_label={}, false_label={}",
-            condition, true_label, false_label
+            condition,
+            true_label,
+            false_label
         );
 
         // Step 1: Resolve condition value if it's a constant
         let condition_value = self.resolve_condition_value(condition);
-        
+
         match condition_value {
             Some(ConstantValue::Boolean(true)) => {
                 log::debug!("Condition is constant TRUE - optimizing branch");
@@ -3107,20 +3146,26 @@ impl ZMachineCodeGen {
             Some(ConstantValue::Integer(n)) => {
                 // Treat integer as boolean: 0 = false, non-zero = true
                 let is_true = n != 0;
-                log::debug!("Condition is constant INTEGER {} (treated as {})", n, is_true);
-                
+                log::debug!(
+                    "Condition is constant INTEGER {} (treated as {})",
+                    n,
+                    is_true
+                );
+
                 let target_label = if is_true { true_label } else { false_label };
                 if !self.is_next_instruction(target_label) {
                     self.generate_jump(target_label)?;
                 }
             }
             None | Some(ConstantValue::String(_)) => {
-                log::debug!("Condition is variable or unknown - generating Z-Machine conditional branch");
+                log::debug!(
+                    "Condition is variable or unknown - generating Z-Machine conditional branch"
+                );
                 // Generate proper Z-Machine conditional branch instruction
                 self.emit_conditional_branch_instruction(condition, true_label, false_label)?;
             }
         }
-        
+
         Ok(())
     }
 
@@ -3147,17 +3192,27 @@ impl ZMachineCodeGen {
 
     /// Check if a label will be placed at the immediately next instruction address
     fn is_next_instruction(&self, label: IrId) -> bool {
-        // Check if label is already resolved and points to current address
-        if let Some(&target_addr) = self.reference_context.ir_id_to_address.get(&label) {
-            return target_addr == self.current_address;
-        }
-
-        // Check if label is recorded at current address in label_addresses
+        // First check pre-calculated label addresses (most reliable)
         if let Some(&target_addr) = self.label_addresses.get(&label) {
-            return target_addr == self.current_address;
+            // Calculate what the next instruction address will be after current jump
+            let next_addr_after_jump = self.current_address + 3; // Jump instruction is 3 bytes
+            let is_next = target_addr == next_addr_after_jump;
+
+            log::debug!(
+                "is_next_instruction: label={}, target_addr=0x{:04x}, next_addr_after_jump=0x{:04x}, is_next={}",
+                label, target_addr, next_addr_after_jump, is_next
+            );
+
+            return is_next;
         }
 
-        // Check if label is in the list of labels at current address
+        // Fallback: Check if label is already resolved and points to next instruction
+        if let Some(&target_addr) = self.reference_context.ir_id_to_address.get(&label) {
+            let next_addr_after_jump = self.current_address + 3;
+            return target_addr == next_addr_after_jump;
+        }
+
+        // Check if label is in the list of labels at current address (immediate)
         self.labels_at_current_address.contains(&label)
     }
 
@@ -3168,27 +3223,124 @@ impl ZMachineCodeGen {
         true_label: IrId,
         false_label: IrId,
     ) -> Result<(), CompilerError> {
+        log::debug!(
+            "Emitting conditional branch: condition_id={}, true={}, false={}",
+            condition,
+            true_label,
+            false_label
+        );
+
+        // Check if the condition is a binary comparison operation
+        if let Some((op, left, right)) = self.ir_id_to_binary_op.get(&condition).cloned() {
+            log::debug!(
+                "Condition {} is binary operation: {:?} {} {}",
+                condition,
+                op,
+                left,
+                right
+            );
+
+            // This is a direct comparison - emit the appropriate Z-Machine comparison instruction
+            match op {
+                IrBinaryOp::Equal => {
+                    let left_op = self.resolve_ir_id_to_operand(left)?;
+                    let right_op = self.resolve_ir_id_to_operand(right)?;
+                    self.emit_comparison_branch(
+                        0x01,
+                        &[left_op, right_op],
+                        true_label,
+                        false_label,
+                    )?; // je (2OP:1)
+                }
+                IrBinaryOp::Less => {
+                    let left_op = self.resolve_ir_id_to_operand(left)?;
+                    let right_op = self.resolve_ir_id_to_operand(right)?;
+                    self.emit_comparison_branch(
+                        0x02,
+                        &[left_op, right_op],
+                        true_label,
+                        false_label,
+                    )?; // jl (2OP:2)
+                }
+                IrBinaryOp::Greater => {
+                    let left_op = self.resolve_ir_id_to_operand(left)?;
+                    let right_op = self.resolve_ir_id_to_operand(right)?;
+                    self.emit_comparison_branch(
+                        0x03,
+                        &[left_op, right_op],
+                        true_label,
+                        false_label,
+                    )?; // jg (2OP:3)
+                }
+                IrBinaryOp::LessEqual => {
+                    // Convert a <= b to !(a > b) by swapping true/false labels
+                    let left_op = self.resolve_ir_id_to_operand(left)?;
+                    let right_op = self.resolve_ir_id_to_operand(right)?;
+                    self.emit_comparison_branch(
+                        0x03,
+                        &[left_op, right_op],
+                        false_label,
+                        true_label,
+                    )?; // jg with swapped labels
+                }
+                IrBinaryOp::GreaterEqual => {
+                    // Convert a >= b to !(a < b) by swapping true/false labels
+                    let left_op = self.resolve_ir_id_to_operand(left)?;
+                    let right_op = self.resolve_ir_id_to_operand(right)?;
+                    self.emit_comparison_branch(
+                        0x02,
+                        &[left_op, right_op],
+                        false_label,
+                        true_label,
+                    )?; // jl with swapped labels
+                }
+                IrBinaryOp::NotEqual => {
+                    // Convert a != b to !(a == b) by swapping true/false labels
+                    let left_op = self.resolve_ir_id_to_operand(left)?;
+                    let right_op = self.resolve_ir_id_to_operand(right)?;
+                    self.emit_comparison_branch(
+                        0x01,
+                        &[left_op, right_op],
+                        false_label,
+                        true_label,
+                    )?; // je with swapped labels
+                }
+                _ => {
+                    log::warn!("Binary operation {:?} not suitable for direct comparison branch - falling back to jz", op);
+                    // Fall through to jz handling below
+                    return self.emit_jz_branch(condition, true_label, false_label);
+                }
+            }
+        } else {
+            log::debug!(
+                "Condition {} is not a binary operation - using jz branch",
+                condition
+            );
+            // Not a binary comparison, use jz (jump if zero) for boolean test
+            return self.emit_jz_branch(condition, true_label, false_label);
+        }
+
+        Ok(())
+    }
+
+    /// Emit a jz (jump if zero) branch instruction for boolean conditions
+    fn emit_jz_branch(
+        &mut self,
+        condition: IrId,
+        _true_label: IrId,
+        false_label: IrId,
+    ) -> Result<(), CompilerError> {
         // Resolve condition operand
         let condition_operand = match self.resolve_ir_id_to_operand(condition) {
             Ok(operand) => operand,
             Err(_) => {
-                log::warn!("Could not resolve condition IR ID {} - using Variable(0)", condition);
+                log::warn!(
+                    "Could not resolve condition IR ID {} - using Variable(0)",
+                    condition
+                );
                 Operand::Variable(0) // Stack variable as fallback
             }
         };
-
-        log::debug!(
-            "Emitting conditional branch: operand={:?}, true={}, false={}", 
-            condition_operand, true_label, false_label
-        );
-
-        // For now, use Z-Machine 'jz' (jump if zero) instruction
-        // This will jump to false_label if condition is zero, fall through to true_label otherwise
-        //
-        // TODO: More sophisticated instruction selection based on condition type
-        // - Use 'je' for equality comparisons
-        // - Use 'jl'/'jg' for numeric comparisons
-        // - Use 'jz' for boolean tests
 
         let layout = self.emit_instruction(
             0xA0, // jz (VAR:0x00) - jump if zero
@@ -3200,18 +3352,71 @@ impl ZMachineCodeGen {
         // Add branch offset as unresolved reference
         // Z-Machine branch instructions have 14-bit signed branch offsets
         let branch_location = layout.instruction_start + layout.total_size - 2; // Last 2 bytes
-        
-        self.reference_context.unresolved_refs.push(UnresolvedReference {
-            reference_type: ReferenceType::Branch,
-            location: branch_location,
-            target_id: false_label, // jz jumps on false condition
-            is_packed_address: false,
-            offset_size: 2,
-        });
+
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: ReferenceType::Branch,
+                location: branch_location,
+                target_id: false_label, // jz jumps on false condition
+                is_packed_address: false,
+                offset_size: 2,
+            });
 
         log::debug!(
-            "Added branch reference: location=0x{:04x}, target={}",
-            branch_location, false_label
+            "Added jz branch reference: location=0x{:04x}, target={}",
+            branch_location,
+            false_label
+        );
+
+        Ok(())
+    }
+
+    /// Emit a Z-Machine comparison branch instruction (je, jl, jg, etc.)
+    fn emit_comparison_branch(
+        &mut self,
+        opcode: u8,
+        operands: &[Operand],
+        true_label: IrId,
+        _false_label: IrId,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "Emitting comparison branch: opcode=0x{:02x}, operands={:?}, true={}, false={}",
+            opcode,
+            operands,
+            true_label,
+            _false_label
+        );
+
+        let layout = self.emit_instruction(
+            opcode,
+            operands,
+            None,    // No store
+            Some(0), // Placeholder branch offset - will be patched during address resolution
+        )?;
+
+        // Add branch offset as unresolved reference
+        // Z-Machine branch instructions have 14-bit signed branch offsets
+        let branch_location = layout.branch_location.ok_or_else(|| {
+            CompilerError::CodeGenError(
+                "Branch instruction layout missing branch_location".to_string(),
+            )
+        })?;
+
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: ReferenceType::Branch,
+                location: branch_location,
+                target_id: true_label, // Comparison instructions jump on true condition
+                is_packed_address: false,
+                offset_size: 2,
+            });
+
+        log::debug!(
+            "Added comparison branch reference: location=0x{:04x}, target={}",
+            branch_location,
+            true_label
         );
 
         Ok(())
@@ -3224,10 +3429,10 @@ impl ZMachineCodeGen {
 
         // Emit jump instruction with placeholder offset
         let layout = self.emit_instruction(
-            0x0C,                              // jump opcode
-            &[Operand::LargeConstant(0x0000)], // Placeholder offset (will be resolved later)
-            None,                              // No store
-            None,                              // No branch
+            0x0C,                                          // jump opcode
+            &[Operand::LargeConstant(placeholder_word())], // Placeholder offset (will be resolved later)
+            None,                                          // No store
+            None,                                          // No branch
         )?;
 
         // Add unresolved reference for the jump target using layout-tracked operand location
@@ -3252,7 +3457,10 @@ impl ZMachineCodeGen {
 
         // SMART OPTIMIZATION: Check if jump target is the immediately next instruction
         if self.is_next_instruction(label) {
-            log::debug!("Eliminating unnecessary jump to next instruction (label {})", label);
+            log::debug!(
+                "Eliminating unnecessary jump to next instruction (label {})",
+                label
+            );
             return Ok(()); // No instruction needed - fall through
         }
 
@@ -3268,7 +3476,7 @@ impl ZMachineCodeGen {
 
         // Emit placeholder offset (will be resolved later)
         let offset_address = self.current_address;
-        self.emit_word(0x0000)?; // 2-byte placeholder offset
+        self.emit_word(placeholder_word())?; // 2-byte placeholder offset
 
         // Add unresolved reference for the jump target
         let reference = UnresolvedReference {
@@ -3284,6 +3492,104 @@ impl ZMachineCodeGen {
             "generate_jump: Added reference for jump to label {} at location 0x{:04x}",
             label,
             offset_address
+        );
+
+        Ok(())
+    }
+
+    /// Pre-calculate addresses for all instructions to enable accurate jump optimization
+    fn pre_calculate_addresses(
+        &mut self,
+        instructions: &[IrInstruction],
+    ) -> Result<(), CompilerError> {
+        let mut simulated_address = self.current_address;
+
+        log::debug!(
+            "Starting address pre-calculation from 0x{:04x} for {} instructions",
+            simulated_address,
+            instructions.len()
+        );
+
+        for instruction in instructions {
+            match instruction {
+                IrInstruction::Label { id } => {
+                    // Record label at current simulated address
+                    log::debug!(
+                        "Pre-calc: Recording label ID {} at address 0x{:04x}",
+                        *id,
+                        simulated_address
+                    );
+                    self.label_addresses.insert(*id, simulated_address);
+                    self.record_address(*id, simulated_address);
+                    // Labels don't consume bytes
+                }
+
+                IrInstruction::Jump { .. } => {
+                    // Jump instruction: 1 byte opcode + 2 bytes offset = 3 bytes
+                    simulated_address += 3;
+                }
+
+                IrInstruction::Branch { .. } => {
+                    // Conditional branches will be optimized or generate jumps
+                    // Worst case: assume 3 bytes for jump (will be optimized if possible)
+                    simulated_address += 3;
+                }
+
+                IrInstruction::Call { args, .. } => {
+                    // Call instruction varies by argument count
+                    // Base: 1 byte opcode + 1 byte operand types + 2 bytes function addr + 1 byte store var
+                    let estimated_size = 5 + (args.len() * 2); // 2 bytes per argument
+                    simulated_address += estimated_size;
+                }
+
+                IrInstruction::LoadImmediate { .. } => {
+                    // LoadImmediate typically doesn't generate code, but be conservative
+                    // simulated_address += 0; // No bytes generated
+                }
+
+                IrInstruction::Return { .. } => {
+                    // Return instruction: 1 byte opcode (+ operand if returning value)
+                    simulated_address += 3; // Conservative estimate
+                }
+
+                IrInstruction::BinaryOp { .. } => {
+                    // Binary operations: variable size depending on operation
+                    simulated_address += 5; // Conservative estimate
+                }
+
+                IrInstruction::UnaryOp { .. } => {
+                    // Unary operations: typically 3-5 bytes
+                    simulated_address += 4; // Conservative estimate
+                }
+
+                IrInstruction::GetProperty { .. } => {
+                    // Property access: get_prop instruction
+                    simulated_address += 6; // Conservative estimate
+                }
+
+                IrInstruction::SetProperty { .. } => {
+                    // Property assignment: put_prop instruction
+                    simulated_address += 7; // Conservative estimate
+                }
+
+                IrInstruction::LoadVar { .. } | IrInstruction::StoreVar { .. } => {
+                    // Variable operations: typically 3 bytes
+                    simulated_address += 3;
+                }
+
+                // Catch-all for remaining instruction types
+                _ => {
+                    // Conservative estimate for other instruction types
+                    simulated_address += 5; // Most Z-Machine instructions are 3-7 bytes
+                }
+            }
+        }
+
+        log::debug!(
+            "Address pre-calculation complete: 0x{:04x} -> 0x{:04x} ({} bytes estimated)",
+            self.current_address,
+            simulated_address,
+            simulated_address - self.current_address
         );
 
         Ok(())
@@ -3312,10 +3618,10 @@ impl ZMachineCodeGen {
 
         let init_routine_id = 8000u32; // Unique ID for init routine
         let layout = self.emit_instruction(
-            0xE0,                              // call (VAR:224) - the only call instruction in Version 3
-            &[Operand::LargeConstant(0x0000)], // Placeholder for init routine address
+            0xE0, // call (VAR:224) - the only call instruction in Version 3
+            &[Operand::LargeConstant(placeholder_word())], // Placeholder for init routine address
             Some(0), // Store return value on stack (even though we don't use it)
-            None,    // No branch
+            None, // No branch
         )?;
 
         // Add unresolved reference for init routine call using layout-tracked operand location
@@ -3337,13 +3643,13 @@ impl ZMachineCodeGen {
             ZMachineVersion::V3 => {
                 // v3: functions must be at even addresses
                 if self.current_address % 2 != 0 {
-                    self.emit_byte(0x00)?; // Pad with zero byte for alignment
+                    self.emit_byte(0xB0)?; // Pad with rtrue (harmless no-op) instead of 0x00 for alignment
                 }
             }
             ZMachineVersion::V4 | ZMachineVersion::V5 => {
                 // v4/v5: functions must be at 4-byte boundaries
                 while self.current_address % 4 != 0 {
-                    self.emit_byte(0x00)?; // Pad with zero bytes for alignment
+                    self.emit_byte(0xB0)?; // Pad with rtrue (harmless no-op) instead of 0x00 for alignment
                 }
             }
         }
@@ -3358,6 +3664,10 @@ impl ZMachineCodeGen {
 
         // Generate routine header (0 locals for init)
         self.emit_byte(0x00)?; // Routine header: 0 locals
+
+        // Pre-calculate addresses for init block instructions
+        log::debug!("Pre-calculating addresses for init block");
+        self.pre_calculate_addresses(&init_block.instructions)?;
 
         // Generate the actual init block code
         for instruction in &init_block.instructions {
@@ -3380,8 +3690,8 @@ impl ZMachineCodeGen {
                 );
                 let main_loop_id = 9000u32; // Same ID as used in generate_program_flow
                 let layout = self.emit_instruction(
-                    0xE0,                              // call (VAR:224) - the only call instruction in Version 3
-                    &[Operand::LargeConstant(0x0000)], // Placeholder for main routine address
+                    0xE0, // call (VAR:224) - the only call instruction in Version 3
+                    &[Operand::LargeConstant(placeholder_word())], // Placeholder for main routine address
                     Some(0), // Store return value on stack (even though we don't use it)
                     None,    // No branch
                 )?;
@@ -3473,6 +3783,73 @@ impl ZMachineCodeGen {
         self.reference_context.unresolved_refs.clear();
         log::debug!("resolve_addresses: Address resolution complete");
 
+        // CRITICAL VALIDATION: Scan for any remaining 0x0000 placeholders that weren't resolved
+        self.validate_no_unresolved_placeholders()?;
+
+        Ok(())
+    }
+
+    /// Validate that no unresolved 0xFFFF placeholders remain in the instruction stream
+    fn validate_no_unresolved_placeholders(&self) -> Result<(), CompilerError> {
+        let mut unresolved_count = 0;
+        let mut scan_addr = 0x0040; // Start after header
+
+        log::debug!(
+            "Scanning for unresolved placeholders from 0x{:04x} to 0x{:04x}",
+            scan_addr,
+            self.current_address
+        );
+
+        while scan_addr + 1 < self.current_address {
+            if self.story_data[scan_addr] == PLACEHOLDER_BYTE
+                && self.story_data[scan_addr + 1] == PLACEHOLDER_BYTE
+            {
+                // Found potential unresolved placeholder
+                log::error!(
+                    "UNRESOLVED PLACEHOLDER: Found 0xFFFF at address 0x{:04x}-0x{:04x}",
+                    scan_addr,
+                    scan_addr + 1
+                );
+
+                // Try to provide context about what instruction this might be in
+                let context_start = scan_addr.saturating_sub(5);
+                let context_end = (scan_addr + 10).min(self.current_address);
+                let context_bytes: Vec<String> = self.story_data[context_start..context_end]
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &b)| {
+                        let addr = context_start + i;
+                        if addr == scan_addr || addr == scan_addr + 1 {
+                            format!("[{:02x}]", b) // Mark the placeholder bytes
+                        } else {
+                            format!("{:02x}", b)
+                        }
+                    })
+                    .collect();
+
+                log::error!(
+                    "CONTEXT: 0x{:04x}: {}",
+                    context_start,
+                    context_bytes.join(" ")
+                );
+
+                unresolved_count += 1;
+
+                // Skip ahead to avoid counting overlapping placeholders
+                scan_addr += 2;
+            } else {
+                scan_addr += 1;
+            }
+        }
+
+        if unresolved_count > 0 {
+            return Err(CompilerError::CodeGenError(format!(
+                "Found {} unresolved placeholder(s) in generated bytecode - this will cause runtime errors",
+                unresolved_count
+            )));
+        }
+
+        log::debug!("Validation complete: No unresolved placeholders found");
         Ok(())
     }
 
@@ -3503,10 +3880,29 @@ impl ZMachineCodeGen {
         };
 
         log::debug!(
-            "resolve_single_reference: IR ID {} -> address 0x{:04x}",
+            "resolve_single_reference: IR ID {} -> address 0x{:04x}, patching at location 0x{:04x}",
             reference.target_id,
-            target_address
+            target_address,
+            reference.location
         );
+
+        // DIAGNOSTIC: Check if the patch location contains placeholder bytes
+        if reference.location + 1 < self.story_data.len() {
+            let current_bytes = (self.story_data[reference.location] as u16) << 8
+                | (self.story_data[reference.location + 1] as u16);
+            if current_bytes == placeholder_word() {
+                log::debug!(
+                    "PATCH DIAGNOSTIC: Location 0x{:04x} contains placeholder 0xFFFF - will be resolved",
+                    reference.location
+                );
+            } else {
+                log::warn!(
+                    "PATCH DIAGNOSTIC: Location 0x{:04x} contains non-placeholder bytes 0x{:04x} - potential double-patch!",
+                    reference.location,
+                    current_bytes
+                );
+            }
+        }
 
         match reference.reference_type {
             ReferenceType::Jump => {
@@ -3695,14 +4091,23 @@ impl ZMachineCodeGen {
         // CRITICAL FIX: Handle zero-offset jumps (jumps to next instruction)
         // This should not happen with our new architecture, but keep as safety net
         if offset == 0 {
-            log::error!(
-                "UNEXPECTED: Zero-offset jump detected at 0x{:04x} - this should have been prevented by is_next_instruction() check!",
+            log::warn!(
+                "Zero-offset jump detected at 0x{:04x} - replacing with no-op for safety",
                 instruction_start
             );
-            log::error!("This indicates a bug in the control flow optimization logic");
-            
-            // As emergency fallback, just skip the instruction entirely by returning success
-            // The jump target is the next instruction anyway, so execution will continue correctly
+
+            // Replace the entire jump instruction with a no-op by converting to "ret 1"
+            // This is a harmless 3-byte instruction that doesn't affect execution flow
+            // since it's unreachable (previous instruction falls through)
+            self.story_data[instruction_start] = 0xB1; // ret 1 (0OP instruction)
+            self.story_data[instruction_start + 1] = 0x00; // padding
+            self.story_data[instruction_start + 2] = 0x00; // padding
+
+            log::debug!(
+                "Replaced zero-offset jump at 0x{:04x} with no-op (ret 1)",
+                instruction_start
+            );
+
             return Ok(());
         }
 
@@ -3982,10 +4387,10 @@ impl ZMachineCodeGen {
             // Generate print_paddr instruction with unresolved string reference
             // Note: The unresolved reference will be added by the operand emission system
             let layout = self.emit_instruction(
-                0x0D,                              // print_paddr opcode
-                &[Operand::LargeConstant(0x0000)], // Placeholder string address
-                None,                              // No store
-                None,                              // No branch
+                0x0D,                                          // print_paddr opcode
+                &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
+                None,                                          // No store
+                None,                                          // No branch
             )?;
 
             // Add unresolved reference for the string address using layout-tracked operand location
@@ -4037,10 +4442,10 @@ impl ZMachineCodeGen {
                     let string_id = self.find_or_create_string_id(&placeholder_string)?;
 
                     let layout = self.emit_instruction(
-                        0x0D,                              // print_paddr opcode
-                        &[Operand::LargeConstant(0x0000)], // Placeholder address
-                        None,                              // No store
-                        None,                              // No branch
+                        0x0D,                                          // print_paddr opcode
+                        &[Operand::LargeConstant(placeholder_word())], // Placeholder address
+                        None,                                          // No store
+                        None,                                          // No branch
                     )?;
 
                     let operand_address = layout
@@ -4157,7 +4562,7 @@ impl ZMachineCodeGen {
                 // Register this string value so it can be found by print calls
                 self.ir_id_to_string.insert(string_id, debug_string);
                 self.add_unresolved_reference(ReferenceType::StringRef, string_id, true)?;
-                self.emit_word(0x0000)?; // Placeholder address
+                self.emit_word(placeholder_word())?; // Placeholder address
 
                 Ok(())
             }
@@ -4403,7 +4808,7 @@ impl ZMachineCodeGen {
         self.ir_id_to_string
             .insert(string_id, debug_msg.to_string());
         self.add_unresolved_reference(ReferenceType::StringRef, string_id, true)?;
-        self.emit_word(0x0000)?; // Placeholder for string address
+        self.emit_word(placeholder_word())?; // Placeholder for string address
 
         // Get next sibling
         self.emit_byte(0x81)?; // get_sibling opcode (1OP:129)
@@ -4450,7 +4855,7 @@ impl ZMachineCodeGen {
         self.ir_id_to_string
             .insert(string_id, debug_msg.to_string());
         self.add_unresolved_reference(ReferenceType::StringRef, string_id, true)?;
-        self.emit_word(0x0000)?; // Placeholder for string address
+        self.emit_word(placeholder_word())?; // Placeholder for string address
 
         // Get next sibling
         self.emit_byte(0x81)?; // get_sibling opcode
@@ -4858,7 +5263,7 @@ impl ZMachineCodeGen {
     /// # Example
     ///
     /// ```ignore
-    /// let layout = self.emit_instruction(0x8D, &[Operand::LargeConstant(0x0000)], None, None)?;
+    /// let layout = self.emit_instruction(0x8D, &[Operand::LargeConstant(placeholder_word())], None, None)?;
     /// // Use layout.operand_location for reference patching instead of current_address - 2
     /// ```
     pub fn emit_instruction(
@@ -5042,13 +5447,32 @@ impl ZMachineCodeGen {
         operands: &[Operand],
         opcode: u8,
     ) -> InstructionForm {
-        // Special cases: certain opcodes are always VAR form regardless of operand count
-        match opcode {
-            0x03 => InstructionForm::Variable, // put_prop is always VAR
-            0x04 => InstructionForm::Variable, // sread is always VAR
-            0x07 => InstructionForm::Variable, // random is always VAR
-            0x20 => InstructionForm::Variable, // call_1n is always VAR
-            0xE0 => InstructionForm::Variable, // call (VAR:224) is always VAR
+        // Handle opcodes based on operand count AND context
+        match (opcode, operands.len()) {
+            // Opcode 0x03: Context-dependent!
+            // - 2 operands: jg (jump if greater) - 2OP form
+            // - 3 operands: put_prop - VAR form
+            (0x03, 2) => {
+                // jg (jump if greater) - prefer Long form for 2OP
+                let can_use_long_form = operands.iter().all(|op| match op {
+                    Operand::LargeConstant(value) => *value <= 255,
+                    _ => true,
+                });
+                if opcode < 0x80 && can_use_long_form {
+                    InstructionForm::Long
+                } else {
+                    InstructionForm::Variable
+                }
+            }
+            (0x03, 3) => InstructionForm::Variable, // put_prop is always VAR
+
+            // Always VAR form opcodes (regardless of operand count)
+            (0x04, _) => InstructionForm::Variable, // sread is always VAR
+            (0x07, _) => InstructionForm::Variable, // random is always VAR
+            (0x20, _) => InstructionForm::Variable, // call_1n is always VAR
+            (0xE0, _) => InstructionForm::Variable, // call (VAR:224) is always VAR
+
+            // Default operand-count based logic
             _ => match operands.len() {
                 0 => InstructionForm::Short, // 0OP
                 1 => InstructionForm::Short, // 1OP
