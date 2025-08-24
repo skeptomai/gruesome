@@ -840,8 +840,15 @@ impl VM {
     /// Insert object as first child of destination
     pub fn insert_object(&mut self, obj_num: u16, dest_num: u16) -> Result<(), String> {
         if obj_num == 0 {
-            log::debug!("❌ insert_object called with object 0 at PC {:05x}", self.pc);
-            log::debug!("   dest_num: {}, stack depth: {}", dest_num, self.stack.len());
+            log::debug!(
+                "❌ insert_object called with object 0 at PC {:05x}",
+                self.pc
+            );
+            log::debug!(
+                "   dest_num: {}, stack depth: {}",
+                dest_num,
+                self.stack.len()
+            );
             if !self.stack.is_empty() {
                 log::debug!("   top of stack: {:?}", self.stack.last());
             }

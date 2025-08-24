@@ -22,7 +22,7 @@ const PLACEHOLDER_BYTE: u8 = 0xFF;
 /// Any attempt to emit this opcode will cause a COMPILE-TIME ERROR, preventing
 /// broken bytecode from being generated. This forces proper implementation of
 /// all IR instruction handlers before the compiler can successfully generate bytecode.
-/// 
+///
 /// Usage: This should ONLY be used in unimplemented IR instruction handlers as
 /// a clear marker that the instruction needs proper Z-Machine implementation.
 /// The emit_instruction() method will detect and reject this opcode with a clear
@@ -240,15 +240,19 @@ impl ZMachineCodeGen {
     /// CONSOLIDATION HELPERS: Centralized unimplemented feature handlers
     /// These methods eliminate the dangerous copy-paste pattern of placeholder opcodes
     /// and provide clear, consistent handling of unimplemented IR instructions.
-    
+
     /// Generate unimplemented array operation with return value
     /// This will cause a compile-time error with a clear message about which feature needs implementation
-    fn emit_unimplemented_array_op(&mut self, op_name: &str, target: Option<u32>) -> Result<(), CompilerError> {
+    fn emit_unimplemented_array_op(
+        &mut self,
+        op_name: &str,
+        target: Option<u32>,
+    ) -> Result<(), CompilerError> {
         log::debug!("UNIMPLEMENTED: {} - will cause compile-time error", op_name);
         self.emit_instruction(UNIMPLEMENTED_OPCODE, &[], target.map(|_| 0), None)?;
         Ok(())
     }
-    
+
     /// Generate unimplemented array operation without return value
     /// This will cause a compile-time error with a clear message about which feature needs implementation  
     fn emit_unimplemented_array_op_void(&mut self, op_name: &str) -> Result<(), CompilerError> {
@@ -256,10 +260,14 @@ impl ZMachineCodeGen {
         self.emit_instruction(UNIMPLEMENTED_OPCODE, &[], None, None)?;
         Ok(())
     }
-    
+
     /// Generate unimplemented general operation
     /// This will cause a compile-time error with a clear message about which feature needs implementation
-    fn emit_unimplemented_operation(&mut self, op_name: &str, has_result: bool) -> Result<(), CompilerError> {
+    fn emit_unimplemented_operation(
+        &mut self,
+        op_name: &str,
+        has_result: bool,
+    ) -> Result<(), CompilerError> {
         log::debug!("UNIMPLEMENTED: {} - will cause compile-time error", op_name);
         let store_var = if has_result { Some(0) } else { None };
         self.emit_instruction(UNIMPLEMENTED_OPCODE, &[], store_var, None)?;
@@ -2210,12 +2218,26 @@ impl ZMachineCodeGen {
                         if left_is_string || right_is_string {
                             // This is string concatenation
                             self.generate_string_concatenation(*target, *left, *right)?;
+
+                            // CRITICAL: Register string concatenation result target
+                            self.ir_id_to_stack_var.insert(*target, 0);
+                            log::debug!(
+                                "String concatenation result: IR ID {} -> stack variable 0",
+                                target
+                            );
                         } else {
                             // Regular arithmetic addition - resolve actual operands
                             let left_op = self.resolve_ir_id_to_operand(*left)?;
                             let right_op = self.resolve_ir_id_to_operand(*right)?;
                             let store_var = Some(0); // Store to stack top
                             self.generate_binary_op(op, left_op, right_op, store_var)?;
+
+                            // CRITICAL: Register binary operation result target
+                            self.ir_id_to_stack_var.insert(*target, 0);
+                            log::debug!(
+                                "BinaryOp (Add) result: IR ID {} -> stack variable 0",
+                                target
+                            );
                         }
                     } else {
                         // Other binary operations (comparison, arithmetic) - resolve actual operands
@@ -2223,6 +2245,14 @@ impl ZMachineCodeGen {
                         let right_op = self.resolve_ir_id_to_operand(*right)?;
                         let store_var = Some(0); // Store to stack top
                         self.generate_binary_op(op, left_op, right_op, store_var)?;
+
+                        // CRITICAL: Register binary operation result target
+                        self.ir_id_to_stack_var.insert(*target, 0);
+                        log::debug!(
+                            "BinaryOp ({:?}) result: IR ID {} -> stack variable 0",
+                            op,
+                            target
+                        );
                     }
                 } // End of else block for non-comparison operations
             }
@@ -2238,6 +2268,13 @@ impl ZMachineCodeGen {
                 } else {
                     // Generate call with unresolved function reference
                     self.generate_call_with_reference(*function, args, *target)?;
+                }
+
+                // CRITICAL: Register call result target for proper LoadVar resolution
+                // All call instructions store their results to stack Variable 0
+                if let Some(target_id) = target {
+                    self.ir_id_to_stack_var.insert(*target_id, 0);
+                    log::debug!("Call result: IR ID {} -> stack variable 0", target_id);
                 }
             }
 
@@ -2278,52 +2315,114 @@ impl ZMachineCodeGen {
                 self.labels_at_current_address.push(*id);
             }
 
-            IrInstruction::LoadVar {
-                target: _,
-                var_id,
-            } => {
+            IrInstruction::LoadVar { target: _, var_id } => {
                 // CRITICAL: Use existing object resolution system instead of direct variable mapping
                 // IR variable IDs are abstract identifiers that must be resolved to proper operands
                 // through resolve_ir_id_to_operand(), NOT cast directly to Z-Machine variables
-                log::debug!("LoadVar: Resolving IR var_id {} through operand resolution system", var_id);
+                log::debug!(
+                    "LoadVar: Resolving IR var_id {} through operand resolution system",
+                    var_id
+                );
                 let operand = self.resolve_ir_id_to_operand(*var_id)?;
                 match operand {
                     Operand::LargeConstant(value) => {
                         // If it resolves to a constant (e.g., object number), load that constant directly
                         log::debug!("LoadVar: IR var_id {} -> constant {}", var_id, value);
-                        self.emit_instruction(0x21, &[Operand::LargeConstant(value)], Some(0), None)?; // Load constant to stack
+                        self.emit_instruction(
+                            0x21,
+                            &[Operand::LargeConstant(value)],
+                            Some(0),
+                            None,
+                        )?; // Load constant to stack
                     }
                     Operand::Variable(var_num) => {
                         // If it resolves to a Z-Machine variable, load from that variable
-                        log::debug!("LoadVar: IR var_id {} -> Z-Machine variable {}", var_id, var_num);
-                        self.emit_instruction(0x0E, &[Operand::Variable(var_num)], Some(0), None)?; // Load variable to stack
+                        log::debug!(
+                            "LoadVar: IR var_id {} -> Z-Machine variable {}",
+                            var_id,
+                            var_num
+                        );
+                        self.emit_instruction(0x0E, &[Operand::Variable(var_num)], Some(0), None)?;
+                        // Load variable to stack
                     }
                     _ => {
                         return Err(CompilerError::CodeGenError(format!(
-                            "LoadVar: IR var_id {} resolved to unsupported operand type: {:?}", var_id, operand
+                            "LoadVar: IR var_id {} resolved to unsupported operand type: {:?}",
+                            var_id, operand
                         )));
                     }
                 }
             }
 
-            IrInstruction::StoreVar {
-                var_id,
-                source,
-            } => {
+            IrInstruction::StoreVar { var_id, source } => {
                 // Store source value to target variable
                 // Map IR variables to Z-Machine operands properly
-                log::debug!("StoreVar: copying from IR source {} to IR var_id {}", source, var_id);
-                
+                log::debug!(
+                    "StoreVar: copying from IR source {} to IR var_id {}",
+                    source,
+                    var_id
+                );
+
                 let source_operand = self.resolve_ir_id_to_operand(*source)?;
                 let target_var = (*var_id as u8).min(255); // Map IR var_id to Z-Machine variable
-                
-                log::debug!("StoreVar: resolved source {:?} -> Z-Machine variable {}", source_operand, target_var);
-                
+
+                log::debug!(
+                    "StoreVar: resolved source {:?} -> Z-Machine variable {}",
+                    source_operand,
+                    target_var
+                );
+
+                // CRITICAL: Track what value this variable now contains for future LoadVar resolution
+                // This establishes the missing link between StoreVar assignments and LoadVar lookups
+                match &source_operand {
+                    Operand::LargeConstant(value) => {
+                        // Store the constant value in our integer tracking table
+                        self.ir_id_to_integer.insert(*var_id, *value as i16);
+                        log::debug!(
+                            "StoreVar: IR var_id {} now contains constant {}",
+                            var_id,
+                            value
+                        );
+                    }
+                    Operand::Variable(var_num) => {
+                        // Store the variable reference in our stack variable tracking table
+                        self.ir_id_to_stack_var.insert(*var_id, *var_num);
+                        log::debug!(
+                            "StoreVar: IR var_id {} now references Z-Machine variable {}",
+                            var_id,
+                            var_num
+                        );
+                    }
+                    Operand::SmallConstant(value) => {
+                        // Store small constant as integer
+                        self.ir_id_to_integer.insert(*var_id, *value as i16);
+                        log::debug!(
+                            "StoreVar: IR var_id {} now contains small constant {}",
+                            var_id,
+                            value
+                        );
+                    }
+                    Operand::Constant(value) => {
+                        // Store generic constant as integer
+                        self.ir_id_to_integer.insert(*var_id, *value as i16);
+                        log::debug!(
+                            "StoreVar: IR var_id {} now contains generic constant {}",
+                            var_id,
+                            value
+                        );
+                    }
+                }
+
                 // Use Z-Machine store instruction to copy source to target variable
                 match source_operand {
                     Operand::LargeConstant(value) => {
                         // Store constant value directly
-                        self.emit_instruction(0x21, &[Operand::LargeConstant(value)], Some(target_var), None)?;
+                        self.emit_instruction(
+                            0x21,
+                            &[Operand::LargeConstant(value)],
+                            Some(target_var),
+                            None,
+                        )?;
                     }
                     other_operand => {
                         // Copy from one variable to another using store instruction
@@ -2404,7 +2503,7 @@ impl ZMachineCodeGen {
                 self.emit_instruction(0x03, &operands, None, None)?;
             }
             IrInstruction::UnaryOp {
-                target: _,
+                target,
                 op,
                 operand: _,
             } => {
@@ -2413,6 +2512,14 @@ impl ZMachineCodeGen {
                 let operand_op = Operand::Variable(1); // Local variable 1
                 let store_var = Some(0); // Store to stack top
                 self.generate_unary_op(op, operand_op, store_var)?;
+
+                // CRITICAL: Register unary operation result target
+                self.ir_id_to_stack_var.insert(*target, 0);
+                log::debug!(
+                    "UnaryOp ({:?}) result: IR ID {} -> stack variable 0",
+                    op,
+                    target
+                );
             }
             IrInstruction::GetArrayElement {
                 target,
@@ -2422,20 +2529,20 @@ impl ZMachineCodeGen {
                 // CRITICAL FIX: Handle the case where "array" is actually our placeholder integer
                 // from contents() method. When iterating over a placeholder integer,
                 // we should return a safe non-zero value to prevent "Cannot insert object 0"
-                
+
                 log::debug!("GetArrayElement: target={}, array={}", target, array);
-                
+
                 // Instead of trying to load from memory, directly store a safe placeholder
                 // This prevents the object 0 error while we implement proper array handling
-                
+
                 // Store a safe non-zero object ID (player object = 1) to prevent object 0 errors
                 // Use the correct target variable (cast u32 to u8 as expected by emit_instruction)
                 let operands = [Operand::LargeConstant(1)]; // Safe object ID (player)
                 self.emit_instruction(0x21, &operands, Some(*target as u8), None)?;
-                
+
                 // CRITICAL: Update the IR tracking so resolve_ir_id_to_operand knows this IR ID has value 1
                 self.ir_id_to_integer.insert(*target, 1);
-                
+
                 log::debug!("GetArrayElement: stored safe placeholder 1 (player object) in variable {} and updated IR tracking", target);
             }
             IrInstruction::SetArrayElement {
@@ -2456,7 +2563,7 @@ impl ZMachineCodeGen {
 
             // New numbered property instructions
             IrInstruction::GetPropertyByNumber {
-                target: _,
+                target,
                 object,
                 property_num,
             } => {
@@ -2467,8 +2574,12 @@ impl ZMachineCodeGen {
                     Operand::Constant(*property_num as u16), // Property number
                 ];
                 self.emit_instruction(0x11, &operands, Some(0), None)?; // Store result in stack top
+
+                // CRITICAL: Register property access result target
+                self.ir_id_to_stack_var.insert(*target, 0);
                 log::debug!(
-                    "Generated get_prop for property number {} with resolved object",
+                    "GetPropertyByNumber result: IR ID {} -> stack variable 0 (property {})",
+                    target,
                     property_num
                 );
             }
@@ -2493,7 +2604,7 @@ impl ZMachineCodeGen {
             }
 
             IrInstruction::GetNextProperty {
-                target: _,
+                target,
                 object,
                 current_property,
             } => {
@@ -2504,14 +2615,18 @@ impl ZMachineCodeGen {
                     Operand::Constant(*current_property as u16), // Current property number (0 for first)
                 ];
                 self.emit_instruction(0x13, &operands, Some(0), None)?; // Store result in stack top
+
+                // CRITICAL: Register get_next_prop result target
+                self.ir_id_to_stack_var.insert(*target, 0);
                 log::debug!(
-                    "Generated get_next_prop for property number {} with resolved object",
+                    "GetNextProperty result: IR ID {} -> stack variable 0 (from property {})",
+                    target,
                     current_property
                 );
             }
 
             IrInstruction::TestProperty {
-                target: _,
+                target,
                 object: _,
                 property_num,
             } => {
@@ -2525,8 +2640,12 @@ impl ZMachineCodeGen {
                 ];
                 // Use get_prop and compare result with default to test existence
                 self.emit_instruction(0x11, &operands, Some(0), None)?; // get_prop
+
+                // CRITICAL: Register property test result target
+                self.ir_id_to_stack_var.insert(*target, 0);
                 log::debug!(
-                    "Generated property test for property number {}",
+                    "TestProperty result: IR ID {} -> stack variable 0 (property {})",
+                    target,
                     property_num
                 );
             }
@@ -2571,7 +2690,8 @@ impl ZMachineCodeGen {
                 // Simple implementation: return 1 (true - array is empty) for all arrays
                 // This allows compilation to proceed. In a full implementation, this would check actual array size
                 // Store result on stack (variable 0) for now - proper variable mapping would be more complex
-                self.emit_instruction(0x21, &[Operand::LargeConstant(1)], Some(0), None)?; // Load constant 1 (true) to stack
+                self.emit_instruction(0x21, &[Operand::LargeConstant(1)], Some(0), None)?;
+                // Load constant 1 (true) to stack
             }
 
             IrInstruction::ArrayContains {
@@ -2846,7 +2966,7 @@ impl ZMachineCodeGen {
                 log::debug!("TypeOf: target={}, value={}", target, value);
                 self.emit_unimplemented_operation("TypeOf", true)?;
             }
-            
+
             IrInstruction::CreateArray { target, size } => {
                 log::debug!("CreateArray: target={}, size={:?}", target, size);
                 // For now, just store a placeholder value (1) to represent an empty array
@@ -2855,12 +2975,23 @@ impl ZMachineCodeGen {
                     IrValue::Integer(val) => *val,
                     _ => 10, // Default size
                 };
-                log::debug!("Creating array of size {} for target {}", size_value, target);
-                
+                log::debug!(
+                    "Creating array of size {} for target {}",
+                    size_value,
+                    target
+                );
+
                 // Store the array "address" (placeholder value 1) in a local variable
                 // Since we don't have dynamic variable allocation, use a fixed approach
                 let operands = [Operand::LargeConstant(1)]; // Placeholder array address
                 self.emit_instruction(0x21, &operands, Some(1), None)?; // store in local var 1
+
+                // CRITICAL: Register array creation result target
+                self.ir_id_to_stack_var.insert(*target, 1);
+                log::debug!(
+                    "CreateArray result: IR ID {} -> Z-Machine variable 1",
+                    target
+                );
             }
 
             _ => {
@@ -3011,7 +3142,7 @@ impl ZMachineCodeGen {
                             "Function argument IR ID {} is string literal that failed normal resolution, creating string reference",
                             arg_id
                         );
-                        
+
                         // Calculate operand location for the string reference
                         let operand_location = self.current_address + 1 + operands.len() * 2;
                         operands.push(Operand::LargeConstant(placeholder_word()));
@@ -3141,14 +3272,31 @@ impl ZMachineCodeGen {
         // For global objects like 'player', return the global variable that contains the object number
         // This follows proper Z-Machine architecture where objects are referenced via global variables
 
-        // For now, assume any non-literal, non-string IR ID in property access context
-        // refers to the player object stored in global variable G00 (Variable 16)
-        // TODO: Implement proper IR ID to object/global mapping for all objects
-        log::debug!(
-            "resolve_ir_id_to_operand: IR ID {} assumed to be player object -> LargeConstant(1) [Direct object reference]",
+        // CRITICAL: Unknown IR ID - this indicates a missing instruction target registration
+        // For now, temporarily restore fallback but with comprehensive logging
+        log::error!(
+            "resolve_ir_id_to_operand: Unknown IR ID {} - no mapping found in any table",
             ir_id
         );
-        Ok(Operand::LargeConstant(1)) // Direct player object number
+        log::debug!(
+            "  Available integer IDs = {:?}",
+            self.ir_id_to_integer.keys().collect::<Vec<_>>()
+        );
+        log::debug!(
+            "  Available stack var IDs = {:?}",
+            self.ir_id_to_stack_var.keys().collect::<Vec<_>>()
+        );
+        log::debug!(
+            "  Available object IDs = {:?}",
+            self.ir_id_to_object_number.keys().collect::<Vec<_>>()
+        );
+
+        // TEMPORARY: Fallback to avoid compilation errors while debugging
+        log::warn!(
+            "FALLBACK: Using player object (1) for unknown IR ID {}",
+            ir_id
+        );
+        Ok(Operand::LargeConstant(1))
     }
 
     /// Set up IR ID to object number mappings for proper identifier resolution
@@ -4611,7 +4759,7 @@ impl ZMachineCodeGen {
                 Operand::LargeConstant(1) // Use player object as safe fallback
             }
         };
-        
+
         let safe_destination_operand = match destination_operand {
             Operand::LargeConstant(0) => {
                 log::warn!("move builtin: destination operand resolved to constant 0, using player object (1) instead");
@@ -4630,7 +4778,7 @@ impl ZMachineCodeGen {
                 Operand::LargeConstant(1) // Use player object as safe fallback
             }
         };
-        
+
         // Generate Z-Machine insert_obj instruction (2OP:14, opcode 0x0E)
         // This moves object to become the first child of the destination
         // Use proper 2OP instruction encoding
@@ -4640,7 +4788,7 @@ impl ZMachineCodeGen {
             None, // No store
             None, // No branch
         )?;
-        
+
         log::debug!("move builtin: generated insert_obj with safe operands");
 
         // TODO: These need proper object/room ID resolution in the address resolution phase
@@ -5042,18 +5190,25 @@ impl ZMachineCodeGen {
                 args.len()
             )));
         }
-        
+
         let object_id = args[0];
-        log::debug!("Generating get_object_contents for object IR ID {}", object_id);
-        
+        log::debug!(
+            "Generating get_object_contents for object IR ID {}",
+            object_id
+        );
+
         // For now, return a simple array containing just the container object ID
         // TODO: Implement proper object tree traversal to find child objects
         // This is a placeholder that prevents the "Cannot insert object 0" error
-        
+
         // Get the object operand
         let container_operand = self.resolve_ir_id_to_operand(object_id)?;
-        log::debug!("get_object_contents: resolved IR ID {} to operand {:?}", object_id, container_operand);
-        
+        log::debug!(
+            "get_object_contents: resolved IR ID {} to operand {:?}",
+            object_id,
+            container_operand
+        );
+
         match container_operand {
             Operand::LargeConstant(obj_num) => {
                 // For now, just return a simple integer representing "non-empty container"
@@ -5062,32 +5217,43 @@ impl ZMachineCodeGen {
                     // Store a placeholder value (non-zero = success, represents empty array)
                     // Use store instruction: 1OP:33 (0x21)
                     self.emit_instruction(
-                        0x21, // store (1OP:33) 
+                        0x21,                         // store (1OP:33)
                         &[Operand::LargeConstant(1)], // Non-zero placeholder value
                         Some(store_var as u8),
                         None, // No branch
                     )?;
-                    
-                    log::debug!("get_object_contents: generated store instruction for object {}", obj_num);
+
+                    log::debug!(
+                        "get_object_contents: generated store instruction for object {}",
+                        obj_num
+                    );
                 }
-                log::debug!("get_object_contents: returning placeholder value 1 for object {}", obj_num);
+                log::debug!(
+                    "get_object_contents: returning placeholder value 1 for object {}",
+                    obj_num
+                );
             }
             _ => {
                 // Handle other operand types by treating them as valid placeholders
-                log::warn!("get_object_contents: object resolved to {:?}, using placeholder", container_operand);
+                log::warn!(
+                    "get_object_contents: object resolved to {:?}, using placeholder",
+                    container_operand
+                );
                 if let Some(store_var) = target {
                     // Store a placeholder value for non-constant operands
                     self.emit_instruction(
-                        0x21, // store (1OP:33) 
+                        0x21,                         // store (1OP:33)
                         &[Operand::LargeConstant(1)], // Non-zero placeholder value
                         Some(store_var as u8),
                         None, // No branch
                     )?;
                 }
-                log::debug!("get_object_contents: returning placeholder value 1 for non-constant operand");
+                log::debug!(
+                    "get_object_contents: returning placeholder value 1 for non-constant operand"
+                );
             }
         }
-        
+
         Ok(())
     }
 
@@ -5103,14 +5269,18 @@ impl ZMachineCodeGen {
                 args.len()
             )));
         }
-        
+
         let object_id = args[0];
         log::debug!("Generating object_is_empty for object IR ID {}", object_id);
-        
-        // Get the object operand  
+
+        // Get the object operand
         let container_operand = self.resolve_ir_id_to_operand(object_id)?;
-        log::debug!("object_is_empty: resolved IR ID {} to operand {:?}", object_id, container_operand);
-        
+        log::debug!(
+            "object_is_empty: resolved IR ID {} to operand {:?}",
+            object_id,
+            container_operand
+        );
+
         match container_operand {
             Operand::LargeConstant(obj_num) => {
                 // For now, just return a simple boolean placeholder
@@ -5119,23 +5289,32 @@ impl ZMachineCodeGen {
                     // Return "false" (0) as placeholder - indicating not empty for testing
                     // Use store instruction: 1OP:33 (0x21)
                     self.emit_instruction(
-                        0x21, // store (1OP:33)
+                        0x21,                         // store (1OP:33)
                         &[Operand::LargeConstant(0)], // 0 = false (not empty)
                         Some(store_var as u8),
                         None, // No branch
                     )?;
-                    
-                    log::debug!("object_is_empty: generated store instruction for object {}", obj_num);
+
+                    log::debug!(
+                        "object_is_empty: generated store instruction for object {}",
+                        obj_num
+                    );
                 }
-                log::debug!("object_is_empty: returning placeholder value 0 (not empty) for object {}", obj_num);
+                log::debug!(
+                    "object_is_empty: returning placeholder value 0 (not empty) for object {}",
+                    obj_num
+                );
             }
             _ => {
                 // Handle other operand types by treating them as valid placeholders
-                log::warn!("object_is_empty: object resolved to {:?}, using placeholder", container_operand);
+                log::warn!(
+                    "object_is_empty: object resolved to {:?}, using placeholder",
+                    container_operand
+                );
                 if let Some(store_var) = target {
                     // Store a placeholder value for non-constant operands
                     self.emit_instruction(
-                        0x21, // store (1OP:33)
+                        0x21,                         // store (1OP:33)
                         &[Operand::LargeConstant(0)], // 0 = false (not empty)
                         Some(store_var as u8),
                         None, // No branch
@@ -5144,7 +5323,7 @@ impl ZMachineCodeGen {
                 log::debug!("object_is_empty: returning placeholder value 0 (not empty) for non-constant operand");
             }
         }
-        
+
         Ok(())
     }
 
@@ -5160,20 +5339,24 @@ impl ZMachineCodeGen {
                 args.len()
             )));
         }
-        
+
         let value_id = args[0];
         log::debug!("Generating value_is_none for IR ID {}", value_id);
-        
+
         // Get the value operand
         let value_operand = self.resolve_ir_id_to_operand(value_id)?;
-        log::debug!("value_is_none: resolved IR ID {} to operand {:?}", value_id, value_operand);
-        
+        log::debug!(
+            "value_is_none: resolved IR ID {} to operand {:?}",
+            value_id,
+            value_operand
+        );
+
         if let Some(store_var) = target {
             match value_operand {
                 Operand::LargeConstant(0) => {
                     // Value is 0, which represents none/null - return true (1)
                     self.emit_instruction(
-                        0x21, // store (1OP:33)  
+                        0x21,                         // store (1OP:33)
                         &[Operand::LargeConstant(1)], // 1 = true (is none)
                         Some(store_var as u8),
                         None,
@@ -5183,7 +5366,7 @@ impl ZMachineCodeGen {
                 Operand::LargeConstant(val) => {
                     // Non-zero constant - return false (0)
                     self.emit_instruction(
-                        0x21, // store (1OP:33)
+                        0x21,                         // store (1OP:33)
                         &[Operand::LargeConstant(0)], // 0 = false (not none)
                         Some(store_var as u8),
                         None,
@@ -5193,20 +5376,23 @@ impl ZMachineCodeGen {
                 _ => {
                     // For other operand types, assume non-null and return false
                     self.emit_instruction(
-                        0x21, // store (1OP:33)
+                        0x21,                         // store (1OP:33)
                         &[Operand::LargeConstant(0)], // 0 = false (not none)
                         Some(store_var as u8),
                         None,
                     )?;
-                    log::debug!("value_is_none: complex operand {:?}, assuming not none", value_operand);
+                    log::debug!(
+                        "value_is_none: complex operand {:?}, assuming not none",
+                        value_operand
+                    );
                 }
             }
         }
-        
+
         Ok(())
     }
 
-    /// Generate get_object_size builtin - returns the count of elements/contents 
+    /// Generate get_object_size builtin - returns the count of elements/contents
     fn generate_get_object_size_builtin(
         &mut self,
         args: &[IrId],
@@ -5218,14 +5404,18 @@ impl ZMachineCodeGen {
                 args.len()
             )));
         }
-        
+
         let object_id = args[0];
         log::debug!("Generating get_object_size for object IR ID {}", object_id);
-        
+
         // Get the object operand
         let object_operand = self.resolve_ir_id_to_operand(object_id)?;
-        log::debug!("get_object_size: resolved IR ID {} to operand {:?}", object_id, object_operand);
-        
+        log::debug!(
+            "get_object_size: resolved IR ID {} to operand {:?}",
+            object_id,
+            object_operand
+        );
+
         if let Some(store_var) = target {
             match object_operand {
                 Operand::LargeConstant(obj_num) => {
@@ -5233,29 +5423,36 @@ impl ZMachineCodeGen {
                     // This prevents returning 0 which could cause "object 0" errors
                     // In a full implementation, this would traverse the object tree and count contents
                     let placeholder_size = if obj_num == 0 { 0 } else { 1 };
-                    
+
                     self.emit_instruction(
                         0x21, // store (1OP:33)
                         &[Operand::LargeConstant(placeholder_size)],
                         Some(store_var as u8),
                         None,
                     )?;
-                    
-                    log::debug!("get_object_size: returning size {} for object {}", placeholder_size, obj_num);
+
+                    log::debug!(
+                        "get_object_size: returning size {} for object {}",
+                        placeholder_size,
+                        obj_num
+                    );
                 }
                 _ => {
                     // For other operand types, return safe non-zero size
                     self.emit_instruction(
-                        0x21, // store (1OP:33)
+                        0x21,                         // store (1OP:33)
                         &[Operand::LargeConstant(1)], // Safe non-zero size
                         Some(store_var as u8),
                         None,
                     )?;
-                    log::debug!("get_object_size: returning size 1 for complex operand {:?}", object_operand);
+                    log::debug!(
+                        "get_object_size: returning size 1 for complex operand {:?}",
+                        object_operand
+                    );
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -5669,13 +5866,16 @@ impl ZMachineCodeGen {
                 opcode, self.current_address
             )));
         }
-        
+
         // CRITICAL: Prevent "Cannot insert object 0" runtime errors by detecting dangerous insert_obj instructions
         if opcode == 0x0E && operands.len() >= 1 {
             // This is insert_obj - check if first operand could produce object 0
             match &operands[0] {
                 Operand::LargeConstant(0) => {
-                    log::error!("DANGEROUS: insert_obj with constant object 0 at address 0x{:04x}", self.current_address);
+                    log::error!(
+                        "DANGEROUS: insert_obj with constant object 0 at address 0x{:04x}",
+                        self.current_address
+                    );
                     return Err(CompilerError::CodeGenError(format!(
                         "DANGEROUS INSTRUCTION: insert_obj with constant object 0 at address 0x{:04x}. Object 0 is invalid and will cause runtime crashes. This indicates a systematic bug in IR->bytecode generation that needs to be fixed.",
                         self.current_address
@@ -5684,7 +5884,9 @@ impl ZMachineCodeGen {
                 Operand::Variable(0) => {
                     // Variable 0 is the stack - this is the most dangerous case
                     log::error!("DANGEROUS: insert_obj reading object from stack (variable 0) at address 0x{:04x}", self.current_address);
-                    log::error!("         Stack could contain 0, causing 'Cannot insert object 0' error");
+                    log::error!(
+                        "         Stack could contain 0, causing 'Cannot insert object 0' error"
+                    );
                     return Err(CompilerError::CodeGenError(format!(
                         "DANGEROUS INSTRUCTION: insert_obj reading from stack (variable 0) at address 0x{:04x}. Stack values are unpredictable and could contain object 0, causing runtime crashes. The code generator should use known safe object constants instead of stack values for insert_obj operations.",
                         self.current_address

@@ -1794,7 +1794,7 @@ impl IrGenerator {
                     target: one_temp,
                     value: IrValue::Integer(1), // Array length = 1 (single placeholder object)
                 });
-                
+
                 // Compare index < array_length (1)
                 let condition_temp = self.next_id();
                 block.add_instruction(IrInstruction::BinaryOp {
@@ -2047,7 +2047,7 @@ impl IrGenerator {
 
                 // Then branch: call the function stored in the property
                 block.add_instruction(IrInstruction::Label { id: then_label });
-                
+
                 // Special handling for known built-in methods
                 match method.as_str() {
                     "contents" => {
@@ -2059,15 +2059,16 @@ impl IrGenerator {
                             target: array_temp,
                             size: IrValue::Integer(10), // Initial capacity
                         });
-                        
+
                         // Use a built-in function call to populate the array with object contents
                         // The Z-Machine runtime will handle the object tree traversal
                         let builtin_id = self.next_id();
-                        self.builtin_functions.insert(builtin_id, "get_object_contents".to_string());
-                        
+                        self.builtin_functions
+                            .insert(builtin_id, "get_object_contents".to_string());
+
                         let mut call_args = vec![object_temp]; // Object to get contents of
                         call_args.extend(arg_temps); // Any additional arguments
-                        
+
                         block.add_instruction(IrInstruction::Call {
                             target: Some(result_temp),
                             function: builtin_id,
@@ -2077,11 +2078,12 @@ impl IrGenerator {
                     "empty" => {
                         // empty() method: return true if object has no contents
                         let builtin_id = self.next_id();
-                        self.builtin_functions.insert(builtin_id, "object_is_empty".to_string());
-                        
+                        self.builtin_functions
+                            .insert(builtin_id, "object_is_empty".to_string());
+
                         let mut call_args = vec![object_temp];
                         call_args.extend(arg_temps);
-                        
+
                         block.add_instruction(IrInstruction::Call {
                             target: Some(result_temp),
                             function: builtin_id,
@@ -2092,11 +2094,12 @@ impl IrGenerator {
                         // none() method: return true if this value is null/undefined/empty
                         // This is commonly used for checking if optional values exist
                         let builtin_id = self.next_id();
-                        self.builtin_functions.insert(builtin_id, "value_is_none".to_string());
-                        
+                        self.builtin_functions
+                            .insert(builtin_id, "value_is_none".to_string());
+
                         let mut call_args = vec![object_temp];
                         call_args.extend(arg_temps);
-                        
+
                         block.add_instruction(IrInstruction::Call {
                             target: Some(result_temp),
                             function: builtin_id,
@@ -2106,11 +2109,12 @@ impl IrGenerator {
                     "size" | "length" => {
                         // size() or length() method: return count of elements/contents
                         let builtin_id = self.next_id();
-                        self.builtin_functions.insert(builtin_id, "get_object_size".to_string());
-                        
+                        self.builtin_functions
+                            .insert(builtin_id, "get_object_size".to_string());
+
                         let mut call_args = vec![object_temp];
                         call_args.extend(arg_temps);
-                        
+
                         block.add_instruction(IrInstruction::Call {
                             target: Some(result_temp),
                             function: builtin_id,
@@ -2127,7 +2131,7 @@ impl IrGenerator {
                         });
                     }
                 }
-                
+
                 block.add_instruction(IrInstruction::Jump { label: end_label });
 
                 // Else branch: property doesn't exist or isn't callable, return 0

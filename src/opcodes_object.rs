@@ -186,9 +186,7 @@ impl Interpreter {
                 let current_pc = self.vm.pc - inst.size as u32;
                 debug!(
                     "insert_obj: obj={}, dest={} at PC {:05x}",
-                    operands[0],
-                    operands[1],
-                    current_pc
+                    operands[0], operands[1], current_pc
                 );
                 if operands[0] == 0 {
                     debug!("❌ insert_obj Z-Machine opcode called with object 0!");
