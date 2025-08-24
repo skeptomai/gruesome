@@ -183,12 +183,18 @@ impl Interpreter {
             // 2OP:0x0E - insert_obj
             (0x0E, crate::instruction::OperandCount::OP2) => {
                 // insert_obj
+                let current_pc = self.vm.pc - inst.size as u32;
                 debug!(
                     "insert_obj: obj={}, dest={} at PC {:05x}",
                     operands[0],
                     operands[1],
-                    self.vm.pc - inst.size as u32
+                    current_pc
                 );
+                if operands[0] == 0 {
+                    debug!("❌ insert_obj Z-Machine opcode called with object 0!");
+                    debug!("   operands: {:?}", operands);
+                    debug!("   instruction: {:?}", inst);
+                }
                 self.vm.insert_object(operands[0], operands[1])?;
                 Ok(ExecutionResult::Continue)
             }

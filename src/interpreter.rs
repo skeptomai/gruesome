@@ -515,6 +515,14 @@ impl Interpreter {
             // Track PC changes to catch jumps to invalid addresses like 13fe7
             let pc_before_exec = self.vm.pc;
 
+            // CRITICAL DEBUG: Trace instruction execution around the error point
+            if (0x00bf0..=0x00c10).contains(&old_pc) {
+                debug!("🔍 EXEC: PC {:05x} opcode {:02x} operands {:?}", old_pc, instruction.opcode, instruction.operands);
+                if instruction.opcode == 0x0E { // insert_obj
+                    debug!("🚨 About to execute insert_obj with operands {:?}", instruction.operands);
+                }
+            }
+            
             // Execute the instruction
             match self.execute_instruction(&instruction)? {
                 ExecutionResult::Continue => {
@@ -1157,6 +1165,10 @@ impl Interpreter {
                 let dest_num = op2;
 
                 debug!("insert_obj: obj={}, dest={}", obj_num, dest_num);
+                if obj_num == 0 {
+                    debug!("❌ insert_obj interpreter called with object 0!");
+                    debug!("   op1: {}, op2: {}", op1, op2);
+                }
 
                 self.vm.insert_object(obj_num, dest_num)?;
                 Ok(ExecutionResult::Continue)
