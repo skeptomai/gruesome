@@ -864,6 +864,12 @@ impl Interpreter {
                 // quit
                 Ok(ExecutionResult::Quit)
             }
+            0x0E => {
+                // extended opcode (0OP:190) - first byte of extended opcode
+                // This is used in Version 5+ for extended instruction set
+                // For now, we'll treat it as unimplemented until we need extended instructions
+                Err("Extended opcodes not implemented".to_string())
+            }
             0x0F => {
                 // piracy
                 // Copy protection check - interpreters should be "gullible and unconditionally branch"

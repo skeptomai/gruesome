@@ -255,6 +255,54 @@ The interpreter correctly handles calls to address 0x0000 according to the Z-Mac
 - Release automation working properly
 - Ready for new features or game compatibility work
 
+## Version-Aware Instruction Selection (Future Enhancement)
+
+**Priority**: Medium - Architecture improvement for proper multi-version support
+
+**Current Issue**: The compiler currently hard-codes Version 3 instructions for all Z-Machine versions. While this ensures broad compatibility, it's not optimal for V4+ games.
+
+**Required Implementation**:
+1. **Version-Aware Call Instructions**:
+   - V3: Use `call` (VAR:224) - the only available call instruction
+   - V4+: Use optimal variants: `call_1s`, `call_2s`, `call_1n`, `call_2n` for efficiency
+   - Benefit: Smaller bytecode, better performance on V4+ interpreters
+
+2. **Version-Specific Instruction Sets**:
+   - Many instructions added in V4 (buffer_mode, erase_window, etc.)
+   - V5 added more instructions (read_char, scan_table, etc.)
+   - V6 added graphics and sound instructions
+   - Some opcodes repurposed between versions
+
+3. **Implementation Strategy**:
+   - Add `target_version: u8` parameter to compiler
+   - Modify `determine_instruction_form()` with version-aware logic
+   - Update `generate_function_call()` for optimal call instruction selection
+   - Add version compatibility checks throughout codegen
+   - Create instruction availability tables per version
+
+4. **Code Locations**:
+   - `src/grue_compiler/codegen.rs`: Add version parameter and selection logic
+   - `determine_instruction_form()`: Version-aware form selection
+   - `generate_function_call()`: Optimal call instruction selection
+   - Header generation: Ensure version field matches instruction usage
+
+**Benefits**:
+- Proper Z-Machine specification compliance for all versions
+- Optimal bytecode generation (smaller, more efficient V4+ games)
+- Better interpreter compatibility across different Z-Machine versions
+- Professional-grade multi-version compiler architecture
+
+**Example**:
+```rust
+// V3: call (VAR:224) - 4+ bytes
+call routine_addr -> result
+
+// V4+: call_1s (1OP:136) - 3 bytes  
+call_1s routine_addr -> result
+```
+
+This enhancement ensures our compiler generates the most appropriate instruction set for each target Z-Machine version.
+
 ## Runtime Issues Fix Plan (Aug 12-14, 2025) - ✅ COMPLETED
 
 ### Status: All Critical Runtime Issues Resolved ✅
