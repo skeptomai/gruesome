@@ -157,6 +157,8 @@ pub struct ZMachineCodeGen {
     ir_id_to_stack_var: HashMap<IrId, u8>,
     /// Mapping from IR IDs to Z-Machine object numbers (for object references)
     ir_id_to_object_number: HashMap<IrId, u16>,
+    /// Mapping from IR IDs to Z-Machine local variable slots (for function parameters)
+    ir_id_to_local_var: HashMap<IrId, u8>,
     /// Mapping from IR IDs to binary operations (for conditional branch optimization)
     ir_id_to_binary_op: HashMap<IrId, (IrBinaryOp, IrId, IrId)>, // (operator, left_operand, right_operand)
     /// Mapping from function IDs to builtin function names
@@ -212,6 +214,7 @@ impl ZMachineCodeGen {
             ir_id_to_integer: HashMap::new(),
             ir_id_to_stack_var: HashMap::new(),
             ir_id_to_object_number: HashMap::new(),
+            ir_id_to_local_var: HashMap::new(),
             ir_id_to_binary_op: HashMap::new(),
             builtin_function_names: HashMap::new(),
             object_numbers: HashMap::new(),
@@ -2045,7 +2048,7 @@ impl ZMachineCodeGen {
             let func_addr = self.current_address;
 
             // Generate function header (local variable count + types)
-            self.generate_function_header(function)?;
+            self.generate_function_header(function, ir)?;
             self.function_addresses.insert(function.id, func_addr);
             self.record_address(function.id, func_addr);
 
@@ -2113,7 +2116,11 @@ impl ZMachineCodeGen {
     }
 
     /// Generate function header with local variable declarations
-    fn generate_function_header(&mut self, function: &IrFunction) -> Result<(), CompilerError> {
+    fn generate_function_header(
+        &mut self,
+        function: &IrFunction,
+        ir: &IrProgram,
+    ) -> Result<(), CompilerError> {
         // Z-Machine function header: 1 byte for local count + 2 bytes per local (v3 only)
         let local_count = function.local_vars.len();
 
@@ -2122,6 +2129,28 @@ impl ZMachineCodeGen {
                 "Function '{}' has {} locals, maximum is 15",
                 function.name, local_count
             )));
+        }
+
+        // CRITICAL: Set up parameter IR ID to local variable slot mappings
+        // This maps function parameter IR IDs to their Z-Machine local variable slots
+        for parameter in &function.parameters {
+            // Find the parameter's IR ID by looking it up in the IR symbol table
+            // Parameters were registered as symbols during IR generation
+            if let Some(&param_ir_id) = ir.symbol_ids.get(&parameter.name) {
+                self.ir_id_to_local_var.insert(param_ir_id, parameter.slot);
+                log::debug!(
+                    "Parameter mapping: '{}' (IR ID {}) -> local variable slot {}",
+                    parameter.name,
+                    param_ir_id,
+                    parameter.slot
+                );
+            } else {
+                log::warn!(
+                    "Could not find IR ID for parameter '{}' in function '{}'",
+                    parameter.name,
+                    function.name
+                );
+            }
         }
 
         self.emit_byte(local_count as u8)?;
@@ -3259,6 +3288,16 @@ impl ZMachineCodeGen {
             return Ok(Operand::Variable(stack_var));
         }
 
+        // Check if this IR ID maps to a local variable (e.g., function parameter)
+        if let Some(&local_var) = self.ir_id_to_local_var.get(&ir_id) {
+            log::debug!(
+                "resolve_ir_id_to_operand: IR ID {} resolved to Variable({}) [Local parameter]",
+                ir_id,
+                local_var
+            );
+            return Ok(Operand::Variable(local_var));
+        }
+
         // Check if this IR ID represents an object reference
         if let Some(&object_number) = self.ir_id_to_object_number.get(&ir_id) {
             log::debug!(
@@ -3285,6 +3324,10 @@ impl ZMachineCodeGen {
         log::debug!(
             "  Available stack var IDs = {:?}",
             self.ir_id_to_stack_var.keys().collect::<Vec<_>>()
+        );
+        log::debug!(
+            "  Available local var IDs = {:?}",
+            self.ir_id_to_local_var.keys().collect::<Vec<_>>()
         );
         log::debug!(
             "  Available object IDs = {:?}",
