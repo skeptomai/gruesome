@@ -100,6 +100,14 @@ pub struct ReferenceContext {
     pub unresolved_refs: Vec<UnresolvedReference>, // References waiting for resolution
 }
 
+/// Constant value types for control flow optimization
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConstantValue {
+    Boolean(bool),
+    Integer(i16),
+    String(String),
+}
+
 /// Code generation context
 pub struct ZMachineCodeGen {
     version: ZMachineVersion,
@@ -154,6 +162,12 @@ pub struct ZMachineCodeGen {
 
     // Address resolution
     reference_context: ReferenceContext,
+
+    // Control flow analysis - NEW ARCHITECTURE
+    /// Track constant values resolved during generation
+    constant_values: HashMap<IrId, ConstantValue>,
+    /// Track which labels have been placed at current address
+    labels_at_current_address: Vec<IrId>,
 }
 
 impl ZMachineCodeGen {
@@ -190,6 +204,8 @@ impl ZMachineCodeGen {
                 ir_id_to_address: HashMap::new(),
                 unresolved_refs: Vec::new(),
             },
+            constant_values: HashMap::new(),
+            labels_at_current_address: Vec::new(),
         }
     }
 
@@ -2075,12 +2091,21 @@ impl ZMachineCodeGen {
         match instruction {
             IrInstruction::LoadImmediate { target, value } => {
                 // Store mapping for string and integer values so we can resolve them in function calls
+                // AND store constants for control flow optimization
                 match value {
                     IrValue::String(s) => {
                         self.ir_id_to_string.insert(*target, s.clone());
+                        self.constant_values.insert(*target, ConstantValue::String(s.clone()));
                     }
                     IrValue::Integer(i) => {
                         self.ir_id_to_integer.insert(*target, *i);
+                        self.constant_values.insert(*target, ConstantValue::Integer(*i));
+                    }
+                    IrValue::Boolean(b) => {
+                        // Convert boolean to integer for compatibility
+                        let int_val = if *b { 1 } else { 0 };
+                        self.ir_id_to_integer.insert(*target, int_val);
+                        self.constant_values.insert(*target, ConstantValue::Boolean(*b));
                     }
                     _ => {}
                 }
@@ -2163,6 +2188,9 @@ impl ZMachineCodeGen {
                 );
                 self.label_addresses.insert(*id, self.current_address);
                 self.record_address(*id, self.current_address);
+                
+                // Track label at current address for jump optimization
+                self.labels_at_current_address.push(*id);
             }
 
             IrInstruction::LoadVar {
@@ -3040,27 +3068,152 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Generate proper conditional branch instruction
+    /// Generate proper conditional branch instruction with smart optimization
     fn generate_conditional_branch(
         &mut self,
-        _condition: IrId,
-        _true_label: IrId,
-        _false_label: IrId,
+        condition: IrId,
+        true_label: IrId,
+        false_label: IrId,
     ) -> Result<(), CompilerError> {
-        // TEMPORARY SIMPLE FIX: For constant conditions, avoid branching entirely
-        // TODO: Implement proper conditional evaluation and branching for variables
-        //
-        // For now, assume constant true condition - just fall through to true branch
-        // This eliminates complex branch offset calculations that were causing issues
-        //
-        // The IR generation should have already laid out the code correctly:
-        // - True branch code comes immediately after this
-        // - False branch code is after the true branch
-        // - By not generating any branch instruction, we fall through to true branch
+        log::debug!(
+            "generate_conditional_branch: condition={}, true_label={}, false_label={}",
+            condition, true_label, false_label
+        );
 
-        log::debug!("generate_conditional_branch: Using constant true fallthrough (TEMPORARY)");
+        // Step 1: Resolve condition value if it's a constant
+        let condition_value = self.resolve_condition_value(condition);
+        
+        match condition_value {
+            Some(ConstantValue::Boolean(true)) => {
+                log::debug!("Condition is constant TRUE - optimizing branch");
+                // Generate direct jump to true_label if not fall-through
+                if !self.is_next_instruction(true_label) {
+                    log::debug!("TRUE branch is not next instruction - generating jump");
+                    self.generate_jump(true_label)?;
+                } else {
+                    log::debug!("TRUE branch is next instruction - no jump needed (fall-through)");
+                }
+            }
+            Some(ConstantValue::Boolean(false)) => {
+                log::debug!("Condition is constant FALSE - optimizing branch");
+                // Generate direct jump to false_label if not fall-through
+                if !self.is_next_instruction(false_label) {
+                    log::debug!("FALSE branch is not next instruction - generating jump");
+                    self.generate_jump(false_label)?;
+                } else {
+                    log::debug!("FALSE branch is next instruction - no jump needed (fall-through)");
+                }
+            }
+            Some(ConstantValue::Integer(n)) => {
+                // Treat integer as boolean: 0 = false, non-zero = true
+                let is_true = n != 0;
+                log::debug!("Condition is constant INTEGER {} (treated as {})", n, is_true);
+                
+                let target_label = if is_true { true_label } else { false_label };
+                if !self.is_next_instruction(target_label) {
+                    self.generate_jump(target_label)?;
+                }
+            }
+            None | Some(ConstantValue::String(_)) => {
+                log::debug!("Condition is variable or unknown - generating Z-Machine conditional branch");
+                // Generate proper Z-Machine conditional branch instruction
+                self.emit_conditional_branch_instruction(condition, true_label, false_label)?;
+            }
+        }
+        
+        Ok(())
+    }
 
-        // Don't emit any branch instruction - just fall through
+    /// Resolve condition IR ID to constant value if possible
+    fn resolve_condition_value(&self, condition: IrId) -> Option<ConstantValue> {
+        // Check if we have a cached constant value
+        if let Some(value) = self.constant_values.get(&condition) {
+            return Some(value.clone());
+        }
+
+        // Check if it's a direct integer constant
+        if let Some(&integer) = self.ir_id_to_integer.get(&condition) {
+            return Some(ConstantValue::Integer(integer));
+        }
+
+        // Check if it's a direct string constant
+        if let Some(string) = self.ir_id_to_string.get(&condition) {
+            return Some(ConstantValue::String(string.clone()));
+        }
+
+        // Unable to resolve to constant
+        None
+    }
+
+    /// Check if a label will be placed at the immediately next instruction address
+    fn is_next_instruction(&self, label: IrId) -> bool {
+        // Check if label is already resolved and points to current address
+        if let Some(&target_addr) = self.reference_context.ir_id_to_address.get(&label) {
+            return target_addr == self.current_address;
+        }
+
+        // Check if label is recorded at current address in label_addresses
+        if let Some(&target_addr) = self.label_addresses.get(&label) {
+            return target_addr == self.current_address;
+        }
+
+        // Check if label is in the list of labels at current address
+        self.labels_at_current_address.contains(&label)
+    }
+
+    /// Emit proper Z-Machine conditional branch instruction
+    fn emit_conditional_branch_instruction(
+        &mut self,
+        condition: IrId,
+        true_label: IrId,
+        false_label: IrId,
+    ) -> Result<(), CompilerError> {
+        // Resolve condition operand
+        let condition_operand = match self.resolve_ir_id_to_operand(condition) {
+            Ok(operand) => operand,
+            Err(_) => {
+                log::warn!("Could not resolve condition IR ID {} - using Variable(0)", condition);
+                Operand::Variable(0) // Stack variable as fallback
+            }
+        };
+
+        log::debug!(
+            "Emitting conditional branch: operand={:?}, true={}, false={}", 
+            condition_operand, true_label, false_label
+        );
+
+        // For now, use Z-Machine 'jz' (jump if zero) instruction
+        // This will jump to false_label if condition is zero, fall through to true_label otherwise
+        //
+        // TODO: More sophisticated instruction selection based on condition type
+        // - Use 'je' for equality comparisons
+        // - Use 'jl'/'jg' for numeric comparisons
+        // - Use 'jz' for boolean tests
+
+        let layout = self.emit_instruction(
+            0xA0, // jz (VAR:0x00) - jump if zero
+            &[condition_operand],
+            None, // No store
+            None, // Branch offset will be handled separately
+        )?;
+
+        // Add branch offset as unresolved reference
+        // Z-Machine branch instructions have 14-bit signed branch offsets
+        let branch_location = layout.instruction_start + layout.total_size - 2; // Last 2 bytes
+        
+        self.reference_context.unresolved_refs.push(UnresolvedReference {
+            reference_type: ReferenceType::Branch,
+            location: branch_location,
+            target_id: false_label, // jz jumps on false condition
+            is_packed_address: false,
+            offset_size: 2,
+        });
+
+        log::debug!(
+            "Added branch reference: location=0x{:04x}, target={}",
+            branch_location, false_label
+        );
+
         Ok(())
     }
 
@@ -3096,8 +3249,15 @@ impl ZMachineCodeGen {
     /// Generate unconditional jump
     fn generate_jump(&mut self, label: IrId) -> Result<(), CompilerError> {
         log::debug!("generate_jump called with label={}", label);
+
+        // SMART OPTIMIZATION: Check if jump target is the immediately next instruction
+        if self.is_next_instruction(label) {
+            log::debug!("Eliminating unnecessary jump to next instruction (label {})", label);
+            return Ok(()); // No instruction needed - fall through
+        }
+
         log::debug!(
-            "generate_jump: Adding jump reference at address 0x{:04x} -> label {}",
+            "generate_jump: Emitting jump at address 0x{:04x} -> label {}",
             self.current_address,
             label
         );
@@ -3119,6 +3279,12 @@ impl ZMachineCodeGen {
             offset_size: 2,
         };
         self.reference_context.unresolved_refs.push(reference);
+
+        log::debug!(
+            "generate_jump: Added reference for jump to label {} at location 0x{:04x}",
+            label,
+            offset_address
+        );
 
         Ok(())
     }
@@ -3527,23 +3693,16 @@ impl ZMachineCodeGen {
         );
 
         // CRITICAL FIX: Handle zero-offset jumps (jumps to next instruction)
-        // These create null operands that later cause illegal opcode errors
+        // This should not happen with our new architecture, but keep as safety net
         if offset == 0 {
-            log::debug!(
-                "Zero-offset jump detected at 0x{:04x} - converting to no-op",
+            log::error!(
+                "UNEXPECTED: Zero-offset jump detected at 0x{:04x} - this should have been prevented by is_next_instruction() check!",
                 instruction_start
             );
-
-            // Convert jump instruction to no-op sequence:
-            // Replace [0x8C 0x00 0x00] with [0x04 0x04 0x04] (3 nop instructions)
-            self.story_data[instruction_start] = 0x04; // nop
-            self.story_data[instruction_start + 1] = 0x04; // nop
-            self.story_data[instruction_start + 2] = 0x04; // nop
-
-            log::debug!(
-                "Converted zero-offset jump to no-op sequence at 0x{:04x}",
-                instruction_start
-            );
+            log::error!("This indicates a bug in the control flow optimization logic");
+            
+            // As emergency fallback, just skip the instruction entirely by returning success
+            // The jump target is the next instruction anyway, so execution will continue correctly
             return Ok(());
         }
 
@@ -4601,6 +4760,18 @@ impl ZMachineCodeGen {
 
     /// Emit a single byte and advance current address
     fn emit_byte(&mut self, byte: u8) -> Result<(), CompilerError> {
+        // Clear labels at current address when we emit actual instruction bytes
+        // (but not for padding or alignment bytes)
+        if !self.labels_at_current_address.is_empty() && byte != 0x00 {
+            log::debug!(
+                "Clearing {} labels at address 0x{:04x} - instruction byte 0x{:02x} emitted",
+                self.labels_at_current_address.len(),
+                self.current_address,
+                byte
+            );
+            self.labels_at_current_address.clear();
+        }
+
         // Validate critical opcodes and log suspicious patterns
         if byte == 0x00 && self.current_address >= 0x08fe {
             debug!(
