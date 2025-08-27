@@ -131,11 +131,19 @@ impl VM {
     /// Peek at the top of the stack without removing it
     pub fn peek(&self) -> Result<u16, String> {
         if self.stack.is_empty() {
-            log::debug!(
-                "Stack peek attempted on empty stack. Stack size: {}, PC: {:04x}",
-                self.stack.len(),
+            log::error!(
+                "STACK UNDERFLOW: Stack peek attempted on empty stack. PC: 0x{:04x}",
                 self.pc
             );
+            log::error!("  Call stack depth: {}", self.call_stack.len());
+            log::error!("  Last few instructions executed would help debug this...");
+            
+            // Try to decode the current instruction to understand what caused this
+            if self.pc < self.game.memory.len() as u32 {
+                let opcode = self.game.memory[self.pc as usize];
+                log::error!("  Current instruction opcode: 0x{:02x} at PC 0x{:04x}", opcode, self.pc);
+            }
+            
             return Err("Stack is empty".to_string());
         }
         self.stack
@@ -235,7 +243,11 @@ impl VM {
     /// Read a variable (0x00 = stack, 0x01-0x0F = local, 0x10-0xFF = global)
     pub fn read_variable(&self, var: u8) -> Result<u16, String> {
         let result = match var {
-            0x00 => self.peek(),
+            0x00 => {
+                log::debug!("Reading from stack (Variable 0x00) at PC 0x{:04x}, stack size: {}", 
+                    self.pc, self.stack.len());
+                self.peek()
+            },
             0x01..=0x0F => {
                 // Local variable
                 let frame = self

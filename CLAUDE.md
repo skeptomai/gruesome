@@ -1,5 +1,11 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
+## NEXT SESSION: Read SESSION_STATUS_AUG25.md (August 25, 2025 session continuation)
+
+**CRITICAL**: At the start of the next session, immediately read `SESSION_STATUS_AUG25.md` for complete context on the branch instruction generation bug analysis and partial fix. This contains the exact status of debugging the ".contents() method" runtime failures and the specific technical fix needed.
+
+**After completing the work described in SESSION_STATUS_AUG25.md, remove this section from CLAUDE.md.**
+
 ## Auto-Commit Instructions ("Make it so!")
 
 When the user says any of the following:

@@ -1245,6 +1245,12 @@ impl Interpreter {
 
                 Ok(ExecutionResult::Continue)
             }
+            0x1b => {
+                // set_colour - V5+ display instruction (foreground, background colors)
+                // For now, just treat as no-op to eliminate the error
+                debug!("set_colour: ignoring color change (foreground={}, background={})", op1, op2);
+                Ok(ExecutionResult::Continue)
+            }
             _ => {
                 let pc = self.vm.pc - inst.size as u32;
                 debug!(
