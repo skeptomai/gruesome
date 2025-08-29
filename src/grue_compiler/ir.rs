@@ -78,6 +78,11 @@ impl IrProgram {
     pub fn get_main_function(&self) -> Option<&IrFunction> {
         self.functions.iter().find(|func| func.name == "main")
     }
+
+    /// Check if the program has any objects (rooms or objects)
+    pub fn has_objects(&self) -> bool {
+        !self.rooms.is_empty() || !self.objects.is_empty()
+    }
 }
 
 /// Z-Machine property defaults table (31 words for V1-3, 63 for V4+)
