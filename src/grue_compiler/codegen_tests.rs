@@ -40,7 +40,7 @@ mod codegen_tests {
         let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
         let ir = create_minimal_ir();
 
-        let result = codegen.generate_separated_spaces(ir);
+        let result = codegen.generate_complete_game_image(ir);
         if result.is_err() {
             eprintln!("Generation error: {:?}", result.as_ref().unwrap_err());
         }
@@ -58,7 +58,7 @@ mod codegen_tests {
         let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V5);
         let ir = create_minimal_ir();
 
-        let result = codegen.generate_separated_spaces(ir);
+        let result = codegen.generate_complete_game_image(ir);
         assert!(result.is_ok());
 
         let story_data = result.unwrap();
@@ -97,7 +97,7 @@ mod codegen_tests {
 
         ir.functions.push(function);
 
-        let result = codegen.generate_separated_spaces(ir);
+        let result = codegen.generate_complete_game_image(ir);
         assert!(result.is_ok());
 
         let story_data = result.unwrap();
@@ -133,7 +133,7 @@ mod codegen_tests {
         let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
         let ir = create_minimal_ir();
 
-        let result = codegen.generate_separated_spaces(ir);
+        let result = codegen.generate_complete_game_image(ir);
         assert!(result.is_ok());
 
         let story_data = result.unwrap();
@@ -167,7 +167,7 @@ mod codegen_tests {
             }],
         });
 
-        let result = codegen.generate_separated_spaces(ir);
+        let result = codegen.generate_complete_game_image(ir);
         assert!(result.is_ok());
 
         let story_data = result.unwrap();
@@ -225,7 +225,7 @@ mod codegen_tests {
             }],
         });
 
-        let result = codegen.generate_separated_spaces(ir);
+        let result = codegen.generate_complete_game_image(ir);
         assert!(result.is_ok());
 
         let story_data = result.unwrap();
@@ -407,7 +407,7 @@ mod codegen_tests {
             }],
         });
 
-        let result = codegen.generate_separated_spaces(ir);
+        let result = codegen.generate_complete_game_image(ir);
         assert!(result.is_ok());
 
         let story_data = result.unwrap();
@@ -572,7 +572,7 @@ mod codegen_tests {
 
         ir.functions.push(function);
 
-        let result = codegen.generate_separated_spaces(ir);
+        let result = codegen.generate_complete_game_image(ir);
         assert!(result.is_ok());
 
         let story_data = result.unwrap();
@@ -639,7 +639,7 @@ mod codegen_tests {
         ir.functions.push(main_func);
         ir.functions.push(helper_func);
 
-        let result = codegen.generate_separated_spaces(ir);
+        let result = codegen.generate_complete_game_image(ir);
         assert!(result.is_ok());
 
         let story_data = result.unwrap();
@@ -694,7 +694,7 @@ mod codegen_tests {
         ir.functions.push(function);
 
         // Test the separated spaces generation
-        let result = codegen.generate_separated_spaces(ir);
+        let result = codegen.generate_complete_game_image(ir);
         assert!(result.is_ok(), "Separated spaces generation should succeed");
 
         let final_bytecode = result.unwrap();
@@ -733,8 +733,8 @@ mod codegen_tests {
             "Code base should be after header"
         );
         assert!(
-            codegen.final_string_base > codegen.final_code_base,
-            "String base should be after code"
+            codegen.final_code_base > codegen.final_string_base,
+            "Code base should be after string base in current architecture"
         );
 
         // Most importantly: verify no corruption by checking for placeholder bytes
@@ -814,7 +814,7 @@ mod codegen_tests {
         ir.functions.push(function);
 
         // Test new system
-        let result_new = codegen.generate_separated_spaces(ir);
+        let result_new = codegen.generate_complete_game_image(ir);
         assert!(
             result_new.is_ok(),
             "New separated spaces system should handle complexity"

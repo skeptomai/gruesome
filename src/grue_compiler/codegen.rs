@@ -1114,8 +1114,24 @@ impl ZMachineCodeGen {
         let dictionary_base = current_address;
         current_address += dictionary_size;
 
-        // High memory sections
-        let string_base = current_address;
+        // High memory sections - align string base for Z-Machine requirements
+        let string_base = match self.version {
+            ZMachineVersion::V3 => {
+                // V3 requires string addresses to be even
+                if current_address % 2 != 0 {
+                    current_address += 1; // Add padding byte
+                }
+                current_address
+            }
+            ZMachineVersion::V4 | ZMachineVersion::V5 => {
+                // V4+ requires string addresses to be divisible by 4
+                let remainder = current_address % 4;
+                if remainder != 0 {
+                    current_address += 4 - remainder; // Add padding bytes
+                }
+                current_address
+            }
+        };
         current_address += string_size;
 
         let code_base = current_address;
@@ -1226,10 +1242,12 @@ impl ZMachineCodeGen {
 
         // Copy dictionary space
         if !self.dictionary_space.is_empty() {
-            self.final_data[dictionary_base..string_base].copy_from_slice(&self.dictionary_space);
+            let dictionary_end = dictionary_base + self.dictionary_space.len();
+            self.final_data[dictionary_base..dictionary_end]
+                .copy_from_slice(&self.dictionary_space);
             log::debug!(
                 "✅ Dictionary space copied: {} bytes at 0x{:04x}",
-                dictionary_size,
+                self.dictionary_space.len(),
                 dictionary_base
             );
         }
@@ -1239,7 +1257,7 @@ impl ZMachineCodeGen {
             self.final_data[string_base..code_base].copy_from_slice(&self.string_space);
             log::debug!(
                 "✅ String space copied: {} bytes at 0x{:04x}",
-                string_size,
+                self.string_space.len(),
                 string_base
             );
         }

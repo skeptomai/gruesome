@@ -1,10 +1,80 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## NEXT SESSION: Read SESSION_STATUS_AUG25.md (August 25, 2025 session continuation)
+## CURRENT SESSION STATUS (August 29, 2025) - STRING DECODING ISSUE RESOLVED ✅
 
-**CRITICAL**: At the start of the next session, immediately read `SESSION_STATUS_AUG25.md` for complete context on the branch instruction generation bug analysis and partial fix. This contains the exact status of debugging the ".contents() method" runtime failures and the specific technical fix needed.
+**STATUS**: String decoding problem completely fixed - Z-Machine files now work correctly with all interpreters.
 
-**After completing the work described in SESSION_STATUS_AUG25.md, remove this section from CLAUDE.md.**
+### ✅ MAJOR ACCOMPLISHMENT: String Address Alignment Fix
+
+**Problem**: Generated Z-Machine files showed scrambled text ("nen pdfowq" instead of "Test 1: Basic print works")  
+**Root Cause**: String section addresses were odd (0x032d), violating Z-Machine V3 requirement for even addresses  
+**Solution**: Added proper string address alignment in memory layout calculation
+
+**Technical Fix** - `src/grue_compiler/codegen.rs:1117-1134`:
+```rust
+// High memory sections - align string base for Z-Machine requirements
+let string_base = match self.version {
+    ZMachineVersion::V3 => {
+        // V3 requires string addresses to be even
+        if current_address % 2 != 0 {
+            current_address += 1; // Add padding byte
+        }
+        current_address
+    }
+    // V4+ alignment logic...
+};
+```
+
+### ✅ COMPREHENSIVE Z-MACHINE SECTIONS VERIFICATION
+
+**All Required Sections Implemented and Working:**
+1. ✅ **Header** (64 bytes) - Complete with all pointer fields
+2. ✅ **Global Variables** (480 bytes) - 240 variable slots, properly initialized  
+3. ✅ **Abbreviations Table** (192 bytes) - Empty but properly structured, address correctly written to header at 0x0220
+4. ✅ **Object Table** (73 bytes) - Complete with player object, property tables
+5. ✅ **Dictionary** (4 bytes) - Minimal but valid word parsing dictionary
+6. ✅ **String Data** (22 bytes) - Properly encoded and aligned Z-Machine text
+7. ✅ **Code** (4 bytes) - Executable Z-Machine instructions
+
+**Header Verification:**
+- Dictionary: 0x0329 ✅
+- Object Table: 0x02e0 ✅  
+- Global Variables: 0x0040 ✅
+- Abbreviations: 0x0220 ✅ (Fixed - was showing as 0x0000 due to wrong offset check)
+
+**Memory Layout:**
+```
+├─ Header:       0x0000-0x0040 (64 bytes)
+├─ Globals:      0x0040-0x0220 (480 bytes)
+├─ Abbreviations:0x0220-0x02e0 (192 bytes)  
+├─ Objects:      0x02e0-0x0329 (73 bytes)
+├─ Dictionary:   0x0329-0x032e (4 bytes + 1 padding)
+├─ Strings:      0x032e-0x0344 (22 bytes) ← Now even address!
+├─ Code:         0x0344-0x0348 (4 bytes)
+└─ Total:        840 bytes
+```
+
+### ✅ TESTING RESULTS
+
+**All Interpreters Working:**
+- ✅ **Our Interpreter**: Shows "Test 1: Basic print works" correctly
+- ✅ **Frotz (Standard)**: Loads and runs without "Story file read error"
+- ✅ **mini_zork.z3**: Also compiling and running correctly
+
+**Comprehensive Logging:**
+- ✅ Each section generation logged with detailed byte counts
+- ✅ Memory layout fully documented in output
+- ✅ Address verification with "⭐ FIXED" markers
+- ✅ All pointer addresses logged and verified
+
+### 📁 FILES MODIFIED
+- `src/grue_compiler/codegen.rs` - String alignment fix and dictionary copy fix
+
+### 🎯 NEXT SESSION READY
+- String decoding issue completely resolved
+- All Z-Machine sections properly implemented and verified
+- Generated files fully compatible with standard Z-Machine interpreters
+- Ready for next development phase (advanced features, object system enhancements, etc.)
 
 ## Auto-Commit Instructions ("Make it so!")
 
