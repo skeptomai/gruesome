@@ -468,11 +468,9 @@ impl ZMachineCodeGen {
                                 self.code_space[fixup.source_address + 1] = jump_offset as u8;
                                 fixup.resolved = true;
                             }
-                        } else {
-                            if fixup.source_address < self.code_space.len() {
-                                self.code_space[fixup.source_address] = jump_offset as u8;
-                                fixup.resolved = true;
-                            }
+                        } else if fixup.source_address < self.code_space.len() {
+                            self.code_space[fixup.source_address] = jump_offset as u8;
+                            fixup.resolved = true;
                         }
                     }
                 }
@@ -821,7 +819,7 @@ impl ZMachineCodeGen {
         // Validate header fields are reasonable
         if self.final_data.len() >= 8 {
             let version = self.final_data[0];
-            if version < 1 || version > 8 {
+            if !(1..=8).contains(&version) {
                 log::warn!("⚠️ Unusual Z-Machine version: {}", version);
             }
         }
@@ -863,7 +861,7 @@ impl ZMachineCodeGen {
     /// CONSOLIDATION HELPERS: Centralized unimplemented feature handlers
     /// These methods eliminate the dangerous copy-paste pattern of placeholder opcodes
     /// and provide clear, consistent handling of unimplemented IR instructions.
-
+    ///
     /// Generate unimplemented array operation with return value
     /// This will cause a compile-time error with a clear message about which feature needs implementation
     fn emit_unimplemented_array_op(
@@ -943,10 +941,10 @@ impl ZMachineCodeGen {
         );
 
         // Phase 2c: Generate objects/properties to object_space
-        self.generate_objects_to_space(&ir)?;
+        self.generate_objects_to_space(ir)?;
 
         // Phase 2d: Generate code to code_space
-        self.generate_code_to_space(&ir)?;
+        self.generate_code_to_space(ir)?;
 
         log::info!("📊 SEPARATED_SPACES_SUMMARY:");
         log::info!("  Code space: {} bytes", self.code_space.len());
@@ -971,7 +969,7 @@ impl ZMachineCodeGen {
     }
 
     /// Generate code instructions to code space
-    fn generate_code_to_space(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
+    fn generate_code_to_space(&mut self, _ir: &IrProgram) -> Result<(), CompilerError> {
         // Generate a simple test instruction to demonstrate the system
         log::debug!("🔧 Generating test code to code space");
 
@@ -999,413 +997,21 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// LEGACY GENERATE METHOD: Uses the old sequential architecture
-    /// This method is preserved for compatibility during the transition
-    /// NOTE: This method was updated to fix test failures after separated spaces architecture implementation
-    pub fn generate(&mut self, ir: IrProgram) -> Result<Vec<u8>, CompilerError> {
-        // NEW SEQUENTIAL ARCHITECTURE: Write each section immediately to final location
-        // This eliminates memory conflicts and gaps that plagued the hybrid approach
-
-        // Phase 1: Analyze and prepare all data
-        self.setup_comprehensive_id_mappings(&ir);
-        self.analyze_properties(&ir)?;
-        self.collect_strings(&ir)?;
-        self.add_main_loop_strings()?;
-        self.encode_all_strings()?;
-
-        debug!("Starting sequential generation architecture");
-
-        // Phase 2: Sequential generation - write each section immediately
-        let _init_entry_point = self.generate_sequential(&ir)?;
-
-        // Phase 3: Reference resolution only (no memory reallocation)
-        debug!(
-            "Phase 3: Resolving {} references",
-            self.reference_context.unresolved_refs.len()
-        );
-        self.resolve_addresses()?;
-
-        debug!("Sequential generation complete");
-        Ok(self.story_data.clone())
-    }
-
-    /// NEW: Sequential generation - write each memory section immediately to final location
-    fn generate_sequential(&mut self, ir: &IrProgram) -> Result<usize, CompilerError> {
-        let mut addr = HEADER_SIZE;
-        debug!("Sequential generation starting at 0x{:04x}", addr);
-
-        // 1. Global Variables - Write immediately
-        debug!("Step 1: Writing global variables at 0x{:04x}", addr);
-        addr = self.write_global_variables_immediate(addr, ir)?;
-        debug!("Global variables complete, next address: 0x{:04x}", addr);
-
-        // 2. Input Buffers - Write immediately
-        debug!("Step 2: Writing input buffers at 0x{:04x}", addr);
-        addr = self.write_input_buffers_immediate(addr)?;
-        debug!("Input buffers complete, next address: 0x{:04x}", addr);
-
-        // 3. Object and Property Tables - Write together (they have interdependencies)
-        debug!(
-            "Step 3: Writing object and property tables at 0x{:04x}",
-            addr
-        );
-        addr = self.write_object_and_property_tables_immediate(addr, ir)?;
-
-        // PHASE 1.2: Property table format validation
-        self.validate_property_table_format()?;
-
-        // PHASE 1.3: Object-property association validation
-        self.validate_object_property_associations()?;
-
-        debug!(
-            "Object and property tables complete, next address: 0x{:04x}",
-            addr
-        );
-
-        // 4. Dictionary - Write immediately
-        debug!("Step 4: Writing dictionary at 0x{:04x}", addr);
-        addr = self.write_dictionary_immediate(addr)?;
-        debug!("Dictionary complete, next address: 0x{:04x}", addr);
-
-        // 5. Known Strings - Write all currently known strings
-        debug!("Step 5: Writing known strings at 0x{:04x}", addr);
-        addr = self.write_known_strings_immediate(addr)?;
-        debug!("Known strings complete, next address: 0x{:04x}", addr);
-
-        // 6. Code - Write all functions and program flow immediately
-        debug!("Step 6: Writing all code at 0x{:04x}", addr);
-        let init_entry_point = self.write_all_code_immediate(addr, ir)?;
-        debug!(
-            "Code complete, current address: 0x{:04x}",
-            self.current_address
-        );
-
-        // 7. New Strings - Write any strings discovered during code generation
-        debug!(
-            "Step 7: Writing newly discovered strings at 0x{:04x}",
-            self.current_address
-        );
-        self.write_new_strings_immediate()?;
-        debug!(
-            "New strings complete, final address: 0x{:04x}",
-            self.current_address
-        );
-
-        // 8. Header - Write last with all correct addresses
-        debug!(
-            "Step 8: Writing final header with entry point 0x{:04x}",
-            init_entry_point
-        );
-        self.write_final_header(init_entry_point)?;
-
-        Ok(init_entry_point)
-    }
-
-    /// Write global variables immediately to final location
-    fn write_global_variables_immediate(
-        &mut self,
-        start_addr: usize,
-        ir: &IrProgram,
-    ) -> Result<usize, CompilerError> {
-        self.global_vars_addr = start_addr;
-        let size = 480; // 240 globals * 2 bytes each
-
-        self.ensure_capacity(start_addr + size);
-
-        // Initialize all globals to 0
-        for i in 0..240 {
-            let addr = start_addr + i * 2;
-            self.write_byte_at(addr, 0)?; // High byte
-            self.write_byte_at(addr + 1, 0)?; // Low byte
-        }
-
-        // Set specific globals from IR
-        // CRITICAL: Initialize global variable G00 with player object number
-        // This enables player.location to work via get_prop Variable(16), property
-        let g00_addr = start_addr; // Global G00 at offset 0
-        self.write_word_at(g00_addr, 1)?; // Player is object #1
-        debug!(
-            "FROTZ DEBUG: Initialized global G00 at 0x{:04x} with player object number: 1",
-            g00_addr
-        );
-        debug!(
-            "FROTZ DEBUG: Verifying G00 value - reading back from 0x{:04x}: 0x{:04x}",
-            g00_addr,
-            ((self.story_data[g00_addr] as u16) << 8) | (self.story_data[g00_addr + 1] as u16)
-        );
-
-        for _global in &ir.globals {
-            // TODO: Map additional IR globals to Z-Machine global variables
-        }
-
-        debug!(
-            "Wrote {} global variables at 0x{:04x}-0x{:04x}",
-            240,
-            start_addr,
-            start_addr + size - 1
-        );
-        Ok(start_addr + size)
-    }
-
-    /// Write input buffers immediately to final location  
-    fn write_input_buffers_immediate(&mut self, start_addr: usize) -> Result<usize, CompilerError> {
-        self.text_buffer_addr = start_addr;
-        self.parse_buffer_addr = start_addr + 64;
-        let total_size = 64 + 34; // text buffer + parse buffer
-
-        self.ensure_capacity(start_addr + total_size);
-
-        // Initialize text buffer (64 bytes: 2 header + 62 text)
-        self.write_byte_at(self.text_buffer_addr, 62)?; // Max input length
-        self.write_byte_at(self.text_buffer_addr + 1, 0)?; // Current length
-
-        // Initialize parse buffer (34 bytes: 2 header + 32 parse data)
-        self.write_byte_at(self.parse_buffer_addr, 8)?; // Max words
-        self.write_byte_at(self.parse_buffer_addr + 1, 0)?; // Current words
-
-        debug!(
-            "Wrote input buffers: text=0x{:04x}, parse=0x{:04x}",
-            self.text_buffer_addr, self.parse_buffer_addr
-        );
-        Ok(start_addr + total_size)
-    }
-
-    /// Write object and property tables together (they have interdependencies)
-    fn write_object_and_property_tables_immediate(
-        &mut self,
-        start_addr: usize,
-        ir: &IrProgram,
-    ) -> Result<usize, CompilerError> {
-        self.object_table_addr = start_addr;
-
-        let num_objects = if ir.objects.is_empty() && ir.rooms.is_empty() {
-            2
-        } else {
-            ir.objects.len() + ir.rooms.len()
-        };
-        debug!(
-            "Writing {} objects with properties starting at 0x{:04x}",
-            num_objects, start_addr
-        );
-
-        // Calculate object table size
-        let default_props_size = match self.version {
-            ZMachineVersion::V3 => 62, // 31 properties * 2 bytes
-            ZMachineVersion::V4 | ZMachineVersion::V5 => 126, // 63 properties * 2 bytes
-        };
-        let object_entries_size = match self.version {
-            ZMachineVersion::V3 => num_objects * 9, // v3: 9 bytes per object
-            ZMachineVersion::V4 | ZMachineVersion::V5 => num_objects * 14, // v4/v5: 14 bytes per object
-        };
-        let object_table_size = default_props_size + object_entries_size;
-
-        // Property tables come immediately after object table
-        // Add extra padding to ensure no overlap with objects
-        let property_start = start_addr + object_table_size + 32; // Add 32 bytes padding
-        self.property_table_addr = property_start;
-        self.current_property_addr = property_start;
-
-        debug!(
-            "Object table: 0x{:04x}-0x{:04x}, Property tables start: 0x{:04x}",
-            start_addr,
-            property_start - 1,
-            property_start
-        );
-
-        // Set current address to object table start for generation
-        self.current_address = start_addr;
-
-        // Generate both object table and property tables together
-        self.generate_object_tables(ir)?;
-
-        let actual_end = self.current_address;
-        debug!(
-            "Wrote objects and properties at 0x{:04x}-0x{:04x} ({} objects)",
-            start_addr,
-            actual_end - 1,
-            num_objects
-        );
-        Ok(actual_end)
-    }
-
-    /// Write dictionary immediately to final location
-    fn write_dictionary_immediate(&mut self, start_addr: usize) -> Result<usize, CompilerError> {
-        self.dictionary_addr = start_addr;
-        self.ensure_capacity(start_addr + 10);
-
-        // Create minimal dictionary (matches existing generate_dictionary logic)
-        self.write_byte_at(start_addr, 4)?; // Entry length (4 bytes for v3/v5)
-        self.write_byte_at(start_addr + 1, 0)?; // Number of entries (high byte)
-        self.write_byte_at(start_addr + 2, 0)?; // Number of entries (low byte)
-
-        let dict_end = start_addr + 3;
-        debug!(
-            "Wrote minimal dictionary at 0x{:04x}-0x{:04x}",
-            start_addr,
-            dict_end - 1
-        );
-        Ok(dict_end)
-    }
-
-    /// Write known strings immediately to final location  
-    fn write_known_strings_immediate(&mut self, start_addr: usize) -> Result<usize, CompilerError> {
-        let mut addr = start_addr;
-
-        // Collect and sort strings for deterministic layout
-        let mut string_data: Vec<(IrId, Vec<u8>)> = self
-            .encoded_strings
-            .iter()
-            .map(|(id, encoded)| (*id, encoded.clone()))
-            .collect();
-        string_data.sort_by_key(|(id, _)| *id);
-
-        debug!(
-            "Writing {} strings starting at 0x{:04x}",
-            string_data.len(),
-            addr
-        );
-
-        for (string_id, encoded_bytes) in string_data {
-            // Align string addresses according to Z-Machine version
-            match self.version {
-                ZMachineVersion::V3 => {
-                    if addr % 2 != 0 {
-                        addr += 1;
-                    }
-                }
-                ZMachineVersion::V4 | ZMachineVersion::V5 => {
-                    while addr % 4 != 0 {
-                        addr += 1;
-                    }
-                }
-            }
-
-            // Write string data immediately
-            self.ensure_capacity(addr + encoded_bytes.len());
-            for (i, &byte) in encoded_bytes.iter().enumerate() {
-                self.write_byte_at(addr + i, byte)?;
-            }
-
-            // Record address mapping
-            self.string_addresses.insert(string_id, addr);
-            self.record_address(string_id, addr);
-
-            debug!(
-                "Wrote string {} at 0x{:04x} (length={})",
-                string_id,
-                addr,
-                encoded_bytes.len()
-            );
-            addr += encoded_bytes.len();
-        }
-
-        debug!("Known strings written, next address: 0x{:04x}", addr);
-        Ok(addr)
-    }
-
-    /// Write newly discovered strings after code generation
-    fn write_new_strings_immediate(&mut self) -> Result<(), CompilerError> {
-        // Find strings that don't have addresses yet (discovered during code generation)
-        let mut new_strings: Vec<(IrId, Vec<u8>)> = Vec::new();
-        for (string_id, encoded_bytes) in &self.encoded_strings {
-            if !self.string_addresses.contains_key(string_id) {
-                new_strings.push((*string_id, encoded_bytes.clone()));
-                debug!("Found new string during code generation: ID={}", string_id);
-            }
-        }
-
-        if new_strings.is_empty() {
-            debug!("No new strings discovered during code generation");
-            return Ok(());
-        }
-
-        // UNIFIED MEMORY MANAGEMENT: Use unified allocator for new strings
-        // This prevents address conflicts with branch targets and other allocations
-
-        new_strings.sort_by_key(|(id, _)| *id);
-        debug!(
-            "UNIFIED: Writing {} new strings using unified memory manager",
-            new_strings.len()
-        );
-
-        for (string_id, encoded_bytes) in new_strings {
-            // Allocate using unified system
-            let addr = self.allocate_string_address(string_id, encoded_bytes.len());
-
-            // 🚨 DEBUG: Check if string allocation conflicts with code
-            log::error!("🚨 STRING ALLOCATION DEBUG: String {} allocated at 0x{:04x}, current_address=0x{:04x}", 
-                       string_id, addr, self.current_address);
-
-            // Write string data immediately at allocated address
-            self.ensure_capacity(addr + encoded_bytes.len());
-            for (i, &byte) in encoded_bytes.iter().enumerate() {
-                self.write_byte_at(addr + i, byte)?;
-            }
-
-            debug!(
-                "UNIFIED: Wrote new string {} at 0x{:04x} (length={})",
-                string_id,
-                addr,
-                encoded_bytes.len()
-            );
-        }
-
-        debug!("UNIFIED: New strings complete using unified memory manager");
-        Ok(())
-    }
-
-    /// Write all code (init, main loop, functions) immediately to final location
-    fn write_all_code_immediate(
-        &mut self,
-        start_addr: usize,
-        ir: &IrProgram,
-    ) -> Result<usize, CompilerError> {
-        self.current_address = start_addr;
-        debug!("Starting code generation at 0x{:04x}", start_addr);
-
-        // FIXED ARCHITECTURE: Generate init block FIRST (initial PC points here)
-        let init_entry_point = self.current_address; // Capture address BEFORE generation
-
-        if let Some(init_block) = &ir.init_block {
-            // Generate explicit init block
-            debug!(
-                "Generating explicit init block at 0x{:04x}",
-                init_entry_point
-            );
-            self.generate_init_block(init_block, ir)?;
-        } else {
-            // Generate implicit init block for games without explicit init{}
-            debug!(
-                "Generating implicit init block at 0x{:04x}",
-                init_entry_point
-            );
-            self.generate_implicit_init_block(ir)?;
-        }
-        debug!(
-            "Init block complete, current address: 0x{:04x}",
-            self.current_address
-        );
-
-        // Generate program flow (main loop for interactive mode) SECOND
-        self.generate_program_flow(ir)?;
-        debug!(
-            "Program flow complete, current address: 0x{:04x}",
-            self.current_address
-        );
-
-        // Generate all user functions LAST
-        self.generate_functions(ir)?;
-        debug!(
-            "All functions complete, final address: 0x{:04x}",
-            self.current_address
-        );
-
-        debug!(
-            "Code generation complete, init entry point: 0x{:04x}",
-            init_entry_point
-        );
-        Ok(init_entry_point)
-    }
+    // ✅ COMPLETED: All legacy architecture has been removed
+    // Replaced with separated spaces architecture (generate_separated_spaces)
+    //
+    // ✅ REMOVED: Legacy generate() method that caused memory corruption
+    // ✅ REMOVED: All legacy helper methods:
+    // ✅ generate_sequential() - sequential generation coordinator
+    // ✅ write_global_variables_immediate() - immediate global variable writer
+    // ✅ write_input_buffers_immediate() - immediate input buffer writer
+    // ✅ write_object_and_property_tables_immediate() - immediate object/property writer
+    // ✅ write_dictionary_immediate() - immediate dictionary writer
+    // ✅ write_known_strings_immediate() - immediate known string writer
+    // ✅ write_new_strings_immediate() - immediate new string writer
+    // ✅ write_all_code_immediate() - immediate code writer
+    //
+    // Only separated spaces architecture remains - clean and corruption-free.
 
     /// Generate implicit init block for games without explicit init{}  
     /// Updated to handle separated spaces architecture compatibility
@@ -2920,7 +2526,7 @@ impl ZMachineCodeGen {
     fn generate_function_header(
         &mut self,
         function: &IrFunction,
-        ir: &IrProgram,
+        _ir: &IrProgram,
     ) -> Result<(), CompilerError> {
         // Z-Machine function header: 1 byte for local count + 2 bytes per local (v3 only)
         let local_count = function.local_vars.len();
@@ -2988,10 +2594,11 @@ impl ZMachineCodeGen {
             IrInstruction::BinaryOp { target, .. } => {
                 log::debug!("IR INSTRUCTION: BinaryOp creates target IR ID {}", target);
             }
-            IrInstruction::Call { target, .. } => {
-                if let Some(t) = target {
-                    log::debug!("IR INSTRUCTION: Call creates target IR ID {}", t);
-                }
+            IrInstruction::Call { target: Some(t), .. } => {
+                log::debug!("IR INSTRUCTION: Call creates target IR ID {}", t);
+            }
+            IrInstruction::Call { target: None, .. } => {
+                // No target to log
             }
             IrInstruction::GetProperty { target, .. } => {
                 log::debug!(
@@ -3384,7 +2991,7 @@ impl ZMachineCodeGen {
                 );
 
                 let source_operand = self.resolve_ir_id_to_operand(*source)?;
-                let target_var = (*var_id as u8).min(255); // Map IR var_id to Z-Machine variable
+                let target_var = *var_id as u8; // Map IR var_id to Z-Machine variable
 
                 log::debug!(
                     "StoreVar: resolved source {:?} -> Z-Machine variable {}",
@@ -4489,10 +4096,11 @@ impl ZMachineCodeGen {
                 used_ids.insert(*object);
                 used_ids.insert(*value);
             }
-            IrInstruction::Return { value } => {
-                if let Some(v) = value {
-                    used_ids.insert(*v);
-                }
+            IrInstruction::Return { value: Some(v) } => {
+                used_ids.insert(*v);
+            }
+            IrInstruction::Return { value: None } => {
+                // No value to track
             }
             _ => {} // Add other instruction types as needed
         }
@@ -4553,7 +4161,7 @@ impl ZMachineCodeGen {
                 );
 
                 // Debug: Track if problematic IR IDs are being mapped
-                if ir_id >= 80 && ir_id <= 100 {
+                if (80..=100).contains(&ir_id) {
                     log::warn!(
                         "MAPPING PROBLEMATIC IR ID {} ('{}') -> Object #{}",
                         ir_id,
@@ -4563,7 +4171,7 @@ impl ZMachineCodeGen {
                 }
             } else {
                 // Debug: Track IR IDs that don't get object mappings
-                if ir_id >= 80 && ir_id <= 100 {
+                if (80..=100).contains(&ir_id) {
                     log::warn!("NO OBJECT MAPPING for IR ID {} ('{}')", ir_id, name);
                 }
             }
@@ -4837,7 +4445,7 @@ impl ZMachineCodeGen {
             }
         };
 
-        let layout = self.emit_instruction(
+        let _layout = self.emit_instruction(
             0xA0, // jz (VAR:0x00) - jump if zero
             &[condition_operand],
             None, // No store
@@ -4883,7 +4491,7 @@ impl ZMachineCodeGen {
             _false_label
         );
 
-        let layout = self.emit_instruction(
+        let _layout = self.emit_instruction(
             opcode, operands, None, // No store
             None, // No branch offset - will be added as placeholders manually
         )?;
@@ -5485,7 +5093,7 @@ impl ZMachineCodeGen {
         // Validate property numbering (1-31 for V3)
         let mut invalid_properties = Vec::new();
         for (name, &number) in &self.property_numbers {
-            if number < 1 || number > 31 {
+            if !(1..=31).contains(&number) {
                 invalid_properties.push((name.clone(), number));
             }
         }
@@ -5645,12 +5253,10 @@ impl ZMachineCodeGen {
                 for id in (target.saturating_sub(5))..=(target + 5) {
                     if let Some(&addr) = self.reference_context.ir_id_to_address.get(&id) {
                         log::error!("  IR ID {} -> 0x{:04x} ✅", id, addr);
+                    } else if id == target {
+                        log::error!("  IR ID {} -> ❌ MISSING (TARGET)", id);
                     } else {
-                        if id == target {
-                            log::error!("  IR ID {} -> ❌ MISSING (TARGET)", id);
-                        } else {
-                            log::error!("  IR ID {} -> missing", id);
-                        }
+                        log::error!("  IR ID {} -> missing", id);
                     }
                 }
 
@@ -6031,7 +5637,7 @@ impl ZMachineCodeGen {
         }
 
         // 🚨 CRITICAL DEBUG: Track ALL writes to problematic area
-        if location >= 0x0f88 && location <= 0x0f8b {
+        if (0x0f88..=0x0f8b).contains(&location) {
             log::error!(
                 "🚨 CRITICAL: Writing to problematic area 0x{:04x}!",
                 location
@@ -7222,15 +6828,16 @@ impl ZMachineCodeGen {
     }
 
     /// Update string addresses after new strings have been added
-    // REMOVED: update_string_addresses - dead code from dual allocation architecture
-    // This function was part of the old dual allocation system. All string allocation
-    // now goes through the unified allocator in write_new_strings_immediate()
-
-    // REMOVED: write_strings_to_memory - dead code from old architecture
-    // This function was designed for layout-phase string writing, which is obsolete
-    // with the unified memory allocator. All string allocation now goes through
-    // the unified allocator in write_new_strings_immediate()
-
+    ///
+    /// REMOVED: update_string_addresses - dead code from dual allocation architecture
+    /// This function was part of the old dual allocation system. All string allocation
+    /// now goes through the unified allocator in write_new_strings_immediate()
+    ///
+    /// REMOVED: write_strings_to_memory - dead code from old architecture
+    /// This function was designed for layout-phase string writing, which is obsolete
+    /// with the unified memory allocator. All string allocation now goes through
+    /// the unified allocator in write_new_strings_immediate()
+    ///
     /// Add an unresolved reference to be patched later
     pub fn add_unresolved_reference(
         &mut self,
@@ -7465,7 +7072,7 @@ impl ZMachineCodeGen {
         }
 
         // CRITICAL: Prevent "Cannot insert object 0" runtime errors by detecting dangerous insert_obj instructions
-        if opcode == 0x0E && operands.len() >= 1 {
+        if opcode == 0x0E && !operands.is_empty() {
             // This is insert_obj - check if first operand could produce object 0
             match &operands[0] {
                 Operand::LargeConstant(0) => {

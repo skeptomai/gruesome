@@ -599,8 +599,8 @@ impl Interpreter {
         let current_pc = self.vm.pc - inst.size as u32;
 
         // Debug suspicious instruction ranges and print_obj instructions specifically
-        if current_pc >= 0x0a70 && current_pc <= 0x0a90
-            || current_pc >= 0x00f80 && current_pc <= 0x00f90
+        if (0x0a70..=0x0a90).contains(&current_pc)
+            || (0x00f80..=0x00f90).contains(&current_pc)
             || (inst.opcode == 0x0A
                 && matches!(inst.operand_count, crate::instruction::OperandCount::OP1))
         {

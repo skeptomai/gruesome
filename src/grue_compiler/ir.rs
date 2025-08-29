@@ -22,6 +22,12 @@ pub struct IrIdRegistry {
     pub expression_ids: HashSet<IrId>,     // IDs from expression evaluation
 }
 
+impl Default for IrIdRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IrIdRegistry {
     pub fn new() -> Self {
         Self {
@@ -1101,7 +1107,7 @@ impl IrGenerator {
             );
 
             // Debug: Track problematic ID range
-            if tid >= 80 && tid <= 100 {
+            if (80..=100).contains(&tid) {
                 log::warn!(
                     "TRACKING PROBLEMATIC ID {}: {} instruction",
                     tid,
@@ -2251,34 +2257,6 @@ impl IrGenerator {
                         block.add_instruction(IrInstruction::LoadImmediate {
                             target: result_temp,
                             value: IrValue::Integer(1),
-                        });
-                    }
-                    "empty" => {
-                        // Collection empty check method - returns true if collection is empty
-                        // This should check the container's contents
-                        log::debug!(
-                            "Collection 'empty' method called - implementing as contents check"
-                        );
-                        block.add_instruction(IrInstruction::LoadImmediate {
-                            target: result_temp,
-                            value: IrValue::Integer(0), // 0 = false (not empty) for now
-                        });
-                    }
-                    "contents" => {
-                        // Get contents of container - should return array of contained objects
-                        // For now, return empty array placeholder
-                        log::debug!("Container 'contents' method called - returning empty array placeholder");
-                        block.add_instruction(IrInstruction::LoadImmediate {
-                            target: result_temp,
-                            value: IrValue::Integer(0), // Empty array placeholder
-                        });
-                    }
-                    "none" => {
-                        // Check if value is none/null - used for exit.none() checks
-                        log::debug!("Object 'none' method called - implementing as null check");
-                        block.add_instruction(IrInstruction::LoadImmediate {
-                            target: result_temp,
-                            value: IrValue::Integer(0), // 0 = false (not none) for now
                         });
                     }
                     "on_enter" | "on_exit" | "on_look" => {

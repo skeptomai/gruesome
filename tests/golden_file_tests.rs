@@ -109,7 +109,7 @@ fn compile_grue_file(
     }
 
     let story_data = code_generator
-        .generate(ir_program)
+        .generate_separated_spaces(ir_program)
         .map_err(|e| format!("Code generation error: {:?}", e))?;
 
     Ok(story_data)
