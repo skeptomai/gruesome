@@ -595,6 +595,66 @@ impl Interpreter {
 
     /// Execute a single instruction
     pub fn execute_instruction(&mut self, inst: &Instruction) -> Result<ExecutionResult, String> {
+        // Add comprehensive debugging for critical instruction ranges
+        let current_pc = self.vm.pc - inst.size as u32;
+
+        // Debug suspicious instruction ranges and print_obj instructions specifically
+        if current_pc >= 0x0a70 && current_pc <= 0x0a90
+            || current_pc >= 0x00f80 && current_pc <= 0x00f90
+            || (inst.opcode == 0x0A
+                && matches!(inst.operand_count, crate::instruction::OperandCount::OP1))
+        {
+            log::error!(
+                "🚨 Executing instruction at PC 0x{:04x}: {}",
+                current_pc,
+                inst
+            );
+            log::error!(
+                "🚨 Stack depth: {}, Call stack depth: {}",
+                self.vm.stack.len(),
+                self.vm.call_stack.len()
+            );
+
+            // Decode operand values for debugging
+            for (i, operand_val) in inst.operands.iter().enumerate() {
+                if i < inst.operand_types.len() {
+                    match inst.operand_types[i] {
+                        crate::instruction::OperandType::LargeConstant => {
+                            log::error!("🚨 Operand {} is large constant: {}", i, operand_val);
+                        }
+                        crate::instruction::OperandType::SmallConstant => {
+                            log::error!("🚨 Operand {} is small constant: {}", i, operand_val);
+                        }
+                        crate::instruction::OperandType::Variable => {
+                            if *operand_val == 0 {
+                                log::error!(
+                                    "🚨 Operand {} is Variable 0 (stack pop) - stack depth: {}",
+                                    i,
+                                    self.vm.stack.len()
+                                );
+                            } else {
+                                log::error!(
+                                    "🚨 Operand {} is Variable {} ({})",
+                                    i,
+                                    operand_val,
+                                    if *operand_val <= 15 {
+                                        "local"
+                                    } else {
+                                        "global"
+                                    }
+                                );
+                            }
+                        }
+                        crate::instruction::OperandType::Omitted => {
+                            log::error!("🚨 Operand {} is omitted", i);
+                        }
+                    }
+                } else {
+                    log::error!("🚨 Operand {} (no type info): {}", i, operand_val);
+                }
+            }
+        }
+
         // Get operand values
         let operands = self.resolve_operands(inst)?;
 
@@ -758,13 +818,20 @@ impl Interpreter {
                     let var_num = operand as u8;
                     if var_num == 0 {
                         // Variable 0 means pop from stack when used as operand
+                        log::error!(
+                            "🚨 Operand {} is Variable 0 (stack pop) - stack depth: {}",
+                            i,
+                            self.vm.stack.len()
+                        );
                         self.vm.pop()?
                     } else {
+                        log::error!("🚨 Operand {} is Variable {} (read variable)", i, var_num);
                         self.vm.read_variable(var_num)?
                     }
                 }
                 _ => {
                     // Use literal value
+                    log::error!("🚨 Operand {} is constant value: {}", i, operand);
                     operand
                 }
             };
@@ -1205,12 +1272,28 @@ impl Interpreter {
                 let obj_num = op1;
                 let prop_num = op2 as u8;
 
-                debug!("get_prop: obj={}, prop={}", obj_num, prop_num);
+                log::error!(
+                    "🔍 get_prop at PC 0x{:04x}: obj={}, prop={}",
+                    self.vm.pc - inst.size as u32,
+                    obj_num,
+                    prop_num
+                );
+                log::error!(
+                    "🔍 Stack depth before get_property: {}",
+                    self.vm.stack.len()
+                );
+                log::error!("🔍 Call stack depth: {}", self.vm.call_stack.len());
 
                 let value = self.vm.get_property(obj_num, prop_num)?;
+
+                log::error!("🔍 get_property returned: {}", value);
+                log::error!("🔍 Stack depth after get_property: {}", self.vm.stack.len());
+
                 if let Some(store_var) = inst.store_var {
+                    log::error!("🔍 Storing result {} in variable {}", value, store_var);
                     self.vm.write_variable(store_var, value)?;
                 }
+                log::error!("🔍 get_prop completed successfully");
                 Ok(ExecutionResult::Continue)
             }
             0x19 => {
@@ -1248,7 +1331,10 @@ impl Interpreter {
             0x1b => {
                 // set_colour - V5+ display instruction (foreground, background colors)
                 // For now, just treat as no-op to eliminate the error
-                debug!("set_colour: ignoring color change (foreground={}, background={})", op1, op2);
+                debug!(
+                    "set_colour: ignoring color change (foreground={}, background={})",
+                    op1, op2
+                );
                 Ok(ExecutionResult::Continue)
             }
             _ => {

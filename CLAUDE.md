@@ -112,6 +112,149 @@ Key files:
 **Critical Understanding**: Z-Machine "buffer mode" controls word-wrapping to prevent words from splitting across lines. It does NOT control display timing - all text should appear immediately.
 
 
+## CRITICAL: Z-Machine Stack vs Local Variable Specification Compliance
+
+**CRITICAL ARCHITECTURAL PATTERN**: The Z-Machine specification mandates specific usage of stack vs local variables. Violating this causes runtime errors and is a recurring compiler bug.
+
+### **STACK (Variable 0) MUST be used for:**
+
+1. **Function call return values** - Z-Machine functions MUST return on stack
+   - All `call*` instructions store results to stack by default
+   - `call routine -> (result)` means result goes to stack (variable 0)
+   - From Z-Machine spec sect15: `call`, `call_1s`, `call_2s`, `call_vs`, `call_vs2` all store to stack
+
+2. **Function call arguments** - Parameters are passed via stack before being moved to locals
+   - Arguments pushed to stack, then moved to local variables 1-15 by routine header
+   - From Z-Machine spec sect06.4.4: "arguments are written into the local variables (argument 1 into local 1 and so on)"
+
+3. **Immediate consumption** - Values used once by the next instruction
+   - Temporary results in expression evaluation
+   - Intermediate values that don't need persistence
+
+4. **Expression evaluation** - Complex expressions generate stack operations
+   - Binary operations: operands → stack → operation → result to stack
+   - Ternary conditionals: condition evaluation uses stack for intermediate values
+
+### **LOCAL VARIABLES (1-15) are for:**
+
+1. **Function parameters** - After being moved from stack to local slots by routine setup
+2. **Persistent variables** - Values that live across multiple instructions  
+3. **User-declared variables** - Variables declared in the source code
+4. **Loop counters and control variables** - Values that need to persist across control flow
+
+### **COMMON COMPILER ERRORS TO AVOID:**
+
+❌ **NEVER use local variables for function return values**
+❌ **NEVER use local variables for immediate expression results**
+❌ **NEVER try to "fix" stack usage by converting to local variables**
+❌ **NEVER bypass stack for function calls thinking it's "cleaner"**
+
+✅ **ALWAYS use stack for function returns, intermediate expressions, immediate consumption**
+✅ **ALWAYS use local variables only for persistent, named variables**
+✅ **ALWAYS follow the Z-Machine specification exactly for variable usage**
+
+### **WHY THIS MATTERS:**
+- Stack management is NOT broken in the interpreter - it works correctly with Zork I
+- Stack "overflow" errors are usually compiler bugs misusing local variables for stack operations
+- The stack is designed for rapid push/pop operations that don't need persistence
+- Local variables are for named, persistent storage that survives across instructions
+
+**From Z-Machine spec sect06.3**: "Writing to the stack pointer (variable number $00) pushes a value onto the stack; reading from it pulls a value off."
+
+**From Z-Machine spec sect06.4**: "All routines return a value" and "Routine calls preserve local variables and the stack (except when the return value is stored in a local variable or onto the top of the stack)."
+
+**CRITICAL**: This pattern has caused repeated bugs. When implementing binary operations, function calls, or control flow, ALWAYS check: "Should this use stack or local variable according to the Z-Machine specification?"
+
+## CRITICAL: Z-Machine Stack vs Local Variable Usage - Aug 28, 2025
+
+**FUNDAMENTAL PRINCIPLE**: When questioning stack vs local variable usage, refer to the Z-Machine specification - it's almost always in favor of the stack.
+
+### **Stack Usage (Preferred)**:
+- **Temporary expression results** (comparisons, arithmetic, property access)
+- **Intermediate calculations** 
+- **Function call arguments** (pushed before call)
+- **Function return values** (returned on stack)
+- **Immediate consumption values** (used once then discarded)
+
+### **Local Variable Usage (Limited)**:
+- **Function parameters** (persistent throughout function)
+- **Loop variables** (persistent across iterations)
+- **Explicit variable declarations** in source code
+- **Values that need to be stored/retrieved multiple times**
+
+### **Key Z-Machine Specification Points**:
+- Variable(0) = stack top
+- Instructions without store_var push results to stack  
+- Instructions with store_var = None consume from stack
+- Stack operations are more efficient than variable storage
+- Most Z-Machine instructions are designed for stack-based computation
+
+## CRITICAL: Systematic Debugging Patterns - Learned Aug 27, 2025
+
+**FUNDAMENTAL DEBUGGING PRINCIPLE**: Add comprehensive logging to all shared emission paths and crash early with detailed context to aid debugging.
+
+### **Always Add Logging To:**
+
+1. **Instruction Emission** (`emit_instruction`):
+   ```rust
+   log::debug!("EMIT: opcode=0x{:02x} operands={:?} store={:?} branch={:?} at address=0x{:04x}", 
+               opcode, operands, store_var, branch_offset, self.current_address);
+   ```
+
+2. **Memory Allocation** (`current_address` updates):
+   ```rust  
+   log::debug!("MEMORY: Allocated {} bytes at address 0x{:04x} -> 0x{:04x}", 
+               size, old_address, self.current_address);
+   ```
+
+3. **IR ID Mappings** (all mapping insertions):
+   ```rust
+   log::debug!("MAPPING: IR ID {} -> {} mapping type: {:?}", 
+               ir_id, target_value, mapping_type);
+   ```
+
+4. **Target Registration** (every instruction with target field):
+   ```rust
+   log::debug!("TARGET: Instruction {:?} creates target IR ID {}", 
+               instruction_type, target);
+   ```
+
+### **Crash Early Patterns:**
+
+1. **Missing Mappings** - Never use fallbacks, always crash with full context:
+   ```rust
+   panic!("COMPILER BUG: No mapping found for IR ID {}. Available mappings: {:?}", 
+          ir_id, all_mapping_tables);
+   ```
+
+2. **Invalid State** - Crash immediately when detecting inconsistencies:
+   ```rust
+   assert_eq!(expected_address, actual_address, 
+              "COMPILER BUG: Address mismatch during instruction generation");
+   ```
+
+3. **Unimplemented Paths** - Never return "Ok" from placeholder code:
+   ```rust
+   panic!("UNIMPLEMENTED: Instruction type {:?} at compilation stage", instruction);
+   ```
+
+### **Systematic Investigation Approach:**
+
+1. **Add comprehensive logging FIRST** before attempting fixes
+2. **Dump complete IR instruction sequences** to see the full picture
+3. **Trace every instruction that creates targets** to find missing mappings
+4. **Follow the data flow** from IR generation → mapping → resolution
+5. **Remove all fallback/default behaviors** that hide bugs
+
+### **Key Insight - Aug 27, 2025:**
+
+The "IR ID 83 unmapped" bug was found through systematic logging that revealed:
+- LoadVar instruction was missing target registration in one code path
+- Parameter mapping was failing for complex functions
+- Previous debugging attempts failed because they examined instruction types without tracing the actual data flow
+
+**Never** attempt fixes without first adding comprehensive logging to understand the exact execution flow causing the issue.
+
 ## CRITICAL FIX: VAR Opcode 0x13 Disambiguation
 
 **PROBLEM**: Opcode 0x13 is used by TWO different instructions that share the same hex value:

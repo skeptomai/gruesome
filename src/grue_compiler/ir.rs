@@ -15,11 +15,11 @@ pub type IrId = u32;
 /// Registry for tracking all IR IDs and their types/purposes
 #[derive(Debug, Clone)]
 pub struct IrIdRegistry {
-    pub id_types: HashMap<IrId, String>,          // ID -> type description
-    pub id_sources: HashMap<IrId, String>,        // ID -> creation context
-    pub temporary_ids: HashSet<IrId>,             // IDs that are temporary values
-    pub symbol_ids: HashSet<IrId>,                // IDs that are named symbols
-    pub expression_ids: HashSet<IrId>,            // IDs from expression evaluation
+    pub id_types: HashMap<IrId, String>,   // ID -> type description
+    pub id_sources: HashMap<IrId, String>, // ID -> creation context
+    pub temporary_ids: HashSet<IrId>,      // IDs that are temporary values
+    pub symbol_ids: HashSet<IrId>,         // IDs that are named symbols
+    pub expression_ids: HashSet<IrId>,     // IDs from expression evaluation
 }
 
 impl IrIdRegistry {
@@ -32,18 +32,18 @@ impl IrIdRegistry {
             expression_ids: HashSet::new(),
         }
     }
-    
+
     pub fn register_id(&mut self, id: IrId, id_type: &str, source: &str, is_temporary: bool) {
         self.id_types.insert(id, id_type.to_string());
         self.id_sources.insert(id, source.to_string());
-        
+
         if is_temporary {
             self.temporary_ids.insert(id);
         } else {
             self.symbol_ids.insert(id);
         }
     }
-    
+
     pub fn register_expression_id(&mut self, id: IrId, expression_type: &str) {
         self.expression_ids.insert(id);
         self.register_id(id, expression_type, "expression", true);
@@ -127,7 +127,8 @@ pub struct IrFunction {
 pub struct IrParameter {
     pub name: String,
     pub param_type: Option<Type>,
-    pub slot: u8, // Local variable slot in Z-Machine
+    pub slot: u8,    // Local variable slot in Z-Machine
+    pub ir_id: IrId, // IR ID for this parameter (for codegen mapping)
 }
 
 /// Local variable in IR
@@ -1078,7 +1079,7 @@ impl IrGenerator {
         if let Some(tid) = target_id {
             let instruction_type = match &instruction {
                 IrInstruction::LoadImmediate { .. } => "LoadImmediate",
-                IrInstruction::LoadVar { .. } => "LoadVar", 
+                IrInstruction::LoadVar { .. } => "LoadVar",
                 IrInstruction::StoreVar { .. } => "StoreVar",
                 IrInstruction::BinaryOp { .. } => "BinaryOp",
                 IrInstruction::UnaryOp { .. } => "UnaryOp",
@@ -1088,18 +1089,27 @@ impl IrGenerator {
                 IrInstruction::CreateArray { .. } => "CreateArray",
                 _ => "Other",
             };
-            
+
             // Register this IR ID in the centralized registry
-            self.id_registry.register_expression_id(tid, instruction_type);
-            
-            log::debug!("IR EMISSION: ID {} <- {} instruction", tid, instruction_type);
-            
-            // Debug: Track problematic ID range  
+            self.id_registry
+                .register_expression_id(tid, instruction_type);
+
+            log::debug!(
+                "IR EMISSION: ID {} <- {} instruction",
+                tid,
+                instruction_type
+            );
+
+            // Debug: Track problematic ID range
             if tid >= 80 && tid <= 100 {
-                log::warn!("TRACKING PROBLEMATIC ID {}: {} instruction", tid, instruction_type);
+                log::warn!(
+                    "TRACKING PROBLEMATIC ID {}: {} instruction",
+                    tid,
+                    instruction_type
+                );
             }
         }
-        
+
         block.add_instruction(instruction);
         target_id.unwrap_or(0) // Return the target ID or 0 if no target
     }
@@ -1150,6 +1160,9 @@ impl IrGenerator {
             ), 0));
         };
 
+        // SCOPE MANAGEMENT: Save the current global symbol table before processing function
+        let saved_symbol_ids = self.symbol_ids.clone();
+
         // Reset local variable state for this function
         self.current_locals.clear();
         self.next_local_slot = 1; // Slot 0 reserved for return value
@@ -1163,10 +1176,17 @@ impl IrGenerator {
                 name: param.name.clone(),
                 param_type: param.param_type.clone(),
                 slot: self.next_local_slot,
+                ir_id: param_id,
             };
 
-            // Also track parameters as symbols for identifier resolution
+            // Add parameters to FUNCTION-SCOPED symbol table (not global)
             self.symbol_ids.insert(param.name.clone(), param_id);
+            log::debug!(
+                "Function '{}': Added parameter '{}' with IR ID {} to function scope",
+                func.name,
+                param.name,
+                param_id
+            );
 
             // Add parameter as local variable
             let local_param = IrLocal {
@@ -1181,8 +1201,12 @@ impl IrGenerator {
             self.next_local_slot += 1;
         }
 
+        // Generate function body with function-scoped parameters
         let body = self.generate_block(func.body)?;
         let local_vars = self.current_locals.clone();
+
+        // SCOPE MANAGEMENT: Restore the global symbol table after processing function
+        self.symbol_ids = saved_symbol_ids;
 
         Ok(IrFunction {
             id: func_id,
@@ -1204,7 +1228,8 @@ impl IrGenerator {
             let room_id = self.next_id();
             self.symbol_ids.insert(room.identifier.clone(), room_id);
             // Register in the centralized registry as a named symbol
-            self.id_registry.register_id(room_id, "room", "generate_world", false);
+            self.id_registry
+                .register_id(room_id, "room", "generate_world", false);
 
             let object_number = self.object_numbers.len() as u16 + 1;
             self.object_numbers
@@ -2231,7 +2256,9 @@ impl IrGenerator {
                     "empty" => {
                         // Collection empty check method - returns true if collection is empty
                         // This should check the container's contents
-                        log::debug!("Collection 'empty' method called - implementing as contents check");
+                        log::debug!(
+                            "Collection 'empty' method called - implementing as contents check"
+                        );
                         block.add_instruction(IrInstruction::LoadImmediate {
                             target: result_temp,
                             value: IrValue::Integer(0), // 0 = false (not empty) for now
@@ -2258,27 +2285,29 @@ impl IrGenerator {
                         // Object handler methods - these call property-based function handlers
                         // In Grue, these are properties that contain function addresses
                         // The pattern is: if object.property exists, call it as a function
-                        
+
                         // Get property number for this handler - this will register it if not found
                         let property_name = method;
-                        let property_number = self.property_manager.get_property_number(&property_name);
-                        
+                        let property_number =
+                            self.property_manager.get_property_number(&property_name);
+
                         // Use proper property-based function call
                         block.add_instruction(IrInstruction::GetPropertyByNumber {
                             target: result_temp,
                             object: object_temp,
                             property_num: property_number,
                         });
-                        
+
                         // TODO: In a complete implementation, this would:
-                        // 1. Get the property value (function address)  
+                        // 1. Get the property value (function address)
                         // 2. Check if it's non-zero (function exists)
                         // 3. Call the function if it exists
                         // For now, we'll return the property value directly
-                        
+
                         log::debug!(
                             "Object handler '{}' mapped to property #{} for method call",
-                            property_name, property_number
+                            property_name,
+                            property_number
                         );
                     }
                     _ => {
@@ -2462,6 +2491,7 @@ impl IrGenerator {
             Expr::Array(elements) => {
                 // Array literal - for now, we'll create a series of load instructions
                 // In a full implementation, this would create an array object
+                let array_size = elements.len() as i16; // Save size before elements is moved
                 let mut _temp_ids = Vec::new();
                 for element in elements {
                     let element_temp = self.generate_expression(element, block)?;
@@ -2469,8 +2499,12 @@ impl IrGenerator {
                     // TODO: Store in array structure
                 }
 
-                // Return placeholder array ID
+                // Create the array with the determined size
                 let temp_id = self.next_id();
+                block.add_instruction(IrInstruction::CreateArray {
+                    target: temp_id,
+                    size: IrValue::Integer(array_size),
+                });
                 Ok(temp_id)
             }
             Expr::Ternary {
