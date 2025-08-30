@@ -615,44 +615,7 @@ impl Interpreter {
                 self.vm.call_stack.len()
             );
 
-            // Decode operand values for debugging
-            for (i, operand_val) in inst.operands.iter().enumerate() {
-                if i < inst.operand_types.len() {
-                    match inst.operand_types[i] {
-                        crate::instruction::OperandType::LargeConstant => {
-                            log::error!("🚨 Operand {} is large constant: {}", i, operand_val);
-                        }
-                        crate::instruction::OperandType::SmallConstant => {
-                            log::error!("🚨 Operand {} is small constant: {}", i, operand_val);
-                        }
-                        crate::instruction::OperandType::Variable => {
-                            if *operand_val == 0 {
-                                log::error!(
-                                    "🚨 Operand {} is Variable 0 (stack pop) - stack depth: {}",
-                                    i,
-                                    self.vm.stack.len()
-                                );
-                            } else {
-                                log::error!(
-                                    "🚨 Operand {} is Variable {} ({})",
-                                    i,
-                                    operand_val,
-                                    if *operand_val <= 15 {
-                                        "local"
-                                    } else {
-                                        "global"
-                                    }
-                                );
-                            }
-                        }
-                        crate::instruction::OperandType::Omitted => {
-                            log::error!("🚨 Operand {} is omitted", i);
-                        }
-                    }
-                } else {
-                    log::error!("🚨 Operand {} (no type info): {}", i, operand_val);
-                }
-            }
+            // Operand debugging removed - these are normal Z-Machine operand types, not errors
         }
 
         // Get operand values
@@ -818,20 +781,13 @@ impl Interpreter {
                     let var_num = operand as u8;
                     if var_num == 0 {
                         // Variable 0 means pop from stack when used as operand
-                        log::error!(
-                            "🚨 Operand {} is Variable 0 (stack pop) - stack depth: {}",
-                            i,
-                            self.vm.stack.len()
-                        );
                         self.vm.pop()?
                     } else {
-                        log::error!("🚨 Operand {} is Variable {} (read variable)", i, var_num);
                         self.vm.read_variable(var_num)?
                     }
                 }
                 _ => {
-                    // Use literal value
-                    log::error!("🚨 Operand {} is constant value: {}", i, operand);
+                    // Use literal value (constants are valid for many Z-Machine instructions)
                     operand
                 }
             };

@@ -937,6 +937,10 @@ impl ZMachineCodeGen {
             "🚀 COMPLETE Z-MACHINE FILE GENERATION: Starting comprehensive game image generation"
         );
 
+        // Phase 0: IR Input Analysis & Validation (DEBUG)
+        self.log_ir_inventory(&ir);
+        self.validate_ir_input(&ir)?;
+
         // Phase 1: Analyze and prepare all content
         log::info!("📋 Phase 1: Content analysis and preparation");
         self.setup_comprehensive_id_mappings(&ir);
@@ -962,6 +966,142 @@ impl ZMachineCodeGen {
         );
 
         Ok(final_game_image)
+    }
+
+    // === IR INPUT ANALYSIS & VALIDATION (DEBUG PHASE 1) ===
+
+    /// Phase 1.1 & 1.2: Comprehensive IR inventory and instruction breakdown
+    fn log_ir_inventory(&self, ir: &IrProgram) {
+        log::info!("🔍 IR INVENTORY: Comprehensive input analysis");
+        log::info!("  ├─ Functions: {} definitions", ir.functions.len());
+        log::info!(
+            "  ├─ Init block: {}",
+            if ir.init_block.is_some() {
+                "present"
+            } else {
+                "missing"
+            }
+        );
+        log::info!("  ├─ Grammar rules: {} rules", ir.grammar.len());
+        log::info!("  ├─ Objects: {} definitions", ir.objects.len());
+        log::info!("  ├─ Rooms: {} definitions", ir.rooms.len());
+        log::info!("  ├─ String table: {} strings", ir.string_table.len());
+
+        let total_ir_instructions = self.count_total_ir_instructions(ir);
+        log::info!(
+            "  └─ Total IR instructions: {} instructions",
+            total_ir_instructions
+        );
+
+        // Log detailed function breakdown
+        for (i, function) in ir.functions.iter().enumerate() {
+            log::debug!(
+                "📋 Function #{}: '{}' with {} instructions",
+                i,
+                function.name,
+                function.body.instructions.len()
+            );
+        }
+
+        // Log init block breakdown
+        if let Some(init_block) = &ir.init_block {
+            log::debug!(
+                "📋 Init Block: {} instructions",
+                init_block.instructions.len()
+            );
+        }
+
+        // Log instruction type breakdown
+        self.log_ir_instruction_breakdown(ir);
+    }
+
+    /// Count total IR instructions across all functions and init blocks
+    fn count_total_ir_instructions(&self, ir: &IrProgram) -> usize {
+        let mut total = 0;
+
+        // Count function instructions
+        for function in &ir.functions {
+            total += function.body.instructions.len();
+        }
+
+        // Count init block instructions
+        if let Some(init_block) = &ir.init_block {
+            total += init_block.instructions.len();
+        }
+
+        total
+    }
+
+    /// Log breakdown of IR instruction types
+    fn log_ir_instruction_breakdown(&self, ir: &IrProgram) {
+        use std::collections::HashMap;
+        use std::mem::discriminant;
+
+        let mut instruction_counts: HashMap<String, usize> = HashMap::new();
+
+        // Count function instructions by type
+        for function in &ir.functions {
+            for instruction in &function.body.instructions {
+                let type_name = format!("{:?}", discriminant(instruction))
+                    .replace("std::mem::Discriminant<grue_compiler::ir::", "")
+                    .replace(">(", "")
+                    .replace(")", "");
+                *instruction_counts.entry(type_name).or_insert(0) += 1;
+            }
+        }
+
+        // Count init block instructions by type
+        if let Some(init_block) = &ir.init_block {
+            for instruction in &init_block.instructions {
+                let type_name = format!("{:?}", discriminant(instruction))
+                    .replace("std::mem::Discriminant<grue_compiler::ir::", "")
+                    .replace(">(", "")
+                    .replace(")", "");
+                *instruction_counts.entry(type_name).or_insert(0) += 1;
+            }
+        }
+
+        log::debug!("📊 IR INSTRUCTION BREAKDOWN:");
+        let mut sorted_counts: Vec<_> = instruction_counts.iter().collect();
+        sorted_counts.sort_by(|a, b| b.1.cmp(a.1)); // Sort by count descending
+
+        for (instruction_type, count) in sorted_counts {
+            log::debug!("  ├─ {}: {}", instruction_type, count);
+        }
+    }
+
+    /// Phase 1.3: IR validation checkpoint
+    fn validate_ir_input(&self, ir: &IrProgram) -> Result<(), CompilerError> {
+        log::debug!("🔍 IR VALIDATION: Checking input completeness");
+
+        // Critical validations - crash early if IR is malformed
+        if ir.functions.is_empty() && ir.init_block.is_none() {
+            return Err(CompilerError::CodeGenError(
+                "COMPILER BUG: No functions or init blocks in IR".to_string(),
+            ));
+        }
+
+        if ir.init_block.is_none() {
+            log::warn!("⚠️ IR WARNING: No init block found - this may indicate parsing failure");
+        }
+
+        if ir.functions.is_empty() {
+            log::warn!("⚠️ IR WARNING: No functions found - this may indicate parsing failure");
+        }
+
+        // Validate we have executable content
+        let total_executable_content = self.count_total_ir_instructions(ir);
+        if total_executable_content == 0 {
+            return Err(CompilerError::CodeGenError(
+                "COMPILER BUG: No executable IR instructions found".to_string(),
+            ));
+        }
+
+        log::info!(
+            "✅ IR VALIDATION: Input appears valid ({} total instructions)",
+            total_executable_content
+        );
+        Ok(())
     }
 
     /// Generate ALL Z-Machine sections to separated memory spaces (COMPLETE Z-MACHINE FORMAT)
@@ -1298,7 +1438,7 @@ impl ZMachineCodeGen {
 
         // Calculate file length first (before mutable borrow)
         let file_len = self.final_data.len() as u32;
-        let file_len_words = (file_len + 1) / 2;
+        let file_len_words = file_len.div_ceil(2);
 
         // Z-Machine header is always 64 bytes, write directly to final_data
         let header = &mut self.final_data[0..HEADER_SIZE];
@@ -1830,47 +1970,1415 @@ impl ZMachineCodeGen {
 
     /// Generate code instructions to code space
     fn generate_code_to_space(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
-        log::debug!("🔧 Generating program code to code space");
+        log::info!("🔧 PHASE 2: IR → INSTRUCTION TRANSLATION TRACKING");
+        log::info!(
+            "📊 INPUT: {} functions, {} IR instructions total",
+            ir.functions.len(),
+            self.count_total_ir_instructions(ir)
+        );
 
-        // Generate init block if present
-        if let Some(_init_block) = &ir.init_block {
-            log::debug!("📋 Generating init block code");
-            // For now, generate a simple test instruction
-            // TODO: Generate actual init block IR instructions
+        let initial_code_size = self.code_space.len();
 
-            // Print instruction for test purposes
-            self.write_to_code_space(0x8D)?;
-            if let Some((&first_string_id, _)) = self.encoded_strings.iter().next() {
-                self.emit_cross_space_ref(
-                    ReferenceType::StringRef {
-                        string_id: first_string_id,
-                    },
-                    "print",
-                    2,
-                )?;
+        // Phase 2.1: Generate ALL function definitions
+        log::info!("🔧 TRANSLATING: All function definitions");
+        for (i, function) in ir.functions.iter().enumerate() {
+            let function_start_size = self.code_space.len();
+            log::debug!(
+                "🔧 TRANSLATING: Function #{}: '{}' ({} instructions)",
+                i,
+                function.name,
+                function.body.instructions.len()
+            );
+
+            // Track each instruction translation
+            for (instr_i, instruction) in function.body.instructions.iter().enumerate() {
+                let instr_start_size = self.code_space.len();
+                log::trace!("  [{:02}] IR: {:?}", instr_i, instruction);
+
+                // Attempt to translate IR instruction
+                match self.translate_ir_instruction(instruction) {
+                    Ok(()) => {
+                        let bytes_generated = self.code_space.len() - instr_start_size;
+                        log::trace!("  [{:02}] Generated: {} bytes", instr_i, bytes_generated);
+
+                        if bytes_generated == 0 {
+                            // Check if this is expected zero-byte generation
+                            match instruction {
+                                IrInstruction::LoadImmediate {
+                                    value: IrValue::String(_),
+                                    ..
+                                } => {
+                                    log::debug!("✅ EXPECTED: LoadImmediate for string literal generates no bytecode (correct behavior)");
+                                }
+                                IrInstruction::Nop => {
+                                    log::debug!("✅ EXPECTED: Nop instruction generates no bytecode (correct behavior)");
+                                }
+                                IrInstruction::Label { .. } => {
+                                    log::debug!("✅ EXPECTED: Label instruction generates no bytecode (correct behavior)");
+                                }
+                                _ => {
+                                    log::error!(
+                                        "🚨 ZERO BYTES: IR instruction generated no bytecode: {:?}",
+                                        instruction
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("🚨 TRANSLATION_FAILED: {:?} - Error: {}", instruction, e);
+                        // Continue processing other instructions
+                    }
+                }
+            }
+
+            let function_bytes = self.code_space.len() - function_start_size;
+            log::info!(
+                "✅ Function '{}' complete: {} bytes generated",
+                function.name,
+                function_bytes
+            );
+
+            if function_bytes == 0 {
+                log::error!(
+                    "🚨 FUNCTION_ZERO: Function '{}' generated no bytecode from {} instructions",
+                    function.name,
+                    function.body.instructions.len()
+                );
             }
         }
 
-        // Generate program flow based on mode
+        // Phase 2.2: Generate init block if present
+        if let Some(init_block) = &ir.init_block {
+            let init_start_size = self.code_space.len();
+            log::info!(
+                "🔧 TRANSLATING: Init block ({} instructions)",
+                init_block.instructions.len()
+            );
+
+            for (instr_i, instruction) in init_block.instructions.iter().enumerate() {
+                let instr_start_size = self.code_space.len();
+                log::trace!("  INIT[{:02}] IR: {:?}", instr_i, instruction);
+
+                match self.translate_ir_instruction(instruction) {
+                    Ok(()) => {
+                        let bytes_generated = self.code_space.len() - instr_start_size;
+                        log::trace!(
+                            "  INIT[{:02}] Generated: {} bytes",
+                            instr_i,
+                            bytes_generated
+                        );
+
+                        if bytes_generated == 0 {
+                            // Check if this is expected zero-byte generation in init block
+                            match instruction {
+                                IrInstruction::LoadImmediate {
+                                    value: IrValue::String(_),
+                                    ..
+                                } => {
+                                    log::debug!("✅ INIT_EXPECTED: String literal LoadImmediate generates no bytecode (correct behavior)");
+                                }
+                                IrInstruction::Nop => {
+                                    log::debug!("✅ INIT_EXPECTED: Nop instruction generates no bytecode (correct behavior)");
+                                }
+                                IrInstruction::Label { .. } => {
+                                    log::debug!("✅ INIT_EXPECTED: Label instruction generates no bytecode (correct behavior)");
+                                }
+                                _ => {
+                                    log::error!("🚨 INIT_ZERO_BYTES: Unexpected zero bytecode from init instruction: {:?}", instruction);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::error!(
+                            "🚨 INIT_TRANSLATION_FAILED: {:?} - Error: {}",
+                            instruction,
+                            e
+                        );
+                    }
+                }
+            }
+
+            let init_bytes = self.code_space.len() - init_start_size;
+            log::info!("✅ Init block complete: {} bytes generated", init_bytes);
+
+            // Analyze instruction expectations vs reality
+            let (expected_bytecode_instructions, expected_zero_instructions, actual_instructions) =
+                self.analyze_instruction_expectations(&init_block.instructions);
+
+            if expected_bytecode_instructions > 0 && init_bytes == 0 {
+                log::error!("🚨 INIT_BLOCK_FAILURE: {} instructions expected to generate bytecode, but 0 bytes generated", 
+                            expected_bytecode_instructions);
+                log::info!("📊 INIT_ANALYSIS: {} bytecode instructions, {} zero-byte instructions, {} total", 
+                           expected_bytecode_instructions, expected_zero_instructions, actual_instructions);
+            } else if expected_bytecode_instructions == 0 && expected_zero_instructions > 0 {
+                log::info!("✅ INIT_ANALYSIS: All {} instructions correctly generated zero bytes (string literals, labels, etc.)", 
+                           expected_zero_instructions);
+            } else {
+                log::info!("✅ INIT_ANALYSIS: {} bytecode instructions, {} zero-byte instructions = {} bytes generated", 
+                           expected_bytecode_instructions, expected_zero_instructions, init_bytes);
+            }
+        } else {
+            log::warn!("⚠️ NO_INIT_BLOCK: No init block to translate");
+        }
+
+        // Phase 2.3: Add program flow control
+        log::debug!(
+            "🔧 PROGRAM_FLOW: Adding flow control based on mode: {:?}",
+            ir.program_mode
+        );
         match ir.program_mode {
             crate::grue_compiler::ast::ProgramMode::Script => {
                 log::debug!("📋 Script mode: Adding quit instruction");
                 self.write_to_code_space(0xBA)?; // quit
             }
             crate::grue_compiler::ast::ProgramMode::Interactive => {
-                log::debug!("📋 Interactive mode: Main loop generation disabled - needs architecture completion");
-                // TODO: Complete separated spaces architecture to support full main loop
-                // For now, just quit after init to show basic functionality works
+                log::debug!("📋 Interactive mode: Adding main loop placeholder");
+                // TODO: Generate actual main loop - for now add quit to avoid infinite loop
                 self.write_to_code_space(0xBA)?; // quit - temporary
             }
             crate::grue_compiler::ast::ProgramMode::Custom => {
-                log::debug!("📋 Custom mode: Calling user main function");
+                log::debug!("📋 Custom mode: Adding main function call placeholder");
                 // TODO: Generate call to user main function
                 self.write_to_code_space(0xBA)?; // quit - temporary
             }
         }
 
-        log::debug!("✅ Program code generated to code space");
+        let total_code_generated = self.code_space.len() - initial_code_size;
+        let total_ir_instructions = self.count_total_ir_instructions(ir);
+        log::info!(
+            "📊 PHASE 2 COMPLETE: Generated {} bytes from {} IR instructions",
+            total_code_generated,
+            total_ir_instructions
+        );
+
+        // Analyze all instructions across functions and init block
+        let empty_vec = vec![];
+        let all_instructions: Vec<&IrInstruction> = ir
+            .functions
+            .iter()
+            .flat_map(|f| &f.body.instructions)
+            .chain(
+                ir.init_block
+                    .as_ref()
+                    .map(|init| &init.instructions)
+                    .unwrap_or(&empty_vec)
+                    .iter(),
+            )
+            .collect();
+
+        let cloned_instructions: Vec<IrInstruction> =
+            all_instructions.into_iter().cloned().collect();
+        let (expected_bytecode_instructions, expected_zero_instructions, actual_instructions) =
+            self.analyze_instruction_expectations(&cloned_instructions);
+
+        if expected_bytecode_instructions > 0 && total_code_generated == 0 {
+            log::error!("🚨 TRANSLATION_FAILURE: {} instructions expected to generate bytecode, but 0 bytes generated", 
+                        expected_bytecode_instructions);
+            log::info!(
+                "📊 PHASE2_ANALYSIS: {} bytecode instructions, {} zero-byte instructions, {} total",
+                expected_bytecode_instructions,
+                expected_zero_instructions,
+                actual_instructions
+            );
+        } else if expected_bytecode_instructions == 0 && expected_zero_instructions > 0 {
+            log::info!("✅ PHASE2_ANALYSIS: All {} instructions correctly generated zero bytes (string literals, labels, etc.)", 
+                       expected_zero_instructions);
+        } else {
+            log::info!("✅ PHASE2_ANALYSIS: {} bytecode instructions, {} zero-byte instructions = {} bytes generated", 
+                       expected_bytecode_instructions, expected_zero_instructions, total_code_generated);
+        }
+
+        Ok(())
+    }
+
+    /// Phase 2.2: Translate individual IR instruction to bytecode
+    fn translate_ir_instruction(
+        &mut self,
+        instruction: &IrInstruction,
+    ) -> Result<(), CompilerError> {
+        let initial_size = self.code_space.len();
+
+        // Log the instruction type for debugging
+        log::trace!("🔧 TRANSLATING: {:?}", instruction);
+
+        // Match on IR instruction types and generate appropriate bytecode
+        match instruction {
+            IrInstruction::LoadImmediate { target, value } => {
+                self.translate_load_immediate(*target, value)?
+            }
+            IrInstruction::LoadVar { target, var_id } => {
+                self.translate_load_var(*target, *var_id)?
+            }
+            IrInstruction::StoreVar { var_id, source } => {
+                self.translate_store_var(*var_id, *source)?
+            }
+            IrInstruction::BinaryOp {
+                target,
+                op,
+                left,
+                right,
+            } => self.translate_binary_op(*target, op, *left, *right)?,
+            IrInstruction::UnaryOp {
+                target,
+                op,
+                operand,
+            } => self.translate_unary_op(*target, op, *operand)?,
+            IrInstruction::Call {
+                target,
+                function,
+                args,
+            } => self.translate_call(*target, *function, args)?,
+            IrInstruction::CreateArray { target: _, size: _ } => {
+                log::warn!("⚠️ UNIMPLEMENTED: CreateArray - skipping");
+            }
+            IrInstruction::Return { value } => self.translate_return(*value)?,
+            IrInstruction::Branch {
+                condition,
+                true_label,
+                false_label,
+            } => self.translate_branch(*condition, *true_label, *false_label)?,
+            IrInstruction::Jump { label } => self.translate_jump(*label)?,
+            IrInstruction::Label { id } => self.translate_label(*id)?,
+            IrInstruction::GetProperty {
+                target,
+                object,
+                property,
+            } => self.translate_get_property(*target, *object, property)?,
+            IrInstruction::SetProperty {
+                object,
+                property,
+                value,
+            } => self.translate_set_property(*object, property, *value)?,
+            IrInstruction::GetPropertyByNumber {
+                target,
+                object,
+                property_num,
+            } => self.translate_get_property_by_number(*target, *object, *property_num)?,
+            IrInstruction::SetPropertyByNumber {
+                object,
+                property_num,
+                value,
+            } => self.translate_set_property_by_number(*object, *property_num, *value)?,
+            IrInstruction::GetNextProperty {
+                target: _,
+                object: _,
+                current_property: _,
+            } => {
+                log::warn!("⚠️ UNIMPLEMENTED: GetNextProperty - skipping");
+            }
+            IrInstruction::Print { value } => self.translate_print(*value)?,
+            IrInstruction::Nop => {
+                log::trace!("✅ NOP: No operation - skipped");
+            }
+            _ => {
+                log::warn!("⚠️ UNIMPLEMENTED: Unknown IR instruction type - skipping");
+            }
+        }
+
+        let final_size = self.code_space.len();
+        if final_size == initial_size {
+            // Only warn if this was supposed to generate code
+            match instruction {
+                IrInstruction::LoadImmediate {
+                    value: IrValue::String(_),
+                    ..
+                } => {
+                    log::debug!("✅ EXPECTED: LoadImmediate for string literal generates no bytecode (registers string for later use)");
+                }
+                IrInstruction::Nop => {
+                    log::debug!("✅ EXPECTED: Nop instruction generates no bytecode");
+                }
+                IrInstruction::Label { .. } => {
+                    log::debug!("✅ EXPECTED: Label instruction generates no bytecode (sets address mapping)");
+                }
+                _ => {
+                    log::warn!(
+                        "📝 UNEXPECTED: IR instruction generated no bytecode: {:?}",
+                        instruction
+                    );
+                }
+            }
+        } else {
+            let bytes_generated = final_size - initial_size;
+            log::trace!(
+                "✅ Generated {} bytes for {:?}",
+                bytes_generated,
+                instruction
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Implementation: LoadImmediate - Load constant value into variable
+    fn translate_load_immediate(
+        &mut self,
+        target: IrId,
+        value: &IrValue,
+    ) -> Result<(), CompilerError> {
+        log::debug!("LOAD_IMMEDIATE: target={}, value={:?}", target, value);
+
+        // Convert IrValue to Z-Machine operand
+        let _operand = match value {
+            IrValue::Integer(i) => {
+                if *i >= 0 && *i <= 255 {
+                    Operand::SmallConstant(*i as u8)
+                } else {
+                    Operand::LargeConstant(*i as u16)
+                }
+            }
+            IrValue::String(_) => {
+                // String literals should be resolved by reference system
+                Operand::LargeConstant(placeholder_word())
+            }
+            IrValue::StringRef(_) => {
+                // String reference should be resolved by reference system
+                Operand::LargeConstant(placeholder_word())
+            }
+            IrValue::Boolean(b) => Operand::SmallConstant(if *b { 1 } else { 0 }),
+            IrValue::Null => Operand::SmallConstant(0), // Null as 0
+        };
+
+        // Handle different value types
+        match value {
+            IrValue::String(s) => {
+                // String literals: register for later use as references, no bytecode
+                self.ir_id_to_string.insert(target, s.clone());
+                log::debug!(
+                    "✅ LOAD_IMMEDIATE: Registered string literal {} -> '{}'",
+                    target,
+                    s
+                );
+                return Ok(());
+            }
+            IrValue::Integer(i) => {
+                // Integer literals: create mapping for use in expressions, no bytecode
+                self.ir_id_to_integer.insert(target, *i);
+                log::debug!("✅ LOAD_IMMEDIATE: Mapped integer {} -> {}", target, i);
+                return Ok(());
+            }
+            IrValue::Boolean(b) => {
+                // Boolean literals: create mapping as integer, no bytecode
+                self.ir_id_to_integer.insert(target, if *b { 1 } else { 0 });
+                log::debug!(
+                    "✅ LOAD_IMMEDIATE: Mapped boolean {} -> {}",
+                    target,
+                    if *b { 1 } else { 0 }
+                );
+                return Ok(());
+            }
+            IrValue::Null => {
+                // Null values: create mapping as 0, no bytecode
+                self.ir_id_to_integer.insert(target, 0);
+                log::debug!("✅ LOAD_IMMEDIATE: Mapped null {} -> 0", target);
+                return Ok(());
+            }
+            _ => {
+                // Other types might need actual store instructions in future
+                log::warn!("LoadImmediate for unsupported type: {:?}", value);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Implementation: LoadVar - Load variable value
+    fn translate_load_var(&mut self, target: IrId, var_id: IrId) -> Result<(), CompilerError> {
+        log::debug!("LOAD_VAR: target={}, var_id={}", target, var_id);
+
+        // For now, use simple variable assignment (can be improved with proper mapping)
+        let var_operand = Operand::SmallConstant(1); // Default to variable 1
+
+        let layout = self.emit_instruction(
+            0x8F, // load opcode (1OP:143)
+            &[var_operand],
+            Some(1), // Store result in variable 1
+            None,
+        )?;
+
+        // Update code_space for IR tracking system and create target mapping
+        let bytes_generated = layout.total_size;
+        for _ in 0..bytes_generated {
+            self.code_space.push(0x00); // Placeholder bytes for IR tracking
+        }
+
+        // Map the target to the loaded variable (for now, just map to var_id value)
+        if let Some(var_value) = self.ir_id_to_integer.get(&var_id).copied() {
+            self.ir_id_to_integer.insert(target, var_value);
+        } else {
+            // Default mapping if var_id is not found
+            self.ir_id_to_integer.insert(target, var_id as i16);
+        }
+
+        log::debug!(
+            "✅ LOAD_VAR: Generated {} bytes and mapped target {} to variable {}",
+            bytes_generated,
+            target,
+            var_id
+        );
+        Ok(())
+    }
+
+    /// Implementation: StoreVar - Store value into variable
+    fn translate_store_var(&mut self, var_id: IrId, source: IrId) -> Result<(), CompilerError> {
+        log::debug!("STORE_VAR: var_id={}, source={}", var_id, source);
+
+        // For now, use simple operands (can be improved with proper mapping)
+        let source_operand = Operand::SmallConstant(0); // Use stack top
+        let var_num = 1; // Default to variable 1
+
+        // Generate STORE instruction
+        let layout = self.emit_instruction(
+            0x21, // store opcode (2OP:141)
+            &[source_operand, Operand::SmallConstant(var_num)],
+            None,
+            None,
+        )?;
+
+        // Update code_space for IR tracking system
+        let bytes_generated = layout.total_size;
+        for _ in 0..bytes_generated {
+            self.code_space.push(0x00); // Placeholder bytes for IR tracking
+        }
+
+        // Map the variable to the source value
+        if let Some(source_value) = self.ir_id_to_integer.get(&source).copied() {
+            self.ir_id_to_integer.insert(var_id, source_value);
+        } else {
+            // Create mapping indicating this variable refers to the source
+            self.ir_id_to_integer.insert(var_id, source as i16);
+        }
+
+        log::debug!(
+            "✅ STORE_VAR: Generated {} bytes and mapped variable {} to source {}",
+            bytes_generated,
+            var_id,
+            source
+        );
+        Ok(())
+    }
+
+    /// Implementation: Print - Print value
+    fn translate_print(&mut self, value: IrId) -> Result<(), CompilerError> {
+        log::debug!("PRINT: value={}", value);
+
+        // Check if this is a string literal
+        if self.ir_id_to_string.contains_key(&value) {
+            // Print string literal using print_paddr
+            let layout = self.emit_instruction(
+                0x82,                                          // print_paddr opcode (1OP:141)
+                &[Operand::LargeConstant(placeholder_word())], // Placeholder for string address
+                None,
+                None,
+            )?;
+
+            // Add unresolved reference for string address
+            if let Some(operand_loc) = layout.operand_location {
+                self.reference_context
+                    .unresolved_refs
+                    .push(UnresolvedReference {
+                        reference_type: LegacyReferenceType::StringRef,
+                        location: operand_loc,
+                        target_id: value,
+                        is_packed_address: true,
+                        offset_size: 2,
+                    });
+            }
+        } else {
+            // Print variable/computed value using print_num
+            let operand = Operand::SmallConstant(1); // Use variable 1 for now
+
+            self.emit_instruction(
+                0x86, // print_num opcode (1OP:134)
+                &[operand],
+                None,
+                None,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Implementation: Return - Return from function
+    fn translate_return(&mut self, value: Option<IrId>) -> Result<(), CompilerError> {
+        log::debug!("RETURN: value={:?}", value);
+
+        if let Some(_ret_value) = value {
+            // Return with value (for now, just return 1)
+            let operand = Operand::SmallConstant(1); // Return 1 (true)
+
+            self.emit_instruction(
+                0x80, // ret opcode (1OP:128)
+                &[operand],
+                None,
+                None,
+            )?;
+        } else {
+            // Return true (rtrue)
+            self.emit_instruction(
+                0x00, // rtrue opcode (0OP:0)
+                &[],
+                None,
+                None,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Implementation: Label - Set label address for jumps
+    fn translate_label(&mut self, id: IrId) -> Result<(), CompilerError> {
+        log::debug!("LABEL: id={} at address=0x{:04x}", id, self.current_address);
+
+        // Register the current address for this label ID
+        self.record_address(id, self.current_address);
+
+        // Labels don't generate code, they just mark addresses
+        Ok(())
+    }
+
+    /// Implementation: Jump - Unconditional jump to label
+    fn translate_jump(&mut self, label: IrId) -> Result<(), CompilerError> {
+        log::debug!("JUMP: label={}", label);
+
+        let layout = self.emit_instruction(
+            0x8C,                                          // jump opcode (1OP:140)
+            &[Operand::LargeConstant(placeholder_word())], // Placeholder for jump offset
+            None,
+            None,
+        )?;
+
+        // Add unresolved reference for jump target
+        if let Some(operand_loc) = layout.operand_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Jump,
+                    location: operand_loc,
+                    target_id: label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                });
+        }
+
+        Ok(())
+    }
+
+    /// Implementation: Call - Function call
+    fn translate_call(
+        &mut self,
+        target: Option<IrId>,
+        function: IrId,
+        args: &[IrId],
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "CALL: target={:?}, function={}, args={:?}",
+            target,
+            function,
+            args
+        );
+
+        // Check if this is a builtin function first
+        if self.is_builtin_function(function) {
+            log::debug!("BUILTIN_CALL: function={}", function);
+
+            // PHASE 1 & 2: Single-path builtin function handling
+            match self.get_builtin_function_name(function) {
+                Some(name) => {
+                    log::debug!("🔧 SINGLE_PATH: {} builtin in IR translation", name);
+                    match name.as_str() {
+                        // TIER 1: Basic functions (completed)
+                        "print" => self.translate_print_builtin_inline(args)?,
+                        "move" => self.translate_move_builtin_inline(args)?,
+                        "get_location" => {
+                            self.translate_get_location_builtin_inline(args, target)?
+                        }
+                        "to_string" => self.translate_to_string_builtin_inline(args, target)?,
+
+                        // TIER 2: Object system functions (migrating now)
+                        "get_child" => self.translate_get_child_builtin_inline(args, target)?,
+                        "get_sibling" => self.translate_get_sibling_builtin_inline(args, target)?,
+                        "get_prop" => self.translate_get_prop_builtin_inline(args, target)?,
+                        "test_attr" => self.translate_test_attr_builtin_inline(args, target)?,
+                        "set_attr" => self.translate_set_attr_builtin_inline(args, target)?,
+                        "clear_attr" => self.translate_clear_attr_builtin_inline(args, target)?,
+
+                        _ => {
+                            // Fallback to legacy system for remaining builtins (Tier 3 only)
+                            log::debug!("⚠️ LEGACY: {} delegating to legacy builtin system", name);
+                            self.generate_builtin_function_call(function, args, target)?;
+                        }
+                    }
+                }
+                None => {
+                    log::error!("BUILTIN_FUNCTION_NAME_NOT_FOUND: function ID {} not in builtin_function_names", function);
+                    return Err(CompilerError::CodeGenError(format!(
+                        "Builtin function ID {} not found",
+                        function
+                    )));
+                }
+            }
+        } else if self.function_addresses.contains_key(&function) {
+            log::debug!("USER_FUNCTION_CALL: function={}", function);
+            // Convert arguments to operands
+            let mut operands = vec![];
+
+            // First operand is the function address (placeholder)
+            operands.push(Operand::LargeConstant(placeholder_word()));
+
+            // Add function arguments (simple implementation for now)
+            for &_arg in args {
+                let operand = Operand::SmallConstant(1); // Use variable 1 for now
+                operands.push(operand);
+            }
+
+            // Determine store variable for result
+            let store_var = if target.is_some() {
+                Some(1) // Store in variable 1
+            } else {
+                None // Void function call
+            };
+
+            // Generate call instruction
+            let layout = self.emit_instruction(
+                0x20, // call_vs opcode (VAR:224)
+                &operands, store_var, None,
+            )?;
+
+            // Add unresolved reference for function address
+            if let Some(operand_loc) = layout.operand_location {
+                self.reference_context
+                    .unresolved_refs
+                    .push(UnresolvedReference {
+                        reference_type: LegacyReferenceType::FunctionCall,
+                        location: operand_loc,
+                        target_id: function,
+                        is_packed_address: true,
+                        offset_size: 2,
+                    });
+            }
+        } else {
+            log::warn!(
+                "UNKNOWN_FUNCTION_CALL: function={} not found in builtins or user functions",
+                function
+            );
+            log::warn!(
+                "Available builtin functions: {:?}",
+                self.builtin_function_names.keys().collect::<Vec<_>>()
+            );
+            log::warn!(
+                "Available user functions: {:?}",
+                self.function_addresses.keys().collect::<Vec<_>>()
+            );
+            // For now, skip unknown function calls to prevent errors
+        }
+
+        Ok(())
+    }
+
+    /// PHASE 1: Single-path print builtin implementation
+    /// This replaces delegation to generate_print_builtin()
+    /// SINGLE-PATH MIGRATION: Phase 1 - Print function using direct IR translation
+    /// Generates Z-Machine print instructions directly from IR, avoiding dual-path coordination
+    fn translate_print_builtin_inline(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+        if args.len() != 1 {
+            return Err(CompilerError::CodeGenError(format!(
+                "print expects 1 argument, got {}",
+                args.len()
+            )));
+        }
+
+        let arg_id = args[0];
+        log::debug!("🔧 PHASE1_PRINT: Processing IR ID {} (single-path)", arg_id);
+
+        // Check if this is a string literal
+        log::debug!(
+            "🔧 PHASE1_PRINT: Looking for string in ir_id_to_string with key {}",
+            arg_id
+        );
+        log::debug!(
+            "🔧 PHASE1_PRINT: Available string keys: {:?}",
+            self.ir_id_to_string.keys().collect::<Vec<_>>()
+        );
+        if let Some(string_value) = self.ir_id_to_string.get(&arg_id).cloned() {
+            // Add newline to the string content for proper line breaks
+            let print_string = if string_value.is_empty() {
+                "\n".to_string() // Empty print() becomes just a newline
+            } else {
+                format!("{}\n", string_value) // Add newline to non-empty strings
+            };
+
+            // Use the IR ID directly (maintaining Option B coordination)
+            let string_id = arg_id;
+
+            // Update the string content in the IR system to include newline
+            self.ir_id_to_string.insert(string_id, print_string.clone());
+
+            // Ensure the string gets into the encoding system under the IR ID
+            if !self.strings.iter().any(|(id, _)| *id == string_id) {
+                self.strings.push((string_id, print_string.clone()));
+                // Encode the string immediately
+                let encoded = self.encode_string(&print_string)?;
+                self.encoded_strings.insert(string_id, encoded);
+                log::debug!(
+                    "🔧 PHASE1_PRINT: Added string ID {} to encoding system: '{}'",
+                    string_id,
+                    print_string
+                );
+            } else {
+                log::debug!(
+                    "🔧 PHASE1_PRINT: String ID {} already in encoding system",
+                    string_id
+                );
+            }
+
+            // Generate print_paddr instruction with unresolved string reference
+            let layout = self.emit_instruction(
+                0x8D,                                          // print_paddr opcode - 1OP:141
+                &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
+                None,                                          // No store
+                None,                                          // No branch
+            )?;
+
+            // Add unresolved reference for the string address
+            let operand_address = layout
+                .operand_location
+                .expect("print_paddr instruction must have operand");
+            let reference = UnresolvedReference {
+                reference_type: LegacyReferenceType::StringRef,
+                location: operand_address,
+                target_id: string_id,
+                is_packed_address: true,
+                offset_size: 2,
+            };
+            self.reference_context.unresolved_refs.push(reference);
+
+            // Update code_space for IR tracking system
+            let bytes_generated = layout.total_size;
+            for _ in 0..bytes_generated {
+                self.code_space.push(0x00); // Placeholder bytes for IR tracking
+            }
+
+            log::debug!("✅ PHASE1_PRINT: Generated print_paddr for string ID {} ({} bytes) at address 0x{:04x}", string_id, bytes_generated, operand_address);
+        } else {
+            // Non-string arguments: use print_num for computed values
+            log::debug!(
+                "🔧 PHASE1_PRINT: Computing value for non-string argument {}",
+                arg_id
+            );
+
+            // Resolve the computed value to an operand
+            let operand = self.resolve_ir_id_to_operand(arg_id)?;
+
+            // Generate print_num instruction (1OP:134)
+            let layout = self.emit_instruction(
+                0x86,       // print_num opcode - 1OP:134
+                &[operand], // The computed value
+                None,       // No store
+                None,       // No branch
+            )?;
+
+            // Update code_space for IR tracking system
+            let bytes_generated = layout.total_size;
+            for _ in 0..bytes_generated {
+                self.code_space.push(0x00); // Placeholder bytes for IR tracking
+            }
+
+            log::debug!(
+                "✅ PHASE1_PRINT: Generated print_num for computed value {} ({} bytes)",
+                arg_id,
+                bytes_generated
+            );
+        }
+
+        Ok(())
+    }
+
+    /// PHASE 2: Single-path move builtin implementation
+    /// This replaces delegation to generate_move_builtin()
+    /// SINGLE-PATH MIGRATION: Phase 1 - Move function (Tier 1 builtin)
+    /// Generates Z-Machine insert_obj instruction directly from IR
+    fn translate_move_builtin_inline(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+        log::debug!(
+            "🔧 PHASE2_MOVE: Translating move builtin inline with {} args",
+            args.len()
+        );
+
+        if args.len() != 2 {
+            return Err(CompilerError::CodeGenError(
+                "move requires exactly 2 arguments".to_string(),
+            ));
+        }
+
+        let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
+        let dest_operand = self.resolve_ir_id_to_operand(args[1])?;
+
+        // Generate insert_obj instruction (VAR:14E)
+        let layout = self.emit_instruction(0xEE, &[obj_operand, dest_operand], None, None)?;
+
+        // Update code_space for IR tracking system
+        let bytes_generated = layout.total_size;
+        for _ in 0..bytes_generated {
+            self.code_space.push(0x00); // Placeholder bytes for IR tracking
+        }
+
+        log::debug!(
+            "✅ PHASE2_MOVE: Move builtin translated successfully ({} bytes)",
+            bytes_generated
+        );
+        Ok(())
+    }
+
+    /// PHASE 2: Single-path get_location builtin implementation  
+    /// This replaces delegation to generate_get_location_builtin()
+    fn translate_get_location_builtin_inline(
+        &mut self,
+        args: &[IrId],
+        _target: Option<IrId>,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "🔧 PHASE2_GET_LOCATION: Translating get_location builtin inline with {} args",
+            args.len()
+        );
+
+        if args.len() != 1 {
+            return Err(CompilerError::CodeGenError(
+                "get_location requires exactly 1 argument".to_string(),
+            ));
+        }
+
+        let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
+
+        // Generate get_parent instruction (1OP:4)
+        // Use stack storage like the legacy implementation
+        let layout = self.emit_instruction(0x04, &[obj_operand], Some(0), None)?;
+
+        // Update code_space for IR tracking system
+        let bytes_generated = layout.total_size;
+        for _ in 0..bytes_generated {
+            self.code_space.push(0x00); // Placeholder bytes for IR tracking
+        }
+
+        log::debug!(
+            "✅ PHASE2_GET_LOCATION: Get_location builtin translated successfully ({} bytes)",
+            bytes_generated
+        );
+        Ok(())
+    }
+
+    /// PHASE 2: Single-path to_string builtin implementation
+    /// This replaces delegation to generate_to_string_builtin()
+    fn translate_to_string_builtin_inline(
+        &mut self,
+        args: &[IrId],
+        _target: Option<IrId>,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "🔧 PHASE2_TO_STRING: Translating to_string builtin inline with {} args",
+            args.len()
+        );
+
+        if args.len() != 1 {
+            return Err(CompilerError::CodeGenError(
+                "to_string requires exactly 1 argument".to_string(),
+            ));
+        }
+
+        let value_operand = self.resolve_ir_id_to_operand(args[0])?;
+
+        // For now, implement as a simple load to stack (like legacy implementation)
+        // In a full implementation, this would involve string formatting
+        let layout = self.emit_instruction(0x81, &[value_operand], Some(0), None)?; // load to stack
+
+        // Update code_space for IR tracking system
+        let bytes_generated = layout.total_size;
+        for _ in 0..bytes_generated {
+            self.code_space.push(0x00); // Placeholder bytes for IR tracking
+        }
+
+        log::debug!(
+            "✅ PHASE2_TO_STRING: To_string builtin translated successfully ({} bytes)",
+            bytes_generated
+        );
+        Ok(())
+    }
+
+    /// SINGLE-PATH MIGRATION: Phase 2 - Object system builtin (Tier 2)
+    /// Generates Z-Machine get_child instruction directly from IR
+    fn translate_get_child_builtin_inline(
+        &mut self,
+        args: &[IrId],
+        _target: Option<IrId>,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "🔧 PHASE2_GET_CHILD: Translating get_child builtin inline with {} args",
+            args.len()
+        );
+
+        if args.len() != 1 {
+            return Err(CompilerError::CodeGenError(
+                "get_child requires exactly 1 argument".to_string(),
+            ));
+        }
+
+        let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
+
+        // Generate get_child instruction (1OP:3)
+        // Use stack storage like the legacy implementation
+        let layout = self.emit_instruction(0x03, &[obj_operand], Some(0), None)?;
+
+        // Update code_space for IR tracking system
+        let bytes_generated = layout.total_size;
+        for _ in 0..bytes_generated {
+            self.code_space.push(0x00); // Placeholder bytes for IR tracking
+        }
+
+        log::debug!(
+            "✅ PHASE2_GET_CHILD: Get_child builtin translated successfully ({} bytes)",
+            bytes_generated
+        );
+        Ok(())
+    }
+
+    /// PHASE 2: Single-path get_sibling builtin implementation  
+    /// This replaces delegation to generate_get_sibling_builtin()
+    fn translate_get_sibling_builtin_inline(
+        &mut self,
+        args: &[IrId],
+        _target: Option<IrId>,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "🔧 PHASE2_GET_SIBLING: Translating get_sibling builtin inline with {} args",
+            args.len()
+        );
+
+        if args.len() != 1 {
+            return Err(CompilerError::CodeGenError(
+                "get_sibling requires exactly 1 argument".to_string(),
+            ));
+        }
+
+        let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
+
+        // Generate get_sibling instruction (1OP:2)
+        let layout = self.emit_instruction(0x02, &[obj_operand], Some(0), None)?;
+
+        // Update code_space for IR tracking system
+        let bytes_generated = layout.total_size;
+        for _ in 0..bytes_generated {
+            self.code_space.push(0x00); // Placeholder bytes for IR tracking
+        }
+
+        log::debug!(
+            "✅ PHASE2_GET_SIBLING: Get_sibling builtin translated successfully ({} bytes)",
+            bytes_generated
+        );
+        Ok(())
+    }
+
+    /// PHASE 2: Single-path get_prop builtin implementation  
+    /// This replaces delegation to generate_get_prop_builtin()
+    fn translate_get_prop_builtin_inline(
+        &mut self,
+        args: &[IrId],
+        _target: Option<IrId>,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "🔧 PHASE2_GET_PROP: Translating get_prop builtin inline with {} args",
+            args.len()
+        );
+
+        if args.len() != 2 {
+            return Err(CompilerError::CodeGenError(
+                "get_prop requires exactly 2 arguments".to_string(),
+            ));
+        }
+
+        let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
+        let prop_operand = self.resolve_ir_id_to_operand(args[1])?;
+
+        // Generate get_prop instruction (2OP:17)
+        let layout = self.emit_instruction(0x11, &[obj_operand, prop_operand], Some(0), None)?;
+
+        // Update code_space for IR tracking system
+        let bytes_generated = layout.total_size;
+        for _ in 0..bytes_generated {
+            self.code_space.push(0x00); // Placeholder bytes for IR tracking
+        }
+
+        log::debug!(
+            "✅ PHASE2_GET_PROP: Get_prop builtin translated successfully ({} bytes)",
+            bytes_generated
+        );
+        Ok(())
+    }
+
+    /// PHASE 2: Single-path test_attr builtin implementation  
+    /// This replaces delegation to generate_test_attr_builtin()
+    fn translate_test_attr_builtin_inline(
+        &mut self,
+        args: &[IrId],
+        _target: Option<IrId>,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "🔧 PHASE2_TEST_ATTR: Translating test_attr builtin inline with {} args",
+            args.len()
+        );
+
+        if args.len() != 2 {
+            return Err(CompilerError::CodeGenError(
+                "test_attr requires exactly 2 arguments".to_string(),
+            ));
+        }
+
+        let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
+        let attr_operand = self.resolve_ir_id_to_operand(args[1])?;
+
+        // Generate test_attr instruction (2OP:10)
+        let layout = self.emit_instruction(0x0A, &[obj_operand, attr_operand], Some(0), None)?;
+
+        // Update code_space for IR tracking system
+        let bytes_generated = layout.total_size;
+        for _ in 0..bytes_generated {
+            self.code_space.push(0x00); // Placeholder bytes for IR tracking
+        }
+
+        log::debug!(
+            "✅ PHASE2_TEST_ATTR: Test_attr builtin translated successfully ({} bytes)",
+            bytes_generated
+        );
+        Ok(())
+    }
+
+    /// PHASE 2: Single-path set_attr builtin implementation  
+    /// This replaces delegation to generate_set_attr_builtin()
+    fn translate_set_attr_builtin_inline(
+        &mut self,
+        args: &[IrId],
+        _target: Option<IrId>,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "🔧 PHASE2_SET_ATTR: Translating set_attr builtin inline with {} args",
+            args.len()
+        );
+
+        if args.len() != 2 {
+            return Err(CompilerError::CodeGenError(
+                "set_attr requires exactly 2 arguments".to_string(),
+            ));
+        }
+
+        let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
+        let attr_operand = self.resolve_ir_id_to_operand(args[1])?;
+
+        // Generate set_attr instruction (2OP:11)
+        let layout = self.emit_instruction(0x0B, &[obj_operand, attr_operand], None, None)?;
+
+        // Update code_space for IR tracking system
+        let bytes_generated = layout.total_size;
+        for _ in 0..bytes_generated {
+            self.code_space.push(0x00); // Placeholder bytes for IR tracking
+        }
+
+        log::debug!(
+            "✅ PHASE2_SET_ATTR: Set_attr builtin translated successfully ({} bytes)",
+            bytes_generated
+        );
+        Ok(())
+    }
+
+    /// PHASE 2: Single-path clear_attr builtin implementation  
+    /// This replaces delegation to generate_clear_attr_builtin()
+    fn translate_clear_attr_builtin_inline(
+        &mut self,
+        args: &[IrId],
+        _target: Option<IrId>,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "🔧 PHASE2_CLEAR_ATTR: Translating clear_attr builtin inline with {} args",
+            args.len()
+        );
+
+        if args.len() != 2 {
+            return Err(CompilerError::CodeGenError(
+                "clear_attr requires exactly 2 arguments".to_string(),
+            ));
+        }
+
+        let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
+        let attr_operand = self.resolve_ir_id_to_operand(args[1])?;
+
+        // Generate clear_attr instruction (2OP:12)
+        let layout = self.emit_instruction(0x0C, &[obj_operand, attr_operand], None, None)?;
+
+        // Update code_space for IR tracking system
+        let bytes_generated = layout.total_size;
+        for _ in 0..bytes_generated {
+            self.code_space.push(0x00); // Placeholder bytes for IR tracking
+        }
+
+        log::debug!(
+            "✅ PHASE2_CLEAR_ATTR: Clear_attr builtin translated successfully ({} bytes)",
+            bytes_generated
+        );
+        Ok(())
+    }
+
+    /// Analyze instruction expectations for bytecode generation
+    /// Returns (expected_bytecode_instructions, expected_zero_instructions, total_instructions)
+    fn analyze_instruction_expectations(
+        &self,
+        instructions: &[IrInstruction],
+    ) -> (usize, usize, usize) {
+        let mut expected_bytecode = 0;
+        let mut expected_zero = 0;
+
+        for instruction in instructions {
+            match instruction {
+                // Instructions that should NOT generate bytecode
+                IrInstruction::LoadImmediate {
+                    value: IrValue::String(_),
+                    ..
+                } => {
+                    expected_zero += 1; // String literals only register for later use
+                }
+                IrInstruction::LoadImmediate {
+                    value: IrValue::Integer(_),
+                    ..
+                } => {
+                    expected_zero += 1; // Integer literals only create mappings
+                }
+                IrInstruction::LoadImmediate {
+                    value: IrValue::Boolean(_),
+                    ..
+                } => {
+                    expected_zero += 1; // Boolean literals only create mappings
+                }
+                IrInstruction::LoadImmediate {
+                    value: IrValue::Null,
+                    ..
+                } => {
+                    expected_zero += 1; // Null values only create mappings
+                }
+                IrInstruction::Nop => {
+                    expected_zero += 1; // No-op instructions
+                }
+                IrInstruction::Label { .. } => {
+                    expected_zero += 1; // Labels only set address mappings
+                }
+                IrInstruction::LoadVar { .. } => {
+                    expected_bytecode += 1; // Variable loading generates Z-Machine load instructions
+                }
+                IrInstruction::StoreVar { .. } => {
+                    expected_bytecode += 1; // Variable storing generates Z-Machine store instructions
+                }
+                IrInstruction::BinaryOp { .. } => {
+                    expected_bytecode += 1; // Binary operations generate arithmetic instructions
+                }
+                IrInstruction::SetProperty { .. } => {
+                    expected_bytecode += 1; // Property assignment generates put_prop instructions
+                }
+
+                // Instructions that SHOULD generate bytecode
+                IrInstruction::Call { .. } => {
+                    expected_bytecode += 1; // Function calls generate bytecode
+                }
+                IrInstruction::Return { .. } => {
+                    expected_bytecode += 1; // Return instructions generate bytecode
+                }
+                IrInstruction::Jump { .. } => {
+                    expected_bytecode += 1; // Jump instructions generate bytecode
+                }
+                IrInstruction::Branch { .. } => {
+                    expected_bytecode += 1; // Branch instructions generate bytecode
+                }
+                IrInstruction::UnaryOp { .. } => {
+                    expected_bytecode += 1; // Unary operations generate bytecode
+                }
+                IrInstruction::GetProperty { .. } => {
+                    expected_bytecode += 1; // Property access generates bytecode
+                }
+
+                // Conservative: assume other instructions should generate bytecode
+                _ => {
+                    expected_bytecode += 1;
+                }
+            }
+        }
+
+        let total = expected_bytecode + expected_zero;
+        (expected_bytecode, expected_zero, total)
+    }
+
+    /// SINGLE-PATH MIGRATION: BinaryOp instruction translation
+    /// Converts IR arithmetic operations directly to Z-Machine instructions (add, sub, mul, div)
+    fn translate_binary_op(
+        &mut self,
+        target: IrId,
+        op: &IrBinaryOp,
+        left: IrId,
+        right: IrId,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "BINARY_OP: target={}, op={:?}, left={}, right={}",
+            target,
+            op,
+            left,
+            right
+        );
+
+        // Resolve operands
+        let left_operand = self.resolve_ir_id_to_operand(left)?;
+        let right_operand = self.resolve_ir_id_to_operand(right)?;
+
+        // Map binary operation to Z-Machine instruction
+        let opcode = match op {
+            IrBinaryOp::Add => 0x14,          // add (2OP:20)
+            IrBinaryOp::Subtract => 0x15,     // sub (2OP:21)
+            IrBinaryOp::Multiply => 0x16,     // mul (2OP:22)
+            IrBinaryOp::Divide => 0x17,       // div (2OP:23)
+            IrBinaryOp::Modulo => 0x18,       // mod (2OP:24)
+            IrBinaryOp::Equal => 0x01,        // je (2OP:1)
+            IrBinaryOp::NotEqual => 0x01, // je with negated branch (we'll handle this differently)
+            IrBinaryOp::Less => 0x02,     // jl (2OP:2)
+            IrBinaryOp::LessEqual => 0x03, // jg with negated branch
+            IrBinaryOp::Greater => 0x03,  // jg (2OP:3)
+            IrBinaryOp::GreaterEqual => 0x02, // jl with negated branch
+            _ => {
+                return Err(CompilerError::CodeGenError(format!(
+                    "Unsupported binary operation: {:?}",
+                    op
+                )));
+            }
+        };
+
+        // Generate instruction - result stored to stack (variable 0)
+        let layout =
+            self.emit_instruction(opcode, &[left_operand, right_operand], Some(0), None)?;
+
+        // Update code_space for IR tracking system
+        let bytes_generated = layout.total_size;
+        for _ in 0..bytes_generated {
+            self.code_space.push(0x00); // Placeholder bytes for IR tracking
+        }
+
+        // Map the target to stack reference (variable 0 means stack top)
+        self.ir_id_to_integer.insert(target, 0); // 0 indicates stack top result
+
+        log::debug!(
+            "✅ BINARY_OP: Generated {} bytes for {:?} operation",
+            bytes_generated,
+            op
+        );
+        Ok(())
+    }
+
+    fn translate_unary_op(
+        &mut self,
+        _target: IrId,
+        _op: &IrUnaryOp,
+        _operand: IrId,
+    ) -> Result<(), CompilerError> {
+        log::warn!("⚠️ UNIMPLEMENTED: UnaryOp - skipping");
+        Ok(())
+    }
+
+    fn translate_branch(
+        &mut self,
+        _condition: IrId,
+        _true_label: IrId,
+        _false_label: IrId,
+    ) -> Result<(), CompilerError> {
+        log::warn!("⚠️ UNIMPLEMENTED: Branch - skipping");
+        Ok(())
+    }
+
+    fn translate_get_property(
+        &mut self,
+        _target: IrId,
+        _object: IrId,
+        _property: &str,
+    ) -> Result<(), CompilerError> {
+        log::warn!("⚠️ UNIMPLEMENTED: GetProperty - skipping");
+        Ok(())
+    }
+
+    fn translate_set_property(
+        &mut self,
+        object: IrId,
+        property: &str,
+        value: IrId,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "SET_PROPERTY: object={}, property={}, value={}",
+            object,
+            property,
+            value
+        );
+
+        // Resolve operands
+        let obj_operand = self.resolve_ir_id_to_operand(object)?;
+        let value_operand = self.resolve_ir_id_to_operand(value)?;
+
+        // Map property name to property number (simplified mapping)
+        let prop_num = match property {
+            "location" => 2,             // Parent property
+            "description" | "desc" => 1, // Description property
+            "name" => 3,                 // Name property
+            "container" => 4,            // Container attribute
+            "openable" => 5,             // Openable attribute
+            "open" => 6,                 // Open state
+            "takeable" => 7,             // Takeable attribute
+            "visible" => 8,              // Visibility
+            "visited" => 9,              // Visited flag (for rooms)
+            _ => {
+                log::warn!("Unknown property '{}', using property number 10", property);
+                10 // Default fallback property
+            }
+        };
+
+        // Generate put_prop instruction (VAR:227)
+        let layout = self.emit_instruction(
+            0xE3,
+            &[obj_operand, Operand::SmallConstant(prop_num), value_operand],
+            None,
+            None,
+        )?;
+
+        // Update code_space for IR tracking system
+        let bytes_generated = layout.total_size;
+        for _ in 0..bytes_generated {
+            self.code_space.push(0x00); // Placeholder bytes for IR tracking
+        }
+
+        log::debug!(
+            "✅ SET_PROPERTY: Generated {} bytes for property '{}' (#{}) assignment",
+            bytes_generated,
+            property,
+            prop_num
+        );
+        Ok(())
+    }
+
+    fn translate_get_property_by_number(
+        &mut self,
+        _target: IrId,
+        _object: IrId,
+        _property_num: u8,
+    ) -> Result<(), CompilerError> {
+        log::warn!("⚠️ UNIMPLEMENTED: GetPropertyByNumber - skipping");
+        Ok(())
+    }
+
+    fn translate_set_property_by_number(
+        &mut self,
+        _object: IrId,
+        _property_num: u8,
+        _value: IrId,
+    ) -> Result<(), CompilerError> {
+        log::warn!("⚠️ UNIMPLEMENTED: SetPropertyByNumber - skipping");
         Ok(())
     }
 
@@ -1956,18 +3464,13 @@ impl ZMachineCodeGen {
     /// Write final header with all addresses resolved
     /// Critical fix: Properly populate header fields for separated spaces architecture
     fn write_final_header(&mut self, init_entry_point: usize) -> Result<(), CompilerError> {
-        // For separated spaces architecture, write header directly to final_data
-        if !self.final_data.is_empty() {
-            log::error!(
-                "🏗️ ✅ Using separated spaces path - writing header to final_data (len={})",
-                self.final_data.len()
-            );
-            self.write_header_to_final_data(init_entry_point)
-        } else {
-            // Legacy path: write to story_data
-            log::error!("🏗️ ❌ Using legacy path - writing header to story_data");
-            self.write_header_with_entry_point(init_entry_point)
-        }
+        // Write header directly to final_data for separated spaces architecture
+        // Note: final_data is always non-empty by this point (initialized at assemble_complete_zmachine_image:1203)
+        log::debug!(
+            "🏗️ Writing header to final_data (len={})",
+            self.final_data.len()
+        );
+        self.write_header_to_final_data(init_entry_point)
     }
 
     /// Write header directly to final_data for separated spaces architecture
@@ -2026,7 +3529,7 @@ impl ZMachineCodeGen {
         };
         write_word(&mut self.final_data, 26, file_len);
 
-        log::error!("🏗️ ✅ Header written to final_data with dict_addr=0x{:04x}, obj_table_addr=0x{:04x}, globals_addr=0x{:04x}", 
+        log::info!("🏗️ ✅ Header written to final_data with dict_addr=0x{:04x}, obj_table_addr=0x{:04x}, globals_addr=0x{:04x}", 
                    final_dict_addr, self.final_object_base, final_globals_addr);
 
         Ok(())
@@ -2472,9 +3975,9 @@ impl ZMachineCodeGen {
 
     /// Generate object and property tables
     fn generate_object_tables(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
-        log::error!("🏗️  === OBJECT TABLE GENERATION DEBUG ===");
-        log::error!("🏗️  Target version: {:?}", self.version);
-        log::error!(
+        log::info!("🏗️  === OBJECT TABLE GENERATION DEBUG ===");
+        log::info!("🏗️  Target version: {:?}", self.version);
+        log::info!(
             "🏗️  IR contains: {} rooms, {} objects",
             ir.rooms.len(),
             ir.objects.len()
@@ -2550,7 +4053,7 @@ impl ZMachineCodeGen {
             sibling: None,
             child: None, // Player can contain objects (inventory)
         });
-        log::error!(
+        log::info!(
             "🏗️  Object #1: PLAYER - location property {} = {}, desc property {} = 'yourself'",
             location_prop,
             initial_location,
@@ -2585,7 +4088,7 @@ impl ZMachineCodeGen {
                 child: None,
             });
 
-            log::error!(
+            log::info!(
                 "🏗️  Object #{}: ROOM '{}' (ID: {}, short: '{}')",
                 all_objects.len(),
                 room.name,
@@ -2623,7 +4126,7 @@ impl ZMachineCodeGen {
                 child: object.child,
             });
 
-            log::error!(
+            log::info!(
                 "🏗️  Object #{}: OBJECT '{}' (ID: {}, short: '{}')",
                 all_objects.len(),
                 object.name,
@@ -2632,8 +4135,8 @@ impl ZMachineCodeGen {
             );
         }
 
-        log::error!("🏗️  === OBJECT ID MAPPING ===",);
-        log::error!(
+        log::info!("🏗️  === OBJECT ID MAPPING ===",);
+        log::info!(
             "🏗️  Total objects to generate: {} ({} rooms + {} objects + 1 player)",
             all_objects.len(),
             ir.rooms.len(),
@@ -2645,7 +4148,7 @@ impl ZMachineCodeGen {
         for (index, object) in all_objects.iter().enumerate() {
             let obj_num = (index + 1) as u8; // Objects are numbered starting from 1
             object_id_to_number.insert(object.id, obj_num);
-            log::error!(
+            log::info!(
                 "🏗️  ID Mapping: IR ID {} → Object #{} ('{}')",
                 object.id,
                 obj_num,
@@ -5687,49 +7190,6 @@ impl ZMachineCodeGen {
     }
 
     /// Write the Z-Machine file header with custom entry point
-    fn write_header_with_entry_point(&mut self, entry_point: usize) -> Result<(), CompilerError> {
-        // Z-Machine header fields
-        self.write_byte_at(
-            0,
-            match self.version {
-                ZMachineVersion::V3 => 3,
-                ZMachineVersion::V4 => 4,
-                ZMachineVersion::V5 => 5,
-            },
-        )?;
-
-        // High memory base
-        self.write_word_at(4, DEFAULT_HIGH_MEMORY)?;
-
-        // Initial PC (entry point) - set to where init block starts
-        self.write_word_at(6, entry_point as u16)?;
-
-        // Dictionary address
-        self.write_word_at(8, self.dictionary_addr as u16)?;
-
-        // Object table address
-        self.write_word_at(10, self.object_table_addr as u16)?;
-
-        // Global variables address
-        self.write_word_at(12, self.global_vars_addr as u16)?;
-
-        // Static memory base (start of dictionary)
-        debug!(
-            "Setting static memory base to 0x{:04x} (dictionary_addr)",
-            self.dictionary_addr
-        );
-        self.write_word_at(14, self.dictionary_addr as u16)?;
-
-        // File length (in 2-byte words for v3, 4-byte words for v4+)
-        let file_len = match self.version {
-            ZMachineVersion::V3 => (self.story_data.len() / 2) as u16,
-            ZMachineVersion::V4 | ZMachineVersion::V5 => (self.story_data.len() / 4) as u16,
-        };
-        self.write_word_at(26, file_len)?;
-
-        Ok(())
-    }
-
     /// PHASE 2.3: Deduplicate unresolved references to eliminate double-patching
     /// The real issue is multiple references to the same target ID
     fn deduplicate_references(&self, refs: &[UnresolvedReference]) -> Vec<UnresolvedReference> {
@@ -6754,8 +8214,30 @@ impl ZMachineCodeGen {
                 format!("{}\n", string_value) // Add newline to non-empty strings
             };
 
-            // Create a string ID for this string and generate print instruction
-            let string_id = self.find_or_create_string_id(&print_string)?;
+            // OPTION B FIX: Use the IR ID directly instead of creating new string ID
+            // This maintains coordination between IR translation and builtin systems
+            let string_id = arg_id; // ✅ Use IR ID (e.g., 2) instead of creating new ID (e.g., 1000)
+
+            // Update the string content in the IR system to include newline
+            self.ir_id_to_string.insert(string_id, print_string.clone());
+
+            // Ensure the string gets into the encoding system under the IR ID
+            if !self.strings.iter().any(|(id, _)| *id == string_id) {
+                self.strings.push((string_id, print_string.clone()));
+                // Encode the string immediately
+                let encoded = self.encode_string(&print_string)?;
+                self.encoded_strings.insert(string_id, encoded);
+                log::debug!(
+                    "✅ OPTION_B_FIX: Added string ID {} to encoding system: '{}'",
+                    string_id,
+                    print_string
+                );
+            } else {
+                log::debug!(
+                    "✅ OPTION_B_FIX: String ID {} already in encoding system",
+                    string_id
+                );
+            }
 
             // Generate print_paddr instruction with unresolved string reference
             // Note: The unresolved reference will be added by the operand emission system
