@@ -1179,9 +1179,22 @@ impl IrGenerator {
         self.next_local_slot = 1; // Slot 0 reserved for return value
 
         let mut parameters = Vec::new();
+        log::debug!(
+            "🔧 IR_DEBUG: Function '{}' has {} parameters in AST",
+            func.name,
+            func.parameters.len()
+        );
 
         // Add parameters as local variables
-        for param in func.parameters {
+        for (i, param) in func.parameters.iter().enumerate() {
+            log::debug!(
+                "🔧 IR_DEBUG: Processing parameter [{}/{}] '{}' for function '{}'",
+                i + 1,
+                func.parameters.len(),
+                param.name,
+                func.name
+            );
+
             let param_id = self.next_id();
             let ir_param = IrParameter {
                 name: param.name.clone(),
@@ -1201,14 +1214,20 @@ impl IrGenerator {
 
             // Add parameter as local variable
             let local_param = IrLocal {
-                name: param.name,
-                var_type: param.param_type,
+                name: param.name.clone(),
+                var_type: param.param_type.clone(),
                 slot: self.next_local_slot,
                 mutable: true, // Parameters are typically mutable
             };
             self.current_locals.push(local_param);
 
             parameters.push(ir_param);
+            log::debug!(
+                "🔧 IR_DEBUG: Added parameter '{}' (IR ID {}) to parameters Vec for function '{}'",
+                param.name,
+                param_id,
+                func.name
+            );
             self.next_local_slot += 1;
         }
 
@@ -1219,9 +1238,25 @@ impl IrGenerator {
         // SCOPE MANAGEMENT: Restore the global symbol table after processing function
         self.symbol_ids = saved_symbol_ids;
 
+        log::debug!(
+            "🔧 IR_DEBUG: Creating IrFunction '{}' with {} parameters",
+            func.name,
+            parameters.len()
+        );
+        for (i, param) in parameters.iter().enumerate() {
+            log::debug!(
+                "🔧 IR_DEBUG: Final parameter [{}/{}]: name='{}', ir_id={}, slot={}",
+                i + 1,
+                parameters.len(),
+                param.name,
+                param.ir_id,
+                param.slot
+            );
+        }
+
         Ok(IrFunction {
             id: func_id,
-            name: func.name,
+            name: func.name.clone(),
             parameters,
             return_type: func.return_type,
             body,
@@ -2036,21 +2071,24 @@ impl IrGenerator {
                 Ok(temp_id)
             }
             Expr::Identifier(name) => {
-                let temp_id = self.next_id();
-
                 // Check if this is an object identifier first
                 if let Some(&object_number) = self.object_numbers.get(&name) {
                     // This is an object - load its number as a constant
+                    let temp_id = self.next_id();
                     block.add_instruction(IrInstruction::LoadImmediate {
                         target: temp_id,
                         value: IrValue::Integer(object_number as i16),
                     });
+                    Ok(temp_id)
                 } else if let Some(&var_id) = self.symbol_ids.get(&name) {
-                    // This is a variable - load its value
-                    block.add_instruction(IrInstruction::LoadVar {
-                        target: temp_id,
+                    // This is an existing variable - return its original ID directly
+                    // No need to create LoadVar instruction since the variable already exists
+                    log::debug!(
+                        "✅ IR_FIX: Reusing existing variable ID {} for '{}'",
                         var_id,
-                    });
+                        name
+                    );
+                    Ok(var_id)
                 } else {
                     // Identifier not found - this should be caught during semantic analysis
                     return Err(CompilerError::SemanticError(
@@ -2058,8 +2096,6 @@ impl IrGenerator {
                         0,
                     ));
                 }
-
-                Ok(temp_id)
             }
             Expr::Binary {
                 left,

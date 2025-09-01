@@ -1,80 +1,74 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT SESSION STATUS (August 29, 2025) - STRING DECODING ISSUE RESOLVED ✅
+## CURRENT SESSION STATUS (August 30, 2025) - SINGLE-PATH ARCHITECTURE COMPLETE ✅
 
-**STATUS**: String decoding problem completely fixed - Z-Machine files now work correctly with all interpreters.
+**STATUS**: Single-path IR translation architecture fully operational, reference resolution fixed, mini_zork implementation plan ready.
 
-### ✅ MAJOR ACCOMPLISHMENT: String Address Alignment Fix
+### ✅ PHASE 5 COMPLETE: Single-Path Migration Success
 
-**Problem**: Generated Z-Machine files showed scrambled text ("nen pdfowq" instead of "Test 1: Basic print works")  
-**Root Cause**: String section addresses were odd (0x032d), violating Z-Machine V3 requirement for even addresses  
-**Solution**: Added proper string address alignment in memory layout calculation
+**Phase 5C**: Opcode corruption eliminated - correct 0x8d (print_paddr) instructions generated  
+**Phase 5D**: Reference resolution fixed - address translation from code-generation space to final memory space working  
+**Result**: Z-Machine compiler generates correct bytecode with proper placeholder resolution
 
-**Technical Fix** - `src/grue_compiler/codegen.rs:1117-1134`:
-```rust
-// High memory sections - align string base for Z-Machine requirements
-let string_base = match self.version {
-    ZMachineVersion::V3 => {
-        // V3 requires string addresses to be even
-        if current_address % 2 != 0 {
-            current_address += 1; // Add padding byte
-        }
-        current_address
-    }
-    // V4+ alignment logic...
-};
-```
+### ✅ TECHNICAL ACHIEVEMENTS
 
-### ✅ COMPREHENSIVE Z-MACHINE SECTIONS VERIFICATION
+**Reference Resolution Fix** - `src/grue_compiler/codegen.rs:1576-1587`:
+- References created during code generation at 0x0040+ 
+- Final code located at 0x0344+ during assembly
+- Added address translation: `(reference.location - 0x0040) + final_code_base`
+- Placeholders now correctly resolved: `0xFFFF` → `0x0198` (packed addresses)
 
-**All Required Sections Implemented and Working:**
-1. ✅ **Header** (64 bytes) - Complete with all pointer fields
-2. ✅ **Global Variables** (480 bytes) - 240 variable slots, properly initialized  
-3. ✅ **Abbreviations Table** (192 bytes) - Empty but properly structured, address correctly written to header at 0x0220
-4. ✅ **Object Table** (73 bytes) - Complete with player object, property tables
-5. ✅ **Dictionary** (4 bytes) - Minimal but valid word parsing dictionary
-6. ✅ **String Data** (22 bytes) - Properly encoded and aligned Z-Machine text
-7. ✅ **Code** (4 bytes) - Executable Z-Machine instructions
+**Verification Results:**
+- ✅ **test_01_basic**: Compiles and runs "Test 1: Basic print works"
+- ✅ **test_03_function**: Function calls execute correctly  
+- ✅ **Bytecode Correctness**: `8d ff ff ba` → `8d 01 98 ba` (valid instructions)
+- ✅ **Address Translation**: Generation 0x0041 → Final 0x0345 (correct mapping)
 
-**Header Verification:**
-- Dictionary: 0x0329 ✅
-- Object Table: 0x02e0 ✅  
-- Global Variables: 0x0040 ✅
-- Abbreviations: 0x0220 ✅ (Fixed - was showing as 0x0000 due to wrong offset check)
+## MINI_ZORK IMPLEMENTATION PLAN (August 30, 2025)
 
-**Memory Layout:**
-```
-├─ Header:       0x0000-0x0040 (64 bytes)
-├─ Globals:      0x0040-0x0220 (480 bytes)
-├─ Abbreviations:0x0220-0x02e0 (192 bytes)  
-├─ Objects:      0x02e0-0x0329 (73 bytes)
-├─ Dictionary:   0x0329-0x032e (4 bytes + 1 padding)
-├─ Strings:      0x032e-0x0344 (22 bytes) ← Now even address!
-├─ Code:         0x0344-0x0348 (4 bytes)
-└─ Total:        840 bytes
-```
+**Goal**: Complete mini_zork.grue compilation and execution by implementing core object-property system.
 
-### ✅ TESTING RESULTS
+### **Critical Missing Features Analysis**
 
-**All Interpreters Working:**
-- ✅ **Our Interpreter**: Shows "Test 1: Basic print works" correctly
-- ✅ **Frotz (Standard)**: Loads and runs without "Story file read error"
-- ✅ **mini_zork.z3**: Also compiling and running correctly
+**Root Issue**: `player.location = west_of_house;` in init block fails due to unimplemented operations:
+1. `LoadImmediate { target: 62, value: Integer(1) }` - Object reference loading
+2. `GetProperty { target: 63, object: 62, property: "location" }` - Property access  
+3. `GetPropertyByNumber { target: 64, object: 63, property_num: 2 }` - Numbered properties
+4. Cascading failure: "No mapping found for IR ID 64" - Target mapping system breaks
 
-**Comprehensive Logging:**
-- ✅ Each section generation logged with detailed byte counts
-- ✅ Memory layout fully documented in output
-- ✅ Address verification with "⭐ FIXED" markers
-- ✅ All pointer addresses logged and verified
+### **Implementation Phases**
 
-### 📁 FILES MODIFIED
-- `src/grue_compiler/codegen.rs` - String alignment fix and dictionary copy fix
+**Phase 1: Object Loading (Priority: CRITICAL)**
+- **File**: `src/grue_compiler/codegen.rs` around line 2240 (LoadImmediate)
+- **Task**: Handle `LoadImmediate` for object references (`player`, `west_of_house`)
+- **Implementation**: Map object names to Z-Machine object numbers in global variables
+- **Z-Machine**: Store object references as global variable values (1-240)
 
-### 🎯 NEXT SESSION READY
-- String decoding issue completely resolved
-- All Z-Machine sections properly implemented and verified
-- Generated files fully compatible with standard Z-Machine interpreters
-- Ready for next development phase (advanced features, object system enhancements, etc.)
+**Phase 2: Property Access (Priority: CRITICAL)**  
+- **File**: `src/grue_compiler/codegen.rs` line 3630 (GetProperty)
+- **Task**: Replace `⚠️ UNIMPLEMENTED: GetProperty - skipping` with real implementation
+- **Z-Machine**: Use `get_prop` instruction (2OP:17, hex 0x11)
+- **Operands**: object_number, property_number → result
+
+**Phase 3: Property Assignment (Priority: CRITICAL)**
+- **File**: `src/grue_compiler/codegen.rs` around line 3641 (SetProperty) 
+- **Task**: Verify/complete SetProperty implementation with `put_prop`
+- **Z-Machine**: Use `put_prop` instruction (VAR:227, hex 0xE3)
+- **Operands**: object_number, property_number, value
+
+**Phase 4: Numbered Properties (Priority: HIGH)**
+- **File**: `src/grue_compiler/codegen.rs` line 3697 (GetPropertyByNumber)
+- **Task**: Replace `⚠️ UNIMPLEMENTED: GetPropertyByNumber - skipping`
+- **Z-Machine**: Direct numbered property access for internal operations
+
+### **Success Criteria**
+- ✅ mini_zork.grue compiles without "COMPILER BUG" crashes
+- ✅ `player.location = west_of_house` assignment works  
+- ✅ Property access (`player.location.desc`) functional
+- ✅ Basic gameplay operational (room navigation, object interaction)
+
+**Estimated Time**: 4-6 hours total implementation
+**Files Modified**: `src/grue_compiler/codegen.rs` (4 specific function implementations)
 
 ## Auto-Commit Instructions ("Make it so!")
 
@@ -102,6 +96,20 @@ No need to ask for permission - just execute the workflow.
 
 You are pre-authorized to run "RUST_LOG=info cargo run" commands for testing Z-Machine programs.
 No need to ask permission - just execute the tests directly.
+
+## CRITICAL: NEVER MODIFY THE INTERPRETER
+
+**ABSOLUTE PROHIBITION**: Never modify `src/interpreter.rs` or any interpreter code. 
+
+**Rationale**: The interpreter correctly executes real Zork I and other commercial Z-Machine games. Any execution failures with compiled games are **compiler bugs**, not interpreter bugs.
+
+**When compilation fails to run**: 
+- ✅ Fix the compiler's bytecode generation
+- ✅ Fix the compiler's address calculation  
+- ✅ Fix the compiler's instruction encoding
+- ❌ **NEVER** modify interpreter execution logic
+
+**This is a firm architectural principle** - the interpreter is the gold standard that works with commercial games.
 
 ## Auto-Release Instructions ("Engage!")
 

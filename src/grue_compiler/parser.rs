@@ -466,6 +466,7 @@ impl Parser {
     fn parse_function_decl(&mut self) -> Result<FunctionDecl, CompilerError> {
         self.consume(TokenKind::Function, "Expected 'fn'")?;
         let name = self.consume_identifier("Expected function name")?;
+        log::debug!("🔧 PARSER_DEBUG: Parsing function '{}'", name);
 
         self.consume(TokenKind::LeftParen, "Expected '(' after function name")?;
 
@@ -478,6 +479,11 @@ impl Parser {
             }
 
             let param_name = self.consume_parameter_name()?;
+            log::debug!(
+                "🔧 PARSER_DEBUG: Found parameter '{}' for function '{}'",
+                param_name,
+                name
+            );
             let param_type = if self.check(&TokenKind::Colon) {
                 self.advance();
                 Some(self.parse_type()?)
@@ -492,6 +498,11 @@ impl Parser {
         }
 
         self.consume(TokenKind::RightParen, "Expected ')' after parameters")?;
+        log::debug!(
+            "🔧 PARSER_DEBUG: Function '{}' parsed with {} parameters",
+            name,
+            parameters.len()
+        );
 
         let return_type = if self.check(&TokenKind::Arrow)
             || (self.check(&TokenKind::Minus)
