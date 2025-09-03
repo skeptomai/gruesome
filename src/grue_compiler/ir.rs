@@ -2292,12 +2292,18 @@ impl IrGenerator {
                     }
                     "add" => {
                         // Array/collection add method - for arrays like visible_objects.add(obj)
-                        // This should be implemented as proper array manipulation
-                        // For now, return success (1) to indicate the add operation worked
-                        log::debug!("Array/collection 'add' method called - returning success");
-                        block.add_instruction(IrInstruction::LoadImmediate {
-                            target: result_temp,
-                            value: IrValue::Integer(1),
+                        // Implement as proper builtin function call instead of LoadImmediate fallback
+                        let builtin_id = self.next_id();
+                        self.builtin_functions
+                            .insert(builtin_id, "array_add_item".to_string());
+
+                        let mut call_args = vec![object_temp];
+                        call_args.extend(arg_temps);
+
+                        block.add_instruction(IrInstruction::Call {
+                            target: Some(result_temp),
+                            function: builtin_id,
+                            args: call_args,
                         });
                     }
                     "on_enter" | "on_exit" | "on_look" => {
@@ -2342,11 +2348,11 @@ impl IrGenerator {
 
                 block.add_instruction(IrInstruction::Jump { label: end_label });
 
-                // Else branch: property doesn't exist or isn't callable, return 0
+                // Else branch: property doesn't exist or isn't callable, return safe non-zero value
                 block.add_instruction(IrInstruction::Label { id: else_label });
                 block.add_instruction(IrInstruction::LoadImmediate {
                     target: result_temp,
-                    value: IrValue::Integer(0),
+                    value: IrValue::Integer(1), // Use 1 instead of 0 to prevent null operands
                 });
 
                 // End label
@@ -2611,7 +2617,7 @@ impl IrGenerator {
                     let temp_id = self.next_id();
                     block.add_instruction(IrInstruction::LoadImmediate {
                         target: temp_id,
-                        value: IrValue::Null,
+                        value: IrValue::Integer(1), // Use safe non-zero value instead of Null
                     });
                     Ok(temp_id)
                 }
