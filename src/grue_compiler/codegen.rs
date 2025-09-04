@@ -49,11 +49,8 @@ pub enum MemorySpace {
 /// Reference types for fixup tracking
 #[derive(Debug, Clone)]
 pub enum ReferenceType {
-    // Code-to-code references (can be fixed immediately when target is known)
-    CodeJump { target_label: IrId },
-    CodeBranch { target_label: IrId },
-
     // Cross-space references (require final assembly)
+    // NOTE: CodeJump and CodeBranch REMOVED - use LegacyReferenceType::Jump/Branch instead
     StringRef { string_id: IrId },
     ObjectRef { object_id: IrId },
     RoutineCall { routine_id: IrId },
@@ -184,7 +181,8 @@ pub struct ZMachineCodeGen {
 
     // Memory layout
     story_data: Vec<u8>,
-    current_address: usize,
+    // REMOVED: current_address - replaced with space-specific address tracking
+    final_assembly_address: usize, // Tracks current position during final assembly phase
 
     // Input buffer addresses
     text_buffer_addr: usize,
@@ -300,7 +298,7 @@ impl ZMachineCodeGen {
         ZMachineCodeGen {
             version,
             story_data: vec![0; HEADER_SIZE],
-            current_address: HEADER_SIZE,
+            final_assembly_address: HEADER_SIZE,
             text_buffer_addr: 0,
             parse_buffer_addr: 0,
             label_addresses: HashMap::new(),
@@ -446,110 +444,14 @@ impl ZMachineCodeGen {
             label_address
         );
 
-        // Immediately resolve any pending forward references to this label
-        for fixup in &mut self.pending_fixups {
-            if !fixup.resolved {
-                if let ReferenceType::CodeJump { target_label }
-                | ReferenceType::CodeBranch { target_label } = &fixup.reference_type
-                {
-                    if *target_label == label_id && fixup.source_space == MemorySpace::Code {
-                        let jump_offset = label_address as i16
-                            - (fixup.source_address as i16 + fixup.operand_size as i16);
-
-                        log::debug!(
-                            "✅ RESOLVED_FORWARD_JUMP: label={}, offset={}",
-                            label_id,
-                            jump_offset
-                        );
-
-                        // Write the resolved offset back to code space
-                        log::error!("🔍 FIXUP_DEBUG: source_address=0x{:04x}, code_space.len()={}, jump_offset=0x{:04x}", 
-                                   fixup.source_address, self.code_space.len(), jump_offset);
-
-                        if fixup.source_address == 0 {
-                            log::error!("🚨 FIXUP_BUG: About to write jump_offset 0x{:04x} to code_space[0]! This will corrupt the first instruction!", jump_offset);
-                        }
-
-                        if fixup.operand_size == 2 {
-                            if fixup.source_address + 1 < self.code_space.len() {
-                                log::error!("🔍 FIXUP_WRITE: Writing 0x{:02x} 0x{:02x} to code_space[0x{:04x}:0x{:04x}]", 
-                                           (jump_offset >> 8) as u8, jump_offset as u8, fixup.source_address, fixup.source_address + 1);
-                                self.code_space[fixup.source_address] = (jump_offset >> 8) as u8;
-                                self.code_space[fixup.source_address + 1] = jump_offset as u8;
-                                fixup.resolved = true;
-                            } else {
-                                log::error!("🚨 FIXUP_OOB: source_address 0x{:04x} out of bounds for code_space len {}", fixup.source_address, self.code_space.len());
-                            }
-                        } else if fixup.source_address < self.code_space.len() {
-                            log::error!(
-                                "🔍 FIXUP_WRITE: Writing 0x{:02x} to code_space[0x{:04x}]",
-                                jump_offset as u8,
-                                fixup.source_address
-                            );
-                            self.code_space[fixup.source_address] = jump_offset as u8;
-                            fixup.resolved = true;
-                        } else {
-                            log::error!("🚨 FIXUP_OOB: source_address 0x{:04x} out of bounds for code_space len {}", fixup.source_address, self.code_space.len());
-                        }
-                    }
-                }
-            }
-        }
+        // Note: Forward reference resolution for CodeJump/CodeBranch removed
+        // All jump fixups now use the working LegacyReferenceType::Jump system
 
         Ok(())
     }
 
-    /// Emit a jump/branch instruction with immediate or deferred resolution
-    fn emit_code_jump(
-        &mut self,
-        target_label: IrId,
-        instruction_name: &str,
-        operand_size: usize,
-    ) -> Result<(), CompilerError> {
-        if let Some(&target_address) = self.code_labels.get(&target_label) {
-            // Backward reference - resolve immediately
-            let jump_offset =
-                target_address as i16 - (self.code_address as i16 + operand_size as i16);
-            log::debug!(
-                "✅ IMMEDIATE_JUMP: target=0x{:04x}, offset={}, instr={}",
-                target_address,
-                jump_offset,
-                instruction_name
-            );
-
-            if operand_size == 2 {
-                self.emit_byte((jump_offset >> 8) as u8)?;
-                self.emit_byte(jump_offset as u8)?;
-            } else {
-                self.emit_byte(jump_offset as u8)?;
-            }
-        } else {
-            // Forward reference - defer until label is defined
-            log::debug!(
-                "⏳ DEFERRED_JUMP: target_label={}, instr={}",
-                target_label,
-                instruction_name
-            );
-
-            self.pending_fixups.push(PendingFixup {
-                source_space: MemorySpace::Code,
-                source_address: self.code_address,
-                reference_type: ReferenceType::CodeJump { target_label },
-                instruction_name: instruction_name.to_string(),
-                operand_size,
-                resolved: false,
-            });
-
-            if operand_size == 2 {
-                let placeholder = placeholder_word();
-                self.emit_byte((placeholder >> 8) as u8)?;
-                self.emit_byte(placeholder as u8)?;
-            } else {
-                self.emit_byte(PLACEHOLDER_BYTE)?;
-            }
-        }
-        Ok(())
-    }
+    // REMOVED: emit_code_jump - This was the broken legacy system
+    // All jump generation now uses the working LegacyReferenceType::Jump system
 
     /// Emit a cross-space reference (string, object, routine call)
     fn emit_cross_space_ref(
@@ -587,7 +489,7 @@ impl ZMachineCodeGen {
     fn fixup_final_header(
         &mut self,
         static_memory_start: usize,
-        abbreviations_base: usize,
+        _abbreviations_base: usize,
     ) -> Result<(), CompilerError> {
         log::debug!("🔧 HEADER_FIXUP: Updating header in final_data with calculated addresses");
 
@@ -610,6 +512,21 @@ impl ZMachineCodeGen {
 
         // Initial PC (entry point) - Points directly to first instruction
         let pc_start = self.final_code_base as u16;
+
+        // Debug: Track PC start calculation to find 0x1717 source
+        log::error!(
+            "🚨 PC_START_CALCULATION: final_code_base={} (0x{:04x}), pc_start=0x{:04x}",
+            self.final_code_base,
+            self.final_code_base,
+            pc_start
+        );
+        log::error!(
+            "🚨 PC_START_CALCULATION: final_data_len={}, expected_range=0x{:04x}-0x{:04x}",
+            self.final_data.len(),
+            HEADER_SIZE,
+            self.final_data.len()
+        );
+
         write_word_to_final(&mut self.final_data, 6, pc_start);
         log::debug!("🔧 HEADER_FIXUP: PC start updated to 0x{:04x}", pc_start);
 
@@ -645,9 +562,13 @@ impl ZMachineCodeGen {
             static_mem_base
         );
 
-        // File length (in bytes for V3)
+        // File length (version-specific offset)
         let file_len = (self.final_data.len() as u32) as u16;
-        write_word_to_final(&mut self.final_data, 26, file_len);
+        let file_len_offset = match self.version {
+            ZMachineVersion::V3 => 2, // V1-V3: file length at offset 2
+            ZMachineVersion::V4 | ZMachineVersion::V5 => 26, // V4+: file length at offset 26
+        };
+        write_word_to_final(&mut self.final_data, file_len_offset, file_len);
         log::debug!(
             "🔧 HEADER_FIXUP: File length updated to 0x{:04x} ({} bytes)",
             file_len,
@@ -714,22 +635,8 @@ impl ZMachineCodeGen {
                         routine_id
                     )));
                 }
-            }
-
-            ReferenceType::CodeJump { target_label }
-            | ReferenceType::CodeBranch { target_label } => {
-                if let Some(&target_code_addr) = self.code_labels.get(target_label) {
-                    let final_target = self.final_code_base + target_code_addr;
-                    let jump_offset = final_target as i16
-                        - (final_source_address as i16 + fixup.operand_size as i16);
-                    jump_offset as usize // Will be handled below
-                } else {
-                    return Err(CompilerError::CodeGenError(format!(
-                        "Jump target {} not found in code_labels",
-                        target_label
-                    )));
-                }
-            }
+            } // REMOVED: CodeJump and CodeBranch handling - use LegacyReferenceType::Jump instead
+              // All jump fixups now use the working reference resolution system
         };
 
         // Apply the fixup to final_data
@@ -795,36 +702,6 @@ impl ZMachineCodeGen {
         }
 
         log::debug!("✅ Final assembly validation passed");
-        Ok(())
-    }
-
-    /// Generate Z-Machine header for separated spaces architecture
-    fn generate_header(&mut self) -> Result<(), CompilerError> {
-        // Initialize story_data with basic header
-        if self.story_data.len() < HEADER_SIZE {
-            self.story_data.resize(HEADER_SIZE, 0);
-        }
-
-        // Set Z-Machine version
-        self.story_data[0] = match self.version {
-            ZMachineVersion::V3 => 3,
-            ZMachineVersion::V4 => 4,
-            ZMachineVersion::V5 => 5,
-        };
-
-        // Set flags - basic text-only game
-        self.story_data[1] = 0x00;
-
-        // Set default high memory mark and initial PC
-        let high_memory = DEFAULT_HIGH_MEMORY.to_be_bytes();
-        self.story_data[4] = high_memory[0];
-        self.story_data[5] = high_memory[1];
-
-        let initial_pc = DEFAULT_PC_START.to_be_bytes();
-        self.story_data[6] = initial_pc[0];
-        self.story_data[7] = initial_pc[1];
-
-        log::debug!("✅ Header generated for version {:?}", self.version);
         Ok(())
     }
 
@@ -1293,6 +1170,10 @@ impl ZMachineCodeGen {
         self.dictionary_addr = dictionary_base;
         self.global_vars_addr = globals_base;
 
+        // CRITICAL: Convert all code generation offsets to final addresses
+        log::debug!("🔧 Step 3-CONVERT: Converting code space offsets to final addresses");
+        self.convert_offsets_to_addresses();
+
         // CRITICAL FIX: Convert relative function addresses to absolute addresses
         // During Phase 2, functions were stored with relative addresses (code_space offset)
         // Now that we know final_code_base, convert them to absolute addresses
@@ -1315,7 +1196,30 @@ impl ZMachineCodeGen {
         }
         // Update address mappings after iteration
         for (func_id, absolute_addr) in updated_mappings {
-            self.record_address(func_id, absolute_addr);
+            self.record_final_address(func_id, absolute_addr);
+        }
+
+        // CRITICAL FIX: Convert relative label addresses to absolute addresses
+        log::error!(
+            "🔧 PHASE3_FIX: Converting {} label addresses from relative to absolute",
+            self.label_addresses.len()
+        );
+        for (label_id, relative_addr) in self.label_addresses.iter_mut() {
+            // Only convert if it looks like a relative address (small value during generation)
+            if *relative_addr < 0x1000 && self.final_code_base != 0 {
+                let absolute_addr = self.final_code_base + *relative_addr;
+                log::error!(
+                    "🔧 PHASE3_FIX: Label ID {} address 0x{:04x} → 0x{:04x} (relative + 0x{:04x})",
+                    label_id,
+                    *relative_addr,
+                    absolute_addr,
+                    self.final_code_base
+                );
+                *relative_addr = absolute_addr;
+                self.reference_context
+                    .ir_id_to_address
+                    .insert(*label_id, absolute_addr);
+            }
         }
 
         log::info!("📊 COMPLETE Z-MACHINE MEMORY LAYOUT:");
@@ -1383,18 +1287,11 @@ impl ZMachineCodeGen {
         log::debug!("📝 Step 3c: Generating comprehensive Z-Machine header with ALL addresses");
         self.generate_complete_header(ir, static_memory_start, abbreviations_base)?;
 
-        // Phase 3d: Copy ALL content spaces to final positions
-        log::debug!("📋 Step 3d: Copying ALL separated spaces to final image");
+        // Phase 3d: Copy ALL content spaces to final positions IN MONOTONIC ORDER
+        log::debug!("📋 Step 3d: Copying ALL separated spaces to final image (header-first monotonic approach)");
 
-        // Copy header space (CRITICAL: was missing - header writes were bypassing header_space)
-        if !self.header_space.is_empty() {
-            self.final_data[0..header_size].copy_from_slice(&self.header_space);
-            log::debug!(
-                "✅ Header space copied: {} bytes at 0x{:04x}",
-                header_size,
-                0
-            );
-        }
+        // Header already written directly to final_data[0..64] by generate_complete_header()
+        // No copy needed - this maintains monotonic address allocation
 
         // Copy global variables space
         if !self.globals_space.is_empty() {
@@ -1858,10 +1755,13 @@ impl ZMachineCodeGen {
         &mut self,
         reference: &UnresolvedReference,
     ) -> Result<(), CompilerError> {
-        log::trace!(
-            "🔧 Resolving unresolved reference: {:?} at 0x{:04x}",
+        log::error!(
+            "🔧 RESOLVE_REF: {:?} target_id={} location=0x{:04x} packed={} offset_size={}",
             reference.reference_type,
-            reference.location
+            reference.target_id,
+            reference.location,
+            reference.is_packed_address,
+            reference.offset_size
         );
 
         let target_address = match &reference.reference_type {
@@ -1869,12 +1769,15 @@ impl ZMachineCodeGen {
                 // Find the string in our string space
                 if let Some(&string_offset) = self.string_offsets.get(&reference.target_id) {
                     let final_addr = self.final_string_base + string_offset;
+
                     // Z-Machine packed address calculation
                     if reference.is_packed_address {
-                        match self.version {
+                        let packed_addr = match self.version {
                             ZMachineVersion::V3 => final_addr / 2,
                             ZMachineVersion::V4 | ZMachineVersion::V5 => final_addr / 4,
-                        }
+                        };
+
+                        packed_addr
                     } else {
                         final_addr
                     }
@@ -1888,18 +1791,27 @@ impl ZMachineCodeGen {
 
             LegacyReferenceType::FunctionCall => {
                 // Find the routine in our code space
-                if let Some(&routine_addr) = self.function_addresses.get(&reference.target_id) {
+                if let Some(&code_offset) = self.function_addresses.get(&reference.target_id) {
+                    // 🔧 CRITICAL FIX: After PHASE3_FIX, function_addresses contains absolute addresses
+                    // Check if address is already absolute (>= final_code_base) or still relative offset
+                    let routine_addr = if code_offset >= self.final_code_base {
+                        // Already absolute address from PHASE3_FIX conversion
+                        code_offset
+                    } else {
+                        // Still relative offset, convert to absolute
+                        self.final_code_base + code_offset
+                    };
                     // CRITICAL FIX: Function address calculation bug resolution
-                    // 
+                    //
                     // Problem: routine_addr points to function header start, but calls need executable code start
                     // Root Cause: Function headers contain metadata before executable code:
                     //   - 1 byte: number of local variables
                     //   - V3 only: 2 bytes per local for default values
-                    // 
+                    //
                     // Example with 5 locals in V3:
                     //   0x0e95: 0x05           <- locals count (header start - where routine_addr points)
                     //   0x0e96: 0x00 0x00      <- default value local 1
-                    //   0x0e98: 0x00 0x00      <- default value local 2  
+                    //   0x0e98: 0x00 0x00      <- default value local 2
                     //   0x0e9a: 0x00 0x00      <- default value local 3
                     //   0x0e9c: 0x00 0x00      <- default value local 4
                     //   0x0e9e: 0x00 0x00      <- default value local 5
@@ -1952,33 +1864,172 @@ impl ZMachineCodeGen {
                 }
             }
 
-            LegacyReferenceType::Jump | LegacyReferenceType::Branch => {
-                // Find the jump/branch target in our code space
-                if let Some(&target_addr) = self
+            LegacyReferenceType::Jump => {
+                log::error!("🚨 JUMP_RESOLUTION: Resolving jump reference");
+                log::error!("🔍 JUMP_RESOLUTION: target_id={}", reference.target_id);
+                log::error!(
+                    "🔍 JUMP_RESOLUTION: final_code_base=0x{:04x}",
+                    self.final_code_base
+                );
+
+                // Find the jump target in our code space
+                if let Some(&code_offset) = self
                     .reference_context
                     .ir_id_to_address
                     .get(&reference.target_id)
                 {
-                    self.final_code_base + target_addr
+                    // 🔧 CRITICAL FIX: After CONVERT_OFFSETS, ir_id_to_address contains absolute addresses
+                    // Check if address is already absolute (>= final_code_base) or still relative offset
+                    let resolved_address = if code_offset >= self.final_code_base {
+                        // Already absolute address from CONVERT_OFFSETS conversion
+                        code_offset
+                    } else {
+                        // Still relative offset, convert to absolute
+                        self.final_code_base + code_offset
+                    };
+                    log::error!("🔧 JUMP_RESOLUTION: Converting code_space offset 0x{:04x} to final address 0x{:04x}", code_offset, resolved_address);
+
+                    // CRITICAL: Detect 0x1717 address calculations
+                    if resolved_address == 0x1717
+                        || code_offset == 0x1717
+                        || self.final_code_base == 0x1717
+                    {
+                        log::error!("🚨🚨🚨 FOUND 0x1717 IN JUMP RESOLUTION!");
+                        log::error!(
+                            "  final_code_base = 0x{:04x} ({})",
+                            self.final_code_base,
+                            self.final_code_base
+                        );
+                        log::error!("  code_offset = 0x{:04x} ({})", code_offset, code_offset);
+                        log::error!(
+                            "  resolved_address = 0x{:04x} ({})",
+                            resolved_address,
+                            resolved_address
+                        );
+                        log::error!("  target_id = {}", reference.target_id);
+                    }
+                    log::error!("🔍 JUMP_RESOLUTION: Calculation: final_code_base(0x{:04x}) + code_offset(0x{:04x}) = 0x{:04x}", 
+                               self.final_code_base, code_offset, resolved_address);
+                    log::error!("🔍 JUMP_RESOLUTION: File size is 0x{:04x} bytes, resolved address is {} (valid={})", 
+                               self.final_data.len(), resolved_address, resolved_address < self.final_data.len());
+
+                    // CRITICAL FIX: Use patch_jump_offset for jump instructions to calculate proper relative offset
+                    log::error!("🔧 JUMP_RESOLUTION: Calling patch_jump_offset to calculate relative offset");
+                    return self.patch_jump_offset(reference.location, resolved_address);
                 } else {
+                    log::error!(
+                        "❌ JUMP_RESOLUTION: target_id {} NOT FOUND in ir_id_to_address",
+                        reference.target_id
+                    );
+                    log::error!(
+                        "🔍 JUMP_RESOLUTION: Available IDs: {:?}",
+                        self.reference_context
+                            .ir_id_to_address
+                            .keys()
+                            .collect::<Vec<_>>()
+                    );
                     return Err(CompilerError::CodeGenError(format!(
-                        "Jump/Branch target ID {} not found in ir_id_to_address",
+                        "Jump target ID {} not found in ir_id_to_address",
+                        reference.target_id
+                    )));
+                }
+            }
+
+            LegacyReferenceType::Branch => {
+                log::error!("🚨 BRANCH_RESOLUTION: Resolving branch reference");
+                log::error!("🔍 BRANCH_RESOLUTION: target_id={}", reference.target_id);
+                log::error!(
+                    "🔍 BRANCH_RESOLUTION: final_code_base=0x{:04x}",
+                    self.final_code_base
+                );
+
+                // Find the branch target in our code space
+                if let Some(&code_offset) = self
+                    .reference_context
+                    .ir_id_to_address
+                    .get(&reference.target_id)
+                {
+                    // 🔧 ARCHITECTURE FIX: Convert code_space offset to final address
+                    let resolved_address = self.final_code_base + code_offset;
+                    log::error!("🔧 BRANCH_RESOLUTION: Converting code_space offset 0x{:04x} to final address 0x{:04x}", code_offset, resolved_address);
+
+                    // CRITICAL FIX: Use patch_branch_offset for branch instructions to calculate proper relative offset
+                    log::error!("🔧 BRANCH_RESOLUTION: Calling patch_branch_offset to calculate relative offset");
+                    let result = self.patch_branch_offset(reference.location, resolved_address);
+                    log::error!(
+                        "🔧 BRANCH_RESOLUTION: patch_branch_offset returned: {:?}",
+                        result
+                    );
+                    return result;
+                } else {
+                    log::error!(
+                        "❌ BRANCH_RESOLUTION: target_id {} NOT FOUND in ir_id_to_address",
+                        reference.target_id
+                    );
+                    return Err(CompilerError::CodeGenError(format!(
+                        "Branch target ID {} not found in ir_id_to_address",
                         reference.target_id
                     )));
                 }
             }
         };
 
+        // This legacy system handles StringRef and FunctionCall references with absolute addresses
+        // Jump and Branch references are handled by the modern system above with early returns
+
+        // 🚨 SPECIAL DEBUG: Track string ID 568 final patching
+        if reference.target_id == 568 {
+            log::error!("🚨 STRING_568_DEBUG: About to patch address");
+            log::error!(
+                "🚨 STRING_568_DEBUG: target_address: 0x{:04x}",
+                target_address
+            );
+            log::error!(
+                "🚨 STRING_568_DEBUG: offset_size: {}",
+                reference.offset_size
+            );
+            log::error!(
+                "🚨 STRING_568_DEBUG: Will write bytes: high=0x{:02x}, low=0x{:02x}",
+                ((target_address >> 8) & 0xFF) as u8,
+                (target_address & 0xFF) as u8
+            );
+        }
+
         // Write the resolved address to the final data
         match reference.offset_size {
             1 => {
                 // Single byte
                 self.final_data[reference.location] = (target_address & 0xFF) as u8;
+
+                // 🚨 SPECIAL DEBUG: Track string ID 568 1-byte write
+                if reference.target_id == 568 {
+                    log::error!(
+                        "🚨 STRING_568_DEBUG: Wrote 1-byte: 0x{:02x} at location 0x{:04x}",
+                        (target_address & 0xFF) as u8,
+                        reference.location
+                    );
+                }
             }
             2 => {
                 // Two bytes (big-endian)
                 self.final_data[reference.location] = ((target_address >> 8) & 0xFF) as u8;
                 self.final_data[reference.location + 1] = (target_address & 0xFF) as u8;
+
+                // 🚨 SPECIAL DEBUG: Track string ID 568 2-byte write
+                if reference.target_id == 568 {
+                    log::error!("🚨 STRING_568_DEBUG: Wrote 2-bytes: 0x{:02x}{:02x} at locations 0x{:04x}-0x{:04x}", 
+                               ((target_address >> 8) & 0xFF) as u8, (target_address & 0xFF) as u8,
+                               reference.location, reference.location + 1);
+
+                    // Verify what was actually written
+                    let written_high = self.final_data[reference.location];
+                    let written_low = self.final_data[reference.location + 1];
+                    log::error!(
+                        "🚨 STRING_568_DEBUG: Verification read: 0x{:02x}{:02x}",
+                        written_high,
+                        written_low
+                    );
+                }
             }
             _ => {
                 return Err(CompilerError::CodeGenError(format!(
@@ -2249,12 +2300,18 @@ impl ZMachineCodeGen {
             self.count_total_ir_instructions(ir)
         );
 
-        // CRITICAL: Continue from where previous phases left off - DO NOT RESET ADDRESS
-        // The current_address has been set by previous phases (object tables, etc.)
-        // Code generation must continue from that point to maintain single-path emission
+        // CRITICAL: Set up object ID mappings before code generation
+        // This ensures that object references in the IR get mapped to proper Z-Machine object numbers
+        log::error!("🔧 Setting up object mappings for IR → Z-Machine object resolution");
+        self.setup_object_mappings(ir);
+
+        // CRITICAL ARCHITECTURE FIX: Use code_address to track code_space positions
+        // During code generation, we track positions within code_space using code_address
+        // This eliminates any ambiguity about which address space we're working in
+        self.code_address = self.code_space.len(); // Set to current code_space position
         log::info!(
-            "🏁 Code generation phase: current_address continuing from 0x{:04x} (set by previous phases)",
-            self.current_address
+            "🏁 Code generation phase: Using code_address to track code_space position - starting at offset 0x{:04x}",
+            self.code_address
         );
 
         // CRITICAL: In V1-V5, PC points directly to first instruction, NOT a routine header
@@ -2262,20 +2319,20 @@ impl ZMachineCodeGen {
         log::info!("🏁 Starting code generation - PC will point directly to first instruction");
 
         // Phase 2.0: Pre-register ALL function addresses to enable forward references
-        // CRITICAL: This must happen BEFORE init block translation since init block may call user functions
-        log::info!("🔧 PRE-REGISTERING: All function addresses for forward references");
-        let mut estimated_offset = 0;
+        // CRITICAL: Record function addresses as code_space offsets, not final addresses
+        log::info!("🔧 PRE-REGISTERING: All function addresses as code_space offsets for forward references");
+        let mut estimated_offset = self.code_space.len(); // Start from current code_space position
         for function in ir.functions.iter() {
-            let estimated_func_addr =
-                self.final_code_base + self.code_space.len() + estimated_offset;
+            // Record as code_space offset - will be converted to final address during fixup
             self.function_addresses
-                .insert(function.id, estimated_func_addr);
-            self.record_address(function.id, estimated_func_addr);
+                .insert(function.id, estimated_offset);
+            self.record_code_space_offset(function.id, estimated_offset);
             log::debug!(
-                "🔧 FUNCTION_PRE_REGISTERED: '{}' (ID {}) at estimated address 0x{:04x}",
+                "🔧 FUNCTION_PRE_REGISTERED: '{}' (ID {}) at code_space offset 0x{:04x} (final will be 0x{:04x})",
                 function.name,
                 function.id,
-                estimated_func_addr
+                estimated_offset,
+                self.final_code_base + estimated_offset
             );
 
             // Rough estimate: 4 bytes per instruction (very conservative)
@@ -2335,7 +2392,7 @@ impl ZMachineCodeGen {
             let actual_func_addr = relative_func_addr; // Will be converted to absolute during assembly
             self.function_addresses
                 .insert(function.id, actual_func_addr);
-            self.record_address(function.id, actual_func_addr);
+            self.record_final_address(function.id, actual_func_addr);
             log::debug!(
                 "🔧 FUNCTION_UPDATED: '{}' (ID {}) updated to actual address 0x{:04x}",
                 function.name,
@@ -2811,10 +2868,14 @@ impl ZMachineCodeGen {
 
     /// Implementation: Label - Set label address for jumps
     fn translate_label(&mut self, id: IrId) -> Result<(), CompilerError> {
-        log::debug!("LABEL: id={} at address=0x{:04x}", id, self.current_address);
+        log::debug!(
+            "LABEL: id={} at code_address=0x{:04x}",
+            id,
+            self.code_address
+        );
 
-        // Register the current address for this label ID
-        self.record_address(id, self.current_address);
+        // Register the current code_space position for this label ID
+        self.record_code_space_offset(id, self.code_address - self.final_code_base);
 
         // Labels don't generate code, they just mark addresses
         Ok(())
@@ -2954,6 +3015,27 @@ impl ZMachineCodeGen {
                 }
             }
         } else if self.function_addresses.contains_key(&function) {
+            // USER FUNCTION CALLS: Handle calls to user-defined functions
+            //
+            // CRITICAL ARCHITECTURE NOTE (Sept 4, 2025):
+            // This function call generation works for basic cases but has discovered
+            // a systematic issue with placeholder→UnresolvedReference architecture.
+            //
+            // CURRENT STATUS:
+            // ✅ String references resolve correctly (print_paddr instructions work)
+            // ✅ Function calls generate correct argument counts (0 args for look_around)
+            // ✅ Initial game banner displays properly
+            // ❌ PC corruption after function calls (jump to 0x1cda out of bounds)
+            //
+            // ROOT CAUSE IDENTIFIED:
+            // Massive NULL byte generation throughout compilation due to placeholders
+            // being written without corresponding UnresolvedReference entries.
+            //
+            // NEXT SESSION PRIORITY:
+            // 1. Audit all placeholder_word() calls - ensure matching UnresolvedReference creation
+            // 2. Fix missing reference entries for all instruction types
+            // 3. Verify complete placeholder resolution before final assembly
+            //
             log::debug!("USER_FUNCTION_CALL: function={}", function);
             // Convert arguments to operands
             let mut operands = vec![];
@@ -3000,16 +3082,75 @@ impl ZMachineCodeGen {
             // HOTFIX: Register commonly missing builtin functions
             match function {
                 1 => {
-                    log::debug!("HOTFIX: Function 1 should be user-defined look_around, but user functions not registered");
+                    log::debug!("HOTFIX: Function 1 (look_around) - generating call instruction with UnresolvedReference");
                     log::debug!(
                         "Available user function IDs: {:?}",
                         self.function_addresses.keys().collect::<Vec<_>>()
                     );
-                    // For now, generate a placeholder call instruction
+
+                    // Generate proper call instruction with placeholder and UnresolvedReference
+                    let mut operands = Vec::new();
+                    operands.push(Operand::LargeConstant(placeholder_word())); // Function address placeholder
+
+                    // Add function arguments
+                    for &arg_id in args {
+                        if let Some(literal_value) = self.get_literal_value(arg_id) {
+                            operands.push(Operand::LargeConstant(literal_value));
+                        } else if self.ir_id_to_string.contains_key(&arg_id) {
+                            // String literals: Create placeholder + unresolved reference
+                            let operand_location = self.code_address + 1 + operands.len() * 2;
+                            operands.push(Operand::LargeConstant(placeholder_word()));
+                            let reference = UnresolvedReference {
+                                reference_type: LegacyReferenceType::StringRef,
+                                location: operand_location,
+                                target_id: arg_id,
+                                is_packed_address: true,
+                                offset_size: 2,
+                                location_space: MemorySpace::Code,
+                            };
+                            self.reference_context.unresolved_refs.push(reference);
+                        } else {
+                            // Other types: Use existing operand resolution
+                            match self.resolve_ir_id_to_operand(arg_id) {
+                                Ok(operand) => operands.push(operand),
+                                Err(_) => operands.push(Operand::LargeConstant(placeholder_word())),
+                            }
+                        }
+                    }
+
+                    // Determine store variable
+                    let store_var = if target.is_some() {
+                        Some(1) // Store in variable 1
+                    } else {
+                        None // Void function call
+                    };
+
+                    // Generate call instruction
+                    let layout = self.emit_instruction(
+                        0xE0, // call_vs opcode (VAR:224)
+                        &operands, store_var, None,
+                    )?;
+
+                    // Create UnresolvedReference for function address
+                    if let Some(operand_loc) = layout.operand_location {
+                        self.reference_context
+                            .unresolved_refs
+                            .push(UnresolvedReference {
+                                reference_type: LegacyReferenceType::FunctionCall,
+                                location: operand_loc,
+                                target_id: function, // This is IR ID 1 (look_around)
+                                is_packed_address: true,
+                                offset_size: 2,
+                                location_space: MemorySpace::Code,
+                            });
+                    }
+
+                    // Handle target variable mapping
                     if let Some(target) = target {
                         let local_var = self.allocate_local_variable();
                         self.ir_id_to_local_var.insert(target, local_var);
                     }
+
                     return Ok(());
                 }
                 11 => {
@@ -3805,7 +3946,7 @@ impl ZMachineCodeGen {
 
     fn translate_array_add_item_builtin_inline(
         &mut self,
-        args: &[IrId],
+        _args: &[IrId],
         target: Option<IrId>,
     ) -> Result<(), CompilerError> {
         // Array add operation - for collections like visible_objects.add(obj)
@@ -3970,12 +4111,6 @@ impl ZMachineCodeGen {
             IrBinaryOp::LessEqual => 0x03, // jg with negated branch
             IrBinaryOp::Greater => 0x03,  // jg (2OP:3)
             IrBinaryOp::GreaterEqual => 0x02, // jl with negated branch
-            _ => {
-                return Err(CompilerError::CodeGenError(format!(
-                    "Unsupported binary operation: {:?}",
-                    op
-                )));
-            }
         };
 
         // Generate instruction - FIXED: Use local variable for persistent binary operation results
@@ -4394,7 +4529,7 @@ impl ZMachineCodeGen {
 
         // Generate Z-Machine instruction to load constant result
         // Use load immediate to stack (simulate array.empty() result)
-        let layout = self.emit_instruction(
+        let _layout = self.emit_instruction(
             0x8E, // load immediate constant (1OP:142)
             &[Operand::SmallConstant(empty_value)],
             Some(0), // Store to stack
@@ -4512,7 +4647,7 @@ impl ZMachineCodeGen {
 
     /// Write header directly to final_data for separated spaces architecture
     /// This was the critical missing piece - header fields were not being populated in final_data
-    fn write_header_to_final_data(&mut self, entry_point: usize) -> Result<(), CompilerError> {
+    fn write_header_to_final_data(&mut self, _entry_point: usize) -> Result<(), CompilerError> {
         if self.final_data.len() < HEADER_SIZE {
             return Err(CompilerError::CodeGenError(
                 "final_data too small for header".to_string(),
@@ -4580,7 +4715,22 @@ impl ZMachineCodeGen {
             ZMachineVersion::V3 => (self.final_data.len() / 2) as u16,
             ZMachineVersion::V4 | ZMachineVersion::V5 => (self.final_data.len() / 4) as u16,
         };
-        write_word(&mut self.header_space, 26, file_len);
+        let file_len_offset = match self.version {
+            ZMachineVersion::V3 => 2, // V1-V3: file length at offset 2
+            ZMachineVersion::V4 | ZMachineVersion::V5 => 26, // V4+: file length at offset 26
+        };
+        write_word(&mut self.header_space, file_len_offset, file_len);
+
+        // CRITICAL FIX: Copy updated header_space back to final_data
+        // The early copy at line 1391 happened before header was written
+        if self.final_data.len() >= HEADER_SIZE {
+            self.final_data[0..HEADER_SIZE].copy_from_slice(&self.header_space);
+            log::debug!(
+                "🔧 HEADER_FIX: Copied updated header_space to final_data after writing all fields"
+            );
+        } else {
+            log::error!("🚨 HEADER_FIX: final_data too small for header copy!");
+        }
 
         log::info!("🏗️ ✅ Header written to final_data with dict_addr=0x{:04x}, obj_table_addr=0x{:04x}, globals_addr=0x{:04x}", 
                    final_dict_addr, self.final_object_base, final_globals_addr);
@@ -5010,7 +5160,7 @@ impl ZMachineCodeGen {
                 "Layout phase: string_id={} -> 0x{:04x} (length={})",
                 string_id, addr, length
             );
-            self.record_address(string_id, addr); // Record in reference context
+            self.record_final_address(string_id, addr); // Record in reference context
 
             // CRITICAL: Write string data immediately during layout phase
             // This prevents overlaps with code generation
@@ -5032,8 +5182,11 @@ impl ZMachineCodeGen {
         }
 
         // Code starts after all data structures
-        self.set_current_address(addr, "Layout phase - code start position");
-        debug!("Layout phase complete: current_address=0x{:04x}", addr);
+        self.set_final_assembly_address(addr, "Layout phase - code start position");
+        debug!(
+            "Layout phase complete: final_assembly_address=0x{:04x}",
+            addr
+        );
 
         Ok(())
     }
@@ -5227,16 +5380,16 @@ impl ZMachineCodeGen {
             self.create_object_entry_from_ir_with_mapping(obj_num, object, &object_id_to_number)?;
         }
 
-        // Update current_address to reflect the end of object and property tables
+        // Update final_assembly_address to reflect the end of object and property tables
         // current_property_addr points to where the next property table would go
-        self.set_current_address(
+        self.set_final_assembly_address(
             self.current_property_addr,
             "Object table generation complete",
         );
 
         debug!(
-            "Object table generation complete, current_address updated to: 0x{:04x}",
-            self.current_address
+            "Object table generation complete, object_address updated to: 0x{:04x}",
+            self.object_address
         );
         Ok(())
     }
@@ -5870,15 +6023,15 @@ impl ZMachineCodeGen {
         self.write_to_dictionary_space(1, 0)?; // Number of entries (high byte)
         self.write_to_dictionary_space(2, 0)?; // Number of entries (low byte)
 
-        // CRITICAL: Update current_address to reflect actual end of all data structures
+        // CRITICAL: Update final_assembly_address to reflect actual end of all data structures
         // This eliminates gaps between data structures and code generation
         let dict_end = self.dictionary_addr + 3; // Minimal dictionary is 3 bytes
         let max_data_end = std::cmp::max(self.current_property_addr, dict_end);
-        // Respect existing current_address if it's already beyond our data structures
-        let new_addr = std::cmp::max(self.current_address, max_data_end);
-        self.set_current_address(new_addr, "Data structures alignment");
-        debug!("Data structures complete, current_address updated to: 0x{:04x} (property_end: 0x{:04x}, dict_end: 0x{:04x})", 
-               self.current_address, self.current_property_addr, dict_end);
+        // Respect existing final_assembly_address if it's already beyond our data structures
+        let new_addr = std::cmp::max(self.final_assembly_address, max_data_end);
+        self.set_final_assembly_address(new_addr, "Data structures alignment");
+        debug!("Data structures complete, final_assembly_address updated to: 0x{:04x} (property_end: 0x{:04x}, dict_end: 0x{:04x})", 
+               self.final_assembly_address, self.current_property_addr, dict_end);
 
         Ok(())
     }
@@ -5909,13 +6062,13 @@ impl ZMachineCodeGen {
             // For now, just ensure the space is allocated
         }
 
-        // CRITICAL: Update current_address to reflect actual end of global variables
+        // CRITICAL: Update final_assembly_address to reflect actual end of global variables
         // This eliminates gaps between global variables and subsequent data structures
         let globals_end = globals_start + 480; // 240 globals * 2 bytes each
-        let new_addr = std::cmp::max(self.current_address, globals_end);
-        self.set_current_address(new_addr, "Global variables alignment");
-        debug!("Global variables complete, current_address updated to: 0x{:04x} (globals_end: 0x{:04x})", 
-               self.current_address, globals_end);
+        let new_addr = std::cmp::max(self.final_assembly_address, globals_end);
+        self.set_final_assembly_address(new_addr, "Global variables alignment");
+        debug!("Global variables complete, final_assembly_address updated to: 0x{:04x} (globals_end: 0x{:04x})", 
+               self.final_assembly_address, globals_end);
 
         Ok(())
     }
@@ -5953,7 +6106,7 @@ impl ZMachineCodeGen {
             // Align function address according to Z-Machine version requirements
             self.align_function_address()?;
 
-            let main_call_routine_address = self.current_address;
+            let main_call_routine_address = self.code_address;
             let main_call_id = 9000u32; // Use high ID to avoid conflicts
 
             // Create a routine that calls the user's main function
@@ -5962,7 +6115,7 @@ impl ZMachineCodeGen {
             // Record the routine address for reference resolution
             self.function_addresses
                 .insert(main_call_id, main_call_routine_address);
-            self.record_address(main_call_id, main_call_routine_address);
+            self.record_final_address(main_call_id, main_call_routine_address);
 
             // Call the user's main function
             let layout = self.emit_instruction(
@@ -6002,13 +6155,13 @@ impl ZMachineCodeGen {
         match self.version {
             ZMachineVersion::V3 => {
                 // v3: functions must be at even addresses
-                if self.current_address % 2 != 0 {
+                if self.code_address % 2 != 0 {
                     self.emit_byte(0x00)?; // padding (will crash if executed - good for debugging)
                 }
             }
             ZMachineVersion::V4 | ZMachineVersion::V5 => {
                 // v4/v5: functions must be at 4-byte boundaries
-                while self.current_address % 4 != 0 {
+                while self.code_address % 4 != 0 {
                     self.emit_byte(0x00)?; // padding (will crash if executed - good for debugging)
                 }
             }
@@ -6025,7 +6178,7 @@ impl ZMachineCodeGen {
 
         // Record main loop routine address for function calls
         let main_loop_id = 9000u32; // Use high ID to avoid conflicts
-        let main_loop_routine_address = self.current_address;
+        let main_loop_routine_address = self.code_address;
 
         debug!(
             "Main loop routine starts at address 0x{:04x}",
@@ -6038,12 +6191,12 @@ impl ZMachineCodeGen {
         // Record the routine address (including header) for function calls
         self.function_addresses
             .insert(main_loop_id, main_loop_routine_address);
-        self.record_address(main_loop_id, main_loop_routine_address); // Record for reference resolution
+        self.record_final_address(main_loop_id, main_loop_routine_address); // Record for reference resolution
 
         // Record the first instruction address for jump targets
-        let main_loop_first_instruction = self.current_address;
+        let main_loop_first_instruction = self.code_address;
         let main_loop_jump_id = main_loop_id + 1; // Different ID for jump target
-        self.record_address(main_loop_jump_id, main_loop_first_instruction);
+        self.record_final_address(main_loop_jump_id, main_loop_first_instruction);
 
         // 1. Print prompt "> "
         let prompt_string_id = 9002u32;
@@ -6094,30 +6247,63 @@ impl ZMachineCodeGen {
 
         // 5. Jump back to loop start (first instruction, not routine header)
         let main_loop_jump_id = main_loop_id + 1; // Use same calculation as above
+
+        log::error!("🚨 MAIN_LOOP_JUMP: Critical jump instruction generation");
+        log::error!(
+            "🔍 MAIN_LOOP_JUMP: main_loop_id={}, jump_target_id={}",
+            main_loop_id,
+            main_loop_jump_id
+        );
+        log::error!(
+            "🔍 MAIN_LOOP_JUMP: main_loop_routine_address=0x{:04x}",
+            main_loop_routine_address
+        );
+        log::error!(
+            "🔍 MAIN_LOOP_JUMP: main_loop_first_instruction=0x{:04x}",
+            main_loop_first_instruction
+        );
+        log::error!(
+            "🔍 MAIN_LOOP_JUMP: code_address=0x{:04x} (where jump instruction will be placed)",
+            self.code_address
+        );
+
         let layout = self.emit_instruction(
-            0x0C,                                          // jump opcode (correct opcode)
+            0x8C,                                          // jump opcode (1OP:140, correct opcode)
             &[Operand::LargeConstant(placeholder_word())], // Placeholder for loop start address
             None,                                          // No store
             None,                                          // No branch
         )?;
 
+        let jump_instruction_operand_location = layout
+            .operand_location
+            .expect("jump instruction must have operand");
+
+        log::error!(
+            "🔍 MAIN_LOOP_JUMP: jump_instruction at 0x{:04x}, operand at 0x{:04x}",
+            self.code_address - layout.total_size,
+            jump_instruction_operand_location
+        );
+
         // Add unresolved reference for loop jump using layout-tracked operand location
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Jump,
-                location: layout
-                    .operand_location
-                    .expect("jump instruction must have operand"),
-                target_id: main_loop_jump_id, // Jump back to main loop first instruction (not routine header)
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        let unresolved_ref = UnresolvedReference {
+            reference_type: LegacyReferenceType::Jump,
+            location: jump_instruction_operand_location,
+            target_id: main_loop_jump_id, // Jump back to main loop first instruction (not routine header)
+            is_packed_address: false,
+            offset_size: 2,
+            location_space: MemorySpace::Code,
+        };
+
+        log::error!(
+            "🔍 MAIN_LOOP_JUMP: Creating UnresolvedReference: {:?}",
+            unresolved_ref
+        );
+
+        self.reference_context.unresolved_refs.push(unresolved_ref);
 
         debug!(
             "Main loop generation complete at 0x{:04x}",
-            self.current_address
+            self.code_address
         );
         Ok(())
     }
@@ -6130,25 +6316,25 @@ impl ZMachineCodeGen {
             match self.version {
                 ZMachineVersion::V3 => {
                     // v3: functions must be at even addresses
-                    if self.current_address % 2 != 0 {
+                    if self.code_address % 2 != 0 {
                         self.emit_byte(0x00)?; // padding (will crash if executed - good for debugging)
                     }
                 }
                 ZMachineVersion::V4 | ZMachineVersion::V5 => {
                     // v4/v5: functions must be at 4-byte boundaries
-                    while self.current_address % 4 != 0 {
+                    while self.code_address % 4 != 0 {
                         self.emit_byte(0x00)?; // padding (will crash if executed - good for debugging)
                     }
                 }
             }
 
             // Record function address BEFORE header (where function actually starts)
-            let func_addr = self.current_address;
+            let func_addr = self.code_address;
 
             // Generate function header (local variable count + types)
             self.generate_function_header(function, ir)?;
             self.function_addresses.insert(function.id, func_addr);
-            self.record_address(function.id, func_addr);
+            self.record_final_address(function.id, func_addr);
 
             // Generate function body with boundary protection
             self.generate_function_body_with_boundary(function)?;
@@ -6156,7 +6342,7 @@ impl ZMachineCodeGen {
             log::debug!(
                 "Function '{}' generation complete at address 0x{:04x}",
                 function.name,
-                self.current_address
+                self.code_address
             );
         }
 
@@ -6169,7 +6355,7 @@ impl ZMachineCodeGen {
         function: &IrFunction,
     ) -> Result<(), CompilerError> {
         // Track the starting address to detect if we're generating orphaned instructions
-        let function_start = self.current_address;
+        let function_start = self.code_address;
 
         // Generate function instructions directly (no pre-calculation)
         // Labels are allocated during actual instruction generation
@@ -6208,7 +6394,7 @@ impl ZMachineCodeGen {
             "Function '{}' generated from 0x{:04x} to 0x{:04x}",
             function.name,
             function_start,
-            self.current_address
+            self.code_address
         );
 
         Ok(())
@@ -6616,7 +6802,7 @@ impl ZMachineCodeGen {
 
             IrInstruction::Label { id } => {
                 // Allocate label at current address using unified allocator
-                let label_address = self.current_address;
+                let label_address = self.code_address;
                 log::error!(
                     "🏷️  PROCESSING LABEL: ID {} at address 0x{:04x} (unified allocation)",
                     *id,
@@ -6625,7 +6811,7 @@ impl ZMachineCodeGen {
 
                 // Record label address in label_addresses map
                 self.label_addresses.insert(*id, label_address);
-                self.record_address(*id, label_address);
+                self.record_final_address(*id, label_address);
 
                 // CRITICAL: Verify the label was recorded
                 if let Some(&recorded_addr) = self.reference_context.ir_id_to_address.get(id) {
@@ -7474,7 +7660,9 @@ impl ZMachineCodeGen {
                 operands.push(Operand::LargeConstant(literal_value));
             } else if self.ir_id_to_string.contains_key(&arg_id) {
                 // String literal: Create placeholder + unresolved reference
-                let operand_location = self.code_space.len() + 1 + operands.len() * 2; // 🔧 SPACE-RELATIVE: Use code space offset
+                let code_space_offset = self.code_space.len() + 1 + operands.len() * 2;
+                // ✅ FIXED: Convert code space offset to final memory address
+                let operand_location = self.final_code_base + code_space_offset;
                 operands.push(Operand::LargeConstant(placeholder_word()));
                 let reference = UnresolvedReference {
                     reference_type: LegacyReferenceType::StringRef,
@@ -7503,7 +7691,9 @@ impl ZMachineCodeGen {
                             err
                         );
                         // Create placeholder and unresolved reference as fallback
-                        let operand_location = self.code_space.len() + 1 + operands.len() * 2; // 🔧 SPACE-RELATIVE: Use code space offset
+                        let code_space_offset = self.code_space.len() + 1 + operands.len() * 2;
+                        // ✅ FIXED: Convert code space offset to final memory address
+                        let operand_location = self.final_code_base + code_space_offset;
                         operands.push(Operand::LargeConstant(placeholder_word()));
                         let reference = UnresolvedReference {
                             reference_type: LegacyReferenceType::StringRef, // Assume strings for print calls
@@ -7994,8 +8184,8 @@ impl ZMachineCodeGen {
     fn is_next_instruction(&self, label: IrId) -> bool {
         // First check pre-calculated label addresses (most reliable)
         if let Some(&target_addr) = self.label_addresses.get(&label) {
-            // Calculate what the next instruction address will be after current jump
-            let next_addr_after_jump = self.current_address + 3; // 🚨 FLAG: Jump optimization uses global addressing
+            // ✅ FIXED: Calculate next instruction address using consistent final code space
+            let next_addr_after_jump = self.final_code_base + self.code_space.len() + 3;
             let is_next = target_addr == next_addr_after_jump;
 
             log::debug!(
@@ -8008,7 +8198,8 @@ impl ZMachineCodeGen {
 
         // Fallback: Check if label is already resolved and points to next instruction
         if let Some(&target_addr) = self.reference_context.ir_id_to_address.get(&label) {
-            let next_addr_after_jump = self.current_address + 3; // 🚨 FLAG: Jump optimization uses global addressing
+            // ✅ FIXED: Use consistent final code space address calculation
+            let next_addr_after_jump = self.final_code_base + self.code_space.len() + 3;
             return target_addr == next_addr_after_jump;
         }
 
@@ -8150,7 +8341,9 @@ impl ZMachineCodeGen {
         )?;
 
         // Manually emit branch placeholders and record the location
-        let branch_location = self.code_space.len(); // 🔧 SPACE-RELATIVE: Use code space offset
+        let code_space_offset = self.code_space.len();
+        // ✅ FIXED: Convert code space offset to final memory address
+        let branch_location = self.final_code_base + code_space_offset;
         self.emit_word(placeholder_word())?; // 2-byte branch placeholder
 
         self.reference_context
@@ -8195,7 +8388,9 @@ impl ZMachineCodeGen {
         )?;
 
         // Manually emit branch placeholders and record the location
-        let branch_location = self.code_space.len(); // 🔧 SPACE-RELATIVE: Use code space offset
+        let code_space_offset = self.code_space.len();
+        // ✅ FIXED: Convert code space offset to final memory address
+        let branch_location = self.final_code_base + code_space_offset;
         self.emit_word(placeholder_word())?; // 2-byte branch placeholder
 
         self.reference_context
@@ -8225,7 +8420,7 @@ impl ZMachineCodeGen {
 
         // Emit jump instruction with placeholder offset
         let layout = self.emit_instruction(
-            0x0C,                                          // jump opcode
+            0x8C,                                          // jump opcode (1OP:140)
             &[Operand::LargeConstant(placeholder_word())], // Placeholder offset (will be resolved later)
             None,                                          // No store
             None,                                          // No branch
@@ -8263,7 +8458,7 @@ impl ZMachineCodeGen {
 
         log::debug!(
             "generate_jump: Emitting jump at address 0x{:04x} -> label {}",
-            self.current_address,
+            self.code_address,
             label
         );
 
@@ -8272,13 +8467,14 @@ impl ZMachineCodeGen {
         self.emit_byte(0x8C)?; // 1OP:0x0C - jump instruction
 
         // Emit placeholder offset (will be resolved later)
-        let offset_address = self.code_space.len(); // 🔧 SPACE-RELATIVE: Use code space offset
+        let operand_location = self.code_address;
         self.emit_word(placeholder_word())?; // 2-byte placeholder offset
 
         // Add unresolved reference for the jump target
+        // CRITICAL FIX: Use code_address directly, let resolution phase handle address translation
         let reference = UnresolvedReference {
             reference_type: LegacyReferenceType::Jump,
-            location: offset_address,
+            location: operand_location,
             target_id: label,
             is_packed_address: false,
             offset_size: 2,
@@ -8289,7 +8485,7 @@ impl ZMachineCodeGen {
         log::debug!(
             "generate_jump: Added reference for jump to label {} at location 0x{:04x}",
             label,
-            offset_address
+            operand_location
         );
 
         Ok(())
@@ -8299,28 +8495,28 @@ impl ZMachineCodeGen {
     /// Replaces the dual allocation system that caused memory conflicts
     fn allocate_address(&mut self, size: usize, alignment: usize) -> usize {
         log::error!("🚨 ALLOCATE_ADDRESS: ENTRY - current_address=0x{:04x}, requesting size={}, alignment={}", 
-                   self.current_address, size, alignment);
+                   self.code_address, size, alignment);
 
         // Ensure proper alignment
-        let original_address = self.current_address;
-        while self.current_address % alignment != 0 {
-            self.current_address += 1;
+        let original_address = self.code_address;
+        while self.code_address % alignment != 0 {
+            self.code_address += 1;
         }
 
         log::error!(
             "🚨 ALLOCATE_ADDRESS: ALIGNMENT - original=0x{:04x}, aligned=0x{:04x} (alignment={})",
             original_address,
-            self.current_address,
+            self.code_address,
             alignment
         );
 
-        let allocated_address = self.current_address;
-        self.current_address += size;
+        let allocated_address = self.code_address;
+        self.code_address += size;
 
         log::error!(
             "🚨 ALLOCATE_ADDRESS: RESULT - allocated=0x{:04x}, new_current=0x{:04x} (size={})",
             allocated_address,
-            self.current_address,
+            self.code_address,
             size
         );
 
@@ -8329,10 +8525,19 @@ impl ZMachineCodeGen {
 
     /// Allocate address for code labels (branch targets)
     fn allocate_label_address(&mut self, ir_id: IrId) -> usize {
-        // Labels don't consume space, just mark the current address
-        let address = self.current_address;
+        // ✅ FIXED: During generation, use relative address; convert to absolute later
+        let relative_address = self.code_space.len();
+        let address = if self.final_code_base != 0 {
+            // If final_code_base is set, use absolute address
+            self.final_code_base + relative_address
+        } else {
+            // During generation, store relative address - will be converted later
+            relative_address
+        };
+        log::error!("🔧 ALLOCATE_LABEL: IR ID {} -> relative=0x{:04x}, final_code_base=0x{:04x}, address=0x{:04x}", 
+                   ir_id, relative_address, self.final_code_base, address);
         self.label_addresses.insert(ir_id, address);
-        self.record_address(ir_id, address);
+        self.record_final_address(ir_id, address);
 
         debug!(
             "allocate_label_address: IR ID {} -> 0x{:04x}",
@@ -8369,11 +8574,11 @@ impl ZMachineCodeGen {
 
         let address = self.allocate_address(string_length, alignment);
         self.string_addresses.insert(ir_id, address);
-        self.record_address(ir_id, address);
+        self.record_final_address(ir_id, address);
 
         log::error!(
             "🚨 allocate_string_address: IR ID {} ({} bytes) -> 0x{:04x} (current_address was 0x{:04x})",
-            ir_id, string_length, address, self.current_address
+            ir_id, string_length, address, self.code_address
         );
 
         address
@@ -8397,7 +8602,7 @@ impl ZMachineCodeGen {
         // This creates: Header → CALL init_routine() → CALL main_loop()
 
         // First, emit a CALL to init routine at startup address
-        let startup_address = self.current_address;
+        let startup_address = self.code_address;
         log::debug!("Startup CALL instruction at 0x{:04x}", startup_address);
 
         let init_routine_id = 8000u32; // Unique ID for init routine
@@ -8427,25 +8632,25 @@ impl ZMachineCodeGen {
         match self.version {
             ZMachineVersion::V3 => {
                 // v3: functions must be at even addresses
-                if self.current_address % 2 != 0 {
+                if self.code_address % 2 != 0 {
                     self.emit_byte(0x00)?; // padding (will crash if executed - good for debugging)
                 }
             }
             ZMachineVersion::V4 | ZMachineVersion::V5 => {
                 // v4/v5: functions must be at 4-byte boundaries
-                while self.current_address % 4 != 0 {
+                while self.code_address % 4 != 0 {
                     self.emit_byte(0x00)?; // padding (will crash if executed - good for debugging)
                 }
             }
         }
 
-        let init_routine_address = self.current_address;
+        let init_routine_address = self.code_address;
         log::debug!("Init routine starts at 0x{:04x}", init_routine_address);
 
         // Record init routine address for call resolution
         self.function_addresses
             .insert(init_routine_id, init_routine_address);
-        self.record_address(init_routine_id, init_routine_address);
+        self.record_final_address(init_routine_id, init_routine_address);
 
         // Generate routine header (0 locals for init)
         self.emit_byte(0x00)?; // Routine header: 0 locals
@@ -8611,10 +8816,10 @@ impl ZMachineCodeGen {
         log::debug!(
             "Scanning for unresolved placeholders from 0x{:04x} to 0x{:04x}",
             scan_addr,
-            self.current_address
+            self.code_address
         );
 
-        while scan_addr + 1 < self.current_address {
+        while scan_addr + 1 < self.code_address {
             if self.story_data[scan_addr] == PLACEHOLDER_BYTE
                 && self.story_data[scan_addr + 1] == PLACEHOLDER_BYTE
             {
@@ -8627,7 +8832,7 @@ impl ZMachineCodeGen {
 
                 // Try to provide context about what instruction this might be in
                 let context_start = scan_addr.saturating_sub(5);
-                let context_end = (scan_addr + 10).min(self.current_address);
+                let context_end = (scan_addr + 10).min(self.code_address);
                 let context_bytes: Vec<String> = self.story_data[context_start..context_end]
                     .iter()
                     .enumerate()
@@ -8671,27 +8876,27 @@ impl ZMachineCodeGen {
     fn validate_story_data_integrity(&self) -> Result<(), CompilerError> {
         log::debug!("=== STORY DATA INTEGRITY CHECK ===");
         log::debug!("Story data size: {} bytes", self.story_data.len());
-        log::debug!("Current address: 0x{:04x}", self.current_address);
+        log::debug!("Current address: 0x{:04x}", self.code_address);
         log::debug!(
             "Max valid address: 0x{:04x}",
             self.story_data.len().saturating_sub(1)
         );
 
         // Check for any addresses that exceed bounds
-        if self.current_address > self.story_data.len() {
+        if self.code_address > self.story_data.len() {
             return Err(CompilerError::CodeGenError(format!(
                 "Current address 0x{:04x} exceeds story data size 0x{:04x}",
-                self.current_address,
+                self.code_address,
                 self.story_data.len()
             )));
         }
 
         // Validate story data utilization
-        let utilization = (self.current_address as f64 / self.story_data.len() as f64) * 100.0;
+        let utilization = (self.code_address as f64 / self.story_data.len() as f64) * 100.0;
         log::info!(
             "Story data utilization: {:.1}% ({}/{})",
             utilization,
-            self.current_address,
+            self.code_address,
             self.story_data.len()
         );
 
@@ -8716,7 +8921,7 @@ impl ZMachineCodeGen {
                 self.property_table_addr,
                 self.property_table_addr + 500,
             ), // Estimate
-            ("Current code", 0x0040, self.current_address),
+            ("Current code", 0x0040, self.code_address),
         ];
 
         for (name, start, end) in sections {
@@ -8772,9 +8977,7 @@ impl ZMachineCodeGen {
 
         // Validate property table structure
         let total_objects = self.object_numbers.len();
-        let property_section_size = self
-            .current_address
-            .saturating_sub(self.property_table_addr);
+        let property_section_size = self.code_address.saturating_sub(self.property_table_addr);
 
         log::debug!("Property table structure:");
         log::debug!("  Total objects: {}", total_objects);
@@ -9021,13 +9224,23 @@ impl ZMachineCodeGen {
         &self,
         instruction_addr: usize,
     ) -> Result<usize, CompilerError> {
-        if instruction_addr >= self.story_data.len() {
-            return Err(CompilerError::CodeGenError(
-                "Instruction address out of bounds".to_string(),
-            ));
+        self.calculate_instruction_size_from_data(&self.story_data, instruction_addr)
+    }
+
+    fn calculate_instruction_size_from_data(
+        &self,
+        data: &[u8],
+        instruction_addr: usize,
+    ) -> Result<usize, CompilerError> {
+        if instruction_addr >= data.len() {
+            return Err(CompilerError::CodeGenError(format!(
+                "Instruction address 0x{:04x} out of bounds (data len: {})",
+                instruction_addr,
+                data.len()
+            )));
         }
 
-        let opcode_byte = self.story_data[instruction_addr];
+        let opcode_byte = data[instruction_addr];
         let top_2_bits = (opcode_byte & 0xC0) >> 6;
 
         let mut size = 1; // Start with opcode byte
@@ -9075,14 +9288,14 @@ impl ZMachineCodeGen {
             }
             0b11 => {
                 // Variable form - need to check operand type byte
-                if instruction_addr + 1 >= self.story_data.len() {
+                if instruction_addr + 1 >= data.len() {
                     return Err(CompilerError::CodeGenError(
                         "Variable form instruction truncated".to_string(),
                     ));
                 }
 
                 size += 1; // Operand type byte
-                let operand_types_byte = self.story_data[instruction_addr + 1];
+                let operand_types_byte = data[instruction_addr + 1];
 
                 // Each pair of bits in operand_types_byte indicates an operand type
                 for i in 0..4 {
@@ -9143,6 +9356,17 @@ impl ZMachineCodeGen {
         location: usize,
         target_address: usize,
     ) -> Result<(), CompilerError> {
+        log::error!(
+            "🔧 PATCH_JUMP_OFFSET: Starting jump patch at location=0x{:04x}, target=0x{:04x}",
+            location,
+            target_address
+        );
+        log::error!(
+            "🔧 PATCH_JUMP_OFFSET: story_data.len()={}, final_data.len()={}",
+            self.story_data.len(),
+            self.final_data.len()
+        );
+
         // The location points to where the jump operand starts
         // For a jump instruction: [opcode] [operand_high] [operand_low]
         // When the interpreter executes the jump, PC points to the next instruction
@@ -9150,12 +9374,33 @@ impl ZMachineCodeGen {
 
         // Calculate the actual instruction size by examining the opcode
         let instruction_start = location - 1;
-        let opcode_byte = self.story_data[instruction_start];
-        let instruction_size = self.calculate_instruction_size_from_opcode(instruction_start)?;
+        log::error!("🔧 PATCH_JUMP_OFFSET: instruction_start=0x{:04x}, checking opcode in story_data vs final_data", instruction_start);
+
+        // CRITICAL: Check if we should be using story_data or final_data
+        let opcode_byte = if instruction_start < self.final_data.len() {
+            let story_opcode = if instruction_start < self.story_data.len() {
+                self.story_data[instruction_start]
+            } else {
+                0x00
+            };
+            let final_opcode = self.final_data[instruction_start];
+            log::error!("🔧 PATCH_JUMP_OFFSET: story_data[0x{:04x}]=0x{:02x}, final_data[0x{:04x}]=0x{:02x}", 
+                       instruction_start, story_opcode, instruction_start, final_opcode);
+            final_opcode // Use final_data as it's the complete image
+        } else {
+            log::error!(
+                "🔧 PATCH_JUMP_OFFSET: instruction_start 0x{:04x} out of bounds, using story_data",
+                instruction_start
+            );
+            self.story_data[instruction_start]
+        };
+
+        let instruction_size =
+            self.calculate_instruction_size_from_data(&self.final_data, instruction_start)?;
         let current_pc = instruction_start + instruction_size; // PC after advancing
 
-        log::debug!(
-            "patch_jump_offset: opcode_byte=0x{:02x}, calculated_size={}, instruction_start=0x{:04x}",
+        log::error!(
+            "🔧 PATCH_JUMP_OFFSET: opcode_byte=0x{:02x}, calculated_size={}, instruction_start=0x{:04x}",
             opcode_byte, instruction_size, instruction_start
         );
 
@@ -9164,13 +9409,45 @@ impl ZMachineCodeGen {
         // So: offset = target - current_pc + 2
         let offset = (target_address as i32) - (current_pc as i32) + 2;
 
-        log::debug!(
-            "patch_jump_offset: location=0x{:04x}, target=0x{:04x}, current_pc=0x{:04x}, offset={}",
+        log::error!(
+            "🔧 PATCH_JUMP_OFFSET: location=0x{:04x}, target=0x{:04x}, current_pc=0x{:04x}, offset={}",
             location,
             target_address,
             current_pc,
             offset
         );
+        log::error!("🚨 CRITICAL_JUMP_DEBUG: target_address=0x{:04x} should be final address, current_pc=0x{:04x} from instruction location", target_address, current_pc);
+
+        // CRITICAL: Detect 0x1717 address calculations
+        if target_address == 0x1717
+            || current_pc == 0x1717
+            || offset == 0x1717
+            || location == 0x1717
+            || (target_address as i32 - current_pc as i32) == 0x1717
+        {
+            log::error!("🚨🚨🚨 FOUND 0x1717 CALCULATION!");
+            log::error!(
+                "  target_address = 0x{:04x} ({})",
+                target_address,
+                target_address
+            );
+            log::error!("  current_pc = 0x{:04x} ({})", current_pc, current_pc);
+            log::error!("  offset = {} (0x{:04x})", offset, offset);
+            log::error!("  location = 0x{:04x} ({})", location, location);
+            log::error!(
+                "  difference = {}",
+                target_address as i32 - current_pc as i32
+            );
+        }
+        log::error!(
+            "🚨 CRITICAL_JUMP_DEBUG: offset calculation: {} - {} + 2 = {}",
+            target_address,
+            current_pc,
+            offset
+        );
+        if offset > 1000 || offset < -1000 {
+            log::error!("🚨 SUSPICIOUS_LARGE_OFFSET: This offset {} seems too large for a typical game loop jump!", offset);
+        }
 
         // CRITICAL FIX: Handle zero-offset jumps (jumps to next instruction)
         // This should not happen with our new architecture, but keep as safety net
@@ -9207,13 +9484,28 @@ impl ZMachineCodeGen {
         }
 
         // Write as signed 16-bit offset
-        log::debug!(
-            "patch_jump_offset: writing offset {} (0x{:04x}) at location 0x{:04x}",
+        log::error!(
+            "🔧 PATCH_JUMP_OFFSET: writing offset {} (0x{:04x}) at location 0x{:04x}",
             offset,
             offset as u16,
             location
         );
-        self.patch_address(location, offset as u16, 2)
+
+        // CRITICAL DEBUG: Check if signed conversion is working correctly
+        let offset_as_u16 = offset as u16;
+        log::error!(
+            "🔧 PATCH_JUMP_OFFSET: offset {} -> u16 conversion -> 0x{:04x}",
+            offset,
+            offset_as_u16
+        );
+        if offset == -10 {
+            log::error!(
+                "🚨 CRITICAL: -10 offset converted to u16: 0x{:04x} (should be 0xFFF6)",
+                offset_as_u16
+            );
+        }
+
+        self.patch_address(location, offset_as_u16, 2)
     }
 
     /// Patch a branch offset at the given location  
@@ -9293,10 +9585,20 @@ impl ZMachineCodeGen {
         address: u16,
         size: usize,
     ) -> Result<(), CompilerError> {
-        if location + size > self.story_data.len() {
+        // 🚨 SPECIAL DEBUG: Track string ID 568 patch_address calls
+        if location == 0x0b90 {
+            log::error!("🚨 STRING_568_DEBUG: patch_address called for location 0x0b90");
+            log::error!("🚨 STRING_568_DEBUG: address to patch: 0x{:04x}", address);
+            log::error!("🚨 STRING_568_DEBUG: size: {}", size);
+        }
+
+        // Use final_data for all address patching - legacy story_data system removed
+        let target_data_len = self.final_data.len();
+
+        if location + size > target_data_len {
             return Err(CompilerError::CodeGenError(format!(
-                "Cannot patch address at location {}: beyond story data bounds",
-                location
+                "Cannot patch address at location {}: beyond data bounds (len: {})",
+                location, target_data_len
             )));
         }
 
@@ -9340,7 +9642,17 @@ impl ZMachineCodeGen {
                     log::error!("  Full address being written: 0x{:04x}", address);
                 }
 
+                log::error!(
+                    "🔧 PATCH_ADDRESS: Writing high byte 0x{:02x} to location 0x{:04x}",
+                    (address >> 8) as u8,
+                    location
+                );
                 self.write_byte_at(location, (address >> 8) as u8)?;
+                log::error!(
+                    "🔧 PATCH_ADDRESS: Writing low byte 0x{:02x} to location 0x{:04x}",
+                    address as u8,
+                    location + 1
+                );
                 self.write_byte_at(location + 1, address as u8)?;
             }
             _ => {
@@ -10580,13 +10892,16 @@ impl ZMachineCodeGen {
             "add_unresolved_reference: {:?} -> IR ID {} at address 0x{:04x}",
             reference_type,
             target_id,
-            self.current_address
+            self.code_address
         );
 
         let reference = UnresolvedReference {
             reference_type,
             location: match location_space {
-                MemorySpace::Code => self.code_space.len(),  // 🔧 SPACE-RELATIVE: Use code space offset
+                MemorySpace::Code => {
+                    // ✅ FIXED: Convert code space offset to final memory address
+                    self.final_code_base + self.code_space.len()
+                },
                 MemorySpace::Header => panic!("COMPILER BUG: Header space references not implemented - cannot use add_unresolved_reference() for Header space"),
                 MemorySpace::Globals => panic!("COMPILER BUG: Globals space references not implemented - cannot use add_unresolved_reference() for Globals space"),
                 MemorySpace::Abbreviations => panic!("COMPILER BUG: Abbreviations space references not implemented - cannot use add_unresolved_reference() for Abbreviations space"),
@@ -10603,22 +10918,80 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Record a resolved address for an IR ID
-    pub fn record_address(&mut self, ir_id: IrId, address: usize) {
+    /// Record a relative offset within code_space during code generation
+    pub fn record_code_space_offset(&mut self, ir_id: IrId, offset: usize) {
+        log::error!(
+            "🔧 RECORD_CODE_OFFSET: Recording IR ID {} -> code_space_offset 0x{:04x}",
+            ir_id,
+            offset
+        );
+        log::error!("🔧 RECORD_CODE_OFFSET: This will be converted to absolute address during final assembly");
+
+        // Store the relative offset - will be converted to absolute later
+        self.reference_context
+            .ir_id_to_address
+            .insert(ir_id, offset);
+    }
+
+    /// Record an absolute address in the final memory layout
+    pub fn record_final_address(&mut self, ir_id: IrId, address: usize) {
+        log::error!(
+            "🔧 RECORD_FINAL_ADDRESS: Recording IR ID {} -> absolute_address 0x{:04x}",
+            ir_id,
+            address
+        );
+        log::error!("🔧 RECORD_FINAL_ADDRESS: Address is already absolute in final memory layout");
+
         self.reference_context
             .ir_id_to_address
             .insert(ir_id, address);
+    }
+
+    /// Convert all code space offsets to absolute addresses during final assembly
+    pub fn convert_offsets_to_addresses(&mut self) {
+        log::error!("🔧 CONVERT_OFFSETS: Converting all code space offsets to absolute addresses");
+        log::error!(
+            "🔧 CONVERT_OFFSETS: final_code_base=0x{:04x}",
+            self.final_code_base
+        );
+
+        let mut converted_addresses = HashMap::new();
+
+        for (&ir_id, &offset) in &self.reference_context.ir_id_to_address {
+            // Check if this looks like a code space offset (should be < code_space.len())
+            if offset < self.code_space.len() {
+                let absolute_address = self.final_code_base + offset;
+                log::error!(
+                    "🔧 CONVERT_OFFSETS: IR ID {} offset 0x{:04x} -> absolute 0x{:04x}",
+                    ir_id,
+                    offset,
+                    absolute_address
+                );
+                converted_addresses.insert(ir_id, absolute_address);
+            } else {
+                // Already an absolute address, keep as-is
+                log::error!(
+                    "🔧 CONVERT_OFFSETS: IR ID {} already absolute 0x{:04x}",
+                    ir_id,
+                    offset
+                );
+                converted_addresses.insert(ir_id, offset);
+            }
+        }
+
+        // Replace the entire mapping with converted addresses
+        self.reference_context.ir_id_to_address = converted_addresses;
     }
 
     // Utility methods for code emission
 
     /// Emit a single byte and advance current address
     /// Systematic current_address update with full logging to debug address resets
-    fn set_current_address(&mut self, new_addr: usize, context: &str) {
-        let old_addr = self.current_address;
-        self.current_address = new_addr;
+    fn set_final_assembly_address(&mut self, new_addr: usize, context: &str) {
+        let old_addr = self.final_assembly_address;
+        self.final_assembly_address = new_addr;
         log::warn!(
-            "🔄 ADDRESS_UPDATE: {} | 0x{:04x} → 0x{:04x} (delta: {:+})",
+            "🔄 FINAL_ASSEMBLY_ADDRESS_UPDATE: {} | 0x{:04x} → 0x{:04x} (delta: {:+})",
             context,
             old_addr,
             new_addr,
@@ -10633,7 +11006,7 @@ impl ZMachineCodeGen {
             log::debug!(
                 "Clearing {} labels at address 0x{:04x} - instruction byte 0x{:02x} emitted",
                 self.labels_at_current_address.len(),
-                self.current_address,
+                self.code_address,
                 byte
             );
             self.labels_at_current_address.clear();
@@ -10641,10 +11014,10 @@ impl ZMachineCodeGen {
 
         // CRITICAL: 0x00 is NEVER a valid Z-Machine opcode - but it's valid as store variable (stack)
         // Only panic if this looks like an instruction opcode (not store var or operand)
-        if byte == 0x00 && self.current_address >= 0x08fe {
+        if byte == 0x00 && self.code_address >= 0x08fe {
             debug!(
                 "SUSPICIOUS: Emitting 0x00 at address 0x{:04x} (stack depth: {})",
-                self.current_address, self.stack_depth
+                self.code_address, self.stack_depth
             );
             // Don't panic here - 0x00 is valid as store variable for stack operations
             // The real invalid opcodes will be caught by instruction validation
@@ -10654,34 +11027,34 @@ impl ZMachineCodeGen {
             log::debug!(
                 "Emitting 0x{:02x} (print_paddr) at address 0x{:04x}",
                 byte,
-                self.current_address
+                self.code_address
             );
         }
         if byte == 0xe0 {
             log::debug!(
                 "Emitting 0x{:02x} (call_vs) at address 0x{:04x}",
                 byte,
-                self.current_address
+                self.code_address
             );
         }
         if byte == 0xb0 {
             log::debug!(
                 "Emitting 0x{:02x} (rtrue) at address 0x{:04x}",
                 byte,
-                self.current_address
+                self.code_address
             );
         }
 
         // Debug critical addresses
-        if self.current_address >= 0x0730 && self.current_address <= 0x0740 {
+        if self.code_address >= 0x0730 && self.code_address <= 0x0740 {
             debug!(
                 "emit_byte: 0x{:02x} at address 0x{:04x}",
-                byte, self.current_address
+                byte, self.code_address
             );
         }
 
         // 🚨 CRITICAL: Track ALL writes to addresses that could affect 0x0B66 in final file
-        if self.current_address == 0x0598 {
+        if self.code_address == 0x0598 {
             log::error!(
                 "🔍 BYTE_TRACE: Writing byte 0x{:02x} to generation address 0x0598 (final 0x0B66)",
                 byte
@@ -10692,7 +11065,7 @@ impl ZMachineCodeGen {
         }
 
         // 🚨 Also track writes to the final address if we're in final assembly phase
-        if self.current_address == 0x0B66 {
+        if self.code_address == 0x0B66 {
             log::error!(
                 "🔍 FINAL_TRACE: Writing byte 0x{:02x} to FINAL address 0x0B66",
                 byte
@@ -10704,7 +11077,7 @@ impl ZMachineCodeGen {
 
         // 🚨 PHASE 1: Track all placeholder writes comprehensively
         if byte == 0x00 || byte == 0xFF {
-            log::error!("🔍 PLACEHOLDER_BYTE: Writing potential placeholder byte 0x{:02x} at address 0x{:04x}", byte, self.current_address);
+            log::error!("🔍 PLACEHOLDER_BYTE: Writing potential placeholder byte 0x{:02x} at address 0x{:04x}", byte, self.code_address);
             log::error!("         0x00 = NULL (likely unpatched placeholder)");
             log::error!("         0xFF = Placeholder high byte (should be part of 0xFFFF)");
             log::error!("         Context: Current instruction emission in progress");
@@ -10721,42 +11094,33 @@ impl ZMachineCodeGen {
             }
         }
 
-        self.ensure_capacity(self.current_address + 1);
+        self.ensure_capacity(self.code_address + 1);
 
         // 🚨 CRITICAL DEBUG: Track writes to problematic area during generation
-        if self.current_address >= 0x0f88 && self.current_address <= 0x0f8b {
+        if self.code_address >= 0x0f88 && self.code_address <= 0x0f8b {
             log::error!(
                 "🚨 EMIT_BYTE: Writing byte 0x{:02x} to address 0x{:04x} during initial generation",
                 byte,
-                self.current_address
+                self.code_address
             );
         }
 
         // 🚨 ULTRA-CRITICAL: Track the exact 0x4D byte that causes the corruption
-        if byte == 0x4D && self.current_address == 0x0f8a {
+        if byte == 0x4D && self.code_address == 0x0f8a {
             log::error!("🚨🚨🚨 FOUND THE CORRUPTION SOURCE! 🚨🚨🚨");
             log::error!("🚨 Writing byte 0x4D to address 0x0f8a - this creates print_obj #77!");
             log::error!("🚨 Call stack trace needed - this is the exact corruption point!");
             panic!("CORRUPTION SOURCE FOUND: 0x4D written to 0x0f8a");
         }
 
-        // 🚨 Also track the 0x9A opcode byte
-        if byte == 0x9A && self.current_address == 0x0f89 {
-            log::error!("🚨 Writing print_obj opcode 0x9A to address 0x0f89");
+        // 🚨 Track specific opcode patterns for debugging
+        if byte == 0x9A && self.code_address == 0x0f89 {
+            log::error!("🚨 Writing print_obj opcode 0x9A to code_address 0x0f89");
             log::error!("🚨 Next byte should be operand - if it's 0x4D, we have the bug!");
         }
 
-        // FIXED: Use indexed addressing like write_to_code_space() for consistency
-        // DEBUG: Log the current state to find the correct base address
-        if self.code_space.len() < 10 {
-            log::debug!(
-                "emit_byte DEBUG: current_address=0x{:04x}, code_address={}, code_space.len()={}",
-                self.current_address,
-                self.code_address,
-                self.code_space.len()
-            );
-        }
-        let code_offset = self.code_address; // Use code_address which tracks the next write position
+        // Use code_address which tracks our position within code_space
+        let code_offset = self.code_address;
 
         // Ensure capacity
         if code_offset >= self.code_space.len() {
@@ -10764,39 +11128,57 @@ impl ZMachineCodeGen {
         }
 
         if byte != 0x00 || self.code_space.len() < 10 {
-            log::debug!("📝 EMIT_BYTE: code_offset={}, byte=0x{:02x}, current_address=0x{:04x}, space_len={}", 
-                       code_offset, byte, self.current_address, self.code_space.len());
+            log::debug!(
+                "📝 EMIT_BYTE: code_offset={}, byte=0x{:02x}, code_address=0x{:04x}, space_len={}",
+                code_offset,
+                byte,
+                self.code_address,
+                self.code_space.len()
+            );
         }
 
         // 🚨 CRITICAL: Track all writes to code_space[0] to find corruption source
         if code_offset == 0 {
-            log::error!("🔍 CODE_SPACE_0_WRITE: Writing byte 0x{:02x} to code_space[0] at current_address=0x{:04x}", byte, self.current_address);
+            log::error!("🔍 CODE_SPACE_0_WRITE: Writing byte 0x{:02x} to code_space[0] at code_address=0x{:04x}", byte, self.code_address);
             if byte == 0x3E {
                 panic!("FOUND THE BUG: 0x3E being written to code_space[0]! Stack trace will show the source.");
             }
         }
 
-        self.code_space[code_offset] = byte;
+        // Phase-aware writing: code generation writes to code_space, address patching writes to final_data
+        if !self.final_data.is_empty() {
+            // Final assembly phase: write to final_data only
+            if self.code_address < self.final_data.len() {
+                self.final_data[self.code_address] = byte;
+            } else {
+                return Err(CompilerError::CodeGenError(format!(
+                    "Cannot write byte at address 0x{:04x}: beyond final_data bounds (len: 0x{:04x})",
+                    self.code_address, self.final_data.len()
+                )));
+            }
+        } else {
+            // Code generation phase: write to code_space
+            self.code_space[code_offset] = byte;
+        }
 
-        // CRITICAL: Keep both address trackers in sync
+        // Advance code_address to next position
         self.code_address = code_offset + 1;
-        self.current_address += 1;
         Ok(())
     }
 
-    /// Emit a 16-bit word (big-endian) and advance current address
+    /// Emit a 16-bit word (big-endian) and advance code_address
     fn emit_word(&mut self, word: u16) -> Result<(), CompilerError> {
         let high_byte = (word >> 8) as u8;
         let low_byte = word as u8;
 
-        log::error!("🔧 EMIT_WORD: word=0x{:04x} -> high_byte=0x{:02x}, low_byte=0x{:02x} at address 0x{:04x}", 
-                   word, high_byte, low_byte, self.current_address);
+        log::error!("🔧 EMIT_WORD: word=0x{:04x} -> high_byte=0x{:02x}, low_byte=0x{:02x} at code_address 0x{:04x}", 
+                   word, high_byte, low_byte, self.code_address);
 
         // 🚨 CRITICAL: Track exactly where null words come from
         if word == 0x0000 {
             log::error!(
-                "🚨 NULL_WORD_SOURCE: emit_word(0x0000) called at address 0x{:04x}",
-                self.current_address
+                "🚨 NULL_WORD_SOURCE: emit_word(0x0000) called at code_address 0x{:04x}",
+                self.code_address
             );
             log::error!(
                 "🚨 This might be valid V3 default local values OR invalid placeholder operands"
@@ -11054,19 +11436,42 @@ impl ZMachineCodeGen {
     /// Write a single byte at a specific address (no address advancement)
     /// Routes through emit_byte for single point monitoring
     fn write_byte_at(&mut self, addr: usize, byte: u8) -> Result<(), CompilerError> {
-        // Save current address
-        let saved_address = self.current_address;
+        // 🚨 SPECIAL DEBUG: Track string ID 568 byte writes
+        if addr == 0x0b90 || addr == 0x0b91 {
+            log::error!(
+                "🚨 STRING_568_DEBUG: write_byte_at called for address 0x{:04x}",
+                addr
+            );
+            log::error!("🚨 STRING_568_DEBUG: byte to write: 0x{:02x}", byte);
 
-        // Temporarily set current address to target location
-        self.set_current_address(addr, "Temporary address for retroactive write");
+            // Show current content before overwrite
+            if addr < self.final_data.len() {
+                let current_byte = self.final_data[addr];
+                log::error!(
+                    "🚨 STRING_568_DEBUG: current byte at 0x{:04x}: 0x{:02x} -> 0x{:02x}",
+                    addr,
+                    current_byte,
+                    byte
+                );
+            }
+        }
 
-        // Use emit_byte as the single monitoring point
-        self.emit_byte(byte)?;
-
-        // Restore original current address (emit_byte advanced it by 1)
-        self.set_current_address(saved_address, "Restore after retroactive write");
-
-        Ok(())
+        // Direct write to final_data during address patching phase
+        if addr < self.final_data.len() {
+            log::error!(
+                "🔧 WRITE_BYTE_AT: Writing byte 0x{:02x} directly to final_data[0x{:04x}]",
+                byte,
+                addr
+            );
+            self.final_data[addr] = byte;
+            Ok(())
+        } else {
+            Err(CompilerError::CodeGenError(format!(
+                "Cannot write byte at address 0x{:04x}: beyond final_data bounds (len: 0x{:04x})",
+                addr,
+                self.final_data.len()
+            )))
+        }
     }
 
     /// Write a 16-bit word at a specific address (no address advancement)
@@ -11126,7 +11531,7 @@ impl ZMachineCodeGen {
             log::error!(
                 "🔧 EMIT_INSTRUCTION: opcode=0x{:02x} at addr=0x{:04x}",
                 opcode,
-                self.current_address
+                self.code_address
             );
             log::error!("🔧 Operands ({}):", operands.len());
             for (i, op) in operands.iter().enumerate() {
@@ -11154,7 +11559,7 @@ impl ZMachineCodeGen {
         if opcode == UNIMPLEMENTED_OPCODE {
             return Err(CompilerError::CodeGenError(format!(
                 "UNIMPLEMENTED FEATURE: Opcode 0x{:02x} is a placeholder marker that was not replaced with proper Z-Machine implementation at address 0x{:04x}. This indicates an IR instruction handler needs to be completed with actual Z-Machine opcodes instead of placeholder markers.",
-                opcode, self.current_address
+                opcode, self.code_address
             )));
         }
 
@@ -11165,22 +11570,22 @@ impl ZMachineCodeGen {
                 Operand::LargeConstant(0) => {
                     log::error!(
                         "DANGEROUS: insert_obj with constant object 0 at address 0x{:04x}",
-                        self.current_address
+                        self.code_address
                     );
                     return Err(CompilerError::CodeGenError(format!(
                         "DANGEROUS INSTRUCTION: insert_obj with constant object 0 at address 0x{:04x}. Object 0 is invalid and will cause runtime crashes. This indicates a systematic bug in IR->bytecode generation that needs to be fixed.",
-                        self.current_address
+                        self.code_address
                     )));
                 }
                 Operand::Variable(0) => {
                     // Variable 0 is the stack - this is dangerous but temporarily allowing for debugging
-                    log::warn!("TEMPORARILY ALLOWING: insert_obj reading object from stack (variable 0) at address 0x{:04x}", self.current_address);
+                    log::warn!("TEMPORARILY ALLOWING: insert_obj reading object from stack (variable 0) at address 0x{:04x}", self.code_address);
                     log::warn!("         Stack could contain 0, causing 'Cannot insert object 0' error - needs IR generation fix");
                     log::warn!("         This is a temporary bypass to enable address boundary investigation");
                 }
                 Operand::Variable(var_num) => {
                     // Any variable could contain 0 if not properly initialized
-                    log::warn!("POTENTIALLY DANGEROUS: insert_obj reading from variable {} at address 0x{:04x}", var_num, self.current_address);
+                    log::warn!("POTENTIALLY DANGEROUS: insert_obj reading from variable {} at address 0x{:04x}", var_num, self.code_address);
                     log::warn!("         Variable could contain 0 if not properly initialized, causing runtime 'Cannot insert object 0' error");
                     log::warn!("         Consider using known safe object constants instead of variables for insert_obj operations");
                 }
@@ -11209,7 +11614,7 @@ impl ZMachineCodeGen {
         );
 
         // Record instruction start address
-        let instruction_start = self.current_address;
+        let instruction_start = self.code_address;
 
         let form = self.determine_instruction_form_with_operands(operands, opcode);
         log::debug!("determined form={:?}", form);
@@ -11552,16 +11957,17 @@ impl ZMachineCodeGen {
 
         // Track operand location
         let operand_location = if !operands.is_empty() {
-            let loc = self.code_space.len(); // 🔧 SPACE-RELATIVE: Use code space offset
+            let code_space_offset = self.code_space.len();
             self.emit_operand(&operands[0])?;
-            Some(loc)
+            // ✅ FIXED: Convert code space offset to final memory address
+            Some(self.final_code_base + code_space_offset)
         } else {
             None
         };
 
         // Track store variable location
         let store_location = if let Some(store) = store_var {
-            let loc = self.current_address;
+            let loc = self.code_address;
             self.emit_byte(store)?;
             Some(loc)
         } else {
@@ -11570,7 +11976,7 @@ impl ZMachineCodeGen {
 
         // Track branch offset location
         let branch_location = if let Some(offset) = branch_offset {
-            let loc = self.current_address;
+            let loc = self.code_address;
             self.emit_branch_offset(offset)?;
             Some(loc)
         } else {
@@ -11582,7 +11988,7 @@ impl ZMachineCodeGen {
             operand_location,
             store_location,
             branch_location,
-            total_size: self.current_address - instruction_start,
+            total_size: self.code_address - instruction_start,
         })
     }
 
@@ -11610,7 +12016,7 @@ impl ZMachineCodeGen {
         };
         let instruction_byte = 0xC0 | var_bit | (opcode & 0x1F);
         debug!("emit_variable_form: opcode=0x{:02x}, var_bit=0x{:02x}, instruction_byte=0x{:02x} at address 0x{:04x}", 
-               opcode, var_bit, instruction_byte, self.current_address);
+               opcode, var_bit, instruction_byte, self.code_address);
         self.emit_byte(instruction_byte)?;
 
         // Emit operand types byte
@@ -11673,7 +12079,7 @@ impl ZMachineCodeGen {
         let instruction_byte = 0xC0 | var_bit | (opcode & 0x1F);
 
         debug!("emit_variable_form: opcode=0x{:02x}, var_bit=0x{:02x}, instruction_byte=0x{:02x} at address 0x{:04x}", 
-               opcode, var_bit, instruction_byte, self.current_address);
+               opcode, var_bit, instruction_byte, self.code_address);
 
         // CRITICAL DEBUG: Special logging for print_char opcode 0x05
         if opcode == 0x05 {
@@ -11711,19 +12117,20 @@ impl ZMachineCodeGen {
 
         // Track first operand location (most commonly needed for references)
         let operand_location = if !operands.is_empty() {
-            let loc = self.code_space.len(); // 🔧 SPACE-RELATIVE: Use code space offset
-                                             // Emit all operands
+            let code_space_offset = self.code_space.len();
+            // Emit all operands
             for operand in operands {
                 self.emit_operand(operand)?;
             }
-            Some(loc)
+            // ✅ FIXED: Convert code space offset to final memory address
+            Some(self.final_code_base + code_space_offset)
         } else {
             None
         };
 
         // Track store variable location
         let store_location = if let Some(store) = store_var {
-            let loc = self.current_address;
+            let loc = self.code_address;
             self.emit_byte(store)?;
             Some(loc)
         } else {
@@ -11732,7 +12139,7 @@ impl ZMachineCodeGen {
 
         // Track branch offset location
         let branch_location = if let Some(offset) = branch_offset {
-            let loc = self.current_address;
+            let loc = self.code_address;
             self.emit_branch_offset(offset)?;
             Some(loc)
         } else {
@@ -11744,7 +12151,7 @@ impl ZMachineCodeGen {
             operand_location,
             store_location,
             branch_location,
-            total_size: self.current_address - instruction_start,
+            total_size: self.code_address - instruction_start,
         })
     }
 
@@ -11791,13 +12198,15 @@ impl ZMachineCodeGen {
         // Debug: What opcode is trying to be generated as 0x3E?
         if instruction_byte == 0x3E {
             panic!("FOUND THE BUG: Original opcode 0x{:02X} is generating instruction byte 0x3E which decodes to invalid opcode 0x1E. op1_bit=0x{:02X}, op2_bit=0x{:02X}, operands={:?}, address=0x{:04X}", 
-                   opcode, op1_bit, op2_bit, operands, self.current_address);
+                   opcode, op1_bit, op2_bit, operands, self.code_address);
         }
 
         self.emit_byte(instruction_byte)?;
 
         // Track first operand location
-        let operand_location = Some(self.code_space.len()); // 🔧 SPACE-RELATIVE: Use code space offset
+        let code_space_offset = self.code_space.len();
+        // ✅ FIXED: Convert code space offset to final memory address
+        let operand_location = Some(self.final_code_base + code_space_offset);
 
         // Emit adapted operands
         self.emit_operand(&op1_adapted)?;
@@ -11805,7 +12214,7 @@ impl ZMachineCodeGen {
 
         // Track store variable location
         let store_location = if let Some(store) = store_var {
-            let loc = self.current_address;
+            let loc = self.code_address;
             self.emit_byte(store)?;
             Some(loc)
         } else {
@@ -11814,7 +12223,7 @@ impl ZMachineCodeGen {
 
         // Track branch offset location
         let branch_location = if let Some(offset) = branch_offset {
-            let loc = self.current_address;
+            let loc = self.code_address;
             self.emit_branch_offset(offset)?;
             Some(loc)
         } else {
@@ -11826,7 +12235,7 @@ impl ZMachineCodeGen {
             operand_location,
             store_location,
             branch_location,
-            total_size: self.current_address - instruction_start,
+            total_size: self.code_address - instruction_start,
         })
     }
 

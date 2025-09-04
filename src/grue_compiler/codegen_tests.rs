@@ -425,8 +425,8 @@ mod codegen_tests {
         let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
 
         // Test recording addresses
-        codegen.record_address(100, 0x1000);
-        codegen.record_address(200, 0x2000);
+        codegen.record_final_address(100, 0x1000);
+        codegen.record_final_address(200, 0x2000);
 
         assert_eq!(
             codegen.reference_context.ir_id_to_address.get(&100),

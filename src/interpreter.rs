@@ -353,6 +353,16 @@ impl Interpreter {
             // Fetch and decode instruction
             let pc = self.vm.pc;
 
+            // Debug: Track all PC values and advancement
+            if pc > 0x1000 || pc == 0x1717 || (pc >= 0x0b70 && pc <= 0x0b80) {
+                log::error!(
+                    "🚨 EXECUTION LOOP: PC=0x{:04x} ({}) memory_len={}",
+                    pc,
+                    pc,
+                    self.vm.game.memory.len()
+                );
+            }
+
             // Debug: Show raw bytes at critical addresses and quote area execution flow
             if pc == 0xcc6a {
                 let bytes: Vec<u8> = self.vm.game.memory[pc as usize..pc as usize + 8].to_vec();
@@ -372,6 +382,21 @@ impl Interpreter {
             // Check for problematic Trinity PC range
             if (0x13fc0..=0x13ff0).contains(&pc) {
                 debug!("🚨 TRINITY EXECUTION at PC {:05x}", pc);
+            }
+
+            // Debug: Track PC bounds checking to find 0x1717 crash source
+            if pc >= self.vm.game.memory.len() as u32 {
+                log::error!(
+                    "🚨 PC OUT OF BOUNDS: PC=0x{:04x} ({}) >= memory_len={}",
+                    pc,
+                    pc,
+                    self.vm.game.memory.len()
+                );
+                log::error!(
+                    "🚨 STACK STATE: depth={}, top values={:?}",
+                    self.vm.stack.len(),
+                    self.vm.stack.iter().rev().take(5).collect::<Vec<_>>()
+                );
             }
 
             let instruction = match Instruction::decode(
@@ -481,7 +506,27 @@ impl Interpreter {
 
             // Advance PC past the instruction
             let old_pc = self.vm.pc;
-            self.vm.pc += instruction.size as u32;
+            let new_pc = old_pc + instruction.size as u32;
+
+            // Debug: Track PC advancement that might cause out-of-bounds
+            if new_pc > self.vm.game.memory.len() as u32
+                || new_pc == 0x1717
+                || (old_pc >= 0x0b70 && old_pc <= 0x0b90)
+            {
+                log::error!(
+                    "🚨 PC ADVANCE: 0x{:04x} + {} -> 0x{:04x} (memory_len={})",
+                    old_pc,
+                    instruction.size,
+                    new_pc,
+                    self.vm.game.memory.len()
+                );
+                log::error!("🚨 INSTRUCTION: {}", instruction);
+                if new_pc > self.vm.game.memory.len() as u32 {
+                    log::error!("🚨 *** OUT OF BOUNDS! ***");
+                }
+            }
+
+            self.vm.pc = new_pc;
 
             // Debug PC advancement for Trinity offset issue
             if old_pc == 0x125c7 {
@@ -1029,6 +1074,23 @@ impl Interpreter {
                 // Jump is a signed offset from the instruction after the branch data
                 let offset = operand as i16;
                 let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
+
+                // Debug: Track jumps that might lead to 0x1717 crash
+                if new_pc == 0x1717 || new_pc > 0x1000 {
+                    log::error!(
+                        "🚨 JUMP CALCULATION: PC=0x{:04x} offset={} (0x{:04x}) -> new_pc=0x{:04x}",
+                        self.vm.pc,
+                        offset,
+                        offset as u16,
+                        new_pc
+                    );
+                    log::error!(
+                        "🚨 JUMP OPERAND: raw_operand=0x{:04x} as_i16={}",
+                        operand,
+                        operand as i16
+                    );
+                }
+
                 self.vm.pc = new_pc;
                 Ok(ExecutionResult::Branched)
             }
@@ -2261,6 +2323,15 @@ impl Interpreter {
         };
 
         debug!("do_call: saving return_pc={:05x}", self.vm.pc);
+
+        // Debug: Track function calls that might corrupt PC
+        if self.vm.pc > 0x1000 || addr > 0x1000 {
+            log::error!(
+                "🚨 FUNCTION_CALL: calling addr=0x{:04x} from PC=0x{:04x}",
+                addr,
+                self.vm.pc
+            );
+        }
 
         // Special debug for calls that return to the newlines after the quote
         if self.vm.pc == 0xcc6a {
