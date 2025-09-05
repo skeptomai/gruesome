@@ -399,6 +399,16 @@ impl Interpreter {
                 );
             }
 
+            // CRITICAL PC TRACKING: Log every instruction fetch around crash point
+            if pc >= 0x0bd0 && pc <= 0x0be0 {
+                let opcode_byte = self.vm.game.memory[pc as usize];
+                log::error!(
+                    "🎯 CRITICAL_PC: PC=0x{:04x} fetching_byte=0x{:02x}",
+                    pc,
+                    opcode_byte
+                );
+            }
+
             let instruction = match Instruction::decode(
                 &self.vm.game.memory,
                 pc as usize,
@@ -662,6 +672,15 @@ impl Interpreter {
 
             // Operand debugging removed - these are normal Z-Machine operand types, not errors
         }
+
+        // COMPREHENSIVE INSTRUCTION EXECUTION LOG
+        log::error!(
+            "EXEC_INSTR: PC=0x{:04x} opcode=0x{:02x} operand_types={:?} store_var={:?}",
+            self.vm.pc,
+            inst.opcode,
+            inst.operand_types,
+            inst.store_var
+        );
 
         // Get operand values
         let operands = self.resolve_operands(inst)?;
@@ -1074,6 +1093,39 @@ impl Interpreter {
                 // Jump is a signed offset from the instruction after the branch data
                 let offset = operand as i16;
                 let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
+
+                // COMPREHENSIVE JUMP LOGGING
+                log::error!(
+                    "🔧 JUMP_INSTRUCTION: PC=0x{:04x} operand=0x{:04x} offset={} -> new_PC=0x{:04x}",
+                    self.vm.pc, operand, offset, new_pc
+                );
+                log::error!(
+                    "🔧 JUMP_CALC: PC(0x{:04x}) + offset({}) - 2 = 0x{:04x} (memory_len={})",
+                    self.vm.pc,
+                    offset,
+                    new_pc,
+                    self.vm.game.memory.len()
+                );
+
+                // Critical bounds checking - this is where PC corruption occurs
+                if new_pc >= self.vm.game.memory.len() as u32 {
+                    log::error!(
+                        "🚨 JUMP_OUT_OF_BOUNDS: new_PC=0x{:04x} >= memory_len={} - INVALID JUMP!",
+                        new_pc,
+                        self.vm.game.memory.len()
+                    );
+                    log::error!(
+                        "🚨 JUMP_DEBUG: raw_operand=0x{:04x} as_signed={} current_PC=0x{:04x}",
+                        operand,
+                        offset,
+                        self.vm.pc
+                    );
+                    return Err(format!(
+                        "Jump to address 0x{:04x} is outside memory bounds ({})",
+                        new_pc,
+                        self.vm.game.memory.len()
+                    ));
+                }
 
                 // Debug: Track jumps that might lead to 0x1717 crash
                 if new_pc == 0x1717 || new_pc > 0x1000 {
@@ -2133,13 +2185,43 @@ impl Interpreter {
         if let Some(ref branch) = inst.branch {
             let should_branch = condition == branch.on_true;
 
+            // COMPREHENSIVE BRANCH LOGGING
+            log::error!(
+                "🔧 BRANCH_CONDITION: PC=0x{:04x} condition={} branch.on_true={} should_branch={} offset={}",
+                self.vm.pc, condition, branch.on_true, should_branch, branch.offset
+            );
+
             if should_branch {
                 match branch.offset {
-                    0 => return self.do_return(0), // rfalse
-                    1 => return self.do_return(1), // rtrue
+                    0 => {
+                        log::error!("🔧 BRANCH_ACTION: Returning FALSE (offset=0)");
+                        return self.do_return(0); // rfalse
+                    }
+                    1 => {
+                        log::error!("🔧 BRANCH_ACTION: Returning TRUE (offset=1)");
+                        return self.do_return(1); // rtrue
+                    }
                     offset => {
                         // Jump is relative to instruction after branch data
                         let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
+
+                        log::error!(
+                            "🔧 BRANCH_JUMP: PC=0x{:04x} offset={} -> new_PC=0x{:04x} (memory_len={})",
+                            self.vm.pc, offset, new_pc, self.vm.game.memory.len()
+                        );
+
+                        // Critical bounds checking for branches too
+                        if new_pc >= self.vm.game.memory.len() as u32 {
+                            log::error!(
+                                "🚨 BRANCH_OUT_OF_BOUNDS: new_PC=0x{:04x} >= memory_len={} - INVALID BRANCH!",
+                                new_pc, self.vm.game.memory.len()
+                            );
+                            return Err(format!(
+                                "Branch to address 0x{:04x} is outside memory bounds ({})",
+                                new_pc,
+                                self.vm.game.memory.len()
+                            ));
+                        }
 
                         // Debug output for Trinity JE branch
                         if self.vm.pc == 0x13fde {

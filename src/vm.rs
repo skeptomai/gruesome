@@ -123,9 +123,63 @@ impl VM {
 
     /// Pop a value from the evaluation stack
     pub fn pop(&mut self) -> Result<u16, String> {
-        self.stack
-            .pop()
-            .ok_or_else(|| "Stack underflow".to_string())
+        if self.stack.is_empty() {
+            log::error!(
+                "🚨 STACK UNDERFLOW: Attempted to pop from empty stack at PC 0x{:04x}",
+                self.pc
+            );
+            log::error!(
+                "🚨 Stack state: depth={}, call_stack_depth={}",
+                self.stack.len(),
+                self.call_stack.len()
+            );
+            if let Some(frame) = self.call_stack.last() {
+                log::error!(
+                    "🚨 Current routine: return_PC={:04x}, locals={}",
+                    frame.return_pc,
+                    frame.locals.len()
+                );
+            }
+
+            // Add bytecode analysis at underflow point
+            log::error!(
+                "🚨 Bytecode at PC 0x{:04x}: {:02x} {:02x} {:02x} {:02x} {:02x}",
+                self.pc,
+                self.game.memory.get(self.pc as usize).unwrap_or(&0xff),
+                self.game
+                    .memory
+                    .get((self.pc + 1) as usize)
+                    .unwrap_or(&0xff),
+                self.game
+                    .memory
+                    .get((self.pc + 2) as usize)
+                    .unwrap_or(&0xff),
+                self.game
+                    .memory
+                    .get((self.pc + 3) as usize)
+                    .unwrap_or(&0xff),
+                self.game
+                    .memory
+                    .get((self.pc + 4) as usize)
+                    .unwrap_or(&0xff)
+            );
+
+            // Add stack trace to see what's calling pop()
+            log::error!("🚨 STACK UNDERFLOW BACKTRACE:");
+            let backtrace = std::backtrace::Backtrace::capture();
+            log::error!("{}", backtrace);
+
+            return Err("Stack underflow".to_string());
+        }
+
+        let value = self.stack.pop().unwrap();
+        log::debug!(
+            "Stack pop: value={} (0x{:04x}), depth now: {}",
+            value,
+            value,
+            self.stack.len()
+        );
+        Ok(value)
     }
 
     /// Peek at the top of the stack without removing it

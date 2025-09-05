@@ -919,6 +919,7 @@ pub struct IrGenerator {
     next_local_slot: u8,               // Next available local variable slot
     builtin_functions: HashMap<IrId, String>, // Function ID -> Function name for builtins
     object_numbers: HashMap<String, u16>, // Object name -> Object number mapping
+    object_counter: u16,               // Next available object number (starts at 2, player is 1)
     property_manager: PropertyManager, // Manages property numbering and inheritance
     id_registry: IrIdRegistry,         // NEW: Track all IR IDs for debugging and mapping
 }
@@ -942,6 +943,7 @@ impl IrGenerator {
             next_local_slot: 1, // Slot 0 reserved for return value
             builtin_functions: HashMap::new(),
             object_numbers,
+            object_counter: 2, // Start at 2, player is object #1
             property_manager: PropertyManager::new(),
             id_registry: IrIdRegistry::new(), // NEW: Initialize ID registry
         }
@@ -1277,7 +1279,8 @@ impl IrGenerator {
             self.id_registry
                 .register_id(room_id, "room", "generate_world", false);
 
-            let object_number = self.object_numbers.len() as u16 + 1;
+            let object_number = self.object_counter;
+            self.object_counter += 1;
             self.object_numbers
                 .insert(room.identifier.clone(), object_number);
 
@@ -1531,16 +1534,30 @@ impl IrGenerator {
         let obj_id = self.next_id();
         self.symbol_ids.insert(obj.identifier.clone(), obj_id);
 
-        // Assign object number
-        let object_number = self.object_numbers.len() as u16 + 1;
-        self.object_numbers
-            .insert(obj.identifier.clone(), object_number);
+        // Assign object number (check if already assigned to avoid duplicates)
+        if !self.object_numbers.contains_key(&obj.identifier) {
+            let object_number = self.object_counter;
+            self.object_counter += 1;
+            self.object_numbers
+                .insert(obj.identifier.clone(), object_number);
+            log::debug!(
+                "Assigned NEW object number {} to object '{}'",
+                object_number,
+                obj.identifier
+            );
+        } else {
+            log::debug!(
+                "Object '{}' already has object number {}",
+                obj.identifier,
+                self.object_numbers[&obj.identifier]
+            );
+        }
 
         log::debug!(
             "Registered object '{}' with ID {} and object number {}",
             obj.identifier,
             obj_id,
-            object_number
+            self.object_numbers[&obj.identifier]
         );
 
         // Process nested objects recursively
@@ -1568,7 +1585,8 @@ impl IrGenerator {
             );
         } else {
             // Fallback: assign object number if not already assigned
-            let object_number = self.object_numbers.len() as u16 + 1;
+            let object_number = self.object_counter;
+            self.object_counter += 1;
             log::debug!(
                 "IR generate_room: Assigning object number {} to room '{}' (fallback)",
                 object_number,
