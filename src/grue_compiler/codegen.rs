@@ -197,6 +197,7 @@ pub struct ZMachineCodeGen {
     function_header_locations: HashMap<IrId, usize>, // IR function ID -> header byte location for patching
     current_function_locals: u8, // Track local variables allocated in current function (0-15)
     current_function_name: Option<String>, // Track current function being processed for debugging
+    init_routine_locals_count: u8, // Track local variables used by init routine for PC calculation
     /// Mapping from IR IDs to string values (for LoadImmediate results)
     ir_id_to_string: HashMap<IrId, String>,
     /// Mapping from IR IDs to integer values (for LoadImmediate results)
@@ -312,6 +313,7 @@ impl ZMachineCodeGen {
             function_header_locations: HashMap::new(),
             current_function_locals: 0,
             current_function_name: None,
+            init_routine_locals_count: 0,
             ir_id_to_string: HashMap::new(),
             ir_id_to_integer: HashMap::new(),
             ir_id_to_stack_var: HashMap::new(),
@@ -1206,10 +1208,13 @@ impl ZMachineCodeGen {
             total_size
         );
 
-        // SIMPLIFIED: PC always points to start of code section
+        // DYNAMIC FIX: Calculate init routine header size based on actual local variables used
+        // Z-Machine V3 header format: 1 byte (local count) + (local_count * 2) bytes (default values)
+        let init_header_size = 1 + (self.init_routine_locals_count as usize * 2);
+        // Z-Machine spec 5.3: "Execution of instructions begins from the byte after this header information"
         log::info!(
-            "🎯 PC CALCULATION: PC will point to start of code section at 0x{:04x}",
-            code_base
+            "🎯 PC CALCULATION: PC will point to 0x{:04x} (after {}-byte init routine header at 0x{:04x})",
+            code_base + init_header_size, init_header_size, code_base
         );
 
         // Phase 3b: Initialize final game image
@@ -1305,8 +1310,19 @@ impl ZMachineCodeGen {
         // Critical: Never touches static fields like serial number or version.
         // Updates: PC start, dictionary, objects, globals, static memory, abbreviations, high memory base
         log::debug!("🔧 Step 3e: Updating header address fields with final memory layout");
+        // CRITICAL FIX: PC should point to startup call, not init routine header
+        let calculated_pc = self.final_code_base as u16;
+        log::error!(
+            "🔧 PC_CALCULATION_DEBUG: final_code_base=0x{:04x} + init_header_size={} = calculated_pc=0x{:04x}",
+            self.final_code_base, init_header_size, calculated_pc
+        );
+        log::error!(
+            "🔧 PC_CALCULATION_DEBUG: init_routine_locals_count={}, expected_pc=0x{:04x}",
+            self.init_routine_locals_count,
+            calculated_pc
+        );
         self.fixup_header_addresses(
-            self.final_code_base as u16,   // pc_start
+            calculated_pc,                 // pc_start (after init routine header)
             self.dictionary_addr as u16,   // dictionary_addr
             self.final_object_base as u16, // objects_addr
             self.global_vars_addr as u16,  // globals_addr
@@ -1627,13 +1643,34 @@ impl ZMachineCodeGen {
 
             LegacyReferenceType::FunctionCall => {
                 // Find the routine in our code space
-                if let Some(&code_offset) = self.function_addresses.get(&reference.target_id) {
+                log::error!(
+                    "🔧 ADDRESS_RESOLUTION_DEBUG: Looking up function {} in ir_id_to_address table",
+                    reference.target_id
+                );
+                if let Some(&code_offset) = self
+                    .reference_context
+                    .ir_id_to_address
+                    .get(&reference.target_id)
+                {
+                    log::error!(
+                        "🔧 ADDRESS_RESOLUTION_DEBUG: Found function {} at address 0x{:04x}",
+                        reference.target_id,
+                        code_offset
+                    );
                     // 🔧 CRITICAL FIX: After PHASE3_FIX, function_addresses contains absolute addresses
                     // Check if address is already absolute (>= final_code_base) or still relative offset
                     let routine_addr = if code_offset >= self.final_code_base {
+                        log::error!(
+                            "🔧 ADDRESS_RESOLUTION_DEBUG: Address 0x{:04x} is already absolute (>= final_code_base 0x{:04x})",
+                            code_offset, self.final_code_base
+                        );
                         // Already absolute address from PHASE3_FIX conversion
                         code_offset
                     } else {
+                        log::error!(
+                            "🔧 ADDRESS_RESOLUTION_DEBUG: Converting relative offset 0x{:04x} to absolute (+ final_code_base 0x{:04x})",
+                            code_offset, self.final_code_base
+                        );
                         // Still relative offset, convert to absolute
                         self.final_code_base + code_offset
                     };
@@ -1654,19 +1691,22 @@ impl ZMachineCodeGen {
                     //   0x0ea0: [executable code starts here] <- where calls should target
                     //
                     // Solution: Add header size (1 + locals_count * 2 for V3) to routine_addr
-                    let header_size = if let Some(&locals_count) =
-                        self.function_locals_count.get(&reference.target_id)
-                    {
-                        // Calculate Z-Machine function header size by version
+                    let header_size = if reference.target_id == 8000 {
+                        // SPECIAL CASE: Init routine (8000) - use tracked local count
+                        // This eliminates the competing calculation system
                         match self.version {
                             ZMachineVersion::V3 => {
-                                // V3: 1 byte locals count + 2 bytes per local default value
-                                1 + (locals_count * 2)
+                                1 + (self.init_routine_locals_count as usize * 2)
                             }
-                            ZMachineVersion::V4 | ZMachineVersion::V5 => {
-                                // V4+: 1 byte locals count only (no default values)
-                                1
-                            }
+                            ZMachineVersion::V4 | ZMachineVersion::V5 => 1,
+                        }
+                    } else if let Some(&locals_count) =
+                        self.function_locals_count.get(&reference.target_id)
+                    {
+                        // Regular functions: lookup in function table
+                        match self.version {
+                            ZMachineVersion::V3 => 1 + (locals_count * 2),
+                            ZMachineVersion::V4 | ZMachineVersion::V5 => 1,
                         }
                     } else {
                         // Fallback: assume 0 locals if not found (shouldn't happen)
@@ -1680,23 +1720,41 @@ impl ZMachineCodeGen {
                     // CRITICAL FIX: Z-Machine function calls target the header start, not executable code start
                     // The interpreter reads the locals count and sets up the call frame, then jumps to code
                     let final_addr = routine_addr; // Don't add header_size - call targets header start
+                    log::error!(
+                        "🔧 ADDRESS_RESOLUTION_DEBUG: final_addr=0x{:04x} from routine_addr=0x{:04x}",
+                        final_addr, routine_addr
+                    );
                     log::debug!(
                         "🔧 FUNCTION_ADDRESS_FIX: Function {} header at 0x{:04x} (header_size={} bytes, but call targets header start)",
                         reference.target_id, routine_addr, header_size
                     );
 
                     // Z-Machine packed address calculation
-                    if reference.is_packed_address {
-                        match self.version {
+                    let packed_result = if reference.is_packed_address {
+                        let packed = match self.version {
                             ZMachineVersion::V3 => final_addr / 2,
                             ZMachineVersion::V4 | ZMachineVersion::V5 => final_addr / 4,
-                        }
+                        };
+                        log::error!(
+                            "🔧 ADDRESS_RESOLUTION_DEBUG: Packed address calculation: 0x{:04x} / {} = 0x{:04x}",
+                            final_addr, if self.version == ZMachineVersion::V3 { 2 } else { 4 }, packed
+                        );
+                        packed
                     } else {
+                        log::error!(
+                            "🔧 ADDRESS_RESOLUTION_DEBUG: Using unpacked address: 0x{:04x}",
+                            final_addr
+                        );
                         final_addr
-                    }
+                    };
+                    packed_result
                 } else {
+                    log::error!(
+                        "🔧 ADDRESS_RESOLUTION_DEBUG: Function {} NOT found in ir_id_to_address table",
+                        reference.target_id
+                    );
                     return Err(CompilerError::CodeGenError(format!(
-                        "Routine ID {} not found in function_addresses",
+                        "Routine ID {} not found in ir_id_to_address table",
                         reference.target_id
                     )));
                 }
@@ -1850,8 +1908,11 @@ impl ZMachineCodeGen {
             }
             2 => {
                 // Two bytes (big-endian)
-                self.final_data[reference.location] = ((target_address >> 8) & 0xFF) as u8;
-                self.final_data[reference.location + 1] = (target_address & 0xFF) as u8;
+                let high_byte = ((target_address >> 8) & 0xFF) as u8;
+                let low_byte = (target_address & 0xFF) as u8;
+
+                self.final_data[reference.location] = high_byte;
+                self.final_data[reference.location + 1] = low_byte;
 
                 // 🚨 SPECIAL DEBUG: Track string ID 568 2-byte write
                 if reference.target_id == 568 {
@@ -2156,109 +2217,28 @@ impl ZMachineCodeGen {
         // Only V6 uses routines for main entry point (per Z-Machine spec section 5.5)
         log::info!("🏁 Starting code generation - PC will point directly to first instruction");
 
-        // Phase 2.0: Pre-register ALL function addresses to enable forward references
-        // CRITICAL: Record function addresses as code_space offsets, not final addresses
-        log::info!("🔧 PRE-REGISTERING: All function addresses as code_space offsets for forward references");
-        let mut estimated_offset = self.code_space.len(); // Start from current code_space position
-        for function in ir.functions.iter() {
-            // Record as code_space offset - will be converted to final address during fixup
-            self.function_addresses
-                .insert(function.id, estimated_offset);
-            self.record_code_space_offset(function.id, estimated_offset);
-            log::debug!(
-                "🔧 FUNCTION_PRE_REGISTERED: '{}' (ID {}) at code_space offset 0x{:04x} (final will be 0x{:04x})",
-                function.name,
-                function.id,
-                estimated_offset,
-                self.final_code_base + estimated_offset
-            );
+        // Phase 2.0: Functions will be registered with REAL addresses during code generation
+        // No more estimation hack - use actual addresses from translate_ir_instruction
+        log::info!(
+            "🔧 FUNCTION_REGISTRATION: Functions will be registered during actual code generation"
+        );
 
-            // Rough estimate: 4 bytes per instruction (very conservative)
-            estimated_offset += function.body.instructions.len() * 4;
-        }
-
-        // CRITICAL FIX: Pre-register main loop function (ID 9000) for Interactive/Custom modes
-        // This enables the init block to call the main loop without "function not found" errors
-        if ir.program_mode == crate::grue_compiler::ast::ProgramMode::Interactive
-            || ir.program_mode == crate::grue_compiler::ast::ProgramMode::Custom
-        {
-            let main_loop_id = 9000u32;
-            log::debug!("🔧 MAIN_LOOP_PRE_REGISTER: Pre-registering main loop function ID {} at estimated offset 0x{:04x}", main_loop_id, estimated_offset);
-            self.function_addresses
-                .insert(main_loop_id, estimated_offset);
-            self.record_code_space_offset(main_loop_id, estimated_offset);
-            // Estimate ~50 bytes for main loop (prompt + sread + jump)
-            estimated_offset += 50;
-        }
-
-        // Phase 2.0.5: Generate init block as first instructions of main routine
-        // CRITICAL: This happens AFTER function pre-registration so calls to user functions work
+        // Phase 2.0.5: Generate init block using proper routine architecture (single path)
+        // CRITICAL: This replaces the old inline generation to eliminate competing paths
         if let Some(init_block) = &ir.init_block {
             log::info!(
-                "🔧 TRANSLATING: Init block as main routine body ({} instructions)",
+                "🔧 GENERATING: Init block as proper Z-Machine routine ({} instructions)",
                 init_block.instructions.len()
             );
-            for (instr_i, instruction) in init_block.instructions.iter().enumerate() {
-                let instr_start_size = self.code_space.len();
-                log::trace!("  MAIN[{:02}] IR: {:?}", instr_i, instruction);
-
-                match self.translate_ir_instruction(instruction) {
-                    Ok(()) => {
-                        let bytes_generated = self.code_space.len() - instr_start_size;
-                        log::trace!(
-                            "  MAIN[{:02}] Generated: {} bytes",
-                            instr_i,
-                            bytes_generated
-                        );
-                    }
-                    Err(e) => {
-                        return Err(CompilerError::CodeGenError(format!(
-                            "Failed to translate init block instruction {}: {}",
-                            instr_i, e
-                        )));
-                    }
-                }
-            }
-            log::info!("✅ Init block integrated into main routine");
-
-            // CRITICAL FIX: Add call to main loop routine after init block (matching generate_init_block logic)
-            if ir.program_mode == crate::grue_compiler::ast::ProgramMode::Interactive
-                || ir.program_mode == crate::grue_compiler::ast::ProgramMode::Custom
-            {
-                log::debug!(
-                    "🔧 INIT_FIX: Adding call to main routine after init block (mode: {:?})",
-                    ir.program_mode
-                );
-
-                let main_loop_id = 9000u32; // Same ID as used in generate_main_loop
-
-                // Generate call to main loop using separated spaces architecture
-                let call_instr = crate::grue_compiler::ir::IrInstruction::Call {
-                    function: main_loop_id,
-                    args: vec![], // Main loop takes no arguments
-                    target: None, // No return value needed
-                };
-
-                log::debug!("🔧 INIT_FIX: Translating call instruction to main loop");
-                match self.translate_ir_instruction(&call_instr) {
-                    Ok(()) => {
-                        log::info!("✅ INIT_FIX: Successfully added call to main loop routine");
-                    }
-                    Err(e) => {
-                        return Err(CompilerError::CodeGenError(format!(
-                            "Failed to add call to main loop after init block: {}",
-                            e
-                        )));
-                    }
-                }
-            } else if ir.program_mode == crate::grue_compiler::ast::ProgramMode::Script {
-                log::debug!("🔧 INIT_FIX: Script mode - adding quit instruction after init block");
-                // For script mode, add quit instruction
-                let quit_bytes = vec![0xBA]; // quit opcode
-                self.code_space.extend(quit_bytes);
-            }
+            let (startup_address, init_locals_count) = self.generate_init_block(init_block, ir)?;
+            self.init_routine_locals_count = init_locals_count;
+            log::info!(
+                "✅ Init block generated as routine at startup address 0x{:04x} with {} locals",
+                startup_address,
+                init_locals_count
+            );
         } else {
-            log::debug!("📋 No init block to integrate into main routine");
+            log::debug!("📋 No init block found");
         }
 
         let initial_code_size = self.code_space.len();
@@ -4671,12 +4651,11 @@ impl ZMachineCodeGen {
             high_mem_base
         );
 
-        // Initial PC (entry point) - FIXED to use calculated value
-        let pc_start = self.final_code_base as u16; // Points directly to first instruction (V1-V5)
-        write_word(&mut self.header_space, 6, pc_start);
+        // NOTE: PC is set by fixup_header_addresses() later - this would be dead code
+        let init_header_size = 1 + (self.init_routine_locals_count as usize * 2);
         log::info!(
-            "🔧 HEADER_SPACE: PC start set to 0x{:04x} (first instruction)",
-            pc_start
+            "🔧 HEADER_SPACE: PC will be set by fixup_header_addresses() to 0x{:04x} (after {}-byte init routine header at 0x{:04x})",
+            (self.final_code_base + init_header_size), init_header_size, self.final_code_base
         );
 
         // Dictionary address (adjusted for final layout)
@@ -8692,7 +8671,7 @@ impl ZMachineCodeGen {
         &mut self,
         init_block: &IrBlock,
         ir: &IrProgram,
-    ) -> Result<usize, CompilerError> {
+    ) -> Result<(usize, u8), CompilerError> {
         log::debug!(
             "generate_init_block: Generating init routine with {} instructions (Z-Machine pure architecture)",
             init_block.instructions.len()
@@ -8755,13 +8734,55 @@ impl ZMachineCodeGen {
             .insert(init_routine_id, init_routine_address);
         self.record_final_address(init_routine_id, init_routine_address);
 
-        // Generate routine header (0 locals for init)
-        self.emit_byte(0x00)?; // Routine header: 0 locals
+        // FIXED: Generate dynamic routine header using function header pattern
+        // Reset local variable counter for init block (like regular functions)
+        self.current_function_locals = 0;
+        self.current_function_name = Some("init".to_string());
 
-        // Generate the init block code directly (no pre-calculation)
-        // Labels are allocated during actual instruction generation
+        // Generate placeholder routine header (will be patched after instruction generation)
+        let init_header_location = self.code_space.len();
+        self.emit_byte(0x00)?; // Placeholder - will be patched with actual local count
+
+        log::debug!(
+            "Init routine header placeholder at code_space[{}]",
+            init_header_location
+        );
+
+        // Generate the init block code - this may allocate local variables
+        // CRITICAL: Use translate_ir_instruction to ensure local variable allocation works
         for instruction in &init_block.instructions {
-            self.generate_instruction(instruction)?;
+            self.translate_ir_instruction(instruction)?;
+        }
+
+        // CRITICAL: Patch routine header with actual local count (like finalize_function_header)
+        let actual_locals = self.current_function_locals;
+        log::error!(
+            "🔧 INIT_DEBUG: Before patching header, current_function_locals={}, actual_locals={}",
+            self.current_function_locals,
+            actual_locals
+        );
+        if init_header_location < self.code_space.len() {
+            log::error!(
+                "🔧 INIT_DEBUG: Writing {} to code_space[{}] (was {})",
+                actual_locals,
+                init_header_location,
+                self.code_space[init_header_location]
+            );
+            self.code_space[init_header_location] = actual_locals;
+            log::error!(
+                "🔧 INIT_DEBUG: After write, code_space[{}] = {}",
+                init_header_location,
+                self.code_space[init_header_location]
+            );
+            log::info!(
+                "✅ INIT_HEADER: Patched routine header with {} local variables",
+                actual_locals
+            );
+        } else {
+            return Err(CompilerError::CodeGenError(format!(
+                "Failed to patch init routine header: location {} out of bounds (code_space.len={})",
+                init_header_location, self.code_space.len()
+            )));
         }
 
         // Handle program flow after init block based on program mode
@@ -8807,7 +8828,13 @@ impl ZMachineCodeGen {
         // Clear init block context flag
         self.in_init_block = false;
 
-        Ok(startup_address)
+        // Return startup address and actual locals count for PC calculation
+        log::error!(
+            "🔧 INIT_DEBUG: Before return, current_function_locals={}, returning actual_locals={}",
+            self.current_function_locals,
+            actual_locals
+        );
+        Ok((startup_address, actual_locals))
     }
 
     /// Write the Z-Machine file header with custom entry point
@@ -11484,12 +11511,10 @@ impl ZMachineCodeGen {
                     + space_offset
             }
             MemorySpace::Code => {
-                64 + 480
-                    + 192
-                    + self.object_space.len()
-                    + self.dictionary_space.len()
-                    + self.string_space.len()
-                    + space_offset
+                // CRITICAL FIX: Use final_code_base directly instead of hardcoded calculation
+                // Previous calculation used hardcoded section sizes that didn't match actual layout,
+                // causing UnresolvedReference locations to point to operand type bytes instead of operand data
+                self.final_code_base + space_offset
             }
         };
 
@@ -12328,13 +12353,16 @@ impl ZMachineCodeGen {
 
         // Track first operand location (most commonly needed for references)
         let operand_location = if !operands.is_empty() {
-            let code_space_offset = self.code_space.len();
+            // Capture location where first operand data will be written (after opcode and types byte)
+            let first_operand_offset = self.code_space.len();
+
             // Emit all operands
             for operand in operands {
                 self.emit_operand(operand)?;
             }
-            // ✅ FIXED: Convert code space offset to final memory address
-            Some(self.final_code_base + code_space_offset)
+
+            // Return location of first operand data (not operand types byte)
+            Some(self.final_code_base + first_operand_offset)
         } else {
             None
         };
