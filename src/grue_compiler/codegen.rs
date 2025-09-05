@@ -194,6 +194,7 @@ pub struct ZMachineCodeGen {
     string_addresses: HashMap<IrId, usize>, // IR string ID -> byte address
     function_addresses: HashMap<IrId, usize>, // IR function ID -> function header byte address
     function_locals_count: HashMap<IrId, usize>, // IR function ID -> locals count (for header size calculation)
+    function_header_locations: HashMap<IrId, usize>, // IR function ID -> header byte location for patching
     current_function_locals: u8, // Track local variables allocated in current function (0-15)
     current_function_name: Option<String>, // Track current function being processed for debugging
     /// Mapping from IR IDs to string values (for LoadImmediate results)
@@ -308,6 +309,7 @@ impl ZMachineCodeGen {
             string_addresses: HashMap::new(),
             function_addresses: HashMap::new(),
             function_locals_count: HashMap::new(),
+            function_header_locations: HashMap::new(),
             current_function_locals: 0,
             current_function_name: None,
             ir_id_to_string: HashMap::new(),
@@ -2399,6 +2401,9 @@ impl ZMachineCodeGen {
                     function.body.instructions.len()
                 );
             }
+
+            // CRITICAL: Patch function header with actual local count after instruction generation
+            self.finalize_function_header(function.id)?;
         }
 
         // Phase 2.2: Init block now handled as part of main routine (above)
@@ -6460,13 +6465,71 @@ impl ZMachineCodeGen {
 
         // CRITICAL: Store the header location for later patching with actual local count
         let header_locals_byte_location = self.code_space.len();
-        self.emit_byte(local_count as u8)?;
+        self.function_header_locations
+            .insert(function.id, header_locals_byte_location);
+        // PLACEHOLDER: Write 0 for now, will patch with actual count after instruction generation
+        self.emit_byte(0)?;
 
-        // In v3, emit default values for locals (v4+ doesn't need this)
+        // In V3, pre-allocate space for maximum possible locals (15)
+        // We'll patch the count later, but the space needs to be allocated now
         if self.version == ZMachineVersion::V3 {
-            for _i in 0..local_count {
+            // Pre-allocate space for up to 15 locals (maximum Z-Machine allows)
+            // This prevents address shifts when we patch the actual count later
+            for _i in 0..15 {
                 self.emit_word(0)?; // Default local value = 0
             }
+        }
+
+        Ok(())
+    }
+
+    /// Finalize function header by patching local count with actual count used
+    fn finalize_function_header(&mut self, function_id: IrId) -> Result<(), CompilerError> {
+        let actual_locals = self.current_function_locals;
+        let function_name = self
+            .current_function_name
+            .clone()
+            .unwrap_or_else(|| format!("function_{}", function_id));
+
+        log::debug!(
+            "🔧 FINALIZE: Function '{}' used {} local variables during generation",
+            function_name,
+            actual_locals
+        );
+
+        // Get the header location to patch
+        if let Some(&header_location) = self.function_header_locations.get(&function_id) {
+            // Patch the local count in code_space
+            if header_location < self.code_space.len() {
+                let old_count = self.code_space[header_location];
+                self.code_space[header_location] = actual_locals;
+
+                log::debug!(
+                    "✅ PATCHED: Function '{}' header at offset 0x{:04x}: {} -> {} locals",
+                    function_name,
+                    header_location,
+                    old_count,
+                    actual_locals
+                );
+
+                // Update the stored locals count for function address calculation
+                self.function_locals_count
+                    .insert(function_id, actual_locals as usize);
+
+                // Note: For V3, we pre-allocated space for 15 locals, so no insertion needed
+            } else {
+                log::error!(
+                    "❌ PATCH_ERROR: Header location 0x{:04x} is beyond code_space length {}",
+                    header_location,
+                    self.code_space.len()
+                );
+            }
+        } else {
+            log::error!(
+                "❌ PATCH_ERROR: No header location found for function {} ('{}')",
+                function_id,
+                function_name
+            );
         }
 
         Ok(())
