@@ -6,6 +6,7 @@
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
 use crate::grue_compiler::ZMachineVersion;
+use indexmap::IndexMap;
 use log::debug;
 use std::collections::{HashMap, HashSet};
 
@@ -229,10 +230,10 @@ pub struct ZMachineCodeGen {
     strings: Vec<(IrId, String)>, // Collected strings for encoding
 
     // Stack tracking for debugging
-    stack_depth: i32,                        // Current estimated stack depth
-    max_stack_depth: i32,                    // Maximum stack depth reached
-    encoded_strings: HashMap<IrId, Vec<u8>>, // IR string ID -> encoded bytes
-    next_string_id: IrId,                    // Next available string ID
+    stack_depth: i32,                         // Current estimated stack depth
+    max_stack_depth: i32,                     // Maximum stack depth reached
+    encoded_strings: IndexMap<IrId, Vec<u8>>, // IR string ID -> encoded bytes
+    next_string_id: IrId,                     // Next available string ID
 
     // Execution context
     in_init_block: bool, // True when generating init block code
@@ -326,7 +327,7 @@ impl ZMachineCodeGen {
             dictionary_addr: 0,
             global_vars_addr: 0,
             strings: Vec::new(),
-            encoded_strings: HashMap::new(),
+            encoded_strings: IndexMap::new(),
             next_string_id: 1000, // Start string IDs from 1000 to avoid conflicts
             stack_depth: 0,
             max_stack_depth: 0,
@@ -490,98 +491,6 @@ impl ZMachineCodeGen {
     }
 
     /// Final header fixup: Write correct addresses directly to final_data after all spaces are positioned
-    fn fixup_final_header(
-        &mut self,
-        static_memory_start: usize,
-        _abbreviations_base: usize,
-    ) -> Result<(), CompilerError> {
-        log::debug!("🔧 HEADER_FIXUP: Updating header in final_data with calculated addresses");
-
-        // Helper function to write a word directly to final_data header section
-        let write_word_to_final = |final_data: &mut Vec<u8>, addr: usize, value: u16| {
-            if addr + 1 < final_data.len() {
-                final_data[addr] = (value >> 8) as u8;
-                final_data[addr + 1] = (value & 0xFF) as u8;
-                log::debug!("  Header[0x{:02x}] = 0x{:04x}", addr, value);
-            }
-        };
-
-        // High memory base (start of code section)
-        let high_mem_base = self.final_code_base as u16;
-        write_word_to_final(&mut self.final_data, 4, high_mem_base);
-        log::debug!(
-            "🔧 HEADER_FIXUP: High memory base updated to 0x{:04x}",
-            high_mem_base
-        );
-
-        // Initial PC (entry point) - Points directly to first instruction
-        let pc_start = self.final_code_base as u16;
-
-        // Debug: Track PC start calculation to find 0x1717 source
-        log::error!(
-            "🚨 PC_START_CALCULATION: final_code_base={} (0x{:04x}), pc_start=0x{:04x}",
-            self.final_code_base,
-            self.final_code_base,
-            pc_start
-        );
-        log::error!(
-            "🚨 PC_START_CALCULATION: final_data_len={}, expected_range=0x{:04x}-0x{:04x}",
-            self.final_data.len(),
-            HEADER_SIZE,
-            self.final_data.len()
-        );
-
-        write_word_to_final(&mut self.final_data, 6, pc_start);
-        log::debug!("🔧 HEADER_FIXUP: PC start updated to 0x{:04x}", pc_start);
-
-        // Dictionary address
-        let final_dict_addr = self.dictionary_addr as u16;
-        write_word_to_final(&mut self.final_data, 8, final_dict_addr);
-        log::debug!(
-            "🔧 HEADER_FIXUP: Dictionary address updated to 0x{:04x}",
-            final_dict_addr
-        );
-
-        // Object table address
-        let final_obj_addr = self.final_object_base as u16;
-        write_word_to_final(&mut self.final_data, 10, final_obj_addr);
-        log::debug!(
-            "🔧 HEADER_FIXUP: Object table address updated to 0x{:04x}",
-            final_obj_addr
-        );
-
-        // Global variables address
-        let final_globals_addr = self.global_vars_addr as u16;
-        write_word_to_final(&mut self.final_data, 12, final_globals_addr);
-        log::debug!(
-            "🔧 HEADER_FIXUP: Global variables address updated to 0x{:04x}",
-            final_globals_addr
-        );
-
-        // Static memory base (end of dynamic memory)
-        let static_mem_base = static_memory_start as u16;
-        write_word_to_final(&mut self.final_data, 14, static_mem_base);
-        log::debug!(
-            "🔧 HEADER_FIXUP: Static memory base updated to 0x{:04x}",
-            static_mem_base
-        );
-
-        // File length (version-specific offset)
-        let file_len = (self.final_data.len() as u32) as u16;
-        let file_len_offset = match self.version {
-            ZMachineVersion::V3 => 2, // V1-V3: file length at offset 2
-            ZMachineVersion::V4 | ZMachineVersion::V5 => 26, // V4+: file length at offset 26
-        };
-        write_word_to_final(&mut self.final_data, file_len_offset, file_len);
-        log::debug!(
-            "🔧 HEADER_FIXUP: File length updated to 0x{:04x} ({} bytes)",
-            file_len,
-            self.final_data.len()
-        );
-
-        log::info!("✅ HEADER_FIXUP: All header addresses updated in final_data");
-        Ok(())
-    }
 
     /// Resolve a single fixup in the final assembled data
     fn resolve_fixup(&mut self, fixup: &PendingFixup) -> Result<(), CompilerError> {
@@ -975,7 +884,12 @@ impl ZMachineCodeGen {
             );
         }
 
-        let encoded_strings = self.encoded_strings.clone();
+        // IndexMap preserves insertion order, but need to collect to avoid borrow issues
+        let encoded_strings: Vec<_> = self
+            .encoded_strings
+            .iter()
+            .map(|(&id, data)| (id, data.clone()))
+            .collect();
         for (string_id, string_data) in encoded_strings {
             self.allocate_string_space(string_id, &string_data)?;
         }
@@ -1036,7 +950,12 @@ impl ZMachineCodeGen {
         let initial_string_count = self.string_space.len();
 
         // Find any new strings that were added during code generation
-        let current_encoded_strings = self.encoded_strings.clone();
+        // IndexMap preserves insertion order, but need to collect to avoid borrow issues
+        let current_encoded_strings: Vec<_> = self
+            .encoded_strings
+            .iter()
+            .map(|(&id, data)| (id, data.clone()))
+            .collect();
         for (string_id, string_data) in current_encoded_strings {
             if !self.string_offsets.contains_key(&string_id) {
                 log::debug!(
@@ -1105,7 +1024,7 @@ impl ZMachineCodeGen {
     ///
     fn assemble_complete_zmachine_image(
         &mut self,
-        ir: &IrProgram,
+        _ir: &IrProgram,
     ) -> Result<Vec<u8>, CompilerError> {
         log::info!("🔧 Phase 3: Assembling complete Z-Machine image from ALL separated spaces");
 
@@ -1116,6 +1035,7 @@ impl ZMachineCodeGen {
         let abbreviations_size = self.abbreviations_space.len();
         let object_size = self.object_space.len();
         let dictionary_size = self.dictionary_space.len();
+        log::debug!("📖 Dictionary size: {} bytes", dictionary_size);
         let string_size = self.string_space.len();
         let code_size = self.code_space.len();
 
@@ -1139,6 +1059,11 @@ impl ZMachineCodeGen {
 
         // Static memory sections
         let dictionary_base = current_address;
+        log::debug!(
+            "🔧 Dictionary allocated at 0x{:04x}, size={} bytes",
+            dictionary_base,
+            dictionary_size
+        );
         current_address += dictionary_size;
 
         // High memory sections - align string base for Z-Machine requirements
@@ -1162,6 +1087,11 @@ impl ZMachineCodeGen {
         current_address += string_size;
 
         let code_base = current_address;
+        log::debug!(
+            "🔧 Code allocated at 0x{:04x}, size={} bytes",
+            code_base,
+            code_size
+        );
         current_address += code_size;
 
         // Total file size calculation
@@ -1287,9 +1217,14 @@ impl ZMachineCodeGen {
         );
         self.final_data = vec![0; total_size];
 
-        // Phase 3c: Generate and write comprehensive Z-Machine header
-        log::debug!("📝 Step 3c: Generating comprehensive Z-Machine header with ALL addresses");
-        self.generate_complete_header(ir, static_memory_start, abbreviations_base)?;
+        // Phase 3c: Generate static header fields (version, serial, flags)
+        // This phase writes only fields that don't change based on memory layout:
+        // - Version number, release number, flags
+        // - Serial number (compilation date)
+        // - Standard revision info
+        // Address fields remain as 0x0000 placeholders
+        log::debug!("📝 Step 3c: Generating static header fields");
+        self.generate_static_header_fields()?;
 
         // Phase 3d: Copy ALL content spaces to final positions IN MONOTONIC ORDER
         log::debug!("📋 Step 3d: Copying ALL separated spaces to final image (header-first monotonic approach)");
@@ -1320,51 +1255,12 @@ impl ZMachineCodeGen {
 
         // Copy object space
         if !self.object_space.is_empty() {
-            debug!("🔍 OBJECT SPACE COPY: About to copy {} bytes from object_space to final_data[0x{:04x}..0x{:04x}]", 
-                   self.object_space.len(), object_base, dictionary_base);
-
-            // Debug the first few bytes of object space before copying
-            if self.object_space.len() >= 16 {
-                debug!("🔍 OBJECT SPACE FIRST 16 BYTES BEFORE COPY:");
-                for (i, byte) in self.object_space[0..16].iter().enumerate() {
-                    debug!(
-                        "  object_space[0x{:02x}] = 0x{:02x} ({})",
-                        i,
-                        byte,
-                        if *byte >= 0x20 && *byte <= 0x7e {
-                            *byte as char
-                        } else {
-                            '.'
-                        }
-                    );
-                }
-            }
-
             self.final_data[object_base..dictionary_base].copy_from_slice(&self.object_space);
             log::debug!(
                 "✅ Object space copied: {} bytes at 0x{:04x}",
                 object_size,
                 object_base
             );
-
-            // Debug the first few bytes of final_data after copying
-            debug!("🔍 FINAL_DATA FIRST 16 BYTES AFTER OBJECT SPACE COPY:");
-            for i in 0..16 {
-                let addr = object_base + i;
-                if addr < self.final_data.len() {
-                    let byte = self.final_data[addr];
-                    debug!(
-                        "  final_data[0x{:04x}] = 0x{:02x} ({})",
-                        addr,
-                        byte,
-                        if byte >= 0x20 && byte <= 0x7e {
-                            byte as char
-                        } else {
-                            '.'
-                        }
-                    );
-                }
-            }
 
             // CRITICAL FIX: Patch property table addresses from object space relative to absolute addresses
             self.patch_property_table_addresses(object_base)?;
@@ -1393,77 +1289,40 @@ impl ZMachineCodeGen {
         }
 
         // Copy code space
-        log::debug!(
-            "🔧 SECOND COPY: code_space length: {}, range: 0x{:04x}..0x{:04x}",
-            self.code_space.len(),
-            code_base,
-            total_size
-        );
         if !self.code_space.is_empty() {
-            log::debug!(
-                "🔧 SECOND COPY: First 8 bytes of code_space: {:02x?}",
-                &self.code_space[..self.code_space.len().min(8)]
-            );
-            log::debug!(
-                "🔧 SECOND COPY: Last 8 bytes of code_space: {:02x?}",
-                &self.code_space[self.code_space.len().saturating_sub(8)..]
-            );
-            log::debug!(
-                "🔧 SECOND COPY: Bytes around 1388: {:02x?}",
-                &self.code_space[1388.min(self.code_space.len().saturating_sub(1))
-                    ..1400.min(self.code_space.len())]
-            );
-
-            // 🚨 DEBUG: Check what's at the critical source address before copying
-            if self.code_space.len() > 0 {
-                let first_byte = self.code_space[0];
-                log::error!(
-                    "🔍 PRE_COPY: First byte in code_space[0] = 0x{:02x}",
-                    first_byte
-                );
-
-                // Check if this looks like header data (Z-Machine headers start with version)
-                if self.code_space.len() >= 16 {
-                    log::error!(
-                        "🔍 PRE_COPY: First 16 bytes of code_space: {:02x?}",
-                        &self.code_space[0..16]
-                    );
-                    if self.code_space[0] == 0x03 {
-                        log::error!("🚨 HEADER CORRUPTION: code_space[0] = 0x03 suggests Z-Machine V3 header was written to code space!");
-                    }
-                }
-            }
-
             self.final_data[code_base..total_size].copy_from_slice(&self.code_space);
-
-            // 🚨 DEBUG: Check what ended up at the critical final address after copying
-            if code_base < self.final_data.len() {
-                let copied_byte = self.final_data[code_base];
-                log::error!(
-                    "🔍 POST_COPY: First byte copied to final_data[0x{:04x}] = 0x{:02x}",
-                    code_base,
-                    copied_byte
-                );
-                if copied_byte == 0x3E {
-                    panic!("FOUND THE BUG: 0x3E appeared in final_data after code space copy! Source had 0x{:02x}", 
-                           if self.code_space.len() > 0 { self.code_space[0] } else { 0xFF });
-                }
-            }
-
             log::debug!(
-                "✅ Code space copied: {} bytes at 0x{:04x} (SECOND COPY)",
+                "✅ Code space copied: {} bytes at 0x{:04x}",
                 code_size,
                 code_base
             );
         }
 
-        // Phase 3e: Final header fixup with correct addresses
-        log::debug!("🔧 Step 3e: Final header fixup with calculated addresses");
-        self.fixup_final_header(static_memory_start, abbreviations_base)?;
+        // Phase 3e: Update address fields with final calculated addresses
+        // This phase updates ONLY the address fields in the header with final memory layout.
+        // Critical: Never touches static fields like serial number or version.
+        // Updates: PC start, dictionary, objects, globals, static memory, abbreviations, high memory base
+        log::debug!("🔧 Step 3e: Updating header address fields with final memory layout");
+        self.fixup_header_addresses(
+            self.final_code_base as u16,   // pc_start
+            self.dictionary_addr as u16,   // dictionary_addr
+            self.final_object_base as u16, // objects_addr
+            self.global_vars_addr as u16,  // globals_addr
+            static_memory_start as u16,    // static_memory_base
+            abbreviations_base as u16,     // abbreviations_addr
+            self.final_code_base as u16,   // high_mem_base
+        )?;
 
         // Phase 3f: Resolve all address references
         log::debug!("🔧 Step 3f: Resolving all address references and fixups");
         self.resolve_all_addresses()?;
+
+        // Phase 3g: Finalize file metadata (length and checksum - must be last)
+        // This phase calculates and writes file length and checksum.
+        // MUST be called last since it depends on the complete final file.
+        // Updates: File length (bytes 26-27), Checksum (bytes 28-29)
+        log::debug!("📊 Step 3g: Finalizing file length and checksum");
+        self.finalize_header_metadata()?;
 
         log::info!(
             "🎉 COMPLETE Z-MACHINE FILE assembled successfully: {} bytes",
@@ -1472,22 +1331,13 @@ impl ZMachineCodeGen {
         Ok(self.final_data.clone())
     }
 
-    /// Generate complete Z-Machine header with ALL required addresses (COMPLETE Z-MACHINE FORMAT)
+    /// Phase 1: Generate static header fields (version, serial, flags)
     ///
-    /// Creates a comprehensive Z-Machine header with all addresses calculated from
-    /// the complete separated spaces layout including dictionary, globals, abbreviations.
+    /// Writes only fields that don't depend on final memory layout.
+    /// Address fields are left as 0x0000 placeholders.
     ///
-    fn generate_complete_header(
-        &mut self,
-        _ir: &IrProgram,
-        static_memory_start: usize,
-        abbreviations_base: usize,
-    ) -> Result<(), CompilerError> {
-        log::debug!("📝 Generating comprehensive Z-Machine header with ALL calculated addresses");
-
-        // Calculate file length first (before mutable borrow)
-        let file_len = self.final_data.len() as u32;
-        let file_len_words = file_len.div_ceil(2);
+    fn generate_static_header_fields(&mut self) -> Result<(), CompilerError> {
+        log::debug!("📝 Phase 1: Generating static header fields (version, serial, flags)");
 
         // Z-Machine header is always 64 bytes, write directly to final_data
         let header = &mut self.final_data[0..HEADER_SIZE];
@@ -1500,147 +1350,121 @@ impl ZMachineCodeGen {
         };
 
         // Byte 1: Flags 1 (default for our version)
-        header[1] = 0x00; // Flags 1 - default settings
+        header[1] = 0x00;
 
         // Bytes 2-3: Release number (required, use 1 for our compiler)
         header[2] = 0x00; // Release high byte
         header[3] = 0x01; // Release low byte = 1
 
-        // Bytes 4-5: High memory base (start of high memory section)
-        // Per Z-Machine spec: This marks the boundary between dynamic and high memory
-        // High memory starts with the code section
-        let high_mem_base = self.final_code_base as u16;
-        header[4] = (high_mem_base >> 8) as u8;
-        header[5] = (high_mem_base & 0xFF) as u8;
-        log::info!(
-            "✅ High memory base: 0x{:04x} (start of code section)",
-            high_mem_base
-        );
-        log::info!(
-            "🔧 DEBUG: final_code_base = 0x{:04x} during header generation",
-            self.final_code_base
-        );
-
-        // Bytes 6-7: PC initial value (start of executable code section)
-        // CRITICAL: For V1-V5, PC points directly to first instruction (Z-Machine spec section 5.5)
-        // Code structure: [first instruction...] (no routine header needed)
-        let pc_start = self.final_code_base as u16; // Points directly to first instruction
-        header[6] = (pc_start >> 8) as u8;
-        header[7] = (pc_start & 0xFF) as u8;
-        log::info!(
-            "✅ PC start address: 0x{:04x} (points directly to first instruction per Z-Machine spec V1-V5)",
-            pc_start
-        );
-        log::info!(
-            "🔧 DEBUG: Writing PC bytes: header[6]=0x{:02x}, header[7]=0x{:02x}",
-            header[6],
-            header[7]
-        );
-
-        // DEBUG: Detailed code_space inspection
-        log::debug!("🔍 CODE_SPACE DEBUG: Total size: {}", self.code_space.len());
-        log::debug!(
-            "🔍 CODE_SPACE DEBUG: First 32 bytes: {:02x?}",
-            &self.code_space[..std::cmp::min(32, self.code_space.len())]
-        );
-
-        // Look for problematic 0x00 patterns in code
-        for (i, &byte) in self.code_space.iter().enumerate() {
-            if byte == 0x00 {
-                let runtime_addr = self.final_code_base + i;
-                log::debug!(
-                    "⚠️ CODE_SPACE DEBUG: Found 0x00 at offset {} (runtime address 0x{:04x})",
-                    i,
-                    runtime_addr
-                );
-                // Show context around this 0x00 byte
-                let start = i.saturating_sub(8);
-                let end = std::cmp::min(i + 8, self.code_space.len());
-                log::debug!(
-                    "⚠️ CODE_SPACE DEBUG: Context around 0x00: {:02x?}",
-                    &self.code_space[start..end]
-                );
-                if runtime_addr == 0x0aa8 {
-                    log::error!(
-                        "🚨 FOUND CRASH LOCATION: 0x00 byte at offset {} (address 0x{:04x})",
-                        i,
-                        runtime_addr
-                    );
-                    break;
-                }
-            }
-        }
-
-        // Bytes 8-9: Dictionary address ⭐ CRITICAL FIX - was missing!
-        let dict_addr = self.dictionary_addr as u16;
-        header[8] = (dict_addr >> 8) as u8;
-        header[9] = (dict_addr & 0xFF) as u8;
-        log::info!(
-            "✅ Dictionary address: 0x{:04x} ⭐ FIXED - was 0x0000!",
-            dict_addr
-        );
-
-        // Bytes 10-11: Object table address
-        let obj_addr = self.final_object_base as u16;
-        header[10] = (obj_addr >> 8) as u8;
-        header[11] = (obj_addr & 0xFF) as u8;
-        log::debug!("✅ Object table address: 0x{:04x}", obj_addr);
-
-        // Bytes 12-13: Global variables address ⭐ CRITICAL FIX - was missing!
-        let globals_addr = self.global_vars_addr as u16;
-        header[12] = (globals_addr >> 8) as u8;
-        header[13] = (globals_addr & 0xFF) as u8;
-        log::info!(
-            "✅ Global variables address: 0x{:04x} ⭐ FIXED - was 0x0000!",
-            globals_addr
-        );
-
-        // Bytes 14-15: Static memory base (end of dynamic memory)
-        let static_base = static_memory_start as u16;
-        header[14] = (static_base >> 8) as u8;
-        header[15] = (static_base & 0xFF) as u8;
-        log::debug!("✅ Static memory base: 0x{:04x}", static_base);
-
         // Bytes 16-17: Flags 2 (default)
         header[16] = 0x00;
         header[17] = 0x00;
 
-        // Bytes 18-19: Abbreviations address ⭐ CRITICAL FIX - was missing!
-        let abbrev_addr = abbreviations_base as u16;
-        header[18] = (abbrev_addr >> 8) as u8;
-        header[19] = (abbrev_addr & 0xFF) as u8;
-        log::info!(
-            "✅ Abbreviations address: 0x{:04x} ⭐ FIXED - was 0x0000!",
-            abbrev_addr
-        );
-
-        // Remaining header bytes (20-25) stay zero for simple programs
-
-        // Bytes 26-27: File length (high part)
-        header[26] = ((file_len_words >> 8) & 0xFF) as u8;
-        header[27] = (file_len_words & 0xFF) as u8;
-
-        // Bytes 28-29: Checksum (set to 0 for now, calculate after header is complete)
-        header[28] = 0x00;
-        header[29] = 0x00;
+        // Bytes 18-23 (0x12-0x17): Serial number (6 ASCII bytes) - Infocom convention
+        let serial = b"250905"; // YYMMDD format: September 5, 2025
+        header[18] = serial[0]; // '2'
+        header[19] = serial[1]; // '5'
+        header[20] = serial[2]; // '0'
+        header[21] = serial[3]; // '9'
+        header[22] = serial[4]; // '0'
+        header[23] = serial[5]; // '5'
 
         // Bytes 50-51: Standard revision number (Z-Machine spec 1.1)
         header[50] = 0x01; // Standard revision 1
         header[51] = 0x01; // Sub-revision 1
 
-        log::info!("✅ COMPREHENSIVE Z-Machine header generated:");
-        log::info!("  ├─ Version: {}", header[0]);
-        log::info!("  ├─ PC start: 0x{:04x}", pc_start);
-        log::info!("  ├─ Dictionary: 0x{:04x} ⭐", dict_addr);
-        log::info!("  ├─ Object table: 0x{:04x}", obj_addr);
-        log::info!("  ├─ Global vars: 0x{:04x} ⭐", globals_addr);
-        log::info!("  ├─ Static base: 0x{:04x}", static_base);
-        log::info!("  ├─ Abbreviations: 0x{:04x} ⭐", abbrev_addr);
-        log::info!("  ├─ High memory: 0x{:04x}", high_mem_base);
-        log::info!(
-            "  └─ File size: {} bytes ({} words)",
+        log::debug!(
+            "✅ Static header fields: Version {}, Serial {}",
+            header[0],
+            std::str::from_utf8(serial).unwrap()
+        );
+
+        Ok(())
+    }
+
+    /// Phase 2: Fix up address fields with final calculated values
+    ///
+    /// Updates ONLY the address fields with final assembled memory layout.
+    /// Never touches static fields like serial number.
+    ///
+    fn fixup_header_addresses(
+        &mut self,
+        pc_start: u16,
+        dictionary_addr: u16,
+        objects_addr: u16,
+        globals_addr: u16,
+        static_memory_base: u16,
+        abbreviations_addr: u16,
+        high_mem_base: u16,
+    ) -> Result<(), CompilerError> {
+        log::debug!("🔧 Phase 2: Updating header address fields with final memory layout");
+
+        let header = &mut self.final_data[0..HEADER_SIZE];
+
+        // Bytes 4-5: High memory base (start of high memory section)
+        header[4] = (high_mem_base >> 8) as u8;
+        header[5] = (high_mem_base & 0xFF) as u8;
+
+        // Bytes 6-7: PC initial value (start of executable code section)
+        header[6] = (pc_start >> 8) as u8;
+        header[7] = (pc_start & 0xFF) as u8;
+
+        // Bytes 8-9: Dictionary address
+        header[8] = (dictionary_addr >> 8) as u8;
+        header[9] = (dictionary_addr & 0xFF) as u8;
+
+        // Bytes 10-11: Object table address
+        header[10] = (objects_addr >> 8) as u8;
+        header[11] = (objects_addr & 0xFF) as u8;
+
+        // Bytes 12-13: Global variables address
+        header[12] = (globals_addr >> 8) as u8;
+        header[13] = (globals_addr & 0xFF) as u8;
+
+        // Bytes 14-15: Static memory base (end of dynamic memory)
+        header[14] = (static_memory_base >> 8) as u8;
+        header[15] = (static_memory_base & 0xFF) as u8;
+
+        // Bytes 24-25 (0x18-0x19): Abbreviations address
+        header[24] = (abbreviations_addr >> 8) as u8;
+        header[25] = (abbreviations_addr & 0xFF) as u8;
+
+        log::debug!(
+            "✅ Address fields updated: PC=0x{:04x}, Dict=0x{:04x}, Obj=0x{:04x}",
+            pc_start,
+            dictionary_addr,
+            objects_addr
+        );
+
+        Ok(())
+    }
+
+    /// Phase 3: Finalize file metadata (length and checksum)
+    ///
+    /// Calculates and writes file length and checksum.
+    /// Must be called last since it depends on complete file.
+    ///
+    fn finalize_header_metadata(&mut self) -> Result<(), CompilerError> {
+        log::debug!("📊 Phase 3: Finalizing file length and checksum");
+
+        // Calculate file length first (before mutable borrow)
+        let file_len = self.final_data.len() as u32;
+        let file_len_words = file_len.div_ceil(2);
+
+        // Update file length in header
+        self.final_data[26] = ((file_len_words >> 8) & 0xFF) as u8;
+        self.final_data[27] = (file_len_words & 0xFF) as u8;
+
+        // Calculate and write checksum (must be done after all other fields are set)
+        let checksum = self.calculate_checksum();
+        self.final_data[28] = (checksum >> 8) as u8;
+        self.final_data[29] = (checksum & 0xFF) as u8;
+
+        log::debug!(
+            "✅ File metadata: {} bytes ({} words), checksum=0x{:04x}",
             file_len,
-            file_len_words
+            file_len_words,
+            checksum
         );
 
         Ok(())
@@ -1877,13 +1701,6 @@ impl ZMachineCodeGen {
             }
 
             LegacyReferenceType::Jump => {
-                log::error!("🚨 JUMP_RESOLUTION: Resolving jump reference");
-                log::error!("🔍 JUMP_RESOLUTION: target_id={}", reference.target_id);
-                log::error!(
-                    "🔍 JUMP_RESOLUTION: final_code_base=0x{:04x}",
-                    self.final_code_base
-                );
-
                 // Find the jump target in our code space
                 if let Some(&code_offset) = self
                     .reference_context
@@ -1920,10 +1737,6 @@ impl ZMachineCodeGen {
                         );
                         log::error!("  target_id = {}", reference.target_id);
                     }
-                    log::error!("🔍 JUMP_RESOLUTION: Calculation: final_code_base(0x{:04x}) + code_offset(0x{:04x}) = 0x{:04x}", 
-                               self.final_code_base, code_offset, resolved_address);
-                    log::error!("🔍 JUMP_RESOLUTION: File size is 0x{:04x} bytes, resolved address is {} (valid={})", 
-                               self.final_data.len(), resolved_address, resolved_address < self.final_data.len());
 
                     // CRITICAL FIX: Use patch_jump_offset for jump instructions to calculate proper relative offset
                     log::error!("🔧 JUMP_RESOLUTION: Calling patch_jump_offset to calculate relative offset");
@@ -1952,7 +1765,7 @@ impl ZMachineCodeGen {
                         reference.target_id
                     );
                     log::error!(
-                        "🔍 JUMP_RESOLUTION: Available IDs: {:?}",
+                        "Available IDs: {:?}",
                         self.reference_context
                             .ir_id_to_address
                             .keys()
@@ -1966,13 +1779,6 @@ impl ZMachineCodeGen {
             }
 
             LegacyReferenceType::Branch => {
-                log::error!("🚨 BRANCH_RESOLUTION: Resolving branch reference");
-                log::error!("🔍 BRANCH_RESOLUTION: target_id={}", reference.target_id);
-                log::error!(
-                    "🔍 BRANCH_RESOLUTION: final_code_base=0x{:04x}",
-                    self.final_code_base
-                );
-
                 // Find the branch target in our code space
                 if let Some(&code_offset) = self
                     .reference_context
@@ -2466,6 +2272,33 @@ impl ZMachineCodeGen {
                 function.body.instructions.len()
             );
 
+            // Align function addresses according to Z-Machine version requirements
+            log::debug!(
+                "🔧 FUNCTION_ALIGN: Function '{}' before alignment at code_address=0x{:04x}",
+                function.name,
+                self.code_address
+            );
+            match self.version {
+                ZMachineVersion::V3 => {
+                    // v3: functions must be at even addresses
+                    if self.code_address % 2 != 0 {
+                        log::debug!("🔧 FUNCTION_ALIGN: Adding padding byte for even alignment");
+                        self.emit_byte(0x00)?; // padding (will crash if executed - good for debugging)
+                    }
+                }
+                ZMachineVersion::V4 | ZMachineVersion::V5 => {
+                    // v4/v5: functions must be at 4-byte boundaries
+                    while self.code_address % 4 != 0 {
+                        self.emit_byte(0x00)?; // padding (will crash if executed - good for debugging)
+                    }
+                }
+            }
+            log::debug!(
+                "🔧 FUNCTION_ALIGN: Function '{}' after alignment at code_address=0x{:04x}",
+                function.name,
+                self.code_address
+            );
+
             // CRITICAL: Store relative function address (will be converted to absolute in Phase 3)
             // During Phase 2, final_code_base is still 0x0000, so we store relative addresses
             let relative_func_addr = self.code_space.len();
@@ -2537,6 +2370,19 @@ impl ZMachineCodeGen {
                         // Continue processing other instructions
                     }
                 }
+            }
+
+            // Check if function needs implicit return
+            let has_return = self.block_ends_with_return(&function.body);
+            log::debug!(
+                "Function '{}' ends with return: {}",
+                function.name,
+                has_return
+            );
+
+            if !has_return {
+                log::debug!("Adding implicit return to function '{}'", function.name);
+                self.emit_return(None)?;
             }
 
             let function_bytes = self.code_space.len() - function_start_size;
@@ -3038,9 +2884,6 @@ impl ZMachineCodeGen {
         );
 
         // CRITICAL DEBUG: Track IR ID 104 creation
-        if target == Some(104) {
-            log::error!("🔍 DEBUG: Function {} creates target IR ID 104!", function);
-        }
 
         // UNIVERSAL TARGET REGISTRATION: Ensure ALL function calls with targets create mappings
         // This prevents "No mapping found" errors even if function implementation is incomplete
@@ -3056,9 +2899,6 @@ impl ZMachineCodeGen {
         // Check if this is a builtin function first
         if self.is_builtin_function(function) {
             log::debug!("BUILTIN_CALL: function={}", function);
-            if function == 11 {
-                log::error!("🔍 DEBUG: Function 11 IS a builtin function");
-            }
 
             // PHASE 1 & 2: Single-path builtin function handling
             match self.get_builtin_function_name(function) {
@@ -3092,9 +2932,6 @@ impl ZMachineCodeGen {
                             self.translate_get_object_contents_builtin_inline(args, target)?
                         }
                         "object_is_empty" => {
-                            if target == Some(104) {
-                                log::error!("🔍 DEBUG: INLINE object_is_empty handling IR ID 104!");
-                            }
                             self.translate_object_is_empty_builtin_inline(args, target)?
                         }
                         "value_is_none" => {
@@ -3110,12 +2947,7 @@ impl ZMachineCodeGen {
                         _ => {
                             // Fallback to legacy system for remaining builtins (Tier 3 only)
                             log::debug!("⚠️ LEGACY: {} delegating to legacy builtin system", name);
-                            if target == Some(104) {
-                                log::error!(
-                                    "🔍 DEBUG: LEGACY fallback handling IR ID 104 for function {}",
-                                    name
-                                );
-                            }
+                            if target == Some(104) {}
                             self.generate_builtin_function_call(function, args, target)?;
                         }
                     }
@@ -3190,9 +3022,6 @@ impl ZMachineCodeGen {
                     });
             }
         } else {
-            if function == 11 {
-                log::error!("🔍 DEBUG: Function 11 is NOT a builtin function, going to HOTFIX");
-            }
             // HOTFIX: Register commonly missing builtin functions
             match function {
                 1 => {
@@ -3287,7 +3116,7 @@ impl ZMachineCodeGen {
                     return Ok(());
                 }
                 11 => {
-                    log::error!("🔍 DEBUG: HOTFIX: Registering function 11 as object_is_empty");
+                    log::debug!("HOTFIX: Registering function 11 as object_is_empty");
                     self.register_builtin_function(11, "object_is_empty".to_string());
                     // Retry the builtin call now that it's registered
                     return self.translate_call(target, function, args);
@@ -4987,8 +4816,11 @@ impl ZMachineCodeGen {
 
     /// Collect all strings from the IR program for later encoding
     fn collect_strings(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
-        // Collect from string table
-        for (string, &id) in &ir.string_table {
+        // Collect from string table in deterministic order (sorted by ID)
+        let mut string_entries: Vec<_> = ir.string_table.iter().collect();
+        string_entries.sort_by_key(|(_, &id)| id); // Sort by string ID for stable allocation order
+
+        for (string, &id) in string_entries {
             self.strings.push((id, string.clone()));
         }
 
@@ -6462,15 +6294,20 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Generate code for all functions
+    // DEAD CODE: This method is never called - function generation happens in main translation loop
+    // TODO: Remove this entire method and generate_function_body_with_boundary() in next cleanup
+    // Active path is in the main translation loop around line 2467
+    /*
     fn generate_functions(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
         // Generate all functions
         for function in &ir.functions {
             // Align function addresses according to Z-Machine version requirements
+            log::debug!("🔧 FUNCTION_ALIGN: Function '{}' before alignment at code_address=0x{:04x}", function.name, self.code_address);
             match self.version {
                 ZMachineVersion::V3 => {
                     // v3: functions must be at even addresses
                     if self.code_address % 2 != 0 {
+                        log::debug!("🔧 FUNCTION_ALIGN: Adding padding byte for even alignment");
                         self.emit_byte(0x00)?; // padding (will crash if executed - good for debugging)
                     }
                 }
@@ -6481,6 +6318,7 @@ impl ZMachineCodeGen {
                     }
                 }
             }
+            log::debug!("🔧 FUNCTION_ALIGN: Function '{}' after alignment at code_address=0x{:04x}", function.name, self.code_address);
 
             // Record function address BEFORE header (where function actually starts)
             let func_addr = self.code_address;
@@ -6553,6 +6391,7 @@ impl ZMachineCodeGen {
 
         Ok(())
     }
+    */
 
     /// Set up parameter IR ID to local variable slot mappings for a function
     /// This must be called before translating function instructions
@@ -11391,20 +11230,6 @@ impl ZMachineCodeGen {
         self.ensure_capacity(self.code_address + 1);
 
         // Remove verbose byte-by-byte logging - we'll log at instruction level instead
-
-        // 🚨 ULTRA-CRITICAL: Track the exact 0x4D byte that causes the corruption
-        if byte == 0x4D && self.code_address == 0x0f8a {
-            log::error!("🚨🚨🚨 FOUND THE CORRUPTION SOURCE! 🚨🚨🚨");
-            log::error!("🚨 Writing byte 0x4D to address 0x0f8a - this creates print_obj #77!");
-            log::error!("🚨 Call stack trace needed - this is the exact corruption point!");
-            panic!("CORRUPTION SOURCE FOUND: 0x4D written to 0x0f8a");
-        }
-
-        // 🚨 Track specific opcode patterns for debugging
-        if byte == 0x9A && self.code_address == 0x0f89 {
-            log::error!("🚨 Writing print_obj opcode 0x9A to code_address 0x0f89");
-            log::error!("🚨 Next byte should be operand - if it's 0x4D, we have the bug!");
-        }
 
         // Use code_address which tracks our position within code_space
         let code_offset = self.code_address;

@@ -6,6 +6,7 @@
 use crate::grue_compiler::ast::{Program, ProgramMode, Type};
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::object_system::ComprehensiveObject;
+use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 
 /// Unique identifier for IR instructions, labels, and temporary variables
@@ -63,9 +64,9 @@ pub struct IrProgram {
     pub objects: Vec<IrObject>,
     pub grammar: Vec<IrGrammar>,
     pub init_block: Option<IrBlock>,
-    pub string_table: HashMap<String, IrId>, // String literal -> ID mapping
+    pub string_table: IndexMap<String, IrId>, // String literal -> ID mapping
     pub property_defaults: IrPropertyDefaults, // Z-Machine property defaults table
-    pub program_mode: ProgramMode,           // Program execution mode
+    pub program_mode: ProgramMode,            // Program execution mode
     /// Mapping from symbol names to IR IDs (for identifier resolution)
     pub symbol_ids: HashMap<String, IrId>,
     /// Mapping from object names to Z-Machine object numbers
@@ -837,7 +838,7 @@ impl IrProgram {
             objects: Vec::new(),
             grammar: Vec::new(),
             init_block: None,
-            string_table: HashMap::new(),
+            string_table: IndexMap::new(),
             property_defaults: IrPropertyDefaults::new(),
             program_mode: ProgramMode::Script, // Default mode, will be overridden
             symbol_ids: HashMap::new(),
