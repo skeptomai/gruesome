@@ -2299,7 +2299,7 @@ impl ZMachineCodeGen {
                 log::trace!("  [{:02}] IR: {:?}", instr_i, instruction);
 
                 // Attempt to translate IR instruction
-                match self.translate_ir_instruction(instruction) {
+                match self.generate_instruction(instruction) {
                     Ok(()) => {
                         let bytes_generated = self.code_space.len() - instr_start_size;
                         log::trace!("  [{:02}] Generated: {} bytes", instr_i, bytes_generated);
@@ -2440,152 +2440,6 @@ impl ZMachineCodeGen {
         } else {
             log::info!(" PHASE2_ANALYSIS: {} bytecode instructions, {} zero-byte instructions = {} bytes generated", 
                        expected_bytecode_instructions, expected_zero_instructions, total_code_generated);
-        }
-
-        Ok(())
-    }
-
-    /// Phase 2.2: Translate individual IR instruction to bytecode
-    fn translate_ir_instruction(
-        &mut self,
-        instruction: &IrInstruction,
-    ) -> Result<(), CompilerError> {
-        log::trace!("Translating IR instruction: {:?}", instruction);
-
-        let initial_size = self.code_space.len();
-
-        // Log the instruction type for debugging
-        log::trace!(" TRANSLATING: {:?}", instruction);
-
-        // Match on IR instruction types and generate appropriate bytecode
-        match instruction {
-            IrInstruction::LoadImmediate { target, value } => {
-                self.translate_load_immediate(*target, value)?
-            }
-            IrInstruction::LoadVar { target, var_id } => {
-                self.translate_load_var(*target, *var_id)?
-            }
-            IrInstruction::StoreVar { var_id, source } => {
-                self.assign_local_variable(*var_id, *source)?
-            }
-            IrInstruction::BinaryOp {
-                target,
-                op,
-                left,
-                right,
-            } => {
-                self.process_binary_op(*target, op, *left, *right)?;
-            }
-            IrInstruction::UnaryOp {
-                target,
-                op,
-                operand,
-            } => self.translate_unary_op(*target, op, *operand)?,
-            IrInstruction::Call {
-                target,
-                function,
-                args,
-            } => self.translate_call(*target, *function, args)?,
-            IrInstruction::CreateArray { target, size } => match size {
-                IrValue::Integer(s) => self.translate_create_array(*target, *s as i32)?,
-                _ => {
-                    return Err(CompilerError::CodeGenError(
-                        "CreateArray size must be integer".to_string(),
-                    ))
-                }
-            },
-            IrInstruction::Return { value } => self.translate_return(*value)?,
-            IrInstruction::Branch {
-                condition,
-                true_label,
-                false_label,
-            } => self.translate_branch(*condition, *true_label, *false_label)?,
-            IrInstruction::Jump { label } => self.translate_jump(*label)?,
-            IrInstruction::Label { id } => self.translate_label(*id)?,
-            IrInstruction::GetProperty {
-                target,
-                object,
-                property,
-            } => self.translate_get_property(*target, *object, property)?,
-            IrInstruction::SetProperty {
-                object,
-                property,
-                value,
-            } => self.translate_set_property(*object, property, *value)?,
-            IrInstruction::GetPropertyByNumber {
-                target,
-                object,
-                property_num,
-            } => self.translate_get_property_by_number(*target, *object, *property_num)?,
-            IrInstruction::SetPropertyByNumber {
-                object,
-                property_num,
-                value,
-            } => self.translate_set_property_by_number(*object, *property_num, *value)?,
-            IrInstruction::GetNextProperty {
-                target: _,
-                object: _,
-                current_property: _,
-            } => {
-                log::warn!("⚠️ UNIMPLEMENTED: GetNextProperty - skipping");
-            }
-            IrInstruction::Print { value } => self.translate_print(*value)?,
-            IrInstruction::ArrayEmpty { target, array } => {
-                self.translate_array_empty(*target, *array)?
-            }
-            IrInstruction::Nop => {
-                log::trace!(" NOP: No operation - skipped");
-            }
-            _ => {
-                log::warn!("⚠️ UNIMPLEMENTED: Unknown IR instruction type - skipping");
-            }
-        }
-
-        let final_size = self.code_space.len();
-        if final_size == initial_size {
-            // Only warn if this was supposed to generate code
-            match instruction {
-                IrInstruction::LoadImmediate {
-                    value: IrValue::String(_),
-                    ..
-                } => {
-                    log::debug!(" EXPECTED: LoadImmediate for string literal generates no bytecode (registers string for later use)");
-                }
-                IrInstruction::LoadImmediate { .. } => {
-                    log::debug!(" EXPECTED: LoadImmediate generates no bytecode (creates compile-time mappings only)");
-                }
-                IrInstruction::Nop => {
-                    log::debug!(" EXPECTED: Nop instruction generates no bytecode");
-                }
-                IrInstruction::Label { .. } => {
-                    log::debug!(
-                        " EXPECTED: Label instruction generates no bytecode (sets address mapping)"
-                    );
-                }
-                IrInstruction::CreateArray { .. } => {
-                    log::debug!(
-                        " EXPECTED: CreateArray generates no bytecode (creates metadata only)"
-                    );
-                }
-                IrInstruction::BinaryOp { .. } => {
-                    log::debug!(" EXPECTED: BinaryOp may generate no bytecode (compile-time string concatenation)");
-                }
-                IrInstruction::GetArrayElement { .. } => {
-                    log::debug!(" EXPECTED: GetArrayElement may generate no bytecode (handled through property lookups)");
-                }
-                IrInstruction::GetNextProperty { .. } => {
-                    log::debug!(" EXPECTED: GetNextProperty generates no bytecode (unimplemented - skipped)");
-                }
-                _ => {
-                    log::warn!(
-                        "📝 UNEXPECTED: IR instruction generated no bytecode: {:?}",
-                        instruction
-                    );
-                }
-            }
-        } else {
-            let bytes_generated = final_size - initial_size;
-            log::trace!(" Generated {} bytes for {:?}", bytes_generated, instruction);
         }
 
         Ok(())
@@ -4109,45 +3963,24 @@ impl ZMachineCodeGen {
                         result
                     );
                 } else {
-                    // Runtime comparison - generate it immediately and store result on stack
-                    let left_operand = self.resolve_ir_id_to_operand(left)?;
-                    let right_operand = self.resolve_ir_id_to_operand(right)?;
-
-                    let opcode = match op {
-                        IrBinaryOp::Equal => 0x01,   // je
-                        IrBinaryOp::Less => 0x02,    // jl
-                        IrBinaryOp::Greater => 0x03, // jg
-                        _ => {
-                            return Err(CompilerError::CodeGenError(format!(
-                                "Unsupported runtime comparison: {:?}",
-                                op
-                            )))
-                        }
-                    };
-
-                    log::debug!("RUNTIME_COMPARISON: Generating {:?} comparison - this should NOT store values!", op);
-
                     // FUNDAMENTAL FIX: Comparison instructions in Z-Machine are BRANCH instructions,
                     // not value-producing instructions. They should never store 0/1 to stack.
-                    // 
+                    //
                     // The comparison should be handled by the conditional logic that uses it,
                     // not by generating intermediate boolean storage.
                     //
                     // For now, return an error to catch cases where we're incorrectly trying to
                     // generate standalone comparison instructions.
-                    
+
                     return Err(CompilerError::CodeGenError(format!(
                         "BinaryOp comparison {:?} should not generate standalone instructions - comparisons should be handled by conditional branching logic directly",
                         op
                     )));
-
-                    // Map the target to stack so jz can find it
-                    self.use_stack_for_result(target);
                 }
             }
             // Arithmetic operations store their results normally
             _ => {
-                let layout = self.emit_instruction(
+                let _layout = self.emit_instruction(
                     opcode,
                     &[left_operand, right_operand],
                     Some(0), // Store to stack for immediate consumption
@@ -6617,14 +6450,6 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Generate code for a basic block
-    fn generate_block(&mut self, block: &IrBlock) -> Result<(), CompilerError> {
-        for instruction in &block.instructions {
-            self.generate_instruction(instruction)?;
-        }
-        Ok(())
-    }
-
     /// Check if a block ends with a return instruction
     fn block_ends_with_return(&self, block: &IrBlock) -> bool {
         matches!(
@@ -7637,7 +7462,7 @@ impl ZMachineCodeGen {
                 // not value-producing instructions. This method should not be called for comparisons.
                 //
                 // Comparisons should be handled by conditional branching logic directly.
-                
+
                 // TEMPORARY: Allow this to proceed for testing, but don't generate bytecode
                 log::warn!(
                     "generate_binary_op: Comparison {:?} is being generated - this should be handled by direct branching but proceeding without bytecode generation",
@@ -8264,11 +8089,11 @@ impl ZMachineCodeGen {
 
             // Generate the appropriate Z-Machine branch instruction
             let (opcode, branch_on_true) = match op {
-                IrBinaryOp::Equal => (0x01, true),        // je - branch if equal
-                IrBinaryOp::NotEqual => (0x01, false),    // je - branch if NOT equal  
-                IrBinaryOp::Less => (0x02, true),         // jl - branch if less
-                IrBinaryOp::LessEqual => (0x03, false),   // jg - branch if NOT greater
-                IrBinaryOp::Greater => (0x03, true),      // jg - branch if greater
+                IrBinaryOp::Equal => (0x01, true),         // je - branch if equal
+                IrBinaryOp::NotEqual => (0x01, false),     // je - branch if NOT equal
+                IrBinaryOp::Less => (0x02, true),          // jl - branch if less
+                IrBinaryOp::LessEqual => (0x03, false),    // jg - branch if NOT greater
+                IrBinaryOp::Greater => (0x03, true),       // jg - branch if greater
                 IrBinaryOp::GreaterEqual => (0x02, false), // jl - branch if NOT less
                 _ => {
                     return Err(CompilerError::CodeGenError(format!(
@@ -8279,26 +8104,40 @@ impl ZMachineCodeGen {
             };
 
             // Determine which label to branch to
-            let branch_target = if branch_on_true { true_label } else { false_label };
-            
+            let branch_target = if branch_on_true {
+                true_label
+            } else {
+                false_label
+            };
+
             log::debug!(
                 "GENERATING_DIRECT_BRANCH: {:?} with opcode 0x{:02x}, branching to {} on {}",
-                op, opcode, branch_target, if branch_on_true { "true" } else { "false"
-            });
+                op,
+                opcode,
+                branch_target,
+                if branch_on_true { "true" } else { "false" }
+            );
 
             // Generate the comparison branch instruction
             self.emit_comparison_branch(
                 opcode,
                 &[left_operand, right_operand],
                 branch_target,
-                if branch_on_true { false_label } else { true_label },
+                if branch_on_true {
+                    false_label
+                } else {
+                    true_label
+                },
             )?;
 
             return Ok(());
         }
 
         // Fallback for non-comparison conditions (use jz branch approach)
-        log::debug!("Condition {} is not a comparison - using jz branch approach", condition);
+        log::debug!(
+            "Condition {} is not a comparison - using jz branch approach",
+            condition
+        );
         return self.emit_jz_branch(condition, true_label, false_label);
     }
 
@@ -8310,7 +8149,7 @@ impl ZMachineCodeGen {
         false_label: IrId,
     ) -> Result<(), CompilerError> {
         // CRITICAL FIX: Check if condition is a BinaryOp result that was never generated
-        if let Some((op, left, right)) = self.ir_id_to_binary_op.get(&condition).cloned() {
+        if let Some((op, _left, _right)) = self.ir_id_to_binary_op.get(&condition).cloned() {
             log::error!(
                 " MISSING_BINARYOP_FIX: Detected ungenerated BinaryOp {:?} for condition {}, but this is wrong!",
                 op, condition
@@ -8322,7 +8161,7 @@ impl ZMachineCodeGen {
             //
             // The correct approach is to generate the comparison as a branch instruction
             // that directly controls program flow, not as a value-producing operation.
-            
+
             return Err(CompilerError::CodeGenError(format!(
                 "emit_jz_branch: Comparison {:?} should not generate standalone instructions with stack storage - comparisons should be handled by proper conditional branching logic directly",
                 op
@@ -8565,7 +8404,10 @@ impl ZMachineCodeGen {
     ) -> Result<(), CompilerError> {
         log::debug!(
             "UNIFIED_BINARYOP_PROCESSING: target={}, op={:?}, left={}, right={}",
-            target, op, left, right
+            target,
+            op,
+            left,
+            right
         );
 
         // Store binary operation mapping for conditional branch optimization
@@ -8575,8 +8417,12 @@ impl ZMachineCodeGen {
         // Check if this is a comparison operation
         let is_comparison = matches!(
             op,
-            IrBinaryOp::Equal | IrBinaryOp::NotEqual | IrBinaryOp::Less 
-            | IrBinaryOp::LessEqual | IrBinaryOp::Greater | IrBinaryOp::GreaterEqual
+            IrBinaryOp::Equal
+                | IrBinaryOp::NotEqual
+                | IrBinaryOp::Less
+                | IrBinaryOp::LessEqual
+                | IrBinaryOp::Greater
+                | IrBinaryOp::GreaterEqual
         );
 
         if is_comparison {
@@ -8608,7 +8454,7 @@ impl ZMachineCodeGen {
                     }
                 }
                 _ => {
-                    // All other arithmetic/logical operations  
+                    // All other arithmetic/logical operations
                     self.generate_binary_op(op, left_op, right_op, Some(0))?;
                 }
             }
@@ -8673,7 +8519,7 @@ impl ZMachineCodeGen {
     fn generate_init_block(
         &mut self,
         init_block: &IrBlock,
-        ir: &IrProgram,
+        _ir: &IrProgram,
     ) -> Result<(usize, u8), CompilerError> {
         log::debug!(
             "generate_init_block: Generating init routine with {} instructions (Z-Machine native architecture - header first)",
@@ -8727,7 +8573,7 @@ impl ZMachineCodeGen {
         );
 
         for instruction in &init_block.instructions {
-            self.translate_ir_instruction(instruction)?;
+            self.generate_instruction(instruction)?;
         }
 
         // Add QUIT instruction at the end to terminate execution cleanly
@@ -11508,21 +11354,27 @@ impl ZMachineCodeGen {
         branch_offset: Option<i16>,
     ) -> Result<InstructionLayout, CompilerError> {
         let start_address = self.code_address;
-        
+
         // Comprehensive PC/address tracking for all instructions
         debug!(
             "PC_TRACK: Emitting opcode=0x{:02x} at PC=0x{:04x} operands={:?} store={:?}",
             opcode, start_address, operands, store_var
         );
-        
+
         // Log stack operations specifically
         for (i, op) in operands.iter().enumerate() {
             if let Operand::Variable(0) = op {
-                debug!("PC_TRACK: Operand[{}] reads from stack at PC=0x{:04x}", i, start_address);
+                debug!(
+                    "PC_TRACK: Operand[{}] reads from stack at PC=0x{:04x}",
+                    i, start_address
+                );
             }
         }
         if let Some(0) = store_var {
-            debug!("PC_TRACK: Instruction pushes result to stack at PC=0x{:04x}", start_address);
+            debug!(
+                "PC_TRACK: Instruction pushes result to stack at PC=0x{:04x}",
+                start_address
+            );
         }
         // CRITICAL: Detect unimplemented placeholder opcodes at compile time
         if opcode == UNIMPLEMENTED_OPCODE {
