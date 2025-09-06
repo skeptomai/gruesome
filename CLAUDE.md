@@ -147,6 +147,18 @@ Key files:
 **Critical Understanding**: Z-Machine "buffer mode" controls word-wrapping to prevent words from splitting across lines. It does NOT control display timing - all text should appear immediately.
 
 
+## CRITICAL: Disassembler Address Offset (TXD Compatibility Issue)
+
+**IMPORTANT DEBUGGING INSIGHT**: TXD and other disassemblers subtract 1 byte from the header's initial PC for alignment purposes. This is NOT a compiler bug.
+
+- **TXD Code**: `initial_pc = start_pc - 1` (line 138 in disasm_txd.rs)
+- **Effect**: If header says PC=0x035c, TXD reports PC=0x035b
+- **This is NORMAL**: Disassemblers do this for their own alignment calculations
+- **Don't Fix**: The compiler's PC calculation is correct, don't adjust it to match disassemblers
+- **Remember**: When comparing disassembler output to interpreter execution, account for this 1-byte difference
+
+This has been a recurring source of debugging confusion. The compiler-generated PC addresses are correct for the Z-Machine specification.
+
 ## CRITICAL: Z-Machine Stack vs Local Variable Specification Compliance
 
 **CRITICAL ARCHITECTURAL PATTERN**: The Z-Machine specification mandates specific usage of stack vs local variables. Violating this causes runtime errors and is a recurring compiler bug.

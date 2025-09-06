@@ -156,7 +156,7 @@ pub enum LegacyReferenceType {
 /// Reference context for tracking what needs resolution
 #[derive(Debug, Clone)]
 pub struct ReferenceContext {
-    pub ir_id_to_address: HashMap<IrId, usize>, // Resolved addresses by IR ID
+    pub ir_id_to_address: IndexMap<IrId, usize>, // Resolved addresses by IR ID
     pub unresolved_refs: Vec<UnresolvedReference>, // References waiting for resolution
 }
 
@@ -190,11 +190,11 @@ pub struct ZMachineCodeGen {
     parse_buffer_addr: usize,
 
     // Code generation state
-    label_addresses: HashMap<IrId, usize>, // IR label ID -> byte address
-    string_addresses: HashMap<IrId, usize>, // IR string ID -> byte address
-    function_addresses: HashMap<IrId, usize>, // IR function ID -> function header byte address
-    function_locals_count: HashMap<IrId, usize>, // IR function ID -> locals count (for header size calculation)
-    function_header_locations: HashMap<IrId, usize>, // IR function ID -> header byte location for patching
+    label_addresses: IndexMap<IrId, usize>, // IR label ID -> byte address
+    string_addresses: IndexMap<IrId, usize>, // IR string ID -> byte address
+    function_addresses: IndexMap<IrId, usize>, // IR function ID -> function header byte address
+    function_locals_count: IndexMap<IrId, usize>, // IR function ID -> locals count (for header size calculation)
+    function_header_locations: IndexMap<IrId, usize>, // IR function ID -> header byte location for patching
     current_function_locals: u8, // Track local variables allocated in current function (0-15)
     current_function_name: Option<String>, // Track current function being processed for debugging
     init_routine_locals_count: u8, // Track local variables used by init routine for PC calculation
@@ -306,11 +306,11 @@ impl ZMachineCodeGen {
             final_assembly_address: HEADER_SIZE,
             text_buffer_addr: 0,
             parse_buffer_addr: 0,
-            label_addresses: HashMap::new(),
-            string_addresses: HashMap::new(),
-            function_addresses: HashMap::new(),
-            function_locals_count: HashMap::new(),
-            function_header_locations: HashMap::new(),
+            label_addresses: IndexMap::new(),
+            string_addresses: IndexMap::new(),
+            function_addresses: IndexMap::new(),
+            function_locals_count: IndexMap::new(),
+            function_header_locations: IndexMap::new(),
             current_function_locals: 0,
             current_function_name: None,
             init_routine_locals_count: 0,
@@ -337,7 +337,7 @@ impl ZMachineCodeGen {
             max_stack_depth: 0,
             in_init_block: false,
             reference_context: ReferenceContext {
-                ir_id_to_address: HashMap::new(),
+                ir_id_to_address: IndexMap::new(),
                 unresolved_refs: Vec::new(),
             },
             constant_values: HashMap::new(),
@@ -1297,11 +1297,33 @@ impl ZMachineCodeGen {
 
         // Copy code space
         if !self.code_space.is_empty() {
+            log::debug!(
+                "🔧 CODE_COPY_DEBUG: code_base=0x{:04x}, total_size=0x{:04x}, code_space.len()={}",
+                code_base,
+                total_size,
+                self.code_space.len()
+            );
+            log::debug!(
+                "🔧 CODE_COPY_DEBUG: Slice bounds [{}..{}] = {} bytes",
+                code_base,
+                total_size,
+                total_size - code_base
+            );
+            log::debug!(
+                "🔧 CODE_COPY_DEBUG: Code space first 10 bytes: {:?}",
+                &self.code_space[0..std::cmp::min(10, self.code_space.len())]
+            );
+
             self.final_data[code_base..total_size].copy_from_slice(&self.code_space);
+
             log::debug!(
                 "✅ Code space copied: {} bytes at 0x{:04x}",
                 code_size,
                 code_base
+            );
+            log::debug!(
+                "🔧 CODE_COPY_VERIFY: Final data at code_base first 10 bytes: {:?}",
+                &self.final_data[code_base..code_base + std::cmp::min(10, code_size)]
             );
         }
 
@@ -1310,16 +1332,17 @@ impl ZMachineCodeGen {
         // Critical: Never touches static fields like serial number or version.
         // Updates: PC start, dictionary, objects, globals, static memory, abbreviations, high memory base
         log::debug!("🔧 Step 3e: Updating header address fields with final memory layout");
-        // CRITICAL FIX: PC should point to startup call, not init routine header
-        let calculated_pc = self.final_code_base as u16;
+        // CRITICAL FIX: PC should point to first instruction after init routine header
+        // Z-Machine spec 5.3: "Execution of instructions begins from the byte after this header information"
+        let init_header_size = 1; // 1 byte for local count (we use 0 locals)
+        let calculated_pc = (self.final_code_base + init_header_size) as u16;
         log::error!(
             "🔧 PC_CALCULATION_DEBUG: final_code_base=0x{:04x} + init_header_size={} = calculated_pc=0x{:04x}",
             self.final_code_base, init_header_size, calculated_pc
         );
         log::error!(
-            "🔧 PC_CALCULATION_DEBUG: init_routine_locals_count={}, expected_pc=0x{:04x}",
-            self.init_routine_locals_count,
-            calculated_pc
+            "🔧 PC_CALCULATION_DEBUG: PC will point to first instruction at 0x{:04x} (after header at 0x{:04x})",
+            calculated_pc, self.final_code_base
         );
         self.fixup_header_addresses(
             calculated_pc,                 // pc_start (after init routine header)
@@ -1674,59 +1697,16 @@ impl ZMachineCodeGen {
                         // Still relative offset, convert to absolute
                         self.final_code_base + code_offset
                     };
-                    // CRITICAL FIX: Function address calculation bug resolution
-                    //
-                    // Problem: routine_addr points to function header start, but calls need executable code start
-                    // Root Cause: Function headers contain metadata before executable code:
-                    //   - 1 byte: number of local variables
-                    //   - V3 only: 2 bytes per local for default values
-                    //
-                    // Example with 5 locals in V3:
-                    //   0x0e95: 0x05           <- locals count (header start - where routine_addr points)
-                    //   0x0e96: 0x00 0x00      <- default value local 1
-                    //   0x0e98: 0x00 0x00      <- default value local 2
-                    //   0x0e9a: 0x00 0x00      <- default value local 3
-                    //   0x0e9c: 0x00 0x00      <- default value local 4
-                    //   0x0e9e: 0x00 0x00      <- default value local 5
-                    //   0x0ea0: [executable code starts here] <- where calls should target
-                    //
-                    // Solution: Add header size (1 + locals_count * 2 for V3) to routine_addr
-                    let header_size = if reference.target_id == 8000 {
-                        // SPECIAL CASE: Init routine (8000) - use tracked local count
-                        // This eliminates the competing calculation system
-                        match self.version {
-                            ZMachineVersion::V3 => {
-                                1 + (self.init_routine_locals_count as usize * 2)
-                            }
-                            ZMachineVersion::V4 | ZMachineVersion::V5 => 1,
-                        }
-                    } else if let Some(&locals_count) =
-                        self.function_locals_count.get(&reference.target_id)
-                    {
-                        // Regular functions: lookup in function table
-                        match self.version {
-                            ZMachineVersion::V3 => 1 + (locals_count * 2),
-                            ZMachineVersion::V4 | ZMachineVersion::V5 => 1,
-                        }
-                    } else {
-                        // Fallback: assume 0 locals if not found (shouldn't happen)
-                        log::warn!(
-                            "Function {} locals count not found, assuming 0 locals",
-                            reference.target_id
-                        );
-                        1
-                    };
-
-                    // CRITICAL FIX: Z-Machine function calls target the header start, not executable code start
-                    // The interpreter reads the locals count and sets up the call frame, then jumps to code
-                    let final_addr = routine_addr; // Don't add header_size - call targets header start
+                    // Z-Machine function calls target the function header start
+                    // The interpreter reads the header to determine locals, then starts execution after it
+                    let final_addr = routine_addr;
                     log::error!(
                         "🔧 ADDRESS_RESOLUTION_DEBUG: final_addr=0x{:04x} from routine_addr=0x{:04x}",
                         final_addr, routine_addr
                     );
                     log::debug!(
-                        "🔧 FUNCTION_ADDRESS_FIX: Function {} header at 0x{:04x} (header_size={} bytes, but call targets header start)",
-                        reference.target_id, routine_addr, header_size
+                        "🔧 FUNCTION_ADDRESS_FIX: Function {} call targets header start at 0x{:04x}",
+                        reference.target_id, routine_addr
                     );
 
                     // Z-Machine packed address calculation
@@ -1798,9 +1778,9 @@ impl ZMachineCodeGen {
                         log::error!("  target_id = {}", reference.target_id);
                     }
 
-                    // CRITICAL FIX: Use patch_jump_offset for jump instructions to calculate proper relative offset
-                    log::error!("🔧 JUMP_RESOLUTION: Calling patch_jump_offset to calculate relative offset");
-                    return self.patch_jump_offset(reference.location, resolved_address);
+                    // FIXED: Use patch_branch_offset for jump instructions (Z-Machine jmp uses branch offset encoding)
+                    log::error!("🔧 JUMP_RESOLUTION: Calling patch_branch_offset for proper Z-Machine branch encoding");
+                    return self.patch_branch_offset(reference.location, resolved_address);
                 } else {
                     // CRITICAL FIX: Handle phantom label redirects
                     // If this is a jump to blocked phantom labels 73 or 74, make it a no-op jump
@@ -1817,7 +1797,7 @@ impl ZMachineCodeGen {
                             reference.location,
                             after_jump_address
                         );
-                        return self.patch_jump_offset(reference.location, after_jump_address);
+                        return self.patch_branch_offset(reference.location, after_jump_address);
                     }
 
                     log::error!(
@@ -1845,9 +1825,15 @@ impl ZMachineCodeGen {
                     .ir_id_to_address
                     .get(&reference.target_id)
                 {
-                    // 🔧 ARCHITECTURE FIX: Convert code_space offset to final address
-                    let resolved_address = self.final_code_base + code_offset;
-                    log::error!("🔧 BRANCH_RESOLUTION: Converting code_space offset 0x{:04x} to final address 0x{:04x}", code_offset, resolved_address);
+                    // 🔧 ARCHITECTURE FIX: Check if address is already absolute or relative
+                    let resolved_address = if code_offset >= self.final_code_base {
+                        // Already absolute address, use as-is
+                        code_offset
+                    } else {
+                        // Relative offset, convert to absolute
+                        self.final_code_base + code_offset
+                    };
+                    log::error!("🔧 BRANCH_RESOLUTION: Resolved address 0x{:04x} from offset 0x{:04x} (final_code_base=0x{:04x})", resolved_address, code_offset, self.final_code_base);
 
                     // CRITICAL FIX: Use patch_branch_offset for branch instructions to calculate proper relative offset
                     log::error!("🔧 BRANCH_RESOLUTION: Calling patch_branch_offset to calculate relative offset");
@@ -1894,6 +1880,15 @@ impl ZMachineCodeGen {
         // Write the resolved address to the final data
         match reference.offset_size {
             1 => {
+                // Check what we're overwriting - should be 0xFF if this was a placeholder
+                let old_value = self.final_data[reference.location];
+                log::error!(
+                    "🔧 PATCH_1BYTE: location=0x{:04x} old_value=0x{:02x} -> new_value=0x{:02x}",
+                    reference.location,
+                    old_value,
+                    (target_address & 0xFF) as u8
+                );
+
                 // Single byte
                 self.final_data[reference.location] = (target_address & 0xFF) as u8;
 
@@ -1907,6 +1902,12 @@ impl ZMachineCodeGen {
                 }
             }
             2 => {
+                // Check what we're overwriting - should be 0xFFFF if this was a placeholder
+                let old_high = self.final_data[reference.location];
+                let old_low = self.final_data[reference.location + 1];
+                log::error!("🔧 PATCH_2BYTE: location=0x{:04x} old_value=0x{:02x}{:02x} -> new_value=0x{:04x}", 
+                           reference.location, old_high, old_low, target_address);
+
                 // Two bytes (big-endian)
                 let high_byte = ((target_address >> 8) & 0xFF) as u8;
                 let low_byte = (target_address & 0xFF) as u8;
@@ -2462,6 +2463,8 @@ impl ZMachineCodeGen {
         &mut self,
         instruction: &IrInstruction,
     ) -> Result<(), CompilerError> {
+        log::trace!("Translating IR instruction: {:?}", instruction);
+
         let initial_size = self.code_space.len();
 
         // Log the instruction type for debugging
@@ -2476,14 +2479,33 @@ impl ZMachineCodeGen {
                 self.translate_load_var(*target, *var_id)?
             }
             IrInstruction::StoreVar { var_id, source } => {
-                self.translate_store_var(*var_id, *source)?
+                self.assign_local_variable(*var_id, *source)?
             }
             IrInstruction::BinaryOp {
                 target,
                 op,
                 left,
                 right,
-            } => self.translate_binary_op(*target, op, *left, *right)?,
+            } => {
+                // Process BinaryOp directly here - no deferred handling
+                log::debug!("Processing BinaryOp {:?} target={}", op, target);
+
+                let left_op = self.resolve_ir_id_to_operand(*left)?;
+                let right_op = self.resolve_ir_id_to_operand(*right)?;
+                log::debug!(
+                    "🚨 BINARY_OP_OPERANDS: left={:?}, right={:?}",
+                    left_op,
+                    right_op
+                );
+
+                // Store result to stack (binary operations are temporary)
+                let store_var = Some(0);
+                self.generate_binary_op(op, left_op, right_op, store_var)?;
+
+                // Register binary operation result target
+                self.use_stack_for_result(*target);
+                log::debug!("BinaryOp ({:?}) result: IR ID {} -> stack", op, target);
+            }
             IrInstruction::UnaryOp {
                 target,
                 op,
@@ -2690,39 +2712,53 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Implementation: StoreVar - Store value into variable
-    fn translate_store_var(&mut self, var_id: IrId, source: IrId) -> Result<(), CompilerError> {
-        log::debug!("STORE_VAR: var_id={}, source={}", var_id, source);
+    /// Implementation: Local variable assignment (compile-time mapping only)
+    /// This handles `let x = 42` by allocating a local variable slot and mapping the IR ID
+    /// NO Z-Machine instruction is generated - this is pure compile-time bookkeeping
+    fn assign_local_variable(&mut self, var_id: IrId, source: IrId) -> Result<(), CompilerError> {
+        log::debug!("ASSIGN_LOCAL_VAR: var_id={}, source={}", var_id, source);
 
-        // For now, use simple operands (can be improved with proper mapping)
-        let source_operand = Operand::SmallConstant(0); // Use stack top
-        let var_num = 1; // Default to variable 1
+        // 1. Allocate a local variable slot for this variable
+        let local_slot = self.allocate_local_variable_slot();
+        log::debug!(
+            "ASSIGN_LOCAL_VAR: Allocated local slot {} for IR variable {}",
+            local_slot,
+            var_id
+        );
 
-        // Generate STORE instruction
-        let layout = self.emit_instruction(
-            0x21, // store opcode (2OP:141)
-            &[source_operand, Operand::SmallConstant(var_num)],
-            None,
-            None,
-        )?;
+        // 2. Map IR variable ID to the local variable slot
+        self.ir_id_to_local_var.insert(var_id, local_slot);
 
-        // emit_instruction already pushed bytes to code_space
-
-        // Map the variable to the source value
-        if let Some(source_value) = self.ir_id_to_integer.get(&source).copied() {
-            self.ir_id_to_integer.insert(var_id, source_value);
+        // 3. If source is a constant, store it for optimization
+        if let Some(constant_value) = self.ir_id_to_integer.get(&source).copied() {
+            self.ir_id_to_integer.insert(var_id, constant_value);
+            log::debug!(
+                "ASSIGN_LOCAL_VAR: Variable {} = constant {}",
+                var_id,
+                constant_value
+            );
         } else {
-            // Create mapping indicating this variable refers to the source
-            self.ir_id_to_integer.insert(var_id, source as i16);
+            // If source is another variable, create the mapping chain
+            if let Some(source_var) = self.ir_id_to_local_var.get(&source) {
+                log::debug!(
+                    "ASSIGN_LOCAL_VAR: Variable {} references variable {}",
+                    var_id,
+                    source_var
+                );
+                // The actual value copying will be handled at runtime when the variable is loaded
+            }
         }
 
-        log::debug!(
-            "✅ STORE_VAR: Generated {} bytes and mapped variable {} to source {}",
-            layout.total_size,
-            var_id,
-            source
-        );
+        // 4. NO instruction generation - this is compile-time only
+        // Z-Machine instructions are generated later when variables are loaded (LoadVar)
+        log::debug!("ASSIGN_LOCAL_VAR: Completed compile-time assignment (no bytecode generated)");
         Ok(())
+    }
+
+    /// Allocate a new local variable slot for the current function
+    fn allocate_local_variable_slot(&mut self) -> u8 {
+        self.current_function_locals += 1;
+        self.current_function_locals
     }
 
     /// Implementation: Print - Print value
@@ -3997,6 +4033,13 @@ impl ZMachineCodeGen {
         left: IrId,
         right: IrId,
     ) -> Result<(), CompilerError> {
+        log::error!(
+            "🚨 TRANSLATE_BINARY_OP_ENTRY: target={}, op={:?}, left={}, right={}",
+            target,
+            op,
+            left,
+            right
+        );
         log::debug!(
             "BINARY_OP: target={}, op={:?}, left={}, right={}",
             target,
@@ -4017,48 +4060,126 @@ impl ZMachineCodeGen {
         }
 
         // Regular numeric operations - resolve operands normally
+        log::error!("🚨 ABOUT_TO_RESOLVE_LEFT_OPERAND: left={}", left);
         let left_operand = self.resolve_ir_id_to_operand(left)?;
+        log::error!("🚨 ABOUT_TO_RESOLVE_RIGHT_OPERAND: right={}", right);
         let right_operand = self.resolve_ir_id_to_operand(right)?;
+        log::error!(
+            "🚨 OPERANDS_RESOLVED: left={:?}, right={:?}",
+            left_operand,
+            right_operand
+        );
 
         // Map binary operation to Z-Machine instruction
+        // NOTE: Comparison operations (Equal, Less, etc.) will not use these opcodes
+        // as they are handled through the branch instruction mechanism
         let opcode = match op {
-            IrBinaryOp::Add => 0x14,          // add (2OP:20)
-            IrBinaryOp::Subtract => 0x15,     // sub (2OP:21)
-            IrBinaryOp::Multiply => 0x16,     // mul (2OP:22)
-            IrBinaryOp::Divide => 0x17,       // div (2OP:23)
-            IrBinaryOp::Modulo => 0x18,       // mod (2OP:24)
-            IrBinaryOp::And => 0x09,          // and (2OP:9) - Bitwise AND
-            IrBinaryOp::Or => 0x08,           // or (2OP:8) - Bitwise OR
-            IrBinaryOp::Equal => 0x01,        // je (2OP:1)
-            IrBinaryOp::NotEqual => 0x01, // je with negated branch (we'll handle this differently)
-            IrBinaryOp::Less => 0x02,     // jl (2OP:2)
-            IrBinaryOp::LessEqual => 0x03, // jg with negated branch
-            IrBinaryOp::Greater => 0x03,  // jg (2OP:3)
-            IrBinaryOp::GreaterEqual => 0x02, // jl with negated branch
+            IrBinaryOp::Add => 0x14,      // add (2OP:20)
+            IrBinaryOp::Subtract => 0x15, // sub (2OP:21)
+            IrBinaryOp::Multiply => 0x16, // mul (2OP:22)
+            IrBinaryOp::Divide => 0x17,   // div (2OP:23)
+            IrBinaryOp::Modulo => 0x18,   // mod (2OP:24)
+            IrBinaryOp::And => 0x09,      // and (2OP:9) - Bitwise AND
+            IrBinaryOp::Or => 0x08,       // or (2OP:8) - Bitwise OR
+            // Comparison operations - opcodes listed for reference but not used as direct instructions
+            IrBinaryOp::Equal => 0x01, // je (2OP:1) - handled by emit_comparison_branch
+            IrBinaryOp::NotEqual => 0x01, // je (2OP:1) - handled by emit_comparison_branch
+            IrBinaryOp::Less => 0x02,  // jl (2OP:2) - handled by emit_comparison_branch
+            IrBinaryOp::LessEqual => 0x03, // jg (2OP:3) - handled by emit_comparison_branch
+            IrBinaryOp::Greater => 0x03, // jg (2OP:3) - handled by emit_comparison_branch
+            IrBinaryOp::GreaterEqual => 0x02, // jl (2OP:2) - handled by emit_comparison_branch
         };
 
-        // CRITICAL FIX: Separate comparison operations from arithmetic operations
+        log::error!("🚨 OPCODE_MAPPED: op={:?} -> opcode=0x{:02x}", op, opcode);
+
+        // CRITICAL FIX: Comparison operations should NOT be handled as direct binary operations.
+        // They should only be generated through the branch instruction mechanism in emit_conditional_branch_instruction.
+        log::error!("🚨 ABOUT_TO_MATCH_OP: op={:?}", op);
         match op {
-            // Comparison operations should generate branch instructions, not store instructions
+            // Comparison operations - these should only be used in conditional contexts
             IrBinaryOp::Equal
             | IrBinaryOp::NotEqual
             | IrBinaryOp::Less
             | IrBinaryOp::LessEqual
             | IrBinaryOp::Greater
             | IrBinaryOp::GreaterEqual => {
-                // For now, generate comparison as a store instruction (TODO: proper branch handling)
-                // This is a temporary fix - proper fix would integrate with conditional branch system
-                let layout = self.emit_instruction(
-                    opcode,
-                    &[left_operand, right_operand],
-                    Some(0), // Store to stack for immediate consumption (TODO: should be branch)
-                    None,
-                )?;
+                log::error!("🚨 COMPARISON_BRANCH_ENTERED: Comparison operation {:?} detected in translate_binary_op", op);
+                log::debug!("COMPARISON_DEFERRED: Comparison operation {:?} will be handled by branch instruction mechanism", op);
 
-                // Map target to stack for temporary result
-                self.use_stack_for_result(target);
+                // OPTIMIZATION: Check if both operands are constants and evaluate at compile time
+                let left_const = self.ir_id_to_integer.get(&left).copied();
+                let right_const = self.ir_id_to_integer.get(&right).copied();
 
-                log::warn!("COMPARISON_AS_STORE: Generated comparison operation {:?} as store instruction - should be branch instruction", op);
+                log::debug!(
+                    "CONST_CHECK: left IR {} = {:?}, right IR {} = {:?}",
+                    left,
+                    left_const,
+                    right,
+                    right_const
+                );
+
+                if let (Some(left_val), Some(right_val)) = (left_const, right_const) {
+                    // Evaluate constant comparison at compile time
+                    let result = match op {
+                        IrBinaryOp::Equal => left_val == right_val,
+                        IrBinaryOp::NotEqual => left_val != right_val,
+                        IrBinaryOp::Less => left_val < right_val,
+                        IrBinaryOp::LessEqual => left_val <= right_val,
+                        IrBinaryOp::Greater => left_val > right_val,
+                        IrBinaryOp::GreaterEqual => left_val >= right_val,
+                        _ => unreachable!("Non-comparison operation in comparison branch"),
+                    };
+
+                    // Store the compile-time result as a constant
+                    let int_result = if result { 1 } else { 0 };
+                    self.ir_id_to_integer.insert(target, int_result);
+                    self.constant_values
+                        .insert(target, ConstantValue::Boolean(result));
+
+                    log::debug!(
+                        "CONSTANT_COMPARISON: {:?} {:?} {:?} = {} (optimized at compile time)",
+                        left_val,
+                        op,
+                        right_val,
+                        result
+                    );
+                } else {
+                    // Runtime comparison - generate it immediately and store result on stack
+                    let left_operand = self.resolve_ir_id_to_operand(left)?;
+                    let right_operand = self.resolve_ir_id_to_operand(right)?;
+
+                    let opcode = match op {
+                        IrBinaryOp::Equal => 0x01,   // je
+                        IrBinaryOp::Less => 0x02,    // jl
+                        IrBinaryOp::Greater => 0x03, // jg
+                        _ => {
+                            return Err(CompilerError::CodeGenError(format!(
+                                "Unsupported runtime comparison: {:?}",
+                                op
+                            )))
+                        }
+                    };
+
+                    log::debug!("RUNTIME_COMPARISON: Generating {:?} comparison with result stored to stack", op);
+
+                    // Generate comparison instruction that branches if condition true, skipping the false store
+                    let _layout = self.emit_instruction(
+                        opcode,
+                        &[left_operand, right_operand],
+                        None,    // No store variable for comparison instructions
+                        Some(3), // Branch offset 3: skip false store if condition true
+                    )?;
+
+                    // Store 0 (false) to stack if comparison failed (fall-through)
+                    let _false_store =
+                        self.emit_instruction(0x8D, &[Operand::SmallConstant(0)], None, Some(2))?;
+                    // Store 1 (true) to stack if comparison succeeded (branch target)
+                    let _true_store =
+                        self.emit_instruction(0x8D, &[Operand::SmallConstant(1)], None, None)?;
+
+                    // Map the target to stack so jz can find it
+                    self.use_stack_for_result(target);
+                }
             }
             // Arithmetic operations store their results normally
             _ => {
@@ -4223,51 +4344,59 @@ impl ZMachineCodeGen {
             false_label
         );
 
-        // Resolve condition operand
-        let condition_operand = self.resolve_ir_id_to_operand(condition)?;
+        // CRITICAL FIX: Check if condition is a compile-time constant
+        if let Some(constant_value) = self.constant_values.get(&condition) {
+            match constant_value {
+                ConstantValue::Boolean(true) => {
+                    log::debug!("BRANCH_CONSTANT_TRUE: Condition is compile-time true, jumping to true_label");
+                    // Generate direct jump to true_label
+                    return self.generate_jump(true_label);
+                }
+                ConstantValue::Boolean(false) => {
+                    log::debug!("BRANCH_CONSTANT_FALSE: Condition is compile-time false, jumping to false_label");
+                    // Generate direct jump to false_label
+                    return self.generate_jump(false_label);
+                }
+                ConstantValue::Integer(val) => {
+                    if *val == 0 {
+                        log::debug!(
+                            "BRANCH_CONSTANT_FALSE: Integer constant 0, jumping to false_label"
+                        );
+                        return self.generate_jump(false_label);
+                    } else {
+                        log::debug!(
+                            "BRANCH_CONSTANT_TRUE: Integer constant {}, jumping to true_label",
+                            val
+                        );
+                        return self.generate_jump(true_label);
+                    }
+                }
+                _ => {
+                    log::debug!(
+                        "BRANCH_CONSTANT_UNKNOWN: Non-boolean constant, treating as truthy"
+                    );
+                    // Non-zero values are truthy
+                    return self.generate_jump(true_label);
+                }
+            }
+        }
 
-        // Use Z-Machine jz (jump if zero) instruction (1OP:128, hex 0x80)
-        // If condition is 0 (false), jump to false_label
-        // If condition is non-zero (true), fall through to true_label
+        // Also check integer constants that might not be in constant_values
+        if let Some(&int_val) = self.ir_id_to_integer.get(&condition) {
+            if int_val == 0 {
+                log::debug!("BRANCH_INT_ZERO: Integer constant 0, jumping to false_label");
+                return self.generate_jump(false_label);
+            } else {
+                log::debug!(
+                    "BRANCH_INT_NONZERO: Integer constant {}, jumping to true_label",
+                    int_val
+                );
+                return self.generate_jump(true_label);
+            }
+        }
 
-        // Emit instruction without branch offset - will be added manually
-        let _layout = self.emit_instruction(
-            0x80, // jz opcode (1OP:128) - jump if zero
-            &[condition_operand],
-            None, // No result storage
-            None, // No branch offset - will be added as placeholders manually
-        )?;
-
-        // Manually emit branch placeholder and record the location
-        let code_space_offset = self.code_space.len();
-
-        // Use code space offset during instruction generation,
-        // conversion to final address happens during final assembly phase
-        self.emit_word(placeholder_word())?; // 2-byte branch placeholder
-
-        // Create UnresolvedReference for the branch target
-        log::debug!(
-            "BRANCH_REF_CREATE: code_space_offset=0x{:04x} target_id={} (false_label)",
-            code_space_offset,
-            false_label
-        );
-
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Branch,
-                location: code_space_offset, // Use code space offset, not final address
-                target_id: false_label,      // jz jumps on false condition
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
-
-        log::debug!(
-            "Added branch reference: code_space_offset=0x{:04x}, target={}",
-            code_space_offset,
-            false_label
-        );
+        // Use the existing conditional branch instruction system
+        self.emit_conditional_branch_instruction(condition, true_label, false_label)?;
 
         Ok(())
     }
@@ -6442,22 +6571,34 @@ impl ZMachineCodeGen {
         // NOTE: Parameter IR ID mappings are now set up during instruction translation phase
         // This ensures they're available when instructions are processed (see setup_function_parameter_mappings)
 
-        // CRITICAL: Store the header location for later patching with actual local count
-        let header_locals_byte_location = self.code_space.len();
-        self.function_header_locations
-            .insert(function.id, header_locals_byte_location);
-        // PLACEHOLDER: Write 0 for now, will patch with actual count after instruction generation
-        self.emit_byte(0)?;
+        // Generate complete V3 function header immediately (no patching needed)
+        let declared_locals = function.local_vars.len();
 
-        // In V3, pre-allocate space for maximum possible locals (15)
-        // We'll patch the count later, but the space needs to be allocated now
-        if self.version == ZMachineVersion::V3 {
-            // Pre-allocate space for up to 15 locals (maximum Z-Machine allows)
-            // This prevents address shifts when we patch the actual count later
-            for _i in 0..15 {
-                self.emit_word(0)?; // Default local value = 0
+        log::debug!(
+            "Generating V3 header: {} declared locals for function '{}'",
+            declared_locals,
+            function.name
+        );
+
+        // Emit local count
+        self.emit_byte(declared_locals as u8)?;
+
+        // Emit default values for V3 (2 bytes each, value 0)
+        match self.version {
+            ZMachineVersion::V3 => {
+                for i in 0..declared_locals {
+                    self.emit_word(0x0000)?; // Default value 0
+                    log::debug!("Emitted default value for local {}", i + 1);
+                }
+            }
+            ZMachineVersion::V4 | ZMachineVersion::V5 => {
+                // V4/V5 don't need default values - locals auto-initialize to 0
             }
         }
+
+        // Update stored count for any address calculations that need it
+        self.function_locals_count
+            .insert(function.id, declared_locals);
 
         Ok(())
     }
@@ -6495,7 +6636,7 @@ impl ZMachineCodeGen {
                 self.function_locals_count
                     .insert(function_id, actual_locals as usize);
 
-                // Note: For V3, we pre-allocated space for 15 locals, so no insertion needed
+                // Note: V3 header now uses exact local count without pre-allocation
             } else {
                 log::error!(
                     "❌ PATCH_ERROR: Header location 0x{:04x} is beyond code_space length {}",
@@ -6544,6 +6685,7 @@ impl ZMachineCodeGen {
 
     /// Generate code for a single IR instruction
     fn generate_instruction(&mut self, instruction: &IrInstruction) -> Result<(), CompilerError> {
+        log::error!("🚨 GENERATE_INSTRUCTION_CALLED: {:?}", instruction);
         // DEBUGGING: Log every instruction that creates a target
         match instruction {
             IrInstruction::LoadImmediate { target, .. } => {
@@ -6657,6 +6799,14 @@ impl ZMachineCodeGen {
                 left,
                 right,
             } => {
+                log::debug!(
+                    "Processing BinaryOp target={}, op={:?}, left={}, right={}",
+                    target,
+                    op,
+                    left,
+                    right
+                );
+
                 // Store binary operation mapping for conditional branch optimization
                 self.ir_id_to_binary_op
                     .insert(*target, (op.clone(), *left, *right));
@@ -6664,7 +6814,7 @@ impl ZMachineCodeGen {
                 // OPTIMIZATION: Skip generating comparison instructions for operations that will
                 // be handled directly in emit_conditional_branch_instruction. This prevents
                 // duplicate instructions and unresolved branch placeholders.
-                if matches!(
+                let is_comparison = matches!(
                     op,
                     IrBinaryOp::Greater
                         | IrBinaryOp::Less
@@ -6672,7 +6822,14 @@ impl ZMachineCodeGen {
                         | IrBinaryOp::LessEqual
                         | IrBinaryOp::GreaterEqual
                         | IrBinaryOp::NotEqual
-                ) {
+                );
+                log::error!(
+                    "🚨 IS_COMPARISON_CHECK: op={:?} matches comparison = {}",
+                    op,
+                    is_comparison
+                );
+
+                if is_comparison {
                     log::debug!("Processing BinaryOp comparison {:?} target={} - registering target mapping", op, target);
 
                     // CRITICAL FIX: Even if comparison is optimized away, we need to register the target
@@ -6690,64 +6847,42 @@ impl ZMachineCodeGen {
                     let left_operand = self.resolve_ir_id_to_operand(*left)?;
                     let right_operand = self.resolve_ir_id_to_operand(*right)?;
 
-                    // Generate the comparison as a stack instruction (result goes to stack for immediate consumption)
-                    match op {
-                        IrBinaryOp::Equal => {
-                            // Use test_equal (VAR:21, 0x15) - result goes to stack
-                            let operands = vec![left_operand, right_operand];
-                            self.emit_instruction(0x15, &operands, None, None)?; // No store_var = result on stack
-                            log::debug!("Generated test_equal instruction for BinaryOp Equal (result on stack)");
-                        }
-                        IrBinaryOp::NotEqual => {
-                            // Use test_equal then invert result using NOT
-                            let operands = vec![left_operand, right_operand];
-                            // First do equal comparison (result on stack)
-                            self.emit_instruction(0x15, &operands, None, None)?;
-                            // Then invert the result with NOT (reads from stack, writes to stack)
-                            // No operands needed - NOT instruction operates on stack automatically
-                            self.emit_instruction(0x17, &[], None, None)?; // not (1OP:0x17)
-                            log::debug!("Generated test_equal + not instructions for BinaryOp NotEqual (result on stack)");
-                        }
-                        IrBinaryOp::Less => {
-                            // Use jl (jump if less than) - VAR:2, 0x02 - result on stack
-                            let operands = vec![left_operand, right_operand];
-                            self.emit_instruction(0x02, &operands, None, None)?;
-                            log::debug!(
-                                "Generated jl instruction for BinaryOp Less (result on stack)"
-                            );
-                        }
-                        IrBinaryOp::Greater => {
-                            // Use jg (jump if greater than) - VAR:3, 0x03 - result on stack
-                            let operands = vec![left_operand, right_operand];
-                            self.emit_instruction(0x03, &operands, None, None)?;
-                            log::debug!(
-                                "Generated jg instruction for BinaryOp Greater (result on stack)"
-                            );
-                        }
-                        IrBinaryOp::LessEqual => {
-                            // Less-or-equal: NOT(greater-than)
-                            let operands = vec![left_operand, right_operand];
-                            self.emit_instruction(0x03, &operands, None, None)?; // jg (greater) -> stack
-                                                                                 // NOT operates on stack automatically (reads from stack, writes to stack)
-                            self.emit_instruction(0x17, &[], None, None)?; // not (1OP:0x17)
-                            log::debug!("Generated jg + not instructions for BinaryOp LessEqual (result on stack)");
-                        }
-                        IrBinaryOp::GreaterEqual => {
-                            // Greater-or-equal: NOT(less-than)
-                            let operands = vec![left_operand, right_operand];
-                            self.emit_instruction(0x02, &operands, None, None)?; // jl (less) -> stack
-                                                                                 // NOT operates on stack automatically (reads from stack, writes to stack)
-                            self.emit_instruction(0x17, &[], None, None)?; // not (1OP:0x17)
-                            log::debug!("Generated jl + not instructions for BinaryOp GreaterEqual (result on stack)");
-                        }
+                    // Generate the comparison using the correct approach: branch + stack stores
+                    log::error!("🚨 MATCHING_COMPARISON_OP: op={:?}", op);
+                    let opcode = match op {
+                        IrBinaryOp::Equal => 0x01,   // je (2OP:1)
+                        IrBinaryOp::Less => 0x02,    // jl (2OP:2)
+                        IrBinaryOp::Greater => 0x03, // jg (2OP:3)
                         _ => {
-                            // For other comparisons, we'll implement them as needed
+                            log::error!("🚨 UNSUPPORTED_COMPARISON: op={:?} not handled", op);
                             return Err(CompilerError::CodeGenError(format!(
-                                "Comparison operation {:?} not yet implemented for value storage",
+                                "Unsupported comparison operation: {:?}",
                                 op
                             )));
                         }
-                    }
+                    };
+                    log::error!(
+                        "🚨 COMPARISON_OPCODE_MAPPED: op={:?} -> opcode=0x{:02x}",
+                        op,
+                        opcode
+                    );
+
+                    log::debug!("RUNTIME_COMPARISON: Generating {:?} comparison with result stored to stack", op);
+
+                    // Generate comparison instruction that branches if condition true, skipping the false store
+                    let _layout = self.emit_instruction(
+                        opcode,
+                        &[left_operand, right_operand],
+                        None,    // No store variable for comparison instructions
+                        Some(3), // Branch offset 3: skip false store if condition true
+                    )?;
+
+                    // Store 0 (false) to stack if comparison failed (fall-through)
+                    let _false_store =
+                        self.emit_instruction(0x8D, &[Operand::SmallConstant(0)], None, Some(2))?;
+                    // Store 1 (true) to stack if comparison succeeded (branch target)
+                    let _true_store =
+                        self.emit_instruction(0x8D, &[Operand::SmallConstant(1)], None, None)?;
                 }
                 // Only process non-comparison binary operations
                 else {
@@ -6778,8 +6913,14 @@ impl ZMachineCodeGen {
                         }
                     } else {
                         // Other binary operations (comparison, arithmetic) - resolve actual operands
+                        log::error!(
+                            "🚨 FOUND_ACTUAL_PATH: Processing BinaryOp {:?} target={}",
+                            op,
+                            target
+                        );
                         let left_op = self.resolve_ir_id_to_operand(*left)?;
                         let right_op = self.resolve_ir_id_to_operand(*right)?;
+                        log::error!("🚨 ABOUT_TO_CALL_GENERATE_BINARY_OP: op={:?}", op);
 
                         // CRITICAL: Use stack for result - binary operations are temporary
                         let store_var = Some(0); // Store to stack, not local variable
@@ -7624,6 +7765,12 @@ impl ZMachineCodeGen {
         right_operand: Operand,
         store_var: Option<u8>,
     ) -> Result<(), CompilerError> {
+        log::debug!(
+            "Generating binary operation: {:?} with operands {:?}, {:?}",
+            op,
+            left_operand,
+            right_operand
+        );
         let opcode = match op {
             IrBinaryOp::Add => 0x14,          // add (2OP:20)
             IrBinaryOp::Subtract => 0x15,     // sub (2OP:21)
@@ -7642,10 +7789,7 @@ impl ZMachineCodeGen {
 
         let operands = vec![left_operand, right_operand];
 
-        // CRITICAL FIX: Don't generate comparison operations as direct instructions
-        // Comparison operations should only be generated through emit_conditional_branch_instruction
-        // which handles branch offsets correctly. Direct comparison operations in expressions
-        // should use a different approach (test + branch or arithmetic operations).
+        // CRITICAL FIX: Handle comparison operations properly using branch + stack stores
         match op {
             IrBinaryOp::Equal
             | IrBinaryOp::NotEqual
@@ -7653,13 +7797,133 @@ impl ZMachineCodeGen {
             | IrBinaryOp::LessEqual
             | IrBinaryOp::Greater
             | IrBinaryOp::GreaterEqual => {
-                // TEMPORARY WORKAROUND: Use placeholder implementation
-                // TODO: Implement proper comparison result storage using test instruction or arithmetic
-                log::error!("CRITICAL: generate_binary_op called with comparison operation {:?} - this should be handled through emit_conditional_branch_instruction", op);
-                return Err(CompilerError::CodeGenError(
-                    "Comparison operations should not be generated as direct binary operations"
-                        .to_string(),
-                ));
+                log::debug!(
+                    "GENERATE_BINARY_OP: Handling comparison {:?} with result stored to stack",
+                    op
+                );
+
+                // Use the correct comparison opcode
+                let comparison_opcode = match op {
+                    IrBinaryOp::Equal => 0x01,   // je (2OP:1)
+                    IrBinaryOp::Less => 0x02,    // jl (2OP:2)
+                    IrBinaryOp::Greater => 0x03, // jg (2OP:3)
+                    _ => {
+                        return Err(CompilerError::CodeGenError(format!(
+                            "Unsupported comparison: {:?}",
+                            op
+                        )))
+                    }
+                };
+
+                // SIMPLIFIED: Use comparison as store operation, not branch operation
+                // This completely avoids branch offset calculation issues
+
+                // PROPER SOLUTION: Use Z-Machine branch instructions correctly
+                // Generate comparison + branch sequence that stores 0/1 result
+
+                // Step 1: Generate the comparison instruction with short branch
+                // If comparison is TRUE, branch forward to store 1
+                // If comparison is FALSE, fall through to store 0
+
+                // PROPER FIX: Use emit_instruction with correct Branch reference type
+                // The issue was that emit_instruction was creating Jump references instead of Branch references
+
+                // For small fixed branch offsets, encode directly without UnresolvedReference
+                let skip_false_store = 3;
+
+                // Use direct encoding for small branch offsets (0-63) to avoid reference patching entirely
+                // This is the correct approach for Z-Machine branch instructions
+                match (&operands[0], &operands[1]) {
+                    (Operand::SmallConstant(a), Operand::SmallConstant(b)) => {
+                        let opcode_byte = (0b01 << 4) | (0b01 << 2) | comparison_opcode; // 2OP form
+                        self.emit_byte(opcode_byte)?;
+                        self.emit_byte(*a)?;
+                        self.emit_byte(*b)?;
+                        // Z-Machine branch byte: bit 7=branch_on_true, bit 6=short_form, bits 5-0=offset
+                        let branch_byte = 0x80 | 0x40 | (skip_false_store & 0x3F); // On true, short form, offset
+                        self.emit_byte(branch_byte)?;
+                    }
+                    (Operand::LargeConstant(a), Operand::LargeConstant(b)) => {
+                        if *a <= 255 && *b <= 255 {
+                            let opcode_byte = (0b01 << 4) | (0b01 << 2) | comparison_opcode; // 2OP form
+                            self.emit_byte(opcode_byte)?;
+                            self.emit_byte(*a as u8)?;
+                            self.emit_byte(*b as u8)?;
+                            let branch_byte = 0x80 | 0x40 | (skip_false_store & 0x3F); // On true, short form, offset
+                            self.emit_byte(branch_byte)?;
+                        } else {
+                            return Err(CompilerError::CodeGenError(
+                                "Large constant comparisons not supported".to_string(),
+                            ));
+                        }
+                    }
+                    (Operand::Variable(var), Operand::LargeConstant(const_val)) => {
+                        // Handle Variable op Constant comparisons (e.g., level > 0)
+                        // Z-Machine 2OP format: variable as first operand, constant as second
+                        // For Z-Machine, constants that fit in a byte can be encoded as small constants
+                        if *const_val <= 255 {
+                            // Variable op SmallConstant format
+                            let opcode_byte = (0b10 << 4) | (0b01 << 2) | comparison_opcode; // 2OP: Variable, SmallConstant
+                            self.emit_byte(opcode_byte)?;
+                            self.emit_byte(*var)?; // Variable number
+                            self.emit_byte(*const_val as u8)?; // Small constant
+                            let branch_byte = 0x80 | 0x40 | (skip_false_store & 0x3F); // On true, short form, offset
+                            self.emit_byte(branch_byte)?;
+                        } else {
+                            // Variable op LargeConstant format - use Variable form
+                            let opcode_byte = 0xE0 | comparison_opcode; // VAR form
+                            self.emit_byte(opcode_byte)?;
+                            let types_byte = (0b10 << 6) | (0b00 << 4); // Variable, LargeConstant
+                            self.emit_byte(types_byte)?;
+                            self.emit_byte(*var)?; // Variable number
+                            self.emit_word(*const_val)?; // Large constant (16-bit)
+                            let branch_byte = 0x80 | 0x40 | (skip_false_store & 0x3F); // On true, short form, offset
+                            self.emit_byte(branch_byte)?;
+                        }
+                    }
+                    (Operand::LargeConstant(const_val), Operand::Variable(var)) => {
+                        // Handle Constant op Variable comparisons (e.g., 0 > level)
+                        // Swap operands: const > var becomes var < const to match Z-Machine format
+                        let swapped_opcode = match comparison_opcode {
+                            0x03 => 0x02, // jg becomes jl
+                            0x02 => 0x03, // jl becomes jg
+                            0x01 => 0x01, // je stays je
+                            _ => comparison_opcode,
+                        };
+
+                        if *const_val <= 255 {
+                            let opcode_byte = (0b10 << 4) | (0b01 << 2) | swapped_opcode; // 2OP: Variable, SmallConstant
+                            self.emit_byte(opcode_byte)?;
+                            self.emit_byte(*var)?; // Variable number
+                            self.emit_byte(*const_val as u8)?; // Small constant
+                            let branch_byte = 0x80 | 0x40 | (skip_false_store & 0x3F);
+                            self.emit_byte(branch_byte)?;
+                        } else {
+                            let opcode_byte = 0xE0 | swapped_opcode; // VAR form
+                            self.emit_byte(opcode_byte)?;
+                            let types_byte = (0b10 << 6) | (0b00 << 4); // Variable, LargeConstant
+                            self.emit_byte(types_byte)?;
+                            self.emit_byte(*var)?; // Variable number
+                            self.emit_word(*const_val)?; // Large constant
+                            let branch_byte = 0x80 | 0x40 | (skip_false_store & 0x3F);
+                            self.emit_byte(branch_byte)?;
+                        }
+                    }
+                    _ => {
+                        return Err(CompilerError::CodeGenError(format!(
+                            "Unsupported operand types: {:?}",
+                            operands
+                        )));
+                    }
+                }
+
+                // Step 2: Store 0 (false) - executed if comparison failed
+                self.emit_instruction(0x8D, &[Operand::SmallConstant(0)], store_var, None)?;
+
+                // Step 3: Store 1 (true) - executed if comparison succeeded (branch target)
+                self.emit_instruction(0x8D, &[Operand::SmallConstant(1)], store_var, None)?;
+
+                return Ok(());
             }
             _ => {
                 // Arithmetic operations store result normally
@@ -8265,95 +8529,9 @@ impl ZMachineCodeGen {
             false_label
         );
 
-        // Check if the condition is a binary comparison operation
-        if let Some((op, left, right)) = self.ir_id_to_binary_op.get(&condition).cloned() {
-            log::debug!(
-                "Condition {} is binary operation: {:?} {} {}",
-                condition,
-                op,
-                left,
-                right
-            );
-
-            // This is a direct comparison - emit the appropriate Z-Machine comparison instruction
-            match op {
-                IrBinaryOp::Equal => {
-                    let left_op = self.resolve_ir_id_to_operand(left)?;
-                    let right_op = self.resolve_ir_id_to_operand(right)?;
-                    self.emit_comparison_branch(
-                        0x01,
-                        &[left_op, right_op],
-                        true_label,
-                        false_label,
-                    )?; // je (2OP:1)
-                }
-                IrBinaryOp::Less => {
-                    let left_op = self.resolve_ir_id_to_operand(left)?;
-                    let right_op = self.resolve_ir_id_to_operand(right)?;
-                    self.emit_comparison_branch(
-                        0x02,
-                        &[left_op, right_op],
-                        true_label,
-                        false_label,
-                    )?; // jl (2OP:2)
-                }
-                IrBinaryOp::Greater => {
-                    let left_op = self.resolve_ir_id_to_operand(left)?;
-                    let right_op = self.resolve_ir_id_to_operand(right)?;
-                    self.emit_comparison_branch(
-                        0x03,
-                        &[left_op, right_op],
-                        true_label,
-                        false_label,
-                    )?; // jg (2OP:3)
-                }
-                IrBinaryOp::LessEqual => {
-                    // Convert a <= b to !(a > b) by swapping true/false labels
-                    let left_op = self.resolve_ir_id_to_operand(left)?;
-                    let right_op = self.resolve_ir_id_to_operand(right)?;
-                    self.emit_comparison_branch(
-                        0x03,
-                        &[left_op, right_op],
-                        false_label,
-                        true_label,
-                    )?; // jg with swapped labels
-                }
-                IrBinaryOp::GreaterEqual => {
-                    // Convert a >= b to !(a < b) by swapping true/false labels
-                    let left_op = self.resolve_ir_id_to_operand(left)?;
-                    let right_op = self.resolve_ir_id_to_operand(right)?;
-                    self.emit_comparison_branch(
-                        0x02,
-                        &[left_op, right_op],
-                        false_label,
-                        true_label,
-                    )?; // jl with swapped labels
-                }
-                IrBinaryOp::NotEqual => {
-                    // Convert a != b to !(a == b) by swapping true/false labels
-                    let left_op = self.resolve_ir_id_to_operand(left)?;
-                    let right_op = self.resolve_ir_id_to_operand(right)?;
-                    self.emit_comparison_branch(
-                        0x01,
-                        &[left_op, right_op],
-                        false_label,
-                        true_label,
-                    )?; // je with swapped labels
-                }
-                _ => {
-                    log::warn!("Binary operation {:?} not suitable for direct comparison branch - falling back to jz", op);
-                    // Fall through to jz handling below
-                    return self.emit_jz_branch(condition, true_label, false_label);
-                }
-            }
-        } else {
-            log::debug!(
-                "Condition {} is not a binary operation - using jz branch",
-                condition
-            );
-            // Not a binary comparison, use jz (jump if zero) for boolean test
-            return self.emit_jz_branch(condition, true_label, false_label);
-        }
+        // Use jz instruction for all conditions - simple and reliable
+        log::debug!("Condition {} - using jz branch approach", condition);
+        return self.emit_jz_branch(condition, true_label, false_label);
 
         Ok(())
     }
@@ -8365,6 +8543,57 @@ impl ZMachineCodeGen {
         _true_label: IrId,
         false_label: IrId,
     ) -> Result<(), CompilerError> {
+        // CRITICAL FIX: Check if condition is a BinaryOp result that was never generated
+        if let Some((op, left, right)) = self.ir_id_to_binary_op.get(&condition).cloned() {
+            log::error!(
+                "🔧 MISSING_BINARYOP_FIX: Detected ungenerated BinaryOp {:?} for condition {}, generating now",
+                op, condition
+            );
+
+            // Generate the missing comparison instruction
+            let left_operand = self.resolve_ir_id_to_operand(left)?;
+            let right_operand = self.resolve_ir_id_to_operand(right)?;
+
+            // Generate comparison that stores result to stack
+            let opcode = match op {
+                IrBinaryOp::Equal => 0x01,        // je (2OP:1)
+                IrBinaryOp::NotEqual => 0x01,     // je (2OP:1) - will negate branch condition
+                IrBinaryOp::Less => 0x02,         // jl (2OP:2)
+                IrBinaryOp::LessEqual => 0x02,    // jl (2OP:2) - will negate
+                IrBinaryOp::Greater => 0x03,      // jg (2OP:3)
+                IrBinaryOp::GreaterEqual => 0x03, // jg (2OP:3) - will negate
+                _ => {
+                    return Err(CompilerError::CodeGenError(format!(
+                        "Unsupported comparison operation in conditional branch: {:?}",
+                        op
+                    )));
+                }
+            };
+
+            log::error!(
+                "🔧 GENERATING_MISSING_COMPARISON: {:?} with opcode 0x{:02x}",
+                op,
+                opcode
+            );
+
+            // Generate comparison instruction that branches if condition true, skipping the false store
+            let _layout = self.emit_instruction(
+                opcode,
+                &[left_operand, right_operand],
+                None,    // No store variable for comparison instructions
+                Some(3), // Branch offset 3: skip false store if condition true
+            )?;
+
+            // Store 0 (false) to stack if comparison failed (fall-through)
+            let _false_store =
+                self.emit_instruction(0x8D, &[Operand::SmallConstant(0)], None, Some(2))?;
+            // Store 1 (true) to stack if comparison succeeded (branch target)
+            let _true_store =
+                self.emit_instruction(0x8D, &[Operand::SmallConstant(1)], None, None)?;
+
+            log::error!("🔧 MISSING_BINARYOP_GENERATED: Comparison result now available on stack");
+        }
+
         // Resolve condition operand
         let condition_operand = match self.resolve_ir_id_to_operand(condition) {
             Ok(operand) => operand,
@@ -8437,36 +8666,12 @@ impl ZMachineCodeGen {
 
         let _layout = self.emit_instruction(
             opcode, operands, None, // No store
-            None, // No branch offset - will be added as placeholders manually
+            None, // No branch offset - will be added by built-in branch handling
         )?;
 
-        // Manually emit branch placeholders and record the location
-        let code_space_offset = self.code_space.len();
-
-        // 🔧 CRITICAL FIX: Use code space offset during instruction generation,
-        // conversion to final address happens during final assembly phase
-        self.emit_word(placeholder_word())?; // 2-byte branch placeholder
-
-        // 🔧 CRITICAL DEBUG: Track branch reference creation
-        log::error!(
-            "🔧 BRANCH_REF_CREATE: code_space_offset=0x{:04x} target_id={} (will convert to final address during assembly)",
-            code_space_offset, true_label
-        );
-
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Branch,
-                location: code_space_offset, // Use code space offset, not final address
-                target_id: true_label,       // Comparison instructions jump on true condition
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
-
         log::debug!(
-            "Added comparison branch reference: code_space_offset=0x{:04x}, target={}",
-            code_space_offset,
+            "Added comparison branch instruction: opcode=0x{:02x}, target={}",
+            opcode,
             true_label
         );
 
@@ -8524,7 +8729,7 @@ impl ZMachineCodeGen {
 
         // Emit jump instruction manually (not using emit_instruction as it doesn't use normal operands)
         // Jump is a 1OP instruction (0x0C) with a signed word offset
-        self.emit_byte(0x4C)?; // 1OP:12 Large Constant - jump instruction (fixed from 0x8C)
+        self.emit_byte(0x8C)?; // 1OP:12 Large Constant - jump instruction (0x8C = 10001100 binary)
 
         // Emit placeholder offset (will be resolved later)
         let operand_location = self.code_address;
@@ -8673,168 +8878,75 @@ impl ZMachineCodeGen {
         ir: &IrProgram,
     ) -> Result<(usize, u8), CompilerError> {
         log::debug!(
-            "generate_init_block: Generating init routine with {} instructions (Z-Machine pure architecture)",
+            "generate_init_block: Generating init routine with {} instructions (Z-Machine native architecture - header first)",
             init_block.instructions.len()
         );
+
+        // CRITICAL ARCHITECTURE FIX: Generate init block AS the main routine
+        // Like Zork I: PC points directly to routine header, then instructions execute
 
         // Set init block context flag
         self.in_init_block = true;
 
-        // Generate init as a proper routine (like Zork I architecture)
-        // This creates: Header → CALL init_routine() → CALL main_loop()
+        // Record this as the main routine that PC will point to
+        let main_routine_address = self.code_address;
+        let init_routine_id = 8000u32;
 
-        // First, emit a CALL to init routine at startup address
-        let startup_address = self.code_address;
-        log::debug!("Startup CALL instruction at 0x{:04x}", startup_address);
-
-        let init_routine_id = 8000u32; // Unique ID for init routine
-        let layout = self.emit_instruction(
-            0xE0, // call (VAR:224) - the only call instruction in Version 3
-            &[Operand::LargeConstant(placeholder_word())], // Placeholder for init routine address
-            Some(0), // Store return value on stack (even though we don't use it)
-            None, // No branch
-        )?;
-
-        // Add unresolved reference for init routine call using layout-tracked operand location
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::FunctionCall,
-                location: layout
-                    .operand_location
-                    .expect("call instruction must have operand"),
-                target_id: init_routine_id,
-                is_packed_address: true, // Function calls use packed addresses
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
-
-        // Now generate the actual init routine
-        // Align init routine address according to Z-Machine version requirements
-        match self.version {
-            ZMachineVersion::V3 => {
-                // v3: functions must be at even addresses
-                if self.code_address % 2 != 0 {
-                    self.emit_byte(0x00)?; // padding (will crash if executed - good for debugging)
-                }
-            }
-            ZMachineVersion::V4 | ZMachineVersion::V5 => {
-                // v4/v5: functions must be at 4-byte boundaries
-                while self.code_address % 4 != 0 {
-                    self.emit_byte(0x00)?; // padding (will crash if executed - good for debugging)
-                }
-            }
-        }
-
-        let init_routine_address = self.code_address;
-        log::debug!("Init routine starts at 0x{:04x}", init_routine_address);
-
-        // Record init routine address for call resolution
-        self.function_addresses
-            .insert(init_routine_id, init_routine_address);
-        self.record_final_address(init_routine_id, init_routine_address);
-
-        // FIXED: Generate dynamic routine header using function header pattern
-        // Reset local variable counter for init block (like regular functions)
-        self.current_function_locals = 0;
-        self.current_function_name = Some("init".to_string());
-
-        // Generate placeholder routine header (will be patched after instruction generation)
-        let init_header_location = self.code_space.len();
-        self.emit_byte(0x00)?; // Placeholder - will be patched with actual local count
-
-        log::debug!(
-            "Init routine header placeholder at code_space[{}]",
-            init_header_location
+        log::info!(
+            "🔧 ZORK_ARCHITECTURE: Generating main routine at 0x{:04x} (PC target, header first)",
+            main_routine_address
         );
 
-        // Generate the init block code - this may allocate local variables
-        // CRITICAL: Use translate_ir_instruction to ensure local variable allocation works
+        // Set up function context for init block (no local variables)
+        self.current_function_locals = 0;
+        self.current_function_name = Some("main".to_string());
+
+        // Generate V3 function header immediately (this is what PC will point to)
+        // PC points here and execution begins with this header
+        log::debug!(
+            "V3 function header (main routine) at 0x{:04x}",
+            self.code_address
+        );
+
+        // Emit local count (0 for main routine)
+        self.emit_byte(0x00)?;
+
+        log::debug!(
+            "🏁 MAIN_ROUTINE: Header complete at 0x{:04x}, instructions follow",
+            self.code_address
+        );
+
+        // Record main routine address for header
+        self.function_addresses
+            .insert(init_routine_id, main_routine_address);
+        self.record_final_address(init_routine_id, main_routine_address);
+
+        // Generate the init block code directly after the header
+        // CRITICAL: Use translate_ir_instruction to ensure proper instruction generation
+        log::debug!(
+            "Generating {} init block instructions",
+            init_block.instructions.len()
+        );
+
         for instruction in &init_block.instructions {
             self.translate_ir_instruction(instruction)?;
         }
 
-        // CRITICAL: Patch routine header with actual local count (like finalize_function_header)
-        let actual_locals = self.current_function_locals;
-        log::error!(
-            "🔧 INIT_DEBUG: Before patching header, current_function_locals={}, actual_locals={}",
-            self.current_function_locals,
-            actual_locals
-        );
-        if init_header_location < self.code_space.len() {
-            log::error!(
-                "🔧 INIT_DEBUG: Writing {} to code_space[{}] (was {})",
-                actual_locals,
-                init_header_location,
-                self.code_space[init_header_location]
-            );
-            self.code_space[init_header_location] = actual_locals;
-            log::error!(
-                "🔧 INIT_DEBUG: After write, code_space[{}] = {}",
-                init_header_location,
-                self.code_space[init_header_location]
-            );
-            log::info!(
-                "✅ INIT_HEADER: Patched routine header with {} local variables",
-                actual_locals
-            );
-        } else {
-            return Err(CompilerError::CodeGenError(format!(
-                "Failed to patch init routine header: location {} out of bounds (code_space.len={})",
-                init_header_location, self.code_space.len()
-            )));
-        }
-
-        // Handle program flow after init block based on program mode
-        match ir.program_mode {
-            crate::grue_compiler::ast::ProgramMode::Script => {
-                // Script mode: Just quit after init block
-                log::debug!("Script mode: Adding quit instruction after init block");
-                self.emit_byte(0xBA)?; // quit opcode
-            }
-            crate::grue_compiler::ast::ProgramMode::Interactive
-            | crate::grue_compiler::ast::ProgramMode::Custom => {
-                // Interactive or Custom mode: Call the generated main routine
-                log::debug!(
-                    "{:?} mode: Adding call to main routine after init block",
-                    ir.program_mode
-                );
-                let main_loop_id = 9000u32; // Same ID as used in generate_program_flow
-                let layout = self.emit_instruction(
-                    0xE0, // call (VAR:224) - the only call instruction in Version 3
-                    &[Operand::LargeConstant(placeholder_word())], // Placeholder for main routine address
-                    Some(0), // Store return value on stack (even though we don't use it)
-                    None,    // No branch
-                )?;
-
-                // Add unresolved reference for main routine call
-                self.reference_context
-                    .unresolved_refs
-                    .push(UnresolvedReference {
-                        reference_type: LegacyReferenceType::FunctionCall,
-                        location: layout
-                            .operand_location
-                            .expect("call instruction must have operand"),
-                        target_id: main_loop_id,
-                        is_packed_address: true, // Function calls use packed addresses
-                        offset_size: 2,
-                        location_space: MemorySpace::Code,
-                    });
-            }
-        }
-
-        log::debug!("Init routine complete at 0x{:04x}", init_routine_address);
+        // Add QUIT instruction at the end to terminate execution cleanly
+        log::debug!("Adding QUIT instruction at 0x{:04x}", self.code_address);
+        self.emit_byte(0xBA)?; // QUIT instruction (0OP:186, hex 0xBA)
 
         // Clear init block context flag
         self.in_init_block = false;
 
-        // Return startup address and actual locals count for PC calculation
-        log::error!(
-            "🔧 INIT_DEBUG: Before return, current_function_locals={}, returning actual_locals={}",
-            self.current_function_locals,
-            actual_locals
+        log::info!(
+            "✅ MAIN_ROUTINE: Complete at 0x{:04x} (PC target: 0x{:04x}, 0 locals)",
+            self.code_address - 1,
+            main_routine_address
         );
-        Ok((startup_address, actual_locals))
+
+        // Return main routine address and 0 locals (simple init block)
+        Ok((main_routine_address, 0))
     }
 
     /// Write the Z-Machine file header with custom entry point
@@ -9323,7 +9435,8 @@ impl ZMachineCodeGen {
 
         match reference.reference_type {
             LegacyReferenceType::Jump => {
-                self.patch_jump_offset(reference.location, target_address)?;
+                // FIXED: Z-Machine jmp instruction also uses branch offset encoding, not 16-bit addresses
+                self.patch_branch_offset(reference.location, target_address)?;
             }
             LegacyReferenceType::Branch => {
                 self.patch_branch_offset(reference.location, target_address)?;
@@ -9480,164 +9593,6 @@ impl ZMachineCodeGen {
         }
     }
 
-    /// Patch a jump offset at the given location
-    pub fn patch_jump_offset(
-        &mut self,
-        location: usize,
-        target_address: usize,
-    ) -> Result<(), CompilerError> {
-        log::error!(
-            "🔧 PATCH_JUMP_OFFSET: Starting jump patch at location=0x{:04x}, target=0x{:04x}",
-            location,
-            target_address
-        );
-        log::error!(
-            "🔧 PATCH_JUMP_OFFSET: story_data.len()={}, final_data.len()={}",
-            self.story_data.len(),
-            self.final_data.len()
-        );
-
-        // The location points to where the jump operand starts
-        // For a jump instruction: [opcode] [operand_high] [operand_low]
-        // When the interpreter executes the jump, PC points to the next instruction
-        // The interpreter advances PC by instruction.size BEFORE executing
-
-        // Calculate the actual instruction size by examining the opcode
-        let instruction_start = location - 1;
-        log::error!("🔧 PATCH_JUMP_OFFSET: instruction_start=0x{:04x}, checking opcode in story_data vs final_data", instruction_start);
-
-        // CRITICAL: Check if we should be using story_data or final_data
-        let opcode_byte = if instruction_start < self.final_data.len() {
-            let story_opcode = if instruction_start < self.story_data.len() {
-                self.story_data[instruction_start]
-            } else {
-                0x00
-            };
-            let final_opcode = self.final_data[instruction_start];
-            log::error!("🔧 PATCH_JUMP_OFFSET: story_data[0x{:04x}]=0x{:02x}, final_data[0x{:04x}]=0x{:02x}", 
-                       instruction_start, story_opcode, instruction_start, final_opcode);
-            final_opcode // Use final_data as it's the complete image
-        } else {
-            log::error!(
-                "🔧 PATCH_JUMP_OFFSET: instruction_start 0x{:04x} out of bounds, using story_data",
-                instruction_start
-            );
-            self.story_data[instruction_start]
-        };
-
-        let instruction_size =
-            self.calculate_instruction_size_from_data(&self.final_data, instruction_start)?;
-        let current_pc = instruction_start + instruction_size; // PC after advancing
-
-        log::error!(
-            "🔧 PATCH_JUMP_OFFSET: opcode_byte=0x{:02x}, calculated_size={}, instruction_start=0x{:04x}",
-            opcode_byte, instruction_size, instruction_start
-        );
-
-        // Z-Machine jump: new_pc = vm.pc + offset - 2 (interpreter subtracts 2)
-        // We want: target = current_pc + offset - 2
-        // So: offset = target - current_pc + 2
-        let offset = (target_address as i32) - (current_pc as i32) + 2;
-
-        log::error!(
-            "🔧 PATCH_JUMP_OFFSET: location=0x{:04x}, target=0x{:04x}, current_pc=0x{:04x}, offset={}",
-            location,
-            target_address,
-            current_pc,
-            offset
-        );
-        log::error!("🚨 CRITICAL_JUMP_DEBUG: target_address=0x{:04x} should be final address, current_pc=0x{:04x} from instruction location", target_address, current_pc);
-
-        // CRITICAL: Detect 0x1717 address calculations
-        if target_address == 0x1717
-            || current_pc == 0x1717
-            || offset == 0x1717
-            || location == 0x1717
-            || (target_address as i32 - current_pc as i32) == 0x1717
-        {
-            log::error!("🚨🚨🚨 FOUND 0x1717 CALCULATION!");
-            log::error!(
-                "  target_address = 0x{:04x} ({})",
-                target_address,
-                target_address
-            );
-            log::error!("  current_pc = 0x{:04x} ({})", current_pc, current_pc);
-            log::error!("  offset = {} (0x{:04x})", offset, offset);
-            log::error!("  location = 0x{:04x} ({})", location, location);
-            log::error!(
-                "  difference = {}",
-                target_address as i32 - current_pc as i32
-            );
-        }
-        log::error!(
-            "🚨 CRITICAL_JUMP_DEBUG: offset calculation: {} - {} + 2 = {}",
-            target_address,
-            current_pc,
-            offset
-        );
-        if offset > 1000 || offset < -1000 {
-            log::error!("🚨 SUSPICIOUS_LARGE_OFFSET: This offset {} seems too large for a typical game loop jump!", offset);
-        }
-
-        // CRITICAL FIX: Handle zero-offset jumps (jumps to next instruction)
-        // This should not happen with our new architecture, but keep as safety net
-        if offset == 0 {
-            log::warn!(
-                "Zero-offset jump detected at 0x{:04x} - replacing with no-op for safety",
-                instruction_start
-            );
-
-            // Replace the entire jump instruction with a no-op by converting to "ret 1"
-            // This is a harmless 3-byte instruction that doesn't affect execution flow
-            // since it's unreachable (previous instruction falls through)
-
-            // CRITICAL: These are code-space patches, need special handling for separated spaces
-            // For now, these write_byte_at calls need to be deferred to final assembly phase
-            // since they're patching already-emitted code
-            self.write_byte_at(instruction_start, 0xB1)?; // ret 1 (0OP instruction) - DEFER TO FINAL ASSEMBLY
-            self.write_byte_at(instruction_start + 1, 0x00)?; // padding - DEFER TO FINAL ASSEMBLY
-            self.write_byte_at(instruction_start + 2, 0x00)?; // padding - DEFER TO FINAL ASSEMBLY
-
-            log::debug!(
-                "Replaced zero-offset jump at 0x{:04x} with no-op (ret 1)",
-                instruction_start
-            );
-
-            return Ok(());
-        }
-
-        if !(-32768..=32767).contains(&offset) {
-            return Err(CompilerError::CodeGenError(format!(
-                "Jump offset {} too large for 16-bit signed integer",
-                offset
-            )));
-        }
-
-        // Write as signed 16-bit offset
-        log::error!(
-            "🔧 PATCH_JUMP_OFFSET: writing offset {} (0x{:04x}) at location 0x{:04x}",
-            offset,
-            offset as u16,
-            location
-        );
-
-        // CRITICAL DEBUG: Check if signed conversion is working correctly
-        let offset_as_u16 = offset as u16;
-        log::error!(
-            "🔧 PATCH_JUMP_OFFSET: offset {} -> u16 conversion -> 0x{:04x}",
-            offset,
-            offset_as_u16
-        );
-        if offset == -10 {
-            log::error!(
-                "🚨 CRITICAL: -10 offset converted to u16: 0x{:04x} (should be 0xFFF6)",
-                offset_as_u16
-            );
-        }
-
-        self.patch_address(location, offset_as_u16, 2)
-    }
-
     /// Patch a branch offset at the given location  
     fn patch_branch_offset(
         &mut self,
@@ -9681,7 +9636,7 @@ impl ZMachineCodeGen {
             // Use 1-byte format, pad second byte with 0
             let branch_byte = 0x80 | 0x40 | (offset_1byte as u8 & 0x3F); // 0x80: branch on true, 0x40: 1-byte format
             self.write_byte_at(location, branch_byte)?;
-            self.write_byte_at(location + 1, 0x00)?; // padding (will crash if executed - good for debugging)
+            // NO PADDING - 1-byte branch format doesn't use the second byte location
             log::debug!(
                 "patch_branch_offset: 1-byte format, wrote 0x{:02x} at location 0x{:04x}",
                 branch_byte,
@@ -11147,7 +11102,7 @@ impl ZMachineCodeGen {
             self.final_code_base
         );
 
-        let mut converted_addresses = HashMap::new();
+        let mut converted_addresses = IndexMap::new();
 
         for (&ir_id, &offset) in &self.reference_context.ir_id_to_address {
             // Check if this looks like a code space offset (should be < code_space.len())
@@ -11201,10 +11156,13 @@ impl ZMachineCodeGen {
             self.code_address
         };
 
-        // Track critical addresses around the crash point
-        if runtime_addr >= 0x0bd0 && runtime_addr <= 0x0be0 {
+        // Track critical addresses around the crash point AND the 0xa0 byte issue
+        if (runtime_addr >= 0x0bd0 && runtime_addr <= 0x0be0)
+            || (byte == 0xa0)
+            || (runtime_addr == 0x0365)
+        {
             log::error!(
-                "🎯 CRITICAL_BYTE: runtime_addr=0x{:04x} byte=0x{:02x} phase={}",
+                "🎯 CRITICAL_BYTE: runtime_addr=0x{:04x} byte=0x{:02x} phase={} TRACKING_0xa0_AND_0x0365",
                 runtime_addr,
                 byte,
                 if self.final_data.is_empty() {
@@ -11266,6 +11224,29 @@ impl ZMachineCodeGen {
                 byte,
                 self.code_address
             );
+        }
+
+        // 🚨 CRITICAL DEBUG: Track all 0x00 byte writes during code generation
+        if byte == 0x00 && self.code_address < 0x0020 {
+            log::error!(
+                "🚨 ZERO_BYTE_WRITE: emit_byte(0x00) at address 0x{:04x}",
+                self.code_address
+            );
+            log::error!("🚨 STACK TRACE CONTEXT: This might be the source of invalid opcodes");
+
+            // Track problematic writes without panicking
+            if self.code_address == 0x0004 {
+                log::error!("🔧 0x0004_WRITE: This should be store_var=0x00, but might be padding");
+            }
+            if self.code_address == 0x0005 {
+                log::error!("🔧 0x0005_WRITE: This is the EXTRA byte causing invalid opcodes! Continuing for analysis...");
+            }
+            if self.code_address >= 0x0006 {
+                log::error!(
+                    "🔧 EXTRA_PADDING: This is definitely wrong - extra padding at 0x{:04x}",
+                    self.code_address
+                );
+            }
         }
 
         // Debug critical addresses
@@ -11658,6 +11639,11 @@ impl ZMachineCodeGen {
 
         // Direct write to final_data during address patching phase
         if addr < self.final_data.len() {
+            // Warn about potentially problematic writes
+            if byte == 0x00 {
+                log::error!("🚨 ZERO_WRITE: Writing 0x00 to final_data[0x{:04x}] - potential invalid opcode!", addr);
+            }
+
             log::error!(
                 "🔧 WRITE_BYTE_AT: Writing byte 0x{:02x} directly to final_data[0x{:04x}]",
                 byte,
@@ -11853,7 +11839,11 @@ impl ZMachineCodeGen {
         let instruction_start = self.code_address;
 
         let form = self.determine_instruction_form_with_operands(operands, opcode);
-        log::debug!("determined form={:?}", form);
+        log::error!(
+            "🔧 FORM_DETERMINATION: opcode=0x{:02x} -> form={:?}",
+            opcode,
+            form
+        );
 
         let layout = match form {
             InstructionForm::Long => self.emit_long_form_with_layout(
@@ -12299,6 +12289,12 @@ impl ZMachineCodeGen {
         store_var: Option<u8>,
         branch_offset: Option<i16>,
     ) -> Result<InstructionLayout, CompilerError> {
+        log::error!(
+            "🔧 VAR_FORM_DEBUG: opcode=0x{:02x}, store_var={:?}, branch_offset={:?}",
+            opcode,
+            store_var,
+            branch_offset
+        );
         if operands.len() > 4 {
             return Err(CompilerError::CodeGenError(format!(
                 "Variable form supports max 4 operands, got {}",
@@ -12349,6 +12345,11 @@ impl ZMachineCodeGen {
             types_byte |= (OperandType::Omitted as u8) << (6 - i * 2);
         }
 
+        log::error!(
+            "🔧 VAR_TYPES_BYTE: Emitting types_byte=0x{:02x} at address 0x{:04x}",
+            types_byte,
+            self.code_address
+        );
         self.emit_byte(types_byte)?;
 
         // Track first operand location (most commonly needed for references)
@@ -12538,6 +12539,8 @@ impl ZMachineCodeGen {
                     value,
                     zmachine_var
                 );
+                log::error!("🔧 VARIABLE_EMIT: About to emit Variable({}) as zmachine_var=0x{:02x} at addr=0x{:04x}", 
+                           value, zmachine_var, self.final_code_base + self.code_address);
                 self.emit_byte(zmachine_var)?;
             }
             Operand::LargeConstant(value) => {

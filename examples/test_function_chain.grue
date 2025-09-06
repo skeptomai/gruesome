@@ -1,0 +1,19 @@
+fn setup() {
+    print("Setting up game...");
+    initialize_world();
+}
+
+fn initialize_world() {
+    print("World initialized.");
+    start_game();
+}
+
+fn start_game() {
+    print("Game started!");
+}
+
+init {
+    print("Starting mini adventure...");
+    setup();
+    print("Adventure ready!");
+}

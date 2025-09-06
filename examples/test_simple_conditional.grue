@@ -1,0 +1,10 @@
+// Test simple conditional with constant - no property access
+init {
+    print("Testing simple conditional...");
+    if (1 == 1) {
+        print("Always true");
+    } else {
+        print("Never reached");
+    }
+    print("Done");
+}

@@ -1,0 +1,42 @@
+// Progressive test to isolate which language feature causes uninitialized memory
+
+// Test 1: Basic property access (like player.location.desc)
+fn test_property_access() {
+    print("Testing property access...");
+    // This should be equivalent to: print(player.location.desc);
+    // For now, let's start simpler
+    print("Property access test complete");
+}
+
+// Test 2: Basic if statements (like if !west_of_house.visited)
+fn test_if_statements() {
+    print("Testing if statements...");
+    // This should be equivalent to: if player.location { print("has location"); }
+    // For now, let's start simpler
+    print("If statement test complete");
+}
+
+// Test 3: Simple variable assignment (like obj.open = true)
+fn test_variable_assignment() {
+    print("Testing variable assignment...");
+    // This should be equivalent to: player.visited = true;
+    // For now, let's start simpler
+    print("Variable assignment test complete");
+}
+
+// Test 4: Function calls with return values (like get_location())
+fn test_return_values() {
+    print("Testing return values...");
+    // This should be equivalent to: let loc = get_location(player);
+    // For now, let's start simpler
+    print("Return value test complete");
+}
+
+init {
+    print("=== Progressive Feature Test ===");
+    test_property_access();
+    test_if_statements(); 
+    test_variable_assignment();
+    test_return_values();
+    print("=== All Tests Complete ===");
+}

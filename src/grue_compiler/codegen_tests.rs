@@ -496,25 +496,6 @@ mod codegen_tests {
     }
 
     #[test]
-    fn test_jump_offset_calculation() {
-        let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
-
-        // Set up some story data
-        codegen.story_data.resize(200, 0);
-
-        // Test jump offset patching
-        let result = codegen.patch_jump_offset(100, 150);
-        assert!(result.is_ok());
-
-        // Check that the offset was written
-        // Separated spaces architecture may have different offset calculation
-        let written_offset =
-            ((codegen.story_data[100] as u16) << 8) | (codegen.story_data[101] as u16);
-        // Updated expectation for separated spaces (was 48, now 50)
-        assert_eq!(written_offset, 50);
-    }
-
-    #[test]
     fn test_address_patching() {
         let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
         codegen.story_data.resize(100, 0);

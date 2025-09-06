@@ -1,0 +1,14 @@
+object lamp {
+    name: "brass lamp",
+    description: "A shiny brass lamp."
+}
+
+room living_room {
+    name: "Living Room", 
+    description: "A cozy living room."
+}
+
+init {
+    move(lamp, living_room);
+    print("The lamp is now in the living room.");
+}

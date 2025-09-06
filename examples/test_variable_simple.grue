@@ -1,0 +1,12 @@
+// Test the absolute simplest variable usage
+
+fn test_no_variables() {
+    print("Testing function with no variables...");
+    print("No variables test complete");
+}
+
+init {
+    print("=== No Variables Test ===");
+    test_no_variables();
+    print("=== Test Complete ===");
+}

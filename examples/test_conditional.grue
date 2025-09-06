@@ -1,0 +1,10 @@
+// Test conditional logic - this might trigger similar issues to mini_zork
+init {
+    print("Testing conditional...");
+    if (player.location == 1) {
+        print("Player is at location 1");
+    } else {
+        print("Player is elsewhere");
+    }
+    print("Done");
+}

@@ -1,0 +1,4 @@
+// Absolute minimal test to trigger the 0x00 byte issue
+init {
+    print("minimal");
+}
