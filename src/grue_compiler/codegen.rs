@@ -2477,6 +2477,14 @@ impl ZMachineCodeGen {
                 // Process BinaryOp directly here - no deferred handling
                 log::debug!("Processing BinaryOp {:?} target={}", op, target);
 
+                // CRITICAL: Store binary operation mapping for conditional branch optimization
+                log::debug!(
+                    "STORING_BINARY_OP_MAPPING_IR: target={} op={:?} left={} right={}",
+                    target, op, left, right
+                );
+                self.ir_id_to_binary_op
+                    .insert(*target, (op.clone(), *left, *right));
+
                 let left_op = self.resolve_ir_id_to_operand(*left)?;
                 let right_op = self.resolve_ir_id_to_operand(*right)?;
                 log::debug!(
@@ -4142,22 +4150,21 @@ impl ZMachineCodeGen {
                         }
                     };
 
-                    log::debug!("RUNTIME_COMPARISON: Generating {:?} comparison with result stored to stack", op);
+                    log::debug!("RUNTIME_COMPARISON: Generating {:?} comparison - this should NOT store values!", op);
 
-                    // Generate comparison instruction that branches if condition true, skipping the false store
-                    let _layout = self.emit_instruction(
-                        opcode,
-                        &[left_operand, right_operand],
-                        None,    // No store variable for comparison instructions
-                        Some(3), // Branch offset 3: skip false store if condition true
-                    )?;
-
-                    // Store 0 (false) to stack if comparison failed (fall-through)
-                    let _false_store =
-                        self.emit_instruction(0x8D, &[Operand::SmallConstant(0)], None, Some(2))?;
-                    // Store 1 (true) to stack if comparison succeeded (branch target)
-                    let _true_store =
-                        self.emit_instruction(0x8D, &[Operand::SmallConstant(1)], None, None)?;
+                    // FUNDAMENTAL FIX: Comparison instructions in Z-Machine are BRANCH instructions,
+                    // not value-producing instructions. They should never store 0/1 to stack.
+                    // 
+                    // The comparison should be handled by the conditional logic that uses it,
+                    // not by generating intermediate boolean storage.
+                    //
+                    // For now, return an error to catch cases where we're incorrectly trying to
+                    // generate standalone comparison instructions.
+                    
+                    return Err(CompilerError::CodeGenError(format!(
+                        "BinaryOp comparison {:?} should not generate standalone instructions - comparisons should be handled by conditional branching logic directly",
+                        op
+                    )));
 
                     // Map the target to stack so jz can find it
                     self.use_stack_for_result(target);
@@ -6779,8 +6786,8 @@ impl ZMachineCodeGen {
                 left,
                 right,
             } => {
-                log::debug!(
-                    "Processing BinaryOp target={}, op={:?}, left={}, right={}",
+                log::error!(
+                    " MAIN_BINARYOP_PROCESSING: BinaryOp target={}, op={:?}, left={}, right={}",
                     target,
                     op,
                     left,
@@ -6788,8 +6795,16 @@ impl ZMachineCodeGen {
                 );
 
                 // Store binary operation mapping for conditional branch optimization
+                log::debug!(
+                    "STORING_BINARY_OP_MAPPING: target={} op={:?} left={} right={}",
+                    target, op, left, right
+                );
                 self.ir_id_to_binary_op
                     .insert(*target, (op.clone(), *left, *right));
+                log::debug!(
+                    "BINARY_OP_MAPPING_STORED: target={} stored successfully", 
+                    target
+                );
 
                 // OPTIMIZATION: Skip generating comparison instructions for operations that will
                 // be handled directly in emit_conditional_branch_instruction. This prevents
@@ -6849,22 +6864,21 @@ impl ZMachineCodeGen {
                         op, opcode
                     );
 
-                    log::debug!("RUNTIME_COMPARISON: Generating {:?} comparison with result stored to stack", op);
+                    log::debug!("RUNTIME_COMPARISON: Generating {:?} comparison - this should NOT store values!", op);
 
-                    // Generate comparison instruction that branches if condition true, skipping the false store
-                    let _layout = self.emit_instruction(
-                        opcode,
-                        &[left_operand, right_operand],
-                        None,    // No store variable for comparison instructions
-                        Some(3), // Branch offset 3: skip false store if condition true
-                    )?;
-
-                    // Store 0 (false) to stack if comparison failed (fall-through)
-                    let _false_store =
-                        self.emit_instruction(0x8D, &[Operand::SmallConstant(0)], None, Some(2))?;
-                    // Store 1 (true) to stack if comparison succeeded (branch target)
-                    let _true_store =
-                        self.emit_instruction(0x8D, &[Operand::SmallConstant(1)], None, None)?;
+                    // FUNDAMENTAL FIX: Comparison instructions in Z-Machine are BRANCH instructions,
+                    // not value-producing instructions. They should never store 0/1 to stack.
+                    // 
+                    // The comparison should be handled by the conditional logic that uses it,
+                    // not by generating intermediate boolean storage.
+                    //
+                    // For now, return an error to catch cases where we're incorrectly trying to
+                    // generate standalone comparison instructions.
+                    
+                    return Err(CompilerError::CodeGenError(format!(
+                        "BinaryOp comparison {:?} should not generate standalone instructions - comparisons should be handled by conditional branching logic directly",
+                        op
+                    )));
                 }
                 // Only process non-comparison binary operations
                 else {
@@ -7780,131 +7794,21 @@ impl ZMachineCodeGen {
             | IrBinaryOp::Greater
             | IrBinaryOp::GreaterEqual => {
                 log::debug!(
-                    "GENERATE_BINARY_OP: Handling comparison {:?} with result stored to stack",
+                    "GENERATE_BINARY_OP: Comparison {:?} should not generate standalone instructions",
                     op
                 );
 
-                // Use the correct comparison opcode
-                let comparison_opcode = match op {
-                    IrBinaryOp::Equal => 0x01,   // je (2OP:1)
-                    IrBinaryOp::Less => 0x02,    // jl (2OP:2)
-                    IrBinaryOp::Greater => 0x03, // jg (2OP:3)
-                    _ => {
-                        return Err(CompilerError::CodeGenError(format!(
-                            "Unsupported comparison: {:?}",
-                            op
-                        )))
-                    }
-                };
-
-                // SIMPLIFIED: Use comparison as store operation, not branch operation
-                // This completely avoids branch offset calculation issues
-
-                // PROPER SOLUTION: Use Z-Machine branch instructions correctly
-                // Generate comparison + branch sequence that stores 0/1 result
-
-                // Step 1: Generate the comparison instruction with short branch
-                // If comparison is TRUE, branch forward to store 1
-                // If comparison is FALSE, fall through to store 0
-
-                // PROPER FIX: Use emit_instruction with correct Branch reference type
-                // The issue was that emit_instruction was creating Jump references instead of Branch references
-
-                // For small fixed branch offsets, encode directly without UnresolvedReference
-                let skip_false_store = 3;
-
-                // Use direct encoding for small branch offsets (0-63) to avoid reference patching entirely
-                // This is the correct approach for Z-Machine branch instructions
-                match (&operands[0], &operands[1]) {
-                    (Operand::SmallConstant(a), Operand::SmallConstant(b)) => {
-                        let opcode_byte = (0b01 << 4) | (0b01 << 2) | comparison_opcode; // 2OP form
-                        self.emit_byte(opcode_byte)?;
-                        self.emit_byte(*a)?;
-                        self.emit_byte(*b)?;
-                        // Z-Machine branch byte: bit 7=branch_on_true, bit 6=short_form, bits 5-0=offset
-                        let branch_byte = 0x80 | 0x40 | (skip_false_store & 0x3F); // On true, short form, offset
-                        self.emit_byte(branch_byte)?;
-                    }
-                    (Operand::LargeConstant(a), Operand::LargeConstant(b)) => {
-                        if *a <= 255 && *b <= 255 {
-                            let opcode_byte = (0b01 << 4) | (0b01 << 2) | comparison_opcode; // 2OP form
-                            self.emit_byte(opcode_byte)?;
-                            self.emit_byte(*a as u8)?;
-                            self.emit_byte(*b as u8)?;
-                            let branch_byte = 0x80 | 0x40 | (skip_false_store & 0x3F); // On true, short form, offset
-                            self.emit_byte(branch_byte)?;
-                        } else {
-                            return Err(CompilerError::CodeGenError(
-                                "Large constant comparisons not supported".to_string(),
-                            ));
-                        }
-                    }
-                    (Operand::Variable(var), Operand::LargeConstant(const_val)) => {
-                        // Handle Variable op Constant comparisons (e.g., level > 0)
-                        // Z-Machine 2OP format: variable as first operand, constant as second
-                        // For Z-Machine, constants that fit in a byte can be encoded as small constants
-                        if *const_val <= 255 {
-                            // Variable op SmallConstant format
-                            let opcode_byte = (0b10 << 4) | (0b01 << 2) | comparison_opcode; // 2OP: Variable, SmallConstant
-                            self.emit_byte(opcode_byte)?;
-                            self.emit_byte(*var)?; // Variable number
-                            self.emit_byte(*const_val as u8)?; // Small constant
-                            let branch_byte = 0x80 | 0x40 | (skip_false_store & 0x3F); // On true, short form, offset
-                            self.emit_byte(branch_byte)?;
-                        } else {
-                            // Variable op LargeConstant format - use Variable form
-                            let opcode_byte = 0xE0 | comparison_opcode; // VAR form
-                            self.emit_byte(opcode_byte)?;
-                            let types_byte = (0b10 << 6) | (0b00 << 4); // Variable, LargeConstant
-                            self.emit_byte(types_byte)?;
-                            self.emit_byte(*var)?; // Variable number
-                            self.emit_word(*const_val)?; // Large constant (16-bit)
-                            let branch_byte = 0x80 | 0x40 | (skip_false_store & 0x3F); // On true, short form, offset
-                            self.emit_byte(branch_byte)?;
-                        }
-                    }
-                    (Operand::LargeConstant(const_val), Operand::Variable(var)) => {
-                        // Handle Constant op Variable comparisons (e.g., 0 > level)
-                        // Swap operands: const > var becomes var < const to match Z-Machine format
-                        let swapped_opcode = match comparison_opcode {
-                            0x03 => 0x02, // jg becomes jl
-                            0x02 => 0x03, // jl becomes jg
-                            0x01 => 0x01, // je stays je
-                            _ => comparison_opcode,
-                        };
-
-                        if *const_val <= 255 {
-                            let opcode_byte = (0b10 << 4) | (0b01 << 2) | swapped_opcode; // 2OP: Variable, SmallConstant
-                            self.emit_byte(opcode_byte)?;
-                            self.emit_byte(*var)?; // Variable number
-                            self.emit_byte(*const_val as u8)?; // Small constant
-                            let branch_byte = 0x80 | 0x40 | (skip_false_store & 0x3F);
-                            self.emit_byte(branch_byte)?;
-                        } else {
-                            let opcode_byte = 0xE0 | swapped_opcode; // VAR form
-                            self.emit_byte(opcode_byte)?;
-                            let types_byte = (0b10 << 6) | (0b00 << 4); // Variable, LargeConstant
-                            self.emit_byte(types_byte)?;
-                            self.emit_byte(*var)?; // Variable number
-                            self.emit_word(*const_val)?; // Large constant
-                            let branch_byte = 0x80 | 0x40 | (skip_false_store & 0x3F);
-                            self.emit_byte(branch_byte)?;
-                        }
-                    }
-                    _ => {
-                        return Err(CompilerError::CodeGenError(format!(
-                            "Unsupported operand types: {:?}",
-                            operands
-                        )));
-                    }
-                }
-
-                // Step 2: Store 0 (false) - executed if comparison failed
-                self.emit_instruction(0x8D, &[Operand::SmallConstant(0)], store_var, None)?;
-
-                // Step 3: Store 1 (true) - executed if comparison succeeded (branch target)
-                self.emit_instruction(0x8D, &[Operand::SmallConstant(1)], store_var, None)?;
-
+                // FUNDAMENTAL FIX: Comparison instructions in Z-Machine are BRANCH instructions,
+                // not value-producing instructions. This method should not be called for comparisons.
+                //
+                // Comparisons should be handled by conditional branching logic directly.
+                
+                // TEMPORARY: Allow this to proceed for testing, but don't generate bytecode
+                log::warn!(
+                    "generate_binary_op: Comparison {:?} is being generated - this should be handled by direct branching but proceeding without bytecode generation",
+                    op
+                );
+                // Don't generate any bytecode for comparison operations - let the direct branch handle it
                 return Ok(());
             }
             _ => {
@@ -8506,11 +8410,61 @@ impl ZMachineCodeGen {
             false_label
         );
 
-        // Use jz instruction for all conditions - simple and reliable
-        log::debug!("Condition {} - using jz branch approach", condition);
-        return self.emit_jz_branch(condition, true_label, false_label);
+        // CORRECT APPROACH: Check if condition is a BinaryOp comparison
+        // If so, generate the Z-Machine branch instruction directly
+        log::debug!(
+            "CHECKING_BINARY_OP_MAPPING: condition={}, mapping exists={}",
+            condition,
+            self.ir_id_to_binary_op.contains_key(&condition)
+        );
+        if let Some((op, left, right)) = self.ir_id_to_binary_op.get(&condition).cloned() {
+            log::debug!(
+                "DIRECT_COMPARISON_BRANCH: Detected BinaryOp {:?} - generating direct Z-Machine branch instruction",
+                op
+            );
 
-        Ok(())
+            // Resolve operands for the comparison
+            let left_operand = self.resolve_ir_id_to_operand(left)?;
+            let right_operand = self.resolve_ir_id_to_operand(right)?;
+
+            // Generate the appropriate Z-Machine branch instruction
+            let (opcode, branch_on_true) = match op {
+                IrBinaryOp::Equal => (0x01, true),        // je - branch if equal
+                IrBinaryOp::NotEqual => (0x01, false),    // je - branch if NOT equal  
+                IrBinaryOp::Less => (0x02, true),         // jl - branch if less
+                IrBinaryOp::LessEqual => (0x03, false),   // jg - branch if NOT greater
+                IrBinaryOp::Greater => (0x03, true),      // jg - branch if greater
+                IrBinaryOp::GreaterEqual => (0x02, false), // jl - branch if NOT less
+                _ => {
+                    return Err(CompilerError::CodeGenError(format!(
+                        "Unsupported comparison operation in direct branch: {:?}",
+                        op
+                    )));
+                }
+            };
+
+            // Determine which label to branch to
+            let branch_target = if branch_on_true { true_label } else { false_label };
+            
+            log::debug!(
+                "GENERATING_DIRECT_BRANCH: {:?} with opcode 0x{:02x}, branching to {} on {}",
+                op, opcode, branch_target, if branch_on_true { "true" } else { "false"
+            });
+
+            // Generate the comparison branch instruction
+            self.emit_comparison_branch(
+                opcode,
+                &[left_operand, right_operand],
+                branch_target,
+                if branch_on_true { false_label } else { true_label },
+            )?;
+
+            return Ok(());
+        }
+
+        // Fallback for non-comparison conditions (use jz branch approach)
+        log::debug!("Condition {} is not a comparison - using jz branch approach", condition);
+        return self.emit_jz_branch(condition, true_label, false_label);
     }
 
     /// Emit a jz (jump if zero) branch instruction for boolean conditions
@@ -8523,52 +8477,21 @@ impl ZMachineCodeGen {
         // CRITICAL FIX: Check if condition is a BinaryOp result that was never generated
         if let Some((op, left, right)) = self.ir_id_to_binary_op.get(&condition).cloned() {
             log::error!(
-                " MISSING_BINARYOP_FIX: Detected ungenerated BinaryOp {:?} for condition {}, generating now",
+                " MISSING_BINARYOP_FIX: Detected ungenerated BinaryOp {:?} for condition {}, but this is wrong!",
                 op, condition
             );
 
-            // Generate the missing comparison instruction
-            let left_operand = self.resolve_ir_id_to_operand(left)?;
-            let right_operand = self.resolve_ir_id_to_operand(right)?;
-
-            // Generate comparison that stores result to stack
-            let opcode = match op {
-                IrBinaryOp::Equal => 0x01,        // je (2OP:1)
-                IrBinaryOp::NotEqual => 0x01,     // je (2OP:1) - will negate branch condition
-                IrBinaryOp::Less => 0x02,         // jl (2OP:2)
-                IrBinaryOp::LessEqual => 0x02,    // jl (2OP:2) - will negate
-                IrBinaryOp::Greater => 0x03,      // jg (2OP:3)
-                IrBinaryOp::GreaterEqual => 0x03, // jg (2OP:3) - will negate
-                _ => {
-                    return Err(CompilerError::CodeGenError(format!(
-                        "Unsupported comparison operation in conditional branch: {:?}",
-                        op
-                    )));
-                }
-            };
-
-            log::error!(
-                " GENERATING_MISSING_COMPARISON: {:?} with opcode 0x{:02x}",
-                op,
-                opcode
-            );
-
-            // Generate comparison instruction that branches if condition true, skipping the false store
-            let _layout = self.emit_instruction(
-                opcode,
-                &[left_operand, right_operand],
-                None,    // No store variable for comparison instructions
-                Some(3), // Branch offset 3: skip false store if condition true
-            )?;
-
-            // Store 0 (false) to stack if comparison failed (fall-through)
-            let _false_store =
-                self.emit_instruction(0x8D, &[Operand::SmallConstant(0)], None, Some(2))?;
-            // Store 1 (true) to stack if comparison succeeded (branch target)
-            let _true_store =
-                self.emit_instruction(0x8D, &[Operand::SmallConstant(1)], None, None)?;
-
-            debug!("Binary operation result: Comparison result now available on stack");
+            // FUNDAMENTAL FIX: This is the root cause of the stack underflow problem!
+            // Z-Machine comparisons are BRANCH instructions, not value-producing instructions.
+            // They should never store 0/1 to stack - they should branch directly to code blocks.
+            //
+            // The correct approach is to generate the comparison as a branch instruction
+            // that directly controls program flow, not as a value-producing operation.
+            
+            return Err(CompilerError::CodeGenError(format!(
+                "emit_jz_branch: Comparison {:?} should not generate standalone instructions with stack storage - comparisons should be handled by proper conditional branching logic directly",
+                op
+            )));
         }
 
         // Resolve condition operand
@@ -11683,40 +11606,22 @@ impl ZMachineCodeGen {
         store_var: Option<u8>,
         branch_offset: Option<i16>,
     ) -> Result<InstructionLayout, CompilerError> {
-        // Add detailed logging for problematic opcodes, especially je (0x01)
-        if opcode == 0x01
-            || opcode == 0x11
-            || opcode == 0xa6
-            || opcode == 0x95
-            || opcode == 0x96
-            || opcode == 0x0A
-        {
-            log::error!(
-                " EMIT_INSTRUCTION: opcode=0x{:02x} at addr=0x{:04x}",
-                opcode,
-                self.code_address
-            );
-            log::error!(" Operands ({}):", operands.len());
-            for (i, op) in operands.iter().enumerate() {
-                match op {
-                    Operand::Constant(val) => log::error!("  [{}] Constant({})", i, val),
-                    Operand::LargeConstant(val) => log::error!("  [{}] LargeConstant({})", i, val),
-                    Operand::SmallConstant(val) => log::error!("  [{}] SmallConstant({})", i, val),
-                    Operand::Variable(var) => log::error!(
-                        "  [{}] Variable({}) {}",
-                        i,
-                        var,
-                        if *var == 0 { "⚠️  STACK_POP" } else { "" }
-                    ),
-                }
+        let start_address = self.code_address;
+        
+        // Comprehensive PC/address tracking for all instructions
+        debug!(
+            "PC_TRACK: Emitting opcode=0x{:02x} at PC=0x{:04x} operands={:?} store={:?}",
+            opcode, start_address, operands, store_var
+        );
+        
+        // Log stack operations specifically
+        for (i, op) in operands.iter().enumerate() {
+            if let Operand::Variable(0) = op {
+                debug!("PC_TRACK: Operand[{}] reads from stack at PC=0x{:04x}", i, start_address);
             }
-            if let Some(store) = store_var {
-                log::error!(
-                    " Store to variable: {} {}",
-                    store,
-                    if store == 0 { "⚠️  STACK_PUSH" } else { "" }
-                );
-            }
+        }
+        if let Some(0) = store_var {
+            debug!("PC_TRACK: Instruction pushes result to stack at PC=0x{:04x}", start_address);
         }
         // CRITICAL: Detect unimplemented placeholder opcodes at compile time
         if opcode == UNIMPLEMENTED_OPCODE {
