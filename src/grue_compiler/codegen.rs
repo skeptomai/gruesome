@@ -10970,10 +10970,7 @@ impl ZMachineCodeGen {
         };
 
         // Track critical addresses around the crash point AND the 0xa0 byte issue
-        if (0x0bd0..=0x0be0).contains(&runtime_addr)
-            || (byte == 0xa0)
-            || (runtime_addr == 0x0365)
-        {
+        if (0x0bd0..=0x0be0).contains(&runtime_addr) || (byte == 0xa0) || (runtime_addr == 0x0365) {
             log::debug!(
                 "🎯 CRITICAL_BYTE: runtime_addr=0x{:04x} byte=0x{:02x} phase={} TRACKING_0xa0_AND_0x0365",
                 runtime_addr,
