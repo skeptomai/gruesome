@@ -1,0 +1,28 @@
+// Test math utility functions specifically
+fn main() {
+    print("Testing Math Utility Functions");
+    
+    // Test abs
+    let negative = -42;
+    let positive = abs(negative);
+    print("abs(-42): " + to_string(positive));
+    
+    // Test min and max
+    let a = 10;
+    let b = 5;
+    let minimum = min(a, b);
+    let maximum = max(a, b);
+    print("min(10, 5): " + to_string(minimum));
+    print("max(10, 5): " + to_string(maximum));
+    
+    // Test rounding functions
+    let value = 37; // Representing 3.7
+    let rounded = round(value);
+    let floored = floor(value);
+    let ceiled = ceil(value);
+    print("round(37): " + to_string(rounded));
+    print("floor(37): " + to_string(floored));
+    print("ceil(37): " + to_string(ceiled));
+    
+    print("Math utility tests complete");
+}

@@ -1,0 +1,8 @@
+// Test property access in conditional - minimal case  
+init {
+    print("Testing property conditional...");
+    if (player.location == 1) {
+        print("Location is 1");
+    }
+    print("Done");
+}

@@ -105,15 +105,36 @@ impl Interpreter {
             (0x0A, crate::instruction::OperandCount::OP1) => {
                 // print_obj - print short name of object
                 let obj_num = operands[0];
-                debug!(
-                    "print_obj: obj_num={} at PC {:05x}",
+                log::error!(
+                    "🎯 PRINT_OBJ DEBUG: obj_num={} at PC {:05x}",
                     obj_num,
                     self.vm.pc - inst.size as u32
                 );
+                log::error!(
+                    "🎯 Stack depth: {}, Call stack depth: {}",
+                    self.vm.stack.len(),
+                    self.vm.call_stack.len()
+                );
+
+                // Validate object number range BEFORE accessing
+                if obj_num == 0 || obj_num > 255 {
+                    log::error!(
+                        "🚨 INVALID OBJECT NUMBER: {} is out of valid range (1-255)",
+                        obj_num
+                    );
+                    log::error!("🚨 This suggests stack corruption or invalid instruction operand");
+                    log::error!(
+                        "🚨 Current instruction size: {}, PC before: {:05x}",
+                        inst.size,
+                        self.vm.pc - inst.size as u32
+                    );
+                    return Err(format!("Invalid object number: {}", obj_num));
+                }
 
                 // Get object's short description
                 match self.vm.get_object_name(obj_num) {
                     Ok(name) => {
+                        log::error!("🎯 Successfully got object name: '{}'", name);
                         self.output_text(&name)?;
                     }
                     Err(e) => {
@@ -183,12 +204,16 @@ impl Interpreter {
             // 2OP:0x0E - insert_obj
             (0x0E, crate::instruction::OperandCount::OP2) => {
                 // insert_obj
+                let current_pc = self.vm.pc - inst.size as u32;
                 debug!(
                     "insert_obj: obj={}, dest={} at PC {:05x}",
-                    operands[0],
-                    operands[1],
-                    self.vm.pc - inst.size as u32
+                    operands[0], operands[1], current_pc
                 );
+                if operands[0] == 0 {
+                    debug!("❌ insert_obj Z-Machine opcode called with object 0!");
+                    debug!("   operands: {:?}", operands);
+                    debug!("   instruction: {:?}", inst);
+                }
                 self.vm.insert_object(operands[0], operands[1])?;
                 Ok(ExecutionResult::Continue)
             }

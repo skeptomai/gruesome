@@ -733,3 +733,383 @@ object_id          // Object to check (large constant)
 - Fix property access + method calls in semantic analysis
 - Enhance object/room IR to Z-Machine conversion  
 - Implement remaining instruction set coverage
+
+---
+
+## RESOLVED/OUTDATED SECTIONS FROM CLAUDE.MD (Moved September 2025)
+
+### CURRENT SESSION STATUS (August 30, 2025) - OUTDATED
+
+**STATUS**: Single-path IR translation architecture fully operational, reference resolution fixed, mini_zork implementation plan ready.
+
+#### ✅ PHASE 5 COMPLETE: Single-Path Migration Success
+
+**Phase 5C**: Opcode corruption eliminated - correct 0x8d (print_paddr) instructions generated  
+**Phase 5D**: Reference resolution fixed - address translation from code-generation space to final memory space working  
+**Result**: Z-Machine compiler generates correct bytecode with proper placeholder resolution
+
+#### ✅ TECHNICAL ACHIEVEMENTS
+
+**Reference Resolution Fix** - `src/grue_compiler/codegen.rs:1576-1587`:
+- References created during code generation at 0x0040+ 
+- Final code located at 0x0344+ during assembly
+- Added address translation: `(reference.location - 0x0040) + final_code_base`
+- Placeholders now correctly resolved: `0xFFFF` → `0x0198` (packed addresses)
+
+**Verification Results:**
+- ✅ **test_01_basic**: Compiles and runs "Test 1: Basic print works"
+- ✅ **test_03_function**: Function calls execute correctly  
+- ✅ **Bytecode Correctness**: `8d ff ff ba` → `8d 01 98 ba` (valid instructions)
+- ✅ **Address Translation**: Generation 0x0041 → Final 0x0345 (correct mapping)
+
+### MINI_ZORK IMPLEMENTATION PLAN (August 30, 2025) - SUPERSEDED
+
+**Goal**: Complete mini_zork.grue compilation and execution by implementing core object-property system.
+
+#### **Critical Missing Features Analysis**
+
+**Root Issue**: `player.location = west_of_house;` in init block fails due to unimplemented operations:
+1. `LoadImmediate { target: 62, value: Integer(1) }` - Object reference loading
+2. `GetProperty { target: 63, object: 62, property: "location" }` - Property access  
+3. `GetPropertyByNumber { target: 64, object: 63, property_num: 2 }` - Numbered properties
+4. Cascading failure: "No mapping found for IR ID 64" - Target mapping system breaks
+
+#### **Implementation Phases**
+
+**Phase 1: Object Loading (Priority: CRITICAL)**
+- **File**: `src/grue_compiler/codegen.rs` around line 2240 (LoadImmediate)
+- **Task**: Handle `LoadImmediate` for object references (`player`, `west_of_house`)
+- **Implementation**: Map object names to Z-Machine object numbers in global variables
+- **Z-Machine**: Store object references as global variable values (1-240)
+
+**Phase 2: Property Access (Priority: CRITICAL)**  
+- **File**: `src/grue_compiler/codegen.rs` line 3630 (GetProperty)
+- **Task**: Replace `⚠️ UNIMPLEMENTED: GetProperty - skipping` with real implementation
+- **Z-Machine**: Use `get_prop` instruction (2OP:17, hex 0x11)
+- **Operands**: object_number, property_number → result
+
+**Phase 3: Property Assignment (Priority: CRITICAL)**
+- **File**: `src/grue_compiler/codegen.rs` around line 3641 (SetProperty) 
+- **Task**: Verify/complete SetProperty implementation with `put_prop`
+- **Z-Machine**: Use `put_prop` instruction (VAR:227, hex 0xE3)
+- **Operands**: object_number, property_number, value
+
+**Phase 4: Numbered Properties (Priority: HIGH)**
+- **File**: `src/grue_compiler/codegen.rs` line 3697 (GetPropertyByNumber)
+- **Task**: Replace `⚠️ UNIMPLEMENTED: GetPropertyByNumber - skipping`
+- **Z-Machine**: Direct numbered property access for internal operations
+
+#### **Success Criteria**
+- ✅ mini_zork.grue compiles without "COMPILER BUG" crashes
+- ✅ `player.location = west_of_house` assignment works  
+- ✅ Property access (`player.location.desc`) functional
+- ✅ Basic gameplay operational (room navigation, object interaction)
+
+**Estimated Time**: 4-6 hours total implementation
+**Files Modified**: `src/grue_compiler/codegen.rs` (4 specific function implementations)
+
+### PLACEHOLDER ISSUE RESOLUTION (Aug 24, 2025) - RESOLVED
+
+#### 🎉 **MAJOR BREAKTHROUGH: Complex Boolean Expression Placeholders RESOLVED**
+
+**Issue Status**: ✅ **COMPLETELY FIXED** - All compilation placeholder errors eliminated
+**Side Effect**: 🔴 **Runtime regressions** introduced in 3 examples
+
+##### ✅ **What We Successfully Fixed**
+- **Root Cause Found**: Unresolved `0xFFFF` placeholders in VAR `print_char` instructions (not branch instructions as initially thought)
+- **Technical Issue**: Function arguments in `generate_call_with_reference()` were creating placeholders without unresolved references
+- **Location**: `src/grue_compiler/codegen.rs:2959` - string literal arguments created `placeholder_word()` but no `UnresolvedReference`
+- **Solution**: Added proper string argument resolution with unresolved reference creation
+
+##### 🔧 **Technical Fix Details**
+**File**: `src/grue_compiler/codegen.rs:2955-2996`
+**Method**: `generate_call_with_reference()`
+
+**Before** (broken):
+```rust
+for &arg_id in args {
+    if let Some(literal_value) = self.get_literal_value(arg_id) {
+        operands.push(Operand::LargeConstant(literal_value));
+    } else {
+        operands.push(Operand::LargeConstant(placeholder_word())); // ❌ No reference created
+    }
+}
+```
+
+**After** (fixed):
+```rust
+for &arg_id in args {
+    if let Some(literal_value) = self.get_literal_value(arg_id) {
+        operands.push(Operand::LargeConstant(literal_value));
+    } else if self.ir_id_to_string.contains_key(&arg_id) {
+        // ✅ String literals: Create placeholder + unresolved reference
+        let operand_location = self.current_address + 1 + operands.len() * 2;
+        operands.push(Operand::LargeConstant(placeholder_word()));
+        let reference = UnresolvedReference {
+            reference_type: ReferenceType::StringRef,
+            location: operand_location,
+            target_id: arg_id,
+            is_packed_address: true,
+            offset_size: 2,
+        };
+        self.reference_context.unresolved_refs.push(reference);
+    } else {
+        // ✅ Other types: Use existing operand resolution
+        match self.resolve_ir_id_to_operand(arg_id) { ... }
+    }
+}
+```
+
+##### 📊 **Results: Compilation Success**
+- **mini_zork**: ✅ 5 → 0 unresolved placeholders
+- **control_flow_simple**: ✅ 2 → 0 unresolved placeholders
+- **All examples**: ✅ 100% compilation success rate
+- **Complex expressions**: ✅ Ternary conditionals with property access work
+- **String concatenation**: ✅ `"text " + (condition ? "a" : "b") + " more"` compiles
+
+##### 🔴 **CRITICAL: Runtime Regressions Introduced**
+
+**Problem**: The fix was too broad and affected existing working behavior
+
+**Affected Examples**:
+1. **mini_zork** - `Error: Cannot insert object 0`
+   - Starts execution, shows title screen
+   - Crashes during object manipulation operations
+   
+2. **control_flow_simple** - `Error: Stack is empty`  
+   - Starts execution, shows some output
+   - Crashes due to stack underflow in complex control flow
+   
+3. **property_test** - Runtime failure (details unknown)
+
+**CI Test Results**:
+- **Before fix**: 4/6 examples compiled, many had placeholders
+- **After fix**: 7/7 examples compile ✅, but 3/7 have runtime errors ❌
+
+##### 🔍 **Root Cause Analysis of Regressions**
+
+**Hypothesis**: Our fix changed argument resolution behavior too broadly:
+
+1. **Object Reference Corruption**: Object IDs previously resolved as `LargeConstant(object_number)` might now be incorrectly treated as string literals
+2. **Function Call Bytecode Changes**: Different instruction sequences generated for function arguments
+3. **Stack Management Disruption**: Complex argument resolution might affect stack operations
+
+**Evidence**:
+- Working examples (test_01_basic through test_04_room) still work ✅
+- Only complex examples with object operations fail ❌
+- All failures are **runtime** (execution), not **compile-time** ✅
+
+### Current Critical Bug Investigation (Aug 16, 2025) - RESOLVED
+
+#### Root Cause Analysis: Address Patching Memory Corruption
+
+**Issue**: "Invalid object number: 989" runtime error in simple test cases
+**Actual Problem**: Address resolution phase corrupting instruction bytecode stream
+
+#### Technical Investigation Results:
+
+##### 1. Error Manifestation
+- **Runtime Error**: "Invalid object number: 989" during execution of `debug_object_error.z3`
+- **Object 989**: = 0x03DD (packed string address) being interpreted as object number
+- **Symptom**: Address resolution patches corrupting nearby instruction bytes
+
+##### 2. Memory Corruption Discovery
+**Original Expected Layout:**
+```
+0x0732: 0x82 (print_paddr)
+0x0733: 0x00 (operand placeholder)  
+0x0734: 0x00 (operand placeholder)
+0x0735: 0xE4 (VAR sread instruction)
+0x0736: 0x0F (operand types)
+```
+
+**Actual Patched Layout:**
+```
+0x0732: 0x82 (print_paddr) ✓
+0x0733: 0x03 (patched string address high byte) ✓
+0x0734: 0xDD (patched string address low byte) ✓ - WAS CORRUPTION
+0x0735: 0xE4 (VAR sread instruction) ✓
+0x0736: 0x0F (operand types) ✓
+```
+
+##### 3. Address Resolution Trace
+**Critical Patch Events:**
+- String ID 9002 (prompt "> ") resolved to address 0x07BA
+- Packed address: 0x07BA / 2 = 0x03DD  
+- Patch location: 0x0733 (2 bytes: 0x03 0xDD)
+- **Result**: Correct patching, NOT corruption as initially thought
+
+##### 4. Real Issue: Control Flow Problems
+**Discovery**: The patching is working correctly. The issue is **execution flow**:
+- Print instruction executes successfully (shows "Simple test - no objects")
+- Jump instruction at 0x0741: `0x8C 0xFF 0xF0` (jump with offset -16)
+- **Target calculation**: PC=0x0744, offset=-16 → target=0x0732 (correct)
+- **Problem**: Something after this is interpreting 0x03DD as an object number
+
+#### Current Status
+- ✅ **Identified**: Address patching is working correctly (not corrupted)
+- ✅ **Isolated**: Error occurs after successful print execution  
+- ✅ **Located**: Issue is in post-print control flow execution
+- ✅ **RESOLVED**: Control flow issue fixed in later sessions
+
+### Runtime Issues Fix Plan (Aug 12-14, 2025) - COMPLETED
+
+#### Status: All Critical Runtime Issues Resolved ✅
+
+**Completed Runtime Fixes:**
+- ✅ Property access implementation (complete)
+- ✅ Error handling and recovery (complete)  
+- ✅ Complex control flow compilation (complete)
+- ✅ **Stack Management Crisis RESOLVED** (Aug 14, 2025)
+- ✅ **String Concatenation System** (complete implementation)
+- ✅ **Function Call Stack Balance** (rtrue instruction fix)
+- ✅ **100% Success Rate Achievement** (27/27 examples working)
+
+**Previous Runtime Issues (NOW RESOLVED):**
+
+##### 1. Stack Management Crisis ✅ FIXED
+- **Was**: "Stack is empty" errors in complex control flow
+- **Solution**: Implemented proper `rtrue` instructions for function call placeholders
+- **Result**: Perfect stack balance, no more underflow errors
+
+##### 2. String Concatenation ✅ IMPLEMENTED  
+- **Was**: Missing support for complex string operations
+- **Solution**: Full compile-time string concatenation with `to_string()` support
+- **Result**: Complex expressions like `"Level " + to_string(x) + " complete"` working
+
+##### 3. Property System Gaps 🟡 → **COMPLETED IN LATER SESSIONS**
+- **Issue**: Property access uses placeholder implementations
+- **Root Cause**: Hardcoded object numbers instead of proper IR→Z-Machine mapping
+- **Impact**: Property operations don't access real object data
+
+##### 4. Object Resolution Problems 🟡 → **COMPLETED IN LATER SESSIONS**  
+- **Issue**: Objects not properly mapped to Z-Machine object table
+- **Root Cause**: Missing object table generation and ID resolution
+- **Impact**: Object manipulation operations fail
+
+### Last Session Summary (v0.9.0 Release - Aug 11, 2025) - OUTDATED
+
+#### Major Accomplishments
+✅ **Complete Testing Infrastructure Setup**
+- All 108 Grue compiler tests verified and passing
+- Gameplay tests validated (Zork I, AMFV, Trinity)
+- Disassembly tests confirmed working
+- Golden file validation system operational
+
+✅ **Enhanced CI/CD Infrastructure**
+- Updated CI workflows to include Grue compiler builds
+- Enhanced pre-CI script with all three binary builds
+- Release workflow now includes all tools (gruesome, grue-compiler, gruedasm-txd)
+- Cross-platform binary generation for macOS and Windows
+
+✅ **Professional Release v0.9.0**
+- Major milestone release with complete compiler implementation
+- Fixed clippy warning in semantic analysis
+- Successful automated release process
+- Comprehensive release notes with feature overview
+
+#### Current State
+- **Repository**: Up to date with all changes committed and pushed
+- **Latest Release**: v0.9.0 (successfully deployed)
+- **CI Status**: All workflows passing
+- **Code Quality**: Zero warnings, fully formatted
+- **Test Coverage**: Complete (interpreter + compiler + integration)
+
+#### Next Session Preparation
+- All infrastructure is in place for continued development
+- Pre-CI script ready for validation before any commits
+- Release automation working properly
+- Ready for new features or game compatibility work
+
+### Zork I-Level Features Battle Plan (Aug 13, 2025) - OUTDATED
+
+#### Current Grue Capabilities vs Zork I Requirements
+
+**What We Have ✅:**
+- Basic text adventure structure (rooms, objects, movement)
+- Simple property system (openable, container, takeable)
+- Basic built-in functions (print, move, get_location)
+- Grammar system with verb patterns
+- Container relationships and inventory management
+- Simple conditionals and control flow
+- Z-Machine V3/V5 bytecode generation
+
+**Critical Gaps for Zork I Complexity 🔴:**
+
+##### 1. **Advanced Object System** 
+- **Missing**: Complex object relationships, inheritance, class hierarchies
+- **Zork I has**: 200+ objects with sophisticated attribute systems
+- **Current**: Only basic properties (open/closed, container/non-container)
+
+##### 2. **Comprehensive Attribute System**
+- **Missing**: Full Z-Machine attribute support (32 attributes per object)
+- **Zork I uses**: Attributes for light sources, weapons, treasures, scenery
+- **Current**: Hardcoded boolean properties only
+
+##### 3. **Advanced Property System** 
+- **Missing**: Numbered properties, property inheritance, dynamic property modification
+- **Zork I has**: Complex property tables for descriptions, capacity, value
+- **Current**: Basic string properties only
+
+##### 4. **Sophisticated Parser**
+- **Missing**: Multi-word nouns, adjectives, prepositions, disambiguation
+- **Zork I needs**: "get lamp from trophy case", "examine rusty knife"
+- **Current**: Single-word noun matching only
+
+##### 5. **Game State Management**
+- **Missing**: Save/restore, scoring system, turn counters, timers
+- **Zork I has**: Complex state tracking, multiple endings, score calculation
+- **Current**: No persistent state beyond object locations
+
+##### 6. **Advanced Text Features**
+- **Missing**: Dynamic text generation, string manipulation, formatted output
+- **Zork I uses**: Complex description assembly, conditional text
+- **Current**: Static string literals only
+
+#### Implementation Battle Plan
+
+##### **Phase 1: Core Infrastructure (2-3 weeks)**
+**Priority: Critical - Foundation for everything else**
+- [x] Enhanced Object System (32-attribute support, inheritance) - **COMPLETED**
+- [ ] Advanced Property System (numbered properties, dynamic modification)
+- [ ] Robust Parser Engine (multi-word nouns, disambiguation)
+
+##### **Phase 2: Game Mechanics (2-3 weeks)**
+**Priority: High - Essential gameplay features**
+- [ ] State Management System (save/restore, scoring, turn counters)
+- [ ] Advanced Text System (dynamic generation, conditional text)
+- [ ] Environmental Systems (light/darkness, capacity, complex interactions)
+
+##### **Phase 3: Advanced Features (2-3 weeks)**
+**Priority: Medium - Polish and sophistication**
+- [ ] AI and NPCs (movement, dialogue, interaction)
+- [ ] Complex Puzzles (multi-step sequences, transformations)
+- [ ] Polish and Optimization (performance, memory management)
+
+##### **Phase 4: Testing and Validation (1-2 weeks)**
+**Priority: Critical - Ensuring production readiness**
+- [ ] Comprehensive Testing (full Zork I recreation, stress testing)
+- [ ] Cross-platform validation and production hardening
+
+#### Success Metrics
+- **Capability**: Support all Zork I game mechanics (200+ objects, complex puzzles)
+- **Compatibility**: Generate Z-Machine files playable in standard interpreters  
+- **Performance**: Handle complex games without runtime errors
+- **Completeness**: Successfully compile and run full Zork I recreation
+
+#### Milestone Tracking - UPDATED Aug 14, 2025
+- **Phase 0 (Runtime Stability)**: ✅ **COMPLETED** (Aug 12-14, 2025)
+  - Stack management issues resolved
+  - String concatenation implemented  
+  - 100% success rate achieved (27/27 examples)
+- **Phase 1 Start**: **READY TO BEGIN** (Aug 14, 2025)
+- **Phase 1 Target**: Advanced opcodes and object system (Sep 2025)
+- **Phase 2 Target**: Game mechanics and parser (Oct 2025)  
+- **Phase 3 Target**: Advanced features and polish (Nov 2025)
+- **Phase 4 Target**: Full Zork I recreation (Dec 2025)
+
+#### Current Implementation Status (Aug 16, 2025)
+📍 **Position**: Debugging critical bytecode corruption in address resolution
+🎯 **Next Step**: Fix instruction stream corruption in reference patching system
+📊 **Success Rate**: Temporary regression - basic compilation corrupted during execution
+📋 **See**: Current analysis below for detailed investigation results

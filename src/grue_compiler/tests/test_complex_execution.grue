@@ -1,0 +1,31 @@
+fn initialize_game() {
+    print("Game initialization started...");
+    setup_world();
+}
+
+fn setup_world() {
+    print("Setting up world objects...");
+    configure_player();
+}
+
+fn configure_player() {
+    print("Configuring player...");
+    // Test some complex patterns that might exist in mini_zork
+    validate_setup();
+}
+
+fn validate_setup() {
+    print("Validating setup...");
+    print("Setup complete!");
+}
+
+fn display_status() {
+    print("Status: Game ready");
+}
+
+init {
+    print("=== Complex Execution Test ===");
+    initialize_game();
+    display_status();
+    print("=== Test Complete ===");
+}

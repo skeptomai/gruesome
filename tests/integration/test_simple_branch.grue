@@ -1,0 +1,8 @@
+// Minimal branch test
+init {
+    print("Before branch");
+    if 1 == 1 {
+        print("Branch taken");
+    }
+    print("After branch");
+}

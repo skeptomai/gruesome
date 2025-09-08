@@ -1,0 +1,14 @@
+// Simple test for main loop functionality
+// No function calls to avoid return issues
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room for main loop testing."
+    }
+}
+
+init {
+    player.location = test_room;
+    print("Main loop test starting...");
+    print("Type commands to test the interactive loop.");
+}

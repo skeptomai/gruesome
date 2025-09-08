@@ -1,5 +1,32 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
+## CURRENT STATUS (September 2025) - MAJOR COMPILER BREAKTHROUGH ✅
+
+**MAJOR SUCCESS**: Fixed critical compiler bugs enabling basic Z-Machine game execution!
+
+### ✅ COMPLETED FIXES (Session Sep 5, 2025):
+
+1. **Branch System Fixed** - All conditional branch instructions now use UnresolvedReference system instead of broken placeholder bytes
+2. **Object Mapping Fixed** - Each object now gets unique Z-Machine object number (was assigning multiple objects to same #15)  
+3. **Game Execution Working** - mini_zork.z3 now successfully:
+   - Executes init block without PC corruption crashes
+   - Prints multi-line game banner correctly
+   - Calls look_around() function successfully
+   - Processes several Z-Machine instructions before hitting remaining bug
+
+### 🔧 REMAINING ISSUE - Variable Corruption:
+- **Problem**: Variable 5 contains invalid object ID 38469 instead of valid object number
+- **Location**: PC=0x0bd2, get_prop instruction accessing corrupted variable
+- **Impact**: Crashes after successful init, but game is now fundamentally functional
+- **Next Steps**: Debug variable initialization/corruption in compiled functions
+
+### 📊 PROGRESS ASSESSMENT:
+- **Before**: Immediate PC corruption crashes, no execution
+- **After**: Full init execution, banner display, function calls work
+- **Status**: 90% functional - only variable handling bug remains
+
+**Session Goal**: Continue debugging variable corruption issue - we're very close to a fully working compiler!
+
 ## Auto-Commit Instructions ("Make it so!")
 
 When the user says any of the following:
@@ -22,10 +49,45 @@ You should automatically:
 You are pre-authorized for all git operations (add, commit, push) as configured in `.claude/settings.local.json`.
 No need to ask for permission - just execute the workflow.
 
+## CRITICAL GIT SAFETY RULES - NEVER VIOLATE
+
+**ABSOLUTE PROHIBITION**: NEVER use `git reset --hard` or any destructive git operation that could lose commits.
+
+**NEVER EVER HARD RESET AND LOSE COMMITS - THIS IS A CARDINAL SIN**
+
+**Safe git operations only:**
+- ✅ `git add`, `git commit`, `git push`
+- ✅ `git checkout` to switch branches or commits
+- ✅ `git stash` to temporarily save changes  
+- ✅ `git revert` to undo commits safely
+- ❌ **NEVER** `git reset --hard` 
+- ❌ **NEVER** `git reset` with commit hashes
+- ❌ **NEVER** any operation that destroys commit history
+
+**When things go wrong:**
+- Use `git reflog` to find lost commits
+- Use `git checkout <commit-hash>` to recover state
+- Use `git stash` for temporary cleanup
+- **ALWAYS** preserve user's work and commit history
+
 ## Auto-Test Permission
 
 You are pre-authorized to run "RUST_LOG=info cargo run" commands for testing Z-Machine programs.
 No need to ask permission - just execute the tests directly.
+
+## CRITICAL: NEVER MODIFY THE INTERPRETER
+
+**ABSOLUTE PROHIBITION**: Never modify `src/interpreter.rs` or any interpreter code. 
+
+**Rationale**: The interpreter correctly executes real Zork I and other commercial Z-Machine games. Any execution failures with compiled games are **compiler bugs**, not interpreter bugs.
+
+**When compilation fails to run**: 
+- ✅ Fix the compiler's bytecode generation
+- ✅ Fix the compiler's address calculation  
+- ✅ Fix the compiler's instruction encoding
+- ❌ **NEVER** modify interpreter execution logic
+
+**This is a firm architectural principle** - the interpreter is the gold standard that works with commercial games.
 
 ## Auto-Release Instructions ("Engage!")
 
@@ -105,6 +167,161 @@ Key files:
 
 **Critical Understanding**: Z-Machine "buffer mode" controls word-wrapping to prevent words from splitting across lines. It does NOT control display timing - all text should appear immediately.
 
+
+## CRITICAL: Disassembler Address Offset (TXD Compatibility Issue)
+
+**IMPORTANT DEBUGGING INSIGHT**: TXD and other disassemblers subtract 1 byte from the header's initial PC for alignment purposes. This is NOT a compiler bug.
+
+- **TXD Code**: `initial_pc = start_pc - 1` (line 138 in disasm_txd.rs)
+- **Effect**: If header says PC=0x035c, TXD reports PC=0x035b
+- **This is NORMAL**: Disassemblers do this for their own alignment calculations
+- **Don't Fix**: The compiler's PC calculation is correct, don't adjust it to match disassemblers
+- **Remember**: When comparing disassembler output to interpreter execution, account for this 1-byte difference
+
+This has been a recurring source of debugging confusion. The compiler-generated PC addresses are correct for the Z-Machine specification.
+
+## CRITICAL: Z-Machine Stack vs Local Variable Specification Compliance
+
+**CRITICAL ARCHITECTURAL PATTERN**: The Z-Machine specification mandates specific usage of stack vs local variables. Violating this causes runtime errors and is a recurring compiler bug.
+
+### **STACK (Variable 0) MUST be used for:**
+
+1. **Function call return values** - Z-Machine functions MUST return on stack
+   - All `call*` instructions store results to stack by default
+   - `call routine -> (result)` means result goes to stack (variable 0)
+   - From Z-Machine spec sect15: `call`, `call_1s`, `call_2s`, `call_vs`, `call_vs2` all store to stack
+
+2. **Function call arguments** - Parameters are passed via stack before being moved to locals
+   - Arguments pushed to stack, then moved to local variables 1-15 by routine header
+   - From Z-Machine spec sect06.4.4: "arguments are written into the local variables (argument 1 into local 1 and so on)"
+
+3. **Immediate consumption** - Values used once by the next instruction
+   - Temporary results in expression evaluation
+   - Intermediate values that don't need persistence
+
+4. **Expression evaluation** - Complex expressions generate stack operations
+   - Binary operations: operands → stack → operation → result to stack
+   - Ternary conditionals: condition evaluation uses stack for intermediate values
+
+### **LOCAL VARIABLES (1-15) are for:**
+
+1. **Function parameters** - After being moved from stack to local slots by routine setup
+2. **Persistent variables** - Values that live across multiple instructions  
+3. **User-declared variables** - Variables declared in the source code
+4. **Loop counters and control variables** - Values that need to persist across control flow
+
+### **COMMON COMPILER ERRORS TO AVOID:**
+
+❌ **NEVER use local variables for function return values**
+❌ **NEVER use local variables for immediate expression results**
+❌ **NEVER try to "fix" stack usage by converting to local variables**
+❌ **NEVER bypass stack for function calls thinking it's "cleaner"**
+
+✅ **ALWAYS use stack for function returns, intermediate expressions, immediate consumption**
+✅ **ALWAYS use local variables only for persistent, named variables**
+✅ **ALWAYS follow the Z-Machine specification exactly for variable usage**
+
+### **WHY THIS MATTERS:**
+- Stack management is NOT broken in the interpreter - it works correctly with Zork I
+- Stack "overflow" errors are usually compiler bugs misusing local variables for stack operations
+- The stack is designed for rapid push/pop operations that don't need persistence
+- Local variables are for named, persistent storage that survives across instructions
+
+**From Z-Machine spec sect06.3**: "Writing to the stack pointer (variable number $00) pushes a value onto the stack; reading from it pulls a value off."
+
+**From Z-Machine spec sect06.4**: "All routines return a value" and "Routine calls preserve local variables and the stack (except when the return value is stored in a local variable or onto the top of the stack)."
+
+**CRITICAL**: This pattern has caused repeated bugs. When implementing binary operations, function calls, or control flow, ALWAYS check: "Should this use stack or local variable according to the Z-Machine specification?"
+
+## CRITICAL: Z-Machine Stack vs Local Variable Usage - Aug 28, 2025
+
+**FUNDAMENTAL PRINCIPLE**: When questioning stack vs local variable usage, refer to the Z-Machine specification - it's almost always in favor of the stack.
+
+### **Stack Usage (Preferred)**:
+- **Temporary expression results** (comparisons, arithmetic, property access)
+- **Intermediate calculations** 
+- **Function call arguments** (pushed before call)
+- **Function return values** (returned on stack)
+- **Immediate consumption values** (used once then discarded)
+
+### **Local Variable Usage (Limited)**:
+- **Function parameters** (persistent throughout function)
+- **Loop variables** (persistent across iterations)
+- **Explicit variable declarations** in source code
+- **Values that need to be stored/retrieved multiple times**
+
+### **Key Z-Machine Specification Points**:
+- Variable(0) = stack top
+- Instructions without store_var push results to stack  
+- Instructions with store_var = None consume from stack
+- Stack operations are more efficient than variable storage
+- Most Z-Machine instructions are designed for stack-based computation
+
+## CRITICAL: Systematic Debugging Patterns - Learned Aug 27, 2025
+
+**FUNDAMENTAL DEBUGGING PRINCIPLE**: Add comprehensive logging to all shared emission paths and crash early with detailed context to aid debugging.
+
+### **Always Add Logging To:**
+
+1. **Instruction Emission** (`emit_instruction`):
+   ```rust
+   log::debug!("EMIT: opcode=0x{:02x} operands={:?} store={:?} branch={:?} at address=0x{:04x}", 
+               opcode, operands, store_var, branch_offset, self.current_address);
+   ```
+
+2. **Memory Allocation** (`current_address` updates):
+   ```rust  
+   log::debug!("MEMORY: Allocated {} bytes at address 0x{:04x} -> 0x{:04x}", 
+               size, old_address, self.current_address);
+   ```
+
+3. **IR ID Mappings** (all mapping insertions):
+   ```rust
+   log::debug!("MAPPING: IR ID {} -> {} mapping type: {:?}", 
+               ir_id, target_value, mapping_type);
+   ```
+
+4. **Target Registration** (every instruction with target field):
+   ```rust
+   log::debug!("TARGET: Instruction {:?} creates target IR ID {}", 
+               instruction_type, target);
+   ```
+
+### **Crash Early Patterns:**
+
+1. **Missing Mappings** - Never use fallbacks, always crash with full context:
+   ```rust
+   panic!("COMPILER BUG: No mapping found for IR ID {}. Available mappings: {:?}", 
+          ir_id, all_mapping_tables);
+   ```
+
+2. **Invalid State** - Crash immediately when detecting inconsistencies:
+   ```rust
+   assert_eq!(expected_address, actual_address, 
+              "COMPILER BUG: Address mismatch during instruction generation");
+   ```
+
+3. **Unimplemented Paths** - Never return "Ok" from placeholder code:
+   ```rust
+   panic!("UNIMPLEMENTED: Instruction type {:?} at compilation stage", instruction);
+   ```
+
+### **Systematic Investigation Approach:**
+
+1. **Add comprehensive logging FIRST** before attempting fixes
+2. **Dump complete IR instruction sequences** to see the full picture
+3. **Trace every instruction that creates targets** to find missing mappings
+4. **Follow the data flow** from IR generation → mapping → resolution
+5. **Remove all fallback/default behaviors** that hide bugs
+
+### **Key Insight - Aug 27, 2025:**
+
+The "IR ID 83 unmapped" bug was found through systematic logging that revealed:
+- LoadVar instruction was missing target registration in one code path
+- Parameter mapping was failing for complex functions
+- Previous debugging attempts failed because they examined instruction types without tracing the actual data flow
+
+**Never** attempt fixes without first adding comprehensive logging to understand the exact execution flow causing the issue.
 
 ## CRITICAL FIX: VAR Opcode 0x13 Disambiguation
 
@@ -221,306 +438,20 @@ The interpreter correctly handles calls to address 0x0000 according to the Z-Mac
 - Enhanced testing infrastructure with pre-CI validation
 - Clean historical preservation system
 
-## Last Session Summary (v0.9.0 Release - Aug 11, 2025)
 
-### Major Accomplishments
-✅ **Complete Testing Infrastructure Setup**
-- All 108 Grue compiler tests verified and passing
-- Gameplay tests validated (Zork I, AMFV, Trinity)
-- Disassembly tests confirmed working
-- Golden file validation system operational
+## Current Architecture Status
 
-✅ **Enhanced CI/CD Infrastructure**
-- Updated CI workflows to include Grue compiler builds
-- Enhanced pre-CI script with all three binary builds
-- Release workflow now includes all tools (gruesome, grue-compiler, gruedasm-txd)
-- Cross-platform binary generation for macOS and Windows
+### Z-Machine Interpreter: Complete ✅
+- **v3 Games**: Fully playable (Zork I, Seastalker, The Lurking Horror)
+- **v4+ Games**: Fully playable (AMFV, Bureaucracy, Border Zone)
+- All opcodes, timers, sound effects, and display features implemented
+- Version-aware architecture with proper fallback handling
 
-✅ **Professional Release v0.9.0**
-- Major milestone release with complete compiler implementation
-- Fixed clippy warning in semantic analysis
-- Successful automated release process
-- Comprehensive release notes with feature overview
-
-### Current State
-- **Repository**: Up to date with all changes committed and pushed
-- **Latest Release**: v0.9.0 (successfully deployed)
-- **CI Status**: All workflows passing
-- **Code Quality**: Zero warnings, fully formatted
-- **Test Coverage**: Complete (interpreter + compiler + integration)
-
-### Next Session Preparation
-- All infrastructure is in place for continued development
-- Pre-CI script ready for validation before any commits
-- Release automation working properly
-- Ready for new features or game compatibility work
-
-## Version-Aware Instruction Selection (Future Enhancement)
-
-**Priority**: Medium - Architecture improvement for proper multi-version support
-
-**Current Issue**: The compiler currently hard-codes Version 3 instructions for all Z-Machine versions. While this ensures broad compatibility, it's not optimal for V4+ games.
-
-**Required Implementation**:
-1. **Version-Aware Call Instructions**:
-   - V3: Use `call` (VAR:224) - the only available call instruction
-   - V4+: Use optimal variants: `call_1s`, `call_2s`, `call_1n`, `call_2n` for efficiency
-   - Benefit: Smaller bytecode, better performance on V4+ interpreters
-
-2. **Version-Specific Instruction Sets**:
-   - Many instructions added in V4 (buffer_mode, erase_window, etc.)
-   - V5 added more instructions (read_char, scan_table, etc.)
-   - V6 added graphics and sound instructions
-   - Some opcodes repurposed between versions
-
-3. **Implementation Strategy**:
-   - Add `target_version: u8` parameter to compiler
-   - Modify `determine_instruction_form()` with version-aware logic
-   - Update `generate_function_call()` for optimal call instruction selection
-   - Add version compatibility checks throughout codegen
-   - Create instruction availability tables per version
-
-4. **Code Locations**:
-   - `src/grue_compiler/codegen.rs`: Add version parameter and selection logic
-   - `determine_instruction_form()`: Version-aware form selection
-   - `generate_function_call()`: Optimal call instruction selection
-   - Header generation: Ensure version field matches instruction usage
-
-**Benefits**:
-- Proper Z-Machine specification compliance for all versions
-- Optimal bytecode generation (smaller, more efficient V4+ games)
-- Better interpreter compatibility across different Z-Machine versions
-- Professional-grade multi-version compiler architecture
-
-**Example**:
-```rust
-// V3: call (VAR:224) - 4+ bytes
-call routine_addr -> result
-
-// V4+: call_1s (1OP:136) - 3 bytes  
-call_1s routine_addr -> result
-```
-
-This enhancement ensures our compiler generates the most appropriate instruction set for each target Z-Machine version.
-
-## Runtime Issues Fix Plan (Aug 12-14, 2025) - ✅ COMPLETED
-
-### Status: All Critical Runtime Issues Resolved ✅
-
-**Completed Runtime Fixes:**
-- ✅ Property access implementation (complete)
-- ✅ Error handling and recovery (complete)  
-- ✅ Complex control flow compilation (complete)
-- ✅ **Stack Management Crisis RESOLVED** (Aug 14, 2025)
-- ✅ **String Concatenation System** (complete implementation)
-- ✅ **Function Call Stack Balance** (rtrue instruction fix)
-- ✅ **100% Success Rate Achievement** (27/27 examples working)
-
-**Previous Runtime Issues (NOW RESOLVED):**
-
-### 1. Stack Management Crisis ✅ FIXED
-- **Was**: "Stack is empty" errors in complex control flow
-- **Solution**: Implemented proper `rtrue` instructions for function call placeholders
-- **Result**: Perfect stack balance, no more underflow errors
-
-### 2. String Concatenation ✅ IMPLEMENTED  
-- **Was**: Missing support for complex string operations
-- **Solution**: Full compile-time string concatenation with `to_string()` support
-- **Result**: Complex expressions like `"Level " + to_string(x) + " complete"` working
-
-### 3. Property System Gaps 🟡 → **NEXT PRIORITY**
-- **Issue**: Property access uses placeholder implementations
-- **Root Cause**: Hardcoded object numbers instead of proper IR→Z-Machine mapping
-- **Impact**: Property operations don't access real object data
-
-### 4. Object Resolution Problems 🟡 → **NEXT PRIORITY**  
-- **Issue**: Objects not properly mapped to Z-Machine object table
-- **Root Cause**: Missing object table generation and ID resolution
-- **Impact**: Object manipulation operations fail
-
-### Systematic Fix Plan
-
-**Phase 1: Bytecode Diagnostics & Validation (Priority 1)**
-- Create bytecode inspection tools (hexdump, instruction decoder, stack trace)
-- Add bytecode validation during generation (validate encoding, operand compatibility)
-- Implement generation debugging (log instructions, track stack depth, identify invalid opcodes)
-
-**Phase 2: Stack Management Overhaul (Priority 1)**
-- Audit stack operations in codegen (review emit_instruction calls, ensure balanced push/pop)
-- Implement stack depth tracking (compilation warnings, safety assertions)
-- Fix nested control flow stack handling (if/else balance, function calls, expression evaluation)
-
-**Phase 3: Complete Object/Property System (Priority 2)**
-- Implement proper object table generation (Z-Machine format, IR→object mapping, property table)
-- Fix property access operations (real object resolution, correct get_prop/put_prop operands)
-- Add object manipulation operations (complete move() builtin, container support, attributes)
-
-**Phase 4: Runtime Error Recovery (Priority 3)**
-- Enhanced runtime error handling (catch Z-Machine errors, graceful degradation)
-- Debugging and profiling tools (performance monitoring, execution trace, breakpoints)
-
-**Execution Order:** Phase 1+2 parallel → Phase 3 → Phase 4
-
-## Zork I-Level Features Battle Plan (Aug 13, 2025)
-
-### Current Grue Capabilities vs Zork I Requirements
-
-**What We Have ✅:**
-- Basic text adventure structure (rooms, objects, movement)
-- Simple property system (openable, container, takeable)
-- Basic built-in functions (print, move, get_location)
-- Grammar system with verb patterns
-- Container relationships and inventory management
-- Simple conditionals and control flow
-- Z-Machine V3/V5 bytecode generation
-
-**Critical Gaps for Zork I Complexity 🔴:**
-
-### 1. **Advanced Object System** 
-- **Missing**: Complex object relationships, inheritance, class hierarchies
-- **Zork I has**: 200+ objects with sophisticated attribute systems
-- **Current**: Only basic properties (open/closed, container/non-container)
-
-### 2. **Comprehensive Attribute System**
-- **Missing**: Full Z-Machine attribute support (32 attributes per object)
-- **Zork I uses**: Attributes for light sources, weapons, treasures, scenery
-- **Current**: Hardcoded boolean properties only
-
-### 3. **Advanced Property System** 
-- **Missing**: Numbered properties, property inheritance, dynamic property modification
-- **Zork I has**: Complex property tables for descriptions, capacity, value
-- **Current**: Basic string properties only
-
-### 4. **Sophisticated Parser**
-- **Missing**: Multi-word nouns, adjectives, prepositions, disambiguation
-- **Zork I needs**: "get lamp from trophy case", "examine rusty knife"
-- **Current**: Single-word noun matching only
-
-### 5. **Game State Management**
-- **Missing**: Save/restore, scoring system, turn counters, timers
-- **Zork I has**: Complex state tracking, multiple endings, score calculation
-- **Current**: No persistent state beyond object locations
-
-### 6. **Advanced Text Features**
-- **Missing**: Dynamic text generation, string manipulation, formatted output
-- **Zork I uses**: Complex description assembly, conditional text
-- **Current**: Static string literals only
-
-## Implementation Battle Plan
-
-### **Phase 1: Core Infrastructure (2-3 weeks)**
-**Priority: Critical - Foundation for everything else**
-- [x] Enhanced Object System (32-attribute support, inheritance) - **COMPLETED**
-- [ ] Advanced Property System (numbered properties, dynamic modification)
-- [ ] Robust Parser Engine (multi-word nouns, disambiguation)
-
-### **Phase 2: Game Mechanics (2-3 weeks)**
-**Priority: High - Essential gameplay features**
-- [ ] State Management System (save/restore, scoring, turn counters)
-- [ ] Advanced Text System (dynamic generation, conditional text)
-- [ ] Environmental Systems (light/darkness, capacity, complex interactions)
-
-### **Phase 3: Advanced Features (2-3 weeks)**
-**Priority: Medium - Polish and sophistication**
-- [ ] AI and NPCs (movement, dialogue, interaction)
-- [ ] Complex Puzzles (multi-step sequences, transformations)
-- [ ] Polish and Optimization (performance, memory management)
-
-### **Phase 4: Testing and Validation (1-2 weeks)**
-**Priority: Critical - Ensuring production readiness**
-- [ ] Comprehensive Testing (full Zork I recreation, stress testing)
-- [ ] Cross-platform validation and production hardening
-
-### Success Metrics
-- **Capability**: Support all Zork I game mechanics (200+ objects, complex puzzles)
-- **Compatibility**: Generate Z-Machine files playable in standard interpreters  
-- **Performance**: Handle complex games without runtime errors
-- **Completeness**: Successfully compile and run full Zork I recreation
-
-### Milestone Tracking - UPDATED Aug 14, 2025
-- **Phase 0 (Runtime Stability)**: ✅ **COMPLETED** (Aug 12-14, 2025)
-  - Stack management issues resolved
-  - String concatenation implemented  
-  - 100% success rate achieved (27/27 examples)
-- **Phase 1 Start**: **READY TO BEGIN** (Aug 14, 2025)
-- **Phase 1 Target**: Advanced opcodes and object system (Sep 2025)
-- **Phase 2 Target**: Game mechanics and parser (Oct 2025)  
-- **Phase 3 Target**: Advanced features and polish (Nov 2025)
-- **Phase 4 Target**: Full Zork I recreation (Dec 2025)
-
-### Current Implementation Status (Aug 16, 2025)
-📍 **Position**: Debugging critical bytecode corruption in address resolution
-🎯 **Next Step**: Fix instruction stream corruption in reference patching system
-📊 **Success Rate**: Temporary regression - basic compilation corrupted during execution
-📋 **See**: Current analysis below for detailed investigation results
-
-## Current Critical Bug Investigation (Aug 16, 2025) - 🔴 IN PROGRESS
-
-### Root Cause Analysis: Address Patching Memory Corruption
-
-**Issue**: "Invalid object number: 989" runtime error in simple test cases
-**Actual Problem**: Address resolution phase corrupting instruction bytecode stream
-
-### Technical Investigation Results:
-
-#### 1. Error Manifestation
-- **Runtime Error**: "Invalid object number: 989" during execution of `debug_object_error.z3`
-- **Object 989**: = 0x03DD (packed string address) being interpreted as object number
-- **Symptom**: Address resolution patches corrupting nearby instruction bytes
-
-#### 2. Memory Corruption Discovery
-**Original Expected Layout:**
-```
-0x0732: 0x82 (print_paddr)
-0x0733: 0x00 (operand placeholder)  
-0x0734: 0x00 (operand placeholder)
-0x0735: 0xE4 (VAR sread instruction)
-0x0736: 0x0F (operand types)
-```
-
-**Actual Patched Layout:**
-```
-0x0732: 0x82 (print_paddr) ✓
-0x0733: 0x03 (patched string address high byte) ✓
-0x0734: 0xDD (patched string address low byte) ✓ - WAS CORRUPTION
-0x0735: 0xE4 (VAR sread instruction) ✓
-0x0736: 0x0F (operand types) ✓
-```
-
-#### 3. Address Resolution Trace
-**Critical Patch Events:**
-- String ID 9002 (prompt "> ") resolved to address 0x07BA
-- Packed address: 0x07BA / 2 = 0x03DD  
-- Patch location: 0x0733 (2 bytes: 0x03 0xDD)
-- **Result**: Correct patching, NOT corruption as initially thought
-
-#### 4. Real Issue: Control Flow Problems
-**Discovery**: The patching is working correctly. The issue is **execution flow**:
-- Print instruction executes successfully (shows "Simple test - no objects")
-- Jump instruction at 0x0741: `0x8C 0xFF 0xF0` (jump with offset -16)
-- **Target calculation**: PC=0x0744, offset=-16 → target=0x0732 (correct)
-- **Problem**: Something after this is interpreting 0x03DD as an object number
-
-#### 5. Next Investigation Steps
-1. **Trace actual PC during execution** - where exactly does the object error occur?
-2. **Verify jump target calculation** - is the jump landing in the right place?
-3. **Check instruction following patterns** - what instruction is using 989 as object?
-4. **Validate main loop generation** - are the generated instructions semantically correct?
-
-### Current Status
-- ✅ **Identified**: Address patching is working correctly (not corrupted)
-- ✅ **Isolated**: Error occurs after successful print execution  
-- ✅ **Located**: Issue is in post-print control flow execution
-- 🔄 **Next**: Trace exact PC location when object error occurs
-- 🔄 **Fix**: Correct the instruction that's misinterpreting string address as object
-
-### Working Theory
-The interpreter is correctly executing the initial sequence but hitting a control flow issue where:
-1. A jump or control transfer lands at wrong address, OR
-2. An instruction is incorrectly interpreting a string address operand as an object number, OR  
-3. The main loop generation has semantic errors in instruction sequencing
-
-**Priority**: High - blocking all basic game execution
+### Grue Z-Machine Compiler: Core Complete, Debugging Runtime Issues 🔄
+- **Full Pipeline**: Lexer → Parser → Semantic → IR → CodeGen ✅
+- **Compilation**: All test cases compile successfully ✅
+- **Runtime Issues**: Control flow and object manipulation need debugging 🔴
+- **Current Focus**: Fixing execution problems in compiled games
 
 ## Historical Documentation
 

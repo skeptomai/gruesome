@@ -1,0 +1,6 @@
+// Test just variable declaration and storage, no conditionals
+init {
+    print("Before variable declaration");
+    let x = 1;
+    print("After variable declaration");
+}

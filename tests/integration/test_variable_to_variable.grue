@@ -1,0 +1,24 @@
+// Test variable-to-variable operations that require LoadVar
+init {
+    print("Testing variable-to-variable operations...");
+    
+    // Declare two variables
+    let x = 1;
+    let y = 2;
+    
+    print("Variables declared: x=1, y=2");
+    
+    // Test variable-to-variable assignment (should use LoadVar)
+    y = x;  // This should load x's value and store it in y
+    
+    print("After y = x assignment");
+    
+    // Test that y now equals x's original value
+    if y == 1 {
+        print("Variable-to-variable assignment works!");
+    } else {
+        print("Variable-to-variable assignment failed!");
+    }
+    
+    print("Test completed");
+}

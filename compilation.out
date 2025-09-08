@@ -1,0 +1,33 @@
+warning: value assigned to `estimated_offset` is never read
+    --> src/grue_compiler/codegen.rs:2417:13
+     |
+2417 |             estimated_offset += 50;
+     |             ^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+     = note: `#[warn(unused_assignments)]` on by default
+
+warning: unused variable: `layout`
+    --> src/grue_compiler/codegen.rs:4303:21
+     |
+4303 |                 let layout = self.emit_instruction(
+     |                     ^^^^^^ help: if this is intentional, prefix it with an underscore: `_layout`
+     |
+     = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `layout`
+    --> src/grue_compiler/codegen.rs:4317:21
+     |
+4317 |                 let layout = self.emit_instruction(
+     |                     ^^^^^^ help: if this is intentional, prefix it with an underscore: `_layout`
+
+warning: unused variable: `header_locals_byte_location`
+    --> src/grue_compiler/codegen.rs:6699:13
+     |
+6699 |         let header_locals_byte_location = self.code_space.len();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_header_locals_byte_location`
+
+warning: `gruesome` (lib) generated 4 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running `target/debug/grue-compiler mini_zork.grue`
+Error reading 'mini_zork.grue': No such file or directory (os error 2)

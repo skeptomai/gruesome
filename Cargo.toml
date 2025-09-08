@@ -19,6 +19,7 @@ sub-array = "*"
 crossterm = "0.27"
 atty = "0.2"
 ratatui = "0.26"
+indexmap = "2.0"
 
 [[bin]]
 name = "gruedasm-txd"

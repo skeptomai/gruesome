@@ -1,0 +1,116 @@
+// Test file for advanced parser capabilities
+// This will help us validate if the parser can handle Zork I-level commands
+
+world {
+    room library {
+        name: "Library"
+        description: "A dusty old library with tall shelves."
+        
+        object small_mailbox {
+            names: ["small mailbox", "mailbox", "small box", "box"]
+            adjectives: ["small", "metal"]
+            openable: true
+            container: true
+            
+            object leaflet {
+                names: ["leaflet", "small leaflet", "advertising leaflet"] 
+                adjectives: ["small", "white", "advertising"]
+                takeable: true
+                description: "A small white leaflet."
+            }
+        }
+        
+        object brass_lamp {
+            names: ["brass lamp", "lamp", "small lamp"]
+            adjectives: ["brass", "small", "old"]  
+            takeable: true
+            light_source: true
+            description: "A small brass lamp."
+        }
+        
+        object jewel_egg {
+            names: ["jewel-encrusted egg", "egg", "large egg", "emerald egg"]
+            adjectives: ["jewel-encrusted", "large", "emerald", "precious"]
+            takeable: true
+            description: "A large egg encrusted with emeralds."
+        }
+        
+        object trophy_case {
+            names: ["trophy case", "case", "glass case", "display case"]
+            adjectives: ["glass", "large", "display", "transparent"]
+            openable: true
+            container: true
+            transparent: true
+            description: "A large glass trophy case."
+        }
+    }
+}
+
+// Test grammar patterns for complex commands  
+grammar {
+    // Basic take commands
+    verb "take" {
+        noun => take_object($noun)
+    }
+    
+    verb "get" {
+        noun => take_object($noun)
+    }
+    
+    // Examine commands
+    verb "examine" {
+        noun => examine_object($noun)
+    }
+    
+    verb "look" {
+        default => look_around(),
+        "at" + noun => examine_object($2)
+    }
+    
+    // Open commands
+    verb "open" {
+        noun => open_object($noun)
+    }
+    
+    // Drop commands
+    verb "drop" {
+        noun => drop_object($noun)
+    }
+}
+
+// Test functions for parser validation
+function take_object(obj) {
+    print("Taking the " + obj + ".")
+}
+
+function examine_object(obj) {
+    print("Examining the " + obj + ".")
+}
+
+function look_around() {
+    print("Looking around the library.")
+}
+
+function open_object(obj) {
+    print("Opening the " + obj + ".")
+}
+
+function drop_object(obj) {
+    print("Dropping the " + obj + ".")
+}
+
+init {
+    player.location = library
+    print("Advanced Parser Test")
+    print("==================")
+    print("")
+    print("Try these complex commands:")
+    print("- get small brass lamp")
+    print("- examine jewel-encrusted egg") 
+    print("- take leaflet from small mailbox")
+    print("- put brass lamp in trophy case")
+    print("- open small mailbox with brass lamp")
+    print("- drop all")
+    print("- get everything")
+    print("")
+}

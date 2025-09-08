@@ -82,6 +82,8 @@ impl SemanticAnalyzer {
         // Add common built-in functions
         let builtins = [
             ("print", vec![Type::String], None),
+            ("print_ret", vec![Type::String], None),
+            ("new_line", vec![], None),
             ("println", vec![Type::String], None),
             ("error", vec![Type::String], None),
             ("to_string", vec![Type::Any], Some(Type::String)),
@@ -167,6 +169,7 @@ impl SemanticAnalyzer {
         ];
 
         for (name, params, return_type) in builtins {
+            log::debug!("SEMANTIC: Registering builtin function: {}", name);
             let symbol = Symbol {
                 name: name.to_string(),
                 symbol_type: SymbolType::Function {

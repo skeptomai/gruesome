@@ -1,0 +1,10 @@
+// Test variable modification without conditionals
+init {
+    print("Before first assignment");
+    let x = 1;
+    print("After first assignment");
+    
+    // Test variable modification - this should use StoreVar again
+    x = 2;
+    print("After second assignment");
+}

@@ -1,3 +1,5 @@
+
+
 // Mini Zork - Sample Grue Game for Compiler Testing
 // This game implements the classic opening of Zork I
 // to validate our Z-Machine compiler implementation
@@ -407,10 +409,11 @@ init {
     west_of_house.visited = true;
     
     // Print game banner
-    print("ZORK I: The Great Underground Empire");
+    print("DORK I: The Last Great Empire");
     print("Copyright (c) 2025 Grue Games. All rights reserved.");
     print("ZORK is a registered trademark of Infocom, Inc.");
-    print("Revision 1 / Serial number 250109");
+    print("DORK is .... not");
+    print("Revision 1 / Serial number 8675309");
     print("");
     
     // Show initial location

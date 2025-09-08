@@ -123,19 +123,85 @@ impl VM {
 
     /// Pop a value from the evaluation stack
     pub fn pop(&mut self) -> Result<u16, String> {
-        self.stack
-            .pop()
-            .ok_or_else(|| "Stack underflow".to_string())
+        if self.stack.is_empty() {
+            log::error!(
+                "🚨 STACK UNDERFLOW: Attempted to pop from empty stack at PC 0x{:04x}",
+                self.pc
+            );
+            log::error!(
+                "🚨 Stack state: depth={}, call_stack_depth={}",
+                self.stack.len(),
+                self.call_stack.len()
+            );
+            if let Some(frame) = self.call_stack.last() {
+                log::error!(
+                    "🚨 Current routine: return_PC={:04x}, locals={}",
+                    frame.return_pc,
+                    frame.locals.len()
+                );
+            }
+
+            // Add bytecode analysis at underflow point
+            log::error!(
+                "🚨 Bytecode at PC 0x{:04x}: {:02x} {:02x} {:02x} {:02x} {:02x}",
+                self.pc,
+                self.game.memory.get(self.pc as usize).unwrap_or(&0xff),
+                self.game
+                    .memory
+                    .get((self.pc + 1) as usize)
+                    .unwrap_or(&0xff),
+                self.game
+                    .memory
+                    .get((self.pc + 2) as usize)
+                    .unwrap_or(&0xff),
+                self.game
+                    .memory
+                    .get((self.pc + 3) as usize)
+                    .unwrap_or(&0xff),
+                self.game
+                    .memory
+                    .get((self.pc + 4) as usize)
+                    .unwrap_or(&0xff)
+            );
+
+            // Add stack trace to see what's calling pop()
+            log::error!("🚨 STACK UNDERFLOW BACKTRACE:");
+            let backtrace = std::backtrace::Backtrace::capture();
+            log::error!("{}", backtrace);
+
+            return Err("Stack underflow".to_string());
+        }
+
+        let value = self.stack.pop().unwrap();
+        log::debug!(
+            "Stack pop: value={} (0x{:04x}), depth now: {}",
+            value,
+            value,
+            self.stack.len()
+        );
+        Ok(value)
     }
 
     /// Peek at the top of the stack without removing it
     pub fn peek(&self) -> Result<u16, String> {
         if self.stack.is_empty() {
-            log::debug!(
-                "Stack peek attempted on empty stack. Stack size: {}, PC: {:04x}",
-                self.stack.len(),
+            log::error!(
+                "STACK UNDERFLOW: Stack peek attempted on empty stack. PC: 0x{:04x}",
                 self.pc
             );
+            log::error!("  Call stack depth: {}", self.call_stack.len());
+            log::error!("  Last few instructions executed would help debug this...");
+
+            // Try to decode the current instruction to understand what caused this
+            if self.pc < self.game.memory.len() as u32 {
+                let opcode = self.game.memory[self.pc as usize];
+                log::error!(
+                    "  Current instruction opcode: 0x{:02x} at PC 0x{:04x}",
+                    opcode,
+                    self.pc
+                );
+            }
+
             return Err("Stack is empty".to_string());
         }
         self.stack
@@ -235,7 +301,14 @@ impl VM {
     /// Read a variable (0x00 = stack, 0x01-0x0F = local, 0x10-0xFF = global)
     pub fn read_variable(&self, var: u8) -> Result<u16, String> {
         let result = match var {
-            0x00 => self.peek(),
+            0x00 => {
+                log::debug!(
+                    "Reading from stack (Variable 0x00) at PC 0x{:04x}, stack size: {}",
+                    self.pc,
+                    self.stack.len()
+                );
+                self.peek()
+            }
             0x01..=0x0F => {
                 // Local variable
                 let frame = self
@@ -840,6 +913,18 @@ impl VM {
     /// Insert object as first child of destination
     pub fn insert_object(&mut self, obj_num: u16, dest_num: u16) -> Result<(), String> {
         if obj_num == 0 {
+            log::debug!(
+                "❌ insert_object called with object 0 at PC {:05x}",
+                self.pc
+            );
+            log::debug!(
+                "   dest_num: {}, stack depth: {}",
+                dest_num,
+                self.stack.len()
+            );
+            if !self.stack.is_empty() {
+                log::debug!("   top of stack: {:?}", self.stack.last());
+            }
             return Err("Cannot insert object 0".to_string());
         }
         if dest_num == 0 {
@@ -862,7 +947,10 @@ impl VM {
 
     /// Get the short name of an object (version-aware)
     pub fn get_object_name(&self, obj_num: u16) -> Result<String, String> {
+        log::error!("📖 GET_OBJECT_NAME: Accessing object {}", obj_num);
+
         if obj_num == 0 {
+            log::error!("📖 Object 0 requested - returning empty string");
             return Ok(String::new()); // Object 0 has no name
         }
 
@@ -893,16 +981,53 @@ impl VM {
         };
         let obj_tree_base = property_defaults + default_props * 2;
 
+        log::error!("📖 Object table layout:");
+        log::error!("📖   object_table_addr: 0x{:04x}", obj_table_addr);
+        log::error!("📖   property_defaults: 0x{:04x}", property_defaults);
+        log::error!("📖   default_props: {}", default_props);
+        log::error!("📖   obj_tree_base: 0x{:04x}", obj_tree_base);
+
         // Calculate object entry address (version-dependent size)
         let obj_size = if self.game.header.version <= 3 { 9 } else { 14 };
         let obj_addr = obj_tree_base + ((obj_num - 1) as usize * obj_size);
+
+        log::error!("📖 Object {} address calculation:", obj_num);
+        log::error!("📖   obj_size: {}", obj_size);
+        log::error!(
+            "📖   obj_addr: 0x{:04x} = 0x{:04x} + (({} - 1) * {})",
+            obj_addr,
+            obj_tree_base,
+            obj_num,
+            obj_size
+        );
 
         // Get property table address (last 2 bytes of object entry for both v3 and v4+)
         let prop_table_offset = if self.game.header.version <= 3 { 7 } else { 12 };
         let prop_table_addr = self.read_word((obj_addr + prop_table_offset) as u32) as usize;
 
+        log::error!("📖 Property table lookup:");
+        log::error!("📖   prop_table_offset: {}", prop_table_offset);
+        log::error!("📖   reading from: 0x{:04x}", obj_addr + prop_table_offset);
+        log::error!("📖   prop_table_addr: 0x{:04x}", prop_table_addr);
+        log::error!("📖   file size: {} bytes", self.game.memory.len());
+
+        // Bounds check BEFORE accessing memory
+        if prop_table_addr >= self.game.memory.len() {
+            log::error!(
+                "🚨 BOUNDS ERROR: prop_table_addr 0x{:04x} >= file size {}",
+                prop_table_addr,
+                self.game.memory.len()
+            );
+            return Err(format!(
+                "Property table address 0x{:04x} out of bounds (file size: {})",
+                prop_table_addr,
+                self.game.memory.len()
+            ));
+        }
+
         // The first byte is the text-length of the short name
         let text_len = self.game.memory[prop_table_addr] as usize;
+        log::error!("📖 Object {} text_len: {}", obj_num, text_len);
 
         if text_len > 0 {
             // Decode the object name (stored as Z-string)

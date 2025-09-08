@@ -1,0 +1,6 @@
+// Simple test for one built-in function
+fn main() {
+    print("Testing single built-in function");
+    let result = abs(-5);
+    print("abs(-5) = " + to_string(result));
+}

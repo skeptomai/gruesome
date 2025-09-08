@@ -1,0 +1,9 @@
+// Test variables - this might trigger the same issue as mini_zork
+init {
+    print("Testing variables...");
+    let x = 5;
+    let y = 10;
+    let z = x + y;
+    print("Result: ");
+    // This might trigger the issue
+}

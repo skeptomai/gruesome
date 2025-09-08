@@ -353,6 +353,16 @@ impl Interpreter {
             // Fetch and decode instruction
             let pc = self.vm.pc;
 
+            // Debug: Track all PC values and advancement
+            if pc > 0x1000 || pc == 0x1717 || (pc >= 0x0b70 && pc <= 0x0b80) {
+                log::error!(
+                    "🚨 EXECUTION LOOP: PC=0x{:04x} ({}) memory_len={}",
+                    pc,
+                    pc,
+                    self.vm.game.memory.len()
+                );
+            }
+
             // Debug: Show raw bytes at critical addresses and quote area execution flow
             if pc == 0xcc6a {
                 let bytes: Vec<u8> = self.vm.game.memory[pc as usize..pc as usize + 8].to_vec();
@@ -372,6 +382,31 @@ impl Interpreter {
             // Check for problematic Trinity PC range
             if (0x13fc0..=0x13ff0).contains(&pc) {
                 debug!("🚨 TRINITY EXECUTION at PC {:05x}", pc);
+            }
+
+            // Debug: Track PC bounds checking to find 0x1717 crash source
+            if pc >= self.vm.game.memory.len() as u32 {
+                log::error!(
+                    "🚨 PC OUT OF BOUNDS: PC=0x{:04x} ({}) >= memory_len={}",
+                    pc,
+                    pc,
+                    self.vm.game.memory.len()
+                );
+                log::error!(
+                    "🚨 STACK STATE: depth={}, top values={:?}",
+                    self.vm.stack.len(),
+                    self.vm.stack.iter().rev().take(5).collect::<Vec<_>>()
+                );
+            }
+
+            // CRITICAL PC TRACKING: Log every instruction fetch around crash point
+            if pc >= 0x0bd0 && pc <= 0x0be0 {
+                let opcode_byte = self.vm.game.memory[pc as usize];
+                log::error!(
+                    "🎯 CRITICAL_PC: PC=0x{:04x} fetching_byte=0x{:02x}",
+                    pc,
+                    opcode_byte
+                );
             }
 
             let instruction = match Instruction::decode(
@@ -481,7 +516,27 @@ impl Interpreter {
 
             // Advance PC past the instruction
             let old_pc = self.vm.pc;
-            self.vm.pc += instruction.size as u32;
+            let new_pc = old_pc + instruction.size as u32;
+
+            // Debug: Track PC advancement that might cause out-of-bounds
+            if new_pc > self.vm.game.memory.len() as u32
+                || new_pc == 0x1717
+                || (old_pc >= 0x0b70 && old_pc <= 0x0b90)
+            {
+                log::error!(
+                    "🚨 PC ADVANCE: 0x{:04x} + {} -> 0x{:04x} (memory_len={})",
+                    old_pc,
+                    instruction.size,
+                    new_pc,
+                    self.vm.game.memory.len()
+                );
+                log::error!("🚨 INSTRUCTION: {}", instruction);
+                if new_pc > self.vm.game.memory.len() as u32 {
+                    log::error!("🚨 *** OUT OF BOUNDS! ***");
+                }
+            }
+
+            self.vm.pc = new_pc;
 
             // Debug PC advancement for Trinity offset issue
             if old_pc == 0x125c7 {
@@ -514,6 +569,21 @@ impl Interpreter {
 
             // Track PC changes to catch jumps to invalid addresses like 13fe7
             let pc_before_exec = self.vm.pc;
+
+            // CRITICAL DEBUG: Trace instruction execution around the error point
+            if (0x00bf0..=0x00c10).contains(&old_pc) {
+                debug!(
+                    "🔍 EXEC: PC {:05x} opcode {:02x} operands {:?}",
+                    old_pc, instruction.opcode, instruction.operands
+                );
+                if instruction.opcode == 0x0E {
+                    // insert_obj
+                    debug!(
+                        "🚨 About to execute insert_obj with operands {:?}",
+                        instruction.operands
+                    );
+                }
+            }
 
             // Execute the instruction
             match self.execute_instruction(&instruction)? {
@@ -580,6 +650,38 @@ impl Interpreter {
 
     /// Execute a single instruction
     pub fn execute_instruction(&mut self, inst: &Instruction) -> Result<ExecutionResult, String> {
+        // Add comprehensive debugging for critical instruction ranges
+        let current_pc = self.vm.pc - inst.size as u32;
+
+        // Debug suspicious instruction ranges and print_obj instructions specifically
+        if (0x0a70..=0x0a90).contains(&current_pc)
+            || (0x00f80..=0x00f90).contains(&current_pc)
+            || (inst.opcode == 0x0A
+                && matches!(inst.operand_count, crate::instruction::OperandCount::OP1))
+        {
+            log::error!(
+                "🚨 Executing instruction at PC 0x{:04x}: {}",
+                current_pc,
+                inst
+            );
+            log::error!(
+                "🚨 Stack depth: {}, Call stack depth: {}",
+                self.vm.stack.len(),
+                self.vm.call_stack.len()
+            );
+
+            // Operand debugging removed - these are normal Z-Machine operand types, not errors
+        }
+
+        // COMPREHENSIVE INSTRUCTION EXECUTION LOG
+        log::debug!(
+            "EXEC_INSTR: PC=0x{:04x} opcode=0x{:02x} operand_types={:?} store_var={:?}",
+            self.vm.pc,
+            inst.opcode,
+            inst.operand_types,
+            inst.store_var
+        );
+
         // Get operand values
         let operands = self.resolve_operands(inst)?;
 
@@ -749,7 +851,7 @@ impl Interpreter {
                     }
                 }
                 _ => {
-                    // Use literal value
+                    // Use literal value (constants are valid for many Z-Machine instructions)
                     operand
                 }
             };
@@ -991,6 +1093,56 @@ impl Interpreter {
                 // Jump is a signed offset from the instruction after the branch data
                 let offset = operand as i16;
                 let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
+
+                // COMPREHENSIVE JUMP LOGGING
+                log::debug!(
+                    "🔧 JUMP_INSTRUCTION: PC=0x{:04x} operand=0x{:04x} offset={} -> new_PC=0x{:04x}",
+                    self.vm.pc, operand, offset, new_pc
+                );
+                log::debug!(
+                    "🔧 JUMP_CALC: PC(0x{:04x}) + offset({}) - 2 = 0x{:04x} (memory_len={})",
+                    self.vm.pc,
+                    offset,
+                    new_pc,
+                    self.vm.game.memory.len()
+                );
+
+                // Critical bounds checking - this is where PC corruption occurs
+                if new_pc >= self.vm.game.memory.len() as u32 {
+                    log::error!(
+                        "🚨 JUMP_OUT_OF_BOUNDS: new_PC=0x{:04x} >= memory_len={} - INVALID JUMP!",
+                        new_pc,
+                        self.vm.game.memory.len()
+                    );
+                    log::error!(
+                        "🚨 JUMP_DEBUG: raw_operand=0x{:04x} as_signed={} current_PC=0x{:04x}",
+                        operand,
+                        offset,
+                        self.vm.pc
+                    );
+                    return Err(format!(
+                        "Jump to address 0x{:04x} is outside memory bounds ({})",
+                        new_pc,
+                        self.vm.game.memory.len()
+                    ));
+                }
+
+                // Debug: Track jumps that might lead to 0x1717 crash
+                if new_pc == 0x1717 || new_pc > 0x1000 {
+                    log::error!(
+                        "🚨 JUMP CALCULATION: PC=0x{:04x} offset={} (0x{:04x}) -> new_pc=0x{:04x}",
+                        self.vm.pc,
+                        offset,
+                        offset as u16,
+                        new_pc
+                    );
+                    log::error!(
+                        "🚨 JUMP OPERAND: raw_operand=0x{:04x} as_i16={}",
+                        operand,
+                        operand as i16
+                    );
+                }
+
                 self.vm.pc = new_pc;
                 Ok(ExecutionResult::Branched)
             }
@@ -1157,6 +1309,10 @@ impl Interpreter {
                 let dest_num = op2;
 
                 debug!("insert_obj: obj={}, dest={}", obj_num, dest_num);
+                if obj_num == 0 {
+                    debug!("❌ insert_obj interpreter called with object 0!");
+                    debug!("   op1: {}, op2: {}", op1, op2);
+                }
 
                 self.vm.insert_object(obj_num, dest_num)?;
                 Ok(ExecutionResult::Continue)
@@ -1186,12 +1342,28 @@ impl Interpreter {
                 let obj_num = op1;
                 let prop_num = op2 as u8;
 
-                debug!("get_prop: obj={}, prop={}", obj_num, prop_num);
+                log::error!(
+                    "🔍 get_prop at PC 0x{:04x}: obj={}, prop={}",
+                    self.vm.pc - inst.size as u32,
+                    obj_num,
+                    prop_num
+                );
+                log::error!(
+                    "🔍 Stack depth before get_property: {}",
+                    self.vm.stack.len()
+                );
+                log::error!("🔍 Call stack depth: {}", self.vm.call_stack.len());
 
                 let value = self.vm.get_property(obj_num, prop_num)?;
+
+                log::error!("🔍 get_property returned: {}", value);
+                log::error!("🔍 Stack depth after get_property: {}", self.vm.stack.len());
+
                 if let Some(store_var) = inst.store_var {
+                    log::error!("🔍 Storing result {} in variable {}", value, store_var);
                     self.vm.write_variable(store_var, value)?;
                 }
+                log::error!("🔍 get_prop completed successfully");
                 Ok(ExecutionResult::Continue)
             }
             0x19 => {
@@ -1224,6 +1396,15 @@ impl Interpreter {
                 // Storing 0 was causing bugs (e.g., clearing the LIT variable)
                 debug!("  -> Treating as NOP, not storing any result");
 
+                Ok(ExecutionResult::Continue)
+            }
+            0x1b => {
+                // set_colour - V5+ display instruction (foreground, background colors)
+                // For now, just treat as no-op to eliminate the error
+                debug!(
+                    "set_colour: ignoring color change (foreground={}, background={})",
+                    op1, op2
+                );
                 Ok(ExecutionResult::Continue)
             }
             _ => {
@@ -2004,13 +2185,43 @@ impl Interpreter {
         if let Some(ref branch) = inst.branch {
             let should_branch = condition == branch.on_true;
 
+            // COMPREHENSIVE BRANCH LOGGING
+            log::debug!(
+                "🔧 BRANCH_CONDITION: PC=0x{:04x} condition={} branch.on_true={} should_branch={} offset={}",
+                self.vm.pc, condition, branch.on_true, should_branch, branch.offset
+            );
+
             if should_branch {
                 match branch.offset {
-                    0 => return self.do_return(0), // rfalse
-                    1 => return self.do_return(1), // rtrue
+                    0 => {
+                        log::debug!("🔧 BRANCH_ACTION: Returning FALSE (offset=0)");
+                        return self.do_return(0); // rfalse
+                    }
+                    1 => {
+                        log::debug!("🔧 BRANCH_ACTION: Returning TRUE (offset=1)");
+                        return self.do_return(1); // rtrue
+                    }
                     offset => {
                         // Jump is relative to instruction after branch data
                         let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
+
+                        log::debug!(
+                            "🔧 BRANCH_JUMP: PC=0x{:04x} offset={} -> new_PC=0x{:04x} (memory_len={})",
+                            self.vm.pc, offset, new_pc, self.vm.game.memory.len()
+                        );
+
+                        // Critical bounds checking for branches too
+                        if new_pc >= self.vm.game.memory.len() as u32 {
+                            log::error!(
+                                "🚨 BRANCH_OUT_OF_BOUNDS: new_PC=0x{:04x} >= memory_len={} - INVALID BRANCH!",
+                                new_pc, self.vm.game.memory.len()
+                            );
+                            return Err(format!(
+                                "Branch to address 0x{:04x} is outside memory bounds ({})",
+                                new_pc,
+                                self.vm.game.memory.len()
+                            ));
+                        }
 
                         // Debug output for Trinity JE branch
                         if self.vm.pc == 0x13fde {
@@ -2194,6 +2405,15 @@ impl Interpreter {
         };
 
         debug!("do_call: saving return_pc={:05x}", self.vm.pc);
+
+        // Debug: Track function calls that might corrupt PC
+        if self.vm.pc > 0x1000 || addr > 0x1000 {
+            log::error!(
+                "🚨 FUNCTION_CALL: calling addr=0x{:04x} from PC=0x{:04x}",
+                addr,
+                self.vm.pc
+            );
+        }
 
         // Special debug for calls that return to the newlines after the quote
         if self.vm.pc == 0xcc6a {

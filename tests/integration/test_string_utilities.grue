@@ -1,0 +1,47 @@
+// Test string utility functions specifically
+fn main() {
+    print("Testing String Utility Functions");
+    
+    // Test indexOf
+    let text = "Hello World";
+    let pos = indexOf(text, "World");
+    print("indexOf 'World' in 'Hello World': " + to_string(pos));
+    
+    // Test slice
+    let sliced = slice(text, 6);
+    print("slice from index 6: " + sliced);
+    
+    // Test substring
+    let sub = substring(text, 0, 5);
+    print("substring(0, 5): " + sub);
+    
+    // Test case conversion
+    let lower = toLowerCase(text);
+    let upper = toUpperCase(text);
+    print("toLowerCase: " + lower);
+    print("toUpperCase: " + upper);
+    
+    // Test trim
+    let spaced = "  test  ";
+    let trimmed = trim(spaced);
+    print("trim result: '" + trimmed + "'");
+    
+    // Test charAt
+    let char = charAt(text, 0);
+    print("charAt(0): " + char);
+    
+    // Test replace
+    let replaced = replace(text, "World", "Universe");
+    print("replace 'World' with 'Universe': " + replaced);
+    
+    // Test startsWith and endsWith
+    if startsWith(text, "Hello") {
+        print("Text starts with 'Hello'");
+    }
+    
+    if endsWith(text, "World") {
+        print("Text ends with 'World'");
+    }
+    
+    print("String utility tests complete");
+}

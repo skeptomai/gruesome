@@ -1,0 +1,5 @@
+// Ultra-simple test for control flow architecture
+init {
+    print("Starting test");
+    print("Test complete");
+}

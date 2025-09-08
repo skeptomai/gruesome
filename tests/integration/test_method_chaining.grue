@@ -1,0 +1,20 @@
+fn main() {
+    // Test 1: Simple property chaining
+    let player_room = player.location.name;
+    
+    // Test 2: Method chaining with arrays
+    let numbers = [1, 2, 3];
+    let result = numbers.length;
+    
+    // Test 3: Complex chaining (this should parse but may not execute correctly yet)
+    let items = ["apple", "banana"];
+    items.add("cherry");
+    let final_count = items.length;
+    
+    // Test 4: Chained method calls
+    let data = [10, 20, 30];
+    data.add(40);
+    let size = data.length;
+    
+    print("Final size: " + to_string(size));
+}

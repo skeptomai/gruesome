@@ -1,0 +1,11 @@
+// Test with just room setup, no method calls at all
+
+world {
+    room test_room "Test Room" {
+        desc: "A test room"
+    }
+}
+
+init {
+    print("Just room setup, no methods");
+}

@@ -1,0 +1,9 @@
+// Test variable in conditional - isolate the variable vs constant issue
+init {
+    print("Testing variable conditional...");
+    let x = 1;
+    if (x == 1) {
+        print("Variable is 1");
+    }
+    print("Done");
+}

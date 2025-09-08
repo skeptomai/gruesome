@@ -1,0 +1,6 @@
+// Test single variable without arithmetic - isolate the variable handling issue
+init {
+    print("Testing single variable...");
+    let x = 42;
+    print("Done");
+}

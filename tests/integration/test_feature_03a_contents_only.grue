@@ -1,0 +1,13 @@
+// Feature Test 3a: Just .contents() method
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house."
+    }
+}
+
+init {
+    print("Testing .contents() method...");
+    player.location = west_of_house;
+    let objects = west_of_house.contents();
+    print("Contents method test: SUCCESS");
+}

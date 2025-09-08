@@ -1,0 +1,7 @@
+init {
+    print "Basic test program";
+}
+
+main {
+    print "Test completed successfully!";
+}

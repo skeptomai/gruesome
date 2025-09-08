@@ -1,0 +1,8 @@
+fn greet() {
+    print("Hello from function!");
+}
+
+init {
+    greet();
+    print("Back in init");
+}

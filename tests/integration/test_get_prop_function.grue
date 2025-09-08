@@ -1,0 +1,13 @@
+// Test get_prop builtin function
+init {
+    print("Testing get_prop builtin function...");
+    
+    // Test get_prop function call
+    // get_prop(object_id, property_number) -> property_value
+    // Note: Using placeholder values since full object system isn't implemented yet
+    
+    // get_prop(1, 1);  // Get property 1 from object 1
+    
+    print("get_prop function available for explicit property access");
+    print("once full object system is implemented");
+}

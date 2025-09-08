@@ -1,0 +1,54 @@
+// Test Complete Single-Path Migration - Pure Numeric Operations
+// Tests all implemented IR instruction types without string concatenation
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple room for testing numeric operations."
+        
+        object test_object {
+            names: ["object", "item"]
+            desc: "A test object for property operations."
+            container: true
+        }
+    }
+}
+
+fn test_numeric_operations() {
+    print("Testing numeric operations...");
+    
+    // Test basic arithmetic with BinaryOp
+    let a = 10;
+    let b = 5;
+    let sum = a + b;
+    let diff = a - b;
+    let prod = a * b;
+    
+    // Test object system builtins (Tier 2)
+    let child = get_child(test_object);
+    let sibling = get_sibling(child);
+    let prop = get_prop(test_object, 1);
+    
+    // Test boolean attributes
+    set_attr(test_object, 8);
+    let has_attr = test_attr(test_object, 8);
+    clear_attr(test_object, 8);
+    
+    // Test print with computed values (enhanced print function)
+    print(sum);      // Should use print_num
+    print(diff);     // Should use print_num
+    print(prod);     // Should use print_num
+    print(child);    // Should use print_num
+    
+    print("All tests completed successfully!");
+}
+
+init {
+    // Test SetProperty instruction
+    player.location = test_room;
+    test_room.visited = true;
+    
+    // Test function call
+    test_numeric_operations();
+    
+    print("Single-path migration test complete!");
+}

@@ -1,0 +1,4 @@
+// Test script mode - should just run and quit
+init {
+    print("Script mode test - this should quit immediately");
+}

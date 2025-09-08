@@ -1,0 +1,16 @@
+// Test just property access without method calls
+
+world {
+    room test_room "Test Room" {
+        desc: "A test room"
+    }
+}
+
+init {
+    print("Testing property access only");
+    
+    let desc = test_room.desc;
+    print("Property access completed - got desc!");
+    
+    print("Property access completed!");
+}

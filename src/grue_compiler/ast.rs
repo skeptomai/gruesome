@@ -24,6 +24,10 @@ impl Program {
         })
     }
 
+    pub fn has_world(&self) -> bool {
+        self.items.iter().any(|item| matches!(item, Item::World(_)))
+    }
+
     pub fn get_explicit_mode(&self) -> Option<ProgramMode> {
         self.items.iter().find_map(|item| {
             if let Item::Mode(mode_decl) = item {
@@ -41,7 +45,7 @@ impl Program {
 
         if self.has_main_function() {
             ProgramMode::Custom
-        } else if self.has_grammar() {
+        } else if self.has_world() || self.has_grammar() {
             ProgramMode::Interactive
         } else {
             ProgramMode::Script

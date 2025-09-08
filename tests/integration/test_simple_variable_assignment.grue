@@ -1,0 +1,13 @@
+// Simple variable-to-variable assignment test
+init {
+    print("Simple assignment test");
+    
+    let x = 1;
+    print("x declared");
+    
+    let y = 2;
+    print("y declared");
+    
+    y = x;  // Variable-to-variable assignment
+    print("Assignment completed");
+}

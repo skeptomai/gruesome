@@ -1,0 +1,10 @@
+// Test simple conditional with constant - no property access
+init {
+    print_ret("Testing simple conditional...");
+    if (1 == 1) {
+        print_ret("Always true");
+    } else {
+        print_ret("Never reached");
+    }
+    print_ret("Done");
+}

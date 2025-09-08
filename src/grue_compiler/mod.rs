@@ -82,7 +82,7 @@ impl GrueCompiler {
         // Transfer object numbers from IR generator to code generator
         code_generator.set_object_numbers(ir_generator.get_object_numbers().clone());
 
-        let story_data = code_generator.generate(ir_program)?;
+        let story_data = code_generator.generate_complete_game_image(ir_program)?;
 
         Ok(story_data)
     }

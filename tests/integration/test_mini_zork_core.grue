@@ -1,0 +1,34 @@
+// Core mini zork test - just the problematic pattern
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house, with a boarded front door."
+    }
+    
+    room north_of_house "North of House" {
+        desc: "You are facing the north side of a white house."
+    }
+}
+
+fn handle_go(direction) {
+    let exit = player.location.exits[direction];
+    
+    if exit.none() {
+        print("You can't go that way.");
+        return;
+    }
+    
+    // This is the critical line that was failing
+    player.location.visited = true;
+    
+    print("Movement completed successfully.");
+}
+
+init {
+    player.location = west_of_house;
+    west_of_house.visited = true;
+    
+    // Test the problematic chained property access in function context
+    handle_go("north");
+    
+    print("Test completed successfully");
+}

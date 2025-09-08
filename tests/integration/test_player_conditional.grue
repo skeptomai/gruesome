@@ -1,0 +1,20 @@
+world {
+    room start {
+        description: "Test room"
+        
+        object player {
+            names: ["player"]
+            description: "The player character."
+        }
+    }
+}
+
+init {
+    print("Testing player conditional...");
+    if (player.location == 1) {
+        print("Player is at location 1");
+    } else {
+        print("Player is elsewhere");
+    }
+    print("Done");
+}

@@ -1,0 +1,19 @@
+// Minimal test - just property access patterns from mini_zork
+world {
+    room west_of_house "West of House" {
+        desc: "Test room"
+    }
+}
+
+init {
+    // Pattern 1: Simple property assignment
+    west_of_house.visited = true;
+    
+    // Pattern 2: Player location assignment  
+    player.location = west_of_house;
+    
+    // Pattern 3: The critical chained property assignment
+    player.location.visited = true;
+    
+    print("All property operations successful");
+}

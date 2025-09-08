@@ -1,0 +1,19 @@
+// Test Tier 3 Migration - Simple Functions Only
+// Tests random() function which should be available
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple room for testing."
+    }
+}
+
+init {
+    player.location = test_room;
+    print("Testing random function...");
+    
+    // Test random() - should be available since it's in the builtin list
+    let dice_roll = random(6);
+    print("Random dice roll: " + to_string(dice_roll));
+    
+    print("Tier 3 simple test complete!");
+}

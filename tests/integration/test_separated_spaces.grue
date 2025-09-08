@@ -1,0 +1,22 @@
+// Test file for separated memory spaces architecture
+// This simple test will verify that the new architecture
+// eliminates memory corruption by using separated working spaces
+// during compilation with proper final assembly.
+
+fn main() {
+    // Simple test function with string operations to trigger
+    // cross-space references that previously caused corruption
+    print("Testing separated spaces architecture...");
+    print("This should compile without memory corruption!");
+    
+    // Test string concatenation which was problematic
+    let message = "Architecture test: " + "SUCCESS!";
+    print(message);
+}
+
+init {
+    // Initialize the test
+    print("Separated Spaces Test Starting...");
+    main();
+    print("Test complete.");
+}

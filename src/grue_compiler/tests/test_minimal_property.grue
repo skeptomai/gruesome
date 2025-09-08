@@ -1,0 +1,16 @@
+world {
+    room start "Test Room" {
+        desc: "Test room"
+        
+        object player {
+            names: ["player"]
+            desc: "The player character"
+        }
+    }
+}
+
+init {
+    if (player.location == 2) {
+        print("Match");
+    }
+}

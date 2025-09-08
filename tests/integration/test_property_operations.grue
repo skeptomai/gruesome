@@ -1,0 +1,26 @@
+// Test both GET_PROP and PUT_PROP property operations
+world {
+    room start_room "Starting Room" {
+        desc: "A test room for property operations."
+    }
+    
+    room other_room "Other Room" {
+        desc: "Another test room."
+    }
+}
+
+init {
+    print("Testing property operations...");
+    
+    // Test PUT_PROP (property assignment - already working)
+    print("Setting player location...");
+    player.location = start_room;
+    
+    // Test GET_PROP (property access)
+    // This should generate a GET_PROP instruction to read the property value
+    print("Reading player location...");
+    // For now, we'll add actual property reading in a future iteration
+    // when we have proper expression handling
+    
+    print("Property operations test completed");
+}

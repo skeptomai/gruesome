@@ -1,0 +1,16 @@
+// Simple conditional test - no .contents() method
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house."
+    }
+}
+
+init {
+    print("Testing simple conditional...");
+    player.location = west_of_house;
+    let x = 1;
+    if x == 1 {
+        print("Condition works!");
+    }
+    print("Conditional test: SUCCESS");
+}

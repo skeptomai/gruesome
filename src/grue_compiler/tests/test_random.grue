@@ -1,0 +1,13 @@
+init {
+    print("Testing random number generation:");
+    let dice_roll = random(6);
+    print("Dice roll (1-6): " + to_string(dice_roll));
+    
+    // Test with a larger range
+    let percent = random(100);
+    print("Percentage (1-100): " + to_string(percent));
+    
+    // Test seeding (negative value should return 0)
+    let seed_result = random(-1234);
+    print("Seed result (should be 0): " + to_string(seed_result));
+}

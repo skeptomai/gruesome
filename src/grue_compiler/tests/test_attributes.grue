@@ -1,0 +1,15 @@
+// Test object attribute operations: TEST_ATTR, SET_ATTR, CLEAR_ATTR
+init {
+    print("Testing object attribute operations...");
+    
+    // Test basic attribute functions
+    // Note: Using placeholder values since proper object/attribute system isn't fully implemented yet
+    // This tests the underlying IR -> Z-Machine code generation
+    
+    // set_attr(1, 5);        // Set attribute 5 on object 1
+    // clear_attr(1, 5);      // Clear attribute 5 on object 1  
+    // test_attr(1, 5);       // Test if object 1 has attribute 5
+    
+    print("Attribute tests would use set_attr(), clear_attr(), and test_attr() functions");
+    print("once proper object system syntax is implemented");
+}

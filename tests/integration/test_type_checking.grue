@@ -1,0 +1,55 @@
+// Test type checking functions specifically
+fn main() {
+    print("Testing Type Checking Functions");
+    
+    // Create test values
+    let text = "hello";
+    let number = 42;
+    let flag = true;
+    let items = [1, 2, 3];
+    
+    // Test is_string
+    if is_string(text) {
+        print("'hello' is a string: true");
+    }
+    if !is_string(number) {
+        print("42 is a string: false");
+    }
+    
+    // Test is_int
+    if is_int(number) {
+        print("42 is an int: true");
+    }
+    if !is_int(text) {
+        print("'hello' is an int: false");
+    }
+    
+    // Test is_bool
+    if is_bool(flag) {
+        print("true is a bool: true");
+    }
+    if !is_bool(number) {
+        print("42 is a bool: false");
+    }
+    
+    // Test is_array
+    if is_array(items) {
+        print("[1, 2, 3] is an array: true");
+    }
+    if !is_array(text) {
+        print("'hello' is an array: false");
+    }
+    
+    // Test typeof
+    let type1 = typeof(text);
+    let type2 = typeof(number);
+    let type3 = typeof(flag);
+    let type4 = typeof(items);
+    
+    print("typeof('hello'): " + type1);
+    print("typeof(42): " + type2);
+    print("typeof(true): " + type3);
+    print("typeof([1, 2, 3]): " + type4);
+    
+    print("Type checking tests complete");
+}
