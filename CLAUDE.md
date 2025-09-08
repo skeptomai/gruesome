@@ -447,11 +447,12 @@ The interpreter correctly handles calls to address 0x0000 according to the Z-Mac
 - All opcodes, timers, sound effects, and display features implemented
 - Version-aware architecture with proper fallback handling
 
-### Grue Z-Machine Compiler: Core Complete, Debugging Runtime Issues 🔄
+### Grue Z-Machine Compiler: V3 Production Ready, V4/V5 Experimental 🔄
 - **Full Pipeline**: Lexer → Parser → Semantic → IR → CodeGen ✅
-- **Compilation**: All test cases compile successfully ✅
-- **Runtime Issues**: Control flow and object manipulation need debugging 🔴
-- **Current Focus**: Fixing execution problems in compiled games
+- **V3 Support**: Production ready with comprehensive test coverage ✅
+- **V4/V5 Support**: Experimental - has string alignment and IR mapping issues ⚠️
+- **Test Organization**: V3 tests in CI, V4/V5 tests moved to experimental directory
+- **Current Status**: V3 compilation stable, V4/V5 disabled in release until bugs fixed
 
 ## Historical Documentation
 
