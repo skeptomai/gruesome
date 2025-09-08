@@ -200,11 +200,11 @@ pub struct ZMachineCodeGen {
     current_function_name: Option<String>, // Track current function being processed for debugging
     init_routine_locals_count: u8, // Track local variables used by init routine for PC calculation
     /// Mapping from IR IDs to string values (for LoadImmediate results)
-    ir_id_to_string: HashMap<IrId, String>,
+    pub ir_id_to_string: HashMap<IrId, String>,
     /// Mapping from IR IDs to integer values (for LoadImmediate results)
-    ir_id_to_integer: HashMap<IrId, i16>,
+    pub ir_id_to_integer: HashMap<IrId, i16>,
     /// Mapping from IR IDs to stack variables (for instruction results on stack)
-    ir_id_to_stack_var: HashMap<IrId, u8>,
+    pub ir_id_to_stack_var: HashMap<IrId, u8>,
     /// Mapping from IR IDs to Z-Machine object numbers (for object references)
     ir_id_to_object_number: HashMap<IrId, u16>,
     /// Mapping from IR IDs to Z-Machine local variable slots (for function parameters)
@@ -230,19 +230,19 @@ pub struct ZMachineCodeGen {
     global_vars_addr: usize,
 
     // String encoding
-    strings: Vec<(IrId, String)>, // Collected strings for encoding
+    pub strings: Vec<(IrId, String)>, // Collected strings for encoding
 
     // Stack tracking for debugging
-    stack_depth: i32,                         // Current estimated stack depth
+    pub stack_depth: i32,                         // Current estimated stack depth
     max_stack_depth: i32,                     // Maximum stack depth reached
-    encoded_strings: IndexMap<IrId, Vec<u8>>, // IR string ID -> encoded bytes
+    pub encoded_strings: IndexMap<IrId, Vec<u8>>, // IR string ID -> encoded bytes
     next_string_id: IrId,                     // Next available string ID
 
     // Execution context
     in_init_block: bool, // True when generating init block code
 
     // Address resolution
-    reference_context: ReferenceContext,
+    pub reference_context: ReferenceContext,
 
     // Control flow analysis - NEW ARCHITECTURE
     /// Track constant values resolved during generation
@@ -4517,7 +4517,7 @@ impl ZMachineCodeGen {
     }
 
     /// Encode a single string using Z-Machine ZSCII encoding
-    fn encode_string(&self, s: &str) -> Result<Vec<u8>, CompilerError> {
+    pub fn encode_string(&self, s: &str) -> Result<Vec<u8>, CompilerError> {
         // Z-Machine text encoding per Z-Machine Standard 1.1, Section 3.5.3
         // Alphabet A0 (6-31): abcdefghijklmnopqrstuvwxyz
         // Alphabet A1 (6-31): ABCDEFGHIJKLMNOPQRSTUVWXYZ
@@ -6169,17 +6169,6 @@ impl ZMachineCodeGen {
         )
     }
 
-    /// Generate array_add_item builtin (legacy implementation)
-    fn generate_array_add_item_builtin(
-        &mut self,
-        _args: &[IrId],
-        _target: Option<IrId>,
-    ) -> Result<(), CompilerError> {
-        // Simple no-op implementation for legacy compatibility
-        // The inline version is preferred and does the real work
-        log::debug!("Legacy array_add_item builtin called - delegating to inline version");
-        Ok(())
-    }
 
     /// Generate code for a single IR instruction
     fn generate_instruction(&mut self, instruction: &IrInstruction) -> Result<(), CompilerError> {
@@ -7342,7 +7331,7 @@ impl ZMachineCodeGen {
     }
 
     /// Resolve an IR ID to the appropriate Z-Machine operand
-    fn resolve_ir_id_to_operand(&self, ir_id: IrId) -> Result<Operand, CompilerError> {
+    pub fn resolve_ir_id_to_operand(&self, ir_id: IrId) -> Result<Operand, CompilerError> {
         log::debug!(
             " RESOLVE_IR_ID_TO_OPERAND: Attempting to resolve IR ID {}",
             ir_id
@@ -9266,7 +9255,7 @@ impl ZMachineCodeGen {
     }
 
     /// Find or create a string ID for the given string
-    fn find_or_create_string_id(&mut self, s: &str) -> Result<IrId, CompilerError> {
+    pub fn find_or_create_string_id(&mut self, s: &str) -> Result<IrId, CompilerError> {
         // Check if string already exists
         for (id, existing_string) in &self.strings {
             if existing_string == s {
@@ -9427,483 +9416,12 @@ impl ZMachineCodeGen {
 
 
     /// Generate player_can_see builtin function - checks if player can see an object
-    /// Implements visibility logic: object is in player location, in player inventory, or visible container
-    fn generate_player_can_see_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
-        if args.len() != 1 {
-            return Err(CompilerError::CodeGenError(format!(
-                "player_can_see expects 1 argument, got {}",
-                args.len()
-            )));
-        }
 
-        let object_ir_id = args[0];
 
-        // Resolve IR ID to proper operand - CRITICAL FIX
-        let object_operand = self.resolve_ir_id_to_operand(object_ir_id)?;
 
-        // Visibility check algorithm:
-        // 1. Get object's parent (location)
-        // 2. Check if parent == player location (visible in room)
-        // 3. Check if parent == player (in inventory)
-        // 4. If parent is a container, check if container is open and visible
 
-        // For now, implement basic visibility: check if object parent == player location or player
-        // This is simplified - a full implementation would handle nested containers, lighting, etc.
 
-        // Get object's parent location
-        self.emit_instruction(
-            0x04,              // get_parent opcode
-            &[object_operand], // Object operand (resolved)
-            Some(0x01),        // Store in local variable 1
-            None,              // No branch
-        )?;
 
-        // Get player location (assume player is object 1, location is its parent)
-        self.emit_instruction(
-            0x04,                              // get_parent opcode
-            &[Operand::LargeConstant(0x0001)], // Player object (object 1)
-            Some(0x02),                        // Store in local variable 2
-            None,                              // No branch
-        )?;
-
-        // Compare object location with player location
-        self.emit_byte(0x15)?; // je opcode (2OP:1, VAR form)
-        self.emit_byte(0x01)?; // Variable 1 (object location)
-        self.emit_byte(0x02)?; // Variable 2 (player location)
-        self.emit_byte(0x40)?; // Branch if true, 2-byte offset
-        self.emit_word(0x0008)?; // Branch to "return true" (+8 bytes)
-
-        // Check if object is in player inventory (parent == player)
-        self.emit_byte(0x15)?; // je opcode
-        self.emit_byte(0x01)?; // Variable 1 (object location)
-        self.emit_word(0x0001)?; // Player object literal
-        self.emit_byte(0x40)?; // Branch if true
-        self.emit_word(0x0002)?; // Branch to "return true" (+2 bytes)
-
-        // Return false (object not visible)
-        self.emit_byte(0xB1)?; // rfalse instruction (0OP:1)
-
-        // Return true (object is visible)
-        self.emit_byte(0xB0)?; // rtrue instruction (0OP:0)
-
-        Ok(())
-    }
-
-    /// Generate list_objects builtin function - lists all objects in a location
-    fn generate_list_objects_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
-        if args.len() != 1 {
-            return Err(CompilerError::CodeGenError(format!(
-                "list_objects expects 1 argument, got {}",
-                args.len()
-            )));
-        }
-
-        let location_id = args[0];
-
-        // Algorithm to list objects in a location:
-        // 1. Get first child of the location
-        // 2. While child exists:
-        //    a. Print the child's name
-        //    b. Get next sibling
-        //    c. Repeat
-
-        // Get first child of location
-        self.emit_byte(0x82)?; // get_child opcode (1OP:130)
-        self.emit_word(location_id as u16)?; // Location ID
-        self.emit_byte(0x01)?; // Store child in local variable 1
-        self.emit_byte(0x40)?; // Branch if child exists (non-zero)
-        self.emit_word(0x0002)?; // Skip return if no children
-
-        // No children - return
-        self.emit_byte(0xB1)?; // rfalse instruction
-
-        // Loop through siblings printing each one
-        // Variable 1 contains current object to print
-
-        // Print current object (simplified - would normally get object name property)
-        // For now, print a debug message with object number
-        self.emit_byte(0xB2)?; // print opcode
-        let debug_msg = "Object in location";
-        let string_id = self.find_or_create_string_id(debug_msg)?;
-        self.ir_id_to_string
-            .insert(string_id, debug_msg.to_string());
-        self.add_unresolved_reference(
-            LegacyReferenceType::StringRef,
-            string_id,
-            true,
-            MemorySpace::Code,
-        )?;
-        self.emit_word(placeholder_word())?; // Placeholder for string address
-
-        // Get next sibling
-        self.emit_byte(0x81)?; // get_sibling opcode (1OP:129)
-        self.emit_byte(0x01)?; // Current object in variable 1
-        self.emit_byte(0x01)?; // Store sibling back in variable 1
-        self.emit_byte(0x40)?; // Branch if sibling exists
-        self.emit_word(0xFFF0)?; // Loop back to print next object (negative offset)
-
-        // Done listing - return
-        self.emit_byte(0xB0)?; // rtrue instruction
-
-        Ok(())
-    }
-
-    /// Generate list_contents builtin function - lists contents of a container
-    fn generate_list_contents_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
-        if args.len() != 1 {
-            return Err(CompilerError::CodeGenError(format!(
-                "list_contents expects 1 argument, got {}",
-                args.len()
-            )));
-        }
-
-        let container_id = args[0];
-
-        // Similar to list_objects but for container contents
-        // Check if container is open first (if it has openable attribute)
-
-        // Get first child of container
-        self.emit_byte(0x82)?; // get_child opcode (1OP:130)
-        self.emit_word(container_id as u16)?; // Container ID
-        self.emit_byte(0x01)?; // Store child in local variable 1
-        self.emit_byte(0x40)?; // Branch if child exists
-        self.emit_word(0x0002)?; // Skip return if empty
-
-        // Empty container - return
-        self.emit_byte(0xB1)?; // rfalse instruction
-
-        // Loop through contents
-        // Print current object
-        self.emit_byte(0xB2)?; // print opcode
-        let debug_msg = "Object in container";
-        let string_id = self.find_or_create_string_id(debug_msg)?;
-        self.ir_id_to_string
-            .insert(string_id, debug_msg.to_string());
-        self.add_unresolved_reference(
-            LegacyReferenceType::StringRef,
-            string_id,
-            true,
-            MemorySpace::Code,
-        )?;
-        self.emit_word(placeholder_word())?; // Placeholder for string address
-
-        // Get next sibling
-        self.emit_byte(0x81)?; // get_sibling opcode
-        self.emit_byte(0x01)?; // Current object
-        self.emit_byte(0x01)?; // Store sibling back in variable 1
-        self.emit_byte(0x40)?; // Branch if sibling exists
-        self.emit_word(0xFFF0)?; // Loop back (negative offset)
-
-        // Done - return
-        self.emit_byte(0xB0)?; // rtrue instruction
-
-        Ok(())
-    }
-
-    /// Generate get_object_contents builtin - returns array of objects contained in the given object
-    fn generate_get_object_contents_builtin(
-        &mut self,
-        args: &[IrId],
-        target: Option<u32>,
-    ) -> Result<(), CompilerError> {
-        if args.len() != 1 {
-            return Err(CompilerError::CodeGenError(format!(
-                "get_object_contents expects 1 argument, got {}",
-                args.len()
-            )));
-        }
-
-        let object_id = args[0];
-        log::debug!(
-            "Generating get_object_contents for object IR ID {}",
-            object_id
-        );
-
-        // For now, return a simple array containing just the container object ID
-        // TODO: Implement proper object tree traversal to find child objects
-        // This is a placeholder that prevents the "Cannot insert object 0" error
-
-        // Get the object operand
-        let container_operand = self.resolve_ir_id_to_operand(object_id)?;
-        log::debug!(
-            "get_object_contents: resolved IR ID {} to operand {:?}",
-            object_id,
-            container_operand
-        );
-
-        // CRITICAL: Register target IR ID mapping for get_object_contents result
-        if let Some(target_id) = target {
-            // Object contents results are temporary values consumed immediately -> use stack
-            self.ir_id_to_stack_var.insert(target_id, 0);
-            log::debug!(
-                "get_object_contents target mapping: IR ID {} -> stack variable 0",
-                target_id
-            );
-        }
-
-        match container_operand {
-            Operand::LargeConstant(obj_num) => {
-                // For now, just return a simple integer representing "non-empty container"
-                // This prevents the object 0 error while we implement proper array support
-                if let Some(store_var) = target {
-                    // Store a placeholder value (non-zero = success, represents empty array)
-                    // Use store instruction: 1OP:33 (0x21)
-                    self.emit_instruction(
-                        0x21,                         // store (1OP:33)
-                        &[Operand::LargeConstant(1)], // Non-zero placeholder value
-                        Some(store_var as u8),
-                        None, // No branch
-                    )?;
-
-                    log::debug!(
-                        "get_object_contents: generated store instruction for object {}",
-                        obj_num
-                    );
-                }
-                log::debug!(
-                    "get_object_contents: returning placeholder value 1 for object {}",
-                    obj_num
-                );
-            }
-            _ => {
-                // Handle other operand types by treating them as valid placeholders
-                log::warn!(
-                    "get_object_contents: object resolved to {:?}, using placeholder",
-                    container_operand
-                );
-                if let Some(store_var) = target {
-                    // Store a placeholder value for non-constant operands
-                    self.emit_instruction(
-                        0x21,                         // store (1OP:33)
-                        &[Operand::LargeConstant(1)], // Non-zero placeholder value
-                        Some(store_var as u8),
-                        None, // No branch
-                    )?;
-                }
-                log::debug!(
-                    "get_object_contents: returning placeholder value 1 for non-constant operand"
-                );
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Generate object_is_empty builtin - returns true if object has no child objects
-    fn generate_object_is_empty_builtin(
-        &mut self,
-        args: &[IrId],
-        target: Option<u32>,
-    ) -> Result<(), CompilerError> {
-        if args.len() != 1 {
-            return Err(CompilerError::CodeGenError(format!(
-                "object_is_empty expects 1 argument, got {}",
-                args.len()
-            )));
-        }
-
-        let object_id = args[0];
-        log::debug!(
-            " LEGACY_OBJECT_IS_EMPTY: Called with target={:?}, args={:?}",
-            target,
-            args
-        );
-
-        // Get the object operand
-        let container_operand = self.resolve_ir_id_to_operand(object_id)?;
-        log::debug!(
-            "object_is_empty: resolved IR ID {} to operand {:?}",
-            object_id,
-            container_operand
-        );
-
-        match container_operand {
-            Operand::LargeConstant(obj_num) => {
-                // For now, just return a simple boolean placeholder
-                // This prevents errors while we implement proper object tree traversal
-                if let Some(target_id) = target {
-                    // Return "false" (0) as placeholder - indicating not empty for testing
-                    // Use store instruction: 1OP:33 (0x21) storing to stack (Z-Machine compliance)
-                    self.emit_instruction(
-                        0x21,                         // store (1OP:33)
-                        &[Operand::LargeConstant(0)], // 0 = false (not empty)
-                        Some(0),                      // Store to stack (variable 0)
-                        None,                         // No branch
-                    )?;
-
-                    // Map result to stack variable
-                    self.ir_id_to_stack_var
-                        .insert(target_id, self.stack_depth as u8);
-                    self.stack_depth += 1;
-                    log::debug!(
-                        "LEGACY_OBJECT_IS_EMPTY: Mapped IR ID {} to stack variable {} for object {}",
-                        target_id, self.stack_depth - 1, obj_num
-                    );
-                }
-                log::debug!(
-                    "object_is_empty: returning placeholder value 0 (not empty) for object {}",
-                    obj_num
-                );
-            }
-            _ => {
-                // Handle other operand types by treating them as valid placeholders
-                log::warn!(
-                    "object_is_empty: object resolved to {:?}, using placeholder",
-                    container_operand
-                );
-                if let Some(target_id) = target {
-                    // Store a placeholder value for non-constant operands to stack
-                    self.emit_instruction(
-                        0x21,                         // store (1OP:33)
-                        &[Operand::LargeConstant(0)], // 0 = false (not empty)
-                        Some(0),                      // Store to stack (variable 0)
-                        None,                         // No branch
-                    )?;
-
-                    // Map result to stack variable
-                    self.ir_id_to_stack_var
-                        .insert(target_id, self.stack_depth as u8);
-                    self.stack_depth += 1;
-                    log::debug!(
-                        "LEGACY_OBJECT_IS_EMPTY: Mapped IR ID {} to stack variable {} (non-constant case)",
-                        target_id, self.stack_depth - 1
-                    );
-                }
-                log::debug!("object_is_empty: returning placeholder value 0 (not empty) for non-constant operand");
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Generate value_is_none builtin - checks if a value represents null/undefined/none
-    fn generate_value_is_none_builtin(
-        &mut self,
-        args: &[IrId],
-        target: Option<u32>,
-    ) -> Result<(), CompilerError> {
-        if args.len() != 1 {
-            return Err(CompilerError::CodeGenError(format!(
-                "value_is_none expects 1 argument, got {}",
-                args.len()
-            )));
-        }
-
-        let value_id = args[0];
-        log::debug!("Generating value_is_none for IR ID {}", value_id);
-
-        // Get the value operand
-        let value_operand = self.resolve_ir_id_to_operand(value_id)?;
-        log::debug!(
-            "value_is_none: resolved IR ID {} to operand {:?}",
-            value_id,
-            value_operand
-        );
-
-        if let Some(store_var) = target {
-            match value_operand {
-                Operand::LargeConstant(0) => {
-                    // Value is 0, which represents none/null - return true (1)
-                    self.emit_instruction(
-                        0x21,                         // store (1OP:33)
-                        &[Operand::LargeConstant(1)], // 1 = true (is none)
-                        Some(store_var as u8),
-                        None,
-                    )?;
-                    log::debug!("value_is_none: value is 0, returning true");
-                }
-                Operand::LargeConstant(val) => {
-                    // Non-zero constant - return false (0)
-                    self.emit_instruction(
-                        0x21,                         // store (1OP:33)
-                        &[Operand::LargeConstant(0)], // 0 = false (not none)
-                        Some(store_var as u8),
-                        None,
-                    )?;
-                    log::debug!("value_is_none: value is {}, returning false", val);
-                }
-                _ => {
-                    // For other operand types, assume non-null and return false
-                    self.emit_instruction(
-                        0x21,                         // store (1OP:33)
-                        &[Operand::LargeConstant(0)], // 0 = false (not none)
-                        Some(store_var as u8),
-                        None,
-                    )?;
-                    log::debug!(
-                        "value_is_none: complex operand {:?}, assuming not none",
-                        value_operand
-                    );
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Generate get_object_size builtin - returns the count of elements/contents
-    fn generate_get_object_size_builtin(
-        &mut self,
-        args: &[IrId],
-        target: Option<u32>,
-    ) -> Result<(), CompilerError> {
-        if args.len() != 1 {
-            return Err(CompilerError::CodeGenError(format!(
-                "get_object_size expects 1 argument, got {}",
-                args.len()
-            )));
-        }
-
-        let object_id = args[0];
-        log::debug!("Generating get_object_size for object IR ID {}", object_id);
-
-        // Get the object operand
-        let object_operand = self.resolve_ir_id_to_operand(object_id)?;
-        log::debug!(
-            "get_object_size: resolved IR ID {} to operand {:?}",
-            object_id,
-            object_operand
-        );
-
-        if let Some(store_var) = target {
-            match object_operand {
-                Operand::LargeConstant(obj_num) => {
-                    // For now, return a safe placeholder size of 1 for most objects
-                    // This prevents returning 0 which could cause "object 0" errors
-                    // In a full implementation, this would traverse the object tree and count contents
-                    let placeholder_size = if obj_num == 0 { 0 } else { 1 };
-
-                    self.emit_instruction(
-                        0x21, // store (1OP:33)
-                        &[Operand::LargeConstant(placeholder_size)],
-                        Some(store_var as u8),
-                        None,
-                    )?;
-
-                    log::debug!(
-                        "get_object_size: returning size {} for object {}",
-                        placeholder_size,
-                        obj_num
-                    );
-                }
-                _ => {
-                    // For other operand types, return safe non-zero size
-                    self.emit_instruction(
-                        0x21,                         // store (1OP:33)
-                        &[Operand::LargeConstant(1)], // Safe non-zero size
-                        Some(store_var as u8),
-                        None,
-                    )?;
-                    log::debug!(
-                        "get_object_size: returning size 1 for complex operand {:?}",
-                        object_operand
-                    );
-                }
-            }
-        }
-
-        Ok(())
-    }
 
     /// Generate string concatenation for two IR values
     fn generate_string_concatenation(
