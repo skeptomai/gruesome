@@ -37,7 +37,7 @@ const GOLDEN_TESTS: &[GoldenTest] = &[
         name: "mini_zork_v3",
         source_file: "examples/mini_zork.grue",
         expected_output_file: Some("tests/golden_files/mini_zork_v3.z3"),
-        should_compile: false, // Temporarily disabled due to IR mapping regression 
+        should_compile: false, // Temporarily disabled due to IR mapping regression
         target_version: ZMachineVersion::V3,
     },
 ];
