@@ -2759,7 +2759,9 @@ impl ZMachineCodeGen {
                     log::debug!(" SINGLE_PATH: {} builtin in IR translation", name);
                     match name.as_str() {
                         // TIER 1: Basic functions (completed)
-                        "print" => self.translate_print_builtin_inline(args)?,
+                        "print" => return self.generate_print_builtin(args),
+                        "print_ret" => self.translate_print_ret_builtin_inline(args)?,
+                        "new_line" => self.translate_new_line_builtin_inline(args)?,
                         "move" => self.translate_move_builtin_inline(args)?,
                         "get_location" => {
                             self.translate_get_location_builtin_inline(args, target)?
@@ -3001,74 +3003,57 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// PHASE 1: Single-path print builtin implementation
-    /// This replaces delegation to generate_print_builtin()
-    /// SINGLE-PATH MIGRATION: Phase 1 - Print function using direct IR translation
-    /// Generates Z-Machine print instructions directly from IR, avoiding dual-path coordination
-    fn translate_print_builtin_inline(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+    // REMOVED: translate_print_builtin_inline - Dead code
+    // This function was never called since get_builtin_function_name() returns None for 'print'
+    // The actual print implementation is in generate_print_builtin() around line 9706
+
+    /// PHASE 1: Single-path print_ret builtin implementation
+    /// Generates Z-Machine print_ret instruction (print + newline + return true)
+    fn translate_print_ret_builtin_inline(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
         if args.len() != 1 {
             return Err(CompilerError::CodeGenError(format!(
-                "print expects 1 argument, got {}",
+                "print_ret expects 1 argument, got {}",
                 args.len()
             )));
         }
 
         let arg_id = args[0];
-        log::debug!(" PHASE1_PRINT: Processing IR ID {} (single-path)", arg_id);
+        log::debug!(" PHASE1_PRINT_RET: Processing IR ID {} (single-path)", arg_id);
 
         // Check if this is a string literal
-        log::debug!(
-            " PHASE1_PRINT: Looking for string in ir_id_to_string with key {}",
-            arg_id
-        );
-        log::debug!(
-            " PHASE1_PRINT: Available string keys: {:?}",
-            self.ir_id_to_string.keys().collect::<Vec<_>>()
-        );
         if let Some(string_value) = self.ir_id_to_string.get(&arg_id).cloned() {
-            // Add newline to the string content for proper line breaks
-            let print_string = if string_value.is_empty() {
-                "\n".to_string() // Empty print() becomes just a newline
-            } else {
-                format!("{}\n", string_value) // Add newline to non-empty strings
-            };
-
-            // Use the IR ID directly (maintaining Option B coordination)
+            // For print_ret, use string as-is (print_ret instruction handles newline + return)
+            let print_string = string_value;
             let string_id = arg_id;
 
-            // Update the string content in the IR system to include newline
+            // Update the string content in the IR system
             self.ir_id_to_string.insert(string_id, print_string.clone());
 
-            // Ensure the string gets into the encoding system under the IR ID
+            // Ensure the string gets into the encoding system
             if !self.strings.iter().any(|(id, _)| *id == string_id) {
                 self.strings.push((string_id, print_string.clone()));
-                // Encode the string immediately
                 let encoded = self.encode_string(&print_string)?;
                 self.encoded_strings.insert(string_id, encoded);
                 log::debug!(
-                    " PHASE1_PRINT: Added string ID {} to encoding system: '{}'",
+                    " PHASE1_PRINT_RET: Added string ID {} to encoding system: '{}'",
                     string_id,
                     print_string
                 );
-            } else {
-                log::debug!(
-                    " PHASE1_PRINT: String ID {} already in encoding system",
-                    string_id
-                );
             }
 
-            // Generate print_paddr instruction with unresolved string reference
+            // Generate print_ret instruction (0OP:179, opcode 0x83)
+            // print_ret prints string, adds newline, and returns true
             let layout = self.emit_instruction(
-                0x8D,                                          // print_paddr opcode - 1OP:141
+                0x83,                                          // print_ret opcode - 0OP:179
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
-                None,                                          // No store
+                None,                                          // No store (returns true automatically)
                 None,                                          // No branch
             )?;
 
             // Add unresolved reference for the string address
             let operand_address = layout
                 .operand_location
-                .expect("print_paddr instruction must have operand");
+                .expect("print_ret instruction must have operand");
             let reference = UnresolvedReference {
                 reference_type: LegacyReferenceType::StringRef,
                 location: operand_address,
@@ -3079,35 +3064,73 @@ impl ZMachineCodeGen {
             };
             self.reference_context.unresolved_refs.push(reference);
 
-            // TRUE SINGLE-PATH: emit_instruction already wrote to code_space directly
-
-            log::debug!(" PHASE1_PRINT: Generated print_paddr for string ID {} ({} bytes) at address 0x{:04x}", string_id, layout.total_size, operand_address);
-        } else {
-            // Non-string arguments: use print_num for computed values
             log::debug!(
-                " PHASE1_PRINT: Computing value for non-string argument {}",
-                arg_id
-            );
-
-            // Resolve the computed value to an operand
-            let operand = self.resolve_ir_id_to_operand(arg_id)?;
-
-            // Generate print_num instruction (1OP:134)
-            let layout = self.emit_instruction(
-                0x86,       // print_num opcode - 1OP:134
-                &[operand], // The computed value
-                None,       // No store
-                None,       // No branch
-            )?;
-
-            // emit_instruction already pushed bytes to code_space
-
-            log::debug!(
-                " PHASE1_PRINT: Generated print_num for computed value {} ({} bytes)",
-                arg_id,
+                " PHASE1_PRINT_RET: Generated print_ret for string '{}' ({} bytes)",
+                print_string,
                 layout.total_size
             );
+        } else {
+            // For computed values, use print_num + new_line + return true sequence
+            let operand = self.resolve_ir_id_to_operand(arg_id)?;
+            
+            // print_num
+            let layout1 = self.emit_instruction(
+                0xE6, // print_num opcode (VAR:230)
+                &[operand],
+                None,
+                None,
+            )?;
+
+            // new_line 
+            let layout2 = self.emit_instruction(
+                0x8B, // new_line opcode (0OP:187)
+                &[],
+                None,
+                None,
+            )?;
+
+            // rtrue (return 1)
+            let layout3 = self.emit_instruction(
+                0x88, // rtrue opcode (0OP:184)
+                &[],
+                None,
+                None,
+            )?;
+
+            log::debug!(
+                " PHASE1_PRINT_RET: Generated print_num+newline+rtrue for computed value {} ({} bytes total)",
+                arg_id,
+                layout1.total_size + layout2.total_size + layout3.total_size
+            );
         }
+
+        Ok(())
+    }
+
+    /// new_line builtin implementation
+    /// Generates Z-Machine new_line instruction (0OP:187, opcode 0x8B)
+    fn translate_new_line_builtin_inline(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+        if !args.is_empty() {
+            return Err(CompilerError::CodeGenError(format!(
+                "new_line expects 0 arguments, got {}",
+                args.len()
+            )));
+        }
+
+        log::debug!(" NEW_LINE: Generating new_line instruction (0OP:187)");
+
+        // Generate new_line instruction (0OP:187, opcode 0x8B)
+        let layout = self.emit_instruction(
+            0x8B, // new_line opcode (0OP:187)
+            &[],  // No operands
+            None, // No store
+            None, // No branch
+        )?;
+
+        log::debug!(
+            " NEW_LINE: Generated new_line instruction ({} bytes)",
+            layout.total_size
+        );
 
         Ok(())
     }
@@ -9603,12 +9626,9 @@ impl ZMachineCodeGen {
 
         // Check if this is a string literal
         if let Some(string_value) = self.ir_id_to_string.get(&arg_id).cloned() {
-            // Add newline to the string content for proper line breaks
-            let print_string = if string_value.is_empty() {
-                "\n".to_string() // Empty print() becomes just a newline
-            } else {
-                format!("{}\n", string_value) // Add newline to non-empty strings
-            };
+            // Per Z-Machine spec: print() does NOT add automatic newlines
+            // Only print_ret() should add newlines automatically
+            let print_string = string_value;
 
             // OPTION B FIX: Use the IR ID directly instead of creating new string ID
             // This maintains coordination between IR translation and builtin systems

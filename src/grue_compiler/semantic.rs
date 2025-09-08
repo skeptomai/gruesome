@@ -82,6 +82,8 @@ impl SemanticAnalyzer {
         // Add common built-in functions
         let builtins = [
             ("print", vec![Type::String], None),
+            ("print_ret", vec![Type::String], None),
+            ("new_line", vec![], None),
             ("println", vec![Type::String], None),
             ("error", vec![Type::String], None),
             ("to_string", vec![Type::Any], Some(Type::String)),

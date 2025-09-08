@@ -1008,6 +1008,16 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Identifier("print".to_string()))
             }
+            TokenKind::PrintRet => {
+                // Handle print_ret as a function call
+                self.advance();
+                Ok(Expr::Identifier("print_ret".to_string()))
+            }
+            TokenKind::NewLine => {
+                // Handle new_line as a function call
+                self.advance();
+                Ok(Expr::Identifier("new_line".to_string()))
+            }
             TokenKind::Move => {
                 // Handle move as a function call
                 self.advance();
