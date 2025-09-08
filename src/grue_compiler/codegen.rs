@@ -6,6 +6,7 @@
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
 use crate::grue_compiler::ZMachineVersion;
+use crate::grue_compiler::codegen_utils::{CodeGenUtils, AssemblyValidator};
 use indexmap::IndexMap;
 use log::debug;
 use std::collections::{HashMap, HashSet};
@@ -684,8 +685,8 @@ impl ZMachineCodeGen {
         );
 
         // Phase 0: IR Input Analysis & Validation (DEBUG)
-        self.log_ir_inventory(&ir);
-        self.validate_ir_input(&ir)?;
+        CodeGenUtils::log_ir_inventory(&ir);
+        CodeGenUtils::validate_ir_input(&ir)?;
 
         // Phase 1: Analyze and prepare all content
         log::info!("📋 Phase 1: Content analysis and preparation");
@@ -725,105 +726,11 @@ impl ZMachineCodeGen {
 
     // === IR INPUT ANALYSIS & VALIDATION (DEBUG PHASE 1) ===
 
-    /// Phase 1.1 & 1.2: Comprehensive IR inventory and instruction breakdown
-    fn log_ir_inventory(&self, ir: &IrProgram) {
-        log::info!(" IR INVENTORY: Comprehensive input analysis");
-        log::info!("  ├─ Functions: {} definitions", ir.functions.len());
-        log::info!(
-            "  ├─ Init block: {}",
-            if ir.init_block.is_some() {
-                "present"
-            } else {
-                "missing"
-            }
-        );
-        log::info!("  ├─ Grammar rules: {} rules", ir.grammar.len());
-        log::info!("  ├─ Objects: {} definitions", ir.objects.len());
-        log::info!("  ├─ Rooms: {} definitions", ir.rooms.len());
-        log::info!("  ├─ String table: {} strings", ir.string_table.len());
+    // log_ir_inventory moved to codegen_utils::CodeGenUtils::log_ir_inventory
 
-        let total_ir_instructions = self.count_total_ir_instructions(ir);
-        log::info!(
-            "  └─ Total IR instructions: {} instructions",
-            total_ir_instructions
-        );
+    // count_total_ir_instructions moved to codegen_utils::CodeGenUtils::count_total_ir_instructions
 
-        // Log detailed function breakdown
-        for (i, function) in ir.functions.iter().enumerate() {
-            log::debug!(
-                "📋 Function #{}: '{}' with {} instructions",
-                i,
-                function.name,
-                function.body.instructions.len()
-            );
-        }
-
-        // Log init block breakdown
-        if let Some(init_block) = &ir.init_block {
-            log::debug!(
-                "📋 Init Block: {} instructions",
-                init_block.instructions.len()
-            );
-        }
-
-        // Log instruction type breakdown
-        self.log_ir_instruction_breakdown(ir);
-    }
-
-    /// Count total IR instructions across all functions and init blocks
-    fn count_total_ir_instructions(&self, ir: &IrProgram) -> usize {
-        let mut total = 0;
-
-        // Count function instructions
-        for function in &ir.functions {
-            total += function.body.instructions.len();
-        }
-
-        // Count init block instructions
-        if let Some(init_block) = &ir.init_block {
-            total += init_block.instructions.len();
-        }
-
-        total
-    }
-
-    /// Log breakdown of IR instruction types
-    fn log_ir_instruction_breakdown(&self, ir: &IrProgram) {
-        use std::collections::HashMap;
-        use std::mem::discriminant;
-
-        let mut instruction_counts: HashMap<String, usize> = HashMap::new();
-
-        // Count function instructions by type
-        for function in &ir.functions {
-            for instruction in &function.body.instructions {
-                let type_name = format!("{:?}", discriminant(instruction))
-                    .replace("std::mem::Discriminant<grue_compiler::ir::", "")
-                    .replace(">(", "")
-                    .replace(")", "");
-                *instruction_counts.entry(type_name).or_insert(0) += 1;
-            }
-        }
-
-        // Count init block instructions by type
-        if let Some(init_block) = &ir.init_block {
-            for instruction in &init_block.instructions {
-                let type_name = format!("{:?}", discriminant(instruction))
-                    .replace("std::mem::Discriminant<grue_compiler::ir::", "")
-                    .replace(">(", "")
-                    .replace(")", "");
-                *instruction_counts.entry(type_name).or_insert(0) += 1;
-            }
-        }
-
-        log::debug!("📊 IR INSTRUCTION BREAKDOWN:");
-        let mut sorted_counts: Vec<_> = instruction_counts.iter().collect();
-        sorted_counts.sort_by(|a, b| b.1.cmp(a.1)); // Sort by count descending
-
-        for (instruction_type, count) in sorted_counts {
-            log::debug!("  ├─ {}: {}", instruction_type, count);
-        }
-    }
+    // log_ir_instruction_breakdown moved to codegen_utils::CodeGenUtils::log_ir_instruction_breakdown
 
     /// Phase 1.3: IR validation checkpoint
     fn validate_ir_input(&self, ir: &IrProgram) -> Result<(), CompilerError> {
@@ -845,7 +752,7 @@ impl ZMachineCodeGen {
         }
 
         // Validate we have executable content
-        let total_executable_content = self.count_total_ir_instructions(ir);
+        let total_executable_content = CodeGenUtils::count_total_ir_instructions(ir);
         if total_executable_content == 0 {
             return Err(CompilerError::CodeGenError(
                 "COMPILER BUG: No executable IR instructions found".to_string(),
@@ -1495,7 +1402,7 @@ impl ZMachineCodeGen {
         self.final_data[27] = (file_len_words & 0xFF) as u8;
 
         // Calculate and write checksum (must be done after all other fields are set)
-        let checksum = self.calculate_checksum();
+        let checksum = AssemblyValidator::calculate_checksum(&self.final_data);
         self.final_data[28] = (checksum >> 8) as u8;
         self.final_data[29] = (checksum & 0xFF) as u8;
 
@@ -2208,7 +2115,7 @@ impl ZMachineCodeGen {
         log::info!(
             "📊 INPUT: {} functions, {} IR instructions total",
             ir.functions.len(),
-            self.count_total_ir_instructions(ir)
+            CodeGenUtils::count_total_ir_instructions(ir)
         );
 
         // CRITICAL: Set up object ID mappings before code generation
@@ -2416,7 +2323,7 @@ impl ZMachineCodeGen {
         }
 
         let total_code_generated = self.code_space.len() - initial_code_size;
-        let total_ir_instructions = self.count_total_ir_instructions(ir);
+        let total_ir_instructions = CodeGenUtils::count_total_ir_instructions(ir);
         log::info!(
             "📊 PHASE 2 COMPLETE: Generated {} bytes from {} IR instructions",
             total_code_generated,
@@ -2441,7 +2348,7 @@ impl ZMachineCodeGen {
         let cloned_instructions: Vec<IrInstruction> =
             all_instructions.into_iter().cloned().collect();
         let (expected_bytecode_instructions, expected_zero_instructions, actual_instructions) =
-            self.analyze_instruction_expectations(&cloned_instructions);
+            CodeGenUtils::analyze_instruction_expectations(&cloned_instructions);
 
         if expected_bytecode_instructions > 0 && total_code_generated == 0 {
             log::error!(" TRANSLATION_FAILURE: {} instructions expected to generate bytecode, but 0 bytes generated", 
