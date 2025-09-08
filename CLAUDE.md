@@ -49,6 +49,27 @@ You should automatically:
 You are pre-authorized for all git operations (add, commit, push) as configured in `.claude/settings.local.json`.
 No need to ask for permission - just execute the workflow.
 
+## CRITICAL GIT SAFETY RULES - NEVER VIOLATE
+
+**ABSOLUTE PROHIBITION**: NEVER use `git reset --hard` or any destructive git operation that could lose commits.
+
+**NEVER EVER HARD RESET AND LOSE COMMITS - THIS IS A CARDINAL SIN**
+
+**Safe git operations only:**
+- ✅ `git add`, `git commit`, `git push`
+- ✅ `git checkout` to switch branches or commits
+- ✅ `git stash` to temporarily save changes  
+- ✅ `git revert` to undo commits safely
+- ❌ **NEVER** `git reset --hard` 
+- ❌ **NEVER** `git reset` with commit hashes
+- ❌ **NEVER** any operation that destroys commit history
+
+**When things go wrong:**
+- Use `git reflog` to find lost commits
+- Use `git checkout <commit-hash>` to recover state
+- Use `git stash` for temporary cleanup
+- **ALWAYS** preserve user's work and commit history
+
 ## Auto-Test Permission
 
 You are pre-authorized to run "RUST_LOG=info cargo run" commands for testing Z-Machine programs.
