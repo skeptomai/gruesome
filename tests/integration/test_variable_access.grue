@@ -1,0 +1,13 @@
+// Test variable declaration AND access
+init {
+    print("Before variable declaration");
+    let x = 1;
+    print("After variable declaration");
+    
+    // Test variable access - this should use LoadVar
+    if x == 1 {
+        print("Variable access works!");
+    }
+    
+    print("Test completed");
+}

@@ -1,0 +1,24 @@
+// Simple test to isolate property access issue
+world {
+    room test_room "Test Room" {
+        desc: "A test room"
+        
+        object test_obj {
+            names: ["obj"]
+            desc: "A test object"
+        }
+    }
+}
+
+fn simple_examine(obj) {
+    if obj.location == player.location {
+        print(obj.desc);
+    } else {
+        print("Not visible");
+    }
+}
+
+init {
+    player.location = test_room;
+    simple_examine(test_obj);
+}

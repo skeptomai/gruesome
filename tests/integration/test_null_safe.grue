@@ -1,0 +1,15 @@
+fn main() {
+    // Test null-safe navigation
+    let safe_name = player?.location?.name;
+    let safe_container = player?.location?.container;
+    
+    // Test regular vs null-safe
+    let regular = player.location.name;
+    let null_safe = player?.location?.name;
+    
+    if safe_name {
+        print("Found safe name: " + safe_name);
+    }
+    
+    print("Testing null-safe navigation");
+}

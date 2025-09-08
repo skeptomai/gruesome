@@ -1,0 +1,12 @@
+// Simplest possible test - no method calls to isolate the object 0 issue
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room"
+    }
+}
+
+init {
+    print("Simple test - no methods called");
+    print("This should not generate any object 0 errors");
+}

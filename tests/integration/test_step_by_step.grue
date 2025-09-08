@@ -1,0 +1,23 @@
+// Test method calls step by step to isolate the object 0 source
+
+world {
+    room test_room "Test Room" {
+        desc: "A test room"
+    }
+}
+
+init {
+    print("Testing step by step");
+    
+    // Step 1: Just call contents() and store result
+    print("Step 1: Calling contents()");
+    let contents = test_room.contents();
+    print("Step 1 complete - contents retrieved");
+    
+    // Step 2: Call empty() on the result
+    print("Step 2: Calling empty() on contents");
+    let is_empty = contents.empty();  
+    print("Step 2 complete - empty status retrieved");
+    
+    print("All steps completed successfully!");
+}

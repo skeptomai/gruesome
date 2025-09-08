@@ -1,0 +1,14 @@
+init {
+    // Test property access to validate property table format
+    print("Testing property access...");
+    
+    // Access player location property
+    let loc = player.location;
+    print("Player location: " + to_string(loc));
+    
+    // Test object description property
+    let description = player.description;
+    print("Player description: " + description);
+    
+    print("Property access test complete");
+}

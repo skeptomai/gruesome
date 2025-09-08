@@ -1,0 +1,22 @@
+// Feature Test 3: Object method calls (.empty(), .contents(), etc.)
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house."
+    }
+}
+
+fn test_methods() {
+    let objects = west_of_house.contents();
+    if objects.empty() {
+        print("Room is empty as expected");
+    } else {
+        print("Room has objects");
+    }
+}
+
+init {
+    print("Testing object method calls...");
+    player.location = west_of_house;
+    test_methods();
+    print("Method calls test: SUCCESS");
+}

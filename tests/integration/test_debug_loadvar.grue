@@ -1,0 +1,9 @@
+// Simple test to isolate LoadVar issue
+fn simple_function(param) {
+    print("Simple function called");
+    return param;
+}
+
+init {
+    simple_function(42);
+}

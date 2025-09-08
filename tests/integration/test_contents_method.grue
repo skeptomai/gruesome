@@ -1,0 +1,22 @@
+// Test the specific contents() method that was causing object 0 errors
+
+world {
+    room test_room "Test Room" {
+        desc: "A test room"
+    }
+}
+
+init {
+    print("Testing contents() method fix");
+    
+    let contents = test_room.contents();
+    
+    // This should NOT return 0 anymore (which was causing object 0 errors)
+    if contents.empty() {
+        print("Room contents are empty - this is safe!");
+    } else {
+        print("Room has contents");
+    }
+    
+    print("Test completed without object 0 error!");
+}

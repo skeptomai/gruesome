@@ -1,0 +1,6 @@
+// Test property access only
+init {
+    print("Testing property access...");
+    let loc = player.location;
+    print("Property access complete");
+}

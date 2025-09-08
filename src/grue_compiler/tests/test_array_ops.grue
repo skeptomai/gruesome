@@ -1,0 +1,33 @@
+fn main() {
+    // Test 1: Array literal creation
+    let fruits = ["apple", "banana"];
+    print("Initial fruits:");
+    for fruit in fruits {
+        print("- " + fruit);
+    }
+    
+    // Test 2: Empty array creation  
+    let numbers = [];
+    print("Empty array created");
+    
+    // Test 3: Array method calls (these should parse but may not work yet)
+    numbers.add(1);
+    numbers.add(2);
+    numbers.add(3);
+    
+    print("Numbers after adding:");
+    for num in numbers {
+        print("- " + to_string(num));
+    }
+    
+    // Test 4: Array length
+    let count = numbers.length;
+    print("Array length: " + to_string(count));
+    
+    // Test 5: Remove method
+    numbers.remove(1);  // Remove element at index 1
+    print("After removing index 1:");
+    for num in numbers {
+        print("- " + to_string(num));
+    }
+}

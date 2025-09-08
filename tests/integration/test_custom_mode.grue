@@ -1,0 +1,9 @@
+// Test custom mode - user defines main function
+init {
+    print("Custom mode test - calling user main");
+}
+
+fn main() {
+    print("This is the custom main function");
+    print("Custom program complete!");
+}

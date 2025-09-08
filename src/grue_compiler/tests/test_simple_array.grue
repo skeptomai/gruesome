@@ -1,0 +1,9 @@
+fn main() {
+    // Test simple array operations
+    let numbers = [1, 2, 3];
+    print("Array created");
+    
+    for num in numbers {
+        print("Number: " + to_string(num));
+    }
+}

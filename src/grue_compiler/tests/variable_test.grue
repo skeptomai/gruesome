@@ -1,0 +1,7 @@
+// Test variables without property access
+init {
+    print("Testing variables...");
+    let x = 42;
+    print("Variable x = " + to_string(x));
+    print("Variable test complete");
+}

@@ -1,0 +1,59 @@
+// Test Tier 3 Migration - Advanced Functions
+// Tests all 8 migrated Tier 3 builtin functions
+
+world {
+    room test_room "Test Room" {
+        desc: "A room for testing advanced functionality."
+        
+        object test_container {
+            names: ["container", "box"]
+            desc: "A test container."
+            container: true
+            
+            contains {
+                object test_item {
+                    names: ["item", "thing"]
+                    desc: "An item in the container."
+                    takeable: true
+                }
+            }
+        }
+    }
+}
+
+fn test_tier3_functions() {
+    print("Testing Tier 3 builtin functions...");
+    
+    // Test random() - random number generation
+    let dice_roll = random(6);
+    print("Random dice roll (1-6): " + to_string(dice_roll));
+    
+    // Test player visibility
+    let can_see = player_can_see(test_item);
+    print("Player can see item: " + to_string(can_see));
+    
+    // Test container system functions
+    list_objects();
+    list_contents(test_container);
+    
+    let contents = get_object_contents(test_container);
+    print("Container contents: " + to_string(contents));
+    
+    let is_empty = object_is_empty(test_container);
+    print("Container is empty: " + to_string(is_empty));
+    
+    // Test utility functions
+    let is_null = value_is_none(contents);
+    print("Contents value is null: " + to_string(is_null));
+    
+    let size = get_object_size(test_container);
+    print("Container size: " + to_string(size));
+    
+    print("All Tier 3 functions tested!");
+}
+
+init {
+    player.location = test_room;
+    test_tier3_functions();
+    print("Tier 3 migration test complete!");
+}

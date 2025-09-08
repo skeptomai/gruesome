@@ -1,0 +1,43 @@
+// Regression test for property table and object mapping issues
+// This test covers all the failure modes we've encountered:
+// 1. Simple property assignment (test_room.visited = true)
+// 2. Chained property assignment (player.location.visited = true) 
+// 3. Multiple rooms with different object numbers
+// 4. Property access after assignment
+
+world {
+    room room_a "Room A" {
+        desc: "First room"
+    }
+    
+    room room_b "Room B" {
+        desc: "Second room"
+    }
+    
+    room room_c "Room C" {
+        desc: "Third room"
+    }
+}
+
+init {
+    // Test 1: Simple property assignments to different rooms
+    room_a.visited = true;
+    room_b.visited = true; 
+    room_c.visited = true;
+    
+    // Test 2: Set up player location chains
+    player.location = room_a;
+    
+    // Test 3: Chained property assignment (the critical case)
+    player.location.visited = true;
+    
+    // Test 4: Change location and test again
+    player.location = room_b;
+    player.location.visited = true;
+    
+    // Test 5: Complex chaining
+    player.location = room_c;
+    player.location.visited = true;
+    
+    print("All property operations completed successfully");
+}

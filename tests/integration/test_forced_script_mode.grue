@@ -1,0 +1,10 @@
+// Test forced script mode - has grammar but mode override
+mode: script
+
+grammar {
+    verb "test" { default => print("This won't run") }
+}
+
+init {
+    print("Forced script mode - ignores grammar");
+}

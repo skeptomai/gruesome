@@ -1,0 +1,8 @@
+// Simple single condition test
+init {
+    print("Before condition");
+    if true {
+        print("True branch");
+    }
+    print("After condition");
+}

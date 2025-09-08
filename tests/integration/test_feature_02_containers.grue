@@ -1,0 +1,26 @@
+// Feature Test 2: Object containers and containment
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house."
+        
+        object mailbox {
+            names: ["mailbox", "box"]
+            desc: "A small mailbox."
+            openable: true
+            container: true
+            
+            contains {
+                object leaflet {
+                    names: ["leaflet", "paper"]
+                    desc: "A welcome leaflet."
+                }
+            }
+        }
+    }
+}
+
+init {
+    print("Testing object containers...");
+    player.location = west_of_house;
+    print("Container test: SUCCESS");
+}

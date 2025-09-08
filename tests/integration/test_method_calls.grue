@@ -1,0 +1,34 @@
+// Test that method calls no longer return dangerous 0 values
+// This specifically tests the fix for method call placeholders
+
+world {
+    room test_room "Test Room" {
+        desc: "A test room"
+    }
+}
+
+fn test_none_method() {
+    let exit = test_room.exits["nonexistent"];
+    
+    if exit.none() {
+        print("Exit is none - this should work now!");
+    } else {
+        print("Exit exists (shouldn't happen)");
+    }
+}
+
+fn test_size_method() {
+    let size = test_room.size();
+    if size > 0 {
+        print("Size method returned: " + to_string(size));
+    } else {
+        print("Size method returned 0 (potential issue)");
+    }
+}
+
+init {
+    print("Testing method call placeholder fixes");
+    test_none_method();
+    test_size_method();
+    print("Test complete!");
+}

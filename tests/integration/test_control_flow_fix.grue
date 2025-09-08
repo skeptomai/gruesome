@@ -1,0 +1,16 @@
+// Simple control flow test to verify new architecture
+init {
+    // Test 1: Constant true condition (should eliminate jump)
+    if true {
+        print("True branch executed");
+    }
+    
+    // Test 2: Constant false condition (should eliminate jump)
+    if false {
+        print("This should not execute");
+    } else {
+        print("False branch executed");
+    }
+    
+    print("Control flow test complete");
+}

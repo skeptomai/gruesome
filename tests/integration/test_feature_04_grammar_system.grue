@@ -1,0 +1,22 @@
+// Feature Test 4: Basic grammar system with verb patterns
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house."
+    }
+}
+
+grammar {
+    verb "north", "n" {
+        go_north() -> "You can't go that way."
+    }
+    
+    verb "south", "s" {
+        go_south() -> "You can't go that way."
+    }
+}
+
+init {
+    print("Testing grammar system...");
+    player.location = west_of_house;
+    print("Grammar system test: SUCCESS");
+}

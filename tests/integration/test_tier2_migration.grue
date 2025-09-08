@@ -1,0 +1,56 @@
+// Test Tier 2 Migration - Object System Builtins
+// Tests all 6 migrated Tier 2 builtin functions
+
+world {
+    room test_room "Test Room" {
+        desc: "A room for testing object system functionality."
+        
+        object test_container {
+            names: ["container", "box"]
+            desc: "A test container object."
+            container: true
+            openable: true
+            
+            contains {
+                object test_item {
+                    names: ["item", "thing"]  
+                    desc: "A test item inside the container."
+                    takeable: true
+                }
+            }
+        }
+    }
+}
+
+fn test_object_system() {
+    print("Testing object system builtins...");
+    
+    // Test get_child - should return test_item ID
+    let child = get_child(test_container);
+    print("Container child: " + to_string(child));
+    
+    // Test get_sibling - should return 0 (no siblings)
+    let sibling = get_sibling(test_item);
+    print("Item sibling: " + to_string(sibling));
+    
+    // Test get_prop - get description property
+    let desc_prop = get_prop(test_item, 1);
+    print("Item description prop: " + to_string(desc_prop));
+    
+    // Test set_attr and test_attr - set takeable attribute
+    set_attr(test_item, 10);  // Set takeable attribute
+    let is_takeable = test_attr(test_item, 10);
+    print("Item is takeable: " + to_string(is_takeable));
+    
+    // Test clear_attr - remove takeable attribute
+    clear_attr(test_item, 10);
+    let still_takeable = test_attr(test_item, 10);  
+    print("Item still takeable: " + to_string(still_takeable));
+}
+
+init {
+    player.location = test_room;
+    print("Tier 2 Migration Test Starting");
+    test_object_system();
+    print("Tier 2 Migration Test Complete");
+}

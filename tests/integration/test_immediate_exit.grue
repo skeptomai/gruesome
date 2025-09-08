@@ -1,0 +1,3 @@
+init {
+    print("This program exits immediately");
+}

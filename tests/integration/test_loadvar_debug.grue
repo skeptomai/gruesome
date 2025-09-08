@@ -1,0 +1,6 @@
+// Test that should trigger LoadVar instruction
+init {
+    let x = 42;
+    let y = x;  // This should generate LoadVar instruction
+    print("Value is loaded");
+}
