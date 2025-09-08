@@ -495,7 +495,7 @@ impl ZMachineCodeGen {
     }
 
     /// Final header fixup: Write correct addresses directly to final_data after all spaces are positioned
-
+    ///
     /// Resolve a single fixup in the final assembled data
     fn resolve_fixup(&mut self, fixup: &PendingFixup) -> Result<(), CompilerError> {
         let final_source_address = match fixup.source_space {
@@ -1425,6 +1425,7 @@ impl ZMachineCodeGen {
     /// Updates ONLY the address fields with final assembled memory layout.
     /// Never touches static fields like serial number.
     ///
+    #[allow(clippy::too_many_arguments)]
     fn fixup_header_addresses(
         &mut self,
         pc_start: u16,
@@ -2809,7 +2810,7 @@ impl ZMachineCodeGen {
                         _ => {
                             // Fallback to legacy system for remaining builtins (Tier 3 only)
                             log::debug!("⚠️ LEGACY: {} delegating to legacy builtin system", name);
-                            if target == Some(104) {}
+                            let _ = target == Some(104);
                             self.generate_builtin_function_call(function, args, target)?;
                         }
                     }
@@ -5731,12 +5732,12 @@ impl ZMachineCodeGen {
             );
             debug!(
                 "  - As chars: '{}' '{}'",
-                if byte1 >= 0x20 && byte1 <= 0x7e {
+                if (0x20..=0x7e).contains(&byte1) {
                     byte1 as char
                 } else {
                     '.'
                 },
-                if byte2 >= 0x20 && byte2 <= 0x7e {
+                if (0x20..=0x7e).contains(&byte2) {
                     byte2 as char
                 } else {
                     '.'
@@ -8131,7 +8132,7 @@ impl ZMachineCodeGen {
             before_addr,
             after_addr
         );
-        return result;
+        result
     }
 
     /// Emit a jz (jump if zero) branch instruction for boolean conditions
@@ -10969,7 +10970,7 @@ impl ZMachineCodeGen {
         };
 
         // Track critical addresses around the crash point AND the 0xa0 byte issue
-        if (runtime_addr >= 0x0bd0 && runtime_addr <= 0x0be0)
+        if (0x0bd0..=0x0be0).contains(&runtime_addr)
             || (byte == 0xa0)
             || (runtime_addr == 0x0365)
         {
@@ -11317,7 +11318,7 @@ impl ZMachineCodeGen {
 
         // Code space analysis
         log::info!("  📋 CODE_SPACE: {} bytes", self.code_space.len());
-        if self.code_space.len() > 0 {
+        if !self.code_space.is_empty() {
             let first_10: Vec<String> = self
                 .code_space
                 .iter()
@@ -11338,7 +11339,7 @@ impl ZMachineCodeGen {
 
         // Object space analysis
         log::info!("  📦 OBJECT_SPACE: {} bytes", self.object_space.len());
-        if self.object_space.len() > 0 {
+        if !self.object_space.is_empty() {
             let first_10: Vec<String> = self
                 .object_space
                 .iter()
@@ -11357,7 +11358,7 @@ impl ZMachineCodeGen {
 
         // String space analysis
         log::info!("  📝 STRING_SPACE: {} bytes", self.string_space.len());
-        if self.string_space.len() > 0 {
+        if !self.string_space.is_empty() {
             let first_10: Vec<String> = self
                 .string_space
                 .iter()
@@ -11376,7 +11377,7 @@ impl ZMachineCodeGen {
 
         // Globals space analysis
         log::info!("  🌐 GLOBALS_SPACE: {} bytes", self.globals_space.len());
-        if self.globals_space.len() > 0 {
+        if !self.globals_space.is_empty() {
             let first_10: Vec<String> = self
                 .globals_space
                 .iter()
@@ -11397,7 +11398,7 @@ impl ZMachineCodeGen {
             "  📚 DICTIONARY_SPACE: {} bytes",
             self.dictionary_space.len()
         );
-        if self.dictionary_space.len() > 0 {
+        if !self.dictionary_space.is_empty() {
             let all_bytes: Vec<String> = self
                 .dictionary_space
                 .iter()

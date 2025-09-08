@@ -354,7 +354,7 @@ impl Interpreter {
             let pc = self.vm.pc;
 
             // Debug: Track all PC values and advancement
-            if pc > 0x1000 || pc == 0x1717 || (pc >= 0x0b70 && pc <= 0x0b80) {
+            if pc > 0x1000 || pc == 0x1717 || (0x0b70..=0x0b80).contains(&pc) {
                 log::error!(
                     "🚨 EXECUTION LOOP: PC=0x{:04x} ({}) memory_len={}",
                     pc,
@@ -400,7 +400,7 @@ impl Interpreter {
             }
 
             // CRITICAL PC TRACKING: Log every instruction fetch around crash point
-            if pc >= 0x0bd0 && pc <= 0x0be0 {
+            if (0x0bd0..=0x0be0).contains(&pc) {
                 let opcode_byte = self.vm.game.memory[pc as usize];
                 log::error!(
                     "🎯 CRITICAL_PC: PC=0x{:04x} fetching_byte=0x{:02x}",
@@ -521,7 +521,7 @@ impl Interpreter {
             // Debug: Track PC advancement that might cause out-of-bounds
             if new_pc > self.vm.game.memory.len() as u32
                 || new_pc == 0x1717
-                || (old_pc >= 0x0b70 && old_pc <= 0x0b90)
+                || (0x0b70..=0x0b90).contains(&old_pc)
             {
                 log::error!(
                     "🚨 PC ADVANCE: 0x{:04x} + {} -> 0x{:04x} (memory_len={})",

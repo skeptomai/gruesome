@@ -2112,10 +2112,10 @@ impl IrGenerator {
                     Ok(var_id)
                 } else {
                     // Identifier not found - this should be caught during semantic analysis
-                    return Err(CompilerError::SemanticError(
+                    Err(CompilerError::SemanticError(
                         format!("Undefined identifier '{}'", name),
                         0,
-                    ));
+                    ))
                 }
             }
             Expr::Binary {
