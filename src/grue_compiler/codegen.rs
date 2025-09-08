@@ -4208,60 +4208,9 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    fn translate_get_property(
-        &mut self,
-        target: IrId,
-        object: IrId,
-        property: &str,
-    ) -> Result<(), CompilerError> {
-        log::debug!(
-            "GET_PROPERTY: target={}, object={}, property='{}'",
-            target,
-            object,
-            property
-        );
-
-        // Resolve object operand
-        let obj_operand = self.resolve_ir_id_to_operand(object)?;
-
-        // Map property name to property number - must match object table generation!
-        let prop_num = *self.property_numbers.get(property).ok_or_else(|| {
-            CompilerError::CodeGenError(format!(
-                "Unknown property '{}' in GetProperty (not found in registry)",
-                property
-            ))
-        })?;
-
-        // UNIVERSAL FIX: Always use local variables for get_prop results instead of stack
-        // This eliminates stack underflow issues in compound property access patterns
-        let result_local = self.allocate_local_variable_for_parameter();
-        log::debug!(
-            " UNIVERSAL_FIX: Using local variable {} for get_prop result instead of stack",
-            result_local
-        );
-
-        // Generate get_prop instruction (2OP:17, hex 0x11)
-        // Store result in local variable instead of stack
-        debug!("Emitting get_prop: target={}, object={}, property='{}', obj_operand={:?} -> local {} at address 0x{:04x}", target, object, property, obj_operand, result_local, self.code_address);
-        let layout = self.emit_instruction(
-            0x11, // get_prop opcode (2OP:17)
-            &[obj_operand, Operand::SmallConstant(prop_num)],
-            Some(result_local), // Store result in local variable instead of stack
-            None,               // No branch
-        )?;
-
-        // Map target IR ID to the local variable
-        self.ir_id_to_local_var.insert(target, result_local);
-
-        log::debug!(
-            " GET_PROPERTY: Generated {} bytes for property '{}' (#{}) access, result stored",
-            layout.total_size,
-            property,
-            prop_num
-        );
-
-        Ok(())
-    }
+    // REMOVED: translate_get_property - Dead code with UNIVERSAL FIX bug
+    // The main instruction translation at line ~6804 now correctly uses stack (variable 0) 
+    // for get_prop results per Z-Machine specification, eliminating the architecture violation
 
     fn translate_set_property(
         &mut self,
