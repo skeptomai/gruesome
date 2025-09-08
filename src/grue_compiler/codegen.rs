@@ -9571,6 +9571,8 @@ impl ZMachineCodeGen {
 
         match function_name.as_str() {
             "print" => self.generate_print_builtin(args),
+            "print_ret" => self.generate_print_ret_builtin(args),
+            "new_line" => self.generate_new_line_builtin(args),
             "move" => self.generate_move_builtin(args),
             "get_location" => self.generate_get_location_builtin(args),
             "to_string" => self.generate_to_string_builtin(args, target),
@@ -9739,6 +9741,128 @@ impl ZMachineCodeGen {
         // Do NOT add return instruction here - this is inline code generation
         // The return instruction was causing premature termination of init blocks
         // Each builtin call should continue to the next instruction
+
+        Ok(())
+    }
+
+    /// Generate print_ret builtin function (prints string and adds newline - does NOT return)
+    fn generate_print_ret_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+        if args.len() != 1 {
+            return Err(CompilerError::CodeGenError(format!(
+                "print_ret expects 1 argument, got {}",
+                args.len()
+            )));
+        }
+
+        let arg_id = args[0];
+        log::debug!("generate_print_ret_builtin: Processing IR ID {}", arg_id);
+
+        // Check if this is a string literal
+        if let Some(string_value) = self.ir_id_to_string.get(&arg_id).cloned() {
+            let print_string = string_value;
+            let string_id = arg_id;
+
+            // Update the string content in the IR system
+            self.ir_id_to_string.insert(string_id, print_string.clone());
+
+            // Ensure the string gets into the encoding system
+            if !self.strings.iter().any(|(id, _)| *id == string_id) {
+                self.strings.push((string_id, print_string.clone()));
+                let encoded = self.encode_string(&print_string)?;
+                self.encoded_strings.insert(string_id, encoded);
+                log::debug!(
+                    "generate_print_ret_builtin: Added string ID {} to encoding system: '{}'",
+                    string_id,
+                    print_string
+                );
+            }
+
+            // Generate print_paddr instruction (same as working print implementation)
+            let layout1 = self.emit_instruction(
+                0x8D,                                          // print_paddr opcode - 1OP:141
+                &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
+                None,                                          // No store
+                None,                                          // No branch
+            )?;
+            
+            // Add new_line instruction
+            let layout2 = self.emit_instruction(
+                0x8B, // new_line opcode (0OP:187)
+                &[],
+                None,
+                None,
+            )?;
+
+            // Add unresolved reference for the string address
+            let operand_address = layout1
+                .operand_location
+                .expect("print instruction must have operand");
+            let reference = UnresolvedReference {
+                reference_type: LegacyReferenceType::StringRef,
+                location: operand_address,
+                target_id: string_id,
+                is_packed_address: true,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            };
+            self.reference_context.unresolved_refs.push(reference);
+
+            log::debug!(
+                "generate_print_ret_builtin: Generated print_paddr+newline for string '{}' ({} bytes)",
+                print_string,
+                layout1.total_size + layout2.total_size
+            );
+        } else {
+            // For computed values, use print_num + new_line (no return)
+            let operand = self.resolve_ir_id_to_operand(arg_id)?;
+            
+            // print_num
+            let layout1 = self.emit_instruction(
+                0xE6, // print_num opcode (VAR:230)
+                &[operand],
+                None,
+                None,
+            )?;
+
+            // new_line 
+            let layout2 = self.emit_instruction(
+                0x8B, // new_line opcode (0OP:187)
+                &[],
+                None,
+                None,
+            )?;
+
+            log::debug!(
+                "generate_print_ret_builtin: Generated print_num+newline for computed value {} ({} bytes total)",
+                arg_id,
+                layout1.total_size + layout2.total_size
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Generate new_line builtin function (prints newline)
+    fn generate_new_line_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+        if !args.is_empty() {
+            return Err(CompilerError::CodeGenError(format!(
+                "new_line expects 0 arguments, got {}",
+                args.len()
+            )));
+        }
+
+        // Generate new_line instruction (0OP:187, opcode 0x8B)
+        let layout = self.emit_instruction(
+            0x8B, // new_line opcode (0OP:187)
+            &[],
+            None,
+            None,
+        )?;
+
+        log::debug!(
+            "generate_new_line_builtin: Generated new_line ({} bytes)",
+            layout.total_size
+        );
 
         Ok(())
     }

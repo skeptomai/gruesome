@@ -169,6 +169,7 @@ impl SemanticAnalyzer {
         ];
 
         for (name, params, return_type) in builtins {
+            log::debug!("SEMANTIC: Registering builtin function: {}", name);
             let symbol = Symbol {
                 name: name.to_string(),
                 symbol_type: SymbolType::Function {

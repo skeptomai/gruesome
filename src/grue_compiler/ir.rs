@@ -955,6 +955,8 @@ impl IrGenerator {
         matches!(
             name,
             "print"
+                | "print_ret"
+                | "new_line"
                 | "move"
                 | "get_location"
                 | "get_child"

@@ -1,10 +1,10 @@
 // Test simple conditional with constant - no property access
 init {
-    print("Testing simple conditional...");
+    print_ret("Testing simple conditional...");
     if (1 == 1) {
-        print("Always true");
+        print_ret("Always true");
     } else {
-        print("Never reached");
+        print_ret("Never reached");
     }
-    print("Done");
+    print_ret("Done");
 }
