@@ -674,7 +674,7 @@ impl Interpreter {
         }
 
         // COMPREHENSIVE INSTRUCTION EXECUTION LOG
-        log::error!(
+        log::debug!(
             "EXEC_INSTR: PC=0x{:04x} opcode=0x{:02x} operand_types={:?} store_var={:?}",
             self.vm.pc,
             inst.opcode,
@@ -1095,11 +1095,11 @@ impl Interpreter {
                 let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
 
                 // COMPREHENSIVE JUMP LOGGING
-                log::error!(
+                log::debug!(
                     "🔧 JUMP_INSTRUCTION: PC=0x{:04x} operand=0x{:04x} offset={} -> new_PC=0x{:04x}",
                     self.vm.pc, operand, offset, new_pc
                 );
-                log::error!(
+                log::debug!(
                     "🔧 JUMP_CALC: PC(0x{:04x}) + offset({}) - 2 = 0x{:04x} (memory_len={})",
                     self.vm.pc,
                     offset,
@@ -2186,7 +2186,7 @@ impl Interpreter {
             let should_branch = condition == branch.on_true;
 
             // COMPREHENSIVE BRANCH LOGGING
-            log::error!(
+            log::debug!(
                 "🔧 BRANCH_CONDITION: PC=0x{:04x} condition={} branch.on_true={} should_branch={} offset={}",
                 self.vm.pc, condition, branch.on_true, should_branch, branch.offset
             );
@@ -2194,18 +2194,18 @@ impl Interpreter {
             if should_branch {
                 match branch.offset {
                     0 => {
-                        log::error!("🔧 BRANCH_ACTION: Returning FALSE (offset=0)");
+                        log::debug!("🔧 BRANCH_ACTION: Returning FALSE (offset=0)");
                         return self.do_return(0); // rfalse
                     }
                     1 => {
-                        log::error!("🔧 BRANCH_ACTION: Returning TRUE (offset=1)");
+                        log::debug!("🔧 BRANCH_ACTION: Returning TRUE (offset=1)");
                         return self.do_return(1); // rtrue
                     }
                     offset => {
                         // Jump is relative to instruction after branch data
                         let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
 
-                        log::error!(
+                        log::debug!(
                             "🔧 BRANCH_JUMP: PC=0x{:04x} offset={} -> new_PC=0x{:04x} (memory_len={})",
                             self.vm.pc, offset, new_pc, self.vm.game.memory.len()
                         );

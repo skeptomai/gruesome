@@ -9320,7 +9320,7 @@ impl ZMachineCodeGen {
         // First, determine if we need 1-byte or 2-byte format
         // We need to calculate the offset assuming 1-byte first, then check if it fits
         let address_after_1byte = location + 1;
-        let offset_1byte = (target_address as i32) - (address_after_1byte as i32) + 2;
+        let _offset_1byte = (target_address as i32) - (address_after_1byte as i32) + 2;
 
         // Always use 2-byte format since we reserved 2 bytes
         // Calculate offset for 2-byte format (address after 2 bytes)
@@ -11492,7 +11492,7 @@ impl ZMachineCodeGen {
             );
 
             // CRITICAL: Print stack trace to find the caller
-            log::error!("    emit_instruction called with opcode 0x01");
+            log::debug!("    emit_instruction called with opcode 0x01");
         }
 
         // Record instruction start address
