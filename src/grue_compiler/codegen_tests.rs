@@ -314,7 +314,10 @@ mod codegen_tests {
         assert!(result.is_ok());
 
         // Should have written instruction + operands + store variable
-        eprintln!("Initial address: {}, final address: {}", initial_address, codegen.code_address);
+        eprintln!(
+            "Initial address: {}, final address: {}",
+            initial_address, codegen.code_address
+        );
         assert!(codegen.code_address > initial_address);
     }
 
@@ -450,9 +453,18 @@ mod codegen_tests {
         let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
 
         // Add unresolved references
-        let result1 = codegen.add_unresolved_reference(LegacyReferenceType::Jump, 100, false, crate::grue_compiler::codegen::MemorySpace::Code);
-        let result2 =
-            codegen.add_unresolved_reference(LegacyReferenceType::FunctionCall, 200, true, crate::grue_compiler::codegen::MemorySpace::Code);
+        let result1 = codegen.add_unresolved_reference(
+            LegacyReferenceType::Jump,
+            100,
+            false,
+            crate::grue_compiler::codegen::MemorySpace::Code,
+        );
+        let result2 = codegen.add_unresolved_reference(
+            LegacyReferenceType::FunctionCall,
+            200,
+            true,
+            crate::grue_compiler::codegen::MemorySpace::Code,
+        );
 
         assert!(result1.is_ok());
         assert!(result2.is_ok());

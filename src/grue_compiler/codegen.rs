@@ -1651,7 +1651,8 @@ impl ZMachineCodeGen {
                 } else {
                     log::debug!(
                         " STRING_RESOLVE_ERROR: String ID {} not found. Available: {:?}",
-                        reference.target_id, self.string_offsets.keys().collect::<Vec<_>>()
+                        reference.target_id,
+                        self.string_offsets.keys().collect::<Vec<_>>()
                     );
                     return Err(CompilerError::CodeGenError(format!(
                         "String ID {} not found in string_offsets",
@@ -1768,7 +1769,7 @@ impl ZMachineCodeGen {
                         debug!("  target_id = {}", reference.target_id);
                     }
 
-                    // CRITICAL FIX: Jump instructions use signed word offset, not branch encoding  
+                    // CRITICAL FIX: Jump instructions use signed word offset, not branch encoding
                     debug!(
                         "Jump resolution: Using jump offset calculation (signed word, not branch encoding)"
                     );
@@ -1894,7 +1895,11 @@ impl ZMachineCodeGen {
                 debug!("Patch 2-byte: location=0x{:04x} old_value=0x{:02x}{:02x} -> new_value=0x{:04x}", reference.location, old_high, old_low, target_address);
 
                 // CRITICAL FIX: For string references, we need to pack the address
-                let final_value = if matches!(reference.reference_type, LegacyReferenceType::StringRef) && reference.is_packed_address {
+                let final_value = if matches!(
+                    reference.reference_type,
+                    LegacyReferenceType::StringRef
+                ) && reference.is_packed_address
+                {
                     let packed = self.pack_string_address(target_address)?;
                     log::debug!(
                         " STRING_LEGACY_PACK_DEBUG: String ID {} target_address=0x{:04x} packed to 0x{:04x}",
@@ -1915,7 +1920,9 @@ impl ZMachineCodeGen {
 
                 log::debug!(
                     " LEGACY_WRITE_DEBUG: Writing 0x{:02x} 0x{:02x} to location 0x{:04x}",
-                    high_byte, low_byte, reference.location
+                    high_byte,
+                    low_byte,
+                    reference.location
                 );
 
                 self.final_data[reference.location] = high_byte;
@@ -2327,9 +2334,9 @@ impl ZMachineCodeGen {
                         if bytes_generated == 0 {
                             // Check if this is expected zero-byte generation
                             match instruction {
-                                IrInstruction::LoadImmediate { .. } |
-                                IrInstruction::Nop |
-                                IrInstruction::Label { .. } => {
+                                IrInstruction::LoadImmediate { .. }
+                                | IrInstruction::Nop
+                                | IrInstruction::Label { .. } => {
                                     // These instructions correctly generate no bytecode
                                 }
                                 _ => {
@@ -3018,7 +3025,10 @@ impl ZMachineCodeGen {
         }
 
         let arg_id = args[0];
-        log::debug!(" PHASE1_PRINT_RET: Processing IR ID {} (single-path)", arg_id);
+        log::debug!(
+            " PHASE1_PRINT_RET: Processing IR ID {} (single-path)",
+            arg_id
+        );
 
         // Check if this is a string literal
         if let Some(string_value) = self.ir_id_to_string.get(&arg_id).cloned() {
@@ -3046,8 +3056,8 @@ impl ZMachineCodeGen {
             let layout = self.emit_instruction(
                 0x83,                                          // print_ret opcode - 0OP:179
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
-                None,                                          // No store (returns true automatically)
-                None,                                          // No branch
+                None, // No store (returns true automatically)
+                None, // No branch
             )?;
 
             // Add unresolved reference for the string address
@@ -3072,7 +3082,7 @@ impl ZMachineCodeGen {
         } else {
             // For computed values, use print_num + new_line + return true sequence
             let operand = self.resolve_ir_id_to_operand(arg_id)?;
-            
+
             // print_num
             let layout1 = self.emit_instruction(
                 0xE6, // print_num opcode (VAR:230)
@@ -3081,7 +3091,7 @@ impl ZMachineCodeGen {
                 None,
             )?;
 
-            // new_line 
+            // new_line
             let layout2 = self.emit_instruction(
                 0x8B, // new_line opcode (0OP:187)
                 &[],
@@ -4232,7 +4242,7 @@ impl ZMachineCodeGen {
     }
 
     // REMOVED: translate_get_property - Dead code with UNIVERSAL FIX bug
-    // The main instruction translation at line ~6804 now correctly uses stack (variable 0) 
+    // The main instruction translation at line ~6804 now correctly uses stack (variable 0)
     // for get_prop results per Z-Machine specification, eliminating the architecture violation
 
     fn translate_set_property(
@@ -4589,7 +4599,9 @@ impl ZMachineCodeGen {
             log::error!(" HEADER_FIX: final_data too small for header copy!");
         }
 
-        log::info!("🏗️  Header written to final_data - all address fields set by fixup_header_addresses()");
+        log::info!(
+            "🏗️  Header written to final_data - all address fields set by fixup_header_addresses()"
+        );
 
         Ok(())
     }
@@ -8224,14 +8236,18 @@ impl ZMachineCodeGen {
         // CRITICAL FIX: Z-Machine branch instructions MUST have branch offsets
         // Use placeholder offset that will be resolved later by UnresolvedReference system
         let placeholder_offset = 3329; // Placeholder that will be replaced during resolution
-        
+
         let layout = self.emit_instruction(
-            opcode, operands, None, // No store
+            opcode,
+            operands,
+            None,                            // No store
             Some(placeholder_offset as i16), // Branch offset - REQUIRED for branch instructions
         )?;
 
         // Add unresolved reference to resolve the branch offset later
-        let branch_offset_location = layout.branch_location.expect("Branch instruction must have branch offset location");
+        let branch_offset_location = layout
+            .branch_location
+            .expect("Branch instruction must have branch offset location");
         self.reference_context
             .unresolved_refs
             .push(UnresolvedReference {
@@ -8576,11 +8592,22 @@ impl ZMachineCodeGen {
         );
 
         for (i, instruction) in init_block.instructions.iter().enumerate() {
-            log::debug!("🔍 IR[{}]: {:?} at code_addr=0x{:04x}", i, instruction, self.code_address);
+            log::debug!(
+                "🔍 IR[{}]: {:?} at code_addr=0x{:04x}",
+                i,
+                instruction,
+                self.code_address
+            );
             let before_addr = self.code_address;
             self.generate_instruction(instruction)?;
             let after_addr = self.code_address;
-            log::debug!("🔍 IR[{}]: Generated {} bytes (0x{:04x} -> 0x{:04x})", i, after_addr - before_addr, before_addr, after_addr);
+            log::debug!(
+                "🔍 IR[{}]: Generated {} bytes (0x{:04x} -> 0x{:04x})",
+                i,
+                after_addr - before_addr,
+                before_addr,
+                after_addr
+            );
         }
 
         // Add QUIT instruction at the end to terminate execution cleanly
@@ -9087,7 +9114,7 @@ impl ZMachineCodeGen {
         // NOTE: Jump and Branch references have early returns above
         // StringRef and FunctionCall references are handled by legacy system below
         // This point should never be reached - all reference types handled above
-        
+
         panic!(
             "COMPILER BUG: Unhandled reference type {:?} for target_id {} - should have been handled by early returns or legacy system",
             reference.reference_type, reference.target_id
@@ -9784,7 +9811,7 @@ impl ZMachineCodeGen {
                 None,                                          // No store
                 None,                                          // No branch
             )?;
-            
+
             // Add new_line instruction
             let layout2 = self.emit_instruction(
                 0x8B, // new_line opcode (0OP:187)
@@ -9815,7 +9842,7 @@ impl ZMachineCodeGen {
         } else {
             // For computed values, use print_num + new_line (no return)
             let operand = self.resolve_ir_id_to_operand(arg_id)?;
-            
+
             // print_num
             let layout1 = self.emit_instruction(
                 0xE6, // print_num opcode (VAR:230)
@@ -9824,7 +9851,7 @@ impl ZMachineCodeGen {
                 None,
             )?;
 
-            // new_line 
+            // new_line
             let layout2 = self.emit_instruction(
                 0x8B, // new_line opcode (0OP:187)
                 &[],
