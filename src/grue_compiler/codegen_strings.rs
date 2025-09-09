@@ -280,24 +280,32 @@ impl ZMachineCodeGen {
         let mut bytes = Vec::new();
         let mut i = 0;
 
-        while i < zchars.len() {
-            let z1 = zchars.get(i).copied().unwrap_or(5);
-            let z2 = zchars.get(i + 1).copied().unwrap_or(5);
-            let z3 = zchars.get(i + 2).copied().unwrap_or(5);
-
-            // Pack: [z1: 5 bits][z2: 5 bits][z3: 5 bits][end: 1 bit] = 16 bits
-            let mut word = ((z1 as u16) << 10) | ((z2 as u16) << 5) | (z3 as u16);
-
-            // Set end bit if this is the last group of characters
-            if i + 3 >= zchars.len() {
-                word |= 0x8000; // Set bit 15 (end bit)
-            }
-
-            // Store as big-endian bytes
+        // Handle empty string case - must still produce at least one word
+        if zchars.is_empty() {
+            // Empty string: just end bit set with zero Z-chars (space characters)
+            let word = 0x8000; // End bit set, all Z-chars are 0 (spaces)
             bytes.push((word >> 8) as u8);
             bytes.push(word as u8);
+        } else {
+            while i < zchars.len() {
+                let z1 = zchars.get(i).copied().unwrap_or(5);
+                let z2 = zchars.get(i + 1).copied().unwrap_or(5);
+                let z3 = zchars.get(i + 2).copied().unwrap_or(5);
 
-            i += 3;
+                // Pack: [z1: 5 bits][z2: 5 bits][z3: 5 bits][end: 1 bit] = 16 bits
+                let mut word = ((z1 as u16) << 10) | ((z2 as u16) << 5) | (z3 as u16);
+
+                // Set end bit if this is the last group of characters
+                if i + 3 >= zchars.len() {
+                    word |= 0x8000; // Set bit 15 (end bit)
+                }
+
+                // Store as big-endian bytes
+                bytes.push((word >> 8) as u8);
+                bytes.push(word as u8);
+
+                i += 3;
+            }
         }
 
         debug!(
