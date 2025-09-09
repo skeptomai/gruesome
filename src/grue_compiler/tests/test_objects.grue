@@ -1,14 +1,14 @@
-object lamp {
-    name: "brass lamp",
-    description: "A shiny brass lamp."
-}
-
-room living_room {
-    name: "Living Room", 
-    description: "A cozy living room."
+world {
+    room living_room "Living Room" {
+        desc: "A cozy living room."
+        
+        object lamp {
+            names: ["brass lamp", "lamp"]
+            desc: "A shiny brass lamp."
+        }
+    }
 }
 
 init {
-    move(lamp, living_room);
-    print("The lamp is now in the living room.");
+    print("The lamp is in the living room.");
 }
