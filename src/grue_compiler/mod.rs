@@ -4,8 +4,10 @@
 pub mod ast;
 pub mod codegen;
 pub mod codegen_builtins;
+pub mod codegen_headers;
 pub mod codegen_instructions;
 pub mod codegen_objects;
+pub mod codegen_strings;
 pub mod codegen_utils;
 pub mod error;
 pub mod ir;

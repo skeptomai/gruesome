@@ -3,7 +3,7 @@
 // Transforms IR into executable Z-Machine bytecode following the Z-Machine Standard v1.1
 // Supports both v3 and v5 target formats with proper memory layout and instruction encoding.
 
-use crate::grue_compiler::codegen_utils::{AssemblyValidator, CodeGenUtils};
+use crate::grue_compiler::codegen_utils::CodeGenUtils;
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
 use crate::grue_compiler::ZMachineVersion;
@@ -186,7 +186,7 @@ pub struct ZMachineCodeGen {
     // Memory layout
     story_data: Vec<u8>,
     // REMOVED: current_address - replaced with space-specific address tracking
-    final_assembly_address: usize, // Tracks current position during final assembly phase
+    pub final_assembly_address: usize, // Tracks current position during final assembly phase
 
     // Input buffer addresses
     text_buffer_addr: usize,
@@ -233,12 +233,13 @@ pub struct ZMachineCodeGen {
 
     // String encoding
     pub strings: Vec<(IrId, String)>, // Collected strings for encoding
+    main_loop_prompt_id: Option<IrId>, // ID of the main loop prompt string
 
     // Stack tracking for debugging
     pub stack_depth: i32, // Current estimated stack depth
     max_stack_depth: i32, // Maximum stack depth reached
     pub encoded_strings: IndexMap<IrId, Vec<u8>>, // IR string ID -> encoded bytes
-    next_string_id: IrId, // Next available string ID
+    pub next_string_id: IrId, // Next available string ID
 
     // Execution context
     in_init_block: bool, // True when generating init block code
@@ -263,16 +264,16 @@ pub struct ZMachineCodeGen {
     code_address: usize,
 
     /// String space - contains encoded string data
-    string_space: Vec<u8>,
-    string_address: usize,
+    pub string_space: Vec<u8>,
+    pub string_address: usize,
 
     /// Object space - contains object table and property data
     pub object_space: Vec<u8>,
     pub object_address: usize,
 
     /// Dictionary space - contains word parsing dictionary
-    dictionary_space: Vec<u8>,
-    dictionary_address: usize,
+    pub dictionary_space: Vec<u8>,
+    pub dictionary_address: usize,
 
     /// Global variables space - contains 240 global variable slots (480 bytes)
     globals_space: Vec<u8>,
@@ -283,22 +284,22 @@ pub struct ZMachineCodeGen {
     abbreviations_address: usize,
 
     /// Code-space label tracking (for immediate jump/branch resolution)
-    code_labels: HashMap<IrId, usize>,
+    pub code_labels: HashMap<IrId, usize>,
 
     /// String offset tracking (for final assembly)
-    string_offsets: HashMap<IrId, usize>,
+    pub string_offsets: HashMap<IrId, usize>,
 
     /// Object offset tracking (for final assembly)
-    object_offsets: HashMap<IrId, usize>,
+    pub object_offsets: HashMap<IrId, usize>,
 
     /// Pending fixups that need resolution
     pending_fixups: Vec<PendingFixup>,
 
     /// Final assembled bytecode (created during assemble_complete_zmachine_image)
-    final_data: Vec<u8>,
-    final_code_base: usize,
-    final_string_base: usize,
-    final_object_base: usize,
+    pub final_data: Vec<u8>,
+    pub final_code_base: usize,
+    pub final_string_base: usize,
+    pub final_object_base: usize,
 }
 
 impl ZMachineCodeGen {
@@ -334,6 +335,7 @@ impl ZMachineCodeGen {
             dictionary_addr: 0,
             global_vars_addr: 0,
             strings: Vec::new(),
+            main_loop_prompt_id: None,
             encoded_strings: IndexMap::new(),
             next_string_id: 1000, // Start string IDs from 1000 to avoid conflicts
             stack_depth: 0,
@@ -376,39 +378,6 @@ impl ZMachineCodeGen {
 
     // ELIMINATED: write_to_code_space() and write_word_to_code_space()
     // All code writes now go through the single-path emit_byte() system
-
-    /// Allocate space in string space and return offset
-    fn allocate_string_space(
-        &mut self,
-        string_id: IrId,
-        data: &[u8],
-    ) -> Result<usize, CompilerError> {
-        let offset = self.string_address;
-
-        // Ensure capacity
-        if self.string_address + data.len() > self.string_space.len() {
-            self.string_space
-                .resize(self.string_address + data.len(), 0);
-        }
-
-        // Write string data immediately
-        for (i, &byte) in data.iter().enumerate() {
-            self.string_space[offset + i] = byte;
-        }
-
-        // Update tracking
-        self.string_offsets.insert(string_id, offset);
-        self.string_address += data.len();
-
-        log::debug!(
-            "🧵 STRING_ALLOCATED: id={}, offset=0x{:04x}, len={}",
-            string_id,
-            offset,
-            data.len()
-        );
-
-        Ok(offset)
-    }
 
     /// Define a label in code space - enables immediate jump/branch resolution
     fn define_code_label(&mut self, label_id: IrId) -> Result<(), CompilerError> {
@@ -459,99 +428,6 @@ impl ZMachineCodeGen {
         } else {
             self.emit_byte(PLACEHOLDER_BYTE)?;
         }
-        Ok(())
-    }
-
-    /// Final header fixup: Write correct addresses directly to final_data after all spaces are positioned
-    ///
-    /// Resolve a single fixup in the final assembled data
-    fn resolve_fixup(&mut self, fixup: &PendingFixup) -> Result<(), CompilerError> {
-        let final_source_address = match fixup.source_space {
-            MemorySpace::Header => 64 + fixup.source_address,
-            MemorySpace::Globals => 64 + 480 + fixup.source_address,
-            MemorySpace::Abbreviations => 64 + 480 + 192 + fixup.source_address,
-            MemorySpace::Objects => self.final_object_base + fixup.source_address,
-            MemorySpace::Dictionary => {
-                64 + 480 + 192 + self.object_space.len() + fixup.source_address
-            }
-            MemorySpace::Strings => self.final_string_base + fixup.source_address,
-            MemorySpace::Code => self.final_code_base + fixup.source_address,
-            MemorySpace::CodeSpace => self.final_code_base + fixup.source_address, // Same as Code
-        };
-
-        let target_address = match &fixup.reference_type {
-            ReferenceType::StringRef { string_id } => {
-                if let Some(&string_offset) = self.string_offsets.get(string_id) {
-                    let final_addr = self.final_string_base + string_offset;
-                    // For Z-Machine, string addresses are packed (divided by 2 for v3, 4 for v4+)
-                    match self.version {
-                        ZMachineVersion::V3 => final_addr / 2,
-                        ZMachineVersion::V4 | ZMachineVersion::V5 => final_addr / 4,
-                    }
-                } else {
-                    return Err(CompilerError::CodeGenError(format!(
-                        "String ID {} not found in string_offsets",
-                        string_id
-                    )));
-                }
-            }
-
-            ReferenceType::ObjectRef { object_id } => {
-                if let Some(&object_offset) = self.object_offsets.get(object_id) {
-                    self.final_object_base + object_offset
-                } else {
-                    return Err(CompilerError::CodeGenError(format!(
-                        "Object ID {} not found in object_offsets",
-                        object_id
-                    )));
-                }
-            }
-
-            ReferenceType::RoutineCall { routine_id } => {
-                if let Some(&code_label_addr) = self.code_labels.get(routine_id) {
-                    let final_addr = self.final_code_base + code_label_addr;
-                    // Routine addresses are packed like strings
-                    match self.version {
-                        ZMachineVersion::V3 => final_addr / 2,
-                        ZMachineVersion::V4 | ZMachineVersion::V5 => final_addr / 4,
-                    }
-                } else {
-                    return Err(CompilerError::CodeGenError(format!(
-                        "Routine ID {} not found in code_labels",
-                        routine_id
-                    )));
-                }
-            } // REMOVED: CodeJump and CodeBranch handling - use LegacyReferenceType::Jump instead
-              // All jump fixups now use the working reference resolution system
-        };
-
-        // Apply the fixup to final_data
-        if final_source_address + fixup.operand_size > self.final_data.len() {
-            return Err(CompilerError::CodeGenError(format!(
-                "Fixup address out of bounds: 0x{:04x}",
-                final_source_address
-            )));
-        }
-
-        if fixup.operand_size == 2 {
-            let word_value = target_address as u16;
-            self.final_data[final_source_address] = (word_value >> 8) as u8;
-            self.final_data[final_source_address + 1] = word_value as u8;
-            log::trace!(
-                " FIXED_WORD: addr=0x{:04x}, value=0x{:04x}",
-                final_source_address,
-                word_value
-            );
-        } else {
-            let byte_value = target_address as u8;
-            self.final_data[final_source_address] = byte_value;
-            log::trace!(
-                " FIXED_BYTE: addr=0x{:04x}, value=0x{:02x}",
-                final_source_address,
-                byte_value
-            );
-        }
-
         Ok(())
     }
 
@@ -626,7 +502,7 @@ impl ZMachineCodeGen {
         self.setup_comprehensive_id_mappings(&ir);
         self.analyze_properties(&ir)?;
         self.collect_strings(&ir)?;
-        self.add_main_loop_strings()?;
+        self.main_loop_prompt_id = Some(self.add_main_loop_strings()?);
         self.encode_all_strings()?;
         log::info!(" Phase 1 complete: Content analysis and string encoding finished");
 
@@ -1168,146 +1044,6 @@ impl ZMachineCodeGen {
         Ok(self.final_data.clone())
     }
 
-    /// Phase 1: Generate static header fields (version, serial, flags)
-    ///
-    /// Writes only fields that don't depend on final memory layout.
-    /// Address fields are left as 0x0000 placeholders.
-    ///
-    fn generate_static_header_fields(&mut self) -> Result<(), CompilerError> {
-        log::debug!("📝 Phase 1: Generating static header fields (version, serial, flags)");
-
-        // Z-Machine header is always 64 bytes, write directly to final_data
-        let header = &mut self.final_data[0..HEADER_SIZE];
-
-        // Byte 0: Z-Machine version (3, 4, or 5)
-        header[0] = match self.version {
-            ZMachineVersion::V3 => 3,
-            ZMachineVersion::V4 => 4,
-            ZMachineVersion::V5 => 5,
-        };
-
-        // Byte 1: Flags 1 (default for our version)
-        header[1] = 0x00;
-
-        // Bytes 2-3: Release number (required, use 1 for our compiler)
-        header[2] = 0x00; // Release high byte
-        header[3] = 0x01; // Release low byte = 1
-
-        // Bytes 16-17: Flags 2 (default)
-        header[16] = 0x00;
-        header[17] = 0x00;
-
-        // Bytes 18-23 (0x12-0x17): Serial number (6 ASCII bytes) - Infocom convention
-        let serial = b"250905"; // YYMMDD format: September 5, 2025
-        header[18] = serial[0]; // '2'
-        header[19] = serial[1]; // '5'
-        header[20] = serial[2]; // '0'
-        header[21] = serial[3]; // '9'
-        header[22] = serial[4]; // '0'
-        header[23] = serial[5]; // '5'
-
-        // Bytes 50-51: Standard revision number (Z-Machine spec 1.1)
-        header[50] = 0x01; // Standard revision 1
-        header[51] = 0x01; // Sub-revision 1
-
-        log::debug!(
-            " Static header fields: Version {}, Serial {}",
-            header[0],
-            std::str::from_utf8(serial).unwrap()
-        );
-
-        Ok(())
-    }
-
-    /// Phase 2: Fix up address fields with final calculated values
-    ///
-    /// Updates ONLY the address fields with final assembled memory layout.
-    /// Never touches static fields like serial number.
-    ///
-    #[allow(clippy::too_many_arguments)]
-    fn fixup_header_addresses(
-        &mut self,
-        pc_start: u16,
-        dictionary_addr: u16,
-        objects_addr: u16,
-        globals_addr: u16,
-        static_memory_base: u16,
-        abbreviations_addr: u16,
-        high_mem_base: u16,
-    ) -> Result<(), CompilerError> {
-        log::debug!(" Phase 2: Updating header address fields with final memory layout");
-
-        let header = &mut self.final_data[0..HEADER_SIZE];
-
-        // Bytes 4-5: High memory base (start of high memory section)
-        header[4] = (high_mem_base >> 8) as u8;
-        header[5] = (high_mem_base & 0xFF) as u8;
-
-        // Bytes 6-7: PC initial value (start of executable code section)
-        header[6] = (pc_start >> 8) as u8;
-        header[7] = (pc_start & 0xFF) as u8;
-
-        // Bytes 8-9: Dictionary address
-        header[8] = (dictionary_addr >> 8) as u8;
-        header[9] = (dictionary_addr & 0xFF) as u8;
-
-        // Bytes 10-11: Object table address
-        header[10] = (objects_addr >> 8) as u8;
-        header[11] = (objects_addr & 0xFF) as u8;
-
-        // Bytes 12-13: Global variables address
-        header[12] = (globals_addr >> 8) as u8;
-        header[13] = (globals_addr & 0xFF) as u8;
-
-        // Bytes 14-15: Static memory base (end of dynamic memory)
-        header[14] = (static_memory_base >> 8) as u8;
-        header[15] = (static_memory_base & 0xFF) as u8;
-
-        // Bytes 24-25 (0x18-0x19): Abbreviations address
-        header[24] = (abbreviations_addr >> 8) as u8;
-        header[25] = (abbreviations_addr & 0xFF) as u8;
-
-        log::debug!(
-            " Address fields updated: PC=0x{:04x}, Dict=0x{:04x}, Obj=0x{:04x}",
-            pc_start,
-            dictionary_addr,
-            objects_addr
-        );
-
-        Ok(())
-    }
-
-    /// Phase 3: Finalize file metadata (length and checksum)
-    ///
-    /// Calculates and writes file length and checksum.
-    /// Must be called last since it depends on complete file.
-    ///
-    fn finalize_header_metadata(&mut self) -> Result<(), CompilerError> {
-        log::debug!("📊 Phase 3: Finalizing file length and checksum");
-
-        // Calculate file length first (before mutable borrow)
-        let file_len = self.final_data.len() as u32;
-        let file_len_words = file_len.div_ceil(2);
-
-        // Update file length in header
-        self.final_data[26] = ((file_len_words >> 8) & 0xFF) as u8;
-        self.final_data[27] = (file_len_words & 0xFF) as u8;
-
-        // Calculate and write checksum (must be done after all other fields are set)
-        let checksum = AssemblyValidator::calculate_checksum(&self.final_data);
-        self.final_data[28] = (checksum >> 8) as u8;
-        self.final_data[29] = (checksum & 0xFF) as u8;
-
-        log::debug!(
-            " File metadata: {} bytes ({} words), checksum=0x{:04x}",
-            file_len,
-            file_len_words,
-            checksum
-        );
-
-        Ok(())
-    }
-
     /// Resolve all address references in the final game image (PURE SEPARATED SPACES)
     ///
     /// Processes all unresolved references and pending fixups to patch addresses
@@ -1805,27 +1541,6 @@ impl ZMachineCodeGen {
     }
 
     /// Generate dictionary space with word parsing dictionary
-    fn generate_dictionary_space(&mut self, _ir: &IrProgram) -> Result<(), CompilerError> {
-        log::debug!("📖 Generating dictionary space");
-
-        // Create minimal Z-Machine dictionary structure
-        // Dictionary header: entry size (1 byte), number of entries (2 bytes)
-        let entry_size = 6u8; // V3 dictionary entries are 6 bytes (4 chars + 2 flags)
-        let num_entries = 0u16; // Empty dictionary for now
-
-        self.dictionary_space.push(entry_size);
-        self.dictionary_space.push((num_entries >> 8) as u8);
-        self.dictionary_space.push((num_entries & 0xFF) as u8);
-
-        // Add separator words section (empty for minimal implementation)
-        self.dictionary_space.push(0); // No separators
-
-        log::debug!(
-            " Dictionary space created: {} bytes",
-            self.dictionary_space.len()
-        );
-        Ok(())
-    }
 
     /// Generate global variables space (240 variables * 2 bytes = 480 bytes)
     fn generate_globals_space(&mut self, _ir: &IrProgram) -> Result<(), CompilerError> {
@@ -2881,61 +2596,6 @@ impl ZMachineCodeGen {
 
     /// PHASE 2: Single-path to_string builtin implementation
     /// This replaces delegation to generate_to_string_builtin()
-    fn translate_to_string_builtin_inline(
-        &mut self,
-        args: &[IrId],
-        target: Option<IrId>,
-    ) -> Result<(), CompilerError> {
-        log::debug!(
-            " PHASE2_TO_STRING: Translating to_string builtin inline with {} args, target={:?}",
-            args.len(),
-            target
-        );
-
-        if args.len() != 1 {
-            return Err(CompilerError::CodeGenError(
-                "to_string requires exactly 1 argument".to_string(),
-            ));
-        }
-
-        // Get the value to convert to string
-        let arg_id = args[0];
-
-        // Convert the argument to string representation
-        let result_string = if let Some(int_val) = self.ir_id_to_integer.get(&arg_id).copied() {
-            // Integer to string conversion
-            int_val.to_string()
-        } else if let Some(str_val) = self.ir_id_to_string.get(&arg_id) {
-            // Already a string - just pass through
-            str_val.clone()
-        } else {
-            // Fallback for unknown values
-            log::warn!(
-                "⚠️ TO_STRING: Unknown value type for IR ID {}, using placeholder",
-                arg_id
-            );
-            format!("[TO_STRING_{}]", arg_id)
-        };
-
-        log::debug!(
-            " TO_STRING: Converted IR ID {} to string '{}'",
-            arg_id,
-            result_string
-        );
-
-        // Store result in target if provided
-        if let Some(target_id) = target {
-            self.ir_id_to_string.insert(target_id, result_string);
-            log::debug!(
-                " TO_STRING: Stored result in IR ID {} for string concatenation",
-                target_id
-            );
-        }
-
-        // to_string is a compile-time operation - no Z-Machine bytecode generated
-        log::debug!(" PHASE2_TO_STRING: To_string builtin translated successfully (0 bytes - compile-time operation)");
-        Ok(())
-    }
 
     /// SINGLE-PATH MIGRATION: Phase 2 - Object system builtin (Tier 2)
     /// Generates Z-Machine get_child instruction directly from IR
@@ -3620,77 +3280,6 @@ impl ZMachineCodeGen {
 
     /// SINGLE-PATH MIGRATION: String concatenation support for BinaryOp Add operations
     /// Implements compile-time string concatenation as done in the legacy system
-    fn translate_string_concatenation(
-        &mut self,
-        target: IrId,
-        left: IrId,
-        right: IrId,
-    ) -> Result<(), CompilerError> {
-        log::debug!(
-            " STRING_CONCAT: Processing string concatenation - target={}, left={}, right={}",
-            target,
-            left,
-            right
-        );
-
-        // Build concatenated string at compile time
-        let mut result_string = String::new();
-
-        // Handle left operand
-        if let Some(left_str) = self.ir_id_to_string.get(&left) {
-            result_string.push_str(left_str);
-            log::debug!(" LEFT_STRING: Added '{}' to result", left_str);
-        } else if let Some(left_int) = self.ir_id_to_integer.get(&left) {
-            // Convert integer to string
-            result_string.push_str(&left_int.to_string());
-            log::debug!(" LEFT_INTEGER: Added '{}' to result", left_int);
-        } else {
-            log::warn!(
-                "⚠️ STRING_CONCAT: Left operand {} not found in string or integer mappings",
-                left
-            );
-            result_string.push_str("[UNKNOWN_LEFT]");
-        }
-
-        // Handle right operand
-        if let Some(right_str) = self.ir_id_to_string.get(&right) {
-            result_string.push_str(right_str);
-            log::debug!(" RIGHT_STRING: Added '{}' to result", right_str);
-        } else if let Some(right_int) = self.ir_id_to_integer.get(&right) {
-            // Convert integer to string
-            result_string.push_str(&right_int.to_string());
-            log::debug!(" RIGHT_INTEGER: Added '{}' to result", right_int);
-        } else {
-            log::warn!(
-                "⚠️ STRING_CONCAT: Right operand {} not found in string or integer mappings",
-                right
-            );
-            result_string.push_str("[UNKNOWN_RIGHT]");
-        }
-
-        log::debug!(
-            " CONCAT_RESULT: Final concatenated string: '{}'",
-            result_string
-        );
-
-        // Store the result in the target IR ID's string mapping
-        self.ir_id_to_string.insert(target, result_string.clone());
-
-        // CRITICAL: Add to strings collection AND encoded_strings for separated structures architecture
-        self.strings.push((target, result_string.clone()));
-        let encoded = self.encode_string(&result_string)?;
-        self.encoded_strings.insert(target, encoded);
-        log::debug!(
-            " STRING_CONCAT: Added concatenated string ID {} to strings collection AND encoded_strings: '{}'", 
-            target, result_string
-        );
-
-        // String concatenation is a compile-time operation - no Z-Machine bytecode generated
-        log::debug!(
-            " STRING_CONCAT: String concatenation completed (0 bytes - compile-time operation)"
-        );
-        Ok(())
-    }
 
     fn translate_unary_op(
         &mut self,
@@ -4095,306 +3684,6 @@ impl ZMachineCodeGen {
             main_loop_id
         );
         Ok(())
-    }
-
-    /// Write final header with all addresses resolved
-    /// Critical fix: Properly populate header fields for separated spaces architecture
-    fn write_final_header(&mut self, init_entry_point: usize) -> Result<(), CompilerError> {
-        // Write header directly to final_data for separated spaces architecture
-        // Note: final_data is always non-empty by this point (initialized at assemble_complete_zmachine_image:1203)
-        log::debug!(
-            "🏗️ Writing header to final_data (len={})",
-            self.final_data.len()
-        );
-        self.write_header_to_final_data(init_entry_point)
-    }
-
-    /// Write header directly to final_data for separated spaces architecture
-    /// This was the critical missing piece - header fields were not being populated in final_data
-    fn write_header_to_final_data(&mut self, _entry_point: usize) -> Result<(), CompilerError> {
-        if self.final_data.len() < HEADER_SIZE {
-            return Err(CompilerError::CodeGenError(
-                "final_data too small for header".to_string(),
-            ));
-        }
-
-        // FIXED: Write to header_space instead of directly to final_data
-        // Ensure header_space is large enough
-        if self.header_space.len() < HEADER_SIZE {
-            self.header_space.resize(HEADER_SIZE, 0);
-        }
-
-        // Helper function to write a word to header_space
-        let write_word = |header: &mut Vec<u8>, addr: usize, value: u16| {
-            if addr + 1 < header.len() {
-                header[addr] = (value >> 8) as u8;
-                header[addr + 1] = (value & 0xFF) as u8;
-            }
-        };
-
-        // Z-Machine header fields - write to header_space
-        self.header_space[0] = match self.version {
-            ZMachineVersion::V3 => 3,
-            ZMachineVersion::V4 => 4,
-            ZMachineVersion::V5 => 5,
-        };
-
-        // NOTE: High memory base set by fixup_header_addresses() using self.final_code_base
-
-        // NOTE: PC is set by fixup_header_addresses() later - this would be dead code
-        let init_header_size = 1 + (self.init_routine_locals_count as usize * 2);
-        log::info!(
-            " HEADER_SPACE: PC will be set by fixup_header_addresses() to 0x{:04x} (after {}-byte init routine header at 0x{:04x})",
-            (self.final_code_base + init_header_size), init_header_size, self.final_code_base
-        );
-
-        // NOTE: Dictionary address set by fixup_header_addresses() using self.dictionary_addr
-
-        // NOTE: Object table address set by fixup_header_addresses() using self.final_object_base
-
-        // NOTE: Global variables address set by fixup_header_addresses() using self.global_vars_addr
-
-        // NOTE: Static memory base set by fixup_header_addresses() using static_memory_start
-
-        // File length (in 2-byte words for v3, 4-byte words for v4+)
-        let file_len = match self.version {
-            ZMachineVersion::V3 => (self.final_data.len() / 2) as u16,
-            ZMachineVersion::V4 | ZMachineVersion::V5 => (self.final_data.len() / 4) as u16,
-        };
-        let file_len_offset = match self.version {
-            ZMachineVersion::V3 => 2, // V1-V3: file length at offset 2
-            ZMachineVersion::V4 | ZMachineVersion::V5 => 26, // V4+: file length at offset 26
-        };
-        write_word(&mut self.header_space, file_len_offset, file_len);
-
-        // CRITICAL FIX: Copy updated header_space back to final_data
-        // The early copy at line 1391 happened before header was written
-        if self.final_data.len() >= HEADER_SIZE {
-            self.final_data[0..HEADER_SIZE].copy_from_slice(&self.header_space);
-            log::debug!(
-                " HEADER_FIX: Copied updated header_space to final_data after writing all fields"
-            );
-        } else {
-            log::error!(" HEADER_FIX: final_data too small for header copy!");
-        }
-
-        log::info!(
-            "🏗️  Header written to final_data - all address fields set by fixup_header_addresses()"
-        );
-
-        Ok(())
-    }
-
-    /// Collect all strings from the IR program for later encoding
-    fn collect_strings(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
-        // Collect from string table in deterministic order (sorted by ID)
-        let mut string_entries: Vec<_> = ir.string_table.iter().collect();
-        string_entries.sort_by_key(|(_, &id)| id); // Sort by string ID for stable allocation order
-
-        for (string, &id) in string_entries {
-            self.strings.push((id, string.clone()));
-        }
-
-        // Collect strings from LoadImmediate instructions in all functions
-        for function in &ir.functions {
-            self.collect_strings_from_block(&function.body)?;
-        }
-
-        // Collect strings from init block if present
-        if let Some(init_block) = &ir.init_block {
-            self.collect_strings_from_block(init_block)?;
-        }
-
-        // TODO: Collect strings from other IR elements (rooms, objects, etc.)
-
-        Ok(())
-    }
-
-    /// Add main loop strings to the collection
-    fn add_main_loop_strings(&mut self) -> Result<(), CompilerError> {
-        // Add prompt string for main loop
-        let prompt_string_id = 9002u32;
-        let prompt_text = "> ";
-        self.strings
-            .push((prompt_string_id, prompt_text.to_string()));
-
-        debug!("Added main loop strings: prompt='> '");
-        Ok(())
-    }
-
-    /// Collect strings and integers from all LoadImmediate instructions in a block
-    fn collect_strings_from_block(&mut self, block: &IrBlock) -> Result<(), CompilerError> {
-        for instruction in &block.instructions {
-            match instruction {
-                IrInstruction::LoadImmediate {
-                    target,
-                    value: IrValue::String(s),
-                } => {
-                    // Register the string for this IR ID
-                    self.ir_id_to_string.insert(*target, s.clone());
-                    // Add to strings collection for encoding
-                    self.strings.push((*target, s.clone()));
-                }
-                IrInstruction::LoadImmediate {
-                    target,
-                    value: IrValue::Integer(i),
-                } => {
-                    // Register the integer for this IR ID
-                    self.ir_id_to_integer.insert(*target, *i);
-                }
-                IrInstruction::LoadImmediate {
-                    target: _,
-                    value: _,
-                } => {
-                    // Other LoadImmediate types - no action needed
-                }
-                // Handle other instructions that might contain blocks
-                _ => {
-                    // For now, we don't need to recurse into other instruction types
-                    // since they don't typically contain nested blocks with strings
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Encode all collected strings using Z-Machine text encoding
-    fn encode_all_strings(&mut self) -> Result<(), CompilerError> {
-        for (id, string) in &self.strings {
-            let encoded = self.encode_string(string)?;
-            self.encoded_strings.insert(*id, encoded);
-        }
-        Ok(())
-    }
-
-    /// Encode a single string using Z-Machine ZSCII encoding
-    pub fn encode_string(&self, s: &str) -> Result<Vec<u8>, CompilerError> {
-        // Z-Machine text encoding per Z-Machine Standard 1.1, Section 3.5.3
-        // Alphabet A0 (6-31): abcdefghijklmnopqrstuvwxyz
-        // Alphabet A1 (6-31): ABCDEFGHIJKLMNOPQRSTUVWXYZ
-        // Alphabet A2 (6-31):  ^0123456789.,!?_#'"/\-:()
-
-        let mut zchars = Vec::new();
-
-        for ch in s.chars() {
-            match ch {
-                // Space is always Z-character 0
-                ' ' => zchars.push(0),
-
-                // Alphabet A0: lowercase letters (Z-chars 6-31)
-                'a'..='z' => {
-                    zchars.push(ch as u8 - b'a' + 6);
-                }
-
-                // Alphabet A1: uppercase letters (single-shift with 4, then Z-char 6-31)
-                'A'..='Z' => {
-                    zchars.push(4); // Single shift to alphabet A1
-                    zchars.push(ch as u8 - b'A' + 6);
-                }
-
-                // Alphabet A2: punctuation characters (single-shift with 5, then Z-char)
-                '\n' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(7); // '^' (newline) at position 7
-                }
-                '0'..='9' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(ch as u8 - b'0' + 8); // Numbers at positions 8-17
-                }
-                '.' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(18); // '.' at position 18
-                }
-                ',' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(19); // ',' at position 19
-                }
-                '!' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(20); // '!' at position 20
-                }
-                '?' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(21); // '?' at position 21
-                }
-                '_' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(22); // '_' at position 22
-                }
-                '#' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(23); // '#' at position 23
-                }
-                '\'' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(24); // '\'' at position 24
-                }
-                '"' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(25); // '"' at position 25
-                }
-                '/' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(26); // '/' at position 26
-                }
-                '\\' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(27); // '\\' at position 27
-                }
-                '-' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(28); // '-' at position 28
-                }
-                ':' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(29); // ':' at position 29
-                }
-                '(' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(30); // '(' at position 30
-                }
-                ')' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(31); // ')' at position 31
-                }
-                _ => {
-                    // Unsupported character - encode as '?'
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(21); // '?' at position 21
-                }
-            }
-        }
-
-        // Pack zchars into 16-bit words (3 zchars per word)
-        let mut encoded = Vec::new();
-
-        for chunk in zchars.chunks(3) {
-            let mut word = 0u16;
-
-            for (i, &zchar) in chunk.iter().enumerate() {
-                word |= (zchar as u16 & 0x1F) << (10 - i * 5);
-            }
-
-            // Pad incomplete chunks with 5s (pad character)
-            for i in chunk.len()..3 {
-                word |= 5u16 << (10 - i * 5);
-            }
-
-            encoded.push((word >> 8) as u8);
-            encoded.push(word as u8);
-        }
-
-        // Ensure we have at least one word
-        if encoded.is_empty() {
-            encoded.push(0x80);
-            encoded.push(0x00);
-        } else {
-            // Set the termination bit on the last word
-            let last_idx = encoded.len() - 2;
-            encoded[last_idx] |= 0x80;
-        }
-
-        Ok(encoded)
     }
 
     /// Plan the memory layout for all Z-Machine structures
@@ -5086,68 +4375,6 @@ impl ZMachineCodeGen {
     }
 
     /// Encode an object name as Z-Machine text
-    fn encode_object_name(&self, name: &str) -> Vec<u8> {
-        // For now, simple ASCII encoding (should be proper Z-Machine text encoding)
-        let mut bytes = Vec::new();
-        for chunk in name.bytes().collect::<Vec<_>>().chunks(2) {
-            let word = if chunk.len() == 2 {
-                ((chunk[0] as u16) << 8) | (chunk[1] as u16)
-            } else {
-                (chunk[0] as u16) << 8
-            };
-            bytes.push((word >> 8) as u8);
-            bytes.push((word & 0xFF) as u8);
-        }
-        // Add terminator if odd length
-        if name.len() % 2 == 1 {
-            bytes.push(0);
-        }
-        bytes
-    }
-
-    /// Encode a property value for Z-Machine format
-    fn encode_property_value(&self, prop_num: u8, prop_value: &IrPropertyValue) -> (u8, Vec<u8>) {
-        match prop_value {
-            IrPropertyValue::Byte(val) => {
-                // V3: size_byte = 32 * (data_bytes - 1) + prop_num = 32 * (1 - 1) + prop_num = prop_num
-                let size_byte = prop_num;
-                (size_byte, vec![*val])
-            }
-            IrPropertyValue::Word(val) => {
-                // V3: size_byte = 32 * (data_bytes - 1) + prop_num = 32 * (2 - 1) + prop_num = 32 + prop_num
-                let size_byte = 32 + prop_num;
-                let data_bytes = vec![(val >> 8) as u8, (val & 0xFF) as u8];
-                debug!(
-                    "PROPERTY DEBUG: Encoding Word property {}: value=0x{:04x} -> size_byte=0x{:02x}, data=[0x{:02x}, 0x{:02x}]",
-                    prop_num, val, size_byte, data_bytes[0], data_bytes[1]
-                );
-                (size_byte, data_bytes)
-            }
-            IrPropertyValue::Bytes(bytes) => {
-                // V3: size_byte = 32 * (data_bytes - 1) + prop_num
-                let data_len = bytes.len().min(8); // Z-Machine V3 max size is 8
-                                                   // Handle empty byte arrays to avoid underflow
-                let size_byte = if data_len > 0 {
-                    32 * (data_len - 1) + prop_num as usize
-                } else {
-                    prop_num as usize // Empty bytes: just the property number
-                };
-                (size_byte as u8, bytes.clone())
-            }
-            IrPropertyValue::String(s) => {
-                // Encode string as bytes (simplified)
-                let bytes: Vec<u8> = s.bytes().collect();
-                let data_len = bytes.len().min(8);
-                // Handle empty strings to avoid underflow
-                let size_byte = if data_len > 0 {
-                    32 * (data_len - 1) + prop_num as usize
-                } else {
-                    prop_num as usize // Empty string: just the property number
-                };
-                (size_byte as u8, bytes)
-            }
-        }
-    }
 
     /// Get object name by object number (for property table generation)
     fn get_object_name_by_number(&self, obj_num: u8) -> String {
@@ -5167,30 +4394,6 @@ impl ZMachineCodeGen {
     }
 
     /// Generate dictionary
-    fn generate_dictionary(&mut self, _ir: &IrProgram) -> Result<(), CompilerError> {
-        // TODO: Implement dictionary generation
-        // For now, create minimal dictionary
-
-        let dict_start = self.dictionary_addr;
-        self.ensure_capacity(dict_start + 10);
-
-        // Minimal dictionary header
-        self.write_to_dictionary_space(0, 4)?; // Entry length (4 bytes for v3/v5)
-        self.write_to_dictionary_space(1, 0)?; // Number of entries (high byte)
-        self.write_to_dictionary_space(2, 0)?; // Number of entries (low byte)
-
-        // CRITICAL: Update final_assembly_address to reflect actual end of all data structures
-        // This eliminates gaps between data structures and code generation
-        let dict_end = self.dictionary_addr + 3; // Minimal dictionary is 3 bytes
-        let max_data_end = std::cmp::max(self.current_property_addr, dict_end);
-        // Respect existing final_assembly_address if it's already beyond our data structures
-        let new_addr = std::cmp::max(self.final_assembly_address, max_data_end);
-        self.set_final_assembly_address(new_addr, "Data structures alignment");
-        debug!("Data structures complete, final_assembly_address updated to: 0x{:04x} (property_end: 0x{:04x}, dict_end: 0x{:04x})", 
-               self.final_assembly_address, self.current_property_addr, dict_end);
-
-        Ok(())
-    }
 
     /// Generate global variables table
     fn generate_global_variables(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
@@ -5355,7 +4558,9 @@ impl ZMachineCodeGen {
         self.record_final_address(main_loop_jump_id, main_loop_first_instruction);
 
         // 1. Print prompt "> "
-        let prompt_string_id = 9002u32;
+        let prompt_string_id = self
+            .main_loop_prompt_id
+            .expect("Main loop prompt ID should be set during string collection");
 
         let layout = self.emit_instruction(
             0x8D, // print_paddr (print packed address string) - 1OP:141
@@ -6905,23 +6110,6 @@ impl ZMachineCodeGen {
     }
 
     /// Allocate space for strings with proper alignment
-    fn allocate_string_address(&mut self, ir_id: IrId, string_length: usize) -> usize {
-        let alignment = match self.version {
-            ZMachineVersion::V3 => 2, // v3: strings must be at even addresses
-            ZMachineVersion::V4 | ZMachineVersion::V5 => 2, // v4/v5: word alignment is sufficient
-        };
-
-        let address = self.allocate_address(string_length, alignment);
-        self.string_addresses.insert(ir_id, address);
-        self.record_final_address(ir_id, address);
-
-        log::debug!(
-            " allocate_string_address: IR ID {} ({} bytes) -> 0x{:04x} (current_address was 0x{:04x})",
-            ir_id, string_length, address, self.code_address
-        );
-
-        address
-    }
 
     /// Generate init block as a proper routine and startup sequence
     fn generate_init_block(
@@ -7896,54 +7084,6 @@ impl ZMachineCodeGen {
     }
 
     /// Pack a string address according to Z-Machine version
-    fn pack_string_address(&self, byte_address: usize) -> Result<u16, CompilerError> {
-        match self.version {
-            ZMachineVersion::V3 => {
-                // v3: packed address = byte address / 2
-                if byte_address % 2 != 0 {
-                    return Err(CompilerError::CodeGenError(
-                        "String address must be even for v3".to_string(),
-                    ));
-                }
-                Ok((byte_address / 2) as u16)
-            }
-            ZMachineVersion::V4 | ZMachineVersion::V5 => {
-                // v4/v5: packed address = byte address / 4
-                if byte_address % 4 != 0 {
-                    return Err(CompilerError::CodeGenError(
-                        "String address must be multiple of 4 for v4/v5".to_string(),
-                    ));
-                }
-                Ok((byte_address / 4) as u16)
-            }
-        }
-    }
-
-    /// Find or create a string ID for the given string
-    pub fn find_or_create_string_id(&mut self, s: &str) -> Result<IrId, CompilerError> {
-        // Check if string already exists
-        for (id, existing_string) in &self.strings {
-            if existing_string == s {
-                return Ok(*id);
-            }
-        }
-
-        // Create new string ID
-        let new_id = self.next_string_id;
-        self.next_string_id += 1;
-
-        // Add to strings collection
-        self.strings.push((new_id, s.to_string()));
-
-        // Encode the string
-        let encoded = self.encode_string(s)?;
-        self.encoded_strings.insert(new_id, encoded);
-
-        // NOTE: String addresses will be assigned during layout_memory_structures
-        // or when we rebuild the layout after discovering new strings
-
-        Ok(new_id)
-    }
 
     /// Register a builtin function name with its ID
     pub fn register_builtin_function(&mut self, function_id: IrId, name: String) {
@@ -8073,63 +7213,8 @@ impl ZMachineCodeGen {
     /// Generate player_can_see builtin function - checks if player can see an object
 
     /// Generate string concatenation for two IR values
-    fn generate_string_concatenation(
-        &mut self,
-        target: IrId,
-        left: IrId,
-        right: IrId,
-    ) -> Result<(), CompilerError> {
-        // For string concatenation, we need to:
-        // 1. Get the string values for left and right operands
-        // 2. Concatenate them into a new string
-        // 3. Store the new string and return its address
-
-        let left_str = self.get_string_value(left)?;
-        let right_str = self.get_string_value(right)?;
-
-        // Concatenate the strings
-        let concatenated = format!("{}{}", left_str, right_str);
-
-        // Create a new string entry for the concatenated result
-        let _concat_string_id = self.find_or_create_string_id(&concatenated)?;
-        self.ir_id_to_string.insert(target, concatenated.clone());
-
-        // CRITICAL: Also add to encoded_strings for separated structures architecture
-        let encoded = self.encode_string(&concatenated)?;
-        self.encoded_strings.insert(target, encoded);
-        log::debug!(
-            " STRING_CONCAT: Added concatenated string ID {} to encoded_strings: '{}'",
-            target,
-            concatenated
-        );
-
-        // String concatenation is a compile-time operation
-        // No runtime instructions needed - the concatenated string will be used directly
-        // by print operations via its string ID
-
-        debug!(
-            "String concatenation: {} + {} -> {} (ID: {})",
-            left_str,
-            right_str,
-            self.ir_id_to_string
-                .get(&target)
-                .unwrap_or(&"<unknown>".to_string()),
-            target
-        );
-
-        Ok(())
-    }
 
     /// Get string value for an IR ID (handles both string literals and function return values)
-    fn get_string_value(&self, ir_id: IrId) -> Result<String, CompilerError> {
-        if let Some(string_val) = self.ir_id_to_string.get(&ir_id) {
-            Ok(string_val.clone())
-        } else {
-            // This might be a to_string() result or other dynamic string
-            // For now, use a placeholder that represents the dynamic value
-            Ok(format!("[Dynamic-{}]", ir_id))
-        }
-    }
 
     /// Update string addresses after new strings have been added
     ///
@@ -8272,20 +7357,6 @@ impl ZMachineCodeGen {
     }
 
     // Utility methods for code emission
-
-    /// Emit a single byte and advance current address
-    /// Systematic current_address update with full logging to debug address resets
-    pub fn set_final_assembly_address(&mut self, new_addr: usize, context: &str) {
-        let old_addr = self.final_assembly_address;
-        self.final_assembly_address = new_addr;
-        log::warn!(
-            "🔄 FINAL_ASSEMBLY_ADDRESS_UPDATE: {} | 0x{:04x} → 0x{:04x} (delta: {:+})",
-            context,
-            old_addr,
-            new_addr,
-            new_addr as i32 - old_addr as i32
-        );
-    }
 
     fn emit_byte(&mut self, byte: u8) -> Result<(), CompilerError> {
         // COMPREHENSIVE BYTE TRACKING: Log every byte with final runtime address
@@ -8495,25 +7566,6 @@ impl ZMachineCodeGen {
     // === SPACE-SPECIFIC WRITE FUNCTIONS ===
     // These maintain proper space separation and single-path logging
 
-    /// Write byte to header space (64-byte Z-Machine file header)
-    fn write_to_header_space(&mut self, offset: usize, byte: u8) -> Result<(), CompilerError> {
-        // Ensure capacity
-        if offset >= self.header_space.len() {
-            self.header_space.resize(offset + 1, 0);
-        }
-
-        self.header_space[offset] = byte;
-        self.header_address = self.header_address.max(offset + 1);
-
-        log::debug!(
-            "🏠 HEADER_SPACE: offset={}, byte=0x{:02x}, space_len={}",
-            offset,
-            byte,
-            self.header_space.len()
-        );
-        Ok(())
-    }
-
     /// Write byte to globals space (global variables)
     fn write_to_globals_space(&mut self, offset: usize, byte: u8) -> Result<(), CompilerError> {
         // Ensure capacity
@@ -8534,42 +7586,8 @@ impl ZMachineCodeGen {
     }
 
     /// Write byte to string space (encoded strings)
-    fn write_to_string_space(&mut self, offset: usize, byte: u8) -> Result<(), CompilerError> {
-        // Ensure capacity
-        if offset >= self.string_space.len() {
-            self.string_space.resize(offset + 1, 0);
-        }
-
-        self.string_space[offset] = byte;
-        self.string_address = self.string_address.max(offset + 1);
-
-        log::debug!(
-            "📝 STRING_SPACE: offset={}, byte=0x{:02x}, space_len={}",
-            offset,
-            byte,
-            self.string_space.len()
-        );
-        Ok(())
-    }
 
     /// Write byte to dictionary space (word parsing dictionary)
-    fn write_to_dictionary_space(&mut self, offset: usize, byte: u8) -> Result<(), CompilerError> {
-        // Ensure capacity
-        if offset >= self.dictionary_space.len() {
-            self.dictionary_space.resize(offset + 1, 0);
-        }
-
-        self.dictionary_space[offset] = byte;
-        self.dictionary_address = self.dictionary_address.max(offset + 1);
-
-        log::debug!(
-            "📚 DICTIONARY_SPACE: offset={}, byte=0x{:02x}, space_len={}",
-            offset,
-            byte,
-            self.dictionary_space.len()
-        );
-        Ok(())
-    }
 
     /// Create UnresolvedReference with proper space context
     pub fn create_unresolved_reference(
