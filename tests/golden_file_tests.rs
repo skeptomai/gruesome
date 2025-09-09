@@ -266,33 +266,7 @@ fn test_mini_zork_compilation_v3() {
     println!("📁 Golden file saved: {}", golden_path.display());
 }
 
-#[test]
-#[ignore] // Temporarily disabled due to IR mapping regression and V5 alignment issues
-fn test_mini_zork_compilation_v5() {
-    let project_root = get_project_root();
-    let source_path = project_root.join("examples/mini_zork.grue");
-
-    println!("🧪 Testing mini_zork.grue compilation to v5...");
-
-    // Compile the source file
-    let story_data = compile_grue_file(&source_path, ZMachineVersion::V5)
-        .expect("Failed to compile mini_zork.grue");
-
-    // Validate the generated Z-Machine file
-    validate_z_machine_file(&story_data, ZMachineVersion::V5)
-        .expect("Generated Z-Machine file failed validation");
-
-    // Test that our interpreter can load it
-    test_interpreter_can_load(&story_data)
-        .expect("Interpreter failed to load generated story file");
-
-    // Save as current golden file
-    let golden_path = project_root.join("tests/golden_files/mini_zork_v5.z5");
-    save_golden_file(&story_data, &golden_path).expect("Failed to save golden file");
-
-    println!("✅ mini_zork v5 compilation test passed");
-    println!("📁 Golden file saved: {}", golden_path.display());
-}
+// V5 mini_zork test moved to tests/experimental/v4_v5_golden_file_tests.rs
 
 #[test]
 fn test_simple_compilation() {

@@ -134,3 +134,120 @@ fn test_experimental_v4_v5_compilation() {
     println!("   ❌ Failed: {}", failed_tests);
     println!("   ⚠️  Failures are expected for V4/V5 - this is experimental code");
 }
+
+#[test]
+#[ignore] // V5 compilation has known IR mapping and alignment issues
+fn test_mini_zork_compilation_v5() {
+    let project_root = get_project_root();
+    let source_path = project_root.join("examples/mini_zork.grue");
+
+    println!("🧪 Testing mini_zork.grue compilation to v5 (experimental)...");
+
+    // Compile the source file
+    let story_data = compile_grue_file(&source_path, ZMachineVersion::V5)
+        .expect("Failed to compile mini_zork.grue");
+
+    // Validate the generated Z-Machine file
+    validate_z_machine_file(&story_data, ZMachineVersion::V5)
+        .expect("Generated Z-Machine file failed validation");
+
+    // Test that our interpreter can load it
+    test_interpreter_can_load(&story_data)
+        .expect("Interpreter failed to load generated story file");
+
+    // Save as current golden file
+    let golden_path = project_root.join("tests/golden_files/mini_zork_v5.z5");
+    save_golden_file(&story_data, &golden_path).expect("Failed to save golden file");
+
+    println!("✅ mini_zork v5 compilation test passed");
+    println!("📁 Golden file saved: {}", golden_path.display());
+}
+
+fn get_project_root() -> PathBuf {
+    std::env::current_dir()
+        .unwrap()
+        .ancestors()
+        .find(|path| path.join("Cargo.toml").exists())
+        .unwrap()
+        .to_path_buf()
+}
+
+fn save_golden_file(story_data: &[u8], golden_path: &Path) -> Result<(), std::io::Error> {
+    if let Some(parent) = golden_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(golden_path, story_data)?;
+    Ok(())
+}
+
+fn test_interpreter_can_load(story_data: &[u8]) -> Result<(), String> {
+    match Game::from_story_bytes(story_data) {
+        Ok(_game) => Ok(()),
+        Err(e) => Err(format!("Interpreter failed to load story file: {}", e)),
+    }
+}
+
+fn validate_z_machine_file(story_data: &[u8], expected_version: ZMachineVersion) -> Result<(), String> {
+    if story_data.len() < 64 {
+        return Err("File too small - missing header".to_string());
+    }
+
+    let expected_version_byte = match expected_version {
+        ZMachineVersion::V3 => 3,
+        ZMachineVersion::V4 => 4,
+        ZMachineVersion::V5 => 5,
+    };
+
+    let actual_version = story_data[0];
+    if actual_version != expected_version_byte {
+        return Err(format!(
+            "Version mismatch: expected {}, got {}",
+            expected_version_byte, actual_version
+        ));
+    }
+
+    println!("✅ Z-Machine file validation passed for version {}", expected_version_byte);
+    Ok(())
+}
+
+fn compile_grue_file(source_path: &Path, version: ZMachineVersion) -> Result<Vec<u8>, String> {
+    // Read the source file
+    let source_content = fs::read_to_string(source_path)
+        .map_err(|e| format!("Failed to read source file: {}", e))?;
+
+    // Phase 1: Lexical Analysis
+    let mut lexer = lexer::Lexer::new(&source_content);
+    let tokens = lexer.tokenize()
+        .map_err(|e| format!("Tokenization failed: {}", e))?;
+
+    // Phase 2: Parsing
+    let mut parser = parser::Parser::new(tokens);
+    let ast = parser.parse()
+        .map_err(|e| format!("Parsing failed: {}", e))?;
+
+    // Phase 3: Semantic Analysis
+    let mut analyzer = semantic::SemanticAnalyzer::new();
+    let analyzed_ast = analyzer.analyze(ast)
+        .map_err(|e| format!("Semantic analysis failed: {}", e))?;
+
+    // Phase 4: IR Generation
+    let mut ir_generator = ir::IrGenerator::new();
+    let ir_program = ir_generator.generate(analyzed_ast)
+        .map_err(|e| format!("IR generation failed: {}", e))?;
+
+    // Phase 5: Code Generation
+    let mut code_generator = codegen::ZMachineCodeGen::new(version);
+
+    // Transfer builtin function information from IR generator to code generator
+    for (function_id, function_name) in ir_generator.get_builtin_functions() {
+        code_generator.register_builtin_function(*function_id, function_name.clone());
+    }
+
+    // Transfer object numbers from IR generator to code generator
+    code_generator.set_object_numbers(ir_generator.get_object_numbers().clone());
+
+    let story_data = code_generator.generate_complete_game_image(ir_program)
+        .map_err(|e| format!("Code generation failed: {}", e))?;
+
+    Ok(story_data)
+}

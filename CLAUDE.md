@@ -450,9 +450,11 @@ The interpreter correctly handles calls to address 0x0000 according to the Z-Mac
 ### Grue Z-Machine Compiler: V3 Production Ready, V4/V5 Experimental 🔄
 - **Full Pipeline**: Lexer → Parser → Semantic → IR → CodeGen ✅
 - **V3 Support**: Production ready with comprehensive test coverage ✅
-- **V4/V5 Support**: Experimental - has string alignment and IR mapping issues ⚠️
-- **Test Organization**: V3 tests in CI, V4/V5 tests moved to experimental directory
-- **Current Status**: V3 compilation stable, V4/V5 disabled in release until bugs fixed
+- **V4/V5 Support**: Experimental - disabled in release builds due to known issues ⚠️
+- **Release Policy**: V4/V5 compilation blocked in release builds, available in debug only
+- **Test Organization**: V3 tests in CI, V4/V5 tests isolated in `tests/experimental/`
+- **Binary Behavior**: Release binaries reject V4/V5, debug builds allow with warnings
+- **Current Status**: V3 compilation stable and production-ready, V4/V5 development ongoing
 
 ## Historical Documentation
 

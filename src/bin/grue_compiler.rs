@@ -37,13 +37,50 @@ fn main() {
             }
             "--version" => {
                 if i + 1 >= args.len() {
-                    eprintln!("Error: --version requires v3, v4, or v5");
+                    #[cfg(debug_assertions)]
+                    eprintln!("Error: --version requires v3, v4, or v5 (v4/v5 are experimental)");
+                    #[cfg(not(debug_assertions))]
+                    eprintln!("Error: --version requires v3 (v4/v5 disabled in release builds)");
                     process::exit(1);
                 }
                 version = match args[i + 1].as_str() {
                     "v3" | "V3" => ZMachineVersion::V3,
-                    "v4" | "V4" => ZMachineVersion::V4,
-                    "v5" | "V5" => ZMachineVersion::V5,
+                    "v4" | "V4" => {
+                        #[cfg(not(debug_assertions))]
+                        {
+                            eprintln!("Error: V4 compilation is experimental and disabled in release builds.");
+                            eprintln!(
+                                "V4 support has known string alignment and IR mapping issues."
+                            );
+                            eprintln!(
+                                "Use debug build (cargo run) to compile V4 files for testing."
+                            );
+                            process::exit(1);
+                        }
+                        #[cfg(debug_assertions)]
+                        {
+                            eprintln!("Warning: V4 compilation is experimental and may fail.");
+                            ZMachineVersion::V4
+                        }
+                    }
+                    "v5" | "V5" => {
+                        #[cfg(not(debug_assertions))]
+                        {
+                            eprintln!("Error: V5 compilation is experimental and disabled in release builds.");
+                            eprintln!(
+                                "V5 support has known string alignment and IR mapping issues."
+                            );
+                            eprintln!(
+                                "Use debug build (cargo run) to compile V5 files for testing."
+                            );
+                            process::exit(1);
+                        }
+                        #[cfg(debug_assertions)]
+                        {
+                            eprintln!("Warning: V5 compilation is experimental and may fail.");
+                            ZMachineVersion::V5
+                        }
+                    }
                     _ => {
                         eprintln!(
                             "Error: Unsupported version '{}'. Use v3, v4, or v5.",
@@ -148,24 +185,38 @@ fn print_usage(program_name: &str) {
     println!("Usage: {} [options] <input.grue>", program_name);
     println!();
     println!("Options:");
-    println!("  -o, --output <file>    Output filename (default: input.z3 or input.z5)");
+    println!("  -o, --output <file>    Output filename (default: input.z3)");
     println!("  --version <v3|v4|v5>   Z-Machine version (default: v3)");
     println!("  -v, --verbose          Verbose output");
     println!("  -h, --help             Show this help message");
     println!();
+    println!("Z-Machine Version Support:");
+    println!("  v3                     Production ready (recommended)");
+    #[cfg(debug_assertions)]
+    {
+        println!("  v4, v5                 Experimental (debug builds only)");
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        println!("  v4, v5                 Experimental (disabled in release)");
+    }
+    println!();
     println!("Examples:");
     println!(
-        "  {} game.grue                    # Compile to game.z3",
+        "  {} game.grue                    # Compile to game.z3 (production)",
         program_name
     );
-    println!(
-        "  {} --version v4 game.grue       # Compile to game.z4",
-        program_name
-    );
-    println!(
-        "  {} --version v5 game.grue       # Compile to game.z5",
-        program_name
-    );
+    #[cfg(debug_assertions)]
+    {
+        println!(
+            "  {} --version v4 game.grue       # Compile to game.z4 (experimental)",
+            program_name
+        );
+        println!(
+            "  {} --version v5 game.grue       # Compile to game.z5 (experimental)",
+            program_name
+        );
+    }
     println!(
         "  {} -o mygame.z3 source.grue     # Custom output name",
         program_name
