@@ -208,7 +208,7 @@ pub struct ZMachineCodeGen {
     /// Mapping from IR IDs to Z-Machine object numbers (for object references)
     ir_id_to_object_number: HashMap<IrId, u16>,
     /// Mapping from IR IDs to Z-Machine local variable slots (for function parameters)
-    ir_id_to_local_var: HashMap<IrId, u8>,
+    pub ir_id_to_local_var: HashMap<IrId, u8>,
     /// Mapping from IR IDs to binary operations (for conditional branch optimization)
     ir_id_to_binary_op: HashMap<IrId, (IrBinaryOp, IrId, IrId)>, // (operator, left_operand, right_operand)
     /// Mapping from function IDs to builtin function names
@@ -246,7 +246,7 @@ pub struct ZMachineCodeGen {
 
     // Control flow analysis - NEW ARCHITECTURE
     /// Track constant values resolved during generation
-    constant_values: HashMap<IrId, ConstantValue>,
+    pub constant_values: HashMap<IrId, ConstantValue>,
     /// Track which labels have been placed at current address
     labels_at_current_address: Vec<IrId>,
 
@@ -7062,7 +7062,7 @@ impl ZMachineCodeGen {
     }
 
     /// Generate load immediate instruction
-    fn generate_load_immediate(&mut self, value: &IrValue) -> Result<(), CompilerError> {
+    pub fn generate_load_immediate(&mut self, value: &IrValue) -> Result<(), CompilerError> {
         match value {
             IrValue::Integer(_n) => {
                 // Integer constants don't need to generate instructions
@@ -7198,7 +7198,7 @@ impl ZMachineCodeGen {
     }
 
     /// Generate function call with unresolved reference and arguments
-    fn generate_call_with_reference(
+    pub fn generate_call_with_reference(
         &mut self,
         function_id: IrId,
         args: &[IrId],
@@ -8138,7 +8138,7 @@ impl ZMachineCodeGen {
     }
 
     /// Unified BinaryOp processing used by both translate_ir_instruction and generate_instruction
-    fn process_binary_op(
+    pub fn process_binary_op(
         &mut self,
         target: IrId,
         op: &IrBinaryOp,
@@ -9291,7 +9291,7 @@ impl ZMachineCodeGen {
     }
 
     /// Check if a function ID corresponds to a builtin function
-    fn is_builtin_function(&self, function_id: IrId) -> bool {
+    pub fn is_builtin_function(&self, function_id: IrId) -> bool {
         self.builtin_function_names.contains_key(&function_id)
     }
 
@@ -9301,7 +9301,7 @@ impl ZMachineCodeGen {
     }
 
     /// Generate Z-Machine code for builtin function calls
-    fn generate_builtin_function_call(
+    pub fn generate_builtin_function_call(
         &mut self,
         function_id: IrId,
         args: &[IrId],
@@ -9919,7 +9919,7 @@ impl ZMachineCodeGen {
     }
 
     /// Create UnresolvedReference with proper space context
-    fn create_unresolved_reference(
+    pub fn create_unresolved_reference(
         &self,
         reference_type: LegacyReferenceType,
         location_space: MemorySpace,
