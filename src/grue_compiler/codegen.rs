@@ -46,6 +46,7 @@ pub enum MemorySpace {
     Dictionary,
     Strings,
     Code,
+    CodeSpace,  // Alternative name for Code
 }
 
 /// Reference types for fixup tracking
@@ -150,6 +151,7 @@ pub struct UnresolvedReference {
 pub enum LegacyReferenceType {
     Jump,         // Unconditional jump to label
     Branch,       // Conditional branch to label
+    Label(IrId),  // Reference to label
     FunctionCall, // Call to function address
     StringRef,    // Reference to string address
 }
@@ -509,6 +511,7 @@ impl ZMachineCodeGen {
             }
             MemorySpace::Strings => self.final_string_base + fixup.source_address,
             MemorySpace::Code => self.final_code_base + fixup.source_address,
+            MemorySpace::CodeSpace => self.final_code_base + fixup.source_address, // Same as Code
         };
 
         let target_address = match &fixup.reference_type {
@@ -1667,6 +1670,28 @@ impl ZMachineCodeGen {
                     )));
                 }
             }
+
+            LegacyReferenceType::Label(label_id) => {
+                // Handle label references - similar to Jump handling
+                if let Some(&code_offset) = self
+                    .reference_context
+                    .ir_id_to_address
+                    .get(label_id)
+                {
+                    let resolved_address = if code_offset >= self.final_code_base {
+                        code_offset
+                    } else {
+                        self.final_code_base + code_offset
+                    };
+                    debug!("Label resolution: Resolved label {} to address 0x{:04x}", label_id, resolved_address);
+                    return self.patch_branch_offset(reference.location, resolved_address);
+                } else {
+                    return Err(CompilerError::CodeGenError(format!(
+                        "Label ID {} not found in ir_id_to_address",
+                        label_id
+                    )));
+                }
+            }
         };
 
         // This legacy system handles StringRef and FunctionCall references with absolute addresses
@@ -1799,6 +1824,7 @@ impl ZMachineCodeGen {
             }
             MemorySpace::Strings => self.final_string_base + fixup.source_address,
             MemorySpace::Code => self.final_code_base + fixup.source_address,
+            MemorySpace::CodeSpace => self.final_code_base + fixup.source_address, // Same as Code
         };
 
         // Use the existing resolve_fixup logic but write to final_data
@@ -6170,896 +6196,6 @@ impl ZMachineCodeGen {
     }
 
 
-    /// Generate code for a single IR instruction
-    fn generate_instruction(&mut self, instruction: &IrInstruction) -> Result<(), CompilerError> {
-        debug!("Generate instruction called: {:?}", instruction);
-        // DEBUGGING: Log every instruction that creates a target
-        match instruction {
-            IrInstruction::LoadImmediate { target, .. } => {
-                log::debug!(
-                    "IR INSTRUCTION: LoadImmediate creates target IR ID {}",
-                    target
-                );
-            }
-            IrInstruction::BinaryOp { target, .. } => {
-                log::debug!("IR INSTRUCTION: BinaryOp creates target IR ID {}", target);
-            }
-            IrInstruction::Call {
-                target: Some(t), ..
-            } => {
-                log::debug!("IR INSTRUCTION: Call creates target IR ID {}", t);
-            }
-            IrInstruction::Call { target: None, .. } => {
-                // No target to log
-            }
-            IrInstruction::GetProperty { target, .. } => {
-                log::debug!(
-                    "IR INSTRUCTION: GetProperty creates target IR ID {}",
-                    target
-                );
-            }
-            IrInstruction::GetPropertyByNumber { target, .. } => {
-                log::debug!(
-                    "IR INSTRUCTION: GetPropertyByNumber creates target IR ID {}",
-                    target
-                );
-            }
-            IrInstruction::UnaryOp { target, .. } => {
-                log::debug!("IR INSTRUCTION: UnaryOp creates target IR ID {}", target);
-            }
-            IrInstruction::CreateArray { target, .. } => {
-                log::debug!(
-                    "IR INSTRUCTION: CreateArray creates target IR ID {}",
-                    target
-                );
-            }
-            IrInstruction::GetNextProperty { target, .. } => {
-                log::debug!(
-                    "IR INSTRUCTION: GetNextProperty creates target IR ID {}",
-                    target
-                );
-            }
-            IrInstruction::TestProperty { target, .. } => {
-                log::debug!(
-                    "IR INSTRUCTION: TestProperty creates target IR ID {}",
-                    target
-                );
-            }
-            IrInstruction::GetArrayElement { target, .. } => {
-                log::debug!(
-                    "IR INSTRUCTION: GetArrayElement creates target IR ID {}",
-                    target
-                );
-            }
-            IrInstruction::ArrayRemove { target, .. } => {
-                log::debug!(
-                    "IR INSTRUCTION: ArrayRemove creates target IR ID {}",
-                    target
-                );
-            }
-            IrInstruction::ArrayLength { target, .. } => {
-                log::debug!(
-                    "IR INSTRUCTION: ArrayLength creates target IR ID {}",
-                    target
-                );
-            }
-            IrInstruction::LoadVar { target, var_id } => {
-                log::debug!(
-                    "IR INSTRUCTION: LoadVar creates target IR ID {} from var_id {}",
-                    target,
-                    var_id
-                );
-            }
-            _ => {}
-        }
-
-        match instruction {
-            IrInstruction::LoadImmediate { target, value } => {
-                // Store mapping for string and integer values so we can resolve them in function calls
-                // AND store constants for control flow optimization
-                match value {
-                    IrValue::String(s) => {
-                        self.ir_id_to_string.insert(*target, s.clone());
-                        self.constant_values
-                            .insert(*target, ConstantValue::String(s.clone()));
-                    }
-                    IrValue::Integer(i) => {
-                        self.ir_id_to_integer.insert(*target, *i);
-                        self.constant_values
-                            .insert(*target, ConstantValue::Integer(*i));
-                    }
-                    IrValue::Boolean(b) => {
-                        // Convert boolean to integer for compatibility
-                        let int_val = if *b { 1 } else { 0 };
-                        self.ir_id_to_integer.insert(*target, int_val);
-                        self.constant_values
-                            .insert(*target, ConstantValue::Boolean(*b));
-                    }
-                    _ => {}
-                }
-                self.generate_load_immediate(value)?;
-            }
-
-            IrInstruction::BinaryOp {
-                target,
-                op,
-                left,
-                right,
-            } => {
-                self.process_binary_op(*target, op, *left, *right)?;
-            }
-
-            IrInstruction::Call {
-                target,
-                function,
-                args,
-            } => {
-                // Check if this is a builtin function
-                if self.is_builtin_function(*function) {
-                    self.generate_builtin_function_call(*function, args, *target)?;
-                } else {
-                    // Generate call with unresolved function reference
-                    self.generate_call_with_reference(*function, args, *target)?;
-                }
-
-                // CRITICAL: Register call result target for proper LoadVar resolution
-                // Use stack for call results (per Z-Machine specification)
-                if let Some(target_id) = target {
-                    self.use_stack_for_result(*target_id);
-                    log::debug!("Call result: IR ID {} -> stack", target_id);
-                }
-            }
-
-            IrInstruction::Return { value } => {
-                if let Some(ir_value) = value {
-                    // Return with value - use ret opcode with operand
-                    let return_operand = self.resolve_ir_id_to_operand(*ir_value)?;
-                    let operands = vec![return_operand]; // Return resolved value
-                    self.emit_instruction(0x8B, &operands, None, None)?; // ret (1OP:11)
-                } else {
-                    // Return without value - use rtrue (0OP)
-                    self.emit_instruction(0xB0, &[], None, None)?; // rtrue (0OP:0)
-                }
-            }
-
-            IrInstruction::Branch {
-                condition,
-                true_label,
-                false_label,
-            } => {
-                self.generate_conditional_branch(*condition, *true_label, *false_label)?;
-            }
-
-            IrInstruction::Jump { label } => {
-                self.generate_jump(*label)?;
-            }
-
-            IrInstruction::Label { id } => {
-                // Allocate label at current address using unified allocator
-                let label_address = self.code_address;
-                log::debug!(
-                    "🏷️  PROCESSING LABEL: ID {} at address 0x{:04x} (unified allocation)",
-                    *id,
-                    label_address
-                );
-
-                // Record label address in label_addresses map
-                self.label_addresses.insert(*id, label_address);
-                self.record_final_address(*id, label_address);
-
-                // CRITICAL: Verify the label was recorded
-                if let Some(&recorded_addr) = self.reference_context.ir_id_to_address.get(id) {
-                    log::debug!(
-                        " Label {} successfully recorded at 0x{:04x}",
-                        id,
-                        recorded_addr
-                    );
-                } else {
-                    log::debug!(
-                        "❌ CRITICAL: Label {} NOT recorded in ir_id_to_address!",
-                        id
-                    );
-                }
-
-                // Track label at current address for jump optimization
-                self.labels_at_current_address.push(*id);
-
-                // Labels don't consume bytes - they mark positions
-            }
-
-            IrInstruction::LoadVar { target, var_id } => {
-                // CRITICAL: Use existing object resolution system instead of direct variable mapping
-                // IR variable IDs are abstract identifiers that must be resolved to proper operands
-                // through resolve_ir_id_to_operand(), NOT cast directly to Z-Machine variables
-                log::debug!(
-                    "LoadVar: Resolving IR var_id {} through operand resolution system",
-                    var_id
-                );
-                let operand = self.resolve_ir_id_to_operand(*var_id)?;
-                match operand {
-                    Operand::LargeConstant(value) => {
-                        // PROBLEM B FIX: Don't generate instructions for constants in conditionals
-                        // The conditional branch generation already resolves constants directly
-                        log::debug!("LoadVar: IR var_id {} -> constant {} - SKIPPING instruction generation (conditional will resolve directly)", var_id, value);
-                        // Don't emit any instruction - let the conditional use the resolved constant directly
-
-                        // PROBLEM C FIX: Still need to map the LoadVar target to the constant value
-                        // This ensures later references to the target IR ID can be resolved
-                        self.ir_id_to_integer.insert(*target, value as i16);
-                        log::debug!(
-                            "LoadVar target mapping: IR ID {} -> constant {}",
-                            target,
-                            value
-                        );
-                    }
-                    Operand::Variable(var_num) => {
-                        // If it resolves to a Z-Machine variable, load from that variable
-                        log::debug!(
-                            "LoadVar: IR var_id {} -> Z-Machine variable {}",
-                            var_id,
-                            var_num
-                        );
-                        // PROBLEM A FIX: Use correct Z-Machine load instruction
-                        // 1OP:142 (0x8E) - load (variable) -> (result)
-                        self.emit_instruction(0x8E, &[Operand::Variable(var_num)], Some(0), None)?;
-                        // Load variable to stack
-
-                        // CRITICAL FIX: Register LoadVar target mapping to stack variable 0
-                        // LoadVar stores its result on the stack for immediate consumption
-                        self.ir_id_to_stack_var.insert(*target, 0);
-                        log::debug!(
-                            "LoadVar target mapping: IR ID {} -> stack variable 0",
-                            target
-                        );
-                    }
-                    _ => {
-                        return Err(CompilerError::CodeGenError(format!(
-                            "LoadVar: IR var_id {} resolved to unsupported operand type: {:?}",
-                            var_id, operand
-                        )));
-                    }
-                }
-            }
-
-            IrInstruction::StoreVar { var_id, source } => {
-                // Store source value to target variable
-                // Map IR variables to Z-Machine operands properly
-                log::debug!(
-                    "StoreVar: copying from IR source {} to IR var_id {}",
-                    source,
-                    var_id
-                );
-
-                let source_operand = self.resolve_ir_id_to_operand(*source)?;
-                let target_var = *var_id as u8; // Map IR var_id to Z-Machine variable
-
-                log::debug!(
-                    "StoreVar: resolved source {:?} -> Z-Machine variable {}",
-                    source_operand,
-                    target_var
-                );
-
-                // CRITICAL: Track what value this variable now contains for future LoadVar resolution
-                // This establishes the missing link between StoreVar assignments and LoadVar lookups
-                match &source_operand {
-                    Operand::LargeConstant(value) => {
-                        // Store the constant value in our integer tracking table
-                        self.ir_id_to_integer.insert(*var_id, *value as i16);
-                        log::debug!(
-                            "StoreVar: IR var_id {} now contains constant {}",
-                            var_id,
-                            value
-                        );
-                    }
-                    Operand::Variable(var_num) => {
-                        // Store the variable reference in our stack variable tracking table
-                        self.ir_id_to_stack_var.insert(*var_id, *var_num);
-                        log::debug!(
-                            "StoreVar: IR var_id {} now references Z-Machine variable {}",
-                            var_id,
-                            var_num
-                        );
-                    }
-                    Operand::SmallConstant(value) => {
-                        // Store small constant as integer
-                        self.ir_id_to_integer.insert(*var_id, *value as i16);
-                        log::debug!(
-                            "StoreVar: IR var_id {} now contains small constant {}",
-                            var_id,
-                            value
-                        );
-                    }
-                    Operand::Constant(value) => {
-                        // Store generic constant as integer
-                        self.ir_id_to_integer.insert(*var_id, *value as i16);
-                        log::debug!(
-                            "StoreVar: IR var_id {} now contains generic constant {}",
-                            var_id,
-                            value
-                        );
-                    }
-                }
-
-                // Use Z-Machine store instruction to copy source to target variable
-                // FIXED: Use correct 2OP format: store (variable) value
-                match source_operand {
-                    Operand::LargeConstant(value) => {
-                        // Store constant value directly using 2OP format
-                        self.emit_instruction(
-                            0x0D,
-                            &[Operand::Variable(target_var), Operand::LargeConstant(value)],
-                            None, // No store_var field for 2OP store
-                            None,
-                        )?;
-                    }
-                    other_operand => {
-                        // Copy from one operand to variable using 2OP format
-                        self.emit_instruction(
-                            0x0D,
-                            &[Operand::Variable(target_var), other_operand],
-                            None, // No store_var field for 2OP store
-                            None,
-                        )?;
-                    }
-                }
-            }
-
-            IrInstruction::Print { value: _ } => {
-                // Print value - for now just print a newline
-                self.emit_instruction(0x0B, &[], None, None)?; // new_line (0OP)
-            }
-
-            IrInstruction::GetProperty {
-                target,
-                object,
-                property,
-            } => {
-                // Generate Z-Machine get_prop instruction (2OP:17, opcode 0x11)
-                // For now, use placeholder object ID and property number
-                // TODO: Map IR object ID to actual Z-Machine object number
-                // Use global property registry for consistent property numbering
-                let property_num =
-                    self.property_numbers
-                        .get(property)
-                        .copied()
-                        .unwrap_or_else(|| {
-                            debug!(
-                                "Warning: Property '{}' not found in registry, using default 1",
-                                property
-                            );
-                            1
-                        });
-                debug!(
-                    "GET_PROP: property '{}' -> number {}",
-                    property, property_num
-                );
-
-                // Generate get_prop instruction with properly resolved object operand
-                let operands = vec![
-                    self.resolve_ir_id_to_operand(*object)?, // Object (properly resolved)
-                    Operand::Constant(property_num.into()),  // Property number
-                ];
-                // CRITICAL FIX: Use stack (variable 0) for immediate consumption per Z-Machine specification
-                // Property access results are typically used immediately in expressions and should not persist
-                self.emit_instruction(0x11, &operands, Some(0), None)?; // Store result on stack
-
-                // Track that this IR ID maps to stack variable 0 for immediate consumption
-                self.ir_id_to_stack_var.insert(*target, 0);
-                log::debug!(
-                    "GetProperty result: IR ID {} -> stack variable 0 (immediate consumption)",
-                    *target
-                );
-            }
-            IrInstruction::SetProperty {
-                object,
-                property,
-                value,
-            } => {
-                // Generate Z-Machine put_prop instruction (VAR:227, opcode 0x03)
-                // Use global property registry for consistent property numbering
-                let property_num =
-                    self.property_numbers
-                        .get(property)
-                        .copied()
-                        .unwrap_or_else(|| {
-                            debug!(
-                                "Warning: Property '{}' not found in registry, using default 1",
-                                property
-                            );
-                            1
-                        });
-                debug!(
-                    "PUT_PROP: property '{}' -> number {}",
-                    property, property_num
-                );
-
-                // Generate put_prop instruction with properly resolved operands
-                let operands = vec![
-                    self.resolve_ir_id_to_operand(*object)?, // Object (properly resolved from IR)
-                    Operand::Constant(property_num.into()),  // Property number
-                    self.resolve_ir_id_to_operand(*value)?,  // Value (properly resolved from IR)
-                ];
-                self.emit_instruction(0x03, &operands, None, None)?;
-            }
-            IrInstruction::UnaryOp {
-                target,
-                op,
-                operand: _,
-            } => {
-                // TODO: Map IR ID to actual operand
-                // For now, use placeholder operand
-                let operand_op = Operand::Variable(1); // Local variable 1
-
-                // CRITICAL: Use stack for result - unary operations are temporary
-                let store_var = Some(0); // Store to stack, not local variable
-                self.generate_unary_op(op, operand_op, store_var)?;
-
-                // CRITICAL: Register unary operation result target
-                self.use_stack_for_result(*target);
-                log::debug!("UnaryOp ({:?}) result: IR ID {} -> stack", op, target);
-            }
-            IrInstruction::GetArrayElement {
-                target,
-                array,
-                index: _,
-            } => {
-                // CRITICAL FIX: Handle the case where "array" is actually our placeholder integer
-                // from contents() method. When iterating over a placeholder integer,
-                // we should return a safe non-zero value to prevent "Cannot insert object 0"
-
-                log::debug!("GetArrayElement: target={}, array={}", target, array);
-
-                // Instead of trying to load from memory, directly store a safe placeholder
-                // This prevents the object 0 error while we implement proper array handling
-
-                // Store a safe non-zero object ID (player object = 1) to prevent object 0 errors
-                // Use the correct target variable (cast u32 to u8 as expected by emit_instruction)
-                let operands = [Operand::LargeConstant(1)]; // Safe object ID (player)
-                self.emit_instruction(0x0D, &operands, Some(*target as u8), None)?;
-
-                // CRITICAL: Update the IR tracking so resolve_ir_id_to_operand knows this IR ID has value 1
-                self.ir_id_to_integer.insert(*target, 1);
-
-                log::debug!("GetArrayElement: stored safe placeholder 1 (player object) in variable {} and updated IR tracking", target);
-            }
-            IrInstruction::SetArrayElement {
-                array: _,
-                index: _,
-                value: _,
-            } => {
-                // Generate Z-Machine storew instruction (VAR:1)
-                // storew array_base index value
-                // TODO: Convert IR IDs to proper operands instead of using placeholders
-                let operands = vec![
-                    Operand::Variable(1), // Array base address (placeholder)
-                    Operand::Variable(2), // Index (placeholder)
-                    Operand::Variable(0), // Value (from stack, placeholder)
-                ];
-                self.emit_instruction(0xE1, &operands, None, None)?; // storew (VAR:225 = opcode 1, so 0xE1)
-            }
-
-            // New numbered property instructions
-            IrInstruction::GetPropertyByNumber {
-                target,
-                object,
-                property_num,
-            } => {
-                // Generate Z-Machine get_prop instruction (2OP:17, opcode 0x11)
-                // Use proper object resolution via global variables
-                let operands = vec![
-                    self.resolve_ir_id_to_operand(*object)?, // Object (properly resolved)
-                    Operand::Constant(*property_num as u16), // Property number
-                ];
-                // CRITICAL FIX: Use stack (variable 0) for immediate consumption per Z-Machine specification
-                // Property access results are typically used immediately in expressions and should not persist
-                self.emit_instruction(0x11, &operands, Some(0), None)?; // Store result on stack
-
-                // Track that this IR ID maps to stack variable 0 for immediate consumption
-                self.ir_id_to_stack_var.insert(*target, 0);
-                log::debug!(
-                    "GetPropertyByNumber result: IR ID {} -> stack variable 0 (property {})",
-                    target,
-                    property_num
-                );
-            }
-
-            IrInstruction::SetPropertyByNumber {
-                object,
-                property_num,
-                value,
-            } => {
-                // Generate Z-Machine put_prop instruction (VAR:227, opcode 0x03)
-                // Use proper object resolution via global variables
-                let operands = vec![
-                    self.resolve_ir_id_to_operand(*object)?, // Object (properly resolved)
-                    Operand::Constant(*property_num as u16), // Property number
-                    self.resolve_ir_id_to_operand(*value)?,  // Value (properly resolved)
-                ];
-                self.emit_instruction(0x03, &operands, None, None)?;
-                log::debug!(
-                    "Generated put_prop for property number {} with resolved object",
-                    property_num
-                );
-            }
-
-            IrInstruction::GetNextProperty {
-                target,
-                object,
-                current_property,
-            } => {
-                // Generate Z-Machine get_next_prop instruction (2OP:19, opcode 0x13)
-                // Use proper object resolution via global variables
-                let operands = vec![
-                    self.resolve_ir_id_to_operand(*object)?, // Object (properly resolved)
-                    Operand::Constant(*current_property as u16), // Current property number (0 for first)
-                ];
-                self.emit_instruction(0x13, &operands, Some(0), None)?; // Store result in stack top
-
-                // CRITICAL: Register get_next_prop result target
-                self.ir_id_to_stack_var.insert(*target, 0);
-                log::debug!(
-                    "GetNextProperty result: IR ID {} -> stack variable 0 (from property {})",
-                    target,
-                    current_property
-                );
-            }
-
-            IrInstruction::TestProperty {
-                target,
-                object: _,
-                property_num,
-            } => {
-                // Generate Z-Machine get_prop_len instruction (1OP:4, opcode 0x84)
-                // First get property address, then test if length > 0
-                // TODO: This is a simplified implementation
-                // A complete implementation would use get_prop_addr + get_prop_len
-                let operands = vec![
-                    Operand::Variable(1),                    // Object (placeholder)
-                    Operand::Constant(*property_num as u16), // Property number
-                ];
-                // Use get_prop and compare result with default to test existence
-                // Use local variable 3 for property test results
-                self.emit_instruction(0x11, &operands, Some(3), None)?; // get_prop
-
-                // CRITICAL: Register property test result target
-                self.ir_id_to_local_var.insert(*target, 3);
-                log::debug!(
-                    "TestProperty result: IR ID {} -> stack variable 0 (property {})",
-                    target,
-                    property_num
-                );
-            }
-
-            IrInstruction::ArrayAdd { array, value } => {
-                // Array add operation - not yet implemented
-                log::debug!("Array add: array={}, value={}", array, value);
-                self.emit_unimplemented_array_op_void("ArrayAdd")?;
-            }
-
-            IrInstruction::ArrayRemove {
-                target,
-                array,
-                index,
-            } => {
-                // Array remove operation - remove element at index and return it
-                log::debug!(
-                    "Array remove: target={}, array={}, index={}",
-                    target,
-                    array,
-                    index
-                );
-
-                // For simplicity, return 0 as removed value
-                // In a full implementation, this would access array elements
-                self.emit_unimplemented_array_op("ArrayRemove", Some(*target))?;
-            }
-
-            IrInstruction::ArrayLength { target, array } => {
-                // Array length operation - return number of elements
-                log::debug!("Array length: target={}, array={}", target, array);
-
-                // For simplicity, return fixed length
-                // In a full implementation, this would read array metadata
-                self.emit_unimplemented_array_op("ArrayLength", Some(*target))?;
-            }
-
-            IrInstruction::ArrayEmpty { target, array } => {
-                self.translate_array_empty(*target, *array)?
-            }
-
-            IrInstruction::ArrayContains {
-                target,
-                array,
-                value,
-            } => {
-                // Array contains operation - check if value exists in array
-                log::debug!(
-                    "Array contains: target={}, array={}, value={}",
-                    target,
-                    array,
-                    value
-                );
-
-                // For simplicity, return false (not found)
-                // In a full implementation, this would search array elements
-                self.emit_unimplemented_array_op("ArrayContains", Some(*target))?;
-            }
-
-            // Advanced array operations
-            IrInstruction::ArrayFilter {
-                target,
-                array,
-                predicate,
-            } => {
-                log::debug!(
-                    "Array filter: target={}, array={}, predicate={}",
-                    target,
-                    array,
-                    predicate
-                );
-                self.emit_unimplemented_array_op("ArrayFilter", Some(*target))?;
-            }
-            IrInstruction::ArrayMap {
-                target,
-                array,
-                transform,
-            } => {
-                log::debug!(
-                    "Array map: target={}, array={}, transform={}",
-                    target,
-                    array,
-                    transform
-                );
-                self.emit_unimplemented_array_op("ArrayMap", Some(*target))?;
-            }
-            IrInstruction::ArrayForEach { array, callback } => {
-                log::debug!("Array forEach: array={}, callback={}", array, callback);
-                self.emit_unimplemented_array_op_void("ArrayForEach")?;
-            }
-            IrInstruction::ArrayFind {
-                target,
-                array,
-                predicate,
-            } => {
-                log::debug!(
-                    "Array find: target={}, array={}, predicate={}",
-                    target,
-                    array,
-                    predicate
-                );
-                self.emit_unimplemented_array_op("ArrayFind", Some(*target))?;
-            }
-            IrInstruction::ArrayIndexOf {
-                target,
-                array,
-                value,
-            } => {
-                log::debug!(
-                    "Array indexOf: target={}, array={}, value={}",
-                    target,
-                    array,
-                    value
-                );
-                self.emit_unimplemented_array_op("ArrayIndexOf", Some(*target))?;
-            }
-            IrInstruction::ArrayJoin {
-                target,
-                array,
-                separator,
-            } => {
-                log::debug!(
-                    "Array join: target={}, array={}, separator={}",
-                    target,
-                    array,
-                    separator
-                );
-                self.emit_unimplemented_array_op("ArrayJoin", Some(*target))?;
-            }
-            IrInstruction::ArrayReverse { target, array } => {
-                log::debug!("Array reverse: target={}, array={}", target, array);
-                self.emit_unimplemented_array_op("ArrayReverse", Some(*target))?;
-            }
-            IrInstruction::ArraySort {
-                target,
-                array,
-                comparator,
-            } => {
-                log::debug!(
-                    "Array sort: target={}, array={}, comparator={:?}",
-                    target,
-                    array,
-                    comparator
-                );
-                self.emit_unimplemented_array_op("ArraySort", Some(*target))?;
-            }
-
-            // String utility operations
-            IrInstruction::StringIndexOf {
-                target,
-                string,
-                substring,
-            } => {
-                log::debug!(
-                    "String indexOf: target={}, string={}, substring={}",
-                    target,
-                    string,
-                    substring
-                );
-                self.emit_unimplemented_operation("StringIndexOf", true)?;
-            }
-            IrInstruction::StringSlice {
-                target,
-                string,
-                start,
-            } => {
-                log::debug!(
-                    "String slice: target={}, string={}, start={}",
-                    target,
-                    string,
-                    start
-                );
-                self.emit_unimplemented_operation("StringSlice", true)?;
-            }
-            IrInstruction::StringSubstring {
-                target,
-                string,
-                start,
-                end,
-            } => {
-                log::debug!(
-                    "String substring: target={}, string={}, start={}, end={}",
-                    target,
-                    string,
-                    start,
-                    end
-                );
-                self.emit_unimplemented_operation("StringSubstring", true)?;
-            }
-            IrInstruction::StringToLowerCase { target, string } => {
-                log::debug!("String toLowerCase: target={}, string={}", target, string);
-                self.emit_unimplemented_operation("StringToLowerCase", true)?;
-            }
-            IrInstruction::StringToUpperCase { target, string } => {
-                log::debug!("String toUpperCase: target={}, string={}", target, string);
-                self.emit_unimplemented_operation("StringToUpperCase", true)?;
-            }
-            IrInstruction::StringTrim { target, string } => {
-                log::debug!("String trim: target={}, string={}", target, string);
-                self.emit_unimplemented_operation("StringTrim", true)?;
-            }
-            IrInstruction::StringCharAt {
-                target,
-                string,
-                index,
-            } => {
-                log::debug!(
-                    "String charAt: target={}, string={}, index={}",
-                    target,
-                    string,
-                    index
-                );
-                self.emit_unimplemented_operation("StringCharAt", true)?
-            }
-            IrInstruction::StringSplit {
-                target,
-                string,
-                delimiter,
-            } => {
-                log::debug!(
-                    "String split: target={}, string={}, delimiter={}",
-                    target,
-                    string,
-                    delimiter
-                );
-                self.emit_unimplemented_operation("StringSplit", true)?;
-            }
-            IrInstruction::StringReplace {
-                target,
-                string,
-                search,
-                replacement,
-            } => {
-                log::debug!(
-                    "String replace: target={}, string={}, search={}, replacement={}",
-                    target,
-                    string,
-                    search,
-                    replacement
-                );
-                self.emit_unimplemented_operation("StringReplace", true)?;
-            }
-            IrInstruction::StringStartsWith {
-                target,
-                string,
-                prefix,
-            } => {
-                log::debug!(
-                    "String startsWith: target={}, string={}, prefix={}",
-                    target,
-                    string,
-                    prefix
-                );
-                self.emit_unimplemented_operation("StringStartsWith", true)?
-            }
-            IrInstruction::StringEndsWith {
-                target,
-                string,
-                suffix,
-            } => {
-                log::debug!(
-                    "String endsWith: target={}, string={}, suffix={}",
-                    target,
-                    string,
-                    suffix
-                );
-                self.emit_unimplemented_operation("StringEndsWith", true)?
-            }
-
-            // Math utility operations
-            IrInstruction::MathAbs { target, value } => {
-                log::debug!("Math abs: target={}, value={}", target, value);
-                self.emit_unimplemented_operation("MathAbs", true)?
-            }
-            IrInstruction::MathMin { target, a, b } => {
-                log::debug!("Math min: target={}, a={}, b={}", target, a, b);
-                self.emit_unimplemented_operation("MathMin", true)?;
-            }
-            IrInstruction::MathMax { target, a, b } => {
-                log::debug!("Math max: target={}, a={}, b={}", target, a, b);
-                self.emit_unimplemented_operation("MathMax", true)?
-            }
-            IrInstruction::MathRound { target, value } => {
-                log::debug!("Math round: target={}, value={}", target, value);
-                self.emit_unimplemented_operation("MathRound", true)?
-            }
-            IrInstruction::MathFloor { target, value } => {
-                log::debug!("Math floor: target={}, value={}", target, value);
-                self.emit_unimplemented_operation("MathFloor", true)?
-            }
-            IrInstruction::MathCeil { target, value } => {
-                log::debug!("Math ceil: target={}, value={}", target, value);
-                self.emit_unimplemented_operation("MathCeil", true)?;
-            }
-
-            // Type checking operations
-            IrInstruction::TypeCheck {
-                target,
-                value,
-                type_name,
-            } => {
-                log::debug!(
-                    "Type check: target={}, value={}, type={}",
-                    target,
-                    value,
-                    type_name
-                );
-                self.emit_unimplemented_operation("TypeCheck", true)?
-            }
-            IrInstruction::TypeOf { target, value } => {
-                log::debug!("TypeOf: target={}, value={}", target, value);
-                self.emit_unimplemented_operation("TypeOf", true)?;
-            }
-
-            IrInstruction::CreateArray { target, size } => match size {
-                IrValue::Integer(s) => self.translate_create_array(*target, *s as i32)?,
-                _ => {
-                    return Err(CompilerError::CodeGenError(
-                        "CreateArray size must be integer".to_string(),
-                    ))
-                }
-            },
-
-            _ => {
-                // TODO: Implement remaining instructions
-                return Err(CompilerError::CodeGenError(format!(
-                    "Instruction {:?} not yet implemented",
-                    instruction
-                )));
-            }
-        }
-
-        Ok(())
-    }
 
     /// Generate load immediate instruction
     pub fn generate_load_immediate(&mut self, value: &IrValue) -> Result<(), CompilerError> {
@@ -7089,25 +6225,27 @@ impl ZMachineCodeGen {
     }
 
     /// Generate unary operation instruction
-    fn generate_unary_op(
+    pub fn generate_unary_op(
         &mut self,
+        target: IrId,
         op: &IrUnaryOp,
-        operand: Operand,
-        store_var: Option<u8>,
+        operand_id: IrId,
     ) -> Result<(), CompilerError> {
+        // Resolve the operand ID to an actual operand
+        let operand = self.resolve_ir_id_to_operand(operand_id)?;
+        
         match op {
             IrUnaryOp::Not => {
-                // CRITICAL FIX: Don't generate je instruction for NOT operations
-                // NOT operations should be handled through conditional branch system
-                log::error!("Critical: generate_unary_op called with NOT operation - this should be handled through conditional branch system");
-                return Err(CompilerError::CodeGenError(
-                    "NOT operations should not be generated as direct unary operations".to_string(),
-                ));
+                // Use stack for unary operation results
+                let operands = vec![operand];
+                self.emit_instruction(0x8F, &operands, Some(0), None)?; // not (1OP:15)
+                self.use_stack_for_result(target);
             }
             IrUnaryOp::Minus => {
                 // Z-Machine arithmetic negation - subtract operand from 0
                 let operands = vec![Operand::Constant(0), operand];
-                self.emit_instruction(0x04, &operands, store_var, None)?; // sub instruction
+                self.emit_instruction(0x04, &operands, Some(0), None)?; // sub instruction
+                self.use_stack_for_result(target);
             }
         }
         Ok(())
@@ -8127,7 +7265,7 @@ impl ZMachineCodeGen {
     }
 
     /// Map IR ID to stack storage (Variable 0) for temporary results
-    fn use_stack_for_result(&mut self, target_id: IrId) {
+    pub fn use_stack_for_result(&mut self, target_id: IrId) {
         // Z-Machine stack is always accessed through Variable(0)
         // All temporary/intermediate results should use stack, not local variables
         self.ir_id_to_stack_var.insert(target_id, 0);
@@ -8136,6 +7274,12 @@ impl ZMachineCodeGen {
             target_id
         );
     }
+
+    /// Get current code address for instruction generation
+    pub fn current_address(&self) -> usize {
+        self.code_space.len()
+    }
+
 
     /// Unified BinaryOp processing used by both translate_ir_instruction and generate_instruction
     pub fn process_binary_op(
@@ -9515,6 +8659,10 @@ impl ZMachineCodeGen {
                     //  FIXED: Convert code space offset to final memory address
                     self.final_code_base + self.code_space.len()
                 },
+                MemorySpace::CodeSpace => {
+                    // Same as Code
+                    self.final_code_base + self.code_space.len()
+                },
                 MemorySpace::Header => panic!("COMPILER BUG: Header space references not implemented - cannot use add_unresolved_reference() for Header space"),
                 MemorySpace::Globals => panic!("COMPILER BUG: Globals space references not implemented - cannot use add_unresolved_reference() for Globals space"),
                 MemorySpace::Abbreviations => panic!("COMPILER BUG: Abbreviations space references not implemented - cannot use add_unresolved_reference() for Abbreviations space"),
@@ -9961,6 +9109,10 @@ impl ZMachineCodeGen {
                 // CRITICAL FIX: Use final_code_base directly instead of hardcoded calculation
                 // Previous calculation used hardcoded section sizes that didn't match actual layout,
                 // causing UnresolvedReference locations to point to operand type bytes instead of operand data
+                self.final_code_base + space_offset
+            }
+            MemorySpace::CodeSpace => {
+                // Same as Code
                 self.final_code_base + space_offset
             }
         };
