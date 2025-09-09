@@ -3,10 +3,10 @@
 // Transforms IR into executable Z-Machine bytecode following the Z-Machine Standard v1.1
 // Supports both v3 and v5 target formats with proper memory layout and instruction encoding.
 
+use crate::grue_compiler::codegen_utils::{AssemblyValidator, CodeGenUtils};
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
 use crate::grue_compiler::ZMachineVersion;
-use crate::grue_compiler::codegen_utils::{CodeGenUtils, AssemblyValidator};
 use indexmap::IndexMap;
 use log::debug;
 use std::collections::{HashMap, HashSet};
@@ -46,7 +46,7 @@ pub enum MemorySpace {
     Dictionary,
     Strings,
     Code,
-    CodeSpace,  // Alternative name for Code
+    CodeSpace, // Alternative name for Code
 }
 
 /// Reference types for fixup tracking
@@ -235,10 +235,10 @@ pub struct ZMachineCodeGen {
     pub strings: Vec<(IrId, String)>, // Collected strings for encoding
 
     // Stack tracking for debugging
-    pub stack_depth: i32,                         // Current estimated stack depth
-    max_stack_depth: i32,                     // Maximum stack depth reached
+    pub stack_depth: i32, // Current estimated stack depth
+    max_stack_depth: i32, // Maximum stack depth reached
     pub encoded_strings: IndexMap<IrId, Vec<u8>>, // IR string ID -> encoded bytes
-    next_string_id: IrId,                     // Next available string ID
+    next_string_id: IrId, // Next available string ID
 
     // Execution context
     in_init_block: bool, // True when generating init block code
@@ -590,7 +590,6 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-
     /// CONSOLIDATION HELPERS: Centralized unimplemented feature handlers
     /// These methods eliminate the dangerous copy-paste pattern of placeholder opcodes
     /// and provide clear, consistent handling of unimplemented IR instructions.
@@ -693,8 +692,6 @@ impl ZMachineCodeGen {
     }
 
     // === IR INPUT ANALYSIS & VALIDATION (DEBUG PHASE 1) ===
-
-
 
     /// Generate ALL Z-Machine sections to separated memory spaces (COMPLETE Z-MACHINE FORMAT)
     /// This function generates ALL required Z-Machine sections according to specification:
@@ -1346,7 +1343,6 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-
     /// Resolve all address references in the final game image (PURE SEPARATED SPACES)
     ///
     /// Processes all unresolved references and pending fixups to patch addresses
@@ -1673,17 +1669,16 @@ impl ZMachineCodeGen {
 
             LegacyReferenceType::Label(label_id) => {
                 // Handle label references - similar to Jump handling
-                if let Some(&code_offset) = self
-                    .reference_context
-                    .ir_id_to_address
-                    .get(label_id)
-                {
+                if let Some(&code_offset) = self.reference_context.ir_id_to_address.get(label_id) {
                     let resolved_address = if code_offset >= self.final_code_base {
                         code_offset
                     } else {
                         self.final_code_base + code_offset
                     };
-                    debug!("Label resolution: Resolved label {} to address 0x{:04x}", label_id, resolved_address);
+                    debug!(
+                        "Label resolution: Resolved label {} to address 0x{:04x}",
+                        label_id, resolved_address
+                    );
                     return self.patch_branch_offset(reference.location, resolved_address);
                 } else {
                     return Err(CompilerError::CodeGenError(format!(
@@ -3646,7 +3641,6 @@ impl ZMachineCodeGen {
 
         Ok(())
     }
-
 
     /// SINGLE-PATH MIGRATION: BinaryOp instruction translation
     /// Converts IR arithmetic operations directly to Z-Machine instructions (add, sub, mul, div)
@@ -6195,8 +6189,6 @@ impl ZMachineCodeGen {
         )
     }
 
-
-
     /// Generate load immediate instruction
     pub fn generate_load_immediate(&mut self, value: &IrValue) -> Result<(), CompilerError> {
         match value {
@@ -6233,7 +6225,7 @@ impl ZMachineCodeGen {
     ) -> Result<(), CompilerError> {
         // Resolve the operand ID to an actual operand
         let operand = self.resolve_ir_id_to_operand(operand_id)?;
-        
+
         match op {
             IrUnaryOp::Not => {
                 // Use stack for unary operation results
@@ -7279,7 +7271,6 @@ impl ZMachineCodeGen {
     pub fn current_address(&self) -> usize {
         self.code_space.len()
     }
-
 
     /// Unified BinaryOp processing used by both translate_ir_instruction and generate_instruction
     pub fn process_binary_op(
@@ -8496,10 +8487,6 @@ impl ZMachineCodeGen {
         }
     }
 
-
-
-
-
     /// Generate method call - handles property method calls like object.method()
     fn generate_method_call(
         &mut self,
@@ -8553,19 +8540,7 @@ impl ZMachineCodeGen {
         }
     }
 
-
-
-
-
-
-
     /// Generate player_can_see builtin function - checks if player can see an object
-
-
-
-
-
-
 
     /// Generate string concatenation for two IR values
     fn generate_string_concatenation(

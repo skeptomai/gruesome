@@ -3,7 +3,8 @@
 // These are implementation methods that extend ZMachineCodeGen
 
 use crate::grue_compiler::codegen::{
-    ZMachineCodeGen, Operand, UnresolvedReference, LegacyReferenceType, MemorySpace, placeholder_word
+    placeholder_word, LegacyReferenceType, MemorySpace, Operand, UnresolvedReference,
+    ZMachineCodeGen,
 };
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
@@ -561,7 +562,7 @@ impl ZMachineCodeGen {
         // For now, print placeholder message
         let placeholder_str = "[OBJECT_LIST]";
         let string_id = self.find_or_create_string_id(placeholder_str)?;
-        
+
         let layout = self.emit_instruction(
             0x8D,                                          // print_paddr
             &[Operand::LargeConstant(placeholder_word())], // Placeholder address
@@ -569,7 +570,9 @@ impl ZMachineCodeGen {
             None,
         )?;
 
-        let operand_address = layout.operand_location.expect("print instruction must have operand");
+        let operand_address = layout
+            .operand_location
+            .expect("print instruction must have operand");
         let reference = UnresolvedReference {
             reference_type: LegacyReferenceType::StringRef,
             location: operand_address,
@@ -596,7 +599,7 @@ impl ZMachineCodeGen {
         // For now, print placeholder message
         let placeholder_str = "[CONTENTS_LIST]";
         let string_id = self.find_or_create_string_id(placeholder_str)?;
-        
+
         let layout = self.emit_instruction(
             0x8D,                                          // print_paddr
             &[Operand::LargeConstant(placeholder_word())], // Placeholder address
@@ -604,7 +607,9 @@ impl ZMachineCodeGen {
             None,
         )?;
 
-        let operand_address = layout.operand_location.expect("print instruction must have operand");
+        let operand_address = layout
+            .operand_location
+            .expect("print instruction must have operand");
         let reference = UnresolvedReference {
             reference_type: LegacyReferenceType::StringRef,
             location: operand_address,

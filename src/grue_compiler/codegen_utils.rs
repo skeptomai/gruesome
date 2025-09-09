@@ -1,7 +1,7 @@
 // Utility functions extracted from codegen.rs for better maintainability
 // These functions provide debugging, analysis, and validation capabilities
 
-use crate::grue_compiler::ir::{IrProgram, IrInstruction};
+use crate::grue_compiler::ir::{IrInstruction, IrProgram};
 use crate::grue_compiler::CompilerError;
 use std::collections::HashMap;
 use std::mem::discriminant;
@@ -227,7 +227,11 @@ impl AssemblyValidator {
             if byte == 0xFF {
                 // PLACEHOLDER_BYTE
                 placeholder_count += 1;
-                log::warn!(" PLACEHOLDER_REMAINING: Byte {} at address 0x{:04x}", byte, i);
+                log::warn!(
+                    " PLACEHOLDER_REMAINING: Byte {} at address 0x{:04x}",
+                    byte,
+                    i
+                );
             }
         }
 

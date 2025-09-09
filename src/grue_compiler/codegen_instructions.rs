@@ -1,13 +1,16 @@
-use crate::grue_compiler::codegen::{ZMachineCodeGen, ConstantValue};
+use crate::grue_compiler::codegen::Operand;
+use crate::grue_compiler::codegen::{ConstantValue, ZMachineCodeGen};
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::{IrInstruction, IrValue};
-use crate::grue_compiler::codegen::Operand;
 use log::debug;
 
 /// Extension trait for ZMachineCodeGen to handle instruction generation
 impl ZMachineCodeGen {
     /// Generate code for a single IR instruction
-    pub fn generate_instruction(&mut self, instruction: &IrInstruction) -> Result<(), CompilerError> {
+    pub fn generate_instruction(
+        &mut self,
+        instruction: &IrInstruction,
+    ) -> Result<(), CompilerError> {
         debug!("Generate instruction called: {:?}", instruction);
         // DEBUGGING: Log every instruction that creates a target
         match instruction {
@@ -207,7 +210,11 @@ impl ZMachineCodeGen {
 
                 // Map the target to stack access
                 self.use_stack_for_result(*target);
-                log::debug!("LoadVar: IR ID {} loaded from IR ID {} -> stack", target, var_id);
+                log::debug!(
+                    "LoadVar: IR ID {} loaded from IR ID {} -> stack",
+                    target,
+                    var_id
+                );
             }
 
             IrInstruction::StoreVar { var_id, source } => {
@@ -217,13 +224,18 @@ impl ZMachineCodeGen {
                 // Store to appropriate variable slot
                 if let Some(var_num) = self.ir_id_to_local_var.get(var_id) {
                     // Store to local variable
-                    self.emit_instruction(0x21, &[value_operand], Some(*var_num), None)?; // store
+                    self.emit_instruction(0x21, &[value_operand], Some(*var_num), None)?;
+                // store
                 } else {
                     // Store to stack as fallback
                     self.emit_instruction(0x21, &[value_operand], Some(0), None)?; // store to stack
                     self.ir_id_to_stack_var.insert(*var_id, 0);
                 }
-                log::debug!("StoreVar: IR ID {} stored value from IR ID {}", var_id, source);
+                log::debug!(
+                    "StoreVar: IR ID {} stored value from IR ID {}",
+                    var_id,
+                    source
+                );
             }
 
             IrInstruction::Label { id: _ } => {
@@ -231,7 +243,11 @@ impl ZMachineCodeGen {
                 // This is handled during the address resolution phase
             }
 
-            IrInstruction::UnaryOp { target, op, operand } => {
+            IrInstruction::UnaryOp {
+                target,
+                op,
+                operand,
+            } => {
                 self.generate_unary_op(*target, op, *operand)?;
             }
 
@@ -247,7 +263,13 @@ impl ZMachineCodeGen {
                 // Extract size value from IrValue
                 let size_value = match size {
                     IrValue::Integer(i) => *i as u16,
-                    IrValue::Boolean(b) => if *b { 1 } else { 0 },
+                    IrValue::Boolean(b) => {
+                        if *b {
+                            1
+                        } else {
+                            0
+                        }
+                    }
                     _ => 0, // Default size
                 };
 
@@ -261,7 +283,11 @@ impl ZMachineCodeGen {
                 )?;
             }
 
-            IrInstruction::GetProperty { target, object, property } => {
+            IrInstruction::GetProperty {
+                target,
+                object,
+                property,
+            } => {
                 // Generate property access code
                 let _obj_operand = self.resolve_ir_id_to_operand(*object)?;
 
@@ -273,14 +299,18 @@ impl ZMachineCodeGen {
 
                 // Placeholder: return a default value
                 self.emit_instruction(
-                    0x21, // store
+                    0x21,                         // store
                     &[Operand::LargeConstant(0)], // Default property value
-                    Some(0), // Store to stack
+                    Some(0),                      // Store to stack
                     None,
                 )?;
             }
 
-            IrInstruction::SetProperty { object, property, value } => {
+            IrInstruction::SetProperty {
+                object,
+                property,
+                value,
+            } => {
                 // Generate property assignment code
                 let _obj_operand = self.resolve_ir_id_to_operand(*object)?;
                 let _val_operand = self.resolve_ir_id_to_operand(*value)?;
@@ -290,7 +320,11 @@ impl ZMachineCodeGen {
                 // Placeholder: property setting needs object system integration
             }
 
-            IrInstruction::GetPropertyByNumber { target, object, property_num } => {
+            IrInstruction::GetPropertyByNumber {
+                target,
+                object,
+                property_num,
+            } => {
                 // Generate numbered property access
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
                 let prop_operand = self.resolve_ir_id_to_operand((*property_num).into())?;
@@ -308,7 +342,11 @@ impl ZMachineCodeGen {
                 log::debug!("GetPropertyByNumber: IR ID {} -> stack", target);
             }
 
-            IrInstruction::TestProperty { target, object, property_num } => {
+            IrInstruction::TestProperty {
+                target,
+                object,
+                property_num,
+            } => {
                 // Generate property existence test
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
                 let prop_operand = self.resolve_ir_id_to_operand((*property_num).into())?;
@@ -326,7 +364,11 @@ impl ZMachineCodeGen {
                 log::debug!("TestProperty: IR ID {} -> stack", target);
             }
 
-            IrInstruction::GetNextProperty { target, object, current_property } => {
+            IrInstruction::GetNextProperty {
+                target,
+                object,
+                current_property,
+            } => {
                 // Generate next property enumeration
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
                 let prop_operand = self.resolve_ir_id_to_operand((*current_property).into())?;
