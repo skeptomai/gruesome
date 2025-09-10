@@ -578,19 +578,25 @@ mod ir_tests {
         let func = &ir.functions[0];
         let instructions = &func.body.instructions;
 
-        // Should contain GetProperty instruction
+        // Should contain GetPropertyByNumber instruction
         let get_props = instructions
             .iter()
-            .filter(|inst| matches!(inst, IrInstruction::GetProperty { .. }))
+            .filter(|inst| matches!(inst, IrInstruction::GetPropertyByNumber { .. }))
             .count();
-        assert!(get_props >= 1, "Should have GetProperty instruction");
+        assert!(
+            get_props >= 1,
+            "Should have GetPropertyByNumber instruction"
+        );
 
-        // Should contain SetProperty instruction
+        // Should contain SetPropertyByNumber instruction
         let set_props = instructions
             .iter()
-            .filter(|inst| matches!(inst, IrInstruction::SetProperty { .. }))
+            .filter(|inst| matches!(inst, IrInstruction::SetPropertyByNumber { .. }))
             .count();
-        assert!(set_props >= 1, "Should have SetProperty instruction");
+        assert!(
+            set_props >= 1,
+            "Should have SetPropertyByNumber instruction"
+        );
     }
 
     #[test]

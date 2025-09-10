@@ -1792,7 +1792,7 @@ impl ZMachineCodeGen {
         match ir.program_mode {
             crate::grue_compiler::ast::ProgramMode::Script => {
                 log::debug!("📋 Script mode: Adding quit instruction");
-                self.emit_byte(0xBA)?; // quit
+                self.emit_byte(0x0A)?; // quit
             }
             crate::grue_compiler::ast::ProgramMode::Interactive => {
                 log::debug!("📋 Interactive mode: Generating main loop");
@@ -1801,7 +1801,7 @@ impl ZMachineCodeGen {
             crate::grue_compiler::ast::ProgramMode::Custom => {
                 log::debug!("📋 Custom mode: Adding main function call placeholder");
                 // TODO: Generate call to user main function
-                self.emit_byte(0xBA)?; // quit - temporary
+                self.emit_byte(0x0A)?; // quit - temporary
             }
         }
 
@@ -2555,8 +2555,8 @@ impl ZMachineCodeGen {
         let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
         let dest_operand = self.resolve_ir_id_to_operand(args[1])?;
 
-        // Generate insert_obj instruction (VAR:14E)
-        let layout = self.emit_instruction(0xEE, &[obj_operand, dest_operand], None, None)?;
+        // Generate insert_obj instruction (2OP:14)
+        let layout = self.emit_instruction(0x0E, &[obj_operand, dest_operand], None, None)?;
 
         // emit_instruction already pushed bytes to code_space
 
@@ -2567,8 +2567,8 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// PHASE 2: Single-path get_location builtin implementation  
-    /// This replaces delegation to generate_get_location_builtin()
+    /// Generate get_location builtin function - unified implementation
+    /// Returns the parent object of an object using Z-Machine get_parent instruction
     fn translate_get_location_builtin_inline(
         &mut self,
         args: &[IrId],
@@ -4510,7 +4510,7 @@ impl ZMachineCodeGen {
                 });
 
             // After main function returns, quit the program
-            self.emit_byte(0xBA)?; // quit opcode
+            self.emit_byte(0x0A)?; // quit opcode
 
             Ok(())
         } else {
@@ -6201,7 +6201,7 @@ impl ZMachineCodeGen {
 
         // Add QUIT instruction at the end to terminate execution cleanly
         log::debug!("Adding QUIT instruction at 0x{:04x}", self.code_address);
-        self.emit_byte(0xBA)?; // QUIT instruction (0OP:186, hex 0xBA)
+        self.emit_byte(0x0A)?; // QUIT instruction (0OP:10, hex 0x0A)
 
         // Clear init block context flag
         self.in_init_block = false;
@@ -7142,7 +7142,7 @@ impl ZMachineCodeGen {
             "print_ret" => self.generate_print_ret_builtin(args),
             "new_line" => self.generate_new_line_builtin(args),
             "move" => self.generate_move_builtin(args),
-            "get_location" => self.generate_get_location_builtin(args),
+            "get_location" => self.translate_get_location_builtin_inline(args, target),
             "to_string" => self.generate_to_string_builtin(args, target),
             // Core Z-Machine object primitives
             "get_child" => self.generate_get_child_builtin(args),
@@ -7381,7 +7381,13 @@ impl ZMachineCodeGen {
         };
 
         // Track critical addresses around the crash point AND the 0xa0 byte issue
-        if (0x0bd0..=0x0be0).contains(&runtime_addr) || (byte == 0xa0) || (runtime_addr == 0x0365) {
+        // AUDIT: Adding instrumentation for PC OUT OF BOUNDS debug (0x03ba area where opcode mismatch occurs)
+        if (0x0bd0..=0x0be0).contains(&runtime_addr)
+            || (byte == 0xa0)
+            || (runtime_addr == 0x0365)
+            || (0x03b0..=0x03c5).contains(&runtime_addr)
+            || byte == 0xa1
+        {
             log::debug!(
                 "🎯 CRITICAL_BYTE: runtime_addr=0x{:04x} byte=0x{:02x} phase={} TRACKING_0xa0_AND_0x0365",
                 runtime_addr,

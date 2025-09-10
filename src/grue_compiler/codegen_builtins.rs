@@ -358,33 +358,6 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Generate get_location builtin function - returns the parent object of an object
-    pub fn generate_get_location_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
-        if args.len() != 1 {
-            return Err(CompilerError::CodeGenError(format!(
-                "get_location expects 1 argument, got {}",
-                args.len()
-            )));
-        }
-
-        let object_ir_id = args[0];
-
-        // Resolve IR ID to proper operand - CRITICAL FIX
-        let object_operand = self.resolve_ir_id_to_operand(object_ir_id)?;
-
-        // Generate Z-Machine get_parent instruction (1OP:4, opcode 0x04)
-        self.emit_instruction(
-            0x04, // get_parent opcode
-            &[object_operand],
-            Some(0), // Store result on stack
-            None,    // No branch
-        )?;
-
-        // Do NOT add return instruction here - this is inline code generation
-
-        Ok(())
-    }
-
     /// Generate test_attr builtin function - tests if an object has an attribute
     pub fn generate_test_attr_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
         if args.len() != 2 {
@@ -833,7 +806,7 @@ impl ZMachineCodeGen {
         if let Some(store_var) = target {
             self.emit_instruction(
                 0x21,                         // store (1OP:33)
-                &[Operand::LargeConstant(0)], // False - value is not none
+                &[Operand::LargeConstant(0)], // False - object is not empty
                 Some(store_var as u8),
                 None,
             )?;

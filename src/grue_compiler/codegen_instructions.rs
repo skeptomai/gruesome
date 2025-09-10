@@ -251,7 +251,7 @@ impl ZMachineCodeGen {
                 // store
                 } else {
                     // Store to stack as fallback
-                    self.emit_instruction(0x21, &[value_operand], Some(0), None)?; // store to stack
+                    self.emit_instruction(0x21, &[value_operand], Some(0), None)?; // store to stack (2OP:13)
                     self.ir_id_to_stack_var.insert(*var_id, 0);
                 }
                 log::debug!(
@@ -305,6 +305,7 @@ impl ZMachineCodeGen {
 
                 // Generate array initialization code
                 // This is a placeholder - real arrays need more complex handling
+                // Use store instruction with proper semantics: store (variable) value
                 self.emit_instruction(
                     0x21, // store
                     &[Operand::LargeConstant(size_value)],
@@ -327,6 +328,7 @@ impl ZMachineCodeGen {
                 // CRITICAL: Register target for property result
                 self.use_stack_for_result(*target);
 
+                // Placeholder: return a default value
                 // Placeholder: return a default value
                 self.emit_instruction(
                     0x21,                         // store
@@ -495,7 +497,7 @@ impl ZMachineCodeGen {
                 // Array remove operation - placeholder returns 0
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
                 log::debug!("ArrayRemove: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -503,7 +505,7 @@ impl ZMachineCodeGen {
                 // Array length operation - placeholder returns 0
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
                 log::debug!("ArrayLength: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -515,7 +517,7 @@ impl ZMachineCodeGen {
                 // Array contains operation - placeholder returns false (0)
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
                 log::debug!("ArrayContains: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -527,7 +529,7 @@ impl ZMachineCodeGen {
                 // Array indexOf operation - placeholder returns -1 (not found)
                 self.use_stack_for_result(*target);
                 // Emit instruction to push -1 onto stack as placeholder result
-                self.emit_instruction(0x8F, &[Operand::LargeConstant(65535)], None, None)?; // push -1 as unsigned
+                self.emit_instruction(0xE8, &[Operand::LargeConstant(65535)], None, None)?; // push -1 as unsigned
                 log::debug!("ArrayIndexOf: IR ID {} -> stack (placeholder: -1)", target);
             }
 
@@ -539,7 +541,7 @@ impl ZMachineCodeGen {
                 // Array filter operation - placeholder returns empty array (0)
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
                 log::debug!("ArrayFilter: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -551,7 +553,7 @@ impl ZMachineCodeGen {
                 // Array map operation - placeholder returns empty array (0)
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
                 log::debug!("ArrayMap: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -563,7 +565,7 @@ impl ZMachineCodeGen {
                 // Array find operation - placeholder returns null (0)
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
                 log::debug!("ArrayFind: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -575,7 +577,7 @@ impl ZMachineCodeGen {
                 // Array join operation - placeholder returns empty string (0)
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
                 log::debug!("ArrayJoin: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -583,7 +585,7 @@ impl ZMachineCodeGen {
                 // Array reverse operation - placeholder returns original array (0)
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
                 log::debug!("ArrayReverse: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -595,7 +597,7 @@ impl ZMachineCodeGen {
                 // Array sort operation - placeholder returns original array (0)
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
                 log::debug!("ArraySort: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -836,7 +838,7 @@ impl ZMachineCodeGen {
                 }
             }
             // Instructions that pop from stack
-            0x0D => {
+            0x21 => {
                 // store
                 if let Some(Operand::Variable(0)) = operands.first() {
                     self.stack_depth -= 1;
