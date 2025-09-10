@@ -73,6 +73,8 @@ pub struct IrProgram {
     pub object_numbers: HashMap<String, u16>,
     /// NEW: Comprehensive registry of all IR IDs and their purposes
     pub id_registry: IrIdRegistry,
+    /// Property manager with consistent property name -> number mappings
+    pub property_manager: PropertyManager,
 }
 
 impl IrProgram {
@@ -329,6 +331,7 @@ impl PropertyManager {
         manager.register_standard_property(StandardProperty::Size);
         manager.register_standard_property(StandardProperty::Article);
         manager.register_standard_property(StandardProperty::Adjective);
+        manager.register_standard_property(StandardProperty::Location);
 
         manager
     }
@@ -350,6 +353,7 @@ impl PropertyManager {
             StandardProperty::Size => "size",
             StandardProperty::Article => "article",
             StandardProperty::Adjective => "adjective",
+            StandardProperty::Location => "location",
         };
 
         self.property_numbers
@@ -371,6 +375,16 @@ impl PropertyManager {
 
     pub fn get_standard_property_number(&self, prop: StandardProperty) -> Option<u8> {
         self.standard_properties.get(&prop).copied()
+    }
+
+    /// Get all property name -> number mappings (for object table generation)
+    pub fn get_property_numbers(&self) -> &HashMap<String, u8> {
+        &self.property_numbers
+    }
+
+    /// Get a specific property number by name
+    pub fn get_property_number_by_name(&self, property_name: &str) -> Option<u8> {
+        self.property_numbers.get(property_name).copied()
     }
 
     /// Get property value with inheritance from defaults
@@ -438,6 +452,7 @@ pub enum StandardProperty {
     Size = 10,       // Object size
     Article = 11,    // Article to use with object
     Adjective = 12,  // Adjectives for parsing
+    Location = 13,   // Object location (parent)
 }
 
 /// Exit target in IR
@@ -844,6 +859,7 @@ impl IrProgram {
             symbol_ids: HashMap::new(),
             object_numbers: HashMap::new(),
             id_registry: IrIdRegistry::new(), // NEW: Initialize ID registry
+            property_manager: PropertyManager::new(), // Initialize property manager
         }
     }
 
@@ -1032,6 +1048,7 @@ impl IrGenerator {
         ir_program.symbol_ids = self.symbol_ids.clone();
         ir_program.object_numbers = self.object_numbers.clone();
         ir_program.id_registry = self.id_registry.clone(); // NEW: Transfer ID registry
+        ir_program.property_manager = self.property_manager.clone(); // Transfer property manager with consistent mappings
 
         Ok(ir_program)
     }
@@ -1836,18 +1853,20 @@ impl IrGenerator {
                                     value: value_temp,
                                 });
                             } else {
-                                // Fallback to string-based access if no number is registered
-                                block.add_instruction(IrInstruction::SetProperty {
+                                // Use dynamic property manager to assign property number even for standard properties without numbers
+                                let prop_num = self.property_manager.get_property_number(&property);
+                                block.add_instruction(IrInstruction::SetPropertyByNumber {
                                     object: object_temp,
-                                    property,
+                                    property_num: prop_num,
                                     value: value_temp,
                                 });
                             }
                         } else {
-                            // For now, still support named property access for backward compatibility
-                            block.add_instruction(IrInstruction::SetProperty {
+                            // Use dynamic property manager to assign property number for non-standard properties
+                            let prop_num = self.property_manager.get_property_number(&property);
+                            block.add_instruction(IrInstruction::SetPropertyByNumber {
                                 object: object_temp,
-                                property,
+                                property_num: prop_num,
                                 value: value_temp,
                             });
                         }
@@ -2216,10 +2235,11 @@ impl IrGenerator {
 
                 // Generate property access to get the method function
                 let property_temp = self.next_id();
-                block.add_instruction(IrInstruction::GetProperty {
+                let prop_num = self.property_manager.get_property_number(&method);
+                block.add_instruction(IrInstruction::GetPropertyByNumber {
                     target: property_temp,
                     object: object_temp,
-                    property: method.clone(),
+                    property_num: prop_num,
                 });
 
                 // Generate conditional call - only call if property is non-zero (valid function address)
@@ -2418,19 +2438,21 @@ impl IrGenerator {
                             property_num: prop_num,
                         });
                     } else {
-                        // Fallback to string-based access if no number is registered
-                        block.add_instruction(IrInstruction::GetProperty {
+                        // Use dynamic property manager to assign property number even for standard properties without numbers
+                        let prop_num = self.property_manager.get_property_number(&property);
+                        block.add_instruction(IrInstruction::GetPropertyByNumber {
                             target: temp_id,
                             object: object_temp,
-                            property,
+                            property_num: prop_num,
                         });
                     }
                 } else {
-                    // For now, still support named property access for backward compatibility
-                    block.add_instruction(IrInstruction::GetProperty {
+                    // Use dynamic property manager to assign property number for non-standard properties
+                    let prop_num = self.property_manager.get_property_number(&property);
+                    block.add_instruction(IrInstruction::GetPropertyByNumber {
                         target: temp_id,
                         object: object_temp,
-                        property,
+                        property_num: prop_num,
                     });
                 }
 
@@ -2511,19 +2533,21 @@ impl IrGenerator {
                                 property_num: prop_num,
                             });
                         } else {
-                            // Fallback to string-based access
-                            block.add_instruction(IrInstruction::GetProperty {
+                            // Use dynamic property manager to assign property number even for standard properties without numbers
+                            let prop_num = self.property_manager.get_property_number(&property);
+                            block.add_instruction(IrInstruction::GetPropertyByNumber {
                                 target: temp_id,
                                 object: object_temp,
-                                property: property.clone(),
+                                property_num: prop_num,
                             });
                         }
                     } else {
-                        // For now, still support named property access for backward compatibility
-                        block.add_instruction(IrInstruction::GetProperty {
+                        // Use dynamic property manager to assign property number for non-standard properties
+                        let prop_num = self.property_manager.get_property_number(&property);
+                        block.add_instruction(IrInstruction::GetPropertyByNumber {
                             target: temp_id,
                             object: object_temp,
-                            property: property.clone(),
+                            property_num: prop_num,
                         });
                     }
                 }

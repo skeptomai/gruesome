@@ -25,6 +25,7 @@ mod codegen_tests {
             property_defaults: IrPropertyDefaults {
                 defaults: std::collections::HashMap::new(),
             },
+            property_manager: crate::grue_compiler::ir::PropertyManager::new(),
             program_mode: crate::grue_compiler::ast::ProgramMode::Script,
             symbol_ids: std::collections::HashMap::new(),
             object_numbers: std::collections::HashMap::new(),

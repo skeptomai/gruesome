@@ -880,13 +880,16 @@ impl ZMachineCodeGen {
             total_size
         );
 
-        // DYNAMIC FIX: Calculate init routine header size based on actual local variables used
-        // Z-Machine V3 header format: 1 byte (local count) + (local_count * 2) bytes (default values)
-        let init_header_size = 1 + (self.init_routine_locals_count as usize * 2);
-        // Z-Machine spec 5.3: "Execution of instructions begins from the byte after this header information"
+        // PC calculation preview (final calculation happens in Step 3e)
+        let expected_pc = if self.init_routine_locals_count > 0 {
+            let init_header_size = 1 + (self.init_routine_locals_count as usize * 2);
+            code_base + init_header_size
+        } else {
+            code_base // No init block, PC points to first function header
+        };
         log::info!(
-            "🎯 PC CALCULATION: PC will point to 0x{:04x} (after {}-byte init routine header at 0x{:04x})",
-            code_base + init_header_size, init_header_size, code_base
+            "🎯 PC CALCULATION: PC will point to 0x{:04x} (init_locals_count={}, code_base=0x{:04x})",
+            expected_pc, self.init_routine_locals_count, code_base
         );
 
         // Phase 3b: Initialize final game image
@@ -1004,13 +1007,20 @@ impl ZMachineCodeGen {
         // Critical: Never touches static fields like serial number or version.
         // Updates: PC start, dictionary, objects, globals, static memory, abbreviations, high memory base
         log::debug!(" Step 3e: Updating header address fields with final memory layout");
-        // CRITICAL FIX: PC should point to first instruction after init routine header
-        // Z-Machine spec 5.3: "Execution of instructions begins from the byte after this header information"
-        let init_header_size = 1; // 1 byte for local count (we use 0 locals)
-        let calculated_pc = (self.final_code_base + init_header_size) as u16;
+        // CRITICAL FIX: PC calculation based on whether init block exists
+        let calculated_pc = if self.init_routine_locals_count > 0 {
+            // If init block exists, PC points after init routine header
+            // Z-Machine spec 5.3: "Execution of instructions begins from the byte after this header information"
+            let init_header_size = 1 + (self.init_routine_locals_count as usize * 2);
+            (self.final_code_base + init_header_size) as u16
+        } else {
+            // If no init block, PC points directly to first function's routine header
+            // The main function itself has a routine header that PC should point to
+            self.final_code_base as u16
+        };
         log::debug!(
-            " PC_CALCULATION_DEBUG: final_code_base=0x{:04x} + init_header_size={} = calculated_pc=0x{:04x}",
-            self.final_code_base, init_header_size, calculated_pc
+            " PC_CALCULATION_DEBUG: final_code_base=0x{:04x}, init_locals_count={}, calculated_pc=0x{:04x}",
+            self.final_code_base, self.init_routine_locals_count, calculated_pc
         );
         log::debug!(
             " PC_CALCULATION_DEBUG: PC will point to first instruction at 0x{:04x} (after header at 0x{:04x})",
@@ -3157,7 +3167,7 @@ impl ZMachineCodeGen {
 
             if left_is_string || right_is_string {
                 log::debug!(" STRING_CONCATENATION: Detected string concatenation operation");
-                return self.translate_string_concatenation(target, left, right);
+                return self.translate_string_concatenation(left, right, target);
             }
         }
 
@@ -5622,7 +5632,7 @@ impl ZMachineCodeGen {
     }
 
     /// Emit proper Z-Machine conditional branch instruction
-    fn emit_conditional_branch_instruction(
+    pub fn emit_conditional_branch_instruction(
         &mut self,
         condition: IrId,
         true_label: IrId,
@@ -6048,26 +6058,27 @@ impl ZMachineCodeGen {
             );
         } else {
             // For non-comparison operations (arithmetic, logical), generate bytecode
-            let left_op = self.resolve_ir_id_to_operand(left)?;
-            let right_op = self.resolve_ir_id_to_operand(right)?;
-
             // Handle different binary operations
             match op {
                 IrBinaryOp::Add => {
-                    // Check if either operand is a string for concatenation
+                    // Check if either operand is a string for concatenation FIRST
                     let left_is_string = self.ir_id_to_string.contains_key(&left);
                     let right_is_string = self.ir_id_to_string.contains_key(&right);
 
                     if left_is_string || right_is_string {
                         // This is string concatenation
-                        self.translate_string_concatenation(target, left, right)?;
+                        self.translate_string_concatenation(left, right, target)?;
                     } else {
-                        // Regular arithmetic addition
+                        // Regular arithmetic addition - resolve operands now
+                        let left_op = self.resolve_ir_id_to_operand(left)?;
+                        let right_op = self.resolve_ir_id_to_operand(right)?;
                         self.generate_binary_op(op, left_op, right_op, Some(0))?;
                     }
                 }
                 _ => {
-                    // All other arithmetic/logical operations
+                    // All other arithmetic/logical operations - resolve operands now
+                    let left_op = self.resolve_ir_id_to_operand(left)?;
+                    let right_op = self.resolve_ir_id_to_operand(right)?;
                     self.generate_binary_op(op, left_op, right_op, Some(0))?;
                 }
             }

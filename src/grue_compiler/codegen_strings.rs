@@ -179,77 +179,77 @@ impl ZMachineCodeGen {
                 // Alphabet A2: digits and punctuation (single-shift with 5, then Z-char 6-31)
                 '0'..='9' => {
                     zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(ch as u8 - b'0' + 7); // A2[7-16] = "0123456789"
+                    zchars.push(ch as u8 - b'0' + 8); // A2[8-17] = "0123456789"
                 }
 
                 '.' => {
                     zchars.push(5);
-                    zchars.push(17); // A2[17] = '.'
+                    zchars.push(18); // A2[18] = '.'
                 }
 
                 ',' => {
                     zchars.push(5);
-                    zchars.push(18); // A2[18] = ','
+                    zchars.push(19); // A2[19] = ','
                 }
 
                 '!' => {
                     zchars.push(5);
-                    zchars.push(19); // A2[19] = '!'
+                    zchars.push(20); // A2[20] = '!'
                 }
 
                 '?' => {
                     zchars.push(5);
-                    zchars.push(20); // A2[20] = '?'
+                    zchars.push(21); // A2[21] = '?'
                 }
 
                 '_' => {
                     zchars.push(5);
-                    zchars.push(21); // A2[21] = '_'
+                    zchars.push(22); // A2[22] = '_'
                 }
 
                 '#' => {
                     zchars.push(5);
-                    zchars.push(22); // A2[22] = '#'
+                    zchars.push(23); // A2[23] = '#'
                 }
 
                 '\'' => {
                     zchars.push(5);
-                    zchars.push(23); // A2[23] = '\''
+                    zchars.push(24); // A2[24] = '\''
                 }
 
                 '"' => {
                     zchars.push(5);
-                    zchars.push(24); // A2[24] = '"'
+                    zchars.push(25); // A2[25] = '"'
                 }
 
                 '/' => {
                     zchars.push(5);
-                    zchars.push(25); // A2[25] = '/'
+                    zchars.push(26); // A2[26] = '/'
                 }
 
                 '\\' => {
                     zchars.push(5);
-                    zchars.push(26); // A2[26] = '\'
+                    zchars.push(27); // A2[27] = '\'
                 }
 
                 '-' => {
                     zchars.push(5);
-                    zchars.push(27); // A2[27] = '-'
+                    zchars.push(28); // A2[28] = '-'
                 }
 
                 ':' => {
                     zchars.push(5);
-                    zchars.push(28); // A2[28] = ':'
+                    zchars.push(29); // A2[29] = ':'
                 }
 
                 '(' => {
                     zchars.push(5);
-                    zchars.push(29); // A2[29] = '('
+                    zchars.push(30); // A2[30] = '('
                 }
 
                 ')' => {
                     zchars.push(5);
-                    zchars.push(30); // A2[30] = ')'
+                    zchars.push(31); // A2[31] = ')'
                 }
 
                 '\n' => {
@@ -288,9 +288,9 @@ impl ZMachineCodeGen {
             bytes.push(word as u8);
         } else {
             while i < zchars.len() {
-                let z1 = zchars.get(i).copied().unwrap_or(5);
-                let z2 = zchars.get(i + 1).copied().unwrap_or(5);
-                let z3 = zchars.get(i + 2).copied().unwrap_or(5);
+                let z1 = zchars.get(i).copied().unwrap_or(0);
+                let z2 = zchars.get(i + 1).copied().unwrap_or(0);
+                let z3 = zchars.get(i + 2).copied().unwrap_or(0);
 
                 // Pack: [z1: 5 bits][z2: 5 bits][z3: 5 bits][end: 1 bit] = 16 bits
                 let mut word = ((z1 as u16) << 10) | ((z2 as u16) << 5) | (z3 as u16);
@@ -391,6 +391,20 @@ impl ZMachineCodeGen {
         // Check IR ID to string mapping
         if let Some(string) = self.ir_id_to_string.get(&ir_id) {
             return Ok(string.clone());
+        }
+
+        // Check if this is a runtime value (stack variable, integer, etc.)
+        // For string concatenation involving runtime values, use a placeholder
+        if self.ir_id_to_stack_var.contains_key(&ir_id) {
+            return Ok(format!("[RUNTIME_STACK_{}]", ir_id));
+        }
+        if self.ir_id_to_integer.contains_key(&ir_id) {
+            if let Some(int_val) = self.ir_id_to_integer.get(&ir_id) {
+                return Ok(int_val.to_string());
+            }
+        }
+        if self.ir_id_to_local_var.contains_key(&ir_id) {
+            return Ok(format!("[RUNTIME_LOCAL_{}]", ir_id));
         }
 
         Err(CompilerError::CodeGenError(format!(
@@ -648,9 +662,16 @@ impl ZMachineCodeGen {
             }
         };
 
-        // Calculate size byte (property header format)
-        let size = data.len().min(63) as u8;
-        let size_byte = (prop_num << 2) | (size & 0x3F);
+        // Calculate size byte according to Z-Machine specification
+        // V3 format: size_byte = 32 * (data_bytes - 1) + property_number
+        // V4+ format: different encoding (not implemented yet)
+        let size = data.len().min(8) as u8; // V3 max property size is 8 bytes
+        if size == 0 {
+            // Empty property - use 1 byte minimum
+            let size_byte = 32 * (1 - 1) + prop_num; // 0 * 32 + prop_num = prop_num
+            return (size_byte, vec![0]);
+        }
+        let size_byte = 32 * (size - 1) + prop_num;
 
         (size_byte, data)
     }

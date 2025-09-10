@@ -69,6 +69,58 @@ impl ZMachineCodeGen {
             IrInstruction::LoadVar { target, .. } => {
                 log::debug!("IR INSTRUCTION: LoadVar creates target IR ID {}", target);
             }
+            // Array instructions with targets
+            IrInstruction::ArrayRemove { target, .. } => {
+                log::debug!(
+                    "IR INSTRUCTION: ArrayRemove creates target IR ID {}",
+                    target
+                );
+            }
+            IrInstruction::ArrayLength { target, .. } => {
+                log::debug!(
+                    "IR INSTRUCTION: ArrayLength creates target IR ID {}",
+                    target
+                );
+            }
+            IrInstruction::ArrayEmpty { target, .. } => {
+                log::debug!("IR INSTRUCTION: ArrayEmpty creates target IR ID {}", target);
+            }
+            IrInstruction::ArrayContains { target, .. } => {
+                log::debug!(
+                    "IR INSTRUCTION: ArrayContains creates target IR ID {}",
+                    target
+                );
+            }
+            IrInstruction::ArrayIndexOf { target, .. } => {
+                log::debug!(
+                    "IR INSTRUCTION: ArrayIndexOf creates target IR ID {}",
+                    target
+                );
+            }
+            IrInstruction::ArrayFilter { target, .. } => {
+                log::debug!(
+                    "IR INSTRUCTION: ArrayFilter creates target IR ID {}",
+                    target
+                );
+            }
+            IrInstruction::ArrayMap { target, .. } => {
+                log::debug!("IR INSTRUCTION: ArrayMap creates target IR ID {}", target);
+            }
+            IrInstruction::ArrayFind { target, .. } => {
+                log::debug!("IR INSTRUCTION: ArrayFind creates target IR ID {}", target);
+            }
+            IrInstruction::ArrayJoin { target, .. } => {
+                log::debug!("IR INSTRUCTION: ArrayJoin creates target IR ID {}", target);
+            }
+            IrInstruction::ArrayReverse { target, .. } => {
+                log::debug!(
+                    "IR INSTRUCTION: ArrayReverse creates target IR ID {}",
+                    target
+                );
+            }
+            IrInstruction::ArraySort { target, .. } => {
+                log::debug!("IR INSTRUCTION: ArraySort creates target IR ID {}", target);
+            }
             _ => {
                 // Instructions without targets
             }
@@ -118,8 +170,8 @@ impl ZMachineCodeGen {
                 if self.is_builtin_function(*function) {
                     self.generate_builtin_function_call(*function, args, *target)?;
                 } else {
-                    // Generate call with unresolved function reference
-                    self.generate_call_with_reference(*function, args, *target)?;
+                    // Generate user function call with proper reference registration
+                    self.generate_user_function_call(*function, args, *target)?;
                 }
 
                 // CRITICAL: Register call result target for proper LoadVar resolution
@@ -167,39 +219,8 @@ impl ZMachineCodeGen {
                 true_label,
                 false_label,
             } => {
-                // Resolve condition to an operand
-                let cond_operand = self.resolve_ir_id_to_operand(*condition)?;
-
-                // Generate conditional branch - test if condition is true (non-zero)
-                // We use jz (zero test) and flip the sense to get non-zero test
-                let _true_offset = self.create_unresolved_reference(
-                    crate::grue_compiler::codegen::LegacyReferenceType::Label(*true_label),
-                    crate::grue_compiler::codegen::MemorySpace::CodeSpace,
-                    self.current_address(),
-                    *true_label,
-                    false,
-                    2,
-                );
-
-                // Test if condition is zero (false), if so go to false_label
-                self.emit_instruction(0xA0, &[cond_operand], None, Some(0))?; // jz (1OP:0) - placeholder offset
-
-                // If we reach here, condition is true, fall through or jump to false_label
-                let _false_offset = self.create_unresolved_reference(
-                    crate::grue_compiler::codegen::LegacyReferenceType::Label(*false_label),
-                    crate::grue_compiler::codegen::MemorySpace::CodeSpace,
-                    self.current_address(),
-                    *false_label,
-                    false,
-                    2,
-                );
-                // Unconditional jump to false label
-                self.emit_instruction(
-                    0xC1, // je (always true branch)
-                    &[Operand::LargeConstant(1), Operand::LargeConstant(1)],
-                    None,
-                    Some(0), // Placeholder offset
-                )?;
+                // Delegate to the proper conditional branch function that handles binary operations
+                self.emit_conditional_branch_instruction(*condition, *true_label, *false_label)?;
             }
 
             IrInstruction::LoadVar { target, var_id } => {
@@ -240,9 +261,16 @@ impl ZMachineCodeGen {
                 );
             }
 
-            IrInstruction::Label { id: _ } => {
-                // Labels are just markers - register current address for patching
-                // This is handled during the address resolution phase
+            IrInstruction::Label { id } => {
+                // Labels are just markers - register current address for label resolution
+                self.reference_context
+                    .ir_id_to_address
+                    .insert(*id, self.current_address());
+                log::debug!(
+                    "Label registered: IR ID {} -> address 0x{:04x}",
+                    id,
+                    self.current_address()
+                );
             }
 
             IrInstruction::UnaryOp {
@@ -329,7 +357,7 @@ impl ZMachineCodeGen {
             } => {
                 // Generate numbered property access
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
-                let prop_operand = self.resolve_ir_id_to_operand((*property_num).into())?;
+                let prop_operand = Operand::LargeConstant(*property_num as u16);
 
                 // CRITICAL: Register target for property result
                 self.use_stack_for_result(*target);
@@ -342,6 +370,25 @@ impl ZMachineCodeGen {
                     None,
                 )?;
                 log::debug!("GetPropertyByNumber: IR ID {} -> stack", target);
+            }
+
+            IrInstruction::SetPropertyByNumber {
+                object,
+                property_num,
+                value,
+            } => {
+                // Generate Z-Machine put_prop instruction (VAR:227, opcode 0x03)
+                // Use proper object resolution via global variables
+                let operands = vec![
+                    self.resolve_ir_id_to_operand(*object)?, // Object (properly resolved)
+                    Operand::Constant(*property_num as u16), // Property number
+                    self.resolve_ir_id_to_operand(*value)?,  // Value (properly resolved)
+                ];
+                self.emit_instruction(0x03, &operands, None, None)?;
+                log::debug!(
+                    "Generated put_prop for property number {} with resolved object",
+                    property_num
+                );
             }
 
             IrInstruction::TestProperty {
@@ -388,8 +435,187 @@ impl ZMachineCodeGen {
                 log::debug!("GetNextProperty: IR ID {} -> stack", target);
             }
 
+            IrInstruction::ArrayEmpty { target, array: _ } => {
+                // Check if array is empty - for now, assume it returns false (non-empty)
+                // TODO: Implement proper array empty checking
+
+                // CRITICAL: Register target for array empty result
+                self.use_stack_for_result(*target);
+
+                // For now, just load 0 (empty/false) as a placeholder
+                self.emit_instruction(
+                    0x8D, // load constant 0
+                    &[Operand::LargeConstant(0)],
+                    Some(0), // Store to stack
+                    None,
+                )?;
+                log::debug!("ArrayEmpty: IR ID {} -> stack (placeholder: false)", target);
+            }
+
+            IrInstruction::GetArrayElement {
+                target,
+                array: _,
+                index: _,
+            } => {
+                // Get array element - for now, return a placeholder value
+                // TODO: Implement proper array element access
+
+                // CRITICAL: Register target for array element result
+                self.use_stack_for_result(*target);
+
+                // For now, just load placeholder string address
+                self.emit_instruction(
+                    0x8D,                            // load constant
+                    &[Operand::LargeConstant(1000)], // Placeholder string ID
+                    Some(0),                         // Store to stack
+                    None,
+                )?;
+                log::debug!(
+                    "GetArrayElement: IR ID {} -> stack (placeholder: 1000)",
+                    target
+                );
+            }
+
             IrInstruction::Nop => {
                 // No operation - do nothing
+            }
+
+            // Array instructions - placeholder implementations that register target IDs
+            IrInstruction::ArrayAdd { array: _, value: _ } => {
+                // Array add operation (no return value)
+                // TODO: Implement actual array add functionality
+                log::debug!("ArrayAdd: placeholder implementation");
+            }
+
+            IrInstruction::ArrayRemove {
+                target,
+                array: _,
+                index: _,
+            } => {
+                // Array remove operation - placeholder returns 0
+                self.use_stack_for_result(*target);
+                // Emit instruction to push 0 onto stack as placeholder result
+                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                log::debug!("ArrayRemove: IR ID {} -> stack (placeholder: 0)", target);
+            }
+
+            IrInstruction::ArrayLength { target, array: _ } => {
+                // Array length operation - placeholder returns 0
+                self.use_stack_for_result(*target);
+                // Emit instruction to push 0 onto stack as placeholder result
+                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                log::debug!("ArrayLength: IR ID {} -> stack (placeholder: 0)", target);
+            }
+
+            IrInstruction::ArrayContains {
+                target,
+                array: _,
+                value: _,
+            } => {
+                // Array contains operation - placeholder returns false (0)
+                self.use_stack_for_result(*target);
+                // Emit instruction to push 0 onto stack as placeholder result
+                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                log::debug!("ArrayContains: IR ID {} -> stack (placeholder: 0)", target);
+            }
+
+            IrInstruction::ArrayIndexOf {
+                target,
+                array: _,
+                value: _,
+            } => {
+                // Array indexOf operation - placeholder returns -1 (not found)
+                self.use_stack_for_result(*target);
+                // Emit instruction to push -1 onto stack as placeholder result
+                self.emit_instruction(0x8F, &[Operand::LargeConstant(65535)], None, None)?; // push -1 as unsigned
+                log::debug!("ArrayIndexOf: IR ID {} -> stack (placeholder: -1)", target);
+            }
+
+            IrInstruction::ArrayFilter {
+                target,
+                array: _,
+                predicate: _,
+            } => {
+                // Array filter operation - placeholder returns empty array (0)
+                self.use_stack_for_result(*target);
+                // Emit instruction to push 0 onto stack as placeholder result
+                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                log::debug!("ArrayFilter: IR ID {} -> stack (placeholder: 0)", target);
+            }
+
+            IrInstruction::ArrayMap {
+                target,
+                array: _,
+                transform: _,
+            } => {
+                // Array map operation - placeholder returns empty array (0)
+                self.use_stack_for_result(*target);
+                // Emit instruction to push 0 onto stack as placeholder result
+                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                log::debug!("ArrayMap: IR ID {} -> stack (placeholder: 0)", target);
+            }
+
+            IrInstruction::ArrayFind {
+                target,
+                array: _,
+                predicate: _,
+            } => {
+                // Array find operation - placeholder returns null (0)
+                self.use_stack_for_result(*target);
+                // Emit instruction to push 0 onto stack as placeholder result
+                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                log::debug!("ArrayFind: IR ID {} -> stack (placeholder: 0)", target);
+            }
+
+            IrInstruction::ArrayJoin {
+                target,
+                array: _,
+                separator: _,
+            } => {
+                // Array join operation - placeholder returns empty string (0)
+                self.use_stack_for_result(*target);
+                // Emit instruction to push 0 onto stack as placeholder result
+                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                log::debug!("ArrayJoin: IR ID {} -> stack (placeholder: 0)", target);
+            }
+
+            IrInstruction::ArrayReverse { target, array: _ } => {
+                // Array reverse operation - placeholder returns original array (0)
+                self.use_stack_for_result(*target);
+                // Emit instruction to push 0 onto stack as placeholder result
+                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                log::debug!("ArrayReverse: IR ID {} -> stack (placeholder: 0)", target);
+            }
+
+            IrInstruction::ArraySort {
+                target,
+                array: _,
+                comparator: _,
+            } => {
+                // Array sort operation - placeholder returns original array (0)
+                self.use_stack_for_result(*target);
+                // Emit instruction to push 0 onto stack as placeholder result
+                self.emit_instruction(0x8F, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:0)
+                log::debug!("ArraySort: IR ID {} -> stack (placeholder: 0)", target);
+            }
+
+            IrInstruction::ArrayForEach {
+                array: _,
+                callback: _,
+            } => {
+                // Array forEach operation (no return value)
+                // TODO: Implement actual array forEach functionality
+                log::debug!("ArrayForEach: placeholder implementation");
+            }
+
+            IrInstruction::SetArrayElement {
+                array: _,
+                index: _,
+                value: _,
+            } => {
+                // Set array element operation (no return value)
+                // TODO: Implement actual array element setting
+                log::debug!("SetArrayElement: placeholder implementation");
             }
 
             _ => {
@@ -1284,6 +1510,56 @@ impl ZMachineCodeGen {
             // 2-byte format: bit 7 = condition, bit 6 = 0, bits 13-0 = offset
             let branch_word = 0x8000 | ((offset as u16) & 0x3FFF);
             self.emit_word(branch_word)?;
+        }
+
+        Ok(())
+    }
+
+    /// Generate user function call with proper UnresolvedReference registration
+    fn generate_user_function_call(
+        &mut self,
+        function_id: crate::grue_compiler::ir::IrId,
+        args: &[crate::grue_compiler::ir::IrId],
+        target: Option<crate::grue_compiler::ir::IrId>,
+    ) -> Result<(), CompilerError> {
+        use crate::grue_compiler::codegen::{
+            LegacyReferenceType, MemorySpace, UnresolvedReference,
+        };
+
+        // Generate function call instruction with placeholder address
+        let mut operands = Vec::new();
+        operands.push(Operand::LargeConstant(0xFFFF)); // Placeholder for function address
+
+        // Add arguments
+        for &arg_id in args {
+            let arg_operand = self.resolve_ir_id_to_operand(arg_id)?;
+            operands.push(arg_operand);
+        }
+
+        // Determine store variable
+        let store_var = target.map(|_| 0); // Store to stack if target specified
+
+        // Emit the call instruction (VAR form call_vs)
+        let layout = self.emit_instruction(0xE0, &operands, store_var, None)?;
+
+        // CRITICAL: Register function reference for patching
+        if let Some(operand_loc) = layout.operand_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::FunctionCall,
+                    location: operand_loc,
+                    target_id: function_id,
+                    is_packed_address: true, // Function addresses are packed in Z-Machine
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+
+            log::debug!(
+                "Generated call to function ID {} with unresolved reference at 0x{:04x}",
+                function_id,
+                operand_loc
+            );
         }
 
         Ok(())

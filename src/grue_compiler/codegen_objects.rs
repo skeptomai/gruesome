@@ -209,22 +209,18 @@ impl ZMachineCodeGen {
         }
 
         // Step 2: Add essential properties that player object always needs
-        all_properties.insert("desc".to_string()); // Player description property
+        all_properties.insert("description".to_string()); // Player description property
         all_properties.insert("location".to_string()); // Player location property
 
-        // Assign property numbers starting from 1 in sorted order for consistency
-        let mut sorted_properties: Vec<String> = all_properties.iter().cloned().collect();
-        sorted_properties.sort();
-
-        let mut property_number = 1u8;
-        for property_name in sorted_properties {
+        // Use property numbers from IR's PropertyManager to ensure consistency
+        // This ensures object table generation uses the same property numbers as IR code generation
+        for (property_name, property_number) in ir.property_manager.get_property_numbers() {
             self.property_numbers
-                .insert(property_name.clone(), property_number);
+                .insert(property_name.clone(), *property_number);
             debug!(
-                "Assigned property '{}' -> number {}",
+                "Using IR property '{}' -> number {} (from PropertyManager)",
                 property_name, property_number
             );
-            property_number += 1;
         }
 
         // Step 3: Analyze which properties each object uses
@@ -342,10 +338,19 @@ impl ZMachineCodeGen {
         // This resolves the "get_prop called with object 0" Frotz compatibility issue
         debug!("Creating player object as object #1 for Frotz compatibility");
         let mut player_properties = IrProperties::new();
-        // Add essential player properties - use hardcoded property numbers to match actual assignments
-        let location_prop = 9; // Must match the hardcoded "location" => 9 in get_property_number()
-        let desc_prop = 5; // Must match the hardcoded "desc" => 5 in get_property_number()
-                           // Set initial player location to first room (will be room object #2)
+        // Get property numbers from PropertyManager to ensure consistency
+        let location_prop = ir
+            .property_manager
+            .get_property_number_by_name("location")
+            .unwrap_or_else(|| panic!("Property 'location' not found in PropertyManager"));
+        let desc_prop = ir
+            .property_manager
+            .get_property_number_by_name("description")
+            .or_else(|| ir.property_manager.get_property_number_by_name("desc"))
+            .unwrap_or_else(|| {
+                panic!("Property 'description' or 'desc' not found in PropertyManager")
+            });
+        // Set initial player location to first room (will be room object #2)
         let initial_location = if !ir.rooms.is_empty() { 2 } else { 0 };
         debug!(
             "PROPERTY DEBUG: Setting player location property {} to value {} (0x{:04x})",
