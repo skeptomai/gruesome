@@ -1014,9 +1014,10 @@ impl ZMachineCodeGen {
             let init_header_size = 1 + (self.init_routine_locals_count as usize * 2);
             (self.final_code_base + init_header_size) as u16
         } else {
-            // If no init block, PC points directly to first function's routine header
-            // The main function itself has a routine header that PC should point to
-            self.final_code_base as u16
+            // If no init block, PC points to first instruction after main function header
+            // Main function header: 1 byte (local count) + (local_count * 2) bytes (V3 default values)
+            // For functions with 0 locals, header is 1 byte, so PC = final_code_base + 1
+            (self.final_code_base + 1) as u16
         };
         log::debug!(
             " PC_CALCULATION_DEBUG: final_code_base=0x{:04x}, init_locals_count={}, calculated_pc=0x{:04x}",
