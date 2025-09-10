@@ -2586,9 +2586,9 @@ impl ZMachineCodeGen {
 
         let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
 
-        // Generate get_parent instruction (1OP:4)
+        // Generate get_parent instruction (1OP:3)
         // FIXED: Use stack for get_location builtin result (temporary value)
-        let layout = self.emit_instruction(0x04, &[obj_operand], Some(0), None)?;
+        let layout = self.emit_instruction(0x03, &[obj_operand], Some(0), None)?;
 
         // emit_instruction already pushed bytes to code_space
 
