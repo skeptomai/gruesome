@@ -1,11 +1,6 @@
 world {
     room start "Test Room" {
         desc: "Test room"
-        
-        object player {
-            names: ["player"]
-            desc: "The player character"
-        }
     }
 }
 

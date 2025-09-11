@@ -1,0 +1,39 @@
+// Simple string test without concatenation
+fn main() {
+    print("Testing basic string functions");
+    
+    // Test indexOf
+    let text = "Hello World";
+    let pos = indexOf(text, "World");
+    
+    // Test slice
+    let sliced = slice(text, 6);
+    
+    // Test substring
+    let sub = substring(text, 0, 5);
+    
+    // Test case conversion
+    let lower = toLowerCase(text);
+    let upper = toUpperCase(text);
+    
+    // Test trim
+    let spaced = "  test  ";
+    let trimmed = trim(spaced);
+    
+    // Test charAt
+    let char = charAt(text, 0);
+    
+    // Test replace
+    let replaced = replace(text, "World", "Universe");
+    
+    // Test startsWith and endsWith without concatenation
+    if startsWith(text, "Hello") {
+        print("Text starts with Hello");
+    }
+    
+    if endsWith(text, "World") {
+        print("Text ends with World");
+    }
+    
+    print("Basic string functions test complete");
+}

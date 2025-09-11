@@ -1,0 +1,53 @@
+// Test compile-time string operations with literal values
+fn main() {
+    print("Testing Compile-Time String Operations");
+    
+    // Test indexOf with literals
+    let found = indexOf("Hello World", "World");    // Should be 6
+    let notFound = indexOf("Hello", "xyz");          // Should be -1
+    
+    // Test slice with literals  
+    let sliced = slice("Hello World", 6);            // Should be "World"
+    let sliceEmpty = slice("Hello", 10);             // Should be ""
+    
+    // Test substring with literals
+    let sub = substring("Hello World", 0, 5);        // Should be "Hello"
+    let subEmpty = substring("Hello", 2, 2);         // Should be ""
+    
+    // Test case conversion with literals
+    let lower = toLowerCase("HELLO WORLD");          // Should be "hello world"
+    let upper = toUpperCase("hello world");          // Should be "HELLO WORLD" 
+    
+    // Test trim with literals
+    let trimmed = trim("  test  ");                  // Should be "test"
+    let noTrim = trim("test");                       // Should be "test"
+    
+    // Test charAt with literals
+    let firstChar = charAt("Hello", 0);              // Should be "H"
+    let lastChar = charAt("Hello", 4);               // Should be "o"
+    let outOfBounds = charAt("Hello", 10);           // Should be ""
+    
+    // Test replace with literals
+    let replaced = replace("Hello World", "World", "Universe"); // Should be "Hello Universe"
+    let noReplace = replace("Hello", "xyz", "abc");             // Should be "Hello"
+    
+    // Test boolean functions with literals
+    if startsWith("Hello World", "Hello") {          // Should be true
+        print("Starts with Hello: correct");
+    }
+    
+    if endsWith("Hello World", "World") {            // Should be true  
+        print("Ends with World: correct");
+    }
+    
+    // Test false cases
+    if !startsWith("Hello World", "World") {         // Should be false, so ! makes it true
+        print("Does not start with World: correct");
+    }
+    
+    if !endsWith("Hello World", "Hello") {           // Should be false, so ! makes it true
+        print("Does not end with Hello: correct");
+    }
+    
+    print("Compile-Time String Operations Test Complete");
+}

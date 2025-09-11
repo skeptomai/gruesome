@@ -382,7 +382,7 @@ impl ZMachineCodeGen {
 
             // Add essential room properties that games commonly access
             // Get property numbers from the global property registry
-            let desc_prop = *self.property_numbers.get("desc").unwrap_or(&1);
+            let desc_prop = *self.property_numbers.get("description").unwrap_or(&7);
             let visited_prop = *self.property_numbers.get("visited").unwrap_or(&2);
             let location_prop = *self.property_numbers.get("location").unwrap_or(&8);
             let on_look_prop = *self.property_numbers.get("on_look").unwrap_or(&13);
@@ -419,7 +419,7 @@ impl ZMachineCodeGen {
 
             // Ensure all objects have essential properties that games commonly access
             let location_prop = *self.property_numbers.get("location").unwrap_or(&8);
-            let desc_prop = *self.property_numbers.get("desc").unwrap_or(&1);
+            let desc_prop = *self.property_numbers.get("description").unwrap_or(&7);
 
             // Add location property if missing (default to 0 = no location)
             if !object_properties.properties.contains_key(&location_prop) {

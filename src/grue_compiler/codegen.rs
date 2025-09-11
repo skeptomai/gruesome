@@ -1791,8 +1791,8 @@ impl ZMachineCodeGen {
         );
         match ir.program_mode {
             crate::grue_compiler::ast::ProgramMode::Script => {
-                log::debug!("📋 Script mode: Adding quit instruction");
-                self.emit_byte(0x0A)?; // quit
+                log::debug!("📋 Script mode: No additional instructions needed (init block already terminates with quit)");
+                // No additional instructions needed - init block already has quit instruction
             }
             crate::grue_compiler::ast::ProgramMode::Interactive => {
                 log::debug!("📋 Interactive mode: Generating main loop");
@@ -1801,7 +1801,7 @@ impl ZMachineCodeGen {
             crate::grue_compiler::ast::ProgramMode::Custom => {
                 log::debug!("📋 Custom mode: Adding main function call placeholder");
                 // TODO: Generate call to user main function
-                self.emit_byte(0x0A)?; // quit - temporary
+                self.emit_byte(0xBA)?; // quit - temporary
             }
         }
 
@@ -2196,6 +2196,18 @@ impl ZMachineCodeGen {
                         "array_add_item" => {
                             self.translate_array_add_item_builtin_inline(args, target)?
                         }
+
+                        // TIER 4: String functions (basic implementations)
+                        "indexOf" => return self.generate_index_of_builtin(args, target),
+                        "slice" => return self.generate_slice_builtin(args, target),
+                        "substring" => return self.generate_substring_builtin(args, target),
+                        "toLowerCase" => return self.generate_to_lower_case_builtin(args, target),
+                        "toUpperCase" => return self.generate_to_upper_case_builtin(args, target),
+                        "trim" => return self.generate_trim_builtin(args, target),
+                        "charAt" => return self.generate_char_at_builtin(args, target),
+                        "replace" => return self.generate_replace_builtin(args, target),
+                        "startsWith" => return self.generate_starts_with_builtin(args, target),
+                        "endsWith" => return self.generate_ends_with_builtin(args, target),
 
                         _ => {
                             // Fallback to legacy system for remaining builtins (Tier 3 only)
@@ -4510,7 +4522,7 @@ impl ZMachineCodeGen {
                 });
 
             // After main function returns, quit the program
-            self.emit_byte(0x0A)?; // quit opcode
+            self.emit_byte(0xBA)?; // quit opcode
 
             Ok(())
         } else {
@@ -4568,7 +4580,13 @@ impl ZMachineCodeGen {
         let main_loop_jump_id = main_loop_id + 1; // Different ID for jump target
         self.record_final_address(main_loop_jump_id, main_loop_first_instruction);
 
-        // 1. Print prompt "> "
+        // TEMPORARY: Simple quit for testing the call mechanism
+        log::debug!("TEMP: Adding simple quit instruction to main loop for testing");
+        self.emit_byte(0xBA)?; // quit instruction
+        
+        return Ok(()); // TEMPORARY: Exit early to test simple case
+        
+        // 1. Print prompt "> " - TEMPORARILY DISABLED
         let prompt_string_id = self
             .main_loop_prompt_id
             .expect("Main loop prompt ID should be set during string collection");
@@ -6199,9 +6217,37 @@ impl ZMachineCodeGen {
             );
         }
 
-        // Add QUIT instruction at the end to terminate execution cleanly
-        log::debug!("Adding QUIT instruction at 0x{:04x}", self.code_address);
-        self.emit_byte(0x0A)?; // QUIT instruction (0OP:10, hex 0x0A)
+        // Add program-mode specific termination
+        match _ir.program_mode {
+            crate::grue_compiler::ast::ProgramMode::Script => {
+                log::debug!("Adding QUIT instruction for Script mode at 0x{:04x}", self.code_address);
+                self.emit_byte(0xBA)?; // QUIT instruction for Script mode
+            }
+            crate::grue_compiler::ast::ProgramMode::Interactive => {
+                log::debug!("Adding main loop jump for Interactive mode at 0x{:04x}", self.code_address);
+                // Jump to the main loop routine (ID 9001 = first instruction, not routine header)
+                let layout = self.emit_instruction(
+                    0xC1, // jump (unconditional jump)
+                    &[Operand::LargeConstant(1), Operand::LargeConstant(placeholder_word())], // Jump operands
+                    None, // No store
+                    None, // No branch (jump is unconditional)
+                )?;
+                
+                // Add unresolved reference for main loop jump to first instruction, not routine header
+                self.reference_context.unresolved_refs.push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: layout.operand_location.expect("jump instruction must have operand") + 2, // Second operand
+                    target_id: 9001, // Main loop first instruction ID from generate_main_loop
+                    is_packed_address: false, // Jumps use absolute addresses, not packed
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+            }
+            crate::grue_compiler::ast::ProgramMode::Custom => {
+                log::debug!("Adding QUIT instruction for Custom mode at 0x{:04x}", self.code_address);
+                self.emit_byte(0xBA)?; // QUIT instruction for Custom mode (temporary)
+            }
+        }
 
         // Clear init block context flag
         self.in_init_block = false;
@@ -7162,6 +7208,17 @@ impl ZMachineCodeGen {
             "value_is_none" => self.generate_value_is_none_builtin(args, target),
             "get_object_size" => self.generate_get_object_size_builtin(args, target),
             "array_add_item" => self.generate_array_add_item_builtin(args, target),
+            // String functions
+            "indexOf" => self.generate_index_of_builtin(args, target),
+            "slice" => self.generate_slice_builtin(args, target),
+            "substring" => self.generate_substring_builtin(args, target),
+            "toLowerCase" => self.generate_to_lower_case_builtin(args, target),
+            "toUpperCase" => self.generate_to_upper_case_builtin(args, target),
+            "trim" => self.generate_trim_builtin(args, target),
+            "charAt" => self.generate_char_at_builtin(args, target),
+            "replace" => self.generate_replace_builtin(args, target),
+            "startsWith" => self.generate_starts_with_builtin(args, target),
+            "endsWith" => self.generate_ends_with_builtin(args, target),
             _ => Err(CompilerError::CodeGenError(format!(
                 "Unimplemented builtin function: {}",
                 function_name

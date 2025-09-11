@@ -114,7 +114,10 @@ impl SemanticAnalyzer {
             ("test_attr", vec![Type::Any, Type::Int], Some(Type::Bool)),
             ("set_attr", vec![Type::Any, Type::Int], None),
             ("clear_attr", vec![Type::Any, Type::Int], None),
-            // String utility functions
+            // String utility functions - COMPILE-TIME ONLY
+            // These functions only work with string literals and compile-time constants.
+            // They cannot operate on runtime variables due to Z-Machine limitations.
+            // The Z-Machine has no opcodes for string manipulation - only text output.
             ("indexOf", vec![Type::String, Type::String], Some(Type::Int)),
             ("slice", vec![Type::String, Type::Int], Some(Type::String)),
             (

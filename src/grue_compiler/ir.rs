@@ -1066,7 +1066,8 @@ impl IrGenerator {
     fn get_standard_property(&self, property_name: &str) -> Option<StandardProperty> {
         match property_name {
             "short_name" | "name" => Some(StandardProperty::ShortName),
-            "long_name" | "desc" | "description" => Some(StandardProperty::LongName),
+            "long_name" => Some(StandardProperty::LongName),
+            "desc" | "description" => Some(StandardProperty::Description),
             "initial" => Some(StandardProperty::Initial),
             "before" => Some(StandardProperty::Before),
             "after" => Some(StandardProperty::After),

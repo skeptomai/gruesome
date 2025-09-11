@@ -477,7 +477,7 @@ impl Lexer {
             "init" => TokenKind::Init,
             "contains" => TokenKind::Contains,
             "names" => TokenKind::Names,
-            "desc" => TokenKind::Desc,
+            "desc" | "description" => TokenKind::Desc,
             "properties" => TokenKind::Properties,
             "exits" => TokenKind::Exits,
             "on_enter" => TokenKind::OnEnter,

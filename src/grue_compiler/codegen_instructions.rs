@@ -121,6 +121,39 @@ impl ZMachineCodeGen {
             IrInstruction::ArraySort { target, .. } => {
                 log::debug!("IR INSTRUCTION: ArraySort creates target IR ID {}", target);
             }
+            IrInstruction::StringIndexOf { target, .. } => {
+                log::debug!("IR INSTRUCTION: StringIndexOf creates target IR ID {}", target);
+            }
+            IrInstruction::StringSlice { target, .. } => {
+                log::debug!("IR INSTRUCTION: StringSlice creates target IR ID {}", target);
+            }
+            IrInstruction::StringSubstring { target, .. } => {
+                log::debug!("IR INSTRUCTION: StringSubstring creates target IR ID {}", target);
+            }
+            IrInstruction::StringToLowerCase { target, .. } => {
+                log::debug!("IR INSTRUCTION: StringToLowerCase creates target IR ID {}", target);
+            }
+            IrInstruction::StringToUpperCase { target, .. } => {
+                log::debug!("IR INSTRUCTION: StringToUpperCase creates target IR ID {}", target);
+            }
+            IrInstruction::StringTrim { target, .. } => {
+                log::debug!("IR INSTRUCTION: StringTrim creates target IR ID {}", target);
+            }
+            IrInstruction::StringCharAt { target, .. } => {
+                log::debug!("IR INSTRUCTION: StringCharAt creates target IR ID {}", target);
+            }
+            IrInstruction::StringSplit { target, .. } => {
+                log::debug!("IR INSTRUCTION: StringSplit creates target IR ID {}", target);
+            }
+            IrInstruction::StringReplace { target, .. } => {
+                log::debug!("IR INSTRUCTION: StringReplace creates target IR ID {}", target);
+            }
+            IrInstruction::StringStartsWith { target, .. } => {
+                log::debug!("IR INSTRUCTION: StringStartsWith creates target IR ID {}", target);
+            }
+            IrInstruction::StringEndsWith { target, .. } => {
+                log::debug!("IR INSTRUCTION: StringEndsWith creates target IR ID {}", target);
+            }
             _ => {
                 // Instructions without targets
             }
@@ -319,23 +352,30 @@ impl ZMachineCodeGen {
                 object,
                 property,
             } => {
-                // Generate property access code
-                let _obj_operand = self.resolve_ir_id_to_operand(*object)?;
+                // Generate property access code using get_prop instruction
+                let obj_operand = self.resolve_ir_id_to_operand(*object)?;
 
-                // Get property by name - this needs object system integration
-                log::debug!("Getting property '{}' from object", property);
+                // Map property name to property number using the global property registry
+                let prop_num = *self.property_numbers.get(property).ok_or_else(|| {
+                    CompilerError::CodeGenError(format!(
+                        "Unknown property '{}' in GetProperty (not found in registry)",
+                        property
+                    ))
+                })?;
+
+                log::debug!("Getting property '{}' (#{}) from object", property, prop_num);
 
                 // CRITICAL: Register target for property result
                 self.use_stack_for_result(*target);
 
-                // Placeholder: return a default value
-                // Placeholder: return a default value
+                // Use get_prop instruction: 2OP:17 (0x11)
                 self.emit_instruction(
-                    0x21,                         // store
-                    &[Operand::LargeConstant(0)], // Default property value
-                    Some(0),                      // Store to stack
+                    0x11, // get_prop
+                    &[obj_operand, Operand::SmallConstant(prop_num)],
+                    Some(0), // Store to stack
                     None,
                 )?;
+                log::debug!("GetProperty: IR ID {} -> stack", target);
             }
 
             IrInstruction::SetProperty {
@@ -620,6 +660,276 @@ impl ZMachineCodeGen {
                 log::debug!("SetArrayElement: placeholder implementation");
             }
 
+            IrInstruction::StringIndexOf {
+                target,
+                string,
+                substring,
+            } => {
+                // COMPILE-TIME ONLY: String operations only work with compile-time constants
+                log::debug!("StringIndexOf: attempting compile-time evaluation");
+                
+                match (self.get_compile_time_string(*string), self.get_compile_time_string(*substring)) {
+                    (Some(haystack), Some(needle)) => {
+                        let result = match haystack.find(&needle) {
+                            Some(pos) => pos as i16,
+                            None => -1,
+                        };
+                        log::debug!("StringIndexOf: compile-time result '{}' in '{}' = {}", needle, haystack, result);
+                        self.ir_id_to_integer.insert(*target, result);
+                        self.constant_values.insert(*target, ConstantValue::Integer(result));
+                    }
+                    _ => {
+                        log::warn!("StringIndexOf: runtime string operations not supported - returning -1");
+                        self.ir_id_to_integer.insert(*target, -1);
+                        self.constant_values.insert(*target, ConstantValue::Integer(-1));
+                    }
+                }
+            }
+
+            IrInstruction::StringSlice {
+                target,
+                string,
+                start,
+            } => {
+                // COMPILE-TIME ONLY: String operations only work with compile-time constants
+                log::debug!("StringSlice: attempting compile-time evaluation");
+                
+                match (self.get_compile_time_string(*string), self.get_compile_time_integer(*start)) {
+                    (Some(text), Some(start_idx)) => {
+                        let start_pos = start_idx.max(0) as usize;
+                        let result = if start_pos >= text.len() {
+                            String::new()
+                        } else {
+                            text[start_pos..].to_string()
+                        };
+                        log::debug!("StringSlice: compile-time result slice('{}', {}) = '{}'", text, start_idx, result);
+                        self.ir_id_to_string.insert(*target, result.clone());
+                        self.constant_values.insert(*target, ConstantValue::String(result));
+                    }
+                    _ => {
+                        log::warn!("StringSlice: runtime string operations not supported - returning empty string");
+                        self.ir_id_to_string.insert(*target, String::new());
+                        self.constant_values.insert(*target, ConstantValue::String(String::new()));
+                    }
+                }
+            }
+
+            IrInstruction::StringSubstring {
+                target,
+                string,
+                start,
+                end,
+            } => {
+                // COMPILE-TIME ONLY: String operations only work with compile-time constants
+                log::debug!("StringSubstring: attempting compile-time evaluation");
+                
+                match (
+                    self.get_compile_time_string(*string), 
+                    self.get_compile_time_integer(*start),
+                    self.get_compile_time_integer(*end)
+                ) {
+                    (Some(text), Some(start_idx), Some(end_idx)) => {
+                        let start_pos = start_idx.max(0) as usize;
+                        let end_pos = end_idx.max(0) as usize;
+                        let result = if start_pos >= text.len() || end_pos <= start_pos {
+                            String::new()
+                        } else {
+                            let actual_end = end_pos.min(text.len());
+                            text[start_pos..actual_end].to_string()
+                        };
+                        log::debug!("StringSubstring: compile-time result substring('{}', {}, {}) = '{}'", text, start_idx, end_idx, result);
+                        self.ir_id_to_string.insert(*target, result.clone());
+                        self.constant_values.insert(*target, ConstantValue::String(result));
+                    }
+                    _ => {
+                        log::warn!("StringSubstring: runtime string operations not supported - returning empty string");
+                        self.ir_id_to_string.insert(*target, String::new());
+                        self.constant_values.insert(*target, ConstantValue::String(String::new()));
+                    }
+                }
+            }
+
+            IrInstruction::StringToLowerCase {
+                target,
+                string,
+            } => {
+                // COMPILE-TIME ONLY: String operations only work with compile-time constants
+                log::debug!("StringToLowerCase: attempting compile-time evaluation");
+                
+                match self.get_compile_time_string(*string) {
+                    Some(text) => {
+                        let result = text.to_lowercase();
+                        log::debug!("StringToLowerCase: compile-time result toLowerCase('{}') = '{}'", text, result);
+                        self.ir_id_to_string.insert(*target, result.clone());
+                        self.constant_values.insert(*target, ConstantValue::String(result));
+                    }
+                    _ => {
+                        log::warn!("StringToLowerCase: runtime string operations not supported - returning empty string");
+                        self.ir_id_to_string.insert(*target, String::new());
+                        self.constant_values.insert(*target, ConstantValue::String(String::new()));
+                    }
+                }
+            }
+
+            IrInstruction::StringToUpperCase {
+                target,
+                string,
+            } => {
+                // COMPILE-TIME ONLY: String operations only work with compile-time constants
+                log::debug!("StringToUpperCase: attempting compile-time evaluation");
+                
+                match self.get_compile_time_string(*string) {
+                    Some(text) => {
+                        let result = text.to_uppercase();
+                        log::debug!("StringToUpperCase: compile-time result toUpperCase('{}') = '{}'", text, result);
+                        self.ir_id_to_string.insert(*target, result.clone());
+                        self.constant_values.insert(*target, ConstantValue::String(result));
+                    }
+                    _ => {
+                        log::warn!("StringToUpperCase: runtime string operations not supported - returning empty string");
+                        self.ir_id_to_string.insert(*target, String::new());
+                        self.constant_values.insert(*target, ConstantValue::String(String::new()));
+                    }
+                }
+            }
+
+            IrInstruction::StringTrim {
+                target,
+                string,
+            } => {
+                // COMPILE-TIME ONLY: String operations only work with compile-time constants
+                log::debug!("StringTrim: attempting compile-time evaluation");
+                
+                match self.get_compile_time_string(*string) {
+                    Some(text) => {
+                        let result = text.trim().to_string();
+                        log::debug!("StringTrim: compile-time result trim('{}') = '{}'", text, result);
+                        self.ir_id_to_string.insert(*target, result.clone());
+                        self.constant_values.insert(*target, ConstantValue::String(result));
+                    }
+                    _ => {
+                        log::warn!("StringTrim: runtime string operations not supported - returning empty string");
+                        self.ir_id_to_string.insert(*target, String::new());
+                        self.constant_values.insert(*target, ConstantValue::String(String::new()));
+                    }
+                }
+            }
+
+            IrInstruction::StringCharAt {
+                target,
+                string,
+                index,
+            } => {
+                // COMPILE-TIME ONLY: String operations only work with compile-time constants
+                log::debug!("StringCharAt: attempting compile-time evaluation");
+                
+                match (self.get_compile_time_string(*string), self.get_compile_time_integer(*index)) {
+                    (Some(text), Some(idx)) => {
+                        let result = if idx >= 0 && (idx as usize) < text.len() {
+                            text.chars().nth(idx as usize).unwrap_or('\0').to_string()
+                        } else {
+                            String::new()
+                        };
+                        log::debug!("StringCharAt: compile-time result charAt('{}', {}) = '{}'", text, idx, result);
+                        self.ir_id_to_string.insert(*target, result.clone());
+                        self.constant_values.insert(*target, ConstantValue::String(result));
+                    }
+                    _ => {
+                        log::warn!("StringCharAt: runtime string operations not supported - returning empty string");
+                        self.ir_id_to_string.insert(*target, String::new());
+                        self.constant_values.insert(*target, ConstantValue::String(String::new()));
+                    }
+                }
+            }
+
+            IrInstruction::StringSplit {
+                target,
+                string: _,
+                delimiter: _,
+            } => {
+                // For now, implement as a placeholder that returns empty array
+                // TODO: Implement actual string split functionality
+                log::debug!("StringSplit: placeholder implementation returning empty array");
+                
+                // This should return an array, but for now treat as an integer (array length 0)
+                self.ir_id_to_integer.insert(*target, 0);
+                self.constant_values.insert(*target, ConstantValue::Integer(0));
+            }
+
+            IrInstruction::StringReplace {
+                target,
+                string,
+                search,
+                replacement,
+            } => {
+                // COMPILE-TIME ONLY: String operations only work with compile-time constants
+                log::debug!("StringReplace: attempting compile-time evaluation");
+                
+                match (
+                    self.get_compile_time_string(*string), 
+                    self.get_compile_time_string(*search),
+                    self.get_compile_time_string(*replacement)
+                ) {
+                    (Some(text), Some(search_str), Some(replacement_str)) => {
+                        let result = text.replace(&search_str, &replacement_str);
+                        log::debug!("StringReplace: compile-time result replace('{}', '{}', '{}') = '{}'", text, search_str, replacement_str, result);
+                        self.ir_id_to_string.insert(*target, result.clone());
+                        self.constant_values.insert(*target, ConstantValue::String(result));
+                    }
+                    _ => {
+                        log::warn!("StringReplace: runtime string operations not supported - returning empty string");
+                        self.ir_id_to_string.insert(*target, String::new());
+                        self.constant_values.insert(*target, ConstantValue::String(String::new()));
+                    }
+                }
+            }
+
+            IrInstruction::StringStartsWith {
+                target,
+                string,
+                prefix,
+            } => {
+                // COMPILE-TIME ONLY: String operations only work with compile-time constants
+                log::debug!("StringStartsWith: attempting compile-time evaluation");
+                
+                match (self.get_compile_time_string(*string), self.get_compile_time_string(*prefix)) {
+                    (Some(text), Some(prefix_str)) => {
+                        let result = if text.starts_with(&prefix_str) { 1 } else { 0 };
+                        log::debug!("StringStartsWith: compile-time result startsWith('{}', '{}') = {}", text, prefix_str, result == 1);
+                        self.ir_id_to_integer.insert(*target, result);
+                        self.constant_values.insert(*target, ConstantValue::Integer(result));
+                    }
+                    _ => {
+                        log::warn!("StringStartsWith: runtime string operations not supported - returning false");
+                        self.ir_id_to_integer.insert(*target, 0);
+                        self.constant_values.insert(*target, ConstantValue::Integer(0));
+                    }
+                }
+            }
+
+            IrInstruction::StringEndsWith {
+                target,
+                string,
+                suffix,
+            } => {
+                // COMPILE-TIME ONLY: String operations only work with compile-time constants
+                log::debug!("StringEndsWith: attempting compile-time evaluation");
+                
+                match (self.get_compile_time_string(*string), self.get_compile_time_string(*suffix)) {
+                    (Some(text), Some(suffix_str)) => {
+                        let result = if text.ends_with(&suffix_str) { 1 } else { 0 };
+                        log::debug!("StringEndsWith: compile-time result endsWith('{}', '{}') = {}", text, suffix_str, result == 1);
+                        self.ir_id_to_integer.insert(*target, result);
+                        self.constant_values.insert(*target, ConstantValue::Integer(result));
+                    }
+                    _ => {
+                        log::warn!("StringEndsWith: runtime string operations not supported - returning false");
+                        self.ir_id_to_integer.insert(*target, 0);
+                        self.constant_values.insert(*target, ConstantValue::Integer(0));
+                    }
+                }
+            }
+
             _ => {
                 // Handle other instruction types that are not yet implemented in the extracted code
                 return Err(CompilerError::CodeGenError(format!(
@@ -630,6 +940,42 @@ impl ZMachineCodeGen {
         }
 
         Ok(())
+    }
+
+    /// Helper method to get compile-time string value for an IR ID
+    /// Returns Some(string) if the IR ID represents a compile-time constant string,
+    /// None if it's a runtime variable or not a string
+    fn get_compile_time_string(&self, ir_id: crate::grue_compiler::ir::IrId) -> Option<String> {
+        // Check if it's a string literal
+        if let Some(string_value) = self.ir_id_to_string.get(&ir_id) {
+            return Some(string_value.clone());
+        }
+        
+        // Check constant values mapping
+        if let Some(constant_value) = self.constant_values.get(&ir_id) {
+            if let ConstantValue::String(s) = constant_value {
+                return Some(s.clone());
+            }
+        }
+        
+        None
+    }
+
+    /// Helper method to get compile-time integer value for an IR ID
+    fn get_compile_time_integer(&self, ir_id: crate::grue_compiler::ir::IrId) -> Option<i16> {
+        // Check if it's an integer constant
+        if let Some(int_value) = self.ir_id_to_integer.get(&ir_id) {
+            return Some(*int_value);
+        }
+        
+        // Check constant values mapping
+        if let Some(constant_value) = self.constant_values.get(&ir_id) {
+            if let ConstantValue::Integer(i) = constant_value {
+                return Some(*i);
+            }
+        }
+        
+        None
     }
 
     /// Emit a Z-Machine instruction with full layout tracking
