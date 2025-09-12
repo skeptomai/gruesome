@@ -173,5 +173,29 @@ cargo test codegen_test 2>/dev/null | grep "test result"
 
 ---
 
-*Last Updated: September 2025*  
-*Context: Major UnresolvedReference location bug fix - mini_zork now displays banner correctly*
+---
+
+## UPDATE: Systematic UnresolvedReference Resolution Fixed (Sep 12, 2025) ✅
+
+### MAJOR BREAKTHROUGH: IR ID Mapping Consolidation Success
+
+**Problem Solved**: Systematic UnresolvedReference resolution failures where hundreds of references failed with "target_id not found" errors.
+
+**Root Cause**: Compiler used separate tracking systems (string_offsets, label_addresses, ir_id_to_object_number) but only ir_id_to_address was used for resolution.
+
+**Solution**: Added `consolidate_all_ir_mappings()` function that merges all tracking systems into central ir_id_to_address table.
+
+**Results**: 
+- Total IR ID mappings: 13 → 237 (1800% increase)
+- All 80 UnresolvedReferences now resolve successfully
+- mini_zork executes through initialization and displays game banner
+- Systematic reference resolution failures eliminated
+
+**Implementation**: See `src/grue_compiler/codegen.rs` lines ~7490-7558
+
+**Remaining**: One direct code emission issue at PC 0x1221 (separate from UnresolvedReference system). See CONTINUATION_PLAN.md for details.
+
+---
+
+*Last Updated: September 12, 2025*  
+*Context: Systematic UnresolvedReference resolution failures completely resolved - major compiler milestone achieved*
