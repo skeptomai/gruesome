@@ -1,0 +1,17 @@
+// Minimal test case to isolate branch instruction issues
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room"
+    }
+}
+
+fn test_branch() {
+    if true {
+        print("Branch taken");
+    }
+}
+
+init {
+    player.location = test_room;
+    test_branch();
+}

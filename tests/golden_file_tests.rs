@@ -28,7 +28,7 @@ const GOLDEN_TESTS: &[GoldenTest] = &[
         target_version: ZMachineVersion::V3,
     },
     GoldenTest {
-        name: "mini_zork_v3", 
+        name: "mini_zork_v3",
         source_file: "examples/mini_zork.grue",
         expected_output_file: Some("tests/golden_files/mini_zork_v3.z3"),
         should_compile: true, // Re-enabled - compilation works correctly
@@ -520,7 +520,6 @@ fn test_interpreter_can_load(story_data: &[u8]) -> Result<(), String> {
 }
 
 #[test]
-#[ignore] // Temporarily disabled due to IR mapping regression - mini_zork triggers complex IR paths
 fn test_mini_zork_compilation_v3() {
     let project_root = get_project_root();
     let source_path = project_root.join("examples/mini_zork.grue");

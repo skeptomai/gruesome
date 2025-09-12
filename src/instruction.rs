@@ -329,6 +329,12 @@ impl Instruction {
             let on_true = (first_byte & 0x80) != 0;
             let offset_val = if (first_byte & 0x40) != 0 {
                 // Short form: 6-bit unsigned offset (bit 6 = 1), range 0-63
+                log::debug!(
+                    "BRANCH_PARSE: 1-byte branch at offset {}: first_byte=0x{:02x}, offset_val={}",
+                    offset - 1,
+                    first_byte,
+                    first_byte & 0x3F
+                );
                 (first_byte & 0x3F) as i16
             } else {
                 // Long form: 14-bit signed offset (bit 6 = 0)
@@ -339,12 +345,15 @@ impl Instruction {
                 offset += 1;
 
                 let val = (((first_byte & 0x3F) as i16) << 8) | (second_byte as i16);
-                if val & 0x2000 != 0 {
+                let final_val = if val & 0x2000 != 0 {
                     // Sign extend
                     val | (0xC000u16 as i16)
                 } else {
                     val
-                }
+                };
+                log::debug!("BRANCH_PARSE: 2-byte branch at offset {}: first_byte=0x{:02x}, second_byte=0x{:02x}, val=0x{:04x}, final_val={}", 
+                          offset - 2, first_byte, second_byte, val, final_val);
+                final_val
             };
 
             Some(BranchInfo {

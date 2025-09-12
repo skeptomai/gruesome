@@ -1,0 +1,11 @@
+// Absolutely minimal test case
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room"
+    }
+}
+
+init {
+    player.location = test_room;
+    print("Hello World");
+}

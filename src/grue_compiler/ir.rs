@@ -1885,6 +1885,13 @@ impl IrGenerator {
                 // Generate condition expression
                 let condition_temp = self.generate_expression(if_stmt.condition, block)?;
 
+                // CRITICAL DEBUG: Track condition IR ID assignment
+                log::debug!(
+                    "🔍 IF_CONDITION_DEBUG: condition_temp={} for if statement at line {}",
+                    condition_temp,
+                    0 // TODO: add line number if available
+                );
+
                 // Create labels for control flow
                 let then_label = self.next_id();
                 let else_label = self.next_id();
@@ -2456,6 +2463,14 @@ impl IrGenerator {
                         property_num: prop_num,
                     });
                 }
+
+                // CRITICAL DEBUG: Track property access result
+                log::debug!(
+                    "🔍 PROPERTY_ACCESS_DEBUG: object_temp={} property='{}' -> temp_id={}",
+                    object_temp,
+                    property,
+                    temp_id
+                );
 
                 Ok(temp_id)
             }

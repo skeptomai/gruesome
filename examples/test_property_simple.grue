@@ -1,0 +1,25 @@
+// Test case focusing on property access
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room"
+        
+        object test_obj {
+            names: ["test", "object"] 
+            desc: "A test object"
+            openable: true
+        }
+    }
+}
+
+fn test_property() {
+    print("Testing property access");
+    // Just access the property without branching
+    let obj = test_obj;
+    let is_openable = obj.openable;
+    print("Property accessed successfully");
+}
+
+init {
+    player.location = test_room;
+    test_property();
+}

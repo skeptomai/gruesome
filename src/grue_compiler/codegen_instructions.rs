@@ -122,37 +122,67 @@ impl ZMachineCodeGen {
                 log::debug!("IR INSTRUCTION: ArraySort creates target IR ID {}", target);
             }
             IrInstruction::StringIndexOf { target, .. } => {
-                log::debug!("IR INSTRUCTION: StringIndexOf creates target IR ID {}", target);
+                log::debug!(
+                    "IR INSTRUCTION: StringIndexOf creates target IR ID {}",
+                    target
+                );
             }
             IrInstruction::StringSlice { target, .. } => {
-                log::debug!("IR INSTRUCTION: StringSlice creates target IR ID {}", target);
+                log::debug!(
+                    "IR INSTRUCTION: StringSlice creates target IR ID {}",
+                    target
+                );
             }
             IrInstruction::StringSubstring { target, .. } => {
-                log::debug!("IR INSTRUCTION: StringSubstring creates target IR ID {}", target);
+                log::debug!(
+                    "IR INSTRUCTION: StringSubstring creates target IR ID {}",
+                    target
+                );
             }
             IrInstruction::StringToLowerCase { target, .. } => {
-                log::debug!("IR INSTRUCTION: StringToLowerCase creates target IR ID {}", target);
+                log::debug!(
+                    "IR INSTRUCTION: StringToLowerCase creates target IR ID {}",
+                    target
+                );
             }
             IrInstruction::StringToUpperCase { target, .. } => {
-                log::debug!("IR INSTRUCTION: StringToUpperCase creates target IR ID {}", target);
+                log::debug!(
+                    "IR INSTRUCTION: StringToUpperCase creates target IR ID {}",
+                    target
+                );
             }
             IrInstruction::StringTrim { target, .. } => {
                 log::debug!("IR INSTRUCTION: StringTrim creates target IR ID {}", target);
             }
             IrInstruction::StringCharAt { target, .. } => {
-                log::debug!("IR INSTRUCTION: StringCharAt creates target IR ID {}", target);
+                log::debug!(
+                    "IR INSTRUCTION: StringCharAt creates target IR ID {}",
+                    target
+                );
             }
             IrInstruction::StringSplit { target, .. } => {
-                log::debug!("IR INSTRUCTION: StringSplit creates target IR ID {}", target);
+                log::debug!(
+                    "IR INSTRUCTION: StringSplit creates target IR ID {}",
+                    target
+                );
             }
             IrInstruction::StringReplace { target, .. } => {
-                log::debug!("IR INSTRUCTION: StringReplace creates target IR ID {}", target);
+                log::debug!(
+                    "IR INSTRUCTION: StringReplace creates target IR ID {}",
+                    target
+                );
             }
             IrInstruction::StringStartsWith { target, .. } => {
-                log::debug!("IR INSTRUCTION: StringStartsWith creates target IR ID {}", target);
+                log::debug!(
+                    "IR INSTRUCTION: StringStartsWith creates target IR ID {}",
+                    target
+                );
             }
             IrInstruction::StringEndsWith { target, .. } => {
-                log::debug!("IR INSTRUCTION: StringEndsWith creates target IR ID {}", target);
+                log::debug!(
+                    "IR INSTRUCTION: StringEndsWith creates target IR ID {}",
+                    target
+                );
             }
             _ => {
                 // Instructions without targets
@@ -279,12 +309,13 @@ impl ZMachineCodeGen {
 
                 // Store to appropriate variable slot
                 if let Some(var_num) = self.ir_id_to_local_var.get(var_id) {
-                    // Store to local variable
-                    self.emit_instruction(0x21, &[value_operand], Some(*var_num), None)?;
-                // store
+                    // Store to local variable using 2OP:13 store instruction
+                    let var_operand = Operand::SmallConstant(*var_num);
+                    self.emit_instruction(0x0D, &[var_operand, value_operand], None, None)?;
                 } else {
-                    // Store to stack as fallback
-                    self.emit_instruction(0x21, &[value_operand], Some(0), None)?; // store to stack (2OP:13)
+                    // Store to stack (variable 0) using 2OP:13 store instruction
+                    let stack_operand = Operand::SmallConstant(0);
+                    self.emit_instruction(0x0D, &[stack_operand, value_operand], None, None)?;
                     self.ir_id_to_stack_var.insert(*var_id, 0);
                 }
                 log::debug!(
@@ -363,7 +394,11 @@ impl ZMachineCodeGen {
                     ))
                 })?;
 
-                log::debug!("Getting property '{}' (#{}) from object", property, prop_num);
+                log::debug!(
+                    "Getting property '{}' (#{}) from object",
+                    property,
+                    prop_num
+                );
 
                 // CRITICAL: Register target for property result
                 self.use_stack_for_result(*target);
@@ -667,21 +702,33 @@ impl ZMachineCodeGen {
             } => {
                 // COMPILE-TIME ONLY: String operations only work with compile-time constants
                 log::debug!("StringIndexOf: attempting compile-time evaluation");
-                
-                match (self.get_compile_time_string(*string), self.get_compile_time_string(*substring)) {
+
+                match (
+                    self.get_compile_time_string(*string),
+                    self.get_compile_time_string(*substring),
+                ) {
                     (Some(haystack), Some(needle)) => {
                         let result = match haystack.find(&needle) {
                             Some(pos) => pos as i16,
                             None => -1,
                         };
-                        log::debug!("StringIndexOf: compile-time result '{}' in '{}' = {}", needle, haystack, result);
+                        log::debug!(
+                            "StringIndexOf: compile-time result '{}' in '{}' = {}",
+                            needle,
+                            haystack,
+                            result
+                        );
                         self.ir_id_to_integer.insert(*target, result);
-                        self.constant_values.insert(*target, ConstantValue::Integer(result));
+                        self.constant_values
+                            .insert(*target, ConstantValue::Integer(result));
                     }
                     _ => {
-                        log::warn!("StringIndexOf: runtime string operations not supported - returning -1");
+                        log::warn!(
+                            "StringIndexOf: runtime string operations not supported - returning -1"
+                        );
                         self.ir_id_to_integer.insert(*target, -1);
-                        self.constant_values.insert(*target, ConstantValue::Integer(-1));
+                        self.constant_values
+                            .insert(*target, ConstantValue::Integer(-1));
                     }
                 }
             }
@@ -693,8 +740,11 @@ impl ZMachineCodeGen {
             } => {
                 // COMPILE-TIME ONLY: String operations only work with compile-time constants
                 log::debug!("StringSlice: attempting compile-time evaluation");
-                
-                match (self.get_compile_time_string(*string), self.get_compile_time_integer(*start)) {
+
+                match (
+                    self.get_compile_time_string(*string),
+                    self.get_compile_time_integer(*start),
+                ) {
                     (Some(text), Some(start_idx)) => {
                         let start_pos = start_idx.max(0) as usize;
                         let result = if start_pos >= text.len() {
@@ -702,14 +752,21 @@ impl ZMachineCodeGen {
                         } else {
                             text[start_pos..].to_string()
                         };
-                        log::debug!("StringSlice: compile-time result slice('{}', {}) = '{}'", text, start_idx, result);
+                        log::debug!(
+                            "StringSlice: compile-time result slice('{}', {}) = '{}'",
+                            text,
+                            start_idx,
+                            result
+                        );
                         self.ir_id_to_string.insert(*target, result.clone());
-                        self.constant_values.insert(*target, ConstantValue::String(result));
+                        self.constant_values
+                            .insert(*target, ConstantValue::String(result));
                     }
                     _ => {
                         log::warn!("StringSlice: runtime string operations not supported - returning empty string");
                         self.ir_id_to_string.insert(*target, String::new());
-                        self.constant_values.insert(*target, ConstantValue::String(String::new()));
+                        self.constant_values
+                            .insert(*target, ConstantValue::String(String::new()));
                     }
                 }
             }
@@ -722,11 +779,11 @@ impl ZMachineCodeGen {
             } => {
                 // COMPILE-TIME ONLY: String operations only work with compile-time constants
                 log::debug!("StringSubstring: attempting compile-time evaluation");
-                
+
                 match (
-                    self.get_compile_time_string(*string), 
+                    self.get_compile_time_string(*string),
                     self.get_compile_time_integer(*start),
-                    self.get_compile_time_integer(*end)
+                    self.get_compile_time_integer(*end),
                 ) {
                     (Some(text), Some(start_idx), Some(end_idx)) => {
                         let start_pos = start_idx.max(0) as usize;
@@ -737,80 +794,97 @@ impl ZMachineCodeGen {
                             let actual_end = end_pos.min(text.len());
                             text[start_pos..actual_end].to_string()
                         };
-                        log::debug!("StringSubstring: compile-time result substring('{}', {}, {}) = '{}'", text, start_idx, end_idx, result);
+                        log::debug!(
+                            "StringSubstring: compile-time result substring('{}', {}, {}) = '{}'",
+                            text,
+                            start_idx,
+                            end_idx,
+                            result
+                        );
                         self.ir_id_to_string.insert(*target, result.clone());
-                        self.constant_values.insert(*target, ConstantValue::String(result));
+                        self.constant_values
+                            .insert(*target, ConstantValue::String(result));
                     }
                     _ => {
                         log::warn!("StringSubstring: runtime string operations not supported - returning empty string");
                         self.ir_id_to_string.insert(*target, String::new());
-                        self.constant_values.insert(*target, ConstantValue::String(String::new()));
+                        self.constant_values
+                            .insert(*target, ConstantValue::String(String::new()));
                     }
                 }
             }
 
-            IrInstruction::StringToLowerCase {
-                target,
-                string,
-            } => {
+            IrInstruction::StringToLowerCase { target, string } => {
                 // COMPILE-TIME ONLY: String operations only work with compile-time constants
                 log::debug!("StringToLowerCase: attempting compile-time evaluation");
-                
+
                 match self.get_compile_time_string(*string) {
                     Some(text) => {
                         let result = text.to_lowercase();
-                        log::debug!("StringToLowerCase: compile-time result toLowerCase('{}') = '{}'", text, result);
+                        log::debug!(
+                            "StringToLowerCase: compile-time result toLowerCase('{}') = '{}'",
+                            text,
+                            result
+                        );
                         self.ir_id_to_string.insert(*target, result.clone());
-                        self.constant_values.insert(*target, ConstantValue::String(result));
+                        self.constant_values
+                            .insert(*target, ConstantValue::String(result));
                     }
                     _ => {
                         log::warn!("StringToLowerCase: runtime string operations not supported - returning empty string");
                         self.ir_id_to_string.insert(*target, String::new());
-                        self.constant_values.insert(*target, ConstantValue::String(String::new()));
+                        self.constant_values
+                            .insert(*target, ConstantValue::String(String::new()));
                     }
                 }
             }
 
-            IrInstruction::StringToUpperCase {
-                target,
-                string,
-            } => {
+            IrInstruction::StringToUpperCase { target, string } => {
                 // COMPILE-TIME ONLY: String operations only work with compile-time constants
                 log::debug!("StringToUpperCase: attempting compile-time evaluation");
-                
+
                 match self.get_compile_time_string(*string) {
                     Some(text) => {
                         let result = text.to_uppercase();
-                        log::debug!("StringToUpperCase: compile-time result toUpperCase('{}') = '{}'", text, result);
+                        log::debug!(
+                            "StringToUpperCase: compile-time result toUpperCase('{}') = '{}'",
+                            text,
+                            result
+                        );
                         self.ir_id_to_string.insert(*target, result.clone());
-                        self.constant_values.insert(*target, ConstantValue::String(result));
+                        self.constant_values
+                            .insert(*target, ConstantValue::String(result));
                     }
                     _ => {
                         log::warn!("StringToUpperCase: runtime string operations not supported - returning empty string");
                         self.ir_id_to_string.insert(*target, String::new());
-                        self.constant_values.insert(*target, ConstantValue::String(String::new()));
+                        self.constant_values
+                            .insert(*target, ConstantValue::String(String::new()));
                     }
                 }
             }
 
-            IrInstruction::StringTrim {
-                target,
-                string,
-            } => {
+            IrInstruction::StringTrim { target, string } => {
                 // COMPILE-TIME ONLY: String operations only work with compile-time constants
                 log::debug!("StringTrim: attempting compile-time evaluation");
-                
+
                 match self.get_compile_time_string(*string) {
                     Some(text) => {
                         let result = text.trim().to_string();
-                        log::debug!("StringTrim: compile-time result trim('{}') = '{}'", text, result);
+                        log::debug!(
+                            "StringTrim: compile-time result trim('{}') = '{}'",
+                            text,
+                            result
+                        );
                         self.ir_id_to_string.insert(*target, result.clone());
-                        self.constant_values.insert(*target, ConstantValue::String(result));
+                        self.constant_values
+                            .insert(*target, ConstantValue::String(result));
                     }
                     _ => {
                         log::warn!("StringTrim: runtime string operations not supported - returning empty string");
                         self.ir_id_to_string.insert(*target, String::new());
-                        self.constant_values.insert(*target, ConstantValue::String(String::new()));
+                        self.constant_values
+                            .insert(*target, ConstantValue::String(String::new()));
                     }
                 }
             }
@@ -822,22 +896,32 @@ impl ZMachineCodeGen {
             } => {
                 // COMPILE-TIME ONLY: String operations only work with compile-time constants
                 log::debug!("StringCharAt: attempting compile-time evaluation");
-                
-                match (self.get_compile_time_string(*string), self.get_compile_time_integer(*index)) {
+
+                match (
+                    self.get_compile_time_string(*string),
+                    self.get_compile_time_integer(*index),
+                ) {
                     (Some(text), Some(idx)) => {
                         let result = if idx >= 0 && (idx as usize) < text.len() {
                             text.chars().nth(idx as usize).unwrap_or('\0').to_string()
                         } else {
                             String::new()
                         };
-                        log::debug!("StringCharAt: compile-time result charAt('{}', {}) = '{}'", text, idx, result);
+                        log::debug!(
+                            "StringCharAt: compile-time result charAt('{}', {}) = '{}'",
+                            text,
+                            idx,
+                            result
+                        );
                         self.ir_id_to_string.insert(*target, result.clone());
-                        self.constant_values.insert(*target, ConstantValue::String(result));
+                        self.constant_values
+                            .insert(*target, ConstantValue::String(result));
                     }
                     _ => {
                         log::warn!("StringCharAt: runtime string operations not supported - returning empty string");
                         self.ir_id_to_string.insert(*target, String::new());
-                        self.constant_values.insert(*target, ConstantValue::String(String::new()));
+                        self.constant_values
+                            .insert(*target, ConstantValue::String(String::new()));
                     }
                 }
             }
@@ -850,10 +934,11 @@ impl ZMachineCodeGen {
                 // For now, implement as a placeholder that returns empty array
                 // TODO: Implement actual string split functionality
                 log::debug!("StringSplit: placeholder implementation returning empty array");
-                
+
                 // This should return an array, but for now treat as an integer (array length 0)
                 self.ir_id_to_integer.insert(*target, 0);
-                self.constant_values.insert(*target, ConstantValue::Integer(0));
+                self.constant_values
+                    .insert(*target, ConstantValue::Integer(0));
             }
 
             IrInstruction::StringReplace {
@@ -864,22 +949,30 @@ impl ZMachineCodeGen {
             } => {
                 // COMPILE-TIME ONLY: String operations only work with compile-time constants
                 log::debug!("StringReplace: attempting compile-time evaluation");
-                
+
                 match (
-                    self.get_compile_time_string(*string), 
+                    self.get_compile_time_string(*string),
                     self.get_compile_time_string(*search),
-                    self.get_compile_time_string(*replacement)
+                    self.get_compile_time_string(*replacement),
                 ) {
                     (Some(text), Some(search_str), Some(replacement_str)) => {
                         let result = text.replace(&search_str, &replacement_str);
-                        log::debug!("StringReplace: compile-time result replace('{}', '{}', '{}') = '{}'", text, search_str, replacement_str, result);
+                        log::debug!(
+                            "StringReplace: compile-time result replace('{}', '{}', '{}') = '{}'",
+                            text,
+                            search_str,
+                            replacement_str,
+                            result
+                        );
                         self.ir_id_to_string.insert(*target, result.clone());
-                        self.constant_values.insert(*target, ConstantValue::String(result));
+                        self.constant_values
+                            .insert(*target, ConstantValue::String(result));
                     }
                     _ => {
                         log::warn!("StringReplace: runtime string operations not supported - returning empty string");
                         self.ir_id_to_string.insert(*target, String::new());
-                        self.constant_values.insert(*target, ConstantValue::String(String::new()));
+                        self.constant_values
+                            .insert(*target, ConstantValue::String(String::new()));
                     }
                 }
             }
@@ -891,18 +984,28 @@ impl ZMachineCodeGen {
             } => {
                 // COMPILE-TIME ONLY: String operations only work with compile-time constants
                 log::debug!("StringStartsWith: attempting compile-time evaluation");
-                
-                match (self.get_compile_time_string(*string), self.get_compile_time_string(*prefix)) {
+
+                match (
+                    self.get_compile_time_string(*string),
+                    self.get_compile_time_string(*prefix),
+                ) {
                     (Some(text), Some(prefix_str)) => {
                         let result = if text.starts_with(&prefix_str) { 1 } else { 0 };
-                        log::debug!("StringStartsWith: compile-time result startsWith('{}', '{}') = {}", text, prefix_str, result == 1);
+                        log::debug!(
+                            "StringStartsWith: compile-time result startsWith('{}', '{}') = {}",
+                            text,
+                            prefix_str,
+                            result == 1
+                        );
                         self.ir_id_to_integer.insert(*target, result);
-                        self.constant_values.insert(*target, ConstantValue::Integer(result));
+                        self.constant_values
+                            .insert(*target, ConstantValue::Integer(result));
                     }
                     _ => {
                         log::warn!("StringStartsWith: runtime string operations not supported - returning false");
                         self.ir_id_to_integer.insert(*target, 0);
-                        self.constant_values.insert(*target, ConstantValue::Integer(0));
+                        self.constant_values
+                            .insert(*target, ConstantValue::Integer(0));
                     }
                 }
             }
@@ -914,18 +1017,28 @@ impl ZMachineCodeGen {
             } => {
                 // COMPILE-TIME ONLY: String operations only work with compile-time constants
                 log::debug!("StringEndsWith: attempting compile-time evaluation");
-                
-                match (self.get_compile_time_string(*string), self.get_compile_time_string(*suffix)) {
+
+                match (
+                    self.get_compile_time_string(*string),
+                    self.get_compile_time_string(*suffix),
+                ) {
                     (Some(text), Some(suffix_str)) => {
                         let result = if text.ends_with(&suffix_str) { 1 } else { 0 };
-                        log::debug!("StringEndsWith: compile-time result endsWith('{}', '{}') = {}", text, suffix_str, result == 1);
+                        log::debug!(
+                            "StringEndsWith: compile-time result endsWith('{}', '{}') = {}",
+                            text,
+                            suffix_str,
+                            result == 1
+                        );
                         self.ir_id_to_integer.insert(*target, result);
-                        self.constant_values.insert(*target, ConstantValue::Integer(result));
+                        self.constant_values
+                            .insert(*target, ConstantValue::Integer(result));
                     }
                     _ => {
                         log::warn!("StringEndsWith: runtime string operations not supported - returning false");
                         self.ir_id_to_integer.insert(*target, 0);
-                        self.constant_values.insert(*target, ConstantValue::Integer(0));
+                        self.constant_values
+                            .insert(*target, ConstantValue::Integer(0));
                     }
                 }
             }
@@ -950,14 +1063,14 @@ impl ZMachineCodeGen {
         if let Some(string_value) = self.ir_id_to_string.get(&ir_id) {
             return Some(string_value.clone());
         }
-        
+
         // Check constant values mapping
         if let Some(constant_value) = self.constant_values.get(&ir_id) {
             if let ConstantValue::String(s) = constant_value {
                 return Some(s.clone());
             }
         }
-        
+
         None
     }
 
@@ -967,14 +1080,14 @@ impl ZMachineCodeGen {
         if let Some(int_value) = self.ir_id_to_integer.get(&ir_id) {
             return Some(*int_value);
         }
-        
+
         // Check constant values mapping
         if let Some(constant_value) = self.constant_values.get(&ir_id) {
             if let ConstantValue::Integer(i) = constant_value {
                 return Some(*i);
             }
         }
-        
+
         None
     }
 
@@ -1101,22 +1214,28 @@ impl ZMachineCodeGen {
             final_runtime_address, self.code_address, opcode, operands, actual_store_var
         );
 
-        // CRITICAL DEBUG: Track je instructions specifically to verify PC corruption mapping
+        // CRITICAL DEBUG: Track jz instructions specifically to find the problematic one
         if opcode == 0x01 {
-            log::debug!(
-                " JE_INSTRUCTION_TRACE: runtime_addr=0x{:04x} store_var={:?} branch_offset={:?}",
+            log::error!(
+                "🔍 JZ_INSTRUCTION_TRACE: runtime_addr=0x{:04x} store_var={:?} branch_offset={:?}",
                 final_runtime_address,
                 actual_store_var,
                 branch_offset
             );
-            log::debug!(
-                " JE_DETAILS: operands={:?} at code_space[0x{:04x}]",
+            log::error!(
+                "🔍 JZ_DETAILS: operands={:?} at code_space[0x{:04x}]",
                 operands,
                 self.code_address
             );
 
-            // CRITICAL: Print stack trace to find the caller
-            log::debug!("    emit_instruction called with opcode 0x01");
+            // Check if this might be the problematic instruction
+            if final_runtime_address >= 0x1220 && final_runtime_address <= 0x1230 {
+                log::error!("🎯 POTENTIAL PROBLEMATIC JZ: This jz instruction will be at the critical location!");
+                log::error!("  Code space address: 0x{:04x}", self.code_address);
+                log::error!("  Final runtime address: 0x{:04x}", final_runtime_address);
+                log::error!("  Branch offset: {:?}", branch_offset);
+                log::error!("  Operands: {:?}", operands);
+            }
         }
 
         // Record instruction start address
@@ -1317,6 +1436,8 @@ impl ZMachineCodeGen {
             (0x06, _) => InstructionForm::Variable, // print_num is always VAR
             (0x07, _) => InstructionForm::Variable, // random is always VAR
             (0x20, _) => InstructionForm::Variable, // call_1n is always VAR
+            (0x8b, _) => InstructionForm::Variable, // quit (0OP:139) - too large for short form
+            (0x8f, _) => InstructionForm::Variable, // call_1n (1OP:143) - too large for short form
             (0xE0, _) => InstructionForm::Variable, // call (VAR:224) is always VAR
 
             // Default operand-count based logic
@@ -1849,6 +1970,15 @@ impl ZMachineCodeGen {
         // - Bit 6: 0 = 2-byte offset, 1 = 1-byte offset
         // - Bits 5-0 or 13-0: signed offset
 
+        log::error!(
+            "🔍 EMIT_BRANCH_OFFSET: offset={} at address=0x{:04x}",
+            offset,
+            self.current_address()
+        );
+        if offset == 45 {
+            log::error!("🎯 FOUND THE 45 OFFSET! About to emit 0x80, 0x2d");
+        }
+
         // For now, assume positive condition and handle offset size
         if (0..=63).contains(&offset) {
             // 1-byte format: bit 7 = condition, bit 6 = 1, bits 5-0 = offset
@@ -1856,8 +1986,13 @@ impl ZMachineCodeGen {
             self.emit_byte(branch_byte)?;
         } else {
             // 2-byte format: bit 7 = condition, bit 6 = 0, bits 13-0 = offset
-            let branch_word = 0x8000 | ((offset as u16) & 0x3FFF);
-            self.emit_word(branch_word)?;
+            // First byte: control bits (7-6) + high 6 bits of offset (5-0)
+            // Second byte: low 8 bits of offset
+            let offset_u16 = offset as u16;
+            let first_byte = 0x80 | ((offset_u16 >> 8) as u8 & 0x3F); // Bit 7: branch on true, high 6 bits
+            let second_byte = (offset_u16 & 0xFF) as u8; // Low 8 bits
+            self.emit_byte(first_byte)?;
+            self.emit_byte(second_byte)?;
         }
 
         Ok(())

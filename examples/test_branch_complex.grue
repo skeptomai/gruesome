@@ -1,0 +1,28 @@
+// Test case with more complex branching like mini_zork
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room"
+        
+        object test_obj {
+            names: ["test", "object"]
+            desc: "A test object"
+            openable: true
+        }
+    }
+}
+
+fn test_complex_branch() {
+    let obj = test_obj;
+    if obj.openable {
+        if !obj.open {
+            print("Object is closed but openable");
+        } else {
+            print("Object is open");
+        }
+    }
+}
+
+init {
+    player.location = test_room;
+    test_complex_branch();
+}
