@@ -28,6 +28,7 @@
 3. **IR ID Mapping Fixed** - Array instruction target registration
 4. **PC Calculation Fixed** - Unified calculation logic for all scenarios
 5. **UnresolvedReference Location Fixed** - Systematic reference resolution bug
+6. **Print Function Text Formatting Fixed** - Game banner displays with proper newlines
 
 ### 📋 CRITICAL ARCHITECTURE DOCUMENTATION:
 - Created `COMPILER_ARCHITECTURE.md` documenting systematic bug patterns
@@ -35,7 +36,24 @@
 - **Branch Encoding Pattern**: Manual byte-by-byte encoding, not `emit_word()`
 - **Reference Type Pattern**: Jump vs Branch disambiguation rules
 
-**Current Status**: mini_zork compiler now generates functionally correct Z-Machine bytecode that executes ~90% successfully. Game banner displays properly, major systematic reference resolution working.
+**Current Status**: mini_zork compiler now generates functionally correct Z-Machine bytecode that executes ~90% successfully. Game banner displays properly with correct newlines, major systematic reference resolution working.
+
+### 🚨 CRITICAL: DO NOT REGRESS PRINT FORMATTING
+
+**Working Text Formatting**: The game banner now displays correctly with proper line breaks:
+```
+DORK I: The Last Great Empire
+Copyright (c) 2025 Grue Games. All rights reserved.
+ZORK is a registered trademark of Infocom, Inc.
+DORK is .... not
+Revision 1 / Serial number 8675309
+```
+
+**Implementation**: `print()` function in `codegen_builtins.rs` modifies string content to add newlines
+- **Proven Approach**: From working commit c121c35
+- **Method**: `format!("{}\n", string_value)` for non-empty strings, `"\n"` for empty
+- **DO NOT** switch back to separate `new_line` instructions
+- **DO NOT** remove the newline insertion logic
 
 ## Auto-Commit Instructions ("Make it so!")
 

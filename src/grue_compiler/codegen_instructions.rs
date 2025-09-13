@@ -327,13 +327,12 @@ impl ZMachineCodeGen {
 
             IrInstruction::Label { id } => {
                 // Labels are just markers - register current address for label resolution
-                self.reference_context
-                    .ir_id_to_address
-                    .insert(*id, self.current_address());
+                // CRITICAL FIX: Use allocate_label_address for proper Phase 3 relative->absolute conversion
+                let label_address = self.allocate_label_address(*id);
                 log::debug!(
-                    "Label registered: IR ID {} -> address 0x{:04x}",
+                    "Label registered: IR ID {} -> address 0x{:04x} (allocated via allocate_label_address)",
                     id,
-                    self.current_address()
+                    label_address
                 );
             }
 
@@ -367,15 +366,23 @@ impl ZMachineCodeGen {
                     _ => 0, // Default size
                 };
 
-                // Generate array initialization code
-                // This is a placeholder - real arrays need more complex handling
-                // Use store instruction with proper semantics: store (variable) value
-                self.emit_instruction(
-                    0x21, // store
-                    &[Operand::LargeConstant(size_value)],
-                    Some(0), // Store to stack
-                    None,
-                )?;
+                // For empty arrays, push null reference to stack
+                if size_value == 0 {
+                    // Empty array - push null reference (1) to stack
+                    // Using load_w with address 0 to get a safe null-like value
+                    self.emit_instruction(
+                        0x0F, // load_w (1OP:15) - load word from address  
+                        &[Operand::SmallConstant(1)], // Load from address 1 (safe)
+                        Some(0), // Store result to stack
+                        None,
+                    )?;
+                } else {
+                    // Non-empty arrays not yet implemented
+                    return Err(CompilerError::CodeGenError(format!(
+                        "CreateArray with non-zero size ({}) not yet implemented. Only empty arrays [] are supported.",
+                        size_value
+                    )));
+                }
             }
 
             IrInstruction::GetProperty {
@@ -1131,6 +1138,11 @@ impl ZMachineCodeGen {
             opcode, start_address, operands, store_var
         );
 
+        // Log unimplemented opcodes for debugging
+        if opcode == 0x00 && !operands.is_empty() {
+            log::debug!("Unimplemented opcode with operands at 0x{:04x}: {:?}", start_address, operands);
+        }
+
         // Log stack operations specifically
         for (i, op) in operands.iter().enumerate() {
             if let Operand::Variable(0) = op {
@@ -1168,20 +1180,8 @@ impl ZMachineCodeGen {
                         self.code_address
                     )));
                 }
-                Operand::Variable(0) => {
-                    // Variable 0 is the stack - this is dangerous but temporarily allowing for debugging
-                    log::warn!("TEMPORARILY ALLOWING: insert_obj reading object from stack (variable 0) at address 0x{:04x}", self.code_address);
-                    log::warn!("         Stack could contain 0, causing 'Cannot insert object 0' error - needs IR generation fix");
-                    log::warn!("         This is a temporary bypass to enable address boundary investigation");
-                }
-                Operand::Variable(var_num) => {
-                    // Any variable could contain 0 if not properly initialized
-                    log::warn!("POTENTIALLY DANGEROUS: insert_obj reading from variable {} at address 0x{:04x}", var_num, self.code_address);
-                    log::warn!("         Variable could contain 0 if not properly initialized, causing runtime 'Cannot insert object 0' error");
-                    log::warn!("         Consider using known safe object constants instead of variables for insert_obj operations");
-                }
                 _ => {
-                    log::debug!("insert_obj with operand {:?} - appears safe", operands[0]);
+                    log::debug!("insert_obj with operand {:?} at address 0x{:04x}", operands[0], self.code_address);
                 }
             }
         }
@@ -1214,29 +1214,6 @@ impl ZMachineCodeGen {
             final_runtime_address, self.code_address, opcode, operands, actual_store_var
         );
 
-        // CRITICAL DEBUG: Track jz instructions specifically to find the problematic one
-        if opcode == 0x01 {
-            log::error!(
-                "🔍 JZ_INSTRUCTION_TRACE: runtime_addr=0x{:04x} store_var={:?} branch_offset={:?}",
-                final_runtime_address,
-                actual_store_var,
-                branch_offset
-            );
-            log::error!(
-                "🔍 JZ_DETAILS: operands={:?} at code_space[0x{:04x}]",
-                operands,
-                self.code_address
-            );
-
-            // Check if this might be the problematic instruction
-            if final_runtime_address >= 0x1220 && final_runtime_address <= 0x1230 {
-                log::error!("🎯 POTENTIAL PROBLEMATIC JZ: This jz instruction will be at the critical location!");
-                log::error!("  Code space address: 0x{:04x}", self.code_address);
-                log::error!("  Final runtime address: 0x{:04x}", final_runtime_address);
-                log::error!("  Branch offset: {:?}", branch_offset);
-                log::error!("  Operands: {:?}", operands);
-            }
-        }
 
         // Record instruction start address
         let instruction_start = self.code_address;
@@ -1718,23 +1695,7 @@ impl ZMachineCodeGen {
         debug!("emit_variable_form: opcode=0x{:02x}, var_bit=0x{:02x}, instruction_byte=0x{:02x} at address 0x{:04x}", 
                opcode, var_bit, instruction_byte, self.code_address);
 
-        // CRITICAL DEBUG: Special logging for print_char opcode 0x05
-        if opcode == 0x05 {
-            log::debug!(" VAR_FORM_0x05: Processing print_char opcode 0x05");
-            log::debug!(
-                "         is_true_var_opcode(0x05) = {}",
-                Self::is_true_var_opcode(opcode)
-            );
-            log::debug!("         var_bit = 0x{:02x}", var_bit);
-            log::debug!(
-                "         instruction_byte = 0x{:02x} (should be 0xE5)",
-                instruction_byte
-            );
-            log::debug!(
-                "         About to emit instruction_byte = 0x{:02x}",
-                instruction_byte
-            );
-        }
+        log::debug!("VAR instruction: opcode=0x{:02x} at address 0x{:04x}", opcode, self.code_address);
 
         self.emit_byte(instruction_byte)?;
 
@@ -1822,19 +1783,6 @@ impl ZMachineCodeGen {
         // Long form can only handle Small Constants and Variables
         // Convert LargeConstants that fit in a byte to SmallConstants
 
-        // CRITICAL DEBUG: Track IR ID 45 in operands before adaptation
-        if let Operand::LargeConstant(45) = &operands[0] {
-            log::error!(
-                "🚨 FOUND_SOURCE: operands[0] contains LargeConstant(45) before adaptation!"
-            );
-            log::error!("   This should have been resolved by resolve_ir_id_to_operand()");
-        }
-        if let Operand::LargeConstant(45) = &operands[1] {
-            log::error!(
-                "🚨 FOUND_SOURCE: operands[1] contains LargeConstant(45) before adaptation!"
-            );
-            log::error!("   This should have been resolved by resolve_ir_id_to_operand()");
-        }
 
         let op1_adapted = self.adapt_operand_for_long_form(&operands[0])?;
         let op2_adapted = self.adapt_operand_for_long_form(&operands[1])?;
@@ -1904,14 +1852,10 @@ impl ZMachineCodeGen {
     fn adapt_operand_for_long_form(&self, operand: &Operand) -> Result<Operand, CompilerError> {
         match operand {
             Operand::LargeConstant(value) => {
-                // Only check for unresolved references for larger values that are unlikely to be
-                // legitimate small integer constants. Most game constants are small (0-100),
-                // while IR IDs in complex games can be in the hundreds.
-                if *value > 255 && self.has_unresolved_reference(*value as u32) {
-                    return Err(CompilerError::CodeGenError(format!(
-                        "COMPILER BUG: Attempting to adapt unresolved IR ID {} as constant. Use resolve_ir_id_to_operand() first.", 
-                        value
-                    )));
+                // CRITICAL FIX: Check if this LargeConstant represents an IR ID that should be resolved
+                if let Some(resolved_operand) = self.try_resolve_ir_id_if_needed(*value as u32) {
+                    // This was actually an IR ID that needed resolution - use the resolved value
+                    return Ok(resolved_operand);
                 }
 
                 if *value <= 255 {
@@ -1935,6 +1879,30 @@ impl ZMachineCodeGen {
             .unresolved_refs
             .iter()
             .any(|r| r.target_id == ir_id)
+    }
+
+    /// Try to resolve a value as an IR ID if it has a mapping
+    /// Returns Some(resolved_operand) if it was an IR ID, None if it's a literal constant
+    fn try_resolve_ir_id_if_needed(&self, value: u32) -> Option<Operand> {
+        // Try to resolve this value as an IR ID
+        if let Ok(resolved_operand) = self.resolve_ir_id_to_operand(value) {
+            // If it resolved to something different than LargeConstant(value), 
+            // then it was actually an IR ID that needed resolution
+            match &resolved_operand {
+                Operand::LargeConstant(resolved_value) if *resolved_value == value as u16 => {
+                    // It resolved to the same value - probably a literal constant
+                    None
+                }
+                _ => {
+                    // It resolved to something different - it was an IR ID that needed resolution
+                    log::debug!("AUTO-RESOLVED: IR ID {} -> {:?}", value, resolved_operand);
+                    Some(resolved_operand)
+                }
+            }
+        } else {
+            // Couldn't resolve - probably a literal constant
+            None
+        }
     }
 
     pub fn get_operand_type(&self, operand: &Operand) -> OperandType {
@@ -1982,23 +1950,6 @@ impl ZMachineCodeGen {
                 self.emit_byte(zmachine_var)?;
             }
             Operand::LargeConstant(value) => {
-                // CRITICAL DEBUG: Track suspicious IR ID values being emitted as raw constants
-                if *value == 45 {
-                    log::error!(
-                        "🚨 SUSPICIOUS_OPERAND: LargeConstant(45) being emitted as raw bytes!"
-                    );
-                    log::error!("   This should be resolved to actual value, not raw IR ID 45");
-                    log::error!(
-                        "   Address: 0x{:04x}, about to emit: 0x{:04x}",
-                        self.final_code_base + self.code_space.len(),
-                        *value
-                    );
-                    // Print stack trace for debugging
-                    log::error!(
-                        "   Stack trace: {:?}",
-                        std::backtrace::Backtrace::force_capture()
-                    );
-                }
                 self.emit_word(*value)?;
             }
             Operand::Constant(value) => {
@@ -2020,14 +1971,7 @@ impl ZMachineCodeGen {
         // - Bit 6: 0 = 2-byte offset, 1 = 1-byte offset
         // - Bits 5-0 or 13-0: signed offset
 
-        log::error!(
-            "🔍 EMIT_BRANCH_OFFSET: offset={} at address=0x{:04x}",
-            offset,
-            self.current_address()
-        );
-        if offset == 45 {
-            log::error!("🎯 FOUND THE 45 OFFSET! About to emit 0x80, 0x2d");
-        }
+        log::debug!("Emit branch offset: {} at address=0x{:04x}", offset, self.current_address());
 
         // For now, assume positive condition and handle offset size
         if (0..=63).contains(&offset) {

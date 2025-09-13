@@ -37,12 +37,13 @@ impl ZMachineCodeGen {
 
         // Check if this is a string literal
         if let Some(string_value) = self.ir_id_to_string.get(&arg_id).cloned() {
-            // Add newline to the string content for proper line breaks (proven working approach from c121c35)
+            // Add newline to the string content for proper line breaks
             let print_string = if string_value.is_empty() {
                 "\n".to_string() // Empty print() becomes just a newline
             } else {
-                format!("{}\n", string_value) // Add newline to non-empty strings
+                format!("{}\n", string_value) // Add newline to string content
             };
+            
 
             // OPTION B FIX: Use the IR ID directly instead of creating new string ID
             // This maintains coordination between IR translation and builtin systems
@@ -77,6 +78,7 @@ impl ZMachineCodeGen {
                 None,                                          // No store
                 None,                                          // No branch
             )?;
+
 
             // Add unresolved reference for the string address using layout-tracked operand location
             let operand_address = layout
@@ -115,6 +117,7 @@ impl ZMachineCodeGen {
                         None,       // No store
                         None,       // No branch
                     )?;
+
                 }
                 Err(_) => {
                     // Cannot resolve to simple operand - this is a complex expression
@@ -126,6 +129,7 @@ impl ZMachineCodeGen {
 
                     let placeholder_string = format!("?Complex expression IR ID {}?", arg_id);
                     let string_id = self.find_or_create_string_id(&placeholder_string)?;
+                    log::error!("🔧 COMPLEX_EXPRESSION_PATH: IR ID {} -> placeholder string '{}'", arg_id, placeholder_string);
 
                     let layout = self.emit_instruction(
                         0x8D,                                          // print_paddr opcode - 1OP:141
@@ -134,13 +138,20 @@ impl ZMachineCodeGen {
                         None,                                          // No branch
                     )?;
 
-                    // Add new_line instruction to complete Grue print() semantics
-                    self.emit_instruction(
-                        0x8B, // new_line opcode - 0OP:187
-                        &[],  // new_line takes no operands
-                        None, // No store variable
-                        None, // No branch
-                    )?;
+                    // Add unresolved reference for the string address
+                    let operand_address = layout
+                        .operand_location
+                        .expect("print instruction must have operand");
+                    let reference = UnresolvedReference {
+                        reference_type: LegacyReferenceType::StringRef,
+                        location: operand_address,
+                        target_id: string_id,
+                        is_packed_address: true,
+                        offset_size: 2,
+                        location_space: MemorySpace::Code,
+                    };
+                    self.reference_context.unresolved_refs.push(reference);
+
 
                     let operand_address = layout
                         .operand_location
