@@ -454,18 +454,20 @@ mod codegen_tests {
     fn test_unresolved_reference_tracking() {
         let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
 
-        // Add unresolved references
-        let result1 = codegen.add_unresolved_reference(
+        // Add unresolved references using the new timing-safe function
+        let result1 = codegen.add_unresolved_reference_at_location(
             LegacyReferenceType::Jump,
             100,
             false,
             crate::grue_compiler::codegen::MemorySpace::Code,
+            0x100, // Test location offset
         );
-        let result2 = codegen.add_unresolved_reference(
+        let result2 = codegen.add_unresolved_reference_at_location(
             LegacyReferenceType::FunctionCall,
             200,
             true,
             crate::grue_compiler::codegen::MemorySpace::Code,
+            0x200, // Test location offset
         );
 
         assert!(result1.is_ok());

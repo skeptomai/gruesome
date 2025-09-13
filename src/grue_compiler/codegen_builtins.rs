@@ -37,9 +37,12 @@ impl ZMachineCodeGen {
 
         // Check if this is a string literal
         if let Some(string_value) = self.ir_id_to_string.get(&arg_id).cloned() {
-            // Per Z-Machine spec: print() does NOT add automatic newlines
-            // Only print_ret() should add newlines automatically
-            let print_string = string_value;
+            // Add newline to the string content for proper line breaks (proven working approach from c121c35)
+            let print_string = if string_value.is_empty() {
+                "\n".to_string() // Empty print() becomes just a newline
+            } else {
+                format!("{}\n", string_value) // Add newline to non-empty strings
+            };
 
             // OPTION B FIX: Use the IR ID directly instead of creating new string ID
             // This maintains coordination between IR translation and builtin systems
@@ -129,6 +132,14 @@ impl ZMachineCodeGen {
                         &[Operand::LargeConstant(placeholder_word())], // Placeholder address
                         None,                                          // No store
                         None,                                          // No branch
+                    )?;
+
+                    // Add new_line instruction to complete Grue print() semantics
+                    self.emit_instruction(
+                        0x8B, // new_line opcode - 0OP:187
+                        &[],  // new_line takes no operands
+                        None, // No store variable
+                        None, // No branch
                     )?;
 
                     let operand_address = layout

@@ -1667,6 +1667,39 @@ impl ZMachineCodeGen {
         let initial_code_size = self.code_space.len();
 
         // Phase 2.1: Generate ALL function definitions
+        // PHASE 2A: Pre-register all function addresses to solve forward reference issues
+        log::info!(" PRE-REGISTERING: All function addresses for forward reference resolution");
+        let mut simulated_address = self.code_space.len();
+        for (i, function) in ir.functions.iter().enumerate() {
+            // Simulate alignment padding
+            if matches!(self.version, ZMachineVersion::V4 | ZMachineVersion::V5) {
+                while simulated_address % 4 != 0 {
+                    simulated_address += 1; // Account for padding bytes
+                }
+            }
+
+            // Pre-register this function's address
+            self.function_addresses
+                .insert(function.id, simulated_address);
+            self.reference_context
+                .ir_id_to_address
+                .insert(function.id, simulated_address);
+
+            log::debug!(
+                " PRE-REGISTERED: Function '{}' (IR ID {}) at projected address 0x{:04x}",
+                function.name,
+                function.id,
+                simulated_address
+            );
+
+            // Estimate function size for next function's address calculation
+            // Header: 1 byte (local count) + 2*locals (default values) + body instructions
+            let estimated_size =
+                1 + (function.local_vars.len() * 2) + (function.body.instructions.len() * 4);
+            simulated_address += estimated_size;
+        }
+
+        // PHASE 2B: Now generate actual function code with all addresses pre-registered
         log::info!(" TRANSLATING: All function definitions");
         for (i, function) in ir.functions.iter().enumerate() {
             let function_start_size = self.code_space.len();
@@ -1723,6 +1756,11 @@ impl ZMachineCodeGen {
 
             // CRITICAL: Set up parameter mappings BEFORE translating instructions
             self.setup_function_parameter_mappings(function);
+
+            // CRITICAL: Register function IR ID to address mapping for proper resolution BEFORE instruction generation
+            self.reference_context
+                .ir_id_to_address
+                .insert(function.id, actual_func_addr);
 
             // CRITICAL: Generate Z-Machine routine header (local count + default values)
             log::debug!(
@@ -2410,6 +2448,12 @@ impl ZMachineCodeGen {
                 12 => {
                     log::debug!("HOTFIX: Registering function 12 as player_can_see");
                     self.register_builtin_function(12, "player_can_see".to_string());
+                    // Retry the builtin call now that it's registered
+                    return self.translate_call(target, function, args);
+                }
+                13 => {
+                    log::debug!("HOTFIX: Registering function 13 as list_contents");
+                    self.register_builtin_function(13, "list_contents".to_string());
                     // Retry the builtin call now that it's registered
                     return self.translate_call(target, function, args);
                 }
@@ -5126,13 +5170,14 @@ impl ZMachineCodeGen {
                 operands.push(Operand::LargeConstant(literal_value));
             } else if self.ir_id_to_string.contains_key(&arg_id) {
                 // String literal: Create placeholder + unresolved reference
+                // CRITICAL FIX: Record exact location BEFORE emitting placeholder
                 let code_space_offset = self.code_space.len() + 1 + operands.len() * 2;
-                //  FIXED: Convert code space offset to final memory address
-                let operand_location = self.final_code_base + code_space_offset;
                 operands.push(Operand::LargeConstant(placeholder_word()));
+
+                // Create reference with exact calculated location
                 let reference = UnresolvedReference {
                     reference_type: LegacyReferenceType::StringRef,
-                    location: operand_location,
+                    location: self.final_code_base + code_space_offset, // Use exact offset
                     target_id: arg_id,
                     is_packed_address: true,
                     offset_size: 2,
@@ -5142,7 +5187,7 @@ impl ZMachineCodeGen {
                 log::debug!(
                     "Added string argument reference: IR ID {} at location 0x{:04x}",
                     arg_id,
-                    operand_location
+                    self.final_code_base + code_space_offset
                 );
             } else {
                 // Other types: Use existing operand resolution
@@ -5157,13 +5202,13 @@ impl ZMachineCodeGen {
                             err
                         );
                         // Create placeholder and unresolved reference as fallback
+                        // CRITICAL FIX: Record exact location BEFORE emitting placeholder
                         let code_space_offset = self.code_space.len() + 1 + operands.len() * 2;
-                        //  FIXED: Convert code space offset to final memory address
-                        let operand_location = self.final_code_base + code_space_offset;
                         operands.push(Operand::LargeConstant(placeholder_word()));
+
                         let reference = UnresolvedReference {
                             reference_type: LegacyReferenceType::StringRef, // Assume strings for print calls
-                            location: operand_location,
+                            location: self.final_code_base + code_space_offset, // Use exact offset
                             target_id: arg_id,
                             is_packed_address: true,
                             offset_size: 2,
@@ -5173,7 +5218,7 @@ impl ZMachineCodeGen {
                         log::warn!(
                             "Added fallback string reference: IR ID {} at location 0x{:04x}",
                             arg_id,
-                            operand_location
+                            self.final_code_base + code_space_offset
                         );
                     }
                 }
@@ -5315,6 +5360,16 @@ impl ZMachineCodeGen {
         // CRITICAL FIX: Check if this IR ID represents an object reference
         // For global objects like 'player', return the global variable that contains the object number
         // This follows proper Z-Machine architecture where objects are referenced via global variables
+
+        // Check if this IR ID maps to a function address
+        if let Some(&function_addr) = self.reference_context.ir_id_to_address.get(&ir_id) {
+            log::debug!(
+                " resolve_ir_id_to_operand: IR ID {} resolved to LargeConstant({}) [Function address]",
+                ir_id,
+                function_addr
+            );
+            return Ok(Operand::LargeConstant(function_addr as u16));
+        }
 
         // CRITICAL: Unknown IR ID - this indicates a missing instruction target registration
         // For now, temporarily restore fallback but with comprehensive logging
@@ -7350,30 +7405,32 @@ impl ZMachineCodeGen {
     /// the unified allocator in write_new_strings_immediate()
     ///
     /// Add an unresolved reference to be patched later
-    pub fn add_unresolved_reference(
+    /// CRITICAL: Pass location_offset calculated BEFORE emitting placeholder
+    pub fn add_unresolved_reference_at_location(
         &mut self,
         reference_type: LegacyReferenceType,
         target_id: IrId,
         is_packed: bool,
         location_space: MemorySpace,
+        location_offset: usize,
     ) -> Result<(), CompilerError> {
         log::debug!(
-            "add_unresolved_reference: {:?} -> IR ID {} at address 0x{:04x}",
+            "add_unresolved_reference_at_location: {:?} -> IR ID {} at exact offset 0x{:04x}",
             reference_type,
             target_id,
-            self.code_address
+            location_offset
         );
 
         let reference = UnresolvedReference {
             reference_type,
             location: match location_space {
                 MemorySpace::Code => {
-                    //  FIXED: Convert code space offset to final memory address
-                    self.final_code_base + self.code_space.len()
+                    // Use the exact offset provided by caller (calculated BEFORE placeholder emission)
+                    self.final_code_base + location_offset
                 },
                 MemorySpace::CodeSpace => {
-                    // Same as Code
-                    self.final_code_base + self.code_space.len()
+                    // Use the exact offset provided by caller
+                    self.final_code_base + location_offset
                 },
                 MemorySpace::Header => panic!("COMPILER BUG: Header space references not implemented - cannot use add_unresolved_reference() for Header space"),
                 MemorySpace::Globals => panic!("COMPILER BUG: Globals space references not implemented - cannot use add_unresolved_reference() for Globals space"),
@@ -7389,6 +7446,27 @@ impl ZMachineCodeGen {
         };
         self.reference_context.unresolved_refs.push(reference);
         Ok(())
+    }
+
+    /// Legacy function for backward compatibility - DEPRECATED due to systematic timing bugs
+    /// Use add_unresolved_reference_at_location() instead with location calculated BEFORE placeholder emission
+    #[deprecated = "Use add_unresolved_reference_at_location() to avoid systematic location timing bugs"]
+    pub fn add_unresolved_reference(
+        &mut self,
+        reference_type: LegacyReferenceType,
+        target_id: IrId,
+        is_packed: bool,
+        location_space: MemorySpace,
+    ) -> Result<(), CompilerError> {
+        // Calculate location using current code space length (BUGGY - for backward compatibility only)
+        let location_offset = self.code_space.len();
+        self.add_unresolved_reference_at_location(
+            reference_type,
+            target_id,
+            is_packed,
+            location_space,
+            location_offset,
+        )
     }
 
     /// Record a relative offset within code_space during code generation
@@ -7562,14 +7640,29 @@ impl ZMachineCodeGen {
         );
 
         // Track consolidation progress
-        let mut functions_mapped = 0;
+        let functions_mapped = 0;
         let mut strings_mapped = 0;
         let mut labels_mapped = 0;
 
-        // 1. Function IR IDs - Currently handled via record_final_address() calls
-        // Functions get mapped during code generation through direct record_final_address() calls
-        // TODO: If needed, add explicit function IR ID tracking here
-        log::debug!("🔧 CONSOLIDATING: Function IR IDs (handled via record_final_address calls)");
+        // 1. Function IR IDs - Ensure all functions are mapped
+        log::debug!("🔧 CONSOLIDATING: Function IR IDs");
+        let functions_mapped = self.function_addresses.len();
+        for (&function_id, &address) in &self.function_addresses {
+            if !self
+                .reference_context
+                .ir_id_to_address
+                .contains_key(&function_id)
+            {
+                self.reference_context
+                    .ir_id_to_address
+                    .insert(function_id, address);
+                log::debug!(
+                    "📝 MAPPED: Function IR ID {} -> address 0x{:04x}",
+                    function_id,
+                    address
+                );
+            }
+        }
 
         // 2. Consolidate string IR IDs from string_offsets into central mapping
         log::debug!("🔧 CONSOLIDATING: String IR IDs from string_offsets...");
@@ -7637,6 +7730,18 @@ impl ZMachineCodeGen {
     // Utility methods for code emission
 
     pub fn emit_byte(&mut self, byte: u8) -> Result<(), CompilerError> {
+        // CRITICAL DEBUG: Track IR ID 45 emission as byte!
+        if byte == 0x2d {
+            let prev_byte = self.code_space.last().copied().unwrap_or(0xFF);
+            log::error!("🚨 FOUND_BYTE_45: emit_byte(0x2d) called!");
+            log::error!("   Previous byte: 0x{:02x}", prev_byte);
+            log::error!("   Code address: 0x{:04x}", self.code_address);
+            log::error!(
+                "   Stack trace: {:?}",
+                std::backtrace::Backtrace::force_capture()
+            );
+        }
+
         // COMPREHENSIVE BYTE TRACKING: Log every byte with final runtime address
         let runtime_addr = if self.final_data.is_empty() {
             // Code generation phase - calculate future runtime address
@@ -7841,6 +7946,19 @@ impl ZMachineCodeGen {
         let low_byte = word as u8;
 
         debug!("Emit word: word=0x{:04x} -> high_byte=0x{:02x}, low_byte=0x{:02x} at code_address 0x{:04x}", word, high_byte, low_byte, self.code_address);
+
+        // CRITICAL DEBUG: Track IR ID 45 emission!
+        if word == 45 {
+            log::error!("🚨 FOUND_THE_BUG: emit_word(45) called!");
+            log::error!(
+                "   Will emit bytes: 0x00, 0x2d at address 0x{:04x}",
+                self.code_address
+            );
+            log::error!(
+                "   Stack trace: {:?}",
+                std::backtrace::Backtrace::force_capture()
+            );
+        }
 
         //  CRITICAL: Track exactly where null words come from
         if word == 0x0000 {

@@ -1821,6 +1821,21 @@ impl ZMachineCodeGen {
 
         // Long form can only handle Small Constants and Variables
         // Convert LargeConstants that fit in a byte to SmallConstants
+
+        // CRITICAL DEBUG: Track IR ID 45 in operands before adaptation
+        if let Operand::LargeConstant(45) = &operands[0] {
+            log::error!(
+                "🚨 FOUND_SOURCE: operands[0] contains LargeConstant(45) before adaptation!"
+            );
+            log::error!("   This should have been resolved by resolve_ir_id_to_operand()");
+        }
+        if let Operand::LargeConstant(45) = &operands[1] {
+            log::error!(
+                "🚨 FOUND_SOURCE: operands[1] contains LargeConstant(45) before adaptation!"
+            );
+            log::error!("   This should have been resolved by resolve_ir_id_to_operand()");
+        }
+
         let op1_adapted = self.adapt_operand_for_long_form(&operands[0])?;
         let op2_adapted = self.adapt_operand_for_long_form(&operands[1])?;
 
@@ -1889,8 +1904,18 @@ impl ZMachineCodeGen {
     fn adapt_operand_for_long_form(&self, operand: &Operand) -> Result<Operand, CompilerError> {
         match operand {
             Operand::LargeConstant(value) => {
+                // Only check for unresolved references for larger values that are unlikely to be
+                // legitimate small integer constants. Most game constants are small (0-100),
+                // while IR IDs in complex games can be in the hundreds.
+                if *value > 255 && self.has_unresolved_reference(*value as u32) {
+                    return Err(CompilerError::CodeGenError(format!(
+                        "COMPILER BUG: Attempting to adapt unresolved IR ID {} as constant. Use resolve_ir_id_to_operand() first.", 
+                        value
+                    )));
+                }
+
                 if *value <= 255 {
-                    // Convert to SmallConstant if it fits
+                    // Convert to SmallConstant if it fits (only for resolved constants)
                     Ok(Operand::SmallConstant(*value as u8))
                 } else {
                     // Large values require Variable form instruction
@@ -1902,6 +1927,14 @@ impl ZMachineCodeGen {
             }
             _ => Ok(operand.clone()),
         }
+    }
+
+    /// Check if an IR ID has unresolved references pending
+    fn has_unresolved_reference(&self, ir_id: u32) -> bool {
+        self.reference_context
+            .unresolved_refs
+            .iter()
+            .any(|r| r.target_id == ir_id)
     }
 
     pub fn get_operand_type(&self, operand: &Operand) -> OperandType {
@@ -1949,6 +1982,23 @@ impl ZMachineCodeGen {
                 self.emit_byte(zmachine_var)?;
             }
             Operand::LargeConstant(value) => {
+                // CRITICAL DEBUG: Track suspicious IR ID values being emitted as raw constants
+                if *value == 45 {
+                    log::error!(
+                        "🚨 SUSPICIOUS_OPERAND: LargeConstant(45) being emitted as raw bytes!"
+                    );
+                    log::error!("   This should be resolved to actual value, not raw IR ID 45");
+                    log::error!(
+                        "   Address: 0x{:04x}, about to emit: 0x{:04x}",
+                        self.final_code_base + self.code_space.len(),
+                        *value
+                    );
+                    // Print stack trace for debugging
+                    log::error!(
+                        "   Stack trace: {:?}",
+                        std::backtrace::Backtrace::force_capture()
+                    );
+                }
                 self.emit_word(*value)?;
             }
             Operand::Constant(value) => {
