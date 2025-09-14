@@ -1,0 +1,23 @@
+// Minimal test case to isolate property access 0x00 byte issue
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room"
+
+        object test_obj {
+            names: ["test", "object"]
+            openable: true
+        }
+    }
+}
+
+fn test_property() {
+    print("Testing property access");
+    let obj = test_obj;
+    let is_openable = obj.openable;
+    print("Property accessed successfully");
+}
+
+init {
+    player.location = test_room;
+    test_property();
+}

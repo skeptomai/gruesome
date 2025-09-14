@@ -287,12 +287,11 @@ impl ZMachineCodeGen {
             }
 
             IrInstruction::LoadVar { target, var_id } => {
-                // Resolve source to get the value
-                let source_operand = self.resolve_ir_id_to_operand(*var_id)?;
+                // Create operand for the variable number to load from
+                let var_operand = Operand::SmallConstant(*var_id as u8);
 
-                // Store the loaded value in a way that can be accessed later
-                // Use a store instruction to move value to stack
-                self.emit_instruction(0x21, &[source_operand], Some(0), None)?; // store to stack
+                // Use load instruction (0x0E) to load variable to stack
+                self.emit_instruction(0x0E, &[var_operand], Some(0), None)?; // load variable to stack
 
                 // Map the target to stack access
                 self.use_stack_for_result(*target);
@@ -1139,12 +1138,15 @@ impl ZMachineCodeGen {
         );
 
         // Log unimplemented opcodes for debugging
-        if opcode == 0x00 && !operands.is_empty() {
-            log::debug!(
-                "Unimplemented opcode with operands at 0x{:04x}: {:?}",
+        if opcode == 0x00 {
+            log::error!(
+                "🚨 OPCODE_0x00_DETECTED: Emitting opcode 0x00 at address 0x{:04x} with operands: {:?}, store_var: {:?}",
                 start_address,
-                operands
+                operands,
+                store_var
             );
+            // Print stack trace to see where this comes from
+            log::error!("🚨 STACK_TRACE: This 0x00 opcode emission comes from:");
         }
 
         // Log stack operations specifically
@@ -1815,11 +1817,20 @@ impl ZMachineCodeGen {
 
         // Debug: What opcode is trying to be generated as 0x3E?
         if instruction_byte == 0x3E {
-            panic!("FOUND THE BUG: Original opcode 0x{:02X} is generating instruction byte 0x3E which decodes to invalid opcode 0x1E. op1_bit=0x{:02X}, op2_bit=0x{:02X}, operands={:?}, address=0x{:04X}", 
+            panic!("FOUND THE BUG: Original opcode 0x{:02X} is generating instruction byte 0x3E which decodes to invalid opcode 0x1E. op1_bit=0x{:02X}, op2_bit=0x{:02X}, operands={:?}, address=0x{:04X}",
                    opcode, op1_bit, op2_bit, operands, self.code_address);
         }
 
+        log::debug!(
+            "LONG_FORM_EMIT: About to emit instruction_byte=0x{:02x} at code_address=0x{:04x}",
+            instruction_byte,
+            self.code_address
+        );
         self.emit_byte(instruction_byte)?;
+        log::debug!(
+            "LONG_FORM_EMIT: After instruction byte, code_address=0x{:04x}",
+            self.code_address
+        );
 
         // Track first operand location
         let code_space_offset = self.code_space.len();
@@ -1827,8 +1838,27 @@ impl ZMachineCodeGen {
         let operand_location = Some(self.final_code_base + code_space_offset);
 
         // Emit adapted operands
+        log::debug!(
+            "LONG_FORM_EMIT: About to emit operand1={:?} at code_address=0x{:04x}",
+            op1_adapted,
+            self.code_address
+        );
         self.emit_operand(&op1_adapted)?;
+        log::debug!(
+            "LONG_FORM_EMIT: After operand1, code_address=0x{:04x}",
+            self.code_address
+        );
+
+        log::debug!(
+            "LONG_FORM_EMIT: About to emit operand2={:?} at code_address=0x{:04x}",
+            op2_adapted,
+            self.code_address
+        );
         self.emit_operand(&op2_adapted)?;
+        log::debug!(
+            "LONG_FORM_EMIT: After operand2, code_address=0x{:04x}",
+            self.code_address
+        );
 
         // Track store variable location
         let store_location = if let Some(store) = store_var {

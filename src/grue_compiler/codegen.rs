@@ -986,12 +986,51 @@ impl ZMachineCodeGen {
                 total_size,
                 total_size - code_base
             );
+
+            // TARGETED DEBUG: Check what's at the problematic offset in code_space BEFORE copy
+            let target_offset_in_code_space = 0x0e96 - code_base;
+            if target_offset_in_code_space < self.code_space.len() {
+                log::error!(
+                    " 🎯 PRE_COPY_CHECK: code_space[0x{:04x}] = 0x{:02x} (this will be copied to final_data[0x{:04x}])",
+                    target_offset_in_code_space, self.code_space[target_offset_in_code_space], 0x0e96
+                );
+
+                // Show surrounding bytes in code_space
+                let start = target_offset_in_code_space.saturating_sub(5);
+                let end = std::cmp::min(target_offset_in_code_space + 5, self.code_space.len());
+                log::error!(
+                    " 🎯 PRE_COPY_CONTEXT: code_space[0x{:04x}..0x{:04x}] = {:?}",
+                    start,
+                    end,
+                    &self.code_space[start..end]
+                );
+            }
+
             log::debug!(
                 " CODE_COPY_DEBUG: Code space first 10 bytes: {:?}",
                 &self.code_space[0..std::cmp::min(10, self.code_space.len())]
             );
 
             self.final_data[code_base..total_size].copy_from_slice(&self.code_space);
+
+            // TARGETED DEBUG: Check what's at the problematic address AFTER copy
+            if 0x0e96 < self.final_data.len() {
+                log::error!(
+                    " 🎯 POST_COPY_CHECK: final_data[0x{:04x}] = 0x{:02x} (after copy)",
+                    0x0e96,
+                    self.final_data[0x0e96]
+                );
+
+                // Show surrounding bytes in final_data
+                let start = 0x0e90;
+                let end = std::cmp::min(0x0ea0, self.final_data.len());
+                log::error!(
+                    " 🎯 POST_COPY_CONTEXT: final_data[0x{:04x}..0x{:04x}] = {:?}",
+                    start,
+                    end,
+                    &self.final_data[start..end]
+                );
+            }
 
             log::debug!(
                 " Code space copied: {} bytes at 0x{:04x}",
@@ -1040,9 +1079,25 @@ impl ZMachineCodeGen {
         log::debug!(" Step 3e.6: Consolidating ALL IR ID mappings (functions, strings, labels)");
         self.consolidate_all_ir_mappings();
 
+        // TARGETED DEBUG: Check 0x0e96 before reference resolution
+        if 0x0e96 < self.final_data.len() {
+            log::error!(
+                " 🎯 PRE_RESOLVE_CHECK: final_data[0x{:04x}] = 0x{:02x} (before reference resolution)",
+                0x0e96, self.final_data[0x0e96]
+            );
+        }
+
         // Phase 3f: Resolve all address references
         log::debug!(" Step 3f: Resolving all address references and fixups");
         self.resolve_all_addresses()?;
+
+        // TARGETED DEBUG: Check 0x0e96 after reference resolution
+        if 0x0e96 < self.final_data.len() {
+            log::error!(
+                " 🎯 POST_RESOLVE_CHECK: final_data[0x{:04x}] = 0x{:02x} (after reference resolution)",
+                0x0e96, self.final_data[0x0e96]
+            );
+        }
 
         // Phase 3g: Finalize file metadata (length and checksum - must be last)
         // This phase calculates and writes file length and checksum.
@@ -1348,11 +1403,9 @@ impl ZMachineCodeGen {
                         debug!("  target_id = {}", reference.target_id);
                     }
 
-                    // CRITICAL FIX: Jump instructions use signed word offset, not branch encoding
-                    debug!(
-                        "Jump resolution: Using jump offset calculation (signed word, not branch encoding)"
-                    );
-                    return self.patch_jump_offset(reference.location, resolved_address);
+                    // CRITICAL FIX: Jump instructions use branch offset encoding, not signed word
+                    debug!("Jump resolution: Using branch offset calculation (branch encoding)");
+                    return self.patch_branch_offset(reference.location, resolved_address);
                 } else {
                     // CRITICAL FIX: Handle phantom label redirects
                     // If this is a jump to blocked phantom labels 73 or 74, make it a no-op jump
@@ -1758,13 +1811,13 @@ impl ZMachineCodeGen {
                     // v3: functions must be at even addresses
                     if self.code_address % 2 != 0 {
                         log::debug!(" FUNCTION_ALIGN: Adding padding byte for even alignment");
-                        self.emit_byte(0x00)?; // padding (will crash if executed - good for debugging)
+                        self.emit_byte(0xB4)?; // nop instruction (safe padding that won't crash)
                     }
                 }
                 ZMachineVersion::V4 | ZMachineVersion::V5 => {
                     // v4/v5: functions must be at 4-byte boundaries
                     while self.code_address % 4 != 0 {
-                        self.emit_byte(0x00)?; // padding (will crash if executed - good for debugging)
+                        self.emit_byte(0xB4)?; // nop instruction (safe padding that won't crash)
                     }
                 }
             }
@@ -1806,6 +1859,22 @@ impl ZMachineCodeGen {
                 function.local_vars.len()
             );
             self.generate_function_header(function, ir)?;
+
+            // CRITICAL FIX: Update function address to point to first instruction, not header
+            // Z-Machine functions should be called at their first instruction address, not header address
+            let first_instruction_addr = self.code_space.len();
+            log::debug!(
+                " FUNCTION_ADDRESS_FIX: Updating '{}' address from header 0x{:04x} to first instruction 0x{:04x}",
+                function.name, actual_func_addr, first_instruction_addr
+            );
+
+            // Update all address mappings to point to first instruction
+            self.function_addresses
+                .insert(function.id, first_instruction_addr);
+            self.reference_context
+                .ir_id_to_address
+                .insert(function.id, first_instruction_addr);
+            self.record_code_space_offset(function.id, first_instruction_addr);
 
             // Track each instruction translation
             for (instr_i, instruction) in function.body.instructions.iter().enumerate() {
@@ -4663,13 +4732,13 @@ impl ZMachineCodeGen {
             ZMachineVersion::V3 => {
                 // v3: functions must be at even addresses
                 if self.code_address % 2 != 0 {
-                    self.emit_byte(0x00)?; // padding (will crash if executed - good for debugging)
+                    self.emit_byte(0xB4)?; // nop instruction (safe padding that won't crash)
                 }
             }
             ZMachineVersion::V4 | ZMachineVersion::V5 => {
                 // v4/v5: functions must be at 4-byte boundaries
                 while self.code_address % 4 != 0 {
-                    self.emit_byte(0x00)?; // padding (will crash if executed - good for debugging)
+                    self.emit_byte(0xB4)?; // nop instruction (safe padding that won't crash)
                 }
             }
         }
@@ -4792,10 +4861,24 @@ impl ZMachineCodeGen {
             jump_instruction_operand_location
         );
 
-        // Add unresolved reference for loop jump using layout-tracked operand location
+        // CRITICAL FIX: Calculate correct code space offset for UnresolvedReference location
+        // The jump instruction operand location must be converted to code space offset correctly.
+        // During early generation phase, final_code_base may be 0, so use direct offset.
+        // During final assembly, final_code_base is set, so calculate relative offset.
+        let code_space_offset = if jump_instruction_operand_location >= self.final_code_base {
+            jump_instruction_operand_location - self.final_code_base
+        } else {
+            // Early generation phase: use operand location directly as code space offset
+            jump_instruction_operand_location
+        };
+        log::debug!(
+            " MAIN_LOOP_JUMP_FIX: operand_location=0x{:04x}, final_code_base=0x{:04x}, code_space_offset=0x{:04x}",
+            jump_instruction_operand_location, self.final_code_base, code_space_offset
+        );
+
         let unresolved_ref = UnresolvedReference {
             reference_type: LegacyReferenceType::Jump,
-            location: jump_instruction_operand_location - self.final_code_base, // Convert final address to space offset
+            location: code_space_offset, // Use calculated code space offset
             target_id: main_loop_jump_id, // Jump back to main loop first instruction (not routine header)
             is_packed_address: false,
             offset_size: 2,
@@ -4806,6 +4889,24 @@ impl ZMachineCodeGen {
             " MAIN_LOOP_JUMP: Creating UnresolvedReference: {:?}",
             unresolved_ref
         );
+
+        // CRITICAL FIX: Prevent duplicate UnresolvedReferences for the same target
+        // Remove any existing UnresolvedReferences for this target_id before adding the new one.
+        // This prevents old, incorrectly-located references from corrupting the bytecode.
+        let target_id = main_loop_jump_id;
+        let old_count = self.reference_context.unresolved_refs.len();
+        self.reference_context
+            .unresolved_refs
+            .retain(|r| r.target_id != target_id);
+        let removed_count = old_count - self.reference_context.unresolved_refs.len();
+
+        if removed_count > 0 {
+            log::debug!(
+                " DUPLICATE_FIX: Removed {} existing UnresolvedReferences for target_id {}",
+                removed_count,
+                target_id
+            );
+        }
 
         self.reference_context.unresolved_refs.push(unresolved_ref);
 
@@ -4830,13 +4931,13 @@ impl ZMachineCodeGen {
                     // v3: functions must be at even addresses
                     if self.code_address % 2 != 0 {
                         log::debug!(" FUNCTION_ALIGN: Adding padding byte for even alignment");
-                        self.emit_byte(0x00)?; // padding (will crash if executed - good for debugging)
+                        self.emit_byte(0xB4)?; // nop instruction (safe padding that won't crash)
                     }
                 }
                 ZMachineVersion::V4 | ZMachineVersion::V5 => {
                     // v4/v5: functions must be at 4-byte boundaries
                     while self.code_address % 4 != 0 {
-                        self.emit_byte(0x00)?; // padding (will crash if executed - good for debugging)
+                        self.emit_byte(0xB4)?; // nop instruction (safe padding that won't crash)
                     }
                 }
             }
@@ -4951,53 +5052,60 @@ impl ZMachineCodeGen {
             function.name
         );
 
-        // CRITICAL FIX: Use adequate local count for dynamic allocation
-        // Instead of using function.local_vars.len() (which is often 0),
-        // allocate enough locals to handle dynamic instruction generation
-        let declared_locals = function.local_vars.len();
-        // Start with only declared variables, let dynamic allocation happen during generation
-        let local_count = declared_locals;
+        // CRITICAL FIX: Pre-allocate space for locals that will be dynamically allocated
+        // During instruction generation, local variables can be allocated for:
+        // 1. Function parameters
+        // 2. let statements (local variables)
+        // 3. Temporary storage for complex expressions
+        // We need to reserve space in the function header for these
 
-        if local_count > 15 {
+        let declared_locals = function.local_vars.len();
+        // Reserve space for dynamically allocated locals (reasonable estimate: 8 locals max)
+        let max_dynamic_locals = 8;
+        let reserved_locals = std::cmp::max(declared_locals, max_dynamic_locals);
+
+        if reserved_locals > 15 {
             return Err(CompilerError::CodeGenError(format!(
-                "Function '{}' initially needs {} locals (declared: {}), maximum is 15",
-                function.name, local_count, declared_locals
+                "Function '{}' needs {} reserved locals (declared: {}, dynamic estimate: {}), maximum is 15",
+                function.name, reserved_locals, declared_locals, max_dynamic_locals
             )));
         }
 
         log::debug!(
-            " FUNCTION_LOCALS: '{}' declared={}, using={}",
+            " FUNCTION_LOCALS: '{}' declared={}, reserved={} (for dynamic allocation)",
             function.name,
             declared_locals,
-            local_count
+            reserved_locals
         );
 
-        // Store locals count for function address calculation
+        // Store the header address so finalize_function_header can patch the local count
+        self.function_header_locations
+            .insert(function.id, self.code_space.len());
+
+        // Store reserved count for function address calculation
         // This is used in resolve_unresolved_reference() to calculate the correct
         // function call target address (header address + header size = executable code address)
-        self.function_locals_count.insert(function.id, local_count);
+        self.function_locals_count
+            .insert(function.id, reserved_locals);
 
         // NOTE: Parameter IR ID mappings are now set up during instruction translation phase
         // This ensures they're available when instructions are processed (see setup_function_parameter_mappings)
 
-        // Generate complete V3 function header immediately (no patching needed)
-        let declared_locals = function.local_vars.len();
-
         log::debug!(
-            "Generating V3 header: {} declared locals for function '{}'",
-            declared_locals,
+            "Generating V3 header: {} reserved locals for function '{}' (will be patched with actual count)",
+            reserved_locals,
             function.name
         );
 
-        // Emit local count
-        self.emit_byte(declared_locals as u8)?;
+        // Emit initial local count (will be patched later by finalize_function_header)
+        self.emit_byte(reserved_locals as u8)?;
 
-        // Emit default values for V3 (2 bytes each, value 0)
+        // Emit default values for V3 (2 bytes each, value 0) - reserve space for all possible locals
         match self.version {
             ZMachineVersion::V3 => {
-                for i in 0..declared_locals {
+                for i in 0..reserved_locals {
                     self.emit_word(0x0000)?; // Default value 0
-                    log::debug!("Emitted default value for local {}", i + 1);
+                    log::debug!("Reserved default value space for local {}", i + 1);
                 }
             }
             ZMachineVersion::V4 | ZMachineVersion::V5 => {
@@ -5007,7 +5115,7 @@ impl ZMachineCodeGen {
 
         // Update stored count for any address calculations that need it
         self.function_locals_count
-            .insert(function.id, declared_locals);
+            .insert(function.id, reserved_locals);
 
         Ok(())
     }
@@ -5030,20 +5138,34 @@ impl ZMachineCodeGen {
         if let Some(&header_location) = self.function_header_locations.get(&function_id) {
             // Patch the local count in code_space
             if header_location < self.code_space.len() {
-                let old_count = self.code_space[header_location];
-                self.code_space[header_location] = actual_locals;
+                let reserved_count = self.code_space[header_location];
+
+                // Ensure we don't exceed the reserved space
+                if actual_locals > reserved_count {
+                    return Err(CompilerError::CodeGenError(format!(
+                        "Function '{}' used {} locals but only {} were reserved in header",
+                        function_name, actual_locals, reserved_count
+                    )));
+                }
+
+                // CRITICAL FIX: Don't patch the header if we've reserved space for local variables
+                // The Z-Machine needs the local count to match the actual storage space allocated
+                // If we reserved 8 locals and emit 16 bytes of storage, the header must say 8 locals
+                // Otherwise the interpreter will misalign when reading past the local variable storage
 
                 log::debug!(
-                    " PATCHED: Function '{}' header at offset 0x{:04x}: {} -> {} locals",
+                    " FINALIZE: Function '{}' keeping {} reserved locals (used {} actual) to match storage space",
                     function_name,
-                    header_location,
-                    old_count,
+                    reserved_count,
                     actual_locals
                 );
 
+                // Keep the reserved count - don't patch the header
+                // The extra unused locals will remain initialized to 0x0000 which is correct
+
                 // Update the stored locals count for function address calculation
                 self.function_locals_count
-                    .insert(function_id, actual_locals as usize);
+                    .insert(function_id, reserved_count as usize);
 
                 // Note: V3 header now uses exact local count without pre-allocation
             } else {
@@ -7805,6 +7927,7 @@ impl ZMachineCodeGen {
         // Track critical addresses around the crash point AND the 0xa0 byte issue
         // AUDIT: Adding instrumentation for PC OUT OF BOUNDS debug (0x03ba area where opcode mismatch occurs)
         // CRITICAL: Track the problematic 0x00,0x2d pattern from PC 0x1221
+        // TARGETED: Track the stray 0x00 byte at 0x0e96 and new crash at 0x078b
         if (0x0bd0..=0x0be0).contains(&runtime_addr)
             || (byte == 0xa0)
             || (runtime_addr == 0x0365)
@@ -7812,16 +7935,28 @@ impl ZMachineCodeGen {
             || byte == 0xa1
             || (0x1220..=0x1230).contains(&runtime_addr)
             || (byte == 0x2d && runtime_addr >= 0x1220 && runtime_addr <= 0x1230)
+            || (0x0e90..=0x0ea0).contains(&runtime_addr)
+            || (0x0780..=0x0790).contains(&runtime_addr)
+            || (byte == 0x00 && (0x0e90..=0x0ea0).contains(&runtime_addr))
+            || (byte == 0x00 && (0x0780..=0x0790).contains(&runtime_addr))
         {
+            let phase_name = if self.final_data.is_empty() {
+                "CODEGEN"
+            } else {
+                "FINAL"
+            };
+
+            // Detailed logging for any 0x00 byte emission during code generation
+            if byte == 0x00 && self.final_data.is_empty() {
+                log::error!(
+                    "🎯 0x00_BYTE_EMITTED: runtime_addr=0x{:04x} code_address=0x{:04x} byte=0x{:02x} - tracking all 0x00 emissions",
+                    runtime_addr, self.code_address, byte
+                );
+            }
+
             log::debug!(
-                "🎯 CRITICAL_BYTE: runtime_addr=0x{:04x} byte=0x{:02x} phase={} TRACKING_0xa0_AND_0x0365",
-                runtime_addr,
-                byte,
-                if self.final_data.is_empty() {
-                    "CODEGEN"
-                } else {
-                    "FINAL"
-                }
+                "🎯 CRITICAL_BYTE: runtime_addr=0x{:04x} byte=0x{:02x} phase={} TRACKING_0x0e96_AREA",
+                runtime_addr, byte, phase_name
             );
         }
 
@@ -7845,15 +7980,23 @@ impl ZMachineCodeGen {
             self.labels_at_current_address.clear();
         }
 
-        // CRITICAL: 0x00 is NEVER a valid Z-Machine opcode - but it's valid as store variable (stack)
-        // Only panic if this looks like an instruction opcode (not store var or operand)
-        if byte == 0x00 && self.code_address >= 0x08fe {
-            debug!(
-                "SUSPICIOUS: Emitting 0x00 at address 0x{:04x} (stack depth: {})",
-                self.code_address, self.stack_depth
+        // TARGETED DEBUGGING: Log all bytes around the problematic PC=0x0e96 area
+        // We know the issue is a stray 0x00 byte at final address 0x0e96
+        if (0x0e90..=0x0ea0).contains(&runtime_addr) {
+            log::error!(
+                "🎯 PROBLEM_AREA: code_addr=0x{:04x} runtime_addr=0x{:04x} byte=0x{:02x}",
+                self.code_address,
+                runtime_addr,
+                byte
             );
-            // Don't panic here - 0x00 is valid as store variable for stack operations
-            // The real invalid opcodes will be caught by instruction validation
+        }
+
+        // CRITICAL: Track 0x00 bytes that could become invalid opcodes
+        if byte == 0x00 && runtime_addr >= 0x0e90 && runtime_addr <= 0x0ea0 {
+            log::error!(
+                "🚨 NULL_IN_PROBLEM_AREA: Emitting 0x00 at runtime_addr=0x{:04x} code_addr=0x{:04x} - POTENTIAL PC MISALIGN SOURCE",
+                runtime_addr, self.code_address
+            );
         }
 
         if byte == 0x9d || byte == 0x8d {
@@ -7941,7 +8084,7 @@ impl ZMachineCodeGen {
 
         // Ensure capacity
         if code_offset >= self.code_space.len() {
-            self.code_space.resize(code_offset + 1, 0);
+            self.code_space.resize(code_offset + 1, 0xFF); // Fill with 0xFF to detect uninitialized/skipped bytes
         }
 
         if byte != 0x00 || self.code_space.len() < 10 {

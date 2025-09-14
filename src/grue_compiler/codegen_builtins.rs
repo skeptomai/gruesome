@@ -39,19 +39,20 @@ impl ZMachineCodeGen {
         if let Some(string_value) = self.ir_id_to_string.get(&arg_id).cloned() {
             let print_string = string_value;
 
+            // Add the string to the string table so it can be resolved
+            let string_id = self.find_or_create_string_id(&print_string)?;
+
             // Encode the string for Z-Machine format
             let encoded = self.encode_string(&print_string)?;
-            self.encoded_strings.insert(arg_id, encoded);
-
-            let string_id = arg_id;
+            self.encoded_strings.insert(string_id, encoded);
 
             // Generate print_paddr instruction with unresolved string reference
             // Note: The unresolved reference will be added by the operand emission system
             let layout = self.emit_instruction(
-                0x8D,                              // print_paddr opcode (1OP:141)
-                &[Operand::LargeConstant(0x0000)], // Placeholder string address
-                None,                              // No store
-                None,                              // No branch
+                0x8D,                                          // print_paddr opcode (1OP:141)
+                &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
+                None,                                          // No store
+                None,                                          // No branch
             )?;
 
             // Add unresolved reference for the string address using layout-tracked operand location
