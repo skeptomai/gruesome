@@ -2114,9 +2114,27 @@ impl IrGenerator {
                 Ok(temp_id)
             }
             Expr::Identifier(name) => {
-                // Check if this is an object identifier first
-                if let Some(&object_number) = self.object_numbers.get(&name) {
-                    // This is an object - load its number as a constant
+                // CRITICAL ARCHITECTURAL FIX (Sep 13, 2025): Handle player object specially
+                // 
+                // PROBLEM: Player object references were being generated as LoadImmediate(1) → LargeConstant(1)
+                // causing stack underflow in get_prop instructions that expected Variable(16).
+                //
+                // SOLUTION: Player object must be read from Global G00 (Variable 16) per Z-Machine spec.
+                // This ensures proper distinction between:
+                // - Literal integer 1 → LargeConstant(1) 
+                // - Player object reference → Variable(16) (reads from Global G00)
+                //
+                // This fixes the architectural issue where player.location calls generated wrong operand types.
+                if name == "player" {
+                    log::debug!("🏃 IR_FIX: Generating LoadVar for player object (will read from Global G00)");
+                    let temp_id = self.next_id();
+                    block.add_instruction(IrInstruction::LoadVar {
+                        target: temp_id,
+                        var_id: 16, // Global G00 = Variable 16 = player object number
+                    });
+                    Ok(temp_id)
+                } else if let Some(&object_number) = self.object_numbers.get(&name) {
+                    // This is a regular object (not player) - load its number as a constant
                     let temp_id = self.next_id();
                     block.add_instruction(IrInstruction::LoadImmediate {
                         target: temp_id,
@@ -2459,7 +2477,12 @@ impl IrGenerator {
                     });
                 }
 
-                log::debug!("Property access: object={} property='{}' -> temp={}", object_temp, property, temp_id);
+                log::debug!(
+                    "Property access: object={} property='{}' -> temp={}",
+                    object_temp,
+                    property,
+                    temp_id
+                );
 
                 Ok(temp_id)
             }

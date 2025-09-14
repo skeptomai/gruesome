@@ -156,3 +156,47 @@ This represents a major milestone - we have a functional Z-Machine compiler that
 **Documentation**: ✅ This status report created
 
 The compiler has achieved a major functional milestone with working program execution!
+
+---
+
+## 🚨 CRITICAL ADDENDUM (September 13, 2025) - Print Newline Architecture
+
+**RECURRING REGRESSION**: Print statement newline formatting has been broken and fixed multiple times.
+
+### ✅ CORRECT Print Implementation Pattern:
+
+**Z-Machine Architecture Requirement**: Each `print()` call needs TWO instructions:
+1. `print_paddr` (0x8D) - prints the string content  
+2. `new_line` (0xBB) - adds line break after the text
+
+**Working Implementation in codegen_builtins.rs**:
+```rust
+// Generate print_paddr instruction  
+self.emit_instruction(0x8D, &[Operand::LargeConstant(0x0000)], None, None)?;
+// Add unresolved string reference
+self.reference_context.unresolved_refs.push(reference);
+// Emit new_line instruction for line breaks
+self.emit_instruction(0xBB, &[], None, None)?;
+```
+
+### ❌ BROKEN Patterns (These cause text to run together):
+1. Using opcode 0x0D (get_next_prop) instead of 0x8D (print_paddr)
+2. Embedding `\n` in string content without new_line instructions
+3. Using print_paddr alone without new_line instructions
+
+**Test Command**: Always verify banner formatting after print changes:
+```bash
+cargo run --bin grue-compiler -- examples/mini_zork.grue --output /tmp/test.z3
+./target/debug/gruesome /tmp/test.z3
+```
+
+**Expected Output** (properly separated lines):
+```
+DORK I: The Last Great Empire
+Copyright (c) 2025 Grue Games. All rights reserved.
+ZORK is a registered trademark of Infocom, Inc.  
+DORK is .... not
+Revision 1 / Serial number 8675309
+```
+
+This pattern is also documented in `COMPILER_ARCHITECTURE.md` and `CLAUDE.md` to prevent future regressions.

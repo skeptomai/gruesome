@@ -603,6 +603,8 @@ impl ZMachineCodeGen {
         // Phase 2d: Generate global variables to globals_space
         log::debug!("🌐 Step 2d: Generating global variables space");
         self.generate_globals_space(ir)?;
+        // CRITICAL FIX: Actually initialize global variable values (especially G00 = player object #1)
+        self.generate_global_variables(ir)?;
         log::info!(
             " Step 2d complete: Globals space populated ({} bytes)",
             self.globals_space.len()
@@ -1104,7 +1106,7 @@ impl ZMachineCodeGen {
                 adjusted_reference.target_id,
                 adjusted_reference.reference_type
             );
-            
+
             // DEBUG: Track specific addresses that are problematic - EXACT CRASH LOCATION
             if adjusted_reference.location >= 0x1220 && adjusted_reference.location <= 0x1230 {
                 log::error!(
@@ -1115,13 +1117,31 @@ impl ZMachineCodeGen {
                 log::error!("  Type: {:?}", adjusted_reference.reference_type);
                 log::error!("  Is packed: {}", adjusted_reference.is_packed_address);
                 log::error!("  Offset size: {:?}", adjusted_reference.offset_size);
-                
+
                 // CHECK: Is this target ID in our mapping table?
-                if let Some(&mapped_address) = self.reference_context.ir_id_to_address.get(&adjusted_reference.target_id) {
-                    log::error!("  ✅ Target ID {} FOUND in ir_id_to_address -> 0x{:04x}", adjusted_reference.target_id, mapped_address);
+                if let Some(&mapped_address) = self
+                    .reference_context
+                    .ir_id_to_address
+                    .get(&adjusted_reference.target_id)
+                {
+                    log::error!(
+                        "  ✅ Target ID {} FOUND in ir_id_to_address -> 0x{:04x}",
+                        adjusted_reference.target_id,
+                        mapped_address
+                    );
                 } else {
-                    log::error!("  ❌ Target ID {} NOT FOUND in ir_id_to_address table!", adjusted_reference.target_id);
-                    log::error!("  Available IDs: {:?}", self.reference_context.ir_id_to_address.keys().take(20).collect::<Vec<_>>());
+                    log::error!(
+                        "  ❌ Target ID {} NOT FOUND in ir_id_to_address table!",
+                        adjusted_reference.target_id
+                    );
+                    log::error!(
+                        "  Available IDs: {:?}",
+                        self.reference_context
+                            .ir_id_to_address
+                            .keys()
+                            .take(20)
+                            .collect::<Vec<_>>()
+                    );
                 }
             }
 
@@ -1409,9 +1429,16 @@ impl ZMachineCodeGen {
                         "🚨 MISSING_BRANCH_TARGET: Branch target ID {} not found in ir_id_to_address table!",
                         reference.target_id
                     );
-                    log::error!("   Available IDs: {:?}", 
-                        self.reference_context.ir_id_to_address.keys().collect::<Vec<_>>());
-                    log::error!("   This will cause 0x00 0x00 placeholder leading to crash at 0xffffff2f");
+                    log::error!(
+                        "   Available IDs: {:?}",
+                        self.reference_context
+                            .ir_id_to_address
+                            .keys()
+                            .collect::<Vec<_>>()
+                    );
+                    log::error!(
+                        "   This will cause 0x00 0x00 placeholder leading to crash at 0xffffff2f"
+                    );
                     return Err(CompilerError::CodeGenError(format!(
                         "Branch target ID {} not found in ir_id_to_address",
                         reference.target_id
@@ -4541,12 +4568,10 @@ impl ZMachineCodeGen {
 
         // Set specific globals from IR
         // CRITICAL: Initialize global variable G00 with player object number
-        let g00_addr = globals_start; // Global G00 at offset 0
-        self.write_word_at(g00_addr, 1)?; // Player is object #1
-        debug!(
-            "Initialized global G00 at 0x{:04x} with player object number: 1",
-            g00_addr
-        );
+        // G00 is at offset 0 in globals_space (first 2 bytes: high byte, low byte)
+        self.write_to_globals_space(0, 0)?; // High byte of player object #1 = 0
+        self.write_to_globals_space(1, 1)?; // Low byte of player object #1 = 1
+        log::debug!("Initialized global G00 (Variable 16) with player object number: 1");
 
         for _global in &ir.globals {
             // TODO: Map additional IR globals to Z-Machine global variables
@@ -5160,7 +5185,10 @@ impl ZMachineCodeGen {
                 //
                 // Comparisons should be handled by conditional branching logic directly.
 
-                log::debug!("generate_binary_op: Comparison {:?} delegated to branching logic", op);
+                log::debug!(
+                    "generate_binary_op: Comparison {:?} delegated to branching logic",
+                    op
+                );
                 // Don't generate any bytecode for comparison operations - let the direct branch handle it
                 return Ok(());
             }
@@ -5369,8 +5397,19 @@ impl ZMachineCodeGen {
             )));
         }
 
-        // Check if this IR ID represents an object reference
+        // CRITICAL FIX: Check for player object first - player must use Variable(16)
+        // The player object is stored in global variable G00 (Variable 16) and must be accessed via variable read
+        // This follows proper Z-Machine architecture where the player object is referenced via global variables
         if let Some(&object_number) = self.ir_id_to_object_number.get(&ir_id) {
+            if object_number == 1 {
+                // Player is object #1
+                log::debug!(
+                    " resolve_ir_id_to_operand: IR ID {} is player object - resolved to Variable(16) [Player global]",
+                    ir_id
+                );
+                return Ok(Operand::Variable(16)); // Global G00 = Variable(16)
+            }
+
             log::debug!(
                 " resolve_ir_id_to_operand: IR ID {} resolved to LargeConstant({}) [Object reference]",
                 ir_id, object_number
@@ -5393,10 +5432,6 @@ impl ZMachineCodeGen {
 
             return Ok(Operand::LargeConstant(object_number));
         }
-
-        // CRITICAL FIX: Check if this IR ID represents an object reference
-        // For global objects like 'player', return the global variable that contains the object number
-        // This follows proper Z-Machine architecture where objects are referenced via global variables
 
         // Check if this IR ID maps to a function address
         if let Some(&function_addr) = self.reference_context.ir_id_to_address.get(&ir_id) {
@@ -5436,7 +5471,7 @@ impl ZMachineCodeGen {
             log::debug!("Using IR ID {} as literal constant", ir_id);
             return Ok(Operand::LargeConstant(ir_id as u16));
         }
-        
+
         // CRASH CLEARLY: No fallback mappings - this is a compiler bug that must be fixed
         panic!(
             "COMPILER BUG: No mapping found for IR ID {}. This means an instruction is not properly mapping its result target. Available mappings: objects={:?}, integers={:?}, stack_vars={:?}, local_vars={:?}",
@@ -5939,7 +5974,11 @@ impl ZMachineCodeGen {
                 location_space: MemorySpace::Code,
             });
 
-        log::debug!("Created JZ branch UnresolvedReference: target_id={}, location=0x{:04x}", false_label, code_space_offset);
+        log::debug!(
+            "Created JZ branch UnresolvedReference: target_id={}, location=0x{:04x}",
+            false_label,
+            code_space_offset
+        );
 
         log::debug!(
             "Added jz branch reference: code_space_offset=0x{:04x}, target={}",
@@ -6827,7 +6866,11 @@ impl ZMachineCodeGen {
         // Debug specific address patches if needed
         if reference.location == 0x0f89 || reference.location == 0x0f8a || target_address == 0x0a4d
         {
-            log::debug!("Patch at location 0x{:04x} -> address 0x{:04x}", reference.location, target_address);
+            log::debug!(
+                "Patch at location 0x{:04x} -> address 0x{:04x}",
+                reference.location,
+                target_address
+            );
         }
 
         log::debug!(
@@ -7187,7 +7230,12 @@ impl ZMachineCodeGen {
 
         // Debug writes to specific problem areas if needed
         if (0x0f88..=0x0f8b).contains(&location) {
-            log::debug!("Writing to location 0x{:04x}: address 0x{:04x} ({} bytes)", location, address, size);
+            log::debug!(
+                "Writing to location 0x{:04x}: address 0x{:04x} ({} bytes)",
+                location,
+                address,
+                size
+            );
         }
 
         match size {
@@ -7750,7 +7798,6 @@ impl ZMachineCodeGen {
     // Utility methods for code emission
 
     pub fn emit_byte(&mut self, byte: u8) -> Result<(), CompilerError> {
-
         // COMPREHENSIVE BYTE TRACKING: Log every byte with final runtime address
         let runtime_addr = if self.final_data.is_empty() {
             // Code generation phase - calculate future runtime address
@@ -7955,7 +8002,6 @@ impl ZMachineCodeGen {
         let low_byte = word as u8;
 
         debug!("Emit word: word=0x{:04x} -> high_byte=0x{:02x}, low_byte=0x{:02x} at code_address 0x{:04x}", word, high_byte, low_byte, self.code_address);
-
 
         //  CRITICAL: Track exactly where null words come from
         if word == 0x0000 {

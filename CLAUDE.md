@@ -38,22 +38,56 @@
 
 **Current Status**: mini_zork compiler now generates functionally correct Z-Machine bytecode that executes ~90% successfully. Game banner displays properly with correct newlines, major systematic reference resolution working.
 
-### 🚨 CRITICAL: DO NOT REGRESS PRINT FORMATTING
+## 🚨 CRITICAL: PRINT NEWLINE ARCHITECTURE - DO NOT BREAK AGAIN
 
-**Working Text Formatting**: The game banner now displays correctly with proper line breaks:
+**THIS HAS BEEN BROKEN AND FIXED MULTIPLE TIMES - REMEMBER THE CORRECT PATTERN**
+
+### ✅ CORRECT Implementation (Working as of Sep 13, 2025):
+
+**Z-Machine Print Architecture**: 
+- `print_paddr` (opcode 0x8D) prints string content exactly as stored
+- **Line breaks between separate print() calls require explicit `new_line` instructions**
+- **NEVER embed `\n` in string content for line breaks between print statements**
+
+**Working Implementation** in `src/grue_compiler/codegen_builtins.rs`:
+```rust
+// Generate print_paddr instruction
+self.emit_instruction(0x8D, &[Operand::LargeConstant(0x0000)], None, None)?;
+// Add unresolved string reference
+self.reference_context.unresolved_refs.push(reference);
+// Emit new_line instruction AFTER print_paddr for line breaks
+self.emit_instruction(0xBB, &[], None, None)?;  // new_line opcode (0OP:11)
+```
+
+**Working Output**:
 ```
 DORK I: The Last Great Empire
 Copyright (c) 2025 Grue Games. All rights reserved.
-ZORK is a registered trademark of Infocom, Inc.
+ZORK is a registered trademark of Infocom, Inc.  
 DORK is .... not
 Revision 1 / Serial number 8675309
 ```
 
-**Implementation**: `print()` function in `codegen_builtins.rs` modifies string content to add newlines
-- **Proven Approach**: From working commit c121c35
-- **Method**: `format!("{}\n", string_value)` for non-empty strings, `"\n"` for empty
-- **DO NOT** switch back to separate `new_line` instructions
-- **DO NOT** remove the newline insertion logic
+### ❌ WRONG Approaches (These BREAK the formatting):
+
+1. **WRONG**: Using opcode 0x0D instead of 0x8D
+   - 0x0D = `get_next_prop`, not `print_paddr`
+   - 0x8D = `print_paddr` (1OP:141)
+
+2. **WRONG**: Embedding newlines in string content
+   - Adding `format!("{}\n", string_value)` to strings
+   - This makes strings longer and breaks address calculations
+
+3. **WRONG**: Using only embedded newlines without separate new_line instructions
+   - Z-Machine doesn't automatically add line breaks between print statements
+   - Each `print()` call needs explicit `new_line` instruction for line breaks
+
+### 🔒 PREVENTION Rules:
+- **ALWAYS** use opcode 0x8D for print_paddr
+- **ALWAYS** emit new_line (0xBB) after print_paddr for line breaks
+- **NEVER** modify string content to add embedded newlines for line breaks
+- **TEST** banner formatting immediately after any print builtin changes
+
 
 ## Auto-Commit Instructions ("Make it so!")
 

@@ -165,6 +165,12 @@ impl ZMachineCodeGen {
                 // Space is always Z-character 0
                 ' ' => zchars.push(0),
 
+                // Newline is A2[7] = newline (ZSCII 13)
+                '\n' => {
+                    zchars.push(5); // Single shift to alphabet A2
+                    zchars.push(7); // A2[7] = newline
+                }
+
                 // Alphabet A0: lowercase letters (Z-chars 6-31)
                 'a'..='z' => {
                     zchars.push(ch as u8 - b'a' + 6);
@@ -250,11 +256,6 @@ impl ZMachineCodeGen {
                 ')' => {
                     zchars.push(5);
                     zchars.push(31); // A2[31] = ')'
-                }
-
-                '\n' => {
-                    zchars.push(5);
-                    zchars.push(7); // Newline encoding
                 }
 
                 // Handle other characters with escape sequence

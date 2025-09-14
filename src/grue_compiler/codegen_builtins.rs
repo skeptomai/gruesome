@@ -37,48 +37,22 @@ impl ZMachineCodeGen {
 
         // Check if this is a string literal
         if let Some(string_value) = self.ir_id_to_string.get(&arg_id).cloned() {
-            // Add newline to the string content for proper line breaks
-            let print_string = if string_value.is_empty() {
-                "\n".to_string() // Empty print() becomes just a newline
-            } else {
-                format!("{}\n", string_value) // Add newline to string content
-            };
-            
+            let print_string = string_value;
 
-            // OPTION B FIX: Use the IR ID directly instead of creating new string ID
-            // This maintains coordination between IR translation and builtin systems
-            let string_id = arg_id; //  Use IR ID (e.g., 2) instead of creating new ID (e.g., 1000)
+            // Encode the string for Z-Machine format
+            let encoded = self.encode_string(&print_string)?;
+            self.encoded_strings.insert(arg_id, encoded);
 
-            // Update the string content in the IR system to include newline
-            self.ir_id_to_string.insert(string_id, print_string.clone());
-
-            // Ensure the string gets into the encoding system under the IR ID
-            if !self.strings.iter().any(|(id, _)| *id == string_id) {
-                self.strings.push((string_id, print_string.clone()));
-                // Encode the string immediately
-                let encoded = self.encode_string(&print_string)?;
-                self.encoded_strings.insert(string_id, encoded);
-                log::debug!(
-                    " OPTION_B_FIX: Added string ID {} to encoding system: '{}'",
-                    string_id,
-                    print_string
-                );
-            } else {
-                log::debug!(
-                    " OPTION_B_FIX: String ID {} already in encoding system",
-                    string_id
-                );
-            }
+            let string_id = arg_id;
 
             // Generate print_paddr instruction with unresolved string reference
             // Note: The unresolved reference will be added by the operand emission system
             let layout = self.emit_instruction(
-                0x8D,                                          // print_paddr opcode - 1OP:141
-                &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
-                None,                                          // No store
-                None,                                          // No branch
+                0x8D,                              // print_paddr opcode (1OP:141)
+                &[Operand::LargeConstant(0x0000)], // Placeholder string address
+                None,                              // No store
+                None,                              // No branch
             )?;
-
 
             // Add unresolved reference for the string address using layout-tracked operand location
             let operand_address = layout
@@ -93,6 +67,14 @@ impl ZMachineCodeGen {
                 location_space: MemorySpace::Code,
             };
             self.reference_context.unresolved_refs.push(reference);
+
+            // Emit new_line instruction after print_paddr for proper line breaks
+            self.emit_instruction(
+                0xBB, // new_line opcode (0OP:11)
+                &[],  // No operands
+                None, // No store
+                None, // No branch
+            )?;
         } else {
             // This is not a string literal - it's a dynamic expression that needs runtime evaluation
             // For print() with non-string arguments, we need to evaluate the expression and convert to string
@@ -117,7 +99,6 @@ impl ZMachineCodeGen {
                         None,       // No store
                         None,       // No branch
                     )?;
-
                 }
                 Err(_) => {
                     // Cannot resolve to simple operand - this is a complex expression
@@ -129,7 +110,11 @@ impl ZMachineCodeGen {
 
                     let placeholder_string = format!("?Complex expression IR ID {}?", arg_id);
                     let string_id = self.find_or_create_string_id(&placeholder_string)?;
-                    log::error!("🔧 COMPLEX_EXPRESSION_PATH: IR ID {} -> placeholder string '{}'", arg_id, placeholder_string);
+                    log::error!(
+                        "🔧 COMPLEX_EXPRESSION_PATH: IR ID {} -> placeholder string '{}'",
+                        arg_id,
+                        placeholder_string
+                    );
 
                     let layout = self.emit_instruction(
                         0x8D,                                          // print_paddr opcode - 1OP:141
@@ -151,7 +136,6 @@ impl ZMachineCodeGen {
                         location_space: MemorySpace::Code,
                     };
                     self.reference_context.unresolved_refs.push(reference);
-
 
                     let operand_address = layout
                         .operand_location

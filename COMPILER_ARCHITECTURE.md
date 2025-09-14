@@ -4,6 +4,82 @@
 
 This document captures systematic issues we've encountered multiple times to prevent regression and aid future debugging.
 
+### 0. Print Newline Architecture Bug ⚠️⚠️⚠️
+
+**THIS HAS BEEN BROKEN AND FIXED MULTIPLE TIMES - CRITICAL PATTERN**
+
+**Problem**: Print statements run together without line breaks, breaking game banner display.
+
+#### WRONG Patterns (ALL cause broken formatting):
+
+1. **❌ WRONG OPCODE**: Using 0x0D instead of 0x8D
+```rust
+// BROKEN: 0x0D is get_next_prop, not print_paddr
+self.emit_instruction(0x0D, &[Operand::LargeConstant(0x0000)], None, None)?;
+```
+
+2. **❌ WRONG APPROACH**: Embedding newlines in string content
+```rust
+// BROKEN: Changes string length, breaks address calculations
+let print_string = format!("{}\n", string_value);
+```
+
+3. **❌ WRONG APPROACH**: Using only string newlines without new_line instructions
+```rust
+// BROKEN: Z-Machine doesn't auto-add line breaks between print statements
+// Just encoding \n in string content is not enough
+```
+
+#### ✅ CORRECT Pattern (Working as of Sep 13, 2025):
+
+**Z-Machine Print Architecture Understanding**:
+- `print_paddr` (0x8D) prints string content exactly as encoded
+- Line breaks between separate `print()` calls require explicit `new_line` instructions
+- **Each print() call needs two instructions**: print_paddr + new_line
+
+```rust
+// ✅ CORRECT: Two-instruction pattern in codegen_builtins.rs
+// 1. Print the string content
+self.emit_instruction(
+    0x8D,                              // print_paddr opcode (1OP:141) 
+    &[Operand::LargeConstant(0x0000)], // String reference (resolved later)
+    None, None
+)?;
+
+// 2. Add line break after the text
+self.emit_instruction(
+    0xBB,  // new_line opcode (0OP:11)
+    &[],   // No operands
+    None, None
+)?;
+```
+
+#### Symptoms:
+- Game banner text runs together: "DORK I: The Last Great EmpireCopyright (c) 2025..."
+- All print statements appear on single line without breaks
+- Different strings print correctly but without line separation
+- No interpreter errors - just broken visual formatting
+
+#### Files Affected:
+- `src/grue_compiler/codegen_builtins.rs` (generate_print_builtin function)
+
+#### Detection Method:
+```bash
+# Test banner formatting immediately after print changes
+cargo run --bin grue-compiler -- examples/mini_zork.grue --output /tmp/test.z3
+./target/debug/gruesome /tmp/test.z3
+# Should show properly separated banner lines
+```
+
+#### Working Output:
+```
+DORK I: The Last Great Empire
+Copyright (c) 2025 Grue Games. All rights reserved.
+ZORK is a registered trademark of Infocom, Inc.  
+DORK is .... not
+Revision 1 / Serial number 8675309
+```
+
 ### 1. UnresolvedReference Location Calculation Bug ⚠️
 
 **Problem**: References created with incorrect locations, causing systematic resolution failures.

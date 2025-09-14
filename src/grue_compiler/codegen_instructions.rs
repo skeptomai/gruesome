@@ -371,9 +371,9 @@ impl ZMachineCodeGen {
                     // Empty array - push null reference (1) to stack
                     // Using load_w with address 0 to get a safe null-like value
                     self.emit_instruction(
-                        0x0F, // load_w (1OP:15) - load word from address  
+                        0x0F,                         // load_w (1OP:15) - load word from address
                         &[Operand::SmallConstant(1)], // Load from address 1 (safe)
-                        Some(0), // Store result to stack
+                        Some(0),                      // Store result to stack
                         None,
                     )?;
                 } else {
@@ -1140,7 +1140,11 @@ impl ZMachineCodeGen {
 
         // Log unimplemented opcodes for debugging
         if opcode == 0x00 && !operands.is_empty() {
-            log::debug!("Unimplemented opcode with operands at 0x{:04x}: {:?}", start_address, operands);
+            log::debug!(
+                "Unimplemented opcode with operands at 0x{:04x}: {:?}",
+                start_address,
+                operands
+            );
         }
 
         // Log stack operations specifically
@@ -1181,7 +1185,11 @@ impl ZMachineCodeGen {
                     )));
                 }
                 _ => {
-                    log::debug!("insert_obj with operand {:?} at address 0x{:04x}", operands[0], self.code_address);
+                    log::debug!(
+                        "insert_obj with operand {:?} at address 0x{:04x}",
+                        operands[0],
+                        self.code_address
+                    );
                 }
             }
         }
@@ -1213,7 +1221,6 @@ impl ZMachineCodeGen {
             "GEN_INSTR: runtime_addr=0x{:04x} gen_addr=0x{:04x} opcode=0x{:02x} operands={:?} store_var={:?}",
             final_runtime_address, self.code_address, opcode, operands, actual_store_var
         );
-
 
         // Record instruction start address
         let instruction_start = self.code_address;
@@ -1695,7 +1702,11 @@ impl ZMachineCodeGen {
         debug!("emit_variable_form: opcode=0x{:02x}, var_bit=0x{:02x}, instruction_byte=0x{:02x} at address 0x{:04x}", 
                opcode, var_bit, instruction_byte, self.code_address);
 
-        log::debug!("VAR instruction: opcode=0x{:02x} at address 0x{:04x}", opcode, self.code_address);
+        log::debug!(
+            "VAR instruction: opcode=0x{:02x} at address 0x{:04x}",
+            opcode,
+            self.code_address
+        );
 
         self.emit_byte(instruction_byte)?;
 
@@ -1782,7 +1793,6 @@ impl ZMachineCodeGen {
 
         // Long form can only handle Small Constants and Variables
         // Convert LargeConstants that fit in a byte to SmallConstants
-
 
         let op1_adapted = self.adapt_operand_for_long_form(&operands[0])?;
         let op2_adapted = self.adapt_operand_for_long_form(&operands[1])?;
@@ -1886,7 +1896,7 @@ impl ZMachineCodeGen {
     fn try_resolve_ir_id_if_needed(&self, value: u32) -> Option<Operand> {
         // Try to resolve this value as an IR ID
         if let Ok(resolved_operand) = self.resolve_ir_id_to_operand(value) {
-            // If it resolved to something different than LargeConstant(value), 
+            // If it resolved to something different than LargeConstant(value),
             // then it was actually an IR ID that needed resolution
             match &resolved_operand {
                 Operand::LargeConstant(resolved_value) if *resolved_value == value as u16 => {
@@ -1971,7 +1981,11 @@ impl ZMachineCodeGen {
         // - Bit 6: 0 = 2-byte offset, 1 = 1-byte offset
         // - Bits 5-0 or 13-0: signed offset
 
-        log::debug!("Emit branch offset: {} at address=0x{:04x}", offset, self.current_address());
+        log::debug!(
+            "Emit branch offset: {} at address=0x{:04x}",
+            offset,
+            self.current_address()
+        );
 
         // For now, assume positive condition and handle offset size
         if (0..=63).contains(&offset) {
