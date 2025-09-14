@@ -1,4 +1,4 @@
-// Minimal test case to isolate branch instruction issues
+// Simple test case to isolate branch instruction issues
 world {
     room test_room "Test Room" {
         desc: "A simple test room"
@@ -6,8 +6,11 @@ world {
 }
 
 fn test_branch() {
-    if true {
-        print("Branch taken");
+    let x = 1;
+    if x == 1 {
+        print("Branch test passed");
+    } else {
+        print("Branch test failed");
     }
 }
 

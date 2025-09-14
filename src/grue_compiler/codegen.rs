@@ -1457,7 +1457,27 @@ impl ZMachineCodeGen {
 
                     // CRITICAL FIX: Use patch_branch_offset for branch instructions to calculate proper relative offset
                     debug!("Branch resolution: Calling patch_branch_offset to calculate relative offset");
-                    let result = self.patch_branch_offset(reference.location, resolved_address);
+
+                    // DEBUG: Check if we need to translate reference.location to final address space
+                    let final_location = if reference.location < self.final_code_base {
+                        // This is a code space offset, translate to final address
+                        let translated_location = self.final_code_base + reference.location;
+                        debug!("Branch resolution: Translating location 0x{:04x} -> 0x{:04x} (final_code_base=0x{:04x})", reference.location, translated_location, self.final_code_base);
+                        translated_location
+                    } else {
+                        // Already a final address
+                        debug!(
+                            "Branch resolution: Location 0x{:04x} already in final address space",
+                            reference.location
+                        );
+                        reference.location
+                    };
+
+                    // CRITICAL FIX: Branch data is being written 1 byte too late
+                    // Apply same location fix as jump instructions - adjust by -1
+                    let corrected_location = final_location - 1;
+                    debug!("Branch resolution: Correcting location 0x{:04x} -> 0x{:04x} (same fix pattern as jumps)", final_location, corrected_location);
+                    let result = self.patch_branch_offset(corrected_location, resolved_address);
                     debug!(
                         "Branch resolution: patch_branch_offset returned: {:?}",
                         result
@@ -6024,12 +6044,20 @@ impl ZMachineCodeGen {
 
         // CRITICAL FIX: Pass branch offset directly to emit_instruction instead of manual emission
         // This fixes the PC misalignment bug caused by extra placeholder bytes
+        log::error!(
+            "🔧 JZ_EMIT_DEBUG: About to emit jz instruction with opcode=0x01, operand={:?}",
+            condition_operand
+        );
         let layout = self.emit_instruction(
             0x01, // jz (1OP:1) - jump if zero (use raw opcode, form will be determined automatically)
             &[condition_operand],
             None,     // No store
             Some(35), // Placeholder branch offset - will be resolved by UnresolvedReference system
         )?;
+        log::error!(
+            "🔧 JZ_EMIT_DEBUG: emit_instruction completed, layout={:?}",
+            layout
+        );
 
         // Create UnresolvedReference for the branch target using the layout information
         if let Some(branch_location) = layout.branch_location {
@@ -7200,8 +7228,8 @@ impl ZMachineCodeGen {
         location: usize,
         target_address: usize,
     ) -> Result<(), CompilerError> {
-        log::debug!(
-            "patch_branch_offset: location=0x{:04x}, target_address=0x{:04x}",
+        log::error!(
+            "🔧 BRANCH_PATCH_ATTEMPT: location=0x{:04x}, target_address=0x{:04x}",
             location,
             target_address
         );
@@ -7219,10 +7247,12 @@ impl ZMachineCodeGen {
         let address_after_2byte = location + 2;
         let offset_2byte = (target_address as i32) - (address_after_2byte as i32) + 2;
 
-        log::debug!(
-            "patch_branch_offset: address_after_2byte=0x{:04x}, offset_2byte={}",
+        log::error!(
+            "🔧 BRANCH_CALC: address_after_2byte=0x{:04x}, offset_2byte={}, first_byte=0x{:02x}, second_byte=0x{:02x}",
             address_after_2byte,
-            offset_2byte
+            offset_2byte,
+            0x80 | ((offset_2byte as u16 >> 8) as u8 & 0x3F),
+            (offset_2byte as u16 & 0xFF) as u8
         );
 
         if !(-8192..=8191).contains(&offset_2byte) {
