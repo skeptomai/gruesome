@@ -995,50 +995,12 @@ impl ZMachineCodeGen {
                 total_size - code_base
             );
 
-            // TARGETED DEBUG: Check what's at the problematic offset in code_space BEFORE copy
-            let target_offset_in_code_space = 0x0e96 - code_base;
-            if target_offset_in_code_space < self.code_space.len() {
-                log::error!(
-                    " 🎯 PRE_COPY_CHECK: code_space[0x{:04x}] = 0x{:02x} (this will be copied to final_data[0x{:04x}])",
-                    target_offset_in_code_space, self.code_space[target_offset_in_code_space], 0x0e96
-                );
-
-                // Show surrounding bytes in code_space
-                let start = target_offset_in_code_space.saturating_sub(5);
-                let end = std::cmp::min(target_offset_in_code_space + 5, self.code_space.len());
-                log::error!(
-                    " 🎯 PRE_COPY_CONTEXT: code_space[0x{:04x}..0x{:04x}] = {:?}",
-                    start,
-                    end,
-                    &self.code_space[start..end]
-                );
-            }
-
             log::debug!(
                 " CODE_COPY_DEBUG: Code space first 10 bytes: {:?}",
                 &self.code_space[0..std::cmp::min(10, self.code_space.len())]
             );
 
             self.final_data[code_base..total_size].copy_from_slice(&self.code_space);
-
-            // TARGETED DEBUG: Check what's at the problematic address AFTER copy
-            if 0x0e96 < self.final_data.len() {
-                log::error!(
-                    " 🎯 POST_COPY_CHECK: final_data[0x{:04x}] = 0x{:02x} (after copy)",
-                    0x0e96,
-                    self.final_data[0x0e96]
-                );
-
-                // Show surrounding bytes in final_data
-                let start = 0x0e90;
-                let end = std::cmp::min(0x0ea0, self.final_data.len());
-                log::error!(
-                    " 🎯 POST_COPY_CONTEXT: final_data[0x{:04x}..0x{:04x}] = {:?}",
-                    start,
-                    end,
-                    &self.final_data[start..end]
-                );
-            }
 
             log::debug!(
                 " Code space copied: {} bytes at 0x{:04x}",
@@ -1414,9 +1376,11 @@ impl ZMachineCodeGen {
                     // CRITICAL FIX: Jump instructions use relative offsets, not direct addresses
                     debug!("Jump resolution: Using relative offset calculation");
 
-                    // Calculate relative offset: target - (PC + instruction_length)
-                    // The PC points to the start of the instruction, instruction length is 3 bytes
-                    let instruction_pc = reference.location - 2; // Back to instruction start from operand
+                    // CRITICAL FIX: Calculate relative offset for jump instructions
+                    // Jump is a 1OP instruction: opcode (1 byte) + operand (2 bytes) = 3 bytes total
+                    // reference.location points to the operand (after opcode), so subtract 1 to get instruction start
+                    // Formula: target - (instruction_start + instruction_length)
+                    let instruction_pc = reference.location - 1; // Back to instruction start from operand
                     let offset = resolved_address as i32 - (instruction_pc as i32 + 3);
 
                     if offset < -32768 || offset > 32767 {
@@ -6200,10 +6164,18 @@ impl ZMachineCodeGen {
 
         // Emit jump instruction manually (not using emit_instruction as it doesn't use normal operands)
         // Jump is a 1OP instruction (0x0C) with a signed word offset
-        self.emit_byte(0x8C)?; // 1OP:12 Large Constant - jump instruction (0x8C = 10001100 binary)
+        log::debug!(
+            "JUMP_EMIT: code_address before opcode: 0x{:04x}",
+            self.code_address
+        );
+        self.emit_byte(0x0C)?; // 1OP:12 jump instruction - FIXED from 0x8C to 0x0C
 
-        // Emit placeholder offset (will be resolved later)
+        // CRITICAL FIX: Record operand location AFTER emitting the opcode
         let operand_location = self.code_address;
+        log::debug!(
+            "JUMP_EMIT: operand_location: 0x{:04x} (after opcode emission)",
+            operand_location
+        );
         self.emit_word(placeholder_word())?; // 2-byte placeholder offset
 
         // Add unresolved reference for the jump target
