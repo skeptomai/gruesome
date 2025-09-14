@@ -1,0 +1,14 @@
+// Pure branch test with no objects, no world, no player operations
+
+fn test_branch() {
+    let x = 1;
+    if x == 1 {
+        print("Pure branch test passed");
+    } else {
+        print("Pure branch test failed");
+    }
+}
+
+init {
+    test_branch();
+}

@@ -1,0 +1,12 @@
+// Minimal test case to isolate object table initialization issues
+world {
+    room test_room "Test Room" {
+        desc: "A test room"
+    }
+}
+
+init {
+    // This should trigger object table access
+    player.location = test_room;
+    print("Object test completed");
+}

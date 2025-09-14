@@ -1339,6 +1339,30 @@ impl ZMachineCodeGen {
     }
 
     /// Check if an opcode is a true VAR opcode (always requires VAR form encoding)
+    fn should_not_emit_store_variable(opcode: u8) -> bool {
+        match opcode {
+            // Call instructions - result storage handled internally
+            0x00 | 0xE0 => true, // call_vs (raw opcode 0 or VAR-form 0xE0)
+            0x20 => true,        // call_1n
+            0x8F => true,        // call_1n (1OP form)
+            0x1A => true,        // call_2n
+
+            // Print instructions - no result to store
+            0x8D => true, // print_paddr (1OP:141)
+            0x8A => true, // print_obj (1OP:138)
+            0x87 => true, // print_addr (1OP:135)
+            0xE5 => true, // print_char (VAR:229)
+            0xE6 => true, // print_num (VAR:230)
+            0xB3 => true, // print_ret (0OP:179)
+            0xBB => true, // new_line (0OP:187)
+
+            // Other instructions that don't store results
+            0xBA => true, // quit (0OP:186)
+
+            _ => false,
+        }
+    }
+
     fn is_true_var_opcode(opcode: u8) -> bool {
         match opcode {
             // Full VAR opcodes (when already combined with VAR form bits)
@@ -1583,10 +1607,15 @@ impl ZMachineCodeGen {
         };
 
         // Track store variable location
+        // CRITICAL FIX: Some instructions do NOT emit store variable bytes
         let store_location = if let Some(store) = store_var {
-            let loc = self.code_address;
-            self.emit_byte(store)?;
-            Some(loc)
+            if !Self::should_not_emit_store_variable(opcode) {
+                let loc = self.code_address;
+                self.emit_byte(store)?;
+                Some(loc)
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -1748,10 +1777,16 @@ impl ZMachineCodeGen {
         };
 
         // Track store variable location
+        // CRITICAL FIX: Some instructions do NOT emit store variable bytes
+        // Print instructions, call instructions, etc. handle results differently
         let store_location = if let Some(store) = store_var {
-            let loc = self.code_address;
-            self.emit_byte(store)?;
-            Some(loc)
+            if !Self::should_not_emit_store_variable(opcode) {
+                let loc = self.code_address;
+                self.emit_byte(store)?;
+                Some(loc)
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -1861,10 +1896,15 @@ impl ZMachineCodeGen {
         );
 
         // Track store variable location
+        // CRITICAL FIX: Some instructions do NOT emit store variable bytes
         let store_location = if let Some(store) = store_var {
-            let loc = self.code_address;
-            self.emit_byte(store)?;
-            Some(loc)
+            if !Self::should_not_emit_store_variable(opcode) {
+                let loc = self.code_address;
+                self.emit_byte(store)?;
+                Some(loc)
+            } else {
+                None
+            }
         } else {
             None
         };
