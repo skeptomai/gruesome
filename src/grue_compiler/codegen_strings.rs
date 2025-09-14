@@ -112,12 +112,20 @@ impl ZMachineCodeGen {
     }
 
     /// Add main loop strings to the collection and return their IDs
-    pub fn add_main_loop_strings(&mut self) -> Result<IrId, CompilerError> {
+    pub fn add_main_loop_strings(&mut self) -> Result<(IrId, IrId), CompilerError> {
         // Add specific strings needed for main loop functionality
         // Allocate dynamically after all other strings to avoid conflicts
         let prompt_id = self.find_or_create_string_id("> ")?;
         debug!("🎯 Allocated main loop prompt string ID: {}", prompt_id);
-        Ok(prompt_id)
+
+        // Also add the "I don't understand" string for command processing
+        let unknown_command_id = self.find_or_create_string_id("I don't understand that.")?;
+        debug!(
+            "🎯 Allocated unknown command string ID: {}",
+            unknown_command_id
+        );
+
+        Ok((prompt_id, unknown_command_id))
     }
 
     /// Collect strings from instructions in a block  

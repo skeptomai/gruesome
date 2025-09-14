@@ -234,6 +234,7 @@ pub struct ZMachineCodeGen {
     // String encoding
     pub strings: Vec<(IrId, String)>, // Collected strings for encoding
     main_loop_prompt_id: Option<IrId>, // ID of the main loop prompt string
+    main_loop_unknown_command_id: Option<IrId>, // ID of the "I don't understand" string
 
     // Stack tracking for debugging
     pub stack_depth: i32,     // Current estimated stack depth
@@ -336,6 +337,7 @@ impl ZMachineCodeGen {
             global_vars_addr: 0,
             strings: Vec::new(),
             main_loop_prompt_id: None,
+            main_loop_unknown_command_id: None,
             encoded_strings: IndexMap::new(),
             next_string_id: 1000, // Start string IDs from 1000 to avoid conflicts
             stack_depth: 0,
@@ -502,7 +504,9 @@ impl ZMachineCodeGen {
         self.setup_comprehensive_id_mappings(&ir);
         self.analyze_properties(&ir)?;
         self.collect_strings(&ir)?;
-        self.main_loop_prompt_id = Some(self.add_main_loop_strings()?);
+        let (prompt_id, unknown_command_id) = self.add_main_loop_strings()?;
+        self.main_loop_prompt_id = Some(prompt_id);
+        self.main_loop_unknown_command_id = Some(unknown_command_id);
         self.encode_all_strings()?;
         log::info!(" Phase 1 complete: Content analysis and string encoding finished");
 
@@ -4833,8 +4837,8 @@ impl ZMachineCodeGen {
             None, // No branch
         )?;
 
-        // 4. For now, just echo back what was typed (MVP implementation)
-        // TODO: Add proper command parsing and dispatch
+        // 4. Process parsed input - check for quit command
+        self.generate_command_processing(parse_buffer_addr)?;
 
         // 5. Jump back to loop start (first instruction, not routine header)
         let main_loop_jump_id = main_loop_id + 1; // Use same calculation as above
@@ -4927,6 +4931,72 @@ impl ZMachineCodeGen {
             "Main loop generation complete at 0x{:04x}",
             self.code_address
         );
+        Ok(())
+    }
+
+    /// Generate command processing logic after SREAD instruction
+    /// This checks the parse buffer for commands and handles quit
+    fn generate_command_processing(&mut self, parse_buffer_addr: u16) -> Result<(), CompilerError> {
+        debug!("Generating command processing logic");
+
+        // Check if any words were parsed (parse_buffer[1] = number of words)
+        // Load number of words from parse buffer byte 1
+        self.emit_instruction(
+            0x91, // loadb: load byte from array
+            &[
+                Operand::LargeConstant(parse_buffer_addr),
+                Operand::LargeConstant(1), // Byte offset 1 contains number of words
+            ],
+            Some(0), // Store result on stack (variable 0)
+            None,
+        )?;
+
+        // Branch if no words were parsed (result == 0)
+        // This will jump to the main loop start if user just pressed Enter
+        let no_words_jump_target = 9002; // Unique ID for this branch target
+        self.emit_instruction(
+            0x02,                         // jz: jump if zero
+            &[Operand::SmallConstant(0)], // Test value from stack
+            None,
+            Some(placeholder_word() as i16), // Branch offset placeholder
+        )?;
+
+        // If we reach here, at least one word was parsed
+        // Load the dictionary address of the first word (bytes 2-3 of parse buffer)
+        self.emit_instruction(
+            0x8F, // loadw: load word from array
+            &[
+                Operand::LargeConstant(parse_buffer_addr),
+                Operand::LargeConstant(1), // Word offset 1 (bytes 2-3)
+            ],
+            Some(0), // Store result on stack
+            None,
+        )?;
+
+        // For now, just print "I don't understand" if it's not quit
+        // TODO: Add dictionary lookup for "quit" and other commands
+        let unknown_command_string_id = self
+            .main_loop_unknown_command_id
+            .expect("Main loop unknown command ID should be set during string collection");
+        self.emit_instruction(
+            0x8D,                                          // print_paddr: print string at packed address
+            &[Operand::LargeConstant(placeholder_word())], // Placeholder for string address
+            None,
+            None,
+        )?;
+
+        // Add unresolved reference for the "I don't understand" string
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::StringRef,
+                location: self.code_address - 2, // Location of the string address operand
+                target_id: unknown_command_string_id,
+                is_packed_address: true,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
+
         Ok(())
     }
 
