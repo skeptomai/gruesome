@@ -5060,19 +5060,20 @@ impl ZMachineCodeGen {
         // We need to reserve space in the function header for these
 
         let declared_locals = function.local_vars.len();
-        // Reserve space for dynamically allocated locals (reasonable estimate: 8 locals max)
-        let max_dynamic_locals = 8;
-        let reserved_locals = std::cmp::max(declared_locals, max_dynamic_locals);
+        // CRITICAL FIX: Use actual local count instead of hard-coding 8 minimum
+        // Simple functions with no parameters or local variables should have 0 locals
+        // Complex functions will allocate locals as needed during instruction generation
+        let reserved_locals = declared_locals;
 
         if reserved_locals > 15 {
             return Err(CompilerError::CodeGenError(format!(
-                "Function '{}' needs {} reserved locals (declared: {}, dynamic estimate: {}), maximum is 15",
-                function.name, reserved_locals, declared_locals, max_dynamic_locals
+                "Function '{}' needs {} declared locals, maximum is 15",
+                function.name, reserved_locals
             )));
         }
 
         log::debug!(
-            " FUNCTION_LOCALS: '{}' declared={}, reserved={} (for dynamic allocation)",
+            " FUNCTION_LOCALS: '{}' declared={}, reserved={} (actual local count)",
             function.name,
             declared_locals,
             reserved_locals
