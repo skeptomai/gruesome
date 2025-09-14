@@ -2178,6 +2178,8 @@ impl ZMachineCodeGen {
         // Check if this is a string literal
         if self.ir_id_to_string.contains_key(&value) {
             // Print string literal using print_paddr
+            // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
+            let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
             let layout = self.emit_instruction(
                 0x82,                                          // print_paddr opcode (1OP:141)
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder for string address
@@ -2185,19 +2187,17 @@ impl ZMachineCodeGen {
                 None,
             )?;
 
-            // Add unresolved reference for string address
-            if let Some(operand_loc) = layout.operand_location {
-                self.reference_context
-                    .unresolved_refs
-                    .push(UnresolvedReference {
-                        reference_type: LegacyReferenceType::StringRef,
-                        location: operand_loc,
-                        target_id: value,
-                        is_packed_address: true,
-                        offset_size: 2,
-                        location_space: MemorySpace::Code, // String references in code instructions
-                    });
-            }
+            // Add unresolved reference for string address using pre-calculated location
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::StringRef,
+                    location: operand_location,
+                    target_id: value,
+                    is_packed_address: true,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code, // String references in code instructions
+                });
         } else {
             // Print variable/computed value using print_num
             let operand = Operand::SmallConstant(1); // Use variable 1 for now
@@ -2276,6 +2276,8 @@ impl ZMachineCodeGen {
     fn translate_jump(&mut self, label: IrId) -> Result<(), CompilerError> {
         log::debug!("JUMP: label={}", label);
 
+        // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
+        let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
         let layout = self.emit_instruction(
             0x0C, // jump opcode (1OP:12) - fixed from 0x8C which was 0OP
             &[Operand::LargeConstant(placeholder_word())], // Placeholder for jump offset
@@ -2283,19 +2285,17 @@ impl ZMachineCodeGen {
             None,
         )?;
 
-        // Add unresolved reference for jump target
-        if let Some(operand_loc) = layout.operand_location {
-            self.reference_context
-                .unresolved_refs
-                .push(UnresolvedReference {
-                    reference_type: LegacyReferenceType::Jump,
-                    location: operand_loc,
-                    target_id: label,
-                    is_packed_address: false,
-                    offset_size: 2,
-                    location_space: MemorySpace::Code,
-                });
-        }
+        // Add unresolved reference for jump target using pre-calculated location
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::Jump,
+                location: operand_location,
+                target_id: label,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
 
         Ok(())
     }
@@ -2448,24 +2448,24 @@ impl ZMachineCodeGen {
             };
 
             // Generate call instruction
+            // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
+            let operand_location = self.final_code_base + self.code_space.len() + 2; // +2 for opcode and operand types bytes
             let layout = self.emit_instruction(
                 0xE0, // call_vs opcode (VAR:224 = opcode 0, so 0xE0)
                 &operands, store_var, None,
             )?;
 
-            // Add unresolved reference for function address
-            if let Some(operand_loc) = layout.operand_location {
-                self.reference_context
-                    .unresolved_refs
-                    .push(UnresolvedReference {
-                        reference_type: LegacyReferenceType::FunctionCall,
-                        location: operand_loc,
-                        target_id: function,
-                        is_packed_address: true,
-                        offset_size: 2,
-                        location_space: MemorySpace::Code,
-                    });
-            }
+            // Add unresolved reference for function address using pre-calculated location
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::FunctionCall,
+                    location: operand_location,
+                    target_id: function,
+                    is_packed_address: true,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
         } else {
             // HOTFIX: Register commonly missing builtin functions
             match function {
@@ -2534,24 +2534,24 @@ impl ZMachineCodeGen {
                     };
 
                     // Generate call instruction
+                    // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
+                    let operand_location = self.final_code_base + self.code_space.len() + 2; // +2 for opcode and operand types bytes
                     let layout = self.emit_instruction(
                         0xE0, // call_vs opcode (VAR:224)
                         &operands, store_var, None,
                     )?;
 
-                    // Create UnresolvedReference for function address
-                    if let Some(operand_loc) = layout.operand_location {
-                        self.reference_context
-                            .unresolved_refs
-                            .push(UnresolvedReference {
-                                reference_type: LegacyReferenceType::FunctionCall,
-                                location: operand_loc,
-                                target_id: function, // This is IR ID 1 (look_around)
-                                is_packed_address: true,
-                                offset_size: 2,
-                                location_space: MemorySpace::Code,
-                            });
-                    }
+                    // Create UnresolvedReference for function address using pre-calculated location
+                    self.reference_context
+                        .unresolved_refs
+                        .push(UnresolvedReference {
+                            reference_type: LegacyReferenceType::FunctionCall,
+                            location: operand_location,
+                            target_id: function, // This is IR ID 1 (look_around)
+                            is_packed_address: true,
+                            offset_size: 2,
+                            location_space: MemorySpace::Code,
+                        });
 
                     // Handle target variable mapping
                     if let Some(target) = target {
@@ -3102,6 +3102,8 @@ impl ZMachineCodeGen {
         self.ir_id_to_string
             .insert(string_id, "[OBJECT_LIST]".to_string());
 
+        // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
+        let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
         let layout = self.emit_instruction(
             0x8D,
             &[Operand::LargeConstant(placeholder_word())],
@@ -3109,18 +3111,16 @@ impl ZMachineCodeGen {
             None,
         )?;
 
-        // Add unresolved reference for the string address
-        if let Some(operand_address) = layout.operand_location {
-            let reference = UnresolvedReference {
-                reference_type: LegacyReferenceType::StringRef,
-                location: operand_address,
-                target_id: string_id,
-                is_packed_address: true,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            };
-            self.reference_context.unresolved_refs.push(reference);
-        }
+        // Add unresolved reference for the string address using pre-calculated location
+        let reference = UnresolvedReference {
+            reference_type: LegacyReferenceType::StringRef,
+            location: operand_location,
+            target_id: string_id,
+            is_packed_address: true,
+            offset_size: 2,
+            location_space: MemorySpace::Code,
+        };
+        self.reference_context.unresolved_refs.push(reference);
 
         log::debug!(
             " PHASE3_LIST_OBJECTS: List_objects builtin translated successfully ({} bytes)",
@@ -3148,6 +3148,8 @@ impl ZMachineCodeGen {
         self.ir_id_to_string
             .insert(string_id, "[CONTAINER_CONTENTS]".to_string());
 
+        // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
+        let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
         let layout = self.emit_instruction(
             0x8D,
             &[Operand::LargeConstant(placeholder_word())],
@@ -3155,18 +3157,16 @@ impl ZMachineCodeGen {
             None,
         )?;
 
-        // Add unresolved reference for the string address
-        if let Some(operand_address) = layout.operand_location {
-            let reference = UnresolvedReference {
-                reference_type: LegacyReferenceType::StringRef,
-                location: operand_address,
-                target_id: string_id,
-                is_packed_address: true,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            };
-            self.reference_context.unresolved_refs.push(reference);
-        }
+        // Add unresolved reference for the string address using pre-calculated location
+        let reference = UnresolvedReference {
+            reference_type: LegacyReferenceType::StringRef,
+            location: operand_location,
+            target_id: string_id,
+            is_packed_address: true,
+            offset_size: 2,
+            location_space: MemorySpace::Code,
+        };
+        self.reference_context.unresolved_refs.push(reference);
 
         log::debug!(
             " PHASE3_LIST_CONTENTS: List_contents builtin translated successfully ({} bytes)",
@@ -4010,7 +4010,7 @@ impl ZMachineCodeGen {
             "Dictionary address (static memory base): 0x{:04x}",
             self.dictionary_addr
         );
-        addr += 1000; // Rough estimate for dictionary
+        addr += self.dictionary_space.len(); // Use actual dictionary size
 
         // Reserve space for encoded strings
         let mut string_data: Vec<(IrId, usize)> = self
@@ -7245,7 +7245,7 @@ impl ZMachineCodeGen {
         // Always use 2-byte format since we reserved 2 bytes
         // Calculate offset for 2-byte format (address after 2 bytes)
         let address_after_2byte = location + 2;
-        let offset_2byte = (target_address as i32) - (address_after_2byte as i32) + 2;
+        let offset_2byte = (target_address as i32) - (address_after_2byte as i32);
 
         log::error!(
             "🔧 BRANCH_CALC: address_after_2byte=0x{:04x}, offset_2byte={}, first_byte=0x{:02x}, second_byte=0x{:02x}",
