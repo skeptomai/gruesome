@@ -1009,28 +1009,19 @@ impl ZMachineCodeGen {
         // Critical: Never touches static fields like serial number or version.
         // Updates: PC start, dictionary, objects, globals, static memory, abbreviations, high memory base
         log::debug!(" Step 3e: Updating header address fields with final memory layout");
-        // CRITICAL FIX: PC calculation based on whether init block exists
-        let calculated_pc = if self.init_routine_locals_count > 0 {
-            // If init block exists, PC points after init routine header
-            // Z-Machine spec 5.3: "Execution of instructions begins from the byte after this header information"
-            let init_header_size = 1 + (self.init_routine_locals_count as usize * 2);
-            (self.final_code_base + init_header_size) as u16
-        } else {
-            // If no init block, PC points to first instruction after main function header
-            // Main function header: 1 byte (local count) + (local_count * 2) bytes (V3 default values)
-            // For functions with 0 locals, header is 1 byte, so PC = final_code_base + 1
-            (self.final_code_base + 1) as u16
-        };
+        // ARCHITECTURAL FIX: PC calculation for main program with proper routine header
+        // PC must point to first instruction AFTER the routine header (header size = 1 byte for local count)
+        let calculated_pc = (self.final_code_base + 1) as u16;
         log::debug!(
-            " PC_CALCULATION_DEBUG: final_code_base=0x{:04x}, init_locals_count={}, calculated_pc=0x{:04x}",
-            self.final_code_base, self.init_routine_locals_count, calculated_pc
+            " PC_CALCULATION_DEBUG: final_code_base=0x{:04x}, calculated_pc=0x{:04x} (skips routine header)",
+            self.final_code_base, calculated_pc
         );
         log::debug!(
-            " PC_CALCULATION_DEBUG: PC will point to first instruction at 0x{:04x} (after header at 0x{:04x})",
+            " PC_CALCULATION_DEBUG: PC will point to first instruction at 0x{:04x} (after routine header at 0x{:04x})",
             calculated_pc, self.final_code_base
         );
         self.fixup_header_addresses(
-            calculated_pc,                 // pc_start (after init routine header)
+            calculated_pc,                 // pc_start (points after routine header)
             self.dictionary_addr as u16,   // dictionary_addr
             self.final_object_base as u16, // objects_addr
             self.global_vars_addr as u16,  // globals_addr
@@ -5944,47 +5935,37 @@ impl ZMachineCodeGen {
             }
         };
 
-        let _layout = self.emit_instruction(
-            0xA0, // jz (VAR:0x00) - jump if zero
+        // CRITICAL FIX: Pass branch offset directly to emit_instruction instead of manual emission
+        // This fixes the PC misalignment bug caused by extra placeholder bytes
+        let layout = self.emit_instruction(
+            0x01, // jz (1OP:1) - jump if zero (use raw opcode, form will be determined automatically)
             &[condition_operand],
-            None, // No store
-            None, // No branch offset - will be added as placeholders manually
+            None,     // No store
+            Some(35), // Placeholder branch offset - will be resolved by UnresolvedReference system
         )?;
 
-        // Manually emit branch placeholders and record the location
-        //  CRITICAL FIX: Use code space offset during instruction generation,
-        // conversion to final address happens during final assembly phase
-        let code_space_offset = self.code_space.len();
-        self.emit_word(placeholder_word())?; // 2-byte branch placeholder
-
-        // Track jz branch reference creation
-        log::debug!(
-            " JZ_BRANCH_REF_CREATE: code_space_offset=0x{:04x} target_id={} (will convert to final address during assembly)",
-            code_space_offset, false_label
-        );
-
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Branch,
-                location: code_space_offset, // Use code space offset, not final address
-                target_id: false_label,      // jz jumps on false condition
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
-
-        log::debug!(
-            "Created JZ branch UnresolvedReference: target_id={}, location=0x{:04x}",
-            false_label,
-            code_space_offset
-        );
-
-        log::debug!(
-            "Added jz branch reference: code_space_offset=0x{:04x}, target={}",
-            code_space_offset,
-            false_label
-        );
+        // Create UnresolvedReference for the branch target using the layout information
+        if let Some(branch_location) = layout.branch_location {
+            log::debug!(
+                " JZ_BRANCH_REF_CREATE: branch_location=0x{:04x} target_id={} (layout-based)",
+                branch_location,
+                false_label
+            );
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: branch_location, // Use exact branch location from layout
+                    target_id: false_label,    // jz jumps on false condition
+                    is_packed_address: false,
+                    offset_size: 1, // Branch offset size depends on the actual offset value
+                    location_space: MemorySpace::Code,
+                });
+        } else {
+            return Err(CompilerError::CodeGenError(
+                "jz instruction should have branch_location in layout".to_string(),
+            ));
+        }
 
         Ok(())
     }
@@ -6327,25 +6308,32 @@ impl ZMachineCodeGen {
         self.current_function_locals = 0;
         self.current_function_name = Some("main".to_string());
 
-        // Generate V3 function header immediately (this is what PC will point to)
-        // PC points here and execution begins with this header
+        // ARCHITECTURAL FIX: Generate proper V3 function header with correct local variable allocation
+        // The main program must be a proper Z-Machine function - PC points to function start (header)
+        // Z-Machine spec: "Execution of instructions begins from the byte after this header information"
         log::debug!(
-            "V3 function header (main routine) at 0x{:04x}",
+            "🏁 MAIN_PROGRAM: Generating routine header at 0x{:04x} (PC will point here)",
             self.code_address
         );
 
-        // Emit local count (0 for main routine)
-        self.emit_byte(0x00)?;
+        // Generate V3 function header: Local count (will be calculated based on actual usage)
+        // Placeholder for local count - will be patched later with actual needed locals
+        let header_location = self.code_address;
+        self.emit_byte(0x00)?; // Placeholder - will be patched with actual local count
 
         log::debug!(
             "🏁 MAIN_ROUTINE: Header complete at 0x{:04x}, instructions follow",
             self.code_address
         );
 
-        // Record main routine address for header
+        // Record main routine address and header location for patching
         self.function_addresses
             .insert(init_routine_id, main_routine_address);
         self.record_final_address(init_routine_id, main_routine_address);
+
+        // Store header location for later local count patching
+        self.function_header_locations
+            .insert(init_routine_id, header_location);
 
         // Generate the init block code directly after the header
         // CRITICAL: Use translate_ir_instruction to ensure proper instruction generation
@@ -6372,6 +6360,13 @@ impl ZMachineCodeGen {
                 after_addr
             );
         }
+
+        // ARCHITECTURAL FIX: Finalize main routine header with actual local variable count
+        log::debug!(
+            "🔧 MAIN_ROUTINE_FINALIZE: Patching header with {} local variables used",
+            self.current_function_locals
+        );
+        self.finalize_function_header(init_routine_id)?;
 
         // Add program-mode specific termination
         match _ir.program_mode {

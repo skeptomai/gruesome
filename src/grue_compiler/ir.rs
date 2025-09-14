@@ -2115,13 +2115,13 @@ impl IrGenerator {
             }
             Expr::Identifier(name) => {
                 // CRITICAL ARCHITECTURAL FIX (Sep 13, 2025): Handle player object specially
-                // 
+                //
                 // PROBLEM: Player object references were being generated as LoadImmediate(1) → LargeConstant(1)
                 // causing stack underflow in get_prop instructions that expected Variable(16).
                 //
                 // SOLUTION: Player object must be read from Global G00 (Variable 16) per Z-Machine spec.
                 // This ensures proper distinction between:
-                // - Literal integer 1 → LargeConstant(1) 
+                // - Literal integer 1 → LargeConstant(1)
                 // - Player object reference → Variable(16) (reads from Global G00)
                 //
                 // This fixes the architectural issue where player.location calls generated wrong operand types.
