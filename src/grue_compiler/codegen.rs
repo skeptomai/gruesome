@@ -516,8 +516,12 @@ impl ZMachineCodeGen {
 
         // Phase 3: Calculate precise layout and assemble final image
         log::info!(" Phase 3: Calculate comprehensive layout and assemble complete image");
-        let final_game_image = self.assemble_complete_zmachine_image(&ir)?;
+        let mut final_game_image = self.assemble_complete_zmachine_image(&ir)?;
         log::info!(" Phase 3 complete: Final Z-Machine image assembled");
+
+        // Phase 4: Reinitialize input buffers (after all resizes are complete)
+        log::debug!(" Phase 4: Reinitializing input buffers");
+        self.reinitialize_input_buffers_in_image(&mut final_game_image);
 
         // Phase 5: Final validation
         log::debug!(" Phase 5: Validating final Z-Machine image");
@@ -3930,14 +3934,23 @@ impl ZMachineCodeGen {
 
         // Initialize the buffers with proper headers
         if self.story_data.len() <= self.text_buffer_addr + 64 {
+            debug!(
+                "Resizing story_data from {} to {} to accommodate buffers",
+                self.story_data.len(),
+                self.text_buffer_addr + 64 + 34
+            );
             self.story_data.resize(self.text_buffer_addr + 64 + 34, 0);
         }
 
         // Write directly to story_data instead of routing through code space
         // This prevents the catastrophic bug where buffer initialization corrupts code
-        self.story_data[self.text_buffer_addr] = 62; // Max input length
+        debug!(
+            "Initializing buffers: text_buffer[{}] = 100, parse_buffer[{}] = 120",
+            self.text_buffer_addr, self.parse_buffer_addr
+        );
+        self.story_data[self.text_buffer_addr] = 100; // Max input length (match Zork I's 0x64)
         self.story_data[self.text_buffer_addr + 1] = 0; // Current length
-        self.story_data[self.parse_buffer_addr] = 8; // Max words
+        self.story_data[self.parse_buffer_addr] = 120; // Max words (match Zork I's 0x78)
         self.story_data[self.parse_buffer_addr + 1] = 0; // Current words
 
         // Reserve space for object table
@@ -6506,12 +6519,9 @@ impl ZMachineCodeGen {
                 );
                 // Jump to the main loop routine (ID 9001 = first instruction, not routine header)
                 let layout = self.emit_instruction(
-                    0xC1, // jump (unconditional jump)
-                    &[
-                        Operand::LargeConstant(1),
-                        Operand::LargeConstant(placeholder_word()),
-                    ], // Jump operands
-                    None, // No store
+                    0x0C,                                          // jump (unconditional jump)
+                    &[Operand::LargeConstant(placeholder_word())], // Placeholder for jump offset
+                    None,                                          // No store
                     None, // No branch (jump is unconditional)
                 )?;
 
@@ -8406,6 +8416,29 @@ impl ZMachineCodeGen {
         // Use the monitored write functions - NO DIRECT WRITES ALLOWED
         self.write_word_at_safe(addr, word)?;
         Ok(())
+    }
+
+    /// Reinitialize input buffers in the final game image
+    /// This ensures buffer headers survive any ensure_capacity() calls
+    fn reinitialize_input_buffers_in_image(&self, game_image: &mut Vec<u8>) {
+        if self.text_buffer_addr > 0 && self.parse_buffer_addr > 0 {
+            debug!(
+                "Reinitializing input buffers in final image: text_buffer[{}] = 100, parse_buffer[{}] = 120",
+                self.text_buffer_addr, self.parse_buffer_addr
+            );
+
+            // Ensure we have enough space in the final image
+            let required_size = self.parse_buffer_addr + 34;
+            if game_image.len() < required_size {
+                game_image.resize(required_size, 0);
+            }
+
+            // Reinitialize buffer headers (match Zork I's values)
+            game_image[self.text_buffer_addr] = 100; // Max input length (0x64)
+            game_image[self.text_buffer_addr + 1] = 0; // Current length
+            game_image[self.parse_buffer_addr] = 120; // Max words (0x78)
+            game_image[self.parse_buffer_addr + 1] = 0; // Current words
+        }
     }
 
     /// Ensure the story data buffer has enough capacity

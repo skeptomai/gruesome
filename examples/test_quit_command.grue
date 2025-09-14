@@ -1,0 +1,22 @@
+// Test case to verify SREAD input processing with quit command
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room"
+    }
+}
+
+fn handle_quit() {
+    print("Goodbye!");
+    // In a real implementation, this would exit the game
+    // For now, we just print and continue
+}
+
+fn test_function() {
+    print("Testing SREAD functionality");
+    print("Type 'quit' to test input processing");
+}
+
+init {
+    player.location = test_room;
+    test_function();
+}
