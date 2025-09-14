@@ -330,18 +330,25 @@ impl ZMachineCodeGen {
 
     /// Generate dictionary space with minimal word parsing dictionary
     pub fn generate_dictionary_space(&mut self, _ir: &IrProgram) -> Result<(), CompilerError> {
-        debug!("📚 Generating minimal dictionary for Z-Machine compliance");
+        debug!("📚 Generating dictionary with basic commands for Z-Machine compliance");
 
-        // Z-Machine requires a dictionary even if minimal
-        // Format: [entry length][number of entries][entries...]
-        // For simplicity, create minimal dictionary with word separators only
+        // Z-Machine dictionary format:
+        // - Entry length (1 byte): 6 for v3
+        // - Number of entries (2 bytes): count
+        // - Entries (6 bytes each for v3): encoded Z-characters + address
 
-        let dictionary_data = vec![
+        // Add "quit" command to dictionary
+        // Z-character encoding for "quit": approximately 0x1462a5 (packed into 3 words)
+        let quit_encoded = self.encode_word_to_zchars("quit")?;
+
+        let mut dictionary_data = vec![
+            0x00, // Word separators count (0)
             0x06, // Entry length: 6 bytes per entry
-            0x00, // Number of entries: 0 (minimal dictionary)
-            0x00, // High byte of entry count
-            0x00, // Padding to maintain alignment
+            0x00, 0x01, // Number of entries: 1 (just "quit")
         ];
+
+        // Add the "quit" entry (6 bytes)
+        dictionary_data.extend_from_slice(&quit_encoded);
 
         // Allocate dictionary space and write data
         self.allocate_dictionary_space(dictionary_data.len())?;
@@ -350,7 +357,7 @@ impl ZMachineCodeGen {
         }
 
         debug!(
-            "📚 Dictionary space generated: {} bytes",
+            "📚 Dictionary space generated: {} bytes with 'quit' command",
             dictionary_data.len()
         );
         Ok(())
@@ -365,6 +372,48 @@ impl ZMachineCodeGen {
         self.generate_dictionary_space(_ir)?;
 
         Ok(())
+    }
+
+    /// Encode a word into Z-character format for dictionary entries
+    fn encode_word_to_zchars(&self, word: &str) -> Result<Vec<u8>, CompilerError> {
+        // Simple Z-character encoding for basic ASCII words
+        // Z-characters: a-z = 6-31, space = 0, others use shift sequences
+        // Each word is packed into 3 16-bit words (6 bytes total)
+
+        let mut result = vec![0u8; 6]; // 6 bytes = 3 words
+        let word_lower = word.to_lowercase();
+        let chars: Vec<char> = word_lower.chars().collect();
+
+        // Pack characters into Z-character format (5 bits each, 3 chars per word)
+        for (i, &ch) in chars.iter().enumerate().take(9) {
+            // Max 9 chars
+            let zchar = match ch {
+                'a'..='z' => (ch as u8 - b'a') + 6,
+                _ => 6, // Default to 'a' for unsupported characters
+            };
+
+            let word_idx = i / 3;
+            let char_idx = i % 3;
+
+            if word_idx < 3 {
+                let word_offset = word_idx * 2;
+                let shift = (2 - char_idx) * 5;
+
+                // Pack 5-bit Z-character into the appropriate word
+                let word_val =
+                    ((result[word_offset] as u16) << 8) | (result[word_offset + 1] as u16);
+                let new_word_val = word_val | ((zchar as u16) << shift);
+
+                result[word_offset] = (new_word_val >> 8) as u8;
+                result[word_offset + 1] = (new_word_val & 0xFF) as u8;
+            }
+        }
+
+        // Set end-of-word bit on the last word
+        result[4] |= 0x80; // Set high bit of the third word
+
+        debug!("📚 Encoded '{}' to Z-chars: {:02x?}", word, result);
+        Ok(result)
     }
 
     /// String Utility Functions
