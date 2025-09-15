@@ -246,7 +246,7 @@ pub struct ZMachineCodeGen {
     pub in_init_block: bool, // True when generating init block code
 
     // Label processing
-    pub pending_label: Option<IrId>, // Label waiting to be assigned to next instruction
+    pub pending_labels: Vec<IrId>, // Labels waiting to be assigned to next instruction
 
     // Address resolution
     pub reference_context: ReferenceContext,
@@ -346,7 +346,7 @@ impl ZMachineCodeGen {
             stack_depth: 0,
             max_stack_depth: 0,
             in_init_block: false,
-            pending_label: None,
+            pending_labels: Vec::new(),
             reference_context: ReferenceContext {
                 ir_id_to_address: IndexMap::new(),
                 unresolved_refs: Vec::new(),
@@ -1943,18 +1943,23 @@ impl ZMachineCodeGen {
                 }
             }
 
-            // Process any pending label at end of function
+            // Process any pending labels at end of function
             // Labels at the end of a function (like endif labels after a branch)
             // won't have a following instruction to trigger deferred label processing.
             // We must process them here before adding the implicit return.
-            if let Some(label_id) = self.pending_label.take() {
+            // Multiple labels can converge at the same address (e.g., nested if statements).
+            if !self.pending_labels.is_empty() {
                 let label_address = self.code_address;
-                log::debug!(
-                    "END_OF_FUNCTION_LABEL: Processing pending label {} at end of function at address 0x{:04x}",
-                    label_id, label_address
-                );
-                self.label_addresses.insert(label_id, label_address);
-                self.record_final_address(label_id, label_address);
+                // Collect labels first to avoid borrow issues
+                let labels_to_process: Vec<_> = self.pending_labels.drain(..).collect();
+                for label_id in labels_to_process {
+                    log::debug!(
+                        "END_OF_FUNCTION_LABEL: Processing pending label {} at end of function at address 0x{:04x}",
+                        label_id, label_address
+                    );
+                    self.label_addresses.insert(label_id, label_address);
+                    self.record_final_address(label_id, label_address);
+                }
             }
 
             // Check if function needs implicit return

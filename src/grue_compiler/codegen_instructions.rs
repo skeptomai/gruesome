@@ -323,7 +323,8 @@ impl ZMachineCodeGen {
                 );
 
                 // Store the label ID to be processed when the next instruction is emitted
-                self.pending_label = Some(*id);
+                // Multiple labels can be pending at the same address (e.g., converging control flow)
+                self.pending_labels.push(*id);
             }
 
             IrInstruction::UnaryOp {
@@ -1049,26 +1050,31 @@ impl ZMachineCodeGen {
             }
         }
 
-        // CRITICAL FIX: Process pending label AFTER instruction is emitted
+        // CRITICAL FIX: Process pending labels AFTER instruction is emitted
         // This ensures labels point to the actual instruction location
-        if let Some(label_id) = self.pending_label.take() {
+        // Multiple labels can be pending at the same address (converging control flow)
+        if !self.pending_labels.is_empty() {
             // Only process if the instruction actually emitted code (address changed)
             if self.code_address > code_address_before {
                 let label_address = code_address_before; // Use the address where instruction started
-                log::debug!(
-                    "DEFERRED_LABEL_AFTER: Processing pending label {} at instruction_start=0x{:04x} (after instruction: {:?})",
-                    label_id, label_address, instruction
-                );
-
-                // Record the address manually instead of using allocate_label_address which uses current position
-                self.label_addresses.insert(label_id, label_address);
-                self.record_final_address(label_id, label_address);
+                
+                // Process all pending labels - they all point to the same address
+                let labels_to_process: Vec<crate::grue_compiler::ir::IrId> = self.pending_labels.drain(..).collect();
+                for label_id in labels_to_process {
+                    log::debug!(
+                        "DEFERRED_LABEL_AFTER: Processing pending label {} at instruction_start=0x{:04x} (after instruction: {:?})",
+                        label_id, label_address, instruction
+                    );
+                    
+                    // Record the address manually instead of using allocate_label_address which uses current position
+                    self.label_addresses.insert(label_id, label_address);
+                    self.record_final_address(label_id, label_address);
+                }
             } else {
-                // Instruction didn't emit code, defer to next instruction
-                self.pending_label = Some(label_id);
+                // Instruction didn't emit code, keep labels pending for next instruction
                 log::debug!(
-                    "DEFERRED_LABEL_SKIP: Label {} deferred again - instruction {:?} didn't emit code",
-                    label_id, instruction
+                    "DEFERRED_LABEL_SKIP: {} labels deferred again - instruction {:?} didn't emit code",
+                    self.pending_labels.len(), instruction
                 );
             }
         }
