@@ -261,23 +261,9 @@ impl ZMachineCodeGen {
             }
 
             IrInstruction::Jump { label } => {
-                // Create unresolved reference for label (will be patched later)
-                let _branch_offset = self.create_unresolved_reference(
-                    crate::grue_compiler::codegen::LegacyReferenceType::Label(*label),
-                    crate::grue_compiler::codegen::MemorySpace::CodeSpace,
-                    self.current_address(),
-                    *label,
-                    false,
-                    2,
-                );
-                // Jump: branch instruction with no condition (always true)
-                // Use je (equal) with 1,1 as a way to generate "always true"
-                self.emit_instruction(
-                    0xC1, // je (2OP:1) in VAR form - will always be true
-                    &[Operand::LargeConstant(1), Operand::LargeConstant(1)],
-                    None,
-                    Some(0), // Placeholder offset - will be resolved later
-                )?;
+                // Generate a proper jump instruction with correct unresolved reference
+                // This delegates to translate_jump which handles the Z-Machine jump encoding
+                self.translate_jump(*label)?;
             }
 
             IrInstruction::Branch {
@@ -1370,11 +1356,12 @@ impl ZMachineCodeGen {
     /// Check if an opcode is a true VAR opcode (always requires VAR form encoding)
     fn should_not_emit_store_variable(opcode: u8) -> bool {
         match opcode {
-            // Call instructions - result storage handled internally
-            0x00 | 0xE0 => true, // call_vs (raw opcode 0 or VAR-form 0xE0)
-            0x20 => true,        // call_1n
-            0x8F => true,        // call_1n (1OP form)
-            0x1A => true,        // call_2n
+            // Call instructions that don't store results (void calls)
+            0x20 => true, // call_1n - no return value
+            0x8F => true, // call_1n (1OP form) - no return value
+            0x1A => true, // call_2n - no return value
+
+            // IMPORTANT: call_vs (0x00/0xE0) stores results and MUST emit store variable byte!
 
             // Print instructions - no result to store
             0x8D => true, // print_paddr (1OP:141)

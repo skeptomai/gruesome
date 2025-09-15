@@ -1380,12 +1380,19 @@ impl ZMachineCodeGen {
                     // CRITICAL FIX: Jump instructions use relative offsets, not direct addresses
                     debug!("Jump resolution: Using relative offset calculation");
 
-                    // CRITICAL FIX: Calculate relative offset for jump instructions
+                    // Calculate relative offset for jump instructions
                     // Jump is a 1OP instruction: opcode (1 byte) + operand (2 bytes) = 3 bytes total
-                    // reference.location points to the operand (after opcode), so subtract 1 to get instruction start
-                    // Formula: target - (instruction_start + instruction_length)
+                    // reference.location points to the operand (after opcode)
+                    //
+                    // Z-Machine jump offset formula (from specification):
+                    //   actual_target = PC_after_instruction + offset - 2
+                    // Therefore to calculate the offset we need:
+                    //   offset = target - PC_after_instruction + 2
+                    //
+                    // The "+2" compensates for the "-2" in the Z-Machine's offset interpretation
                     let instruction_pc = reference.location - 1; // Back to instruction start from operand
-                    let offset = resolved_address as i32 - (instruction_pc as i32 + 3);
+                    let pc_after_instruction = instruction_pc + 3; // PC after the 3-byte jump instruction
+                    let offset = resolved_address as i32 - pc_after_instruction as i32 + 2;
 
                     if offset < -32768 || offset > 32767 {
                         return Err(CompilerError::CodeGenError(format!(
@@ -1936,6 +1943,20 @@ impl ZMachineCodeGen {
                 }
             }
 
+            // Process any pending label at end of function
+            // Labels at the end of a function (like endif labels after a branch)
+            // won't have a following instruction to trigger deferred label processing.
+            // We must process them here before adding the implicit return.
+            if let Some(label_id) = self.pending_label.take() {
+                let label_address = self.code_address;
+                log::debug!(
+                    "END_OF_FUNCTION_LABEL: Processing pending label {} at end of function at address 0x{:04x}",
+                    label_id, label_address
+                );
+                self.label_addresses.insert(label_id, label_address);
+                self.record_final_address(label_id, label_address);
+            }
+
             // Check if function needs implicit return
             let has_return = self.block_ends_with_return(&function.body);
             log::debug!(
@@ -2278,12 +2299,15 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Implementation: Jump - Unconditional jump to label
-    fn translate_jump(&mut self, label: IrId) -> Result<(), CompilerError> {
+    /// Generate a jump instruction to the specified label
+    /// Jump instructions use relative offsets following Z-Machine specification:
+    /// actual_target = PC_after_instruction + offset - 2
+    pub fn translate_jump(&mut self, label: IrId) -> Result<(), CompilerError> {
         log::debug!("JUMP: label={}", label);
 
-        // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
-        let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
+        // Record the location where the operand will be written (after the opcode)
+        // This is a code space offset, not an absolute address
+        let operand_location = self.code_space.len() + 1; // +1 for opcode byte
         let layout = self.emit_instruction(
             0x0C, // jump opcode (1OP:12) - fixed from 0x8C which was 0OP
             &[Operand::LargeConstant(placeholder_word())], // Placeholder for jump offset
