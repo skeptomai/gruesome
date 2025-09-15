@@ -193,9 +193,9 @@ pub struct ZMachineCodeGen {
     parse_buffer_addr: usize,
 
     // Code generation state
-    label_addresses: IndexMap<IrId, usize>, // IR label ID -> byte address
-    string_addresses: IndexMap<IrId, usize>, // IR string ID -> byte address
-    function_addresses: IndexMap<IrId, usize>, // IR function ID -> function header byte address
+    pub label_addresses: IndexMap<IrId, usize>, // IR label ID -> byte address
+    string_addresses: IndexMap<IrId, usize>,    // IR string ID -> byte address
+    function_addresses: IndexMap<IrId, usize>,  // IR function ID -> function header byte address
     function_locals_count: IndexMap<IrId, usize>, // IR function ID -> locals count (for header size calculation)
     function_header_locations: IndexMap<IrId, usize>, // IR function ID -> header byte location for patching
     current_function_locals: u8, // Track local variables allocated in current function (0-15)
@@ -244,6 +244,9 @@ pub struct ZMachineCodeGen {
 
     // Execution context
     pub in_init_block: bool, // True when generating init block code
+
+    // Label processing
+    pub pending_label: Option<IrId>, // Label waiting to be assigned to next instruction
 
     // Address resolution
     pub reference_context: ReferenceContext,
@@ -343,6 +346,7 @@ impl ZMachineCodeGen {
             stack_depth: 0,
             max_stack_depth: 0,
             in_init_block: false,
+            pending_label: None,
             reference_context: ReferenceContext {
                 ir_id_to_address: IndexMap::new(),
                 unresolved_refs: Vec::new(),
@@ -6047,7 +6051,7 @@ impl ZMachineCodeGen {
         // FIXED: Emit jz instruction WITH placeholder branch offset
         // The emit_instruction function handles placeholder emission properly
         let layout = self.emit_instruction(
-            0x01, // jz (1OP:1) - jump if zero
+            0x00, // jz (1OP:0) - jump if zero (CORRECTED from 0x01 which is je)
             &[condition_operand],
             None,       // No store
             Some(0xFF), // Placeholder branch offset - will be replaced during resolution

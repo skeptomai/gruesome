@@ -14,6 +14,9 @@ impl ZMachineCodeGen {
         instruction: &IrInstruction,
     ) -> Result<(), CompilerError> {
         debug!("Generate instruction called: {:?}", instruction);
+
+        // Store initial code address to detect if label should be processed
+        let code_address_before = self.code_address;
         // DEBUGGING: Log every instruction that creates a target
         match instruction {
             IrInstruction::LoadImmediate { target, .. } => {
@@ -325,14 +328,16 @@ impl ZMachineCodeGen {
             }
 
             IrInstruction::Label { id } => {
-                // Labels are just markers - register current address for label resolution
-                // CRITICAL FIX: Use allocate_label_address for proper Phase 3 relative->absolute conversion
-                let label_address = self.allocate_label_address(*id);
+                // CRITICAL FIX: Labels should point to the NEXT instruction, not current position
+                // The label address will be recorded when the next instruction is processed
+                // This ensures labels point to actual executable code, not empty space
                 log::debug!(
-                    "Label registered: IR ID {} -> address 0x{:04x} (allocated via allocate_label_address)",
-                    id,
-                    label_address
+                    "Label {} encountered at code_address=0x{:04x} - deferring address recording until next instruction",
+                    id, self.code_address
                 );
+
+                // Store the label ID to be processed when the next instruction is emitted
+                self.pending_label = Some(*id);
             }
 
             IrInstruction::UnaryOp {
@@ -1055,6 +1060,30 @@ impl ZMachineCodeGen {
                     "Instruction type {:?} not implemented in extracted generate_instruction",
                     instruction
                 )));
+            }
+        }
+
+        // CRITICAL FIX: Process pending label AFTER instruction is emitted
+        // This ensures labels point to the actual instruction location
+        if let Some(label_id) = self.pending_label.take() {
+            // Only process if the instruction actually emitted code (address changed)
+            if self.code_address > code_address_before {
+                let label_address = code_address_before; // Use the address where instruction started
+                log::debug!(
+                    "DEFERRED_LABEL_AFTER: Processing pending label {} at instruction_start=0x{:04x} (after instruction: {:?})",
+                    label_id, label_address, instruction
+                );
+
+                // Record the address manually instead of using allocate_label_address which uses current position
+                self.label_addresses.insert(label_id, label_address);
+                self.record_final_address(label_id, label_address);
+            } else {
+                // Instruction didn't emit code, defer to next instruction
+                self.pending_label = Some(label_id);
+                log::debug!(
+                    "DEFERRED_LABEL_SKIP: Label {} deferred again - instruction {:?} didn't emit code",
+                    label_id, instruction
+                );
             }
         }
 

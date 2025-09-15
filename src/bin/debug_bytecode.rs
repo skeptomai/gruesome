@@ -211,21 +211,22 @@ fn analyze_instruction(data: &[u8], pos: usize) -> InstructionAnalysis {
 
 fn get_1op_name(opcode: u8) -> &'static str {
     match opcode {
-        0x01 => "jz",
-        0x02 => "get_sibling",
-        0x03 => "get_child",
-        0x04 => "get_parent",
-        0x05 => "get_prop_len",
-        0x06 => "inc",
-        0x07 => "dec",
-        0x08 => "print_addr",
-        0x09 => "call_1s",
-        0x0A => "remove_obj",
-        0x0B => "print_obj",
-        0x0C => "ret",
-        0x0D => "jump",
-        0x0E => "print_paddr",
-        0x0F => "load",
+        0x00 => "jz",           // CORRECTED: jz is 1OP:0, not 1OP:1
+        0x01 => "get_sibling",  // CORRECTED: was incorrectly mapped to jz
+        0x02 => "get_child",    // CORRECTED: was incorrectly get_sibling
+        0x03 => "get_parent",   // CORRECTED: was incorrectly get_child
+        0x04 => "get_prop_len", // CORRECTED: was incorrectly get_parent
+        0x05 => "inc",          // CORRECTED: was incorrectly get_prop_len
+        0x06 => "dec",          // CORRECTED: was incorrectly inc
+        0x07 => "print_addr",   // CORRECTED: was incorrectly dec
+        0x08 => "call_1s",      // CORRECTED: was incorrectly print_addr
+        0x09 => "remove_obj",   // CORRECTED: was incorrectly call_1s
+        0x0A => "print_obj",    // CORRECTED: was incorrectly remove_obj
+        0x0B => "ret",          // CORRECTED: was incorrectly print_obj
+        0x0C => "jump",         // CORRECTED: was incorrectly ret
+        0x0D => "print_paddr",  // CORRECTED: was incorrectly jump
+        0x0E => "load",         // CORRECTED: was incorrectly print_paddr
+        0x0F => "not",          // CORRECTED: was duplicate load
         _ => "unknown_1op",
     }
 }
