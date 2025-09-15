@@ -1514,9 +1514,10 @@ impl ZMachineCodeGen {
             self.emit_byte(store)?;
         }
 
-        // Emit branch offset if needed
-        if let Some(offset) = branch_offset {
-            self.emit_branch_offset(offset)?;
+        // Emit branch placeholder if needed (resolved later via UnresolvedReference)
+        if let Some(_offset) = branch_offset {
+            // Always emit 2-byte placeholder for branches to be resolved later
+            self.emit_word(0xFFFF)?; // Will be replaced during branch resolution
         }
 
         Ok(())
@@ -1558,9 +1559,10 @@ impl ZMachineCodeGen {
             self.emit_byte(store)?;
         }
 
-        // Emit branch offset if needed
-        if let Some(offset) = branch_offset {
-            self.emit_branch_offset(offset)?;
+        // Emit branch placeholder if needed (resolved later via UnresolvedReference)
+        if let Some(_offset) = branch_offset {
+            // Always emit 2-byte placeholder for branches to be resolved later
+            self.emit_word(0xFFFF)?; // Will be replaced during branch resolution
         }
 
         Ok(())
@@ -1620,10 +1622,11 @@ impl ZMachineCodeGen {
             None
         };
 
-        // Track branch offset location
-        let branch_location = if let Some(offset) = branch_offset {
+        // Track branch placeholder location
+        let branch_location = if let Some(_offset) = branch_offset {
             let loc = self.code_address;
-            self.emit_branch_offset(offset)?;
+            // Always emit 2-byte placeholder for branches to be resolved later
+            self.emit_word(0xFFFF)?; // Will be replaced during branch resolution
             Some(loc)
         } else {
             None
@@ -1689,9 +1692,10 @@ impl ZMachineCodeGen {
             self.emit_byte(store)?;
         }
 
-        // Emit branch offset if needed
-        if let Some(offset) = branch_offset {
-            self.emit_branch_offset(offset)?;
+        // Emit branch placeholder if needed (resolved later via UnresolvedReference)
+        if let Some(_offset) = branch_offset {
+            // Always emit 2-byte placeholder for branches to be resolved later
+            self.emit_word(0xFFFF)?; // Will be replaced during branch resolution
         }
 
         Ok(())
@@ -1791,10 +1795,11 @@ impl ZMachineCodeGen {
             None
         };
 
-        // Track branch offset location
-        let branch_location = if let Some(offset) = branch_offset {
+        // Track branch placeholder location
+        let branch_location = if let Some(_offset) = branch_offset {
             let loc = self.code_address;
-            self.emit_branch_offset(offset)?;
+            // Always emit 2-byte placeholder for branches to be resolved later
+            self.emit_word(0xFFFF)?; // Will be replaced during branch resolution
             Some(loc)
         } else {
             None
@@ -1909,10 +1914,11 @@ impl ZMachineCodeGen {
             None
         };
 
-        // Track branch offset location
-        let branch_location = if let Some(offset) = branch_offset {
+        // Track branch placeholder location
+        let branch_location = if let Some(_offset) = branch_offset {
             let loc = self.code_address;
-            self.emit_branch_offset(offset)?;
+            // Always emit 2-byte placeholder for branches to be resolved later
+            self.emit_word(0xFFFF)?; // Will be replaced during branch resolution
             Some(loc)
         } else {
             None
@@ -1932,11 +1938,25 @@ impl ZMachineCodeGen {
     fn adapt_operand_for_long_form(&self, operand: &Operand) -> Result<Operand, CompilerError> {
         match operand {
             Operand::LargeConstant(value) => {
-                // CRITICAL FIX: Check if this LargeConstant represents an IR ID that should be resolved
-                if let Some(resolved_operand) = self.try_resolve_ir_id_if_needed(*value as u32) {
-                    // This was actually an IR ID that needed resolution - use the resolved value
-                    return Ok(resolved_operand);
-                }
+                // CRITICAL ARCHITECTURAL DECISION: Do NOT attempt IR ID resolution here
+                //
+                // REASONING: By the time operands reach emit_instruction(), all IR IDs should
+                // already be resolved to their final operand values. The previous logic attempted
+                // to "second-guess" whether a LargeConstant(N) might actually be an unresolved
+                // IR ID N, but this created systematic bugs:
+                //
+                // BUG EXAMPLE:
+                // 1. IR ID 5 correctly resolves to LargeConstant(1) (literal constant 1)
+                // 2. emit_instruction receives operands=[Variable(0), LargeConstant(1)]
+                // 3. adapt_operand_for_long_form sees LargeConstant(1) and incorrectly thinks
+                //    "maybe this 1 is actually unresolved IR ID 1"
+                // 4. Attempts to resolve IR ID 1 → gets function address → emits 0xFFFF placeholder
+                // 5. Result: je instruction gets 0xFF 0xFF instead of correct operands
+                //
+                // CONCLUSION: If an operand reaches this point, it's already fully resolved.
+                // Any remaining IR ID resolution should have happened earlier in the pipeline.
+                //
+                // REMOVED: try_resolve_ir_id_if_needed() call that caused LargeConstant(1) → 0xFFFF bug
 
                 if *value <= 255 {
                     // Convert to SmallConstant if it fits (only for resolved constants)

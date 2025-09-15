@@ -1474,10 +1474,12 @@ impl ZMachineCodeGen {
                     };
 
                     // CRITICAL FIX: Branch data is being written 1 byte too late
-                    // Apply same location fix as jump instructions - adjust by -1
-                    let corrected_location = final_location - 1;
-                    debug!("Branch resolution: Correcting location 0x{:04x} -> 0x{:04x} (same fix pattern as jumps)", final_location, corrected_location);
-                    let result = self.patch_branch_offset(corrected_location, resolved_address);
+                    // TESTING: Remove the -1 adjustment hack to see if branch_location is correct
+                    debug!(
+                        "Branch resolution: Using direct location 0x{:04x} (no -1 adjustment)",
+                        final_location
+                    );
+                    let result = self.patch_branch_offset(final_location, resolved_address);
                     debug!(
                         "Branch resolution: patch_branch_offset returned: {:?}",
                         result
@@ -6042,27 +6044,19 @@ impl ZMachineCodeGen {
             }
         };
 
-        // CRITICAL FIX: Pass branch offset directly to emit_instruction instead of manual emission
-        // This fixes the PC misalignment bug caused by extra placeholder bytes
-        log::error!(
-            "🔧 JZ_EMIT_DEBUG: About to emit jz instruction with opcode=0x01, operand={:?}",
-            condition_operand
-        );
+        // FIXED: Emit jz instruction WITH placeholder branch offset
+        // The emit_instruction function handles placeholder emission properly
         let layout = self.emit_instruction(
-            0x01, // jz (1OP:1) - jump if zero (use raw opcode, form will be determined automatically)
+            0x01, // jz (1OP:1) - jump if zero
             &[condition_operand],
-            None,     // No store
-            Some(35), // Placeholder branch offset - will be resolved by UnresolvedReference system
+            None,       // No store
+            Some(0xFF), // Placeholder branch offset - will be replaced during resolution
         )?;
-        log::error!(
-            "🔧 JZ_EMIT_DEBUG: emit_instruction completed, layout={:?}",
-            layout
-        );
 
-        // Create UnresolvedReference for the branch target using the layout information
+        // Use the branch_location from layout (calculated correctly by emit_instruction)
         if let Some(branch_location) = layout.branch_location {
             log::debug!(
-                " JZ_BRANCH_REF_CREATE: branch_location=0x{:04x} target_id={} (layout-based)",
+                " JZ_BRANCH_REF_CREATE: branch_location=0x{:04x} target_id={}",
                 branch_location,
                 false_label
             );
@@ -6070,7 +6064,7 @@ impl ZMachineCodeGen {
                 .unresolved_refs
                 .push(UnresolvedReference {
                     reference_type: LegacyReferenceType::Branch,
-                    location: branch_location, // Use exact branch location from layout
+                    location: branch_location, // Use exact location from emit_instruction
                     target_id: false_label,    // jz jumps on false condition
                     is_packed_address: false,
                     offset_size: 1, // Branch offset size depends on the actual offset value
@@ -6078,7 +6072,7 @@ impl ZMachineCodeGen {
                 });
         } else {
             return Err(CompilerError::CodeGenError(
-                "jz instruction should have branch_location in layout".to_string(),
+                "jz instruction must have branch_location".to_string(),
             ));
         }
 
@@ -6103,31 +6097,32 @@ impl ZMachineCodeGen {
         );
         let before_addr = self.code_address;
 
-        // CRITICAL FIX: Z-Machine branch instructions MUST have branch offsets
-        // Use placeholder offset that will be resolved later by UnresolvedReference system
-        let placeholder_offset = 3329; // Placeholder that will be replaced during resolution
-
+        // FIXED: Emit comparison instruction WITH placeholder branch offset
+        // The emit_instruction function handles placeholder emission properly
         let layout = self.emit_instruction(
             opcode,
             operands,
-            None,                            // No store
-            Some(placeholder_offset as i16), // Branch offset - REQUIRED for branch instructions
+            None,       // No store
+            Some(0xFF), // Placeholder branch offset - will be replaced during resolution
         )?;
 
-        // Add unresolved reference to resolve the branch offset later
-        let branch_offset_location = layout
-            .branch_location
-            .expect("Branch instruction must have branch offset location");
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Branch,
-                location: branch_offset_location,
-                target_id: true_label,
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        // Use the branch_location from layout (calculated correctly by emit_instruction)
+        if let Some(branch_location) = layout.branch_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: branch_location, // Use exact location from emit_instruction
+                    target_id: true_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        } else {
+            return Err(CompilerError::CodeGenError(
+                "Comparison branch instruction must have branch_location".to_string(),
+            ));
+        }
 
         let after_addr = self.code_address;
         log::debug!(
@@ -6135,7 +6130,7 @@ impl ZMachineCodeGen {
             after_addr - before_addr,
             before_addr,
             after_addr,
-            branch_offset_location
+            layout.branch_location.unwrap_or(0)
         );
 
         Ok(())
@@ -7245,7 +7240,7 @@ impl ZMachineCodeGen {
         // Always use 2-byte format since we reserved 2 bytes
         // Calculate offset for 2-byte format (address after 2 bytes)
         let address_after_2byte = location + 2;
-        let offset_2byte = (target_address as i32) - (address_after_2byte as i32);
+        let offset_2byte = (target_address as i32) - (address_after_2byte as i32) + 2;
 
         log::error!(
             "🔧 BRANCH_CALC: address_after_2byte=0x{:04x}, offset_2byte={}, first_byte=0x{:02x}, second_byte=0x{:02x}",

@@ -273,5 +273,57 @@ cargo test codegen_test 2>/dev/null | grep "test result"
 
 ---
 
-*Last Updated: September 12, 2025*  
+## CRITICAL: Jump vs Branch Location Calculation Pattern Differences (Sep 15, 2025) ⚠️
+
+**MAJOR FINDING**: Jump and Branch UnresolvedReference location calculations use DIFFERENT patterns. Mixing them causes systematic bugs.
+
+### Jump Instructions (CORRECT Pattern):
+- **Structure**: `[opcode][operand_high][operand_low]` (1OP instruction)
+- **Location Calculation**: Points to operand location (after opcode)
+```rust
+// In translate_jump():
+let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
+UnresolvedReference { location: operand_location, ... }
+```
+- **Resolution**: Uses `-1` adjustment to get back to instruction start for offset calculation
+```rust
+// In resolve_unresolved_references():
+let instruction_pc = reference.location - 1; // Back to instruction start from operand
+let offset = resolved_address as i32 - (instruction_pc as i32 + 3);
+```
+- **Rationale**: Jump offset calculation needs instruction start position, but location points to operand
+
+### Branch Instructions (CORRECT Pattern):
+- **Structure**: `[opcode][operands...][branch_high][branch_low]` (branch offset is part of instruction)
+- **Location Calculation**: Points directly to branch offset location
+```rust
+// In emit_instruction() codegen_instructions.rs:
+let branch_location = if let Some(_offset) = branch_offset {
+    let loc = self.code_address;  // Points to where placeholder bytes will be written
+    self.emit_word(0xFFFF)?;      // Emit placeholder at that location
+    Some(loc)
+};
+```
+- **Resolution**: NO adjustment needed - location points directly to where offset should be patched
+```rust
+// In resolve_unresolved_references():
+let result = self.patch_branch_offset(final_location, resolved_address); // No -1 needed
+```
+- **Rationale**: Branch offset location is calculated directly, no derivation needed
+
+### ❌ CRITICAL BUG: Incorrect -1 Adjustment for Branches
+```rust
+// WRONG - copying jump pattern to branches:
+let corrected_location = final_location - 1; // This breaks branch patching!
+```
+
+**Root Cause**: Someone copied the jump resolution pattern to branches, but they have different instruction structures.
+
+**Fix**: Remove -1 adjustment for branches. The `emit_instruction` function already calculates the correct branch offset location.
+
+**Impact**: The -1 hack was masking placeholder resolution - without it, placeholders resolve correctly but offset calculations need proper instruction positioning.
+
+---
+
+*Last Updated: September 15, 2025*
 *Context: Systematic UnresolvedReference resolution failures completely resolved - major compiler milestone achieved*
