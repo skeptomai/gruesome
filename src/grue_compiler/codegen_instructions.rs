@@ -271,6 +271,10 @@ impl ZMachineCodeGen {
                 true_label,
                 false_label,
             } => {
+                if self.code_address >= 0x330 && self.code_address <= 0x340 {
+                    log::error!("CRITICAL BRANCH at code_address=0x{:04x}: condition={}, true_label={}, false_label={}", 
+                              self.code_address, condition, true_label, false_label);
+                }
                 // Delegate to the proper conditional branch function that handles binary operations
                 self.emit_conditional_branch_instruction(*condition, *true_label, *false_label)?;
             }
@@ -1057,15 +1061,16 @@ impl ZMachineCodeGen {
             // Only process if the instruction actually emitted code (address changed)
             if self.code_address > code_address_before {
                 let label_address = code_address_before; // Use the address where instruction started
-                
+
                 // Process all pending labels - they all point to the same address
-                let labels_to_process: Vec<crate::grue_compiler::ir::IrId> = self.pending_labels.drain(..).collect();
+                let labels_to_process: Vec<crate::grue_compiler::ir::IrId> =
+                    self.pending_labels.drain(..).collect();
                 for label_id in labels_to_process {
                     log::debug!(
                         "DEFERRED_LABEL_AFTER: Processing pending label {} at instruction_start=0x{:04x} (after instruction: {:?})",
                         label_id, label_address, instruction
                     );
-                    
+
                     // Record the address manually instead of using allocate_label_address which uses current position
                     self.label_addresses.insert(label_id, label_address);
                     self.record_final_address(label_id, label_address);
@@ -1150,6 +1155,31 @@ impl ZMachineCodeGen {
         store_var: Option<u8>,
         branch_offset: Option<i16>,
     ) -> Result<InstructionLayout, CompilerError> {
+        // TEMPORARY DEBUG: Trace jl with specific operands
+        if opcode == 0x02 {
+            log::error!("JL INSTRUCTION: emit_instruction called with opcode 0x02 (jl) at code_address=0x{:04x}", self.code_address);
+            log::error!("  Operands: {:?}", operands);
+            log::error!("  branch_offset={:?}", branch_offset);
+            if operands.len() == 2 {
+                if let (Operand::SmallConstant(13), Operand::SmallConstant(0)) =
+                    (&operands[0], &operands[1])
+                {
+                    log::error!("  *** THIS IS THE JL(13,0) WE'RE LOOKING FOR!");
+                }
+            }
+            if let Some(offset) = branch_offset {
+                log::error!(
+                    "  Branch offset value: {} (0x{:04x})",
+                    offset,
+                    offset as u16
+                );
+                if offset == 415 || (offset as u16) == 0x019f {
+                    panic!(
+                        "CRITICAL: Branch offset is 415 - the label ID is leaking into bytecode!"
+                    );
+                }
+            }
+        }
         let start_address = self.code_address;
 
         // Comprehensive PC/address tracking for all instructions
@@ -1645,8 +1675,15 @@ impl ZMachineCodeGen {
         };
 
         // Track branch placeholder location
-        let branch_location = if let Some(_offset) = branch_offset {
+        let branch_location = if let Some(offset) = branch_offset {
             let loc = self.code_address;
+            log::debug!("BRANCH_PLACEHOLDER: Emitting 0xFFFF at code_address=0x{:04x} for branch (passed offset={:?})", loc, offset);
+
+            // CRITICAL CHECK: Make sure we're not accidentally using the offset value as the placeholder
+            if offset == 415 {
+                panic!("BUG FOUND: branch_offset is 415 (the label ID!) instead of a placeholder marker!");
+            }
+
             // Always emit 2-byte placeholder for branches to be resolved later
             self.emit_word(0xFFFF)?; // Will be replaced during branch resolution
             Some(loc)
@@ -1818,8 +1855,15 @@ impl ZMachineCodeGen {
         };
 
         // Track branch placeholder location
-        let branch_location = if let Some(_offset) = branch_offset {
+        let branch_location = if let Some(offset) = branch_offset {
             let loc = self.code_address;
+            log::debug!("BRANCH_PLACEHOLDER: Emitting 0xFFFF at code_address=0x{:04x} for branch (passed offset={:?})", loc, offset);
+
+            // CRITICAL CHECK: Make sure we're not accidentally using the offset value as the placeholder
+            if offset == 415 {
+                panic!("BUG FOUND: branch_offset is 415 (the label ID!) instead of a placeholder marker!");
+            }
+
             // Always emit 2-byte placeholder for branches to be resolved later
             self.emit_word(0xFFFF)?; // Will be replaced during branch resolution
             Some(loc)
@@ -1937,8 +1981,15 @@ impl ZMachineCodeGen {
         };
 
         // Track branch placeholder location
-        let branch_location = if let Some(_offset) = branch_offset {
+        let branch_location = if let Some(offset) = branch_offset {
             let loc = self.code_address;
+            log::debug!("BRANCH_PLACEHOLDER: Emitting 0xFFFF at code_address=0x{:04x} for branch (passed offset={:?})", loc, offset);
+
+            // CRITICAL CHECK: Make sure we're not accidentally using the offset value as the placeholder
+            if offset == 415 {
+                panic!("BUG FOUND: branch_offset is 415 (the label ID!) instead of a placeholder marker!");
+            }
+
             // Always emit 2-byte placeholder for branches to be resolved later
             self.emit_word(0xFFFF)?; // Will be replaced during branch resolution
             Some(loc)

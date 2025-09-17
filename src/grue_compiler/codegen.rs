@@ -1053,25 +1053,9 @@ impl ZMachineCodeGen {
         log::debug!(" Step 3e.6: Consolidating ALL IR ID mappings (functions, strings, labels)");
         self.consolidate_all_ir_mappings();
 
-        // TARGETED DEBUG: Check 0x0e96 before reference resolution
-        if 0x0e96 < self.final_data.len() {
-            log::error!(
-                " 🎯 PRE_RESOLVE_CHECK: final_data[0x{:04x}] = 0x{:02x} (before reference resolution)",
-                0x0e96, self.final_data[0x0e96]
-            );
-        }
-
         // Phase 3f: Resolve all address references
         log::debug!(" Step 3f: Resolving all address references and fixups");
         self.resolve_all_addresses()?;
-
-        // TARGETED DEBUG: Check 0x0e96 after reference resolution
-        if 0x0e96 < self.final_data.len() {
-            log::error!(
-                " 🎯 POST_RESOLVE_CHECK: final_data[0x{:04x}] = 0x{:02x} (after reference resolution)",
-                0x0e96, self.final_data[0x0e96]
-            );
-        }
 
         // Phase 3g: Finalize file metadata (length and checksum - must be last)
         // This phase calculates and writes file length and checksum.
@@ -1084,6 +1068,7 @@ impl ZMachineCodeGen {
             "🎉 COMPLETE Z-MACHINE FILE assembled successfully: {} bytes",
             total_size
         );
+
         Ok(self.final_data.clone())
     }
 
@@ -1098,6 +1083,17 @@ impl ZMachineCodeGen {
         // Phase 1: Process unresolved references (modern system)
         let unresolved_count = self.reference_context.unresolved_refs.len();
         log::info!("📋 Processing {} unresolved references", unresolved_count);
+
+        // DEBUG: List all unresolved references
+        for (i, ref_) in self.reference_context.unresolved_refs.iter().enumerate() {
+            log::debug!(
+                "  Unresolved ref {}: type={:?}, location=0x{:04x}, target={}",
+                i,
+                ref_.reference_type,
+                ref_.location,
+                ref_.target_id
+            );
+        }
 
         for reference in &self.reference_context.unresolved_refs.clone() {
             // CRITICAL FIX: Translate reference location from space-relative to final-assembly layout
@@ -1348,6 +1344,25 @@ impl ZMachineCodeGen {
             }
 
             LegacyReferenceType::Jump => {
+                log::debug!(
+                    "Processing Jump reference: location=0x{:04x}, target_id={}",
+                    reference.location,
+                    reference.target_id
+                );
+
+                // CRITICAL FIX: The reference.location is a code space offset, not a final address
+                // We need to translate it to the final address
+                let final_location = if reference.location < self.final_code_base {
+                    // This is a code space offset, translate to final address
+                    let translated = self.final_code_base + reference.location;
+                    log::debug!("Jump reference: Translating location 0x{:04x} -> 0x{:04x} (final_code_base=0x{:04x})", 
+                              reference.location, translated, self.final_code_base);
+                    translated
+                } else {
+                    // Already a final address
+                    reference.location
+                };
+
                 // Find the jump target in our code space
                 if let Some(&code_offset) = self
                     .reference_context
@@ -1382,7 +1397,7 @@ impl ZMachineCodeGen {
 
                     // Calculate relative offset for jump instructions
                     // Jump is a 1OP instruction: opcode (1 byte) + operand (2 bytes) = 3 bytes total
-                    // reference.location points to the operand (after opcode)
+                    // final_location points to the operand (after opcode)
                     //
                     // Z-Machine jump offset formula (from specification):
                     //   actual_target = PC_after_instruction + offset - 2
@@ -1390,7 +1405,7 @@ impl ZMachineCodeGen {
                     //   offset = target - PC_after_instruction + 2
                     //
                     // The "+2" compensates for the "-2" in the Z-Machine's offset interpretation
-                    let instruction_pc = reference.location - 1; // Back to instruction start from operand
+                    let instruction_pc = final_location - 1; // Back to instruction start from operand
                     let pc_after_instruction = instruction_pc + 3; // PC after the 3-byte jump instruction
                     let offset = resolved_address as i32 - pc_after_instruction as i32 + 2;
 
@@ -1406,11 +1421,11 @@ impl ZMachineCodeGen {
 
                     log::debug!(
                         "Jump relative offset: target=0x{:04x} PC=0x{:04x} offset={} -> bytes 0x{:02x} 0x{:02x} at location 0x{:04x}",
-                        resolved_address, instruction_pc, offset, offset_bytes[0], offset_bytes[1], reference.location
+                        resolved_address, instruction_pc, offset, offset_bytes[0], offset_bytes[1], final_location
                     );
 
-                    self.write_byte_at(reference.location, offset_bytes[0])?;
-                    self.write_byte_at(reference.location + 1, offset_bytes[1])?;
+                    self.write_byte_at(final_location, offset_bytes[0])?;
+                    self.write_byte_at(final_location + 1, offset_bytes[1])?;
                     return Ok(());
                 } else {
                     // CRITICAL FIX: Handle phantom label redirects
@@ -1450,12 +1465,40 @@ impl ZMachineCodeGen {
             }
 
             LegacyReferenceType::Branch => {
+                log::debug!(
+                    "RESOLVING BRANCH: target_id={}, location=0x{:04x}",
+                    reference.target_id,
+                    reference.location
+                );
+
+                // TEMPORARY: Check for our problematic label 415
+                if reference.target_id == 415 {
+                    log::error!(
+                        "CRITICAL: Resolving branch for label 415 at location 0x{:04x}",
+                        reference.location
+                    );
+                }
+
+                // Check if this Branch reference is at location 0x127f or nearby
+                if reference.location == 0x127f
+                    || reference.location == 0x1280
+                    || reference.location == 0x1281
+                {
+                    log::error!(
+                        "🔴 CRITICAL BRANCH at location 0x{:04x}!",
+                        reference.location
+                    );
+                    log::error!("  - target_id: {}", reference.target_id);
+                    log::error!("  - This may be the branch overwriting our jl instruction!");
+                }
+
                 // Find the branch target in our code space
                 if let Some(&code_offset) = self
                     .reference_context
                     .ir_id_to_address
                     .get(&reference.target_id)
                 {
+                    log::debug!("  Found target address: 0x{:04x}", code_offset);
                     //  ARCHITECTURE FIX: Check if address is already absolute or relative
                     let resolved_address = if code_offset >= self.final_code_base {
                         // Already absolute address, use as-is
@@ -2308,19 +2351,32 @@ impl ZMachineCodeGen {
     /// Jump instructions use relative offsets following Z-Machine specification:
     /// actual_target = PC_after_instruction + offset - 2
     pub fn translate_jump(&mut self, label: IrId) -> Result<(), CompilerError> {
-        log::debug!("JUMP: label={}", label);
+        log::debug!("translate_jump: label={}", label);
 
-        // Record the location where the operand will be written (after the opcode)
-        // This is a code space offset, not an absolute address
-        let operand_location = self.code_space.len() + 1; // +1 for opcode byte
+        // OPTIMIZATION: Check if jump target is the immediately next instruction
+        if self.is_next_instruction(label) {
+            log::debug!(
+                "Eliminating unnecessary jump to next instruction (label {})",
+                label
+            );
+            return Ok(()); // No instruction needed - fall through
+        }
+
+        // Use emit_instruction which properly tracks component locations
         let layout = self.emit_instruction(
-            0x0C, // jump opcode (1OP:12) - fixed from 0x8C which was 0OP
+            0x0C,                                          // jump opcode (1OP:12)
             &[Operand::LargeConstant(placeholder_word())], // Placeholder for jump offset
             None,
             None,
         )?;
 
-        // Add unresolved reference for jump target using pre-calculated location
+        // CRITICAL FIX: Use the layout.operand_location from emit_instruction
+        // This ensures the location is correctly calculated after emitting the opcode
+        let operand_location = layout
+            .operand_location
+            .expect("Jump instruction must have operand location");
+
+        // Add unresolved reference for jump target
         self.reference_context
             .unresolved_refs
             .push(UnresolvedReference {
@@ -3627,25 +3683,25 @@ impl ZMachineCodeGen {
                 ConstantValue::Boolean(true) => {
                     log::debug!("BRANCH_CONSTANT_TRUE: Condition is compile-time true, jumping to true_label");
                     // Generate direct jump to true_label
-                    return self.generate_jump(true_label);
+                    return self.translate_jump(true_label);
                 }
                 ConstantValue::Boolean(false) => {
                     log::debug!("BRANCH_CONSTANT_FALSE: Condition is compile-time false, jumping to false_label");
                     // Generate direct jump to false_label
-                    return self.generate_jump(false_label);
+                    return self.translate_jump(false_label);
                 }
                 ConstantValue::Integer(val) => {
                     if *val == 0 {
                         log::debug!(
                             "BRANCH_CONSTANT_FALSE: Integer constant 0, jumping to false_label"
                         );
-                        return self.generate_jump(false_label);
+                        return self.translate_jump(false_label);
                     } else {
                         log::debug!(
                             "BRANCH_CONSTANT_TRUE: Integer constant {}, jumping to true_label",
                             val
                         );
-                        return self.generate_jump(true_label);
+                        return self.translate_jump(true_label);
                     }
                 }
                 _ => {
@@ -3653,7 +3709,7 @@ impl ZMachineCodeGen {
                         "BRANCH_CONSTANT_UNKNOWN: Non-boolean constant, treating as truthy"
                     );
                     // Non-zero values are truthy
-                    return self.generate_jump(true_label);
+                    return self.translate_jump(true_label);
                 }
             }
         }
@@ -3662,13 +3718,13 @@ impl ZMachineCodeGen {
         if let Some(&int_val) = self.ir_id_to_integer.get(&condition) {
             if int_val == 0 {
                 log::debug!("BRANCH_INT_ZERO: Integer constant 0, jumping to false_label");
-                return self.generate_jump(false_label);
+                return self.translate_jump(false_label);
             } else {
                 log::debug!(
                     "BRANCH_INT_NONZERO: Integer constant {}, jumping to true_label",
                     int_val
                 );
-                return self.generate_jump(true_label);
+                return self.translate_jump(true_label);
             }
         }
 
@@ -5845,7 +5901,7 @@ impl ZMachineCodeGen {
                 // Generate direct jump to true_label if not fall-through
                 if !self.is_next_instruction(true_label) {
                     log::debug!("TRUE branch is not next instruction - generating jump");
-                    self.generate_jump(true_label)?;
+                    self.translate_jump(true_label)?;
                 } else {
                     log::debug!("TRUE branch is next instruction - no jump needed (fall-through)");
                 }
@@ -5855,7 +5911,7 @@ impl ZMachineCodeGen {
                 // Generate direct jump to false_label if not fall-through
                 if !self.is_next_instruction(false_label) {
                     log::debug!("FALSE branch is not next instruction - generating jump");
-                    self.generate_jump(false_label)?;
+                    self.translate_jump(false_label)?;
                 } else {
                     log::debug!("FALSE branch is next instruction - no jump needed (fall-through)");
                 }
@@ -5871,7 +5927,7 @@ impl ZMachineCodeGen {
 
                 let target_label = if is_true { true_label } else { false_label };
                 if !self.is_next_instruction(target_label) {
-                    self.generate_jump(target_label)?;
+                    self.translate_jump(target_label)?;
                 }
             }
             None | Some(ConstantValue::String(_)) => {
@@ -5964,8 +6020,26 @@ impl ZMachineCodeGen {
             );
 
             // Resolve operands for the comparison
+            if self.code_address >= 0x330 && self.code_address <= 0x340 {
+                log::error!(
+                    "CRITICAL COMPARISON at code_address=0x{:04x}: left_id={}, right_id={}",
+                    self.code_address,
+                    left,
+                    right
+                );
+            }
             let left_operand = self.resolve_ir_id_to_operand(left)?;
             let right_operand = self.resolve_ir_id_to_operand(right)?;
+            if self.code_address >= 0x330 && self.code_address <= 0x340 {
+                log::error!(
+                    "CRITICAL OPERANDS: left={:?}, right={:?}",
+                    left_operand,
+                    right_operand
+                );
+            }
+            if right == 415 || left == 415 {
+                panic!("ERROR: Label ID 415 is being used as an operand in comparison!");
+            }
 
             // Generate the appropriate Z-Machine branch instruction
             let (opcode, branch_on_true) = match op {
@@ -6079,8 +6153,9 @@ impl ZMachineCodeGen {
 
         // FIXED: Emit jz instruction WITH placeholder branch offset
         // The emit_instruction function handles placeholder emission properly
+        // jz is opcode 0 in the 1OP group (1OP:128 means it's #128 overall, but 0 within 1OP)
         let layout = self.emit_instruction(
-            0x00, // jz (1OP:0) - jump if zero (CORRECTED from 0x01 which is je)
+            0x00, // jz (1OP:0) - jump if zero (opcode 0 in the 1OP group)
             &[condition_operand],
             None,       // No store
             Some(0xFF), // Placeholder branch offset - will be replaced during resolution
@@ -6128,19 +6203,49 @@ impl ZMachineCodeGen {
             _false_label,
             self.code_address
         );
+
+        if self.code_address > 0x330 && self.code_address < 0x340 {
+            log::error!(
+                "EMIT_COMPARISON_BRANCH called at critical address 0x{:04x} with opcode=0x{:02x}",
+                self.code_address,
+                opcode
+            );
+        }
         let before_addr = self.code_address;
 
         // FIXED: Emit comparison instruction WITH placeholder branch offset
         // The emit_instruction function handles placeholder emission properly
+        log::debug!(
+            "DEBUG: About to emit comparison branch with true_label={}",
+            true_label
+        );
+
+        // TEMPORARY CHECK: Is label ID being passed incorrectly?
+        if true_label == 415 {
+            log::error!(
+                "FOUND IT: true_label is 415, about to emit comparison at code_address=0x{:04x}",
+                self.code_address
+            );
+        }
+
+        // Check what's passed to emit_instruction
+        log::debug!("EMIT_COMPARISON_BRANCH: Calling emit_instruction with branch_offset=Some(0xFF) at code_address=0x{:04x}", self.code_address);
+
         let layout = self.emit_instruction(
             opcode,
             operands,
             None,       // No store
             Some(0xFF), // Placeholder branch offset - will be replaced during resolution
         )?;
+        log::debug!("DEBUG: After emit_instruction, checking branch_location");
 
         // Use the branch_location from layout (calculated correctly by emit_instruction)
         if let Some(branch_location) = layout.branch_location {
+            log::debug!(
+                "Creating Branch UnresolvedReference at location 0x{:04x} for target {}",
+                branch_location,
+                true_label
+            );
             self.reference_context
                 .unresolved_refs
                 .push(UnresolvedReference {
@@ -6152,6 +6257,7 @@ impl ZMachineCodeGen {
                     location_space: MemorySpace::Code,
                 });
         } else {
+            log::error!("ERROR: emit_comparison_branch: layout.branch_location is None! This means emit_instruction didn't create a branch placeholder");
             return Err(CompilerError::CodeGenError(
                 "Comparison branch instruction must have branch_location".to_string(),
             ));
@@ -6195,62 +6301,6 @@ impl ZMachineCodeGen {
             location_space: MemorySpace::Code,
         };
         self.reference_context.unresolved_refs.push(reference);
-
-        Ok(())
-    }
-
-    /// Generate unconditional jump
-    fn generate_jump(&mut self, label: IrId) -> Result<(), CompilerError> {
-        log::debug!("generate_jump called with label={}", label);
-
-        // SMART OPTIMIZATION: Check if jump target is the immediately next instruction
-        if self.is_next_instruction(label) {
-            log::debug!(
-                "Eliminating unnecessary jump to next instruction (label {})",
-                label
-            );
-            return Ok(()); // No instruction needed - fall through
-        }
-
-        log::debug!(
-            "generate_jump: Emitting jump at address 0x{:04x} -> label {}",
-            self.code_address,
-            label
-        );
-
-        // Emit jump instruction manually (not using emit_instruction as it doesn't use normal operands)
-        // Jump is a 1OP instruction (0x0C) with a signed word offset
-        log::debug!(
-            "JUMP_EMIT: code_address before opcode: 0x{:04x}",
-            self.code_address
-        );
-        self.emit_byte(0x0C)?; // 1OP:12 jump instruction - FIXED from 0x8C to 0x0C
-
-        // CRITICAL FIX: Record operand location AFTER emitting the opcode
-        let operand_location = self.code_address;
-        log::debug!(
-            "JUMP_EMIT: operand_location: 0x{:04x} (after opcode emission)",
-            operand_location
-        );
-        self.emit_word(placeholder_word())?; // 2-byte placeholder offset
-
-        // Add unresolved reference for the jump target
-        // CRITICAL FIX: Use code_address directly, let resolution phase handle address translation
-        let reference = UnresolvedReference {
-            reference_type: LegacyReferenceType::Jump,
-            location: operand_location,
-            target_id: label,
-            is_packed_address: false,
-            offset_size: 2,
-            location_space: MemorySpace::Code,
-        };
-        self.reference_context.unresolved_refs.push(reference);
-
-        log::debug!(
-            "generate_jump: Added reference for jump to label {} at location 0x{:04x}",
-            label,
-            operand_location
-        );
 
         Ok(())
     }
@@ -7299,6 +7349,12 @@ impl ZMachineCodeGen {
         let first_byte = 0x80 | ((offset_u16 >> 8) as u8 & 0x3F); // Bit 7: branch on true, top 6 bits
         let second_byte = (offset_u16 & 0xFF) as u8;
 
+        // TEMPORARY: Check what we're writing
+        if first_byte == 0x01 && second_byte == 0x9f {
+            panic!("FOUND THE BUG: patch_branch_offset is writing 0x01 0x9f at location 0x{:04x}! offset_2byte={}, target_address=0x{:04x}", 
+                   location, offset_2byte, target_address);
+        }
+
         self.write_byte_at(location, first_byte)?;
         self.write_byte_at(location + 1, second_byte)?;
         log::debug!(
@@ -7942,59 +7998,6 @@ impl ZMachineCodeGen {
     // Utility methods for code emission
 
     pub fn emit_byte(&mut self, byte: u8) -> Result<(), CompilerError> {
-        // COMPREHENSIVE BYTE TRACKING: Log every byte with final runtime address
-        let runtime_addr = if self.final_data.is_empty() {
-            // Code generation phase - calculate future runtime address
-            self.final_code_base + self.code_address
-        } else {
-            // Final assembly phase - code_address is already runtime address
-            self.code_address
-        };
-
-        // Track critical addresses around the crash point AND the 0xa0 byte issue
-        // AUDIT: Adding instrumentation for PC OUT OF BOUNDS debug (0x03ba area where opcode mismatch occurs)
-        // CRITICAL: Track the problematic 0x00,0x2d pattern from PC 0x1221
-        // TARGETED: Track the stray 0x00 byte at 0x0e96 and new crash at 0x078b
-        if (0x0bd0..=0x0be0).contains(&runtime_addr)
-            || (byte == 0xa0)
-            || (runtime_addr == 0x0365)
-            || (0x03b0..=0x03c5).contains(&runtime_addr)
-            || byte == 0xa1
-            || (0x1220..=0x1230).contains(&runtime_addr)
-            || (byte == 0x2d && runtime_addr >= 0x1220 && runtime_addr <= 0x1230)
-            || (0x0e90..=0x0ea0).contains(&runtime_addr)
-            || (0x0780..=0x0790).contains(&runtime_addr)
-            || (byte == 0x00 && (0x0e90..=0x0ea0).contains(&runtime_addr))
-            || (byte == 0x00 && (0x0780..=0x0790).contains(&runtime_addr))
-        {
-            let phase_name = if self.final_data.is_empty() {
-                "CODEGEN"
-            } else {
-                "FINAL"
-            };
-
-            // Detailed logging for any 0x00 byte emission during code generation
-            if byte == 0x00 && self.final_data.is_empty() {
-                log::error!(
-                    "🎯 0x00_BYTE_EMITTED: runtime_addr=0x{:04x} code_address=0x{:04x} byte=0x{:02x} - tracking all 0x00 emissions",
-                    runtime_addr, self.code_address, byte
-                );
-            }
-
-            log::debug!(
-                "🎯 CRITICAL_BYTE: runtime_addr=0x{:04x} byte=0x{:02x} phase={} TRACKING_0x0e96_AREA",
-                runtime_addr, byte, phase_name
-            );
-        }
-
-        // Track ALL opcode emissions
-        if byte == 0x01 || byte == 0x09 {
-            log::debug!(
-                " OPCODE_EMIT: runtime_addr=0x{:04x} opcode=0x{:02x}",
-                runtime_addr,
-                byte
-            );
-        }
         // Clear labels at current address when we emit actual instruction bytes
         // (but not for padding or alignment bytes)
         if !self.labels_at_current_address.is_empty() && byte != 0x00 {
@@ -8005,25 +8008,6 @@ impl ZMachineCodeGen {
                 byte
             );
             self.labels_at_current_address.clear();
-        }
-
-        // TARGETED DEBUGGING: Log all bytes around the problematic PC=0x0e96 area
-        // We know the issue is a stray 0x00 byte at final address 0x0e96
-        if (0x0e90..=0x0ea0).contains(&runtime_addr) {
-            log::error!(
-                "🎯 PROBLEM_AREA: code_addr=0x{:04x} runtime_addr=0x{:04x} byte=0x{:02x}",
-                self.code_address,
-                runtime_addr,
-                byte
-            );
-        }
-
-        // CRITICAL: Track 0x00 bytes that could become invalid opcodes
-        if byte == 0x00 && runtime_addr >= 0x0e90 && runtime_addr <= 0x0ea0 {
-            log::error!(
-                "🚨 NULL_IN_PROBLEM_AREA: Emitting 0x00 at runtime_addr=0x{:04x} code_addr=0x{:04x} - POTENTIAL PC MISALIGN SOURCE",
-                runtime_addr, self.code_address
-            );
         }
 
         if byte == 0x9d || byte == 0x8d {
@@ -8137,6 +8121,20 @@ impl ZMachineCodeGen {
             // Final assembly phase: write to final_data only
             if self.code_address < self.final_data.len() {
                 self.final_data[self.code_address] = byte;
+
+                // TEMPORARY DEBUG: Track writes to problem area
+                if self.code_address == 0x1282 {
+                    log::error!("WRITING TO 0x1282: byte=0x{:02x}", byte);
+                }
+                if self.code_address == 0x1283 {
+                    log::error!("WRITING TO 0x1283: byte=0x{:02x}", byte);
+                    if byte == 0x9f
+                        && self.code_address > 0
+                        && self.final_data[self.code_address - 1] == 0x01
+                    {
+                        log::error!("FOUND IT: Just wrote 01 9f to 0x1282-0x1283 in final_data!");
+                    }
+                }
             } else {
                 return Err(CompilerError::CodeGenError(format!(
                     "Cannot write byte at address 0x{:04x}: beyond final_data bounds (len: 0x{:04x})",
@@ -8146,6 +8144,21 @@ impl ZMachineCodeGen {
         } else {
             // Code generation phase: write to code_space
             self.code_space[code_offset] = byte;
+
+            // TEMPORARY DEBUG: Track problematic sequence in code_space
+            if code_offset >= 4
+                && self.code_space[code_offset - 4] == 0x02
+                && self.code_space[code_offset - 3] == 0x0d
+                && self.code_space[code_offset - 2] == 0x00
+                && self.code_space[code_offset - 1] == 0x01
+                && byte == 0x9f
+            {
+                log::error!(
+                    "FOUND SEQUENCE IN CODE_SPACE: 02 0d 00 01 9f at offset 0x{:04x}",
+                    code_offset - 4
+                );
+                log::error!("This is jl(13,0) with branch bytes 01 9f (415)!");
+            }
         }
 
         // Advance code_address to next position
@@ -8167,6 +8180,30 @@ impl ZMachineCodeGen {
         let low_byte = word as u8;
 
         debug!("Emit word: word=0x{:04x} -> high_byte=0x{:02x}, low_byte=0x{:02x} at code_address 0x{:04x}", word, high_byte, low_byte, self.code_address);
+
+        // TEMPORARY DEBUG: Check for suspicious value
+        if word == 0x019f || word == 415 {
+            log::error!(
+                "CRITICAL BUG: emit_word called with 0x{:04x} (415) at code_address=0x{:04x}",
+                word,
+                self.code_address
+            );
+            log::error!(
+                "This will produce bytes 0x{:02x} 0x{:02x} which is our problem!",
+                word >> 8,
+                word & 0xff
+            );
+            panic!("FOUND THE BUG: emit_word is being called with 415 instead of 0xFFFF!");
+        }
+
+        // Also check if we're close to the problematic address
+        if self.code_address >= 0x1278 && self.code_address <= 0x1285 {
+            log::error!(
+                "emit_word at critical address 0x{:04x}: word=0x{:04x}",
+                self.code_address,
+                word
+            );
+        }
 
         //  CRITICAL: Track exactly where null words come from
         if word == 0x0000 {
@@ -8379,14 +8416,6 @@ impl ZMachineCodeGen {
     /// Write a single byte at a specific address (no address advancement)
     /// Routes through emit_byte for single point monitoring
     fn write_byte_at(&mut self, addr: usize, byte: u8) -> Result<(), CompilerError> {
-        // DEBUG: Track writes to the critical crash location
-        if addr >= 0x1220 && addr <= 0x1230 {
-            log::error!(
-                "🎯 CRITICAL WRITE: Writing 0x{:02x} to address 0x{:04x}",
-                byte,
-                addr
-            );
-        }
         // Debug specific string writes if needed
         if addr == 0x0b90 || addr == 0x0b91 {
             debug!("Write to string area 0x{:04x}: 0x{:02x}", addr, byte);
