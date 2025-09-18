@@ -1,0 +1,36 @@
+// Test player.location with function call pattern like mini_zork
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room."
+    }
+}
+
+fn test_location_access() {
+    print("In function: Testing player location");
+    let loc = player.location;
+
+    if loc == test_room {
+        print("SUCCESS: Function can access player location");
+    } else {
+        print("FAILURE: Function cannot access player location");
+    }
+}
+
+init {
+    // Set player location exactly like mini_zork
+    player.location = test_room;
+
+    // Test direct access
+    print("Direct access test:");
+    let loc = player.location;
+    if loc == test_room {
+        print("SUCCESS: Direct access works");
+    } else {
+        print("FAILURE: Direct access fails");
+    }
+
+    // Test function call pattern like mini_zork
+    test_location_access();
+
+    print("Test complete");
+}

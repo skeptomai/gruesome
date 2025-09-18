@@ -1,0 +1,23 @@
+// Minimal test for player.location pattern specifically
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room."
+    }
+}
+
+init {
+    // Set player location exactly like mini_zork
+    player.location = test_room;
+
+    // Test reading it back and check if it equals what we expect
+    print("Testing player location:");
+    let loc = player.location;
+
+    if loc == test_room {
+        print("SUCCESS: Location matches test_room");
+    } else {
+        print("FAILURE: Location does not match test_room");
+    }
+
+    print("Test complete");
+}

@@ -1,0 +1,28 @@
+// Test chained property access like mini_zork
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house."
+    }
+}
+
+fn look_around() {
+    // First: chained property access like mini_zork line 196
+    print(player.location.desc);
+
+    // Second: simple property access like mini_zork line 197
+    list_objects(player.location);
+}
+
+fn list_objects(location) {
+    print("List objects called");
+    if location == west_of_house {
+        print("SUCCESS: Got correct location");
+    } else {
+        print("FAILURE: Got wrong location");
+    }
+}
+
+init {
+    player.location = west_of_house;
+    look_around();
+}

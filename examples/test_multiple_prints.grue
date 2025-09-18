@@ -1,0 +1,34 @@
+// Test multiple print statements like mini_zork
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house."
+    }
+}
+
+fn look_around() {
+    print("Look around called");
+    list_objects(player.location);
+}
+
+fn list_objects(location) {
+    print("List objects called");
+    if location == west_of_house {
+        print("SUCCESS: Got correct location");
+    } else {
+        print("FAILURE: Got wrong location");
+    }
+}
+
+init {
+    player.location = west_of_house;
+
+    // Multiple print statements like mini_zork
+    print("DORK I: The Last Great Empire");
+    print("Copyright (c) 2025 Grue Games. All rights reserved.");
+    print("ZORK is a registered trademark of Infocom, Inc.");
+    print("DORK is .... not");
+    print("Revision 1 / Serial number 8675309");
+    print("");
+
+    look_around();
+}

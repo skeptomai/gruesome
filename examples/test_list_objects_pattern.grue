@@ -1,0 +1,30 @@
+// Test the exact pattern from mini_zork that's failing
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house."
+    }
+}
+
+fn look_around() {
+    print("Look around called");
+    list_objects(player.location);
+}
+
+fn list_objects(location) {
+    print("List objects called with location:");
+    if location == west_of_house {
+        print("SUCCESS: Got correct location in list_objects");
+    } else {
+        print("FAILURE: Got wrong location in list_objects");
+    }
+}
+
+init {
+    // Set up exactly like mini_zork
+    player.location = west_of_house;
+
+    // Call the same sequence as mini_zork
+    look_around();
+
+    print("Test complete");
+}

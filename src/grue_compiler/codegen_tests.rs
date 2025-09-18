@@ -27,14 +27,14 @@ mod codegen_tests {
             },
             property_manager: crate::grue_compiler::ir::PropertyManager::new(),
             program_mode: crate::grue_compiler::ast::ProgramMode::Script,
-            symbol_ids: std::collections::HashMap::new(),
-            object_numbers: std::collections::HashMap::new(),
+            symbol_ids: indexmap::IndexMap::new(),
+            object_numbers: indexmap::IndexMap::new(),
             id_registry: crate::grue_compiler::ir::IrIdRegistry {
-                id_types: std::collections::HashMap::new(),
-                id_sources: std::collections::HashMap::new(),
-                temporary_ids: std::collections::HashSet::new(),
-                symbol_ids: std::collections::HashSet::new(),
-                expression_ids: std::collections::HashSet::new(),
+                id_types: indexmap::IndexMap::new(),
+                id_sources: indexmap::IndexMap::new(),
+                temporary_ids: indexmap::IndexSet::new(),
+                symbol_ids: indexmap::IndexSet::new(),
+                expression_ids: indexmap::IndexSet::new(),
             },
         }
     }

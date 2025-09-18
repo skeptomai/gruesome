@@ -1639,35 +1639,54 @@ impl ZMachineCodeGen {
             );
         }
 
+        // CRITICAL DEBUG: Check for invalid reference locations and final_code_base
+        if reference.location > 0x1000 {
+            panic!("COMPILER BUG: UnresolvedReference has absolute location 0x{:04x} instead of code space relative offset. Target ID: {}, Type: {:?}",
+                   reference.location, reference.target_id, reference.reference_type);
+        }
+
+        // CRITICAL FIX: Translate code space relative location to final assembly address
+        let final_location = self.final_code_base + reference.location;
+
+        // CRITICAL DEBUG: Check if final location is valid
+        if final_location >= self.final_data.len() {
+            panic!("COMPILER BUG: final_location=0x{:04x} >= final_data.len()={}. reference.location=0x{:04x}, final_code_base=0x{:04x}, Target ID: {}, Type: {:?}",
+                   final_location, self.final_data.len(), reference.location, self.final_code_base, reference.target_id, reference.reference_type);
+        }
+        log::debug!(
+            " LOCATION_TRANSLATION: code_space_relative=0x{:04x} + final_code_base=0x{:04x} = final_location=0x{:04x}",
+            reference.location, self.final_code_base, final_location
+        );
+
         // Write the resolved address to the final data
         match reference.offset_size {
             1 => {
                 // Check what we're overwriting - should be 0xFF if this was a placeholder
-                let old_value = self.final_data[reference.location];
+                let old_value = self.final_data[final_location];
                 log::debug!(
                     " PATCH_1BYTE: location=0x{:04x} old_value=0x{:02x} -> new_value=0x{:02x}",
-                    reference.location,
+                    final_location,
                     old_value,
                     (target_address & 0xFF) as u8
                 );
 
                 // Single byte
-                self.final_data[reference.location] = (target_address & 0xFF) as u8;
+                self.final_data[final_location] = (target_address & 0xFF) as u8;
 
                 // Debug tracking for string ID 568
                 if reference.target_id == 568 {
                     debug!(
                         "String 568 debug: Wrote 1-byte: 0x{:02x} at location 0x{:04x}",
                         (target_address & 0xFF) as u8,
-                        reference.location
+                        final_location
                     );
                 }
             }
             2 => {
                 // Check what we're overwriting - should be 0xFFFF if this was a placeholder
-                let old_high = self.final_data[reference.location];
-                let old_low = self.final_data[reference.location + 1];
-                debug!("Patch 2-byte: location=0x{:04x} old_value=0x{:02x}{:02x} -> new_value=0x{:04x}", reference.location, old_high, old_low, target_address);
+                let old_high = self.final_data[final_location];
+                let old_low = self.final_data[final_location + 1];
+                debug!("Patch 2-byte: location=0x{:04x} old_value=0x{:02x}{:02x} -> new_value=0x{:04x}", final_location, old_high, old_low, target_address);
 
                 // CRITICAL FIX: For string references, we need to pack the address
                 let final_value = if matches!(
@@ -1697,19 +1716,19 @@ impl ZMachineCodeGen {
                     " LEGACY_WRITE_DEBUG: Writing 0x{:02x} 0x{:02x} to location 0x{:04x}",
                     high_byte,
                     low_byte,
-                    reference.location
+                    final_location
                 );
 
-                self.final_data[reference.location] = high_byte;
-                self.final_data[reference.location + 1] = low_byte;
+                self.final_data[final_location] = high_byte;
+                self.final_data[final_location + 1] = low_byte;
 
                 // Debug tracking for string ID 568
                 if reference.target_id == 568 {
-                    debug!("String 568 debug: Wrote 2-bytes: 0x{:02x}{:02x} at locations 0x{:04x}-0x{:04x}", ((target_address >> 8) & 0xFF) as u8, (target_address & 0xFF) as u8, reference.location, reference.location + 1);
+                    debug!("String 568 debug: Wrote 2-bytes: 0x{:02x}{:02x} at locations 0x{:04x}-0x{:04x}", ((target_address >> 8) & 0xFF) as u8, (target_address & 0xFF) as u8, final_location, final_location + 1);
 
                     // Verify what was actually written
-                    let written_high = self.final_data[reference.location];
-                    let written_low = self.final_data[reference.location + 1];
+                    let written_high = self.final_data[final_location];
+                    let written_low = self.final_data[final_location + 1];
                     debug!(
                         "String 568 debug: Verification read: 0x{:02x}{:02x}",
                         written_high, written_low
@@ -2295,7 +2314,7 @@ impl ZMachineCodeGen {
         if self.ir_id_to_string.contains_key(&value) {
             // Print string literal using print_paddr
             // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
-            let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
+            let operand_location = self.code_space.len() + 1; // +1 for opcode byte (code space relative)
             let layout = self.emit_instruction(
                 0x82,                                          // print_paddr opcode (1OP:141)
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder for string address
@@ -2594,7 +2613,7 @@ impl ZMachineCodeGen {
 
             // Generate call instruction
             // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
-            let operand_location = self.final_code_base + self.code_space.len() + 2; // +2 for opcode and operand types bytes
+            let operand_location = self.code_space.len() + 2; // +2 for opcode and operand types bytes (code space relative)
             let layout = self.emit_instruction(
                 0xE0, // call_vs opcode (VAR:224 = opcode 0, so 0xE0)
                 &operands, store_var, None,
@@ -2680,7 +2699,7 @@ impl ZMachineCodeGen {
 
                     // Generate call instruction
                     // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
-                    let operand_location = self.final_code_base + self.code_space.len() + 2; // +2 for opcode and operand types bytes
+                    let operand_location = self.code_space.len() + 2; // +2 for opcode and operand types bytes (code space relative)
                     let layout = self.emit_instruction(
                         0xE0, // call_vs opcode (VAR:224)
                         &operands, store_var, None,
@@ -3248,7 +3267,7 @@ impl ZMachineCodeGen {
             .insert(string_id, "[OBJECT_LIST]".to_string());
 
         // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
-        let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
+        let operand_location = self.code_space.len() + 1; // +1 for opcode byte (code space relative)
         let layout = self.emit_instruction(
             0x8D,
             &[Operand::LargeConstant(placeholder_word())],
@@ -3294,7 +3313,7 @@ impl ZMachineCodeGen {
             .insert(string_id, "[CONTAINER_CONTENTS]".to_string());
 
         // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
-        let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
+        let operand_location = self.code_space.len() + 1; // +1 for opcode byte (code space relative)
         let layout = self.emit_instruction(
             0x8D,
             &[Operand::LargeConstant(placeholder_word())],
@@ -5482,10 +5501,10 @@ impl ZMachineCodeGen {
                 let code_space_offset = self.code_space.len() + 1 + operands.len() * 2;
                 operands.push(Operand::LargeConstant(placeholder_word()));
 
-                // Create reference with exact calculated location
+                // Create reference with code space relative location
                 let reference = UnresolvedReference {
                     reference_type: LegacyReferenceType::StringRef,
-                    location: self.final_code_base + code_space_offset, // Use exact offset
+                    location: code_space_offset, // Code space relative offset
                     target_id: arg_id,
                     is_packed_address: true,
                     offset_size: 2,
@@ -5516,7 +5535,7 @@ impl ZMachineCodeGen {
 
                         let reference = UnresolvedReference {
                             reference_type: LegacyReferenceType::StringRef, // Assume strings for print calls
-                            location: self.final_code_base + code_space_offset, // Use exact offset
+                            location: code_space_offset, // Code space relative offset
                             target_id: arg_id,
                             is_packed_address: true,
                             offset_size: 2,
@@ -6430,14 +6449,19 @@ impl ZMachineCodeGen {
         address
     }
 
-    /// Map IR ID to stack storage (Variable 0) for temporary results
+    /// Map IR ID to stack storage with proper depth management for temporary results
     pub fn use_stack_for_result(&mut self, target_id: IrId) {
-        // Z-Machine stack is always accessed through Variable(0)
-        // All temporary/intermediate results should use stack, not local variables
-        self.ir_id_to_stack_var.insert(target_id, 0);
+        // Use proper stack depth management instead of always using Variable(0)
+        // This fixes chained property access where multiple instructions need different stack slots
+        self.ir_id_to_stack_var
+            .insert(target_id, self.stack_depth as u8);
+        self.stack_depth += 1;
+        self.max_stack_depth = self.max_stack_depth.max(self.stack_depth);
         log::debug!(
-            "use_stack_for_result: IR ID {} -> stack (Variable 0) for temporary result",
-            target_id
+            "use_stack_for_result: IR ID {} -> stack Variable({}) at depth {}",
+            target_id,
+            self.stack_depth - 1,
+            self.stack_depth - 1
         );
     }
 
@@ -6555,7 +6579,7 @@ impl ZMachineCodeGen {
     fn generate_init_block(
         &mut self,
         init_block: &IrBlock,
-        _ir: &IrProgram,
+        ir: &IrProgram,
     ) -> Result<(usize, u8), CompilerError> {
         log::debug!(
             "generate_init_block: Generating init routine with {} instructions (Z-Machine native architecture - header first)",
@@ -6610,6 +6634,37 @@ impl ZMachineCodeGen {
 
         // Generate the init block code directly after the header
         // CRITICAL: Use translate_ir_instruction to ensure proper instruction generation
+
+        // CRITICAL FIX: Add runtime initialization of player global variable
+        // Only add this if the program actually uses player objects
+        if ir.functions.iter().any(|f| f.name == "player_can_see")
+            || ir.functions.iter().any(|f| f.name == "look_around")
+            || init_block.instructions.iter().any(|inst| match inst {
+                crate::grue_compiler::ir::IrInstruction::LoadVar { var_id, .. } => *var_id == 16,
+                _ => false,
+            })
+        {
+            log::debug!(
+                "INIT_BLOCK: Adding runtime initialization of player global variable (Variable 16)"
+            );
+            use crate::grue_compiler::ir::IrInstruction;
+
+            // Create StoreVar instruction: Variable 16 = player object number (1)
+            let player_init_instruction = IrInstruction::StoreVar {
+                var_id: 16,    // Global Variable G00 (Variable 16)
+                source: 99999, // Temporary IR ID for constant 1
+            };
+
+            // Add mapping for the constant player object number (1)
+            self.ir_id_to_integer.insert(99999, 1);
+
+            log::debug!("INIT_BLOCK: Generating player global variable initialization");
+            self.generate_instruction(&player_init_instruction)?;
+            log::debug!("INIT_BLOCK: Player global variable initialization complete");
+        } else {
+            log::debug!("INIT_BLOCK: Skipping player global variable initialization (not needed)");
+        }
+
         log::debug!(
             "Generating {} init block instructions",
             init_block.instructions.len()
@@ -6642,7 +6697,7 @@ impl ZMachineCodeGen {
         self.finalize_function_header(init_routine_id)?;
 
         // Add program-mode specific termination
-        match _ir.program_mode {
+        match ir.program_mode {
             crate::grue_compiler::ast::ProgramMode::Script => {
                 log::debug!(
                     "Adding QUIT instruction for Script mode at 0x{:04x}",
@@ -7765,12 +7820,12 @@ impl ZMachineCodeGen {
             reference_type,
             location: match location_space {
                 MemorySpace::Code => {
-                    // Use the exact offset provided by caller (calculated BEFORE placeholder emission)
-                    self.final_code_base + location_offset
+                    // Use code space relative offset (calculated BEFORE placeholder emission)
+                    location_offset
                 },
                 MemorySpace::CodeSpace => {
-                    // Use the exact offset provided by caller
-                    self.final_code_base + location_offset
+                    // Use code space relative offset
+                    location_offset
                 },
                 MemorySpace::Header => panic!("COMPILER BUG: Header space references not implemented - cannot use add_unresolved_reference() for Header space"),
                 MemorySpace::Globals => panic!("COMPILER BUG: Globals space references not implemented - cannot use add_unresolved_reference() for Globals space"),
@@ -8471,14 +8526,13 @@ impl ZMachineCodeGen {
                     + space_offset
             }
             MemorySpace::Code => {
-                // CRITICAL FIX: Use final_code_base directly instead of hardcoded calculation
-                // Previous calculation used hardcoded section sizes that didn't match actual layout,
-                // causing UnresolvedReference locations to point to operand type bytes instead of operand data
-                self.final_code_base + space_offset
+                // CRITICAL FIX: Return space_offset directly since final_code_base will be added later
+                // in the resolution step. Double-adding final_code_base causes invalid memory locations.
+                space_offset
             }
             MemorySpace::CodeSpace => {
-                // Same as Code
-                self.final_code_base + space_offset
+                // Same as Code - return space_offset directly
+                space_offset
             }
         };
 

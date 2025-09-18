@@ -1,0 +1,14 @@
+// Minimal test case for chained property access bug
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room."
+    }
+}
+
+init {
+    player.location = test_room;
+
+    print("Testing chained property access:");
+    print(player.location.desc);
+    print("Done");
+}

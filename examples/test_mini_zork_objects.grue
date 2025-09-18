@@ -1,0 +1,48 @@
+// Test with objects like mini_zork
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house, with a boarded front door."
+
+        object mailbox {
+            names: ["small mailbox", "mailbox", "box"]
+            desc: "The small mailbox is closed."
+            openable: true
+            container: true
+
+            contains {
+                object leaflet {
+                    names: ["leaflet", "paper"]
+                    desc: "WELCOME TO ZORK!"
+                }
+            }
+        }
+    }
+
+    room north_of_house "North of House" {
+        desc: "You are facing the north side of a white house."
+    }
+}
+
+fn look_around() {
+    print("Look around called");
+    list_objects(player.location);
+}
+
+fn list_objects(location) {
+    print("List objects called");
+    if location == west_of_house {
+        print("SUCCESS: Got correct location");
+    } else {
+        print("FAILURE: Got wrong location");
+    }
+}
+
+init {
+    player.location = west_of_house;
+
+    print("DORK I: The Last Great Empire");
+    print("Copyright (c) 2025 Grue Games. All rights reserved.");
+    print("");
+
+    look_around();
+}

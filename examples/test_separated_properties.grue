@@ -1,0 +1,39 @@
+// Test separated property accesses
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house."
+    }
+}
+
+fn test_simple_first() {
+    print("Testing simple property access first:");
+    let loc = player.location;
+    if loc == west_of_house {
+        print("SUCCESS: Simple access works");
+    } else {
+        print("FAILURE: Simple access broken");
+    }
+}
+
+fn test_chained_second() {
+    print("Testing chained property access second:");
+    print(player.location.desc);
+}
+
+fn test_simple_after_chained() {
+    print("Testing simple property access after chained:");
+    let loc = player.location;
+    if loc == west_of_house {
+        print("SUCCESS: Simple access still works");
+    } else {
+        print("FAILURE: Simple access now broken");
+    }
+}
+
+init {
+    player.location = west_of_house;
+
+    test_simple_first();
+    test_chained_second();
+    test_simple_after_chained();
+}

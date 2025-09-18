@@ -48,7 +48,7 @@ impl ZMachineCodeGen {
 
             // Generate print_paddr instruction with unresolved string reference
             // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
-            let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
+            let operand_location = self.code_space.len() + 1; // +1 for opcode byte (code space relative)
             let layout = self.emit_instruction(
                 0x8D,                                          // print_paddr opcode (1OP:141)
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder string address

@@ -335,21 +335,36 @@ impl ZMachineCodeGen {
                 let value_operand = self.resolve_ir_id_to_operand(*source)?;
 
                 // Store to appropriate variable slot
-                if let Some(var_num) = self.ir_id_to_local_var.get(var_id) {
+                if let Some(var_num) = self.ir_id_to_local_var.get(var_id).copied() {
                     // Store to local variable using 2OP:13 store instruction
-                    let var_operand = Operand::SmallConstant(*var_num);
+                    let var_operand = Operand::SmallConstant(var_num);
                     self.emit_instruction(0x0D, &[var_operand, value_operand], None, None)?;
+                    log::debug!(
+                        "StoreVar: IR ID {} stored to local variable {} from IR ID {}",
+                        var_id,
+                        var_num,
+                        source
+                    );
+                } else if *var_id == 16 {
+                    // CRITICAL FIX: Store to global variable G00 (Variable 16) for player object
+                    // This handles runtime initialization of the player global variable
+                    let global_var_operand = Operand::SmallConstant(16); // Variable 16 = Global G00
+                    self.emit_instruction(0x0D, &[global_var_operand, value_operand], None, None)?;
+                    log::debug!(
+                        "StoreVar: IR ID {} stored to global Variable(16) from IR ID {} [Player Global Init]",
+                        var_id, source
+                    );
                 } else {
                     // Store to stack (variable 0) using 2OP:13 store instruction
                     let stack_operand = Operand::SmallConstant(0);
                     self.emit_instruction(0x0D, &[stack_operand, value_operand], None, None)?;
                     self.ir_id_to_stack_var.insert(*var_id, 0);
+                    log::debug!(
+                        "StoreVar: IR ID {} stored to stack from IR ID {}",
+                        var_id,
+                        source
+                    );
                 }
-                log::debug!(
-                    "StoreVar: IR ID {} stored value from IR ID {}",
-                    var_id,
-                    source
-                );
             }
 
             IrInstruction::Label { id } => {
@@ -1763,8 +1778,8 @@ impl ZMachineCodeGen {
         let operand_location = if !operands.is_empty() {
             let code_space_offset = self.code_space.len();
             self.emit_operand(&operands[0])?;
-            //  FIXED: Convert code space offset to final memory address
-            Some(self.final_code_base + code_space_offset)
+            // Use code space relative offset
+            Some(code_space_offset)
         } else {
             None
         };
@@ -1960,8 +1975,8 @@ impl ZMachineCodeGen {
                 self.emit_operand(operand)?;
             }
 
-            // Return location of first operand data (not operand types byte)
-            Some(self.final_code_base + first_operand_offset)
+            // Return code space relative offset of first operand data (not operand types byte)
+            Some(first_operand_offset)
         } else {
             None
         };
@@ -2100,8 +2115,8 @@ impl ZMachineCodeGen {
 
         // Track first operand location
         let code_space_offset = self.code_space.len();
-        //  FIXED: Convert code space offset to final memory address
-        let operand_location = Some(self.final_code_base + code_space_offset);
+        // Use code space relative offset
+        let operand_location = Some(code_space_offset);
 
         // Emit adapted operands
         log::debug!(
