@@ -318,8 +318,10 @@ impl ZMachineCodeGen {
                 // Create operand for the variable number to load from
                 let var_operand = Operand::SmallConstant(*var_id as u8);
 
-                // Use load instruction (0x0E) to load variable to stack
-                self.emit_instruction(0x0E, &[var_operand], Some(0), None)?; // load variable to stack
+                // Use load instruction (0xAE) to load variable to stack
+                // Z-Machine spec: 1OP:142 E load (variable) -> (result)
+                // Encoding: 1OP + variable operand type + opcode 14 = 0xAE
+                self.emit_instruction(0xAE, &[var_operand], Some(0), None)?; // load variable to stack
 
                 // Map the target to stack access
                 self.use_stack_for_result(*target);

@@ -6237,9 +6237,11 @@ impl ZMachineCodeGen {
 
         // FIXED: Emit jz instruction WITH placeholder branch offset
         // The emit_instruction function handles placeholder emission properly
-        // jz is opcode 0 in the 1OP group (1OP:128 means it's #128 overall, but 0 within 1OP)
+        // jz is opcode 0 in the 1OP group (1OP:128)
+        // Z-Machine spec: 1OP:128 0 jz a ?(label)
+        // Encoding: 1OP + variable operand type + opcode 0 = 0xA0
         let layout = self.emit_instruction(
-            0x00, // jz (1OP:0) - jump if zero (opcode 0 in the 1OP group)
+            0xA0, // jz (1OP:128) - jump if zero with variable operand
             &[condition_operand],
             None,       // No store
             Some(0xFF), // Placeholder branch offset - will be replaced during resolution
