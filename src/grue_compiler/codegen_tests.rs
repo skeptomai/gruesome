@@ -322,28 +322,16 @@ mod codegen_tests {
         assert!(codegen.code_address > initial_address);
     }
 
-    #[test]
-    fn test_branch_offset_encoding() {
-        let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
+    // NOTE: test_branch_offset_encoding removed along with emit_branch_offset function.
+    // Branch offset encoding is now tested through the full compilation pipeline,
+    // which tests the proper pattern of placeholder emission and fixup.
 
-        // Test short branch offset (1 byte)
-        let initial_short = codegen.code_address;
-        let result = codegen.emit_branch_offset(10);
-        assert!(result.is_ok());
-        let short_bytes = codegen.code_address - initial_short;
-
-        // Reset
-        codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
-
-        // Test long branch offset (2 bytes)
-        let initial_long = codegen.code_address;
-        let result = codegen.emit_branch_offset(100);
-        assert!(result.is_ok());
-        let long_bytes = codegen.code_address - initial_long;
-
-        // Long offset should use more bytes than short
-        assert!(long_bytes >= short_bytes);
-    }
+    // #[test]
+    // fn test_branch_offset_encoding() {
+    //     // This test was for the removed emit_branch_offset function.
+    //     // Branch offsets are now handled through the placeholder/fixup pattern
+    //     // which is tested in the integration tests.
+    // }
 
     #[test]
     #[ignore] // Temporarily disabled due to IR mapping regression - need to fix IR ID mapping system

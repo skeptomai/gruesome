@@ -1,5 +1,4 @@
-// Import placeholder_word for consistent placeholder handling throughout the codebase
-use crate::grue_compiler::codegen::{placeholder_word, ConstantValue, ZMachineCodeGen};
+use crate::grue_compiler::codegen::{ConstantValue, ZMachineCodeGen};
 use crate::grue_compiler::codegen::{
     InstructionForm, InstructionLayout, Operand, OperandType, UNIMPLEMENTED_OPCODE,
 };
@@ -15,17 +14,6 @@ impl ZMachineCodeGen {
         instruction: &IrInstruction,
     ) -> Result<(), CompilerError> {
         debug!("Generate instruction called: {:?}", instruction);
-
-        // CRITICAL DEBUG: Track all branch and jump instructions
-        match instruction {
-            IrInstruction::Branch { .. } | IrInstruction::Jump { .. } => {
-                eprintln!(
-                    "CONTROL FLOW at 0x{:04x}: {:?}",
-                    self.code_address, instruction
-                );
-            }
-            _ => {}
-        }
 
         // Store initial code address to detect if label should be processed
         let code_address_before = self.code_address;
@@ -273,13 +261,6 @@ impl ZMachineCodeGen {
             }
 
             IrInstruction::Jump { label } => {
-                // CRITICAL DEBUG: Track Jump instructions near problem area
-                if self.code_address >= 0x330 && self.code_address <= 0x340 {
-                    eprintln!(
-                        "IR JUMP INSTRUCTION at code_address=0x{:04x}, jumping to label {}",
-                        self.code_address, label
-                    );
-                }
                 // Generate a proper jump instruction with correct unresolved reference
                 // This delegates to translate_jump which handles the Z-Machine jump encoding
                 self.translate_jump(*label)?;
@@ -290,28 +271,12 @@ impl ZMachineCodeGen {
                 true_label,
                 false_label,
             } => {
-                if self.code_address == 0x0001 || self.code_address == 0x32f {
-                    eprintln!("CRITICAL BRANCH at code_address=0x{:04x}: condition={}, true_label={}, false_label={}", 
+                if self.code_address >= 0x330 && self.code_address <= 0x340 {
+                    log::error!("CRITICAL BRANCH at code_address=0x{:04x}: condition={}, true_label={}, false_label={}", 
                               self.code_address, condition, true_label, false_label);
-                    eprintln!("  Before emit_conditional_branch_instruction");
                 }
-                let before_addr = self.code_address;
                 // Delegate to the proper conditional branch function that handles binary operations
                 self.emit_conditional_branch_instruction(*condition, *true_label, *false_label)?;
-                let after_addr = self.code_address;
-                if before_addr == 0x0001 || before_addr == 0x32f {
-                    eprintln!(
-                        "  After Branch: moved from 0x{:04x} to 0x{:04x} ({} bytes)",
-                        before_addr,
-                        after_addr,
-                        after_addr - before_addr
-                    );
-                    eprintln!("  Expected: opcode + 2 operands + 2 branch bytes = 5 bytes");
-                    eprintln!("  Actual: {} bytes", after_addr - before_addr);
-                    if after_addr - before_addr != 5 {
-                        eprintln!("  ERROR: Branch instruction missing branch placeholder!");
-                    }
-                }
             }
 
             IrInstruction::LoadVar { target, var_id } => {
@@ -1195,33 +1160,6 @@ impl ZMachineCodeGen {
             log::error!("JL INSTRUCTION: emit_instruction called with opcode 0x02 (jl) at code_address=0x{:04x}", self.code_address);
             log::error!("  Operands: {:?}", operands);
             log::error!("  branch_offset={:?}", branch_offset);
-
-            // Check if any operand contains 415
-            for (i, op) in operands.iter().enumerate() {
-                match op {
-                    Operand::SmallConstant(v) if *v == 159 => {
-                        eprintln!(
-                            "WARNING: Operand {} is SmallConstant(159) - part of 415!",
-                            i
-                        );
-                    }
-                    Operand::LargeConstant(v) if *v == 415 => {
-                        eprintln!(
-                            "BUG FOUND: Operand {} is LargeConstant(415) - label ID as operand!",
-                            i
-                        );
-                        panic!("Label ID 415 being used as operand!");
-                    }
-                    Operand::Constant(v) if *v == 415 => {
-                        eprintln!(
-                            "BUG FOUND: Operand {} is Constant(415) - label ID as operand!",
-                            i
-                        );
-                        panic!("Label ID 415 being used as operand!");
-                    }
-                    _ => {}
-                }
-            }
             if operands.len() == 2 {
                 if let (Operand::SmallConstant(13), Operand::SmallConstant(0)) =
                     (&operands[0], &operands[1])
@@ -1630,17 +1568,8 @@ impl ZMachineCodeGen {
 
         // Emit branch placeholder if needed (resolved later via UnresolvedReference)
         if let Some(_offset) = branch_offset {
-            // INSTRUMENT: What value are we actually passing to emit_word?
-            if self.code_address >= 0x335 && self.code_address <= 0x340 {
-                eprintln!(
-                    "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
-                    self.code_address
-                );
-                eprintln!("  But wait, let's check if this is actually being called...");
-            }
-
             // Always emit 2-byte placeholder for branches to be resolved later
-            self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+            self.emit_word(0xFFFF)?; // Will be replaced during branch resolution
         }
 
         Ok(())
@@ -1684,17 +1613,8 @@ impl ZMachineCodeGen {
 
         // Emit branch placeholder if needed (resolved later via UnresolvedReference)
         if let Some(_offset) = branch_offset {
-            // INSTRUMENT: What value are we actually passing to emit_word?
-            if self.code_address >= 0x335 && self.code_address <= 0x340 {
-                eprintln!(
-                    "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
-                    self.code_address
-                );
-                eprintln!("  But wait, let's check if this is actually being called...");
-            }
-
             // Always emit 2-byte placeholder for branches to be resolved later
-            self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+            self.emit_word(0xFFFF)?; // Will be replaced during branch resolution
         }
 
         Ok(())
@@ -1712,35 +1632,6 @@ impl ZMachineCodeGen {
         store_var: Option<u8>,
         branch_offset: Option<i16>,
     ) -> Result<InstructionLayout, CompilerError> {
-        // DEBUG jz at critical location
-        if opcode == 0x00 && self.code_address == 0x032f {
-            eprintln!("JZ_CRITICAL: Emitting jz at 0x032f");
-            eprintln!(
-                "  operands={:?}, store_var={:?}, branch_offset={:?}",
-                operands, store_var, branch_offset
-            );
-        }
-        // CRITICAL DEBUG: Track short form emission at 0x338-0x339
-        if self.code_address >= 0x337 && self.code_address <= 0x33a {
-            eprintln!(
-                "emit_short_form_with_layout at code_address=0x{:04x}",
-                self.code_address
-            );
-            eprintln!("  opcode=0x{:02x}", opcode);
-            eprintln!("  operands={:?}", operands);
-            eprintln!("  store_var={:?}", store_var);
-            eprintln!("  branch_offset={:?}", branch_offset);
-
-            if !operands.is_empty() {
-                if let Operand::SmallConstant(val) = &operands[0] {
-                    if *val == 159 {
-                        eprintln!("FOUND THE CULPRIT: Short form instruction with operand 159!");
-                        eprintln!("This will emit 0x9f as the operand");
-                    }
-                }
-            }
-        }
-
         if operands.len() > 1 {
             return Err(CompilerError::CodeGenError(format!(
                 "Short form requires 0 or 1 operands, got {}",
@@ -1793,17 +1684,8 @@ impl ZMachineCodeGen {
                 panic!("BUG FOUND: branch_offset is 415 (the label ID!) instead of a placeholder marker!");
             }
 
-            // INSTRUMENT: What value are we actually passing to emit_word?
-            if self.code_address >= 0x335 && self.code_address <= 0x340 {
-                eprintln!(
-                    "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
-                    self.code_address
-                );
-                eprintln!("  But wait, let's check if this is actually being called...");
-            }
-
             // Always emit 2-byte placeholder for branches to be resolved later
-            self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+            self.emit_word(0xFFFF)?; // Will be replaced during branch resolution
             Some(loc)
         } else {
             None
@@ -1871,17 +1753,8 @@ impl ZMachineCodeGen {
 
         // Emit branch placeholder if needed (resolved later via UnresolvedReference)
         if let Some(_offset) = branch_offset {
-            // INSTRUMENT: What value are we actually passing to emit_word?
-            if self.code_address >= 0x335 && self.code_address <= 0x340 {
-                eprintln!(
-                    "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
-                    self.code_address
-                );
-                eprintln!("  But wait, let's check if this is actually being called...");
-            }
-
             // Always emit 2-byte placeholder for branches to be resolved later
-            self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+            self.emit_word(0xFFFF)?; // Will be replaced during branch resolution
         }
 
         Ok(())
@@ -1991,17 +1864,8 @@ impl ZMachineCodeGen {
                 panic!("BUG FOUND: branch_offset is 415 (the label ID!) instead of a placeholder marker!");
             }
 
-            // INSTRUMENT: What value are we actually passing to emit_word?
-            if self.code_address >= 0x335 && self.code_address <= 0x340 {
-                eprintln!(
-                    "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
-                    self.code_address
-                );
-                eprintln!("  But wait, let's check if this is actually being called...");
-            }
-
             // Always emit 2-byte placeholder for branches to be resolved later
-            self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+            self.emit_word(0xFFFF)?; // Will be replaced during branch resolution
             Some(loc)
         } else {
             None
@@ -2028,30 +1892,6 @@ impl ZMachineCodeGen {
         store_var: Option<u8>,
         branch_offset: Option<i16>,
     ) -> Result<InstructionLayout, CompilerError> {
-        // CRITICAL CHECK: Are we emitting an instruction with operand 415?
-        if self.code_address >= 0x334 && self.code_address <= 0x340 {
-            eprintln!(
-                "emit_long_form_with_layout at 0x{:04x}: opcode=0x{:02x}, operands={:?}",
-                self.code_address, opcode, operands
-            );
-
-            for (i, op) in operands.iter().enumerate() {
-                match op {
-                    Operand::LargeConstant(415) | Operand::Constant(415) => {
-                        panic!(
-                            "BUG FOUND: Operand {} is value 415 at code_address 0x{:04x}!",
-                            i, self.code_address
-                        );
-                    }
-                    Operand::SmallConstant(1) if self.code_address == 0x335 => {
-                        eprintln!(
-                            "WARNING: SmallConstant(1) at critical location - might be part of 415"
-                        );
-                    }
-                    _ => {}
-                }
-            }
-        }
         if operands.len() != 2 {
             return Err(CompilerError::CodeGenError(format!(
                 "Long form requires exactly 2 operands, got {}",
@@ -2150,17 +1990,8 @@ impl ZMachineCodeGen {
                 panic!("BUG FOUND: branch_offset is 415 (the label ID!) instead of a placeholder marker!");
             }
 
-            // INSTRUMENT: What value are we actually passing to emit_word?
-            if self.code_address >= 0x335 && self.code_address <= 0x340 {
-                eprintln!(
-                    "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
-                    self.code_address
-                );
-                eprintln!("  But wait, let's check if this is actually being called...");
-            }
-
             // Always emit 2-byte placeholder for branches to be resolved later
-            self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+            self.emit_word(0xFFFF)?; // Will be replaced during branch resolution
             Some(loc)
         } else {
             None
@@ -2265,36 +2096,8 @@ impl ZMachineCodeGen {
 
     /// Emit a single operand
     fn emit_operand(&mut self, operand: &Operand) -> Result<(), CompilerError> {
-        // CRITICAL CHECK
-        if self.code_address >= 0x336 && self.code_address <= 0x33a {
-            eprintln!(
-                "emit_operand at code_address=0x{:04x}: operand={:?}",
-                self.code_address, operand
-            );
-        }
-
         match operand {
             Operand::SmallConstant(value) => {
-                if *value == 1 && self.code_address == 0x338 {
-                    eprintln!("CRITICAL: Emitting SmallConstant(1) at 0x338");
-                    eprintln!("This is part of the 415 problem!");
-                }
-                if *value == 159 && self.code_address == 0x339 {
-                    eprintln!("CRITICAL: Emitting SmallConstant(159) at 0x339");
-                    eprintln!("Together with previous byte, this is 0x019f = 415!");
-                }
-
-                // CRITICAL CHECK: Looking for what makes the 0x9f byte
-                if self.code_address == 0x339 {
-                    eprintln!(
-                        "FOUND: About to emit byte 0x{:02x} at code_address=0x339",
-                        value
-                    );
-                    if *value == 0x9f {
-                        eprintln!("THIS IS THE 0x9f BYTE! SmallConstant(159)");
-                    }
-                }
-
                 self.emit_byte(*value)?;
             }
             Operand::Variable(value) => {
@@ -2320,15 +2123,6 @@ impl ZMachineCodeGen {
                 self.emit_byte(zmachine_var)?;
             }
             Operand::LargeConstant(value) => {
-                // CRITICAL DEBUG: Check if this is the problematic LargeConstant(1)
-                if *value == 1 && self.code_address >= 0x336 && self.code_address <= 0x340 {
-                    eprintln!(
-                        "CRITICAL: emit_operand emitting LargeConstant(1) at code_address=0x{:04x}",
-                        self.code_address
-                    );
-                    eprintln!("This should emit 0x00 0x01 but might be causing 0x01 0x9f");
-                    eprintln!("About to call emit_word(0x{:04x})", value);
-                }
                 self.emit_word(*value)?;
             }
             Operand::Constant(value) => {
@@ -2343,11 +2137,37 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    // NOTE: emit_branch_offset was removed as dead code.
-    // Branch offsets are now handled through placeholder emission and fixup
-    // during the resolve_references phase, which is the correct pattern.
-    // The old function was only used in tests and didn't follow the
-    // established pattern of emit placeholder -> record reference -> fixup later.
+    /// Emit branch offset (1 or 2 bytes depending on size)
+    pub fn emit_branch_offset(&mut self, offset: i16) -> Result<(), CompilerError> {
+        // Z-Machine branch format:
+        // - Bit 7: branch condition (1 = branch on true, 0 = branch on false)
+        // - Bit 6: 0 = 2-byte offset, 1 = 1-byte offset
+        // - Bits 5-0 or 13-0: signed offset
+
+        log::debug!(
+            "Emit branch offset: {} at address=0x{:04x}",
+            offset,
+            self.current_address()
+        );
+
+        // For now, assume positive condition and handle offset size
+        if (0..=63).contains(&offset) {
+            // 1-byte format: bit 7 = condition, bit 6 = 1, bits 5-0 = offset
+            let branch_byte = 0x80 | 0x40 | (offset as u8 & 0x3F);
+            self.emit_byte(branch_byte)?;
+        } else {
+            // 2-byte format: bit 7 = condition, bit 6 = 0, bits 13-0 = offset
+            // First byte: control bits (7-6) + high 6 bits of offset (5-0)
+            // Second byte: low 8 bits of offset
+            let offset_u16 = offset as u16;
+            let first_byte = 0x80 | ((offset_u16 >> 8) as u8 & 0x3F); // Bit 7: branch on true, high 6 bits
+            let second_byte = (offset_u16 & 0xFF) as u8; // Low 8 bits
+            self.emit_byte(first_byte)?;
+            self.emit_byte(second_byte)?;
+        }
+
+        Ok(())
+    }
 
     /// Generate user function call with proper UnresolvedReference registration
     fn generate_user_function_call(

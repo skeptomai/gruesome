@@ -7,9 +7,8 @@ use crate::grue_compiler::codegen_utils::CodeGenUtils;
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
 use crate::grue_compiler::ZMachineVersion;
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use log::debug;
-use std::collections::{HashMap, HashSet};
 
 /// Distinctive placeholder byte for unresolved references
 /// 0xFF is chosen because:
@@ -29,7 +28,14 @@ const PLACEHOLDER_BYTE: u8 = 0xFF;
 /// a clear marker that the instruction needs proper Z-Machine implementation.
 /// The emit_instruction() method will detect and reject this opcode with a clear
 /// error message indicating which feature needs to be implemented.
-pub const UNIMPLEMENTED_OPCODE: u8 = 0x00;
+/// Marker value for unimplemented opcodes that need proper Z-Machine implementation.
+///
+/// CRITICAL: This must NOT be a valid Z-Machine opcode. Previously we used 0x00,
+/// but that's the valid opcode for jz (jump if zero) in 1OP form, which caused
+/// the compiler to reject valid jz instructions as "unimplemented".
+///
+/// 0xFF is not a valid Z-Machine opcode in any form, making it safe for this purpose.
+pub const UNIMPLEMENTED_OPCODE: u8 = 0xFF;
 
 /// Create a 16-bit placeholder value using the distinctive placeholder byte
 pub const fn placeholder_word() -> u16 {
@@ -202,27 +208,27 @@ pub struct ZMachineCodeGen {
     current_function_name: Option<String>, // Track current function being processed for debugging
     init_routine_locals_count: u8, // Track local variables used by init routine for PC calculation
     /// Mapping from IR IDs to string values (for LoadImmediate results)
-    pub ir_id_to_string: HashMap<IrId, String>,
+    pub ir_id_to_string: IndexMap<IrId, String>,
     /// Mapping from IR IDs to integer values (for LoadImmediate results)
-    pub ir_id_to_integer: HashMap<IrId, i16>,
+    pub ir_id_to_integer: IndexMap<IrId, i16>,
     /// Mapping from IR IDs to stack variables (for instruction results on stack)
-    pub ir_id_to_stack_var: HashMap<IrId, u8>,
+    pub ir_id_to_stack_var: IndexMap<IrId, u8>,
     /// Mapping from IR IDs to Z-Machine object numbers (for object references)
-    ir_id_to_object_number: HashMap<IrId, u16>,
+    ir_id_to_object_number: IndexMap<IrId, u16>,
     /// Mapping from IR IDs to Z-Machine local variable slots (for function parameters)
-    pub ir_id_to_local_var: HashMap<IrId, u8>,
+    pub ir_id_to_local_var: IndexMap<IrId, u8>,
     /// Mapping from IR IDs to binary operations (for conditional branch optimization)
-    ir_id_to_binary_op: HashMap<IrId, (IrBinaryOp, IrId, IrId)>, // (operator, left_operand, right_operand)
+    ir_id_to_binary_op: IndexMap<IrId, (IrBinaryOp, IrId, IrId)>, // (operator, left_operand, right_operand)
     /// Mapping from function IDs to builtin function names
-    builtin_function_names: HashMap<IrId, String>,
+    builtin_function_names: IndexMap<IrId, String>,
     /// Mapping from IR IDs to array metadata (for dynamic lists)
-    ir_id_to_array_info: HashMap<IrId, ArrayInfo>,
+    ir_id_to_array_info: IndexMap<IrId, ArrayInfo>,
     /// Mapping from object names to object numbers (from IR generator)
-    object_numbers: HashMap<String, u16>,
+    object_numbers: IndexMap<String, u16>,
     /// Global property registry: property name -> property number
-    pub property_numbers: HashMap<String, u8>,
+    pub property_numbers: IndexMap<String, u8>,
     /// Properties used by each object: object_name -> set of property names
-    pub object_properties: HashMap<String, Vec<String>>,
+    pub object_properties: IndexMap<String, Vec<String>>,
 
     // Tables for Z-Machine structures
     pub object_table_addr: usize,
@@ -253,7 +259,7 @@ pub struct ZMachineCodeGen {
 
     // Control flow analysis - NEW ARCHITECTURE
     /// Track constant values resolved during generation
-    pub constant_values: HashMap<IrId, ConstantValue>,
+    pub constant_values: IndexMap<IrId, ConstantValue>,
     /// Track which labels have been placed at current address
     labels_at_current_address: Vec<IrId>,
 
@@ -288,13 +294,13 @@ pub struct ZMachineCodeGen {
     abbreviations_address: usize,
 
     /// Code-space label tracking (for immediate jump/branch resolution)
-    pub code_labels: HashMap<IrId, usize>,
+    pub code_labels: IndexMap<IrId, usize>,
 
     /// String offset tracking (for final assembly)
-    pub string_offsets: HashMap<IrId, usize>,
+    pub string_offsets: IndexMap<IrId, usize>,
 
     /// Object offset tracking (for final assembly)
-    pub object_offsets: HashMap<IrId, usize>,
+    pub object_offsets: IndexMap<IrId, usize>,
 
     /// Pending fixups that need resolution
     pending_fixups: Vec<PendingFixup>,
@@ -322,17 +328,17 @@ impl ZMachineCodeGen {
             current_function_locals: 0,
             current_function_name: None,
             init_routine_locals_count: 0,
-            ir_id_to_string: HashMap::new(),
-            ir_id_to_integer: HashMap::new(),
-            ir_id_to_stack_var: HashMap::new(),
-            ir_id_to_object_number: HashMap::new(),
-            ir_id_to_local_var: HashMap::new(),
-            ir_id_to_binary_op: HashMap::new(),
-            builtin_function_names: HashMap::new(),
-            ir_id_to_array_info: HashMap::new(),
-            object_numbers: HashMap::new(),
-            property_numbers: HashMap::new(),
-            object_properties: HashMap::new(),
+            ir_id_to_string: IndexMap::new(),
+            ir_id_to_integer: IndexMap::new(),
+            ir_id_to_stack_var: IndexMap::new(),
+            ir_id_to_object_number: IndexMap::new(),
+            ir_id_to_local_var: IndexMap::new(),
+            ir_id_to_binary_op: IndexMap::new(),
+            builtin_function_names: IndexMap::new(),
+            ir_id_to_array_info: IndexMap::new(),
+            object_numbers: IndexMap::new(),
+            property_numbers: IndexMap::new(),
+            object_properties: IndexMap::new(),
             object_table_addr: 0,
             property_table_addr: 0,
             current_property_addr: 0,
@@ -351,7 +357,7 @@ impl ZMachineCodeGen {
                 ir_id_to_address: IndexMap::new(),
                 unresolved_refs: Vec::new(),
             },
-            constant_values: HashMap::new(),
+            constant_values: IndexMap::new(),
             labels_at_current_address: Vec::new(),
 
             // Initialize separated memory spaces
@@ -369,9 +375,9 @@ impl ZMachineCodeGen {
             globals_address: 0,
             abbreviations_space: Vec::new(),
             abbreviations_address: 0,
-            code_labels: HashMap::new(),
-            string_offsets: HashMap::new(),
-            object_offsets: HashMap::new(),
+            code_labels: IndexMap::new(),
+            string_offsets: IndexMap::new(),
+            object_offsets: IndexMap::new(),
             pending_fixups: Vec::new(),
             final_data: Vec::new(),
             final_code_base: 0,
@@ -1004,6 +1010,21 @@ impl ZMachineCodeGen {
                 &self.code_space[0..std::cmp::min(10, self.code_space.len())]
             );
 
+            // Check what's at the problematic location before copying
+            let problem_offset = 0x335; // This becomes 0x127F after adding code_base
+            if problem_offset < self.code_space.len() {
+                eprintln!("BEFORE COPY: code_space[0x{:04x}..0x{:04x}] = {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
+                    problem_offset,
+                    problem_offset + 6,
+                    self.code_space[problem_offset],
+                    if problem_offset + 1 < self.code_space.len() { self.code_space[problem_offset + 1] } else { 0 },
+                    if problem_offset + 2 < self.code_space.len() { self.code_space[problem_offset + 2] } else { 0 },
+                    if problem_offset + 3 < self.code_space.len() { self.code_space[problem_offset + 3] } else { 0 },
+                    if problem_offset + 4 < self.code_space.len() { self.code_space[problem_offset + 4] } else { 0 },
+                    if problem_offset + 5 < self.code_space.len() { self.code_space[problem_offset + 5] } else { 0 }
+                );
+            }
+
             self.final_data[code_base..total_size].copy_from_slice(&self.code_space);
 
             log::debug!(
@@ -1424,6 +1445,21 @@ impl ZMachineCodeGen {
                         resolved_address, instruction_pc, offset, offset_bytes[0], offset_bytes[1], final_location
                     );
 
+                    if final_location == 0x127e || final_location == 0x127f {
+                        eprintln!(
+                            "CRITICAL: Writing jump offset to location 0x{:04x}",
+                            final_location
+                        );
+                        eprintln!("  Target ID: {}", reference.target_id);
+                        eprintln!("  Resolved address: 0x{:04x}", resolved_address);
+                        eprintln!("  Instruction PC: 0x{:04x}", instruction_pc);
+                        eprintln!("  Offset: {} (0x{:04x})", offset, offset as u16);
+                        eprintln!(
+                            "  Offset bytes: 0x{:02x} 0x{:02x}",
+                            offset_bytes[0], offset_bytes[1]
+                        );
+                    }
+
                     self.write_byte_at(final_location, offset_bytes[0])?;
                     self.write_byte_at(final_location + 1, offset_bytes[1])?;
                     return Ok(());
@@ -1473,10 +1509,15 @@ impl ZMachineCodeGen {
 
                 // TEMPORARY: Check for our problematic label 415
                 if reference.target_id == 415 {
-                    log::error!(
+                    eprintln!(
                         "CRITICAL: Resolving branch for label 415 at location 0x{:04x}",
                         reference.location
                     );
+                    if let Some(&target_addr) = self.reference_context.ir_id_to_address.get(&415) {
+                        eprintln!("  Label 415 maps to address 0x{:04x}", target_addr);
+                    } else {
+                        eprintln!("  ERROR: Label 415 not found in ir_id_to_address!");
+                    }
                 }
 
                 // Check if this Branch reference is at location 0x127f or nearby
@@ -2352,6 +2393,19 @@ impl ZMachineCodeGen {
     /// actual_target = PC_after_instruction + offset - 2
     pub fn translate_jump(&mut self, label: IrId) -> Result<(), CompilerError> {
         log::debug!("translate_jump: label={}", label);
+
+        // CRITICAL DEBUG: Track jumps near problem area
+        if self.code_address >= 0x330 && self.code_address <= 0x340 {
+            eprintln!(
+                "CRITICAL: translate_jump at code_address=0x{:04x}, jumping to label {}",
+                self.code_address, label
+            );
+            eprintln!(
+                "  This jump will emit at 0x{:04x}-0x{:04x}",
+                self.code_address,
+                self.code_address + 2
+            );
+        }
 
         // OPTIMIZATION: Check if jump target is the immediately next instruction
         if self.is_next_instruction(label) {
@@ -4220,7 +4274,7 @@ impl ZMachineCodeGen {
         &mut self,
         obj_num: u8,
         object: &ObjectData,
-        object_id_to_number: &HashMap<IrId, u8>,
+        object_id_to_number: &IndexMap<IrId, u8>,
     ) -> Result<(), CompilerError> {
         // ARCHITECTURAL FIX: Write to object_space instead of contaminating code_space
         // Z-Machine specification: Property defaults table comes FIRST, then objects
@@ -5555,6 +5609,17 @@ impl ZMachineCodeGen {
                 ir_id,
                 literal_value
             );
+
+            // CRITICAL CHECK: Is 415 being returned?
+            if literal_value == 415 {
+                eprintln!("BUG FOUND: resolve_ir_id_to_operand returning LargeConstant(415) for IR ID {}!", ir_id);
+                eprintln!("This means IR ID {} is mapped to the value 415", ir_id);
+                eprintln!("Stack trace:");
+                let bt = std::backtrace::Backtrace::force_capture();
+                eprintln!("{}", bt);
+                panic!("Label ID 415 being used as operand value!");
+            }
+
             return Ok(Operand::LargeConstant(literal_value));
         }
 
@@ -5676,7 +5741,7 @@ impl ZMachineCodeGen {
     /// This ensures every IR ID used in instructions gets a proper mapping
     fn setup_comprehensive_id_mappings(&mut self, ir: &IrProgram) {
         // STEP 1: Scan ALL IR instructions to find every IR ID used anywhere
-        let mut all_used_ids = HashSet::new();
+        let mut all_used_ids = IndexSet::new();
 
         // Scan functions
         for function in &ir.functions {
@@ -5708,7 +5773,7 @@ impl ZMachineCodeGen {
     }
 
     /// Collect all IR IDs referenced in a single instruction
-    fn collect_instruction_ids(&self, instr: &IrInstruction, used_ids: &mut HashSet<IrId>) {
+    fn collect_instruction_ids(&self, instr: &IrInstruction, used_ids: &mut IndexSet<IrId>) {
         match instr {
             IrInstruction::LoadImmediate { target, .. } => {
                 used_ids.insert(*target);
@@ -6347,6 +6412,13 @@ impl ZMachineCodeGen {
             relative_address
         };
         debug!("Allocate label: IR ID {} -> relative=0x{:04x}, final_code_base=0x{:04x}, address=0x{:04x}", ir_id, relative_address, self.final_code_base, address);
+
+        if ir_id == 415 {
+            eprintln!("CRITICAL: Recording label 415 at address 0x{:04x}", address);
+            eprintln!("  relative_address = 0x{:04x}", relative_address);
+            eprintln!("  final_code_base = 0x{:04x}", self.final_code_base);
+        }
+
         self.label_addresses.insert(ir_id, address);
         self.record_final_address(ir_id, address);
 
@@ -6631,7 +6703,7 @@ impl ZMachineCodeGen {
     /// PHASE 2.3: Deduplicate unresolved references to eliminate double-patching
     /// The real issue is multiple references to the same target ID
     fn deduplicate_references(&self, refs: &[UnresolvedReference]) -> Vec<UnresolvedReference> {
-        let mut seen_references = HashSet::new();
+        let mut seen_references = IndexSet::new();
         let mut deduplicated = Vec::new();
 
         for reference in refs {
@@ -7517,7 +7589,7 @@ impl ZMachineCodeGen {
     }
 
     /// Register object numbers from IR generator
-    pub fn set_object_numbers(&mut self, object_numbers: HashMap<String, u16>) {
+    pub fn set_object_numbers(&mut self, object_numbers: IndexMap<String, u16>) {
         self.object_numbers = object_numbers;
     }
 
@@ -7998,6 +8070,24 @@ impl ZMachineCodeGen {
     // Utility methods for code emission
 
     pub fn emit_byte(&mut self, byte: u8) -> Result<(), CompilerError> {
+        // CRITICAL: Check for problematic bytes being written
+        let code_offset = self.code_space.len();
+        if code_offset >= 0x333 && code_offset <= 0x338 {
+            eprintln!(
+                "DEBUG: Writing 0x{:02x} at code space offset 0x{:04x}",
+                byte, code_offset
+            );
+        }
+        if code_offset == 0x335 && byte == 0x01 {
+            eprintln!("WARNING: Writing 0x01 at code space offset 0x335 - first byte of 415!");
+        }
+        if code_offset == 0x336 && byte == 0x9f {
+            eprintln!("FOUND THE BUG: Writing 0x9f at code space offset 0x336!");
+            eprintln!("Together with previous byte, this forms 0x019f = 415 decimal");
+            eprintln!("This is a label ID being written as branch bytes!");
+            panic!("BUG DETECTED: Label ID 415 written as branch bytes");
+        }
+
         // Clear labels at current address when we emit actual instruction bytes
         // (but not for padding or alignment bytes)
         if !self.labels_at_current_address.is_empty() && byte != 0x00 {
@@ -8116,23 +8206,97 @@ impl ZMachineCodeGen {
             }
         }
 
+        // CRITICAL: Track writes to our problematic location
+        if code_offset >= 0x330 && code_offset <= 0x340 {
+            eprintln!(
+                "WRITE[0x{:04x}]: 0x{:02x} (code_addr=0x{:04x})",
+                code_offset, byte, self.code_address
+            );
+
+            // Identify what this byte likely represents
+            let byte_type = if code_offset > 0 && self.code_space.len() > 0 {
+                // Check if this looks like an opcode, operand, or data
+                if byte == 0xFF {
+                    "PLACEHOLDER"
+                } else if byte >= 0xB0 && byte <= 0xBF {
+                    "0OP_OPCODE"
+                } else if byte >= 0x80 && byte <= 0xAF {
+                    "1OP_OPCODE"
+                } else if byte >= 0x00 && byte <= 0x7F {
+                    if byte <= 0x1F {
+                        "2OP_OPCODE"
+                    } else {
+                        "OPERAND/DATA"
+                    }
+                } else if byte >= 0xC0 {
+                    "VAR_OPCODE"
+                } else {
+                    "UNKNOWN"
+                }
+            } else {
+                "FIRST_BYTE"
+            };
+            eprintln!(
+                "      Type: {} {}",
+                byte_type,
+                if byte == 0x02 {
+                    "(jl opcode)"
+                } else if byte == 0xFF {
+                    "(placeholder)"
+                } else if byte == 0x01
+                    && code_offset > 0
+                    && self.code_space.get(code_offset - 1) == Some(&0x00)
+                {
+                    "(might be part of 0x01 0x9f = 415)"
+                } else {
+                    ""
+                }
+            );
+
+            if (code_offset == 0x334 || code_offset == 0x335) && byte == 0xFF {
+                eprintln!("  CRITICAL: Writing 0xFF at 0x{:03x} - this is a JUMP placeholder that will overlap with JL branch bytes!", code_offset);
+                eprintln!("  This JUMP ends right where the JL's branch bytes should be read from (file offset 0x127E-0x127F)");
+                // Don't panic - let it continue so we can see more
+            }
+        }
+
         // Phase-aware writing: code generation writes to code_space, address patching writes to final_data
         if !self.final_data.is_empty() {
             // Final assembly phase: write to final_data only
             if self.code_address < self.final_data.len() {
                 self.final_data[self.code_address] = byte;
 
-                // TEMPORARY DEBUG: Track writes to problem area
-                if self.code_address == 0x1282 {
-                    log::error!("WRITING TO 0x1282: byte=0x{:02x}", byte);
-                }
-                if self.code_address == 0x1283 {
-                    log::error!("WRITING TO 0x1283: byte=0x{:02x}", byte);
-                    if byte == 0x9f
-                        && self.code_address > 0
-                        && self.final_data[self.code_address - 1] == 0x01
-                    {
-                        log::error!("FOUND IT: Just wrote 01 9f to 0x1282-0x1283 in final_data!");
+                // TEMPORARY DEBUG: Track writes to problem area (jl at 0x127f)
+                if self.code_address >= 0x127f && self.code_address <= 0x1284 {
+                    eprintln!(
+                        "WRITING TO 0x{:04x}: byte=0x{:02x}",
+                        self.code_address, byte
+                    );
+                    if self.code_address == 0x1283 && byte == 0x9f {
+                        eprintln!("CRITICAL: Writing 0x9f to offset 0x1283!");
+                        eprintln!(
+                            "Previous bytes: {:02x} {:02x} {:02x} {:02x}",
+                            if self.code_address >= 4 {
+                                self.final_data[self.code_address - 4]
+                            } else {
+                                0
+                            },
+                            if self.code_address >= 3 {
+                                self.final_data[self.code_address - 3]
+                            } else {
+                                0
+                            },
+                            if self.code_address >= 2 {
+                                self.final_data[self.code_address - 2]
+                            } else {
+                                0
+                            },
+                            if self.code_address >= 1 {
+                                self.final_data[self.code_address - 1]
+                            } else {
+                                0
+                            }
+                        );
                     }
                 }
             } else {
@@ -8143,6 +8307,19 @@ impl ZMachineCodeGen {
             }
         } else {
             // Code generation phase: write to code_space
+            if code_offset == 0x338 && byte == 0x01 {
+                eprintln!("GOTCHA! Writing 0x01 to code_space[0x338]");
+                eprintln!("Stack trace:");
+                let bt = std::backtrace::Backtrace::force_capture();
+                eprintln!("{}", bt);
+            }
+            if code_offset == 0x339 && byte == 0x9f {
+                eprintln!("GOTCHA! Writing 0x9f to code_space[0x339]");
+                eprintln!("Stack trace:");
+                let bt = std::backtrace::Backtrace::force_capture();
+                eprintln!("{}", bt);
+                // Don't panic, let's see what happens next
+            }
             self.code_space[code_offset] = byte;
 
             // TEMPORARY DEBUG: Track problematic sequence in code_space
@@ -8158,6 +8335,13 @@ impl ZMachineCodeGen {
                     code_offset - 4
                 );
                 log::error!("This is jl(13,0) with branch bytes 01 9f (415)!");
+                eprintln!("CRITICAL: Writing problematic bytes 0x01 0x9f to code_space at offset 0x{:04x}", code_offset - 1);
+                eprintln!(
+                    "  These bytes decode to 415 decimal - likely a label ID not a branch offset!"
+                );
+                eprintln!("  Stack trace:");
+                let backtrace = std::backtrace::Backtrace::capture();
+                eprintln!("{}", backtrace);
             }
         }
 
@@ -8436,6 +8620,19 @@ impl ZMachineCodeGen {
                 byte,
                 addr
             );
+
+            // Track writes to problematic jl instruction area
+            if addr >= 0x127f && addr <= 0x1284 {
+                eprintln!("DIRECT WRITE to 0x{:04x}: byte=0x{:02x}", addr, byte);
+                eprintln!("  Stack trace:");
+                let backtrace = std::backtrace::Backtrace::capture();
+                eprintln!("{}", backtrace);
+                if addr == 0x1283 && byte == 0x9f {
+                    eprintln!("CRITICAL: Direct write of 0x9f to 0x1283!");
+                    panic!("Found the bug: Direct write of label ID 415 (0x019f) to branch offset location!");
+                }
+            }
+
             self.final_data[addr] = byte;
             Ok(())
         } else {

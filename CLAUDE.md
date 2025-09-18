@@ -535,3 +535,4 @@ The interpreter correctly handles calls to address 0x0000 according to the Z-Mac
 Development history and detailed implementation logs have been archived to `CLAUDE_HISTORICAL.md` for reference. This file is not automatically loaded but preserves all technical implementation details from the development process.
 - never give me percentages of completion and never give me time estimates to complete tasks
 - don't give percentages complete or percentage estimates for completion
+- we want to maintain determinism build over build. Use IndexSet and IndexMap rather than HashSet or HashMap. The Index versions have deterministic enumeration

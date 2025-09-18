@@ -6,8 +6,8 @@
 use crate::grue_compiler::ast::{Program, ProgramMode, Type};
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::object_system::ComprehensiveObject;
-use indexmap::IndexMap;
-use std::collections::{HashMap, HashSet};
+use indexmap::{IndexMap, IndexSet};
+use std::collections::HashMap;
 
 /// Unique identifier for IR instructions, labels, and temporary variables
 pub type IrId = u32;
@@ -16,11 +16,11 @@ pub type IrId = u32;
 /// Registry for tracking all IR IDs and their types/purposes
 #[derive(Debug, Clone)]
 pub struct IrIdRegistry {
-    pub id_types: HashMap<IrId, String>,   // ID -> type description
-    pub id_sources: HashMap<IrId, String>, // ID -> creation context
-    pub temporary_ids: HashSet<IrId>,      // IDs that are temporary values
-    pub symbol_ids: HashSet<IrId>,         // IDs that are named symbols
-    pub expression_ids: HashSet<IrId>,     // IDs from expression evaluation
+    pub id_types: IndexMap<IrId, String>,   // ID -> type description
+    pub id_sources: IndexMap<IrId, String>, // ID -> creation context
+    pub temporary_ids: IndexSet<IrId>,      // IDs that are temporary values
+    pub symbol_ids: IndexSet<IrId>,         // IDs that are named symbols
+    pub expression_ids: IndexSet<IrId>,     // IDs from expression evaluation
 }
 
 impl Default for IrIdRegistry {
@@ -32,11 +32,11 @@ impl Default for IrIdRegistry {
 impl IrIdRegistry {
     pub fn new() -> Self {
         Self {
-            id_types: HashMap::new(),
-            id_sources: HashMap::new(),
-            temporary_ids: HashSet::new(),
-            symbol_ids: HashSet::new(),
-            expression_ids: HashSet::new(),
+            id_types: IndexMap::new(),
+            id_sources: IndexMap::new(),
+            temporary_ids: IndexSet::new(),
+            symbol_ids: IndexSet::new(),
+            expression_ids: IndexSet::new(),
         }
     }
 
@@ -68,9 +68,9 @@ pub struct IrProgram {
     pub property_defaults: IrPropertyDefaults, // Z-Machine property defaults table
     pub program_mode: ProgramMode,            // Program execution mode
     /// Mapping from symbol names to IR IDs (for identifier resolution)
-    pub symbol_ids: HashMap<String, IrId>,
+    pub symbol_ids: IndexMap<String, IrId>,
     /// Mapping from object names to Z-Machine object numbers
-    pub object_numbers: HashMap<String, u16>,
+    pub object_numbers: IndexMap<String, u16>,
     /// NEW: Comprehensive registry of all IR IDs and their purposes
     pub id_registry: IrIdRegistry,
     /// Property manager with consistent property name -> number mappings
@@ -170,7 +170,7 @@ pub struct IrRoom {
     pub name: String,
     pub display_name: String,
     pub description: String,
-    pub exits: HashMap<String, IrExitTarget>,
+    pub exits: IndexMap<String, IrExitTarget>,
     pub on_enter: Option<IrBlock>,
     pub on_exit: Option<IrBlock>,
     pub on_look: Option<IrBlock>,
@@ -303,9 +303,9 @@ pub enum IrPropertyValue {
 #[derive(Debug, Clone)]
 pub struct PropertyManager {
     /// Property name to number mapping
-    property_numbers: HashMap<String, u8>,
+    property_numbers: IndexMap<String, u8>,
     /// Standard property mappings
-    standard_properties: HashMap<StandardProperty, u8>,
+    standard_properties: IndexMap<StandardProperty, u8>,
     /// Next available property number
     next_property_number: u8,
 }
@@ -313,8 +313,8 @@ pub struct PropertyManager {
 impl PropertyManager {
     pub fn new() -> Self {
         let mut manager = Self {
-            property_numbers: HashMap::new(),
-            standard_properties: HashMap::new(),
+            property_numbers: IndexMap::new(),
+            standard_properties: IndexMap::new(),
             next_property_number: 1,
         };
 
@@ -378,7 +378,7 @@ impl PropertyManager {
     }
 
     /// Get all property name -> number mappings (for object table generation)
-    pub fn get_property_numbers(&self) -> &HashMap<String, u8> {
+    pub fn get_property_numbers(&self) -> &IndexMap<String, u8> {
         &self.property_numbers
     }
 
@@ -856,8 +856,8 @@ impl IrProgram {
             string_table: IndexMap::new(),
             property_defaults: IrPropertyDefaults::new(),
             program_mode: ProgramMode::Script, // Default mode, will be overridden
-            symbol_ids: HashMap::new(),
-            object_numbers: HashMap::new(),
+            symbol_ids: IndexMap::new(),
+            object_numbers: IndexMap::new(),
             id_registry: IrIdRegistry::new(), // NEW: Initialize ID registry
             property_manager: PropertyManager::new(), // Initialize property manager
         }
@@ -931,14 +931,14 @@ impl From<crate::grue_compiler::ast::UnaryOp> for IrUnaryOp {
 /// IR Generator - converts AST to IR
 pub struct IrGenerator {
     id_counter: IrId,
-    symbol_ids: HashMap<String, IrId>, // Symbol name -> IR ID mapping
-    current_locals: Vec<IrLocal>,      // Track local variables in current function
-    next_local_slot: u8,               // Next available local variable slot
-    builtin_functions: HashMap<IrId, String>, // Function ID -> Function name for builtins
-    object_numbers: HashMap<String, u16>, // Object name -> Object number mapping
-    object_counter: u16,               // Next available object number (starts at 2, player is 1)
-    property_manager: PropertyManager, // Manages property numbering and inheritance
-    id_registry: IrIdRegistry,         // NEW: Track all IR IDs for debugging and mapping
+    symbol_ids: IndexMap<String, IrId>, // Symbol name -> IR ID mapping
+    current_locals: Vec<IrLocal>,       // Track local variables in current function
+    next_local_slot: u8,                // Next available local variable slot
+    builtin_functions: IndexMap<IrId, String>, // Function ID -> Function name for builtins
+    object_numbers: IndexMap<String, u16>, // Object name -> Object number mapping
+    object_counter: u16,                // Next available object number (starts at 2, player is 1)
+    property_manager: PropertyManager,  // Manages property numbering and inheritance
+    id_registry: IrIdRegistry,          // NEW: Track all IR IDs for debugging and mapping
 }
 
 impl Default for IrGenerator {
@@ -949,16 +949,16 @@ impl Default for IrGenerator {
 
 impl IrGenerator {
     pub fn new() -> Self {
-        let mut object_numbers = HashMap::new();
+        let mut object_numbers = IndexMap::new();
         // Player is always object #1
         object_numbers.insert("player".to_string(), 1);
 
         IrGenerator {
             id_counter: 1, // Start from 1, 0 is reserved
-            symbol_ids: HashMap::new(),
+            symbol_ids: IndexMap::new(),
             current_locals: Vec::new(),
             next_local_slot: 1, // Slot 0 reserved for return value
-            builtin_functions: HashMap::new(),
+            builtin_functions: IndexMap::new(),
             object_numbers,
             object_counter: 2, // Start at 2, player is object #1
             property_manager: PropertyManager::new(),
@@ -1054,11 +1054,11 @@ impl IrGenerator {
     }
 
     /// Get builtin functions discovered during IR generation
-    pub fn get_builtin_functions(&self) -> &HashMap<IrId, String> {
+    pub fn get_builtin_functions(&self) -> &IndexMap<IrId, String> {
         &self.builtin_functions
     }
 
-    pub fn get_object_numbers(&self) -> &HashMap<String, u16> {
+    pub fn get_object_numbers(&self) -> &IndexMap<String, u16> {
         &self.object_numbers
     }
 
@@ -1617,7 +1617,7 @@ impl IrGenerator {
                 .insert(room.identifier.clone(), object_number);
         }
 
-        let mut exits = HashMap::new();
+        let mut exits = IndexMap::new();
         for (direction, target) in room.exits {
             let ir_target = match target {
                 crate::grue_compiler::ast::ExitTarget::Room(_room_name) => {

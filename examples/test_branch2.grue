@@ -1,0 +1,9 @@
+// Even simpler test - just constants
+fn main() {
+    if (1 < 2) {
+        print("True branch\n");
+    } else {
+        print("False branch\n");
+    }
+    print("After if\n");
+}

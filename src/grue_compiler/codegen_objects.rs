@@ -6,8 +6,8 @@
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
 use crate::grue_compiler::ZMachineVersion;
+use indexmap::{IndexMap, IndexSet};
 use log::debug;
-use std::collections::{HashMap, HashSet};
 
 // Re-export common types for object handling
 pub use crate::grue_compiler::codegen::{MemorySpace, ObjectData, Operand, ZMachineCodeGen};
@@ -196,7 +196,7 @@ impl ZMachineCodeGen {
         debug!("Starting property analysis...");
 
         // Step 1: Collect all property names from all instructions
-        let mut all_properties = HashSet::new();
+        let mut all_properties = IndexSet::new();
 
         // Analyze functions
         for function in &ir.functions {
@@ -237,7 +237,7 @@ impl ZMachineCodeGen {
     pub fn collect_properties_from_block(
         &mut self,
         block: &IrBlock,
-        properties: &mut HashSet<String>,
+        properties: &mut IndexSet<String>,
     ) {
         for instruction in &block.instructions {
             match instruction {
@@ -460,7 +460,7 @@ impl ZMachineCodeGen {
         );
 
         // Step 3: Build object ID mapping table
-        let mut object_id_to_number: HashMap<IrId, u8> = HashMap::new();
+        let mut object_id_to_number: IndexMap<IrId, u8> = IndexMap::new();
         for (index, object) in all_objects.iter().enumerate() {
             let obj_num = (index + 1) as u8; // Objects are numbered starting from 1
             object_id_to_number.insert(object.id, obj_num);
