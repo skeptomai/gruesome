@@ -1,26 +1,72 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (September 12, 2025) - MAJOR UnresolvedReference FIX ✅
+## CURRENT STATUS (September 17, 2025) - UNIMPLEMENTED_OPCODE FIX ✅
 
-**MAJOR SUCCESS**: Fixed critical UnresolvedReference location calculation bug enabling mini_zork execution!
+**MAJOR SUCCESS**: Fixed critical UNIMPLEMENTED_OPCODE conflict that prevented jz instruction emission!
 
-### ✅ LATEST MAJOR FIX (Session Sep 12, 2025):
+### ✅ LATEST MAJOR FIX (Session Sep 17, 2025):
 
-**UnresolvedReference Location Bug Fix** - Root cause: Location calculated AFTER placeholder emission instead of before
-- **Problem**: `add_unresolved_reference()` used `self.code_space.len()` after `emit_word(placeholder_word())`
-- **Fix**: Record exact code space offset BEFORE emitting placeholders
-- **Impact**: Hundreds of `0x00 0x00` unresolved placeholders throughout compiled bytecode
-- **Result**: mini_zork now successfully displays game banner and executes significantly further
+**UNIMPLEMENTED_OPCODE Conflict Fix** - Root cause: Placeholder marker conflicted with valid Z-Machine opcode
+- **Problem**: UNIMPLEMENTED_OPCODE was 0x00, which is the valid opcode for jz (jump if zero) in 1OP form
+- **Fix**: Changed UNIMPLEMENTED_OPCODE from 0x00 to 0xFF (not a valid Z-Machine opcode)
+- **Impact**: All jz instructions were being rejected as "unimplemented", breaking non-comparison branches
+- **Result**: mini_zork now displays banner correctly and executes ~95% successfully
 
-### 📊 DRAMATIC IMPROVEMENT - mini_zork Execution:
-- **Before Fix**: Immediate crash, no game banner display
-- **After Fix**: Game banner displays correctly, executes through initialization
-- **Progress**: From 0% execution to ~90% - only final branch calculation issue remains
-- **All Tests**: 17 compiler tests still passing (no regressions)
+### 📊 IMPROVEMENTS - mini_zork Execution:
+- **Before Fix**: Crash at PC 0x1221, no proper conditional branches
+- **After Fix**: Game banner displays, executes to PC 0x12fc before object error
+- **Progress**: From ~90% execution to ~95% - only object 65534 error remains
+- **Code Quality**: Removed dead emit_branch_offset() function, improved placeholder consistency
 
-### 🎯 REMAINING WORK:
-- Final crash at PC 0x1221 with branch overflow (some `0x00 0x00` placeholders still unresolved)
-- Root cause likely additional UnresolvedReference patterns not yet discovered
+### 🎯 REMAINING ISSUES (Documented for next session):
+
+#### 1. **Object 65534 (0xFFFE) Error at PC 0x12fc**
+- Error: "invalid object 65534 > max 255"
+- Likely cause: Unresolved placeholder or incorrect object ID generation
+- Value 0xFFFE is -2 as signed 16-bit, might be placeholder bytes
+- Occurs when get_prop instruction tries to use stack value as object number
+
+#### 2. **Placeholder/Reference Audit Needed**
+- Found 26 UnresolvedReference creations in codegen.rs
+- Only 9 have clear placeholder emissions nearby
+- Need to verify all references have corresponding placeholders
+- Some might be relying on emit_instruction to handle placeholders
+
+#### 3. **Code Pattern Inconsistencies**
+- Found places using hardcoded 0xFFFF instead of placeholder_word()
+- Fixed main instances but debug messages still have hardcoded values
+- Need systematic review of placeholder patterns
+
+#### 4. **Potential Dead Code**
+- Removed emit_branch_offset() which wasn't following placeholder/fixup pattern
+- May be other functions not following modern patterns
+- Need audit of unused or outdated functions
+
+### 🔍 KEY DEBUGGING PATTERNS (Session Sep 17, 2025):
+
+#### Useful Commands for Debugging:
+```bash
+# Check specific offset in compiled file
+xxd -s 0x127f -l 10 mini_zork.z3
+
+# Find where specific values appear
+xxd mini_zork.z3 | grep -E "ff fe|fe ff"
+
+# Trace execution with debug logging
+RUST_LOG=debug ./target/debug/gruesome mini_zork.z3 2>&1 | grep "PC=0x12fc"
+
+# Find placeholder patterns
+grep -r "emit_word(0xFFFF)" src/grue_compiler --include="*.rs" | grep -v ".bak"
+
+# Check for UnresolvedReference without placeholders
+grep -B 5 "UnresolvedReference {" src/grue_compiler/codegen.rs | grep -E "(emit_word|placeholder)"
+```
+
+#### Code Patterns to Watch:
+- **Correct**: `Operand::LargeConstant(placeholder_word())`
+- **Wrong**: `Operand::LargeConstant(0xFFFF)`
+- **Correct**: Create UnresolvedReference AFTER getting location from emit_instruction layout
+- **Wrong**: Calculate location manually before/after emission
 
 ### ✅ COMPLETED FIXES (All Sessions):
 1. **Branch System Fixed** - UnresolvedReference system for conditional branches
