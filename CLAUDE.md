@@ -20,11 +20,12 @@
 
 ### 🎯 REMAINING ISSUES (Documented for next session):
 
-#### 1. **Object 65534 (0xFFFE) Error at PC 0x12fc**
+#### 1. **Object 65534 (0xFFFE) Error at PC 0x12fc** [IN PROGRESS]
 - Error: "invalid object 65534 > max 255"
 - Likely cause: Unresolved placeholder or incorrect object ID generation
 - Value 0xFFFE is -2 as signed 16-bit, might be placeholder bytes
 - Occurs when get_prop instruction tries to use stack value as object number
+- **Investigation Status**: Found value being popped from stack at PC 0x12fc, need to trace where it gets pushed
 
 #### 2. **Placeholder/Reference Audit Needed**
 - Found 26 UnresolvedReference creations in codegen.rs
