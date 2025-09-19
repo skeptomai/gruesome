@@ -167,6 +167,9 @@ pub enum LegacyReferenceType {
 pub struct ReferenceContext {
     pub ir_id_to_address: IndexMap<IrId, usize>, // Resolved addresses by IR ID
     pub unresolved_refs: Vec<UnresolvedReference>, // References waiting for resolution
+    /// DEBUG: Track all references ever created for debugging coverage.
+    /// This enables validation that all created references are properly resolved.
+    pub all_references_created: Vec<UnresolvedReference>,
 }
 
 /// Array metadata for dynamic list operations
@@ -356,6 +359,7 @@ impl ZMachineCodeGen {
             reference_context: ReferenceContext {
                 ir_id_to_address: IndexMap::new(),
                 unresolved_refs: Vec::new(),
+                all_references_created: Vec::new(),
             },
             constant_values: IndexMap::new(),
             labels_at_current_address: Vec::new(),
@@ -1186,6 +1190,9 @@ impl ZMachineCodeGen {
         }
         log::info!(" All unresolved references processed");
 
+        // Clear resolved references
+        self.reference_context.unresolved_refs.clear();
+
         // Phase 2: Process pending fixups (legacy compatibility)
         let fixup_count = self.pending_fixups.len();
         if fixup_count > 0 {
@@ -1238,6 +1245,10 @@ impl ZMachineCodeGen {
         }
 
         log::info!(" All address references resolved successfully");
+
+        // DEBUG: Final validation - check for unresolved references
+        self.validate_all_references_resolved()?;
+
         Ok(())
     }
 
@@ -1625,11 +1636,8 @@ impl ZMachineCodeGen {
             );
         }
 
-        // Check for invalid reference locations and final_code_base
-        if reference.location > 0x1000 {
-            panic!("COMPILER BUG: UnresolvedReference has absolute location 0x{:04x} instead of code space relative offset. Target ID: {}, Type: {:?}",
-                   reference.location, reference.target_id, reference.reference_type);
-        }
+        // Note: reference.location is now expected to be a final address after translation
+        // The previous validation for code space relative offsets was incorrect here
 
         // The reference.location should already be a final address from translate_space_address_to_final
         let final_location = reference.location;
@@ -2309,16 +2317,15 @@ impl ZMachineCodeGen {
             )?;
 
             // Add unresolved reference for string address using pre-calculated location
-            self.reference_context
-                .unresolved_refs
-                .push(UnresolvedReference {
-                    reference_type: LegacyReferenceType::StringRef,
-                    location: operand_location,
-                    target_id: value,
-                    is_packed_address: true,
-                    offset_size: 2,
-                    location_space: MemorySpace::Code, // String references in code instructions
-                });
+            let reference = UnresolvedReference {
+                reference_type: LegacyReferenceType::StringRef,
+                location: operand_location,
+                target_id: value,
+                is_packed_address: true,
+                offset_size: 2,
+                location_space: MemorySpace::Code, // String references in code instructions
+            };
+            self.add_reference_to_tracking_lists(reference);
         } else {
             // Print variable/computed value using print_num
             let operand = Operand::SmallConstant(1); // Use variable 1 for now
@@ -2436,16 +2443,15 @@ impl ZMachineCodeGen {
             .expect("Jump instruction must have operand location");
 
         // Add unresolved reference for jump target
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Jump,
-                location: operand_location,
-                target_id: label,
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        let reference = UnresolvedReference {
+            reference_type: LegacyReferenceType::Jump,
+            location: operand_location,
+            target_id: label,
+            is_packed_address: false,
+            offset_size: 2,
+            location_space: MemorySpace::Code,
+        };
+        self.add_reference_to_tracking_lists(reference);
 
         Ok(())
     }
@@ -2606,16 +2612,15 @@ impl ZMachineCodeGen {
             )?;
 
             // Add unresolved reference for function address using pre-calculated location
-            self.reference_context
-                .unresolved_refs
-                .push(UnresolvedReference {
-                    reference_type: LegacyReferenceType::FunctionCall,
-                    location: operand_location,
-                    target_id: function,
-                    is_packed_address: true,
-                    offset_size: 2,
-                    location_space: MemorySpace::Code,
-                });
+            let reference = UnresolvedReference {
+                reference_type: LegacyReferenceType::FunctionCall,
+                location: operand_location,
+                target_id: function,
+                is_packed_address: true,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            };
+            self.add_reference_to_tracking_lists(reference);
         } else {
             // HOTFIX: Register commonly missing builtin functions
             match function {
@@ -2646,7 +2651,7 @@ impl ZMachineCodeGen {
                                 offset_size: 2,
                                 location_space: MemorySpace::Code,
                             };
-                            self.reference_context.unresolved_refs.push(reference);
+                            self.add_reference_to_tracking_lists(reference);
                         } else {
                             // Other types: Use existing operand resolution
                             match self.resolve_ir_id_to_operand(arg_id) {
@@ -2670,7 +2675,7 @@ impl ZMachineCodeGen {
                                         offset_size: 2,
                                         location_space: MemorySpace::Code,
                                     };
-                                    self.reference_context.unresolved_refs.push(reference);
+                                    self.add_reference_to_tracking_lists(reference);
                                 }
                             }
                         }
@@ -2692,16 +2697,15 @@ impl ZMachineCodeGen {
                     )?;
 
                     // Create UnresolvedReference for function address using pre-calculated location
-                    self.reference_context
-                        .unresolved_refs
-                        .push(UnresolvedReference {
-                            reference_type: LegacyReferenceType::FunctionCall,
-                            location: operand_location,
-                            target_id: function, // This is IR ID 1 (look_around)
-                            is_packed_address: true,
-                            offset_size: 2,
-                            location_space: MemorySpace::Code,
-                        });
+                    let reference = UnresolvedReference {
+                        reference_type: LegacyReferenceType::FunctionCall,
+                        location: operand_location,
+                        target_id: function, // This is IR ID 1 (look_around)
+                        is_packed_address: true,
+                        offset_size: 2,
+                        location_space: MemorySpace::Code,
+                    };
+                    self.add_reference_to_tracking_lists(reference);
 
                     // Handle target variable mapping
                     if let Some(target) = target {
@@ -2811,7 +2815,7 @@ impl ZMachineCodeGen {
                 offset_size: 2,
                 location_space: MemorySpace::Code,
             };
-            self.reference_context.unresolved_refs.push(reference);
+            self.add_reference_to_tracking_lists(reference);
 
             log::debug!(
                 " PHASE1_PRINT_RET: Generated print_ret for string '{}' ({} bytes)",
@@ -3270,7 +3274,7 @@ impl ZMachineCodeGen {
             offset_size: 2,
             location_space: MemorySpace::Code,
         };
-        self.reference_context.unresolved_refs.push(reference);
+        self.add_reference_to_tracking_lists(reference);
 
         log::debug!(
             " PHASE3_LIST_OBJECTS: List_objects builtin translated successfully ({} bytes)",
@@ -3316,7 +3320,7 @@ impl ZMachineCodeGen {
             offset_size: 2,
             location_space: MemorySpace::Code,
         };
-        self.reference_context.unresolved_refs.push(reference);
+        self.add_reference_to_tracking_lists(reference);
 
         log::debug!(
             " PHASE3_LIST_CONTENTS: List_contents builtin translated successfully ({} bytes)",
@@ -4050,18 +4054,17 @@ impl ZMachineCodeGen {
         )?;
 
         // Add unresolved reference for main loop call
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::FunctionCall,
-                location: layout
-                    .operand_location
-                    .expect("call instruction must have operand"),
-                target_id: main_loop_id,
-                is_packed_address: true, // Function calls use packed addresses
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        let reference = UnresolvedReference {
+            reference_type: LegacyReferenceType::FunctionCall,
+            location: layout
+                .operand_location
+                .expect("call instruction must have operand"),
+            target_id: main_loop_id,
+            is_packed_address: true, // Function calls use packed addresses
+            offset_size: 2,
+            location_space: MemorySpace::Code,
+        };
+        self.add_reference_to_tracking_lists(reference);
 
         debug!(
             "Implicit init block complete - calls main loop at ID {}",
@@ -4894,18 +4897,17 @@ impl ZMachineCodeGen {
             )?;
 
             // Add unresolved reference for main function call
-            self.reference_context
-                .unresolved_refs
-                .push(UnresolvedReference {
-                    reference_type: LegacyReferenceType::FunctionCall,
-                    location: layout
-                        .operand_location
-                        .expect("call instruction must have operand"),
-                    target_id: main_function.id,
-                    is_packed_address: true, // Function calls use packed addresses
-                    offset_size: 2,
-                    location_space: MemorySpace::Code,
-                });
+            let reference = UnresolvedReference {
+                reference_type: LegacyReferenceType::FunctionCall,
+                location: layout
+                    .operand_location
+                    .expect("call instruction must have operand"),
+                target_id: main_function.id,
+                is_packed_address: true, // Function calls use packed addresses
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            };
+            self.add_reference_to_tracking_lists(reference);
 
             // After main function returns, quit the program
             self.emit_byte(0xBA)?; // quit opcode
@@ -4979,18 +4981,17 @@ impl ZMachineCodeGen {
         )?;
 
         // Add unresolved reference for prompt string using layout-tracked operand location
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::StringRef,
-                location: layout
-                    .operand_location
-                    .expect("print_paddr instruction must have operand"),
-                target_id: prompt_string_id,
-                is_packed_address: true,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        let reference = UnresolvedReference {
+            reference_type: LegacyReferenceType::StringRef,
+            location: layout
+                .operand_location
+                .expect("print_paddr instruction must have operand"),
+            target_id: prompt_string_id,
+            is_packed_address: true,
+            offset_size: 2,
+            location_space: MemorySpace::Code,
+        };
+        self.add_reference_to_tracking_lists(reference);
 
         // 2. Use properly allocated buffer addresses from layout phase
         let text_buffer_addr = self.text_buffer_addr as u16;
@@ -5058,16 +5059,15 @@ impl ZMachineCodeGen {
         )?;
 
         // Add unresolved reference for the "I don't understand" string
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::StringRef,
-                location: self.code_address - 2, // Location of the string address operand
-                target_id: unknown_command_string_id,
-                is_packed_address: true,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        let reference = UnresolvedReference {
+            reference_type: LegacyReferenceType::StringRef,
+            location: self.code_address - 2, // Location of the string address operand
+            target_id: unknown_command_string_id,
+            is_packed_address: true,
+            offset_size: 2,
+            location_space: MemorySpace::Code,
+        };
+        self.add_reference_to_tracking_lists(reference);
 
         Ok(())
     }
@@ -5517,7 +5517,7 @@ impl ZMachineCodeGen {
                     offset_size: 2,
                     location_space: MemorySpace::Code,
                 };
-                self.reference_context.unresolved_refs.push(reference);
+                self.add_reference_to_tracking_lists(reference);
                 log::debug!(
                     "Added string argument reference: IR ID {} at location 0x{:04x}",
                     arg_id,
@@ -5548,7 +5548,7 @@ impl ZMachineCodeGen {
                             offset_size: 2,
                             location_space: MemorySpace::Code,
                         };
-                        self.reference_context.unresolved_refs.push(reference);
+                        self.add_reference_to_tracking_lists(reference);
                         log::warn!(
                             "Added fallback string reference: IR ID {} at location 0x{:04x}",
                             arg_id,
@@ -5575,16 +5575,15 @@ impl ZMachineCodeGen {
         let operand_location = layout
             .operand_location
             .expect("Call instruction must have operand location");
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::FunctionCall,
-                location: operand_location,
-                target_id: function_id,
-                is_packed_address: true, // Function addresses are packed in Z-Machine
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        let reference = UnresolvedReference {
+            reference_type: LegacyReferenceType::FunctionCall,
+            location: operand_location,
+            target_id: function_id,
+            is_packed_address: true, // Function addresses are packed in Z-Machine
+            offset_size: 2,
+            location_space: MemorySpace::Code,
+        };
+        self.add_reference_to_tracking_lists(reference);
 
         log::debug!(
             "Generated call to function ID {} with unresolved reference at 0x{:04x}",
@@ -6106,9 +6105,26 @@ impl ZMachineCodeGen {
         );
         if let Some((op, left, right)) = self.ir_id_to_binary_op.get(&condition).cloned() {
             log::debug!(
-                "DIRECT_COMPARISON_BRANCH: Detected BinaryOp {:?} - generating direct Z-Machine branch instruction",
+                "DIRECT_BRANCH: Detected BinaryOp {:?} - generating Z-Machine branch instruction",
                 op
             );
+
+            // Handle logical operations (OR, AND) with multi-instruction sequences
+            match op {
+                IrBinaryOp::Or | IrBinaryOp::And => {
+                    log::debug!(
+                        "LOGICAL_OPERATION_BRANCH: Handling {:?} with recursive branching",
+                        op
+                    );
+                    return self.emit_logical_branch(op, left, right, true_label, false_label);
+                }
+                _ => {
+                    log::debug!(
+                        "COMPARISON_BRANCH: Handling {:?} with direct Z-Machine branch instruction",
+                        op
+                    );
+                }
+            }
 
             // Resolve operands for the comparison
             if self.code_address >= 0x330 && self.code_address <= 0x340 {
@@ -6261,16 +6277,15 @@ impl ZMachineCodeGen {
                 branch_location,
                 false_label
             );
-            self.reference_context
-                .unresolved_refs
-                .push(UnresolvedReference {
-                    reference_type: LegacyReferenceType::Branch,
-                    location: branch_location, // Use exact location from emit_instruction
-                    target_id: false_label,    // jz jumps on false condition
-                    is_packed_address: false,
-                    offset_size: 1, // Branch offset size depends on the actual offset value
-                    location_space: MemorySpace::Code,
-                });
+            let reference = UnresolvedReference {
+                reference_type: LegacyReferenceType::Branch,
+                location: branch_location, // Use exact location from emit_instruction
+                target_id: false_label,    // jz jumps on false condition
+                is_packed_address: false,
+                offset_size: 1, // Branch offset size depends on the actual offset value
+                location_space: MemorySpace::Code,
+            };
+            self.add_reference_to_tracking_lists(reference);
         } else {
             return Err(CompilerError::CodeGenError(
                 "jz instruction must have branch_location".to_string(),
@@ -6339,16 +6354,15 @@ impl ZMachineCodeGen {
                 branch_location,
                 true_label
             );
-            self.reference_context
-                .unresolved_refs
-                .push(UnresolvedReference {
-                    reference_type: LegacyReferenceType::Branch,
-                    location: branch_location, // Use exact location from emit_instruction
-                    target_id: true_label,
-                    is_packed_address: false,
-                    offset_size: 2,
-                    location_space: MemorySpace::Code,
-                });
+            let reference = UnresolvedReference {
+                reference_type: LegacyReferenceType::Branch,
+                location: branch_location, // Use exact location from emit_instruction
+                target_id: true_label,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            };
+            self.add_reference_to_tracking_lists(reference);
         } else {
             log::error!("ERROR: emit_comparison_branch: layout.branch_location is None! This means emit_instruction didn't create a branch placeholder");
             return Err(CompilerError::CodeGenError(
@@ -6366,6 +6380,144 @@ impl ZMachineCodeGen {
         );
 
         Ok(())
+    }
+
+    /// Emit logical operations (OR, AND) as multi-instruction branch sequences
+    fn emit_logical_branch(
+        &mut self,
+        op: IrBinaryOp,
+        left: IrId,
+        right: IrId,
+        true_label: IrId,
+        false_label: IrId,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "🔍 EMIT_LOGICAL_BRANCH: {:?} between left={} and right={}, true={}, false={}",
+            op,
+            left,
+            right,
+            true_label,
+            false_label
+        );
+
+        match op {
+            IrBinaryOp::Or => {
+                // left || right: Generate two sequential branch instructions
+                // 1. If left is true -> branch to true_label, else fall through
+                // 2. If right is true -> branch to true_label, else branch to false_label
+                //
+                // The key insight: Use the existing emit_conditional_branch_instruction
+                // but swap the labels for the first check to get the fall-through behavior we need
+
+                log::debug!(
+                    "OR_LOGIC: Step 1 - Check left operand {} - if true go to {}, else continue",
+                    left,
+                    true_label
+                );
+
+                // For OR logic, we want "if left is true, branch to true_label; else continue"
+                // But emit_conditional_branch_instruction expects (true_target, false_target)
+                // We can achieve this by using true_label as true_target and a temporary as false_target
+                // Then immediately generate the right check
+                //
+                // Actually, let's think about this differently:
+                // - Generate the left comparison branch instruction manually
+                // - Make it branch to true_label when condition is met
+                // - Let it fall through when condition is not met
+
+                if let Some((op, left_inner, right_inner)) =
+                    self.ir_id_to_binary_op.get(&left).cloned()
+                {
+                    log::debug!(
+                        "OR_LOGIC: Left is comparison {:?}, generating branch to {} if true",
+                        op,
+                        true_label
+                    );
+
+                    // Generate comparison branch that goes to true_label if condition is met
+                    // and falls through if condition is not met
+                    let left_operand = self.resolve_ir_id_to_operand(left_inner)?;
+                    let right_operand = self.resolve_ir_id_to_operand(right_inner)?;
+
+                    let (opcode, branch_on_true) = match op {
+                        IrBinaryOp::Equal => (0x01, true),         // je - branch if equal
+                        IrBinaryOp::NotEqual => (0x01, false),     // je - branch if NOT equal
+                        IrBinaryOp::Less => (0x02, true),          // jl - branch if less
+                        IrBinaryOp::LessEqual => (0x03, false),    // jg - branch if NOT greater
+                        IrBinaryOp::Greater => (0x03, true),       // jg - branch if greater
+                        IrBinaryOp::GreaterEqual => (0x02, false), // jl - branch if NOT less
+                        _ => {
+                            return Err(CompilerError::CodeGenError(format!(
+                                "Unsupported comparison in OR left side: {:?}",
+                                op
+                            )));
+                        }
+                    };
+
+                    log::debug!(
+                        "OR_LOGIC: Emitting comparison branch - opcode=0x{:02x}, branch_on_true={}",
+                        opcode,
+                        branch_on_true
+                    );
+
+                    // For OR logic, we want to branch to true_label when the left condition is true
+                    // emit_comparison_branch will use the branch_on_true flag to determine when to branch
+                    // - If branch_on_true=true: instruction branches to true_label when condition is met
+                    // - If branch_on_true=false: instruction branches to true_label when condition is NOT met
+                    //
+                    // For OR, we always want to go to true_label when the left condition evaluates to true
+                    // So we use true_label as the target, and the branch_on_true logic is already correct
+                    self.emit_comparison_branch(
+                        opcode,
+                        &[left_operand, right_operand],
+                        true_label,
+                        false_label,
+                    )?;
+                } else {
+                    return Err(CompilerError::CodeGenError(
+                        "OR with non-comparison left operand not yet supported".to_string(),
+                    ));
+                }
+
+                log::debug!(
+                    "OR_LOGIC: Step 2 - Check right operand {} - normal conditional branch",
+                    right
+                );
+
+                // Step 2: Standard conditional branch for right operand
+                self.emit_conditional_branch_instruction(right, true_label, false_label)
+            }
+            IrBinaryOp::And => {
+                // left && right: Short-circuit evaluation
+                // if left is false -> branch to false_label
+                // if left is true  -> evaluate right
+                log::debug!(
+                    "AND_LOGIC: Evaluating left operand {} first, short-circuit to {} if false",
+                    left,
+                    false_label
+                );
+
+                // For AND logic: if left is false, go to false_label; if left is true, continue to right
+                // We can use the existing conditional branch with swapped labels for the left check
+                self.emit_conditional_branch_instruction(left, true_label, false_label)?;
+
+                log::debug!(
+                    "AND_LOGIC: Left was true, now evaluating right operand {} -> true={}, false={}",
+                    right,
+                    true_label,
+                    false_label
+                );
+
+                // Evaluate right condition: if true, go to true_label; if false, go to false_label
+                self.emit_conditional_branch_instruction(right, true_label, false_label)
+            }
+            _ => {
+                return Err(CompilerError::CodeGenError(format!(
+                    "emit_logical_branch called with non-logical operation: {:?}",
+                    op
+                )));
+            }
+        }
     }
 
     /// Generate branch instruction (legacy method, kept for compatibility)
@@ -6393,7 +6545,7 @@ impl ZMachineCodeGen {
             offset_size: 2,
             location_space: MemorySpace::Code,
         };
-        self.reference_context.unresolved_refs.push(reference);
+        self.add_reference_to_tracking_lists(reference);
 
         Ok(())
     }
@@ -6728,18 +6880,17 @@ impl ZMachineCodeGen {
                 )?;
 
                 // Add unresolved reference for main loop jump to first instruction, not routine header
-                self.reference_context
-                    .unresolved_refs
-                    .push(UnresolvedReference {
-                        reference_type: LegacyReferenceType::Jump,
-                        location: layout
-                            .operand_location
-                            .expect("jump instruction must have operand"),
-                        target_id: 9001, // Main loop first instruction ID from generate_main_loop
-                        is_packed_address: false, // Jumps use absolute addresses, not packed
-                        offset_size: 2,
-                        location_space: MemorySpace::Code,
-                    });
+                let reference = UnresolvedReference {
+                    reference_type: LegacyReferenceType::Jump,
+                    location: layout
+                        .operand_location
+                        .expect("jump instruction must have operand"),
+                    target_id: 9001, // Main loop first instruction ID from generate_main_loop
+                    is_packed_address: false, // Jumps use absolute addresses, not packed
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                };
+                self.add_reference_to_tracking_lists(reference);
             }
             crate::grue_compiler::ast::ProgramMode::Custom => {
                 log::debug!(
@@ -6826,40 +6977,76 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Resolve all address references and patch jumps/branches
-    fn resolve_addresses(&mut self) -> Result<(), CompilerError> {
-        // PHASE 2.3: Deduplicate references to eliminate double-patching
-        let raw_refs = self.reference_context.unresolved_refs.clone();
-        let deduplicated_refs = self.deduplicate_references(&raw_refs);
+    /// Validate that all created references were properly resolved.
+    ///
+    /// This method provides comprehensive validation of the reference tracking system:
+    /// - Compares total references created vs. remaining unresolved
+    /// - Scans final binary for unresolved 0xFFFF placeholders
+    /// - Identifies references that bypass the tracking system
+    ///
+    /// The validation helps detect:
+    /// 1. Missing reference resolution bugs
+    /// 2. Direct placeholder emission that bypasses UnresolvedReference system
+    /// 3. Inconsistencies between tracking and actual binary content
+    fn validate_all_references_resolved(&self) -> Result<(), CompilerError> {
+        let total_created = self.reference_context.all_references_created.len();
+        let total_remaining = self.reference_context.unresolved_refs.len();
 
-        // PHASE 2.3: Validate jump targets are within bounds
-        self.validate_jump_targets(&deduplicated_refs)?;
+        log::info!("🔍 REFERENCE DEBUG VALIDATION:");
+        log::info!("   Total references created: {}", total_created);
+        log::info!("   References remaining unresolved: {}", total_remaining);
 
-        log::debug!(
-            "resolve_addresses: Processing {} deduplicated references (was {})",
-            deduplicated_refs.len(),
-            raw_refs.len()
-        );
-
-        for (i, reference) in deduplicated_refs.iter().enumerate() {
-            log::debug!(
-                "resolve_addresses: [{}] Resolving {:?} -> IR ID {}",
-                i,
-                reference.reference_type,
-                reference.target_id
+        if total_remaining <= total_created {
+            log::info!(
+                "   References successfully resolved: {}",
+                total_created - total_remaining
             );
-            self.resolve_unresolved_reference(reference)?;
+        } else {
+            log::error!(
+                "❌ CRITICAL: More unresolved references ({}) than created ({})!",
+                total_remaining,
+                total_created
+            );
+            log::error!(
+                "   This indicates {} references bypass the tracking system!",
+                total_remaining - total_created
+            );
         }
 
-        // Clear resolved references
-        self.reference_context.unresolved_refs.clear();
-        log::debug!("resolve_addresses: Address resolution complete");
+        if total_remaining > 0 {
+            log::warn!("⚠️  {} REFERENCES STILL UNRESOLVED:", total_remaining);
+            for (i, ref_) in self.reference_context.unresolved_refs.iter().enumerate() {
+                log::warn!(
+                    "   {}: {:?} target_id={} location=0x{:04x}",
+                    i + 1,
+                    ref_.reference_type,
+                    ref_.target_id,
+                    ref_.location
+                );
+            }
+        }
 
-        // PHASE 2.2: Story data integrity validation
-        self.validate_story_data_integrity()?;
+        // Now check for 0xFFFF patterns in the final binary
+        let mut ffff_count = 0;
+        for i in 0..self.final_data.len() - 1 {
+            if self.final_data[i] == 0xFF && self.final_data[i + 1] == 0xFF {
+                if ffff_count < 10 {
+                    // Only log first 10 to avoid spam
+                    log::warn!("   0xFFFF found at final_data[0x{:04x}]", i);
+                }
+                ffff_count += 1;
+            }
+        }
 
-        // CRITICAL VALIDATION: Scan for any remaining 0x0000 placeholders that weren't resolved
-        self.validate_no_unresolved_placeholders()?;
+        log::info!("   0xFFFF patterns found in final binary: {}", ffff_count);
+
+        if ffff_count > 0 && total_remaining == 0 {
+            log::error!(
+                "❌ CRITICAL: Found {} 0xFFFF patterns but no unresolved references!",
+                ffff_count
+            );
+            log::error!("   This indicates references are being created without going through the tracking system!");
+        }
 
         Ok(())
     }
@@ -7449,18 +7636,18 @@ impl ZMachineCodeGen {
         );
 
         // Z-Machine branch offset calculation per specification:
-        // target_address = address_after_branch_instruction + offset
-        // Therefore: offset = target_address - address_after_branch_instruction
+        // target_address = address_after_branch_instruction + offset - 2
+        // Therefore: offset = target_address - address_after_branch_instruction + 2
 
         // First, determine if we need 1-byte or 2-byte format
         // We need to calculate the offset assuming 1-byte first, then check if it fits
         let address_after_1byte = location + 1;
-        let _offset_1byte = (target_address as i32) - (address_after_1byte as i32);
+        let _offset_1byte = (target_address as i32) - (address_after_1byte as i32) + 2;
 
         // Always use 2-byte format since we reserved 2 bytes
         // Calculate offset for 2-byte format (address after 2 bytes)
         let address_after_2byte = location + 2;
-        let offset_2byte = (target_address as i32) - (address_after_2byte as i32);
+        let offset_2byte = (target_address as i32) - (address_after_2byte as i32) + 2;
 
         log::error!(
             "🔧 BRANCH_CALC: address_after_2byte=0x{:04x}, offset_2byte={}, first_byte=0x{:02x}, second_byte=0x{:02x}",
@@ -7772,16 +7959,15 @@ impl ZMachineCodeGen {
                 self.emit_word(placeholder_word())?; // Placeholder address
 
                 // Create reference with exact location
-                self.reference_context
-                    .unresolved_refs
-                    .push(UnresolvedReference {
-                        reference_type: LegacyReferenceType::StringRef,
-                        location: code_space_offset, // Use exact offset
-                        target_id: string_id,
-                        is_packed_address: true,
-                        offset_size: 2,
-                        location_space: MemorySpace::Code,
-                    });
+                let reference = UnresolvedReference {
+                    reference_type: LegacyReferenceType::StringRef,
+                    location: code_space_offset, // Use exact offset
+                    target_id: string_id,
+                    is_packed_address: true,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                };
+                self.add_reference_to_tracking_lists(reference);
 
                 Ok(())
             }
@@ -7806,9 +7992,28 @@ impl ZMachineCodeGen {
     ///
     /// REMOVED: write_strings_to_memory - dead code from old architecture
     /// This function was designed for layout-phase string writing, which is obsolete
-    /// with the unified memory allocator. All string allocation now goes through
-    /// the unified allocator in write_new_strings_immediate()
+    /// Add an UnresolvedReference to both the processing list and debug tracking list.
+    /// This method ensures all reference creation goes through proper tracking for validation.
     ///
+    /// # Parameters
+    /// * `reference` - The UnresolvedReference to track and process
+    pub fn add_reference_to_tracking_lists(&mut self, reference: UnresolvedReference) {
+        log::debug!(
+            "DEBUG_TRACK_REF: Created reference {:?} target_id={} location=0x{:04x}",
+            reference.reference_type,
+            reference.target_id,
+            reference.location
+        );
+
+        // Add to debug tracking list for validation
+        self.reference_context
+            .all_references_created
+            .push(reference.clone());
+
+        // Add to processing list for resolution
+        self.reference_context.unresolved_refs.push(reference);
+    }
+
     /// Add an unresolved reference to be patched later
     /// CRITICAL: Pass location_offset calculated BEFORE emitting placeholder
     pub fn add_unresolved_reference_at_location(
@@ -7849,7 +8054,7 @@ impl ZMachineCodeGen {
             offset_size: 2, // Default to 2 bytes
             location_space,
         };
-        self.reference_context.unresolved_refs.push(reference);
+        self.add_reference_to_tracking_lists(reference);
         Ok(())
     }
 

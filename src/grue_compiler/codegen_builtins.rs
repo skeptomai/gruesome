@@ -66,7 +66,7 @@ impl ZMachineCodeGen {
                 offset_size: 2,
                 location_space: MemorySpace::Code,
             };
-            self.reference_context.unresolved_refs.push(reference);
+            self.add_reference_to_tracking_lists(reference);
 
             // Emit new_line instruction after print_paddr for proper line breaks
             self.emit_instruction(
@@ -135,7 +135,7 @@ impl ZMachineCodeGen {
                         offset_size: 2,
                         location_space: MemorySpace::Code,
                     };
-                    self.reference_context.unresolved_refs.push(reference);
+                    self.add_reference_to_tracking_lists(reference);
 
                     let operand_address = layout
                         .operand_location
@@ -148,7 +148,7 @@ impl ZMachineCodeGen {
                         offset_size: 2,
                         location_space: MemorySpace::Code,
                     };
-                    self.reference_context.unresolved_refs.push(reference);
+                    self.add_reference_to_tracking_lists(reference);
                 }
             }
         }
@@ -220,7 +220,7 @@ impl ZMachineCodeGen {
                 offset_size: 2,
                 location_space: MemorySpace::Code,
             };
-            self.reference_context.unresolved_refs.push(reference);
+            self.add_reference_to_tracking_lists(reference);
 
             log::debug!(
                 "generate_print_ret_builtin: Generated print_paddr+newline for string '{}' ({} bytes)",
@@ -560,7 +560,7 @@ impl ZMachineCodeGen {
             offset_size: 2,
             location_space: MemorySpace::Code,
         };
-        self.reference_context.unresolved_refs.push(reference);
+        self.add_reference_to_tracking_lists(reference);
 
         Ok(())
     }
@@ -597,7 +597,7 @@ impl ZMachineCodeGen {
             offset_size: 2,
             location_space: MemorySpace::Code,
         };
-        self.reference_context.unresolved_refs.push(reference);
+        self.add_reference_to_tracking_lists(reference);
 
         Ok(())
     }

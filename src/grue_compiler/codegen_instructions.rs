@@ -1,7 +1,8 @@
 // Import placeholder_word for consistent placeholder handling throughout the codebase
 use crate::grue_compiler::codegen::{placeholder_word, ConstantValue, ZMachineCodeGen};
 use crate::grue_compiler::codegen::{
-    InstructionForm, InstructionLayout, Operand, OperandType, UNIMPLEMENTED_OPCODE,
+    InstructionForm, InstructionLayout, LegacyReferenceType, MemorySpace, Operand, OperandType,
+    UnresolvedReference, UNIMPLEMENTED_OPCODE,
 };
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::{IrInstruction, IrValue};
@@ -418,21 +419,18 @@ impl ZMachineCodeGen {
                 let array_start_address = self.code_address;
 
                 if size_value == 0 {
-                    // Empty array - still allocate space for array header (length = 0)
+                    // Empty array - return null pointer (0) without emitting any data
                     log::debug!(
-                        "CreateArray: allocating empty array at address 0x{:04x}",
+                        "CreateArray: creating empty array (null pointer) at address 0x{:04x}",
                         array_start_address
                     );
 
-                    // Emit array length header (0 elements)
-                    self.emit_word(0)?; // Array length = 0
-
-                    // Push array base address constant to stack
-                    // We want to load the address value itself, not load FROM the address
+                    // For empty arrays, return null pointer (0) - no data allocation needed
+                    // Push null pointer (0) to stack to represent empty array
                     self.emit_instruction(
-                        0x21,                                                  // store (1OP:33)
-                        &[Operand::LargeConstant(array_start_address as u16)], // Array base address as constant
-                        Some(0), // Store to stack (variable 0)
+                        0x21,                         // store (1OP:33)
+                        &[Operand::LargeConstant(0)], // Null pointer (0) for empty array
+                        Some(0),                      // Store to stack (variable 0)
                         None,
                     )?;
                 } else {
@@ -1702,13 +1700,21 @@ impl ZMachineCodeGen {
 
         // Emit branch placeholder if needed (resolved later via UnresolvedReference)
         if let Some(_offset) = branch_offset {
-            // INSTRUMENT: What value are we actually passing to emit_word?
-            if self.code_address >= 0x335 && self.code_address <= 0x340 {
-                eprintln!(
-                    "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
-                    self.code_address
-                );
-                eprintln!("  But wait, let's check if this is actually being called...");
+            // CRITICAL FIX: Process any pending labels BEFORE emitting placeholder
+            // The placeholder will advance code_address by 2 bytes, but labels should
+            // point to the current instruction location, not after the placeholder
+            if !self.pending_labels.is_empty() {
+                let label_address = self.code_address; // Current instruction end, before placeholder
+                let labels_to_process: Vec<crate::grue_compiler::ir::IrId> =
+                    self.pending_labels.drain(..).collect();
+                for label_id in labels_to_process {
+                    log::debug!(
+                        "DEFERRED_LABEL_BEFORE_PLACEHOLDER: Processing pending label {} at address 0x{:04x} (before branch placeholder emission)",
+                        label_id, label_address
+                    );
+                    self.label_addresses.insert(label_id, label_address);
+                    self.record_final_address(label_id, label_address);
+                }
             }
 
             // Always emit 2-byte placeholder for branches to be resolved later
@@ -1756,13 +1762,21 @@ impl ZMachineCodeGen {
 
         // Emit branch placeholder if needed (resolved later via UnresolvedReference)
         if let Some(_offset) = branch_offset {
-            // INSTRUMENT: What value are we actually passing to emit_word?
-            if self.code_address >= 0x335 && self.code_address <= 0x340 {
-                eprintln!(
-                    "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
-                    self.code_address
-                );
-                eprintln!("  But wait, let's check if this is actually being called...");
+            // CRITICAL FIX: Process any pending labels BEFORE emitting placeholder
+            // The placeholder will advance code_address by 2 bytes, but labels should
+            // point to the current instruction location, not after the placeholder
+            if !self.pending_labels.is_empty() {
+                let label_address = self.code_address; // Current instruction end, before placeholder
+                let labels_to_process: Vec<crate::grue_compiler::ir::IrId> =
+                    self.pending_labels.drain(..).collect();
+                for label_id in labels_to_process {
+                    log::debug!(
+                        "DEFERRED_LABEL_BEFORE_PLACEHOLDER: Processing pending label {} at address 0x{:04x} (before branch placeholder emission)",
+                        label_id, label_address
+                    );
+                    self.label_addresses.insert(label_id, label_address);
+                    self.record_final_address(label_id, label_address);
+                }
             }
 
             // Always emit 2-byte placeholder for branches to be resolved later
@@ -1943,13 +1957,21 @@ impl ZMachineCodeGen {
 
         // Emit branch placeholder if needed (resolved later via UnresolvedReference)
         if let Some(_offset) = branch_offset {
-            // INSTRUMENT: What value are we actually passing to emit_word?
-            if self.code_address >= 0x335 && self.code_address <= 0x340 {
-                eprintln!(
-                    "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
-                    self.code_address
-                );
-                eprintln!("  But wait, let's check if this is actually being called...");
+            // CRITICAL FIX: Process any pending labels BEFORE emitting placeholder
+            // The placeholder will advance code_address by 2 bytes, but labels should
+            // point to the current instruction location, not after the placeholder
+            if !self.pending_labels.is_empty() {
+                let label_address = self.code_address; // Current instruction end, before placeholder
+                let labels_to_process: Vec<crate::grue_compiler::ir::IrId> =
+                    self.pending_labels.drain(..).collect();
+                for label_id in labels_to_process {
+                    log::debug!(
+                        "DEFERRED_LABEL_BEFORE_PLACEHOLDER: Processing pending label {} at address 0x{:04x} (before branch placeholder emission)",
+                        label_id, label_address
+                    );
+                    self.label_addresses.insert(label_id, label_address);
+                    self.record_final_address(label_id, label_address);
+                }
             }
 
             // Always emit 2-byte placeholder for branches to be resolved later
@@ -2450,16 +2472,15 @@ impl ZMachineCodeGen {
 
         // CRITICAL: Register function reference for patching
         if let Some(operand_loc) = layout.operand_location {
-            self.reference_context
-                .unresolved_refs
-                .push(UnresolvedReference {
-                    reference_type: LegacyReferenceType::FunctionCall,
-                    location: operand_loc,
-                    target_id: function_id,
-                    is_packed_address: true, // Function addresses are packed in Z-Machine
-                    offset_size: 2,
-                    location_space: MemorySpace::Code,
-                });
+            let reference = UnresolvedReference {
+                reference_type: LegacyReferenceType::FunctionCall,
+                location: operand_loc,
+                target_id: function_id,
+                is_packed_address: true, // Function addresses are packed in Z-Machine
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            };
+            self.add_reference_to_tracking_lists(reference);
 
             log::debug!(
                 "Generated call to function ID {} with unresolved reference at 0x{:04x}",
