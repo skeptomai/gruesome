@@ -1373,8 +1373,11 @@ impl ZMachineCodeGen {
 
                 // The reference.location should already be a final address from translate_space_address_to_final
                 let final_location = reference.location;
-                log::debug!("Jump reference: Using final location 0x{:04x} (final_code_base=0x{:04x})",
-                          final_location, self.final_code_base);
+                log::debug!(
+                    "Jump reference: Using final location 0x{:04x} (final_code_base=0x{:04x})",
+                    final_location,
+                    self.final_code_base
+                );
 
                 // Find the jump target in our code space
                 if let Some(&code_offset) = self
@@ -1622,7 +1625,7 @@ impl ZMachineCodeGen {
             );
         }
 
-        // CRITICAL DEBUG: Check for invalid reference locations and final_code_base
+        // Check for invalid reference locations and final_code_base
         if reference.location > 0x1000 {
             panic!("COMPILER BUG: UnresolvedReference has absolute location 0x{:04x} instead of code space relative offset. Target ID: {}, Type: {:?}",
                    reference.location, reference.target_id, reference.reference_type);
@@ -1631,7 +1634,7 @@ impl ZMachineCodeGen {
         // The reference.location should already be a final address from translate_space_address_to_final
         let final_location = reference.location;
 
-        // CRITICAL DEBUG: Check if final location is valid
+        // Check if final location is valid
         if final_location >= self.final_data.len() {
             panic!("COMPILER BUG: final_location=0x{:04x} >= final_data.len()={}. reference.location=0x{:04x}, final_code_base=0x{:04x}, Target ID: {}, Type: {:?}",
                    final_location, self.final_data.len(), reference.location, self.final_code_base, reference.target_id, reference.reference_type);
@@ -2396,7 +2399,7 @@ impl ZMachineCodeGen {
     pub fn translate_jump(&mut self, label: IrId) -> Result<(), CompilerError> {
         log::debug!("translate_jump: label={}", label);
 
-        // CRITICAL DEBUG: Track jumps near problem area
+        // Track jumps near problem area
         if self.code_address >= 0x330 && self.code_address <= 0x340 {
             eprintln!(
                 "CRITICAL: translate_jump at code_address=0x{:04x}, jumping to label {}",

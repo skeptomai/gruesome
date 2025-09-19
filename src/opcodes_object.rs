@@ -11,7 +11,7 @@
 /// enabling complex interactions between game objects, rooms, and items.
 use crate::instruction::Instruction;
 use crate::interpreter::{ExecutionResult, Interpreter};
-use log::debug;
+use log::{debug, error};
 
 impl Interpreter {
     /// Handle object system opcodes
@@ -118,13 +118,13 @@ impl Interpreter {
 
                 // Validate object number range BEFORE accessing
                 if obj_num == 0 || obj_num > 255 {
-                    log::error!(
-                        "🚨 INVALID OBJECT NUMBER: {} is out of valid range (1-255)",
+                    error!(
+                        "INVALID OBJECT NUMBER: {} is out of valid range (1-255)",
                         obj_num
                     );
-                    log::error!("🚨 This suggests stack corruption or invalid instruction operand");
-                    log::error!(
-                        "🚨 Current instruction size: {}, PC before: {:05x}",
+                    error!("This suggests stack corruption or invalid instruction operand");
+                    error!(
+                        "Current instruction size: {}, PC before: {:05x}",
                         inst.size,
                         self.vm.pc - inst.size as u32
                     );

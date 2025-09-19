@@ -1,5 +1,5 @@
 use crate::header::Header;
-use log::debug;
+use log::{debug, error};
 use std::fmt;
 
 /// Maximum size of the VM stack
@@ -124,26 +124,26 @@ impl VM {
     /// Pop a value from the evaluation stack
     pub fn pop(&mut self) -> Result<u16, String> {
         if self.stack.is_empty() {
-            log::error!(
-                "🚨 STACK UNDERFLOW: Attempted to pop from empty stack at PC 0x{:04x}",
+            error!(
+                "STACK UNDERFLOW: Attempted to pop from empty stack at PC 0x{:04x}",
                 self.pc
             );
-            log::error!(
-                "🚨 Stack state: depth={}, call_stack_depth={}",
+            error!(
+                "Stack state: depth={}, call_stack_depth={}",
                 self.stack.len(),
                 self.call_stack.len()
             );
             if let Some(frame) = self.call_stack.last() {
-                log::error!(
-                    "🚨 Current routine: return_PC={:04x}, locals={}",
+                error!(
+                    "Current routine: return_PC={:04x}, locals={}",
                     frame.return_pc,
                     frame.locals.len()
                 );
             }
 
             // Add bytecode analysis at underflow point
-            log::error!(
-                "🚨 Bytecode at PC 0x{:04x}: {:02x} {:02x} {:02x} {:02x} {:02x}",
+            error!(
+                "Bytecode at PC 0x{:04x}: {:02x} {:02x} {:02x} {:02x} {:02x}",
                 self.pc,
                 self.game.memory.get(self.pc as usize).unwrap_or(&0xff),
                 self.game
@@ -165,9 +165,9 @@ impl VM {
             );
 
             // Add stack trace to see what's calling pop()
-            log::error!("🚨 STACK UNDERFLOW BACKTRACE:");
+            error!("STACK UNDERFLOW BACKTRACE:");
             let backtrace = std::backtrace::Backtrace::capture();
-            log::error!("{}", backtrace);
+            error!("{}", backtrace);
 
             return Err("Stack underflow".to_string());
         }
@@ -1013,8 +1013,8 @@ impl VM {
 
         // Bounds check BEFORE accessing memory
         if prop_table_addr >= self.game.memory.len() {
-            log::error!(
-                "🚨 BOUNDS ERROR: prop_table_addr 0x{:04x} >= file size {}",
+            error!(
+                "BOUNDS ERROR: prop_table_addr 0x{:04x} >= file size {}",
                 prop_table_addr,
                 self.game.memory.len()
             );

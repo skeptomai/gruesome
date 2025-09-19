@@ -16,7 +16,7 @@ impl ZMachineCodeGen {
     ) -> Result<(), CompilerError> {
         debug!("Generate instruction called: {:?}", instruction);
 
-        // CRITICAL DEBUG: Track all branch and jump instructions
+        // Track all branch and jump instructions
         match instruction {
             IrInstruction::Branch { .. } | IrInstruction::Jump { .. } => {
                 eprintln!(
@@ -273,7 +273,7 @@ impl ZMachineCodeGen {
             }
 
             IrInstruction::Jump { label } => {
-                // CRITICAL DEBUG: Track Jump instructions near problem area
+                // Track Jump instructions near problem area
                 if self.code_address >= 0x330 && self.code_address <= 0x340 {
                     eprintln!(
                         "IR JUMP INSTRUCTION at code_address=0x{:04x}, jumping to label {}",
@@ -1792,7 +1792,7 @@ impl ZMachineCodeGen {
                 operands, store_var, branch_offset
             );
         }
-        // CRITICAL DEBUG: Track short form emission at 0x338-0x339
+        // Track short form emission at 0x338-0x339
         if self.code_address >= 0x337 && self.code_address <= 0x33a {
             eprintln!(
                 "emit_short_form_with_layout at code_address=0x{:04x}",
@@ -2392,7 +2392,7 @@ impl ZMachineCodeGen {
                 self.emit_byte(zmachine_var)?;
             }
             Operand::LargeConstant(value) => {
-                // CRITICAL DEBUG: Check if this is the problematic LargeConstant(1)
+                // Check if this is the problematic LargeConstant(1)
                 if *value == 1 && self.code_address >= 0x336 && self.code_address <= 0x340 {
                     eprintln!(
                         "CRITICAL: emit_operand emitting LargeConstant(1) at code_address=0x{:04x}",
