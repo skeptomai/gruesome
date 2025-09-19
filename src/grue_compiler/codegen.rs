@@ -2315,7 +2315,7 @@ impl ZMachineCodeGen {
             // Print string literal using print_paddr
             // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
             let operand_location = self.code_space.len() + 1; // +1 for opcode byte (code space relative)
-            let layout = self.emit_instruction(
+            let _layout = self.emit_instruction(
                 0x82,                                          // print_paddr opcode (1OP:141)
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder for string address
                 None,
@@ -2614,7 +2614,7 @@ impl ZMachineCodeGen {
             // Generate call instruction
             // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
             let operand_location = self.code_space.len() + 2; // +2 for opcode and operand types bytes (code space relative)
-            let layout = self.emit_instruction(
+            let _layout = self.emit_instruction(
                 0xE0, // call_vs opcode (VAR:224 = opcode 0, so 0xE0)
                 &operands, store_var, None,
             )?;
@@ -2700,7 +2700,7 @@ impl ZMachineCodeGen {
                     // Generate call instruction
                     // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
                     let operand_location = self.code_space.len() + 2; // +2 for opcode and operand types bytes (code space relative)
-                    let layout = self.emit_instruction(
+                    let _layout = self.emit_instruction(
                         0xE0, // call_vs opcode (VAR:224)
                         &operands, store_var, None,
                     )?;
@@ -2806,7 +2806,7 @@ impl ZMachineCodeGen {
 
             // Generate print_ret instruction (0OP:179, opcode 0x83)
             // print_ret prints string, adds newline, and returns true
-            let layout = self.emit_instruction(
+            let _layout = self.emit_instruction(
                 0x83,                                          // print_ret opcode - 0OP:179
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
                 None, // No store (returns true automatically)
@@ -3503,7 +3503,7 @@ impl ZMachineCodeGen {
 
         if let Some(target_id) = target {
             // Store success value (1) to indicate add operation worked
-            let layout = self.emit_instruction(
+            let _layout = self.emit_instruction(
                 0x05, // store instruction
                 &[Operand::SmallConstant(1)],
                 Some(0), // Store to stack (variable 0)
@@ -3698,7 +3698,7 @@ impl ZMachineCodeGen {
             IrUnaryOp::Not => {
                 // Logical NOT - use Z-Machine 'not' instruction (1OP:143, hex 0x8F)
                 // FIXED: Use stack for unary operation results (temporary values)
-                let layout = self.emit_instruction(
+                let _layout = self.emit_instruction(
                     0x8F, // not opcode (1OP:143)
                     &[operand_val],
                     Some(0), // Store result on stack
@@ -3717,7 +3717,7 @@ impl ZMachineCodeGen {
             IrUnaryOp::Minus => {
                 // Arithmetic negation - multiply by -1 using Z-Machine 'mul' instruction
                 // FIXED: Use stack for unary operation results (temporary values)
-                let layout = self.emit_instruction(
+                let _layout = self.emit_instruction(
                     0x16,                                           // mul opcode (2OP:22)
                     &[operand_val, Operand::LargeConstant(0xFFFF)], // multiply by -1 (0xFFFF = -1 in 16-bit signed)
                     Some(0),                                        // Store result on stack
@@ -4409,14 +4409,19 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Create a property table for an object  
+    /// Create a property table for an object
+    ///
+    /// CRITICAL MEMORY SPACE FIX: This function was systematically fixed alongside
+    /// `create_property_table_from_ir` to prevent object property data from overwriting
+    /// Z-Machine code instructions. Uses the same consistent offset-based addressing pattern.
     fn create_property_table(&mut self, obj_num: u8) -> Result<usize, CompilerError> {
-        // Use the allocated property table region in dynamic memory
-        let prop_table_addr = self.current_property_addr;
+        // CRITICAL FIX: current_property_addr is an object space offset, not a final memory address
+        let prop_table_offset = self.current_property_addr;
+        let prop_table_addr = self.object_table_addr + prop_table_offset;
 
         debug!(
-            "Creating complete property table for object {} at address 0x{:04x}",
-            obj_num, prop_table_addr
+            "Creating complete property table for object {} at offset 0x{:04x} (addr 0x{:04x})",
+            obj_num, prop_table_offset, prop_table_addr
         );
 
         // Get properties for this object number
@@ -4432,9 +4437,8 @@ impl ZMachineCodeGen {
         self.ensure_capacity(prop_table_addr + estimated_size);
 
         // Text-length byte (0 = no short name)
-        let prop_offset = prop_table_addr - self.object_table_addr; // Convert to object_space-relative offset
-        self.write_to_object_space(prop_offset, 0)?;
-        let mut addr = prop_table_addr + 1;
+        self.write_to_object_space(prop_table_offset, 0)?;
+        let mut addr_offset = prop_table_offset + 1;
 
         // Create properties in descending order (Z-Machine requirement)
         let mut sorted_properties: Vec<(u8, String)> = properties
@@ -4460,52 +4464,70 @@ impl ZMachineCodeGen {
             let header = ((2u8 - 1) << 5) | prop_num;
 
             debug!(
-                "Writing property {} ({}) header 0x{:02x} at address 0x{:04x}",
-                prop_num, prop_name, header, addr
+                "Writing property {} ({}) header 0x{:02x} at offset 0x{:04x} (addr 0x{:04x})",
+                prop_num,
+                prop_name,
+                header,
+                addr_offset,
+                self.object_table_addr + addr_offset
             );
-            let header_offset = addr - self.object_table_addr;
-            self.write_to_object_space(header_offset, header)?;
-            addr += 1;
+            self.write_to_object_space(addr_offset, header)?;
+            addr_offset += 1;
 
             // Property data (2 bytes, default value 0)
             debug!(
-                "Writing property {} data (0x0000) at address 0x{:04x}",
-                prop_num, addr
+                "Writing property {} data (0x0000) at offset 0x{:04x} (addr 0x{:04x})",
+                prop_num,
+                addr_offset,
+                self.object_table_addr + addr_offset
             );
-            let data_offset = addr - self.object_table_addr;
-            self.write_to_object_space(data_offset, 0)?; // High byte
-            self.write_to_object_space(data_offset + 1, 0)?; // Low byte
-            addr += 2;
+            self.write_to_object_space(addr_offset, 0)?; // High byte
+            self.write_to_object_space(addr_offset + 1, 0)?; // Low byte
+            addr_offset += 2;
         }
 
         // End of property table (property 0 marks end)
-        debug!("Writing property terminator 0x00 at address 0x{:04x}", addr);
-        let terminator_offset = addr - self.object_table_addr;
-        self.write_to_object_space(terminator_offset, 0)?;
-        addr += 1;
+        debug!(
+            "Writing property terminator 0x00 at offset 0x{:04x} (addr 0x{:04x})",
+            addr_offset,
+            self.object_table_addr + addr_offset
+        );
+        self.write_to_object_space(addr_offset, 0)?;
+        addr_offset += 1;
 
         // Update current property allocation pointer for next property table
-        self.current_property_addr = addr;
+        self.current_property_addr = addr_offset;
 
         debug!(
-            "Complete property table for object {} created with {} properties, next address: 0x{:04x}",
-            obj_num, properties.len(), addr
+            "Complete property table for object {} created with {} properties, next offset: 0x{:04x}",
+            obj_num, properties.len(), addr_offset
         );
 
         Ok(prop_table_addr)
     }
 
     /// Create a property table for an object using IR property data
+    ///
+    /// CRITICAL MEMORY SPACE FIX: This function was systematically fixed to prevent object
+    /// property data from overwriting Z-Machine code instructions. The root cause was
+    /// inconsistent address space usage where `current_property_addr` was treated as both
+    /// a final memory address and an object space offset in different parts of the code.
+    ///
+    /// The fix ensures consistent offset-based addressing throughout:
+    /// - `current_property_addr` is ALWAYS an object space offset
+    /// - Final addresses are calculated as `object_table_addr + offset`
+    /// - All writes use `write_to_object_space(offset, byte)` with offsets, not addresses
     fn create_property_table_from_ir(
         &mut self,
         obj_num: u8,
         object: &ObjectData,
     ) -> Result<usize, CompilerError> {
-        // Use the allocated property table region in dynamic memory
-        let prop_table_addr = self.current_property_addr;
+        // CRITICAL FIX: current_property_addr is an object space offset, not a final memory address
+        let prop_table_offset = self.current_property_addr;
+        let prop_table_addr = self.object_table_addr + prop_table_offset;
         self.ensure_capacity(prop_table_addr + 100);
 
-        let mut addr = prop_table_addr;
+        let mut addr_offset = prop_table_offset;
 
         // Write object name (short description) as Z-Machine encoded string
         let name_bytes = self.encode_object_name(&object.short_name);
@@ -4514,38 +4536,35 @@ impl ZMachineCodeGen {
         let text_length = 0;
 
         // Text length byte
-        let text_offset = addr - self.object_table_addr;
-        self.write_to_object_space(text_offset, text_length as u8)?;
+        self.write_to_object_space(addr_offset, text_length as u8)?;
         debug!(
-            "PROP TABLE DEBUG: Writing text_length={} at addr=0x{:04x} for object '{}'",
-            text_length, addr, object.short_name
+            "PROP TABLE DEBUG: Writing text_length={} at offset=0x{:04x} (addr=0x{:04x}) for object '{}'",
+            text_length, addr_offset, self.object_table_addr + addr_offset, object.short_name
         );
         debug!(
-            "Object '{}': name_bytes.len()={}, text_length={}, addr=0x{:04x}",
+            "Object '{}': name_bytes.len()={}, text_length={}, offset=0x{:04x}",
             object.short_name,
             name_bytes.len(),
             text_length,
-            addr
+            addr_offset
         );
-        addr += 1;
+        addr_offset += 1;
         debug!(
-            "PROP TABLE DEBUG: After text_length, addr=0x{:04x}, about to write properties",
-            addr
+            "PROP TABLE DEBUG: After text_length, offset=0x{:04x}, about to write properties",
+            addr_offset
         );
 
         // Only write name bytes if text_length > 0
         if text_length > 0 {
             // Write encoded name bytes and pad to word boundary
             for &byte in &name_bytes {
-                let name_offset = addr - self.object_table_addr;
-                self.write_to_object_space(name_offset, byte)?;
-                addr += 1;
+                self.write_to_object_space(addr_offset, byte)?;
+                addr_offset += 1;
             }
             // Pad to word boundary if necessary
             if name_bytes.len() % 2 == 1 {
-                let pad_offset = addr - self.object_table_addr;
-                self.write_to_object_space(pad_offset, 0)?; // Pad byte
-                addr += 1;
+                self.write_to_object_space(addr_offset, 0)?; // Pad byte
+                addr_offset += 1;
             }
         }
 
@@ -4564,47 +4583,46 @@ impl ZMachineCodeGen {
             );
 
             // Ensure capacity for property header + data + terminator
-            self.ensure_capacity(addr + 1 + prop_data.len() + 1);
+            let final_addr = self.object_table_addr + addr_offset;
+            self.ensure_capacity(final_addr + 1 + prop_data.len() + 1);
 
-            let size_offset = addr - self.object_table_addr;
-            self.write_to_object_space(size_offset, size_byte)?;
+            self.write_to_object_space(addr_offset, size_byte)?;
             debug!(
-                "PROP TABLE DEBUG: Writing size_byte=0x{:02x} at addr=0x{:04x}",
-                size_byte, addr
+                "PROP TABLE DEBUG: Writing size_byte=0x{:02x} at offset=0x{:04x} (addr=0x{:04x})",
+                size_byte, addr_offset, final_addr
             );
-            addr += 1;
+            addr_offset += 1;
 
             // Write property data
             for (i, &byte) in prop_data.iter().enumerate() {
-                let data_offset = addr - self.object_table_addr;
-                self.write_to_object_space(data_offset, byte)?;
+                self.write_to_object_space(addr_offset, byte)?;
                 debug!(
-                    "PROP TABLE DEBUG: Writing prop data byte {}=0x{:02x} at addr=0x{:04x}",
-                    i, byte, addr
+                    "PROP TABLE DEBUG: Writing prop data byte {}=0x{:02x} at offset=0x{:04x} (addr=0x{:04x})",
+                    i, byte, addr_offset, self.object_table_addr + addr_offset
                 );
-                addr += 1;
+                addr_offset += 1;
             }
         }
 
         // Terminator (property 0)
-        let terminator_offset = addr - self.object_table_addr;
-        self.write_to_object_space(terminator_offset, 0)?;
+        self.write_to_object_space(addr_offset, 0)?;
         debug!(
-            "PROP TABLE DEBUG: Writing terminator 0x00 at addr=0x{:04x}",
-            addr
+            "PROP TABLE DEBUG: Writing terminator 0x00 at offset=0x{:04x} (addr=0x{:04x})",
+            addr_offset,
+            self.object_table_addr + addr_offset
         );
-        addr += 1;
+        addr_offset += 1;
 
         debug!(
-            "PROP TABLE DEBUG: Property table for '{}' complete: 0x{:04x}-0x{:04x} ({} bytes)",
+            "PROP TABLE DEBUG: Property table for '{}' complete: offset 0x{:04x}-0x{:04x} ({} bytes)",
             object.short_name,
-            prop_table_addr,
-            addr - 1,
-            addr - prop_table_addr
+            prop_table_offset,
+            addr_offset - 1,
+            addr_offset - prop_table_offset
         );
 
         // Update current property allocation pointer for next property table
-        self.current_property_addr = addr;
+        self.current_property_addr = addr_offset;
 
         debug!(
             "Property table for '{}' (object #{}) created at 0x{:04x} with {} properties: {:?}",
@@ -4621,12 +4639,12 @@ impl ZMachineCodeGen {
             obj_num, object.short_name
         );
         debug!(
-            "  - Started at prop_table_addr (current_property_addr): 0x{:04x}",
-            prop_table_addr
+            "  - Started at prop_table_offset: 0x{:04x} (final addr: 0x{:04x})",
+            prop_table_offset, prop_table_addr
         );
         debug!(
-            "  - Final addr after writing all properties: 0x{:04x}",
-            addr
+            "  - Final offset after writing all properties: 0x{:04x}",
+            addr_offset
         );
         debug!(
             "  - Updated current_property_addr to: 0x{:04x}",
@@ -4882,7 +4900,7 @@ impl ZMachineCodeGen {
             self.record_final_address(main_call_id, main_call_routine_address);
 
             // Call the user's main function
-            let layout = self.emit_instruction(
+            let _layout = self.emit_instruction(
                 0xE0,                                          // call_1s (call with 1 operand, store result)
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder for main function address
                 Some(0x00), // Store result in local variable 0 (discarded)
@@ -5027,7 +5045,10 @@ impl ZMachineCodeGen {
 
     /// Generate command processing logic after SREAD instruction
     /// This checks the parse buffer for commands and handles quit
-    fn generate_command_processing(&mut self, parse_buffer_addr: u16) -> Result<(), CompilerError> {
+    fn generate_command_processing(
+        &mut self,
+        _parse_buffer_addr: u16,
+    ) -> Result<(), CompilerError> {
         debug!("Generating simplified command processing logic (no branching to avoid UnresolvedReference issues)");
 
         // Simplified test: Just execute quit instruction after any input
@@ -6713,7 +6734,7 @@ impl ZMachineCodeGen {
                     self.code_address
                 );
                 // Jump to the main loop routine (ID 9001 = first instruction, not routine header)
-                let layout = self.emit_instruction(
+                let _layout = self.emit_instruction(
                     0x0C,                                          // jump (unconditional jump)
                     &[Operand::LargeConstant(placeholder_word())], // Placeholder for jump offset
                     None,                                          // No store
