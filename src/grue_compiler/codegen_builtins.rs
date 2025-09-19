@@ -116,7 +116,7 @@ impl ZMachineCodeGen {
                         placeholder_string
                     );
 
-                    let _layout = self.emit_instruction(
+                    let layout = self.emit_instruction(
                         0x8D,                                          // print_paddr opcode - 1OP:141
                         &[Operand::LargeConstant(placeholder_word())], // Placeholder address
                         None,                                          // No store

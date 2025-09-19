@@ -1332,17 +1332,7 @@ impl ZMachineCodeGen {
             opcode, start_address, operands, store_var
         );
 
-        // Log unimplemented opcodes for debugging
-        if opcode == 0x00 {
-            log::error!(
-                "🚨 OPCODE_0x00_DETECTED: Emitting opcode 0x00 at address 0x{:04x} with operands: {:?}, store_var: {:?}",
-                start_address,
-                operands,
-                store_var
-            );
-            // Print stack trace to see where this comes from
-            log::error!("🚨 STACK_TRACE: This 0x00 opcode emission comes from:");
-        }
+        // Note: opcode 0x00 is legitimate for jz (jump if zero) instruction
 
         // Log stack operations specifically
         for (i, op) in operands.iter().enumerate() {

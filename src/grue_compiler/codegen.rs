@@ -1371,18 +1371,10 @@ impl ZMachineCodeGen {
                     reference.target_id
                 );
 
-                // CRITICAL FIX: The reference.location is a code space offset, not a final address
-                // We need to translate it to the final address
-                let final_location = if reference.location < self.final_code_base {
-                    // This is a code space offset, translate to final address
-                    let translated = self.final_code_base + reference.location;
-                    log::debug!("Jump reference: Translating location 0x{:04x} -> 0x{:04x} (final_code_base=0x{:04x})", 
-                              reference.location, translated, self.final_code_base);
-                    translated
-                } else {
-                    // Already a final address
-                    reference.location
-                };
+                // The reference.location should already be a final address from translate_space_address_to_final
+                let final_location = reference.location;
+                log::debug!("Jump reference: Using final location 0x{:04x} (final_code_base=0x{:04x})",
+                          final_location, self.final_code_base);
 
                 // Find the jump target in our code space
                 if let Some(&code_offset) = self
@@ -1554,19 +1546,10 @@ impl ZMachineCodeGen {
                     debug!("Branch resolution: Calling patch_branch_offset to calculate relative offset");
 
                     // DEBUG: Check if we need to translate reference.location to final address space
-                    let final_location = if reference.location < self.final_code_base {
-                        // This is a code space offset, translate to final address
-                        let translated_location = self.final_code_base + reference.location;
-                        debug!("Branch resolution: Translating location 0x{:04x} -> 0x{:04x} (final_code_base=0x{:04x})", reference.location, translated_location, self.final_code_base);
-                        translated_location
-                    } else {
-                        // Already a final address
-                        debug!(
-                            "Branch resolution: Location 0x{:04x} already in final address space",
-                            reference.location
-                        );
-                        reference.location
-                    };
+                    // The reference.location should already be a final address from translate_space_address_to_final
+                    let final_location = reference.location;
+                    debug!("Branch resolution: Using final location 0x{:04x} (final_code_base=0x{:04x})",
+                          final_location, self.final_code_base);
 
                     // CRITICAL FIX: Branch data is being written 1 byte too late
                     // TESTING: Remove the -1 adjustment hack to see if branch_location is correct
@@ -1645,8 +1628,8 @@ impl ZMachineCodeGen {
                    reference.location, reference.target_id, reference.reference_type);
         }
 
-        // CRITICAL FIX: Translate code space relative location to final assembly address
-        let final_location = self.final_code_base + reference.location;
+        // The reference.location should already be a final address from translate_space_address_to_final
+        let final_location = reference.location;
 
         // CRITICAL DEBUG: Check if final location is valid
         if final_location >= self.final_data.len() {
@@ -1654,8 +1637,8 @@ impl ZMachineCodeGen {
                    final_location, self.final_data.len(), reference.location, self.final_code_base, reference.target_id, reference.reference_type);
         }
         log::debug!(
-            " LOCATION_TRANSLATION: code_space_relative=0x{:04x} + final_code_base=0x{:04x} = final_location=0x{:04x}",
-            reference.location, self.final_code_base, final_location
+            " FINAL_LOCATION: Using final_location=0x{:04x} from translate_space_address_to_final (final_code_base=0x{:04x})",
+            final_location, self.final_code_base
         );
 
         // Write the resolved address to the final data
@@ -2315,7 +2298,7 @@ impl ZMachineCodeGen {
             // Print string literal using print_paddr
             // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
             let operand_location = self.code_space.len() + 1; // +1 for opcode byte (code space relative)
-            let _layout = self.emit_instruction(
+            let layout = self.emit_instruction(
                 0x82,                                          // print_paddr opcode (1OP:141)
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder for string address
                 None,
@@ -2614,7 +2597,7 @@ impl ZMachineCodeGen {
             // Generate call instruction
             // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
             let operand_location = self.code_space.len() + 2; // +2 for opcode and operand types bytes (code space relative)
-            let _layout = self.emit_instruction(
+            let layout = self.emit_instruction(
                 0xE0, // call_vs opcode (VAR:224 = opcode 0, so 0xE0)
                 &operands, store_var, None,
             )?;
@@ -2700,7 +2683,7 @@ impl ZMachineCodeGen {
                     // Generate call instruction
                     // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
                     let operand_location = self.code_space.len() + 2; // +2 for opcode and operand types bytes (code space relative)
-                    let _layout = self.emit_instruction(
+                    let layout = self.emit_instruction(
                         0xE0, // call_vs opcode (VAR:224)
                         &operands, store_var, None,
                     )?;
@@ -2806,7 +2789,7 @@ impl ZMachineCodeGen {
 
             // Generate print_ret instruction (0OP:179, opcode 0x83)
             // print_ret prints string, adds newline, and returns true
-            let _layout = self.emit_instruction(
+            let layout = self.emit_instruction(
                 0x83,                                          // print_ret opcode - 0OP:179
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
                 None, // No store (returns true automatically)
@@ -3503,7 +3486,7 @@ impl ZMachineCodeGen {
 
         if let Some(target_id) = target {
             // Store success value (1) to indicate add operation worked
-            let _layout = self.emit_instruction(
+            let layout = self.emit_instruction(
                 0x05, // store instruction
                 &[Operand::SmallConstant(1)],
                 Some(0), // Store to stack (variable 0)
@@ -3660,7 +3643,7 @@ impl ZMachineCodeGen {
             }
             // Arithmetic operations store their results normally
             _ => {
-                let _layout = self.emit_instruction(
+                let layout = self.emit_instruction(
                     opcode,
                     &[left_operand, right_operand],
                     Some(0), // Store to stack for immediate consumption
@@ -3698,7 +3681,7 @@ impl ZMachineCodeGen {
             IrUnaryOp::Not => {
                 // Logical NOT - use Z-Machine 'not' instruction (1OP:143, hex 0x8F)
                 // FIXED: Use stack for unary operation results (temporary values)
-                let _layout = self.emit_instruction(
+                let layout = self.emit_instruction(
                     0x8F, // not opcode (1OP:143)
                     &[operand_val],
                     Some(0), // Store result on stack
@@ -3717,7 +3700,7 @@ impl ZMachineCodeGen {
             IrUnaryOp::Minus => {
                 // Arithmetic negation - multiply by -1 using Z-Machine 'mul' instruction
                 // FIXED: Use stack for unary operation results (temporary values)
-                let _layout = self.emit_instruction(
+                let layout = self.emit_instruction(
                     0x16,                                           // mul opcode (2OP:22)
                     &[operand_val, Operand::LargeConstant(0xFFFF)], // multiply by -1 (0xFFFF = -1 in 16-bit signed)
                     Some(0),                                        // Store result on stack
@@ -4900,7 +4883,7 @@ impl ZMachineCodeGen {
             self.record_final_address(main_call_id, main_call_routine_address);
 
             // Call the user's main function
-            let _layout = self.emit_instruction(
+            let layout = self.emit_instruction(
                 0xE0,                                          // call_1s (call with 1 operand, store result)
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder for main function address
                 Some(0x00), // Store result in local variable 0 (discarded)
@@ -6262,7 +6245,7 @@ impl ZMachineCodeGen {
         // Z-Machine spec: 1OP:128 0 jz a ?(label)
         // Encoding: 1OP + variable operand type + opcode 0 = 0xA0
         let layout = self.emit_instruction(
-            0xA0, // jz (1OP:128) - jump if zero with variable operand
+            0x00, // jz (1OP:128) - opcode 0, instruction byte constructed by emit_instruction
             &[condition_operand],
             None,       // No store
             Some(0xFF), // Placeholder branch offset - will be replaced during resolution
@@ -6734,7 +6717,7 @@ impl ZMachineCodeGen {
                     self.code_address
                 );
                 // Jump to the main loop routine (ID 9001 = first instruction, not routine header)
-                let _layout = self.emit_instruction(
+                let layout = self.emit_instruction(
                     0x0C,                                          // jump (unconditional jump)
                     &[Operand::LargeConstant(placeholder_word())], // Placeholder for jump offset
                     None,                                          // No store
@@ -7462,18 +7445,19 @@ impl ZMachineCodeGen {
             target_address
         );
 
-        // Z-Machine branch offset calculation: "Address after branch data + Offset - 2"
-        // So: Offset = target_address - (address_after_branch_data) + 2
+        // Z-Machine branch offset calculation per specification:
+        // target_address = address_after_branch_instruction + offset
+        // Therefore: offset = target_address - address_after_branch_instruction
 
         // First, determine if we need 1-byte or 2-byte format
         // We need to calculate the offset assuming 1-byte first, then check if it fits
         let address_after_1byte = location + 1;
-        let _offset_1byte = (target_address as i32) - (address_after_1byte as i32) + 2;
+        let _offset_1byte = (target_address as i32) - (address_after_1byte as i32);
 
         // Always use 2-byte format since we reserved 2 bytes
         // Calculate offset for 2-byte format (address after 2 bytes)
         let address_after_2byte = location + 2;
-        let offset_2byte = (target_address as i32) - (address_after_2byte as i32) + 2;
+        let offset_2byte = (target_address as i32) - (address_after_2byte as i32);
 
         log::error!(
             "🔧 BRANCH_CALC: address_after_2byte=0x{:04x}, offset_2byte={}, first_byte=0x{:02x}, second_byte=0x{:02x}",
@@ -8341,36 +8325,38 @@ impl ZMachineCodeGen {
         // Phase-aware writing: code generation writes to code_space, address patching writes to final_data
         if !self.final_data.is_empty() {
             // Final assembly phase: write to final_data only
-            if self.code_address < self.final_data.len() {
-                self.final_data[self.code_address] = byte;
+            // CRITICAL FIX: Translate code_address (code space offset) to final_data position
+            let final_address = self.final_code_base + self.code_address;
+            if final_address < self.final_data.len() {
+                self.final_data[final_address] = byte;
 
                 // TEMPORARY DEBUG: Track writes to problem area (jl at 0x127f)
                 if self.code_address >= 0x127f && self.code_address <= 0x1284 {
                     eprintln!(
-                        "WRITING TO 0x{:04x}: byte=0x{:02x}",
-                        self.code_address, byte
+                        "WRITING TO code_address=0x{:04x}, final_address=0x{:04x}: byte=0x{:02x}",
+                        self.code_address, final_address, byte
                     );
                     if self.code_address == 0x1283 && byte == 0x9f {
-                        eprintln!("CRITICAL: Writing 0x9f to offset 0x1283!");
+                        eprintln!("CRITICAL: Writing 0x9f to code_address=0x{:04x}, final_address=0x{:04x}!", self.code_address, final_address);
                         eprintln!(
                             "Previous bytes: {:02x} {:02x} {:02x} {:02x}",
-                            if self.code_address >= 4 {
-                                self.final_data[self.code_address - 4]
+                            if final_address >= 4 {
+                                self.final_data[final_address - 4]
                             } else {
                                 0
                             },
-                            if self.code_address >= 3 {
-                                self.final_data[self.code_address - 3]
+                            if final_address >= 3 {
+                                self.final_data[final_address - 3]
                             } else {
                                 0
                             },
-                            if self.code_address >= 2 {
-                                self.final_data[self.code_address - 2]
+                            if final_address >= 2 {
+                                self.final_data[final_address - 2]
                             } else {
                                 0
                             },
-                            if self.code_address >= 1 {
-                                self.final_data[self.code_address - 1]
+                            if final_address >= 1 {
+                                self.final_data[final_address - 1]
                             } else {
                                 0
                             }
@@ -8379,8 +8365,8 @@ impl ZMachineCodeGen {
                 }
             } else {
                 return Err(CompilerError::CodeGenError(format!(
-                    "Cannot write byte at address 0x{:04x}: beyond final_data bounds (len: 0x{:04x})",
-                    self.code_address, self.final_data.len()
+                    "Cannot write byte at final_address=0x{:04x} (code_address=0x{:04x} + final_code_base=0x{:04x}): beyond final_data bounds (len: 0x{:04x})",
+                    final_address, self.code_address, self.final_code_base, self.final_data.len()
                 )));
             }
         } else {
@@ -8549,13 +8535,13 @@ impl ZMachineCodeGen {
                     + space_offset
             }
             MemorySpace::Code => {
-                // CRITICAL FIX: Return space_offset directly since final_code_base will be added later
-                // in the resolution step. Double-adding final_code_base causes invalid memory locations.
-                space_offset
+                // CRITICAL FIX: Must return final address for proper reference resolution
+                // The translate_space_address_to_final function should always return final addresses
+                self.final_code_base + space_offset
             }
             MemorySpace::CodeSpace => {
-                // Same as Code - return space_offset directly
-                space_offset
+                // Same as Code - return final address for proper translation
+                self.final_code_base + space_offset
             }
         };
 
