@@ -413,22 +413,78 @@ impl ZMachineCodeGen {
                     _ => 0, // Default size
                 };
 
-                // For empty arrays, push null reference to stack
+                // Allocate memory space for array at current code address
+                // In Z-Machine, arrays are just memory regions containing 16-bit words
+                let array_start_address = self.code_address;
+
                 if size_value == 0 {
-                    // Empty array - push null reference (1) to stack
-                    // Using load_w with address 0 to get a safe null-like value
+                    // Empty array - still allocate space for array header (length = 0)
+                    log::debug!(
+                        "CreateArray: allocating empty array at address 0x{:04x}",
+                        array_start_address
+                    );
+
+                    // Emit array length header (0 elements)
+                    self.emit_word(0)?; // Array length = 0
+
+                    // Push array base address constant to stack
+                    // We want to load the address value itself, not load FROM the address
                     self.emit_instruction(
-                        0x0F,                         // load_w (1OP:15) - load word from address
-                        &[Operand::SmallConstant(1)], // Load from address 1 (safe)
-                        Some(0),                      // Store result to stack
+                        0x21,                                                  // store (1OP:33)
+                        &[Operand::LargeConstant(array_start_address as u16)], // Array base address as constant
+                        Some(0), // Store to stack (variable 0)
                         None,
                     )?;
                 } else {
-                    // Non-empty arrays not yet implemented
-                    return Err(CompilerError::CodeGenError(format!(
-                        "CreateArray with non-zero size ({}) not yet implemented. Only empty arrays [] are supported.",
-                        size_value
-                    )));
+                    // Non-empty array - allocate space for length + elements
+                    log::debug!(
+                        "CreateArray: allocating array of size {} at address 0x{:04x}",
+                        size_value,
+                        array_start_address
+                    );
+
+                    // Calculate array data size
+                    let array_data_size = 2 + (size_value as usize * 2); // length (2 bytes) + elements (2 bytes each)
+
+                    // Use a relative branch instruction that jumps forward by the array data size
+                    // This is more reliable than absolute jumps which need phase 3 patching
+                    // Use an always-true branch (je 1, 1) that branches forward
+                    // Z-Machine branch offset is calculated from the address AFTER the branch instruction
+                    // For je with 2 small constants + 2-byte offset = 4 bytes total
+                    let branch_instruction_size = 4;
+                    let store_instruction_size = 3; // store instruction with large constant
+                    let total_skip = array_data_size + store_instruction_size;
+                    let branch_offset = total_skip - branch_instruction_size; // From after branch to after array+store
+
+                    self.emit_instruction(
+                        0x51,                                                    // je (2OP:17)
+                        &[Operand::SmallConstant(1), Operand::SmallConstant(1)], // Always true: 1 == 1
+                        None,
+                        Some(branch_offset as i16), // Branch forward by array_data_size
+                    )?;
+
+                    let current_addr = self.current_address();
+                    log::debug!("CreateArray: emitted conditional branch from 0x{:04x} branching +{} bytes (total_skip={}, branch_size={}), array data at 0x{:04x}",
+                                current_addr - branch_instruction_size, branch_offset, total_skip, branch_instruction_size, current_addr);
+
+                    // NOW emit the array data (execution will jump over this)
+                    // Emit array length header
+                    self.emit_word(size_value)?; // Array length
+
+                    // Emit space for array elements (initialized to 0)
+                    for _ in 0..size_value {
+                        self.emit_word(0)?; // Initialize each element to 0
+                    }
+
+                    // AFTER the array data, emit instruction to push array address to stack
+                    // Push array base address constant to stack (points to actual array data)
+                    let actual_array_start = current_addr; // Array data starts right after the branch instruction
+                    self.emit_instruction(
+                        0x21,                                                 // store (1OP:33)
+                        &[Operand::LargeConstant(actual_array_start as u16)], // Array base address as constant
+                        Some(0), // Store to stack (variable 0)
+                        None,
+                    )?;
                 }
             }
 

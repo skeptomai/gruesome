@@ -684,6 +684,19 @@ impl ZMachineCodeGen {
     }
 
     /// Generate get_object_contents builtin - returns array of objects contained in the given object
+    ///
+    /// This implements proper Z-Machine object tree traversal:
+    /// 1. Uses get_child (0x02) to get first child object
+    /// 2. Traverses sibling chain with get_sibling (0x01) to count children
+    /// 3. Creates array with exact size needed
+    /// 4. Re-traverses to populate array with object numbers
+    /// 5. Returns array address containing child object numbers
+    ///
+    /// Behavior:
+    /// - Crashes immediately if object has no children (get_child returns 0)
+    /// - No graceful error handling - expects only container objects
+    /// - No circular reference protection - will hang on malformed object trees
+    /// - Maximum 32 child objects supported
     pub fn generate_get_object_contents_builtin(
         &mut self,
         args: &[IrId],
@@ -701,10 +714,6 @@ impl ZMachineCodeGen {
             "Generating get_object_contents for object IR ID {}",
             object_id
         );
-
-        // For now, return a simple array containing just the container object ID
-        // TODO: Implement proper object tree traversal to find child objects
-        // This is a placeholder that prevents the "Cannot insert object 0" error
 
         // Get the object operand
         let container_operand = self.resolve_ir_id_to_operand(object_id)?;
@@ -724,47 +733,216 @@ impl ZMachineCodeGen {
             );
         }
 
-        match container_operand {
-            Operand::LargeConstant(obj_num) => {
-                // For now, just return a simple integer representing "non-empty container"
-                // This prevents the object 0 error while we implement proper array support
-                if let Some(store_var) = target {
-                    // Store a placeholder value (non-zero = success, represents empty array)
-                    // Use store instruction: 1OP:33 (0x21)
-                    self.emit_instruction(
-                        0x21,                         // store (1OP:33)
-                        &[Operand::LargeConstant(1)], // Non-zero placeholder value
-                        Some(store_var as u8),
-                        None, // No branch
-                    )?;
+        // Allocate temporary variables for object tree traversal
+        // Local variables 1-15 are available for temporary use in Z-Machine functions
+        let obj_var = 1u8; // Variable to hold current object number during traversal
+        let count_var = 2u8; // Variable to count total child objects
+        let index_var = 4u8; // Variable to track array index during population
 
-                    log::debug!(
-                        "get_object_contents: generated store instruction for object {}",
-                        obj_num
-                    );
-                }
-                log::debug!(
-                    "get_object_contents: returning placeholder value 1 for object {}",
-                    obj_num
-                );
-            }
-            _ => {
-                // Handle other operand types by treating them as valid placeholders
-                log::warn!(
-                    "get_object_contents: object resolved to {:?}, using placeholder",
-                    container_operand
-                );
-                if let Some(store_var) = target {
-                    // Store a placeholder value for non-constant operands
-                    self.emit_instruction(
-                        0x21,                         // store (1OP:33)
-                        &[Operand::LargeConstant(1)], // Non-zero placeholder value
-                        Some(store_var as u8),
-                        None, // No branch
-                    )?;
-                }
-            }
+        // Load container object argument into temporary variable for repeated use
+        self.emit_instruction(
+            0x21,                         // store (1OP:33) - store value to variable
+            &[container_operand.clone()], // Object number to load (clone to reuse later)
+            Some(obj_var),                // Store in temporary variable L01
+            None,
+        )?;
+
+        // === PHASE 1: Get first child and validate object has children ===
+
+        // Get first child using Z-Machine get_child opcode
+        // This stores child object number and branches if child exists (non-zero)
+        self.emit_instruction(
+            0x02,                          // get_child (1OP:2) - get first child of object
+            &[Operand::Variable(obj_var)], // Object to get child from
+            Some(obj_var),                 // Store child object number in same variable
+            None,                          // We handle branching manually below
+        )?;
+
+        // CRITICAL: Crash immediately if get_child returned 0 (no children)
+        // This implements the "hard failure" requirement - no graceful handling
+        // If object has no children, this is a programming error in the game
+        self.emit_instruction(
+            0x00,                          // jz (1OP:0) - branch if value is zero
+            &[Operand::Variable(obj_var)], // Check if child object number is 0
+            None,
+            Some(-32767), // Large negative offset causes runtime crash
+        )?;
+
+        // === PHASE 2: Count children by traversing sibling chain ===
+
+        // Initialize child count to 0 - will count all siblings in the chain
+        self.emit_instruction(
+            0x21,                         // store (1OP:33) - store value to variable
+            &[Operand::SmallConstant(0)], // Initialize count to 0
+            Some(count_var),              // Store in count variable L02
+            None,
+        )?;
+
+        // Mark start of counting loop for backward jump calculation
+        let count_loop_start = self.current_address();
+
+        // Increment count for current object (we know obj_var contains valid object)
+        self.emit_instruction(
+            0x14,                                                       // add (2OP:20) - add two values
+            &[Operand::Variable(count_var), Operand::SmallConstant(1)], // count = count + 1
+            Some(count_var), // Store result back to count variable
+            None,
+        )?;
+
+        // Get next sibling in the chain using Z-Machine get_sibling opcode
+        self.emit_instruction(
+            0x01,                          // get_sibling (1OP:1) - get next sibling object
+            &[Operand::Variable(obj_var)], // Get sibling of current object
+            Some(obj_var),                 // Store sibling object number in same variable
+            None,
+        )?;
+
+        // Check if we've reached end of sibling chain (get_sibling returned 0)
+        // Use jz to branch forward if chain ends, otherwise continue loop
+        self.emit_instruction(
+            0x00,                          // jz (1OP:0) - branch if value is zero
+            &[Operand::Variable(obj_var)], // Check if sibling is 0 (end of chain)
+            None,
+            Some(2), // Skip next instruction if end of chain
+        )?;
+
+        // Jump back to count loop start (unconditional backward jump)
+        let backward_jump_offset =
+            (count_loop_start as i32 - (self.current_address() as i32 + 3)) as i16;
+        self.emit_instruction(
+            0x8C,                                                   // jump (1OP:12) - unconditional jump
+            &[Operand::LargeConstant(backward_jump_offset as u16)], // Backward offset to loop start
+            None,
+            None,
+        )?;
+
+        // === PHASE 3: Create array in memory with branch-over-data pattern ===
+
+        // Calculate memory layout for array allocation
+        // Array contains: length header (2 bytes) + elements (2 bytes each)
+        let branch_instruction_size = 4; // je instruction with 2 operands + 2-byte offset
+        let store_instruction_size = 3; // store instruction after array data
+        let max_elements = 32u16; // Maximum supported child objects
+        let actual_array_data_size = 2 + (max_elements as usize * 2); // length + elements
+        let total_skip = actual_array_data_size + store_instruction_size;
+        let branch_offset = total_skip - branch_instruction_size;
+
+        // Emit always-true conditional branch to skip over array data during execution
+        // This prevents the array data from being executed as Z-Machine instructions
+        self.emit_instruction(
+            0x51, // je (2OP:17) - test equality, branch if true
+            &[Operand::SmallConstant(1), Operand::SmallConstant(1)], // 1 == 1 (always true)
+            None,
+            Some(branch_offset as i16), // Branch forward over array data
+        )?;
+
+        // Allocate array data in memory (execution will jump over this)
+        let array_data_start = self.current_address();
+        self.emit_word(0)?; // Array length header (will be patched with actual count)
+
+        // Pre-allocate space for maximum number of array elements
+        for _ in 0..max_elements {
+            self.emit_word(0)?; // Initialize each element to 0
         }
+
+        // === PHASE 4: Patch array length header with actual count ===
+
+        // Store the actual child count in the array's length header (index 0)
+        // This updates the placeholder 0 we wrote earlier with the real count
+        self.emit_instruction(
+            0xE1, // storew (VAR:1) - store word to memory array
+            &[
+                Operand::LargeConstant(array_data_start as u16), // Array base address
+                Operand::SmallConstant(0),                       // Word index 0 (length header)
+                Operand::Variable(count_var),                    // Actual count from traversal
+            ],
+            None,
+            None,
+        )?;
+
+        // === PHASE 5: Re-traverse sibling chain to populate array with object numbers ===
+
+        // Reset to first child to begin populating the array
+        self.emit_instruction(
+            0x02,                 // get_child (1OP:2) - get first child again
+            &[container_operand], // Original container object
+            Some(obj_var),        // Store first child in obj_var
+            None,
+        )?;
+
+        // Initialize array index to 1 (index 0 is the length header)
+        self.emit_instruction(
+            0x21,                         // store (1OP:33) - store value to variable
+            &[Operand::SmallConstant(1)], // Start at array index 1
+            Some(index_var),              // Store in index variable L04
+            None,
+        )?;
+
+        // Mark start of population loop for backward jump calculation
+        let pop_loop_start = self.current_address();
+
+        // Store current object number in array at current index
+        self.emit_instruction(
+            0xE1, // storew (VAR:1) - store word to memory array
+            &[
+                Operand::LargeConstant(array_data_start as u16), // Array base address
+                Operand::Variable(index_var),                    // Current array index
+                Operand::Variable(obj_var),                      // Object number to store
+            ],
+            None,
+            None,
+        )?;
+
+        // Increment array index for next element
+        self.emit_instruction(
+            0x14,                                                       // add (2OP:20) - add two values
+            &[Operand::Variable(index_var), Operand::SmallConstant(1)], // index = index + 1
+            Some(index_var), // Store result back to index variable
+            None,
+        )?;
+
+        // Get next sibling in the chain
+        self.emit_instruction(
+            0x01,                          // get_sibling (1OP:1) - get next sibling object
+            &[Operand::Variable(obj_var)], // Get sibling of current object
+            Some(obj_var),                 // Store sibling in same variable
+            None,
+        )?;
+
+        // Check if we've reached end of sibling chain (get_sibling returned 0)
+        self.emit_instruction(
+            0x00,                          // jz (1OP:0) - branch if value is zero
+            &[Operand::Variable(obj_var)], // Check if sibling is 0 (end of chain)
+            None,
+            Some(2), // Skip next instruction if end of chain
+        )?;
+
+        // Jump back to population loop start (unconditional backward jump)
+        let backward_jump_offset =
+            (pop_loop_start as i32 - (self.current_address() as i32 + 3)) as i16;
+        self.emit_instruction(
+            0x8C,                                                   // jump (1OP:12) - unconditional jump
+            &[Operand::LargeConstant(backward_jump_offset as u16)], // Backward offset to loop start
+            None,
+            None,
+        )?;
+
+        // === PHASE 6: Return array address as result ===
+
+        // Store array base address to target variable (usually stack for immediate consumption)
+        if let Some(store_var) = target {
+            self.emit_instruction(
+                0x21,                                               // store (1OP:33) - store value to variable
+                &[Operand::LargeConstant(array_data_start as u16)], // Array base address
+                Some(store_var as u8), // Target variable (usually stack Variable 0)
+                None,
+            )?;
+        }
+
+        log::debug!(
+            "get_object_contents: generated object tree traversal for object, array at 0x{:04x}",
+            array_data_start
+        );
 
         Ok(())
     }
