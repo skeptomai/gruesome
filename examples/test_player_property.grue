@@ -1,0 +1,12 @@
+// Minimal test for player property assignment
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+    }
+}
+
+init {
+    print("Before assignment");
+    player.location = test_room;
+    print("After assignment");
+}

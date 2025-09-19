@@ -585,25 +585,34 @@ impl ZMachineCodeGen {
 
             IrInstruction::GetArrayElement {
                 target,
-                array: _,
-                index: _,
+                array,
+                index,
             } => {
-                // Get array element - for now, return a placeholder value
-                // TODO: Implement proper array element access
+                // Implement proper array element access using Z-Machine loadw instruction
+                // Z-Machine spec: 2OP:15 F loadw array word-index -> (result)
+                // This loads array[index] where array is base address and index is word offset
 
                 // CRITICAL: Register target for array element result
                 self.use_stack_for_result(*target);
 
-                // For now, just load placeholder string address
+                // Get operands for array base address and index
+                let array_operand = self.resolve_ir_id_to_operand(*array)?;
+                let index_operand = self.resolve_ir_id_to_operand(*index)?;
+
+                // Use loadw instruction (2OP:15, opcode 0x0F) to load word from array
+                // Z-Machine spec: loadw array word-index -> (result)
+                // This calculates array + 2*word-index and loads the 16-bit word at that address
                 self.emit_instruction(
-                    0x8D,                            // load constant
-                    &[Operand::LargeConstant(1000)], // Placeholder string ID
-                    Some(0),                         // Store to stack
+                    0x0F, // loadw (2OP:15)
+                    &[array_operand, index_operand],
+                    Some(0), // Store result to stack
                     None,
                 )?;
                 log::debug!(
-                    "GetArrayElement: IR ID {} -> stack (placeholder: 1000)",
-                    target
+                    "GetArrayElement: IR ID {} = loadw(array IR ID {}, index IR ID {}) -> stack",
+                    target,
+                    array,
+                    index
                 );
             }
 

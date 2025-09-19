@@ -2125,15 +2125,8 @@ impl IrGenerator {
                 // - Player object reference → Variable(16) (reads from Global G00)
                 //
                 // This fixes the architectural issue where player.location calls generated wrong operand types.
-                if name == "player" {
-                    log::debug!("🏃 IR_FIX: Generating LoadVar for player object (will read from Global G00)");
-                    let temp_id = self.next_id();
-                    block.add_instruction(IrInstruction::LoadVar {
-                        target: temp_id,
-                        var_id: 16, // Global G00 = Variable 16 = player object number
-                    });
-                    Ok(temp_id)
-                } else if let Some(&object_number) = self.object_numbers.get(&name) {
+                // Handle all objects (including player) consistently through object_numbers lookup
+                if let Some(&object_number) = self.object_numbers.get(&name) {
                     // This is a regular object (not player) - load its number as a constant
                     let temp_id = self.next_id();
                     block.add_instruction(IrInstruction::LoadImmediate {
