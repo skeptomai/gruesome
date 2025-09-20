@@ -1,0 +1,46 @@
+// Test case that replicates the exact list_objects function
+// This should reproduce the crash
+
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+
+        object test_obj {
+            names: ["object", "test"]
+            desc: "A test object."
+        }
+    }
+}
+
+fn test_list_objects(location) {
+    let objects = location.contents();
+    let visible_objects = [];
+
+    for obj in objects {
+        if obj != player {  // Don't list the player object
+            visible_objects.add(obj);
+        }
+    }
+
+    if !visible_objects.empty() {
+        for obj in visible_objects {
+            print("There is " + obj.name + " here.");
+        }
+    }
+}
+
+grammar {
+    verb "test" {
+        default => test_list_objects(player.location)
+    }
+}
+
+init {
+    player.location = test_room;
+    print("Test game loaded");
+    look_around();
+}
+
+fn look_around() {
+    print(player.location.desc);
+}

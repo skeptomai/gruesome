@@ -1,0 +1,47 @@
+// Test case that replicates look_around() calling list_objects()
+// This should be closer to the original crash scenario
+
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+
+        object test_obj {
+            names: ["object", "test"]
+            desc: "A test object."
+        }
+    }
+}
+
+fn look_around() {
+    print(player.location.desc);
+    list_objects(player.location);  // This is the call that leads to the crash
+}
+
+fn list_objects(location) {
+    let objects = location.contents();
+    let visible_objects = [];
+
+    for obj in objects {
+        if obj != player {  // Don't list the player object
+            visible_objects.add(obj);
+        }
+    }
+
+    if !visible_objects.empty() {
+        for obj in visible_objects {
+            print("There is " + obj.name + " here.");
+        }
+    }
+}
+
+grammar {
+    verb "look" {
+        default => look_around()
+    }
+}
+
+init {
+    player.location = test_room;
+    print("Test game loaded");
+    look_around();
+}

@@ -17,6 +17,9 @@ impl ZMachineCodeGen {
     ) -> Result<(), CompilerError> {
         debug!("Generate instruction called: {:?}", instruction);
 
+        // ARCHITECTURAL FIX: With proper address space separation implemented,
+        // labels are correctly assigned to code space addresses during any compilation phase
+
         // Track all branch and jump instructions
 
         // Store initial code address to detect if label should be processed
@@ -356,6 +359,25 @@ impl ZMachineCodeGen {
             }
 
             IrInstruction::Label { id } => {
+                // CRITICAL BUG FIX: Only process labels during function code generation
+                // Labels encountered during property/object generation should be ignored
+                // to prevent them from getting assigned property table addresses
+                let in_function_code_generation = self
+                    .compilation_context_stack
+                    .last()
+                    .map(|ctx| ctx == "function_code_generation")
+                    .unwrap_or(false);
+
+                if !in_function_code_generation {
+                    log::debug!(
+                        "Label {} at 0x{:04x} in context {:?} - IGNORING (not in function code generation)",
+                        id, self.code_address, self.compilation_context_stack.last().unwrap_or(&"unknown".to_string())
+                    );
+                    // CRITICAL: Do NOT add to pending_labels during property generation
+                    // This prevents these labels from being processed later at wrong addresses
+                    return Ok(());
+                }
+
                 // CRITICAL FIX: Labels should point to the NEXT instruction, not current position
                 // The label address will be recorded when the next instruction is processed
                 // This ensures labels point to actual executable code, not empty space
@@ -1179,7 +1201,36 @@ impl ZMachineCodeGen {
         if !self.pending_labels.is_empty() {
             // Only process if the instruction actually emitted code (address changed)
             if self.code_address > code_address_before {
-                let label_address = code_address_before; // Use the address where instruction started
+                // CRITICAL ARCHITECTURAL FIX: Check address value directly instead of context
+                // The hard-coded fix worked because addresses >= code_space_base are in code space
+                // This is more reliable than context tracking since it's based on actual memory layout
+                // TODO: revisit code address check - this may need refinement for edge cases
+                let is_in_code_space = self.code_space_base_address > 0
+                    && code_address_before >= self.code_space_base_address;
+
+                log::debug!(
+                    "ADDRESS_SPACE_CHECK: code_address_before=0x{:04x}, code_space_base=0x{:04x}, is_in_code_space={}",
+                    code_address_before, self.code_space_base_address, is_in_code_space
+                );
+
+                let label_address = if is_in_code_space {
+                    // Address is already in code space - use it directly
+                    log::debug!(
+                        "ARCHITECTURAL_FIX: Using code space address 0x{:04x} directly",
+                        code_address_before
+                    );
+                    code_address_before
+                } else {
+                    // Address is in property space - map to code space
+                    log::debug!(
+                        "ARCHITECTURAL_FIX: Mapping property space address 0x{:04x} to code space address 0x{:04x}",
+                        code_address_before, self.next_code_space_address
+                    );
+                    let addr = self.next_code_space_address;
+                    // Reserve space in code space for these labels (they'll point to future code)
+                    self.next_code_space_address += 2; // Reserve minimal space
+                    addr
+                };
 
                 // Process all pending labels - they all point to the same address
                 let labels_to_process: Vec<crate::grue_compiler::ir::IrId> =

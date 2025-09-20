@@ -1,0 +1,52 @@
+// Test case that includes world objects like mini_zork
+// This adds the world complexity that might trigger the crash
+
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house, with a boarded front door."
+
+        object mailbox {
+            names: ["mailbox", "box"]
+            desc: "The small mailbox is closed."
+        }
+
+        object leaflet {
+            names: ["leaflet", "paper"]
+            desc: "A small leaflet with game instructions."
+        }
+    }
+}
+
+fn look_around() {
+    print(player.location.desc);
+    list_objects(player.location);
+}
+
+fn list_objects(location) {
+    let objects = location.contents();
+    let visible_objects = [];
+
+    for obj in objects {
+        if obj != player {
+            visible_objects.add(obj);
+        }
+    }
+
+    if !visible_objects.empty() {
+        for obj in visible_objects {
+            print("There is " + obj.name + " here.");
+        }
+    }
+}
+
+grammar {
+    verb "look" {
+        default => look_around()
+    }
+}
+
+init {
+    player.location = west_of_house;
+    print("Test game loaded");
+    look_around();
+}

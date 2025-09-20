@@ -1,0 +1,82 @@
+// Test case that includes more of mini_zork structure
+// Adding more functions and complexity to see if we can trigger the 0x012a crash
+
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house, with a boarded front door."
+
+        object mailbox {
+            names: ["mailbox", "box"]
+            desc: "The small mailbox is closed."
+        }
+
+        object leaflet {
+            names: ["leaflet", "paper"]
+            desc: "A small leaflet with game instructions."
+        }
+    }
+
+    room living_room "Living Room" {
+        desc: "You are in the living room of a white house."
+    }
+}
+
+fn look_around() {
+    print(player.location.desc);
+    list_objects(player.location);
+}
+
+fn list_objects(location) {
+    let objects = location.contents();
+    let visible_objects = [];
+
+    for obj in objects {
+        if obj != player {
+            visible_objects.add(obj);
+        }
+    }
+
+    if !visible_objects.empty() {
+        for obj in visible_objects {
+            print("There is " + obj.name + " here.");
+        }
+    }
+}
+
+fn move_player(new_location) {
+    player.location = new_location;
+    look_around();
+}
+
+fn help() {
+    print("Available commands:");
+    print("- look: Look around your current location");
+    print("- go east: Go to the living room");
+    print("- go west: Go back to west of house");
+}
+
+grammar {
+    verb "look" {
+        default => look_around()
+    }
+
+    verb "help" {
+        default => help()
+    }
+
+    verb "go" {
+        "east" => move_player(living_room)
+        "west" => move_player(west_of_house)
+    }
+}
+
+init {
+    player.location = west_of_house;
+    print("DORK I: The Last Great Empire");
+    print("Copyright (c) 2025 Grue Games. All rights reserved.");
+    print("ZORK is a registered trademark of Infocom, Inc.");
+    print("DORK is .... not");
+    print("Revision 1 / Serial number 8675309");
+    print("");
+    look_around();
+}

@@ -1,0 +1,37 @@
+// Test case with for loop + if condition
+// Adding the "if obj != player" check from list_objects
+
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+
+        object test_obj {
+            names: ["object", "test"]
+            desc: "A test object."
+        }
+    }
+}
+
+fn test_list() {
+    for obj in test_room.contents() {
+        if obj != player {  // This is the condition from list_objects line 370
+            print("Found non-player object");
+        }
+    }
+}
+
+grammar {
+    verb "test" {
+        default => test_list()
+    }
+}
+
+init {
+    player.location = test_room;
+    print("Test game loaded");
+    look_around();
+}
+
+fn look_around() {
+    print(player.location.desc);
+}

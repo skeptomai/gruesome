@@ -1,0 +1,99 @@
+// Test case with many functions like mini_zork to see if function count triggers the crash
+
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house, with a boarded front door."
+
+        object mailbox {
+            names: ["mailbox", "box"]
+            desc: "The small mailbox is closed."
+        }
+    }
+}
+
+fn look_around() {
+    print(player.location.desc);
+    list_objects(player.location);
+}
+
+fn examine(obj) {
+    print(obj.desc);
+}
+
+fn handle_open(obj) {
+    print("You opened the " + obj.name + ".");
+}
+
+fn handle_close(obj) {
+    print("You closed the " + obj.name + ".");
+}
+
+fn handle_take(obj) {
+    print("You took the " + obj.name + ".");
+}
+
+fn handle_drop(obj) {
+    print("You dropped the " + obj.name + ".");
+}
+
+fn show_inventory() {
+    print("You are carrying nothing.");
+}
+
+fn handle_go(direction) {
+    print("You can't go that way.");
+}
+
+fn handle_climb(obj) {
+    print("You can't climb that.");
+}
+
+fn handle_read(obj) {
+    print("There's nothing to read on the " + obj.name + ".");
+}
+
+fn player_can_see(obj) {
+    return true;
+}
+
+fn list_objects(location) {
+    let objects = location.contents();
+    let visible_objects = [];
+
+    for obj in objects {
+        if obj != player {
+            visible_objects.add(obj);
+        }
+    }
+
+    if !visible_objects.empty() {
+        for obj in visible_objects {
+            print("There is " + obj.name + " here.");
+        }
+    }
+}
+
+fn list_contents(container) {
+    print("The " + container.name + " contains nothing.");
+}
+
+fn take_all() {
+    print("Taken.");
+}
+
+grammar {
+    verb "look" {
+        default => look_around()
+    }
+}
+
+init {
+    player.location = west_of_house;
+    print("DORK I: The Last Great Empire");
+    print("Copyright (c) 2025 Grue Games. All rights reserved.");
+    print("ZORK is a registered trademark of Infocom, Inc.");
+    print("DORK is .... not");
+    print("Revision 1 / Serial number 8675309");
+    print("");
+    look_around();
+}

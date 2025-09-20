@@ -208,6 +208,12 @@ pub struct ZMachineCodeGen {
     // Input buffer addresses
     text_buffer_addr: usize,
     parse_buffer_addr: usize,
+    // Compilation context tracking
+    pub compilation_context_stack: Vec<String>, // Stack of compilation contexts for debugging
+
+    // Address space separation - CRITICAL FIX for label address assignment
+    pub code_space_base_address: usize, // Base address where code generation starts (e.g., 0x0f4a)
+    pub next_code_space_address: usize, // Next available address in code space (independent of current phase)
 
     // Code generation state
     pub label_addresses: IndexMap<IrId, usize>, // IR label ID -> byte address
@@ -232,6 +238,8 @@ pub struct ZMachineCodeGen {
     ir_id_to_binary_op: IndexMap<IrId, (IrBinaryOp, IrId, IrId)>, // (operator, left_operand, right_operand)
     /// Mapping from function IDs to builtin function names
     builtin_function_names: IndexMap<IrId, String>,
+    /// Mapping from function IR IDs to user function names
+    function_names: IndexMap<IrId, String>,
     /// Mapping from IR IDs to array metadata (for dynamic lists)
     ir_id_to_array_info: IndexMap<IrId, ArrayInfo>,
     /// Mapping from object names to object numbers (from IR generator)
@@ -335,6 +343,9 @@ impl ZMachineCodeGen {
             final_assembly_address: HEADER_SIZE,
             text_buffer_addr: 0,
             parse_buffer_addr: 0,
+            compilation_context_stack: vec!["initial".to_string()], // Start with initial context
+            code_space_base_address: 0, // Will be set when code generation starts
+            next_code_space_address: 0, // Will be initialized with code_space_base_address
             label_addresses: IndexMap::new(),
             string_addresses: IndexMap::new(),
             function_addresses: IndexMap::new(),
@@ -350,6 +361,7 @@ impl ZMachineCodeGen {
             ir_id_to_local_var: IndexMap::new(),
             ir_id_to_binary_op: IndexMap::new(),
             builtin_function_names: IndexMap::new(),
+            function_names: IndexMap::new(),
             ir_id_to_array_info: IndexMap::new(),
             object_numbers: IndexMap::new(),
             property_numbers: IndexMap::new(),
@@ -841,6 +853,12 @@ impl ZMachineCodeGen {
 
         // Store final addresses for header generation
         self.final_code_base = code_base;
+
+        // CRITICAL FIX: Initialize code space address tracking for proper label assignment
+        if self.code_space_base_address == 0 {
+            self.code_space_base_address = code_base;
+            self.next_code_space_address = code_base;
+        }
         self.final_string_base = string_base;
         self.final_object_base = object_base;
         self.dictionary_addr = dictionary_base;
@@ -953,6 +971,24 @@ impl ZMachineCodeGen {
             "🎯 PC CALCULATION: PC will point to 0x{:04x} (init_locals_count={}, code_base=0x{:04x})",
             expected_pc, self.init_routine_locals_count, code_base
         );
+
+        // Write detailed memory layout debug file
+        self.write_memory_layout_debug_file(
+            header_size,
+            globals_base,
+            globals_size,
+            abbreviations_base,
+            abbreviations_size,
+            object_base,
+            object_size,
+            dictionary_base,
+            dictionary_size,
+            string_base,
+            string_size,
+            code_base,
+            code_size,
+            total_size,
+        )?;
 
         // Phase 3b: Initialize final game image
         log::debug!(
@@ -1972,10 +2008,14 @@ impl ZMachineCodeGen {
         debug!("Setting up object mappings for IR → Z-Machine object resolution");
         self.setup_object_mappings(ir);
 
-        // CRITICAL ARCHITECTURE FIX: Use code_address to track code_space positions
-        // During code generation, we track positions within code_space using code_address
-        // This eliminates any ambiguity about which address space we're working in
-        self.code_address = self.code_space.len(); // Set to current code_space position
+        // CRITICAL ARCHITECTURE FIX: Reset code_address for function code generation
+        // During function code generation, code_address should track positions within code_space
+        // starting from 0, regardless of what happened during property generation
+        self.code_address = 0; // Reset to start of code space
+        log::debug!(
+            "🔧 RESET_CODE_ADDRESS: Set code_address=0 for function code generation (code_space.len()={})",
+            self.code_space.len()
+        );
         log::info!(
             "🏁 Code generation phase: Using code_address to track code_space position - starting at offset 0x{:04x}",
             self.code_address
@@ -2046,6 +2086,12 @@ impl ZMachineCodeGen {
 
         // PHASE 2B: Now generate actual function code with all addresses pre-registered
         log::info!(" TRANSLATING: All function definitions");
+        self.compilation_context_stack
+            .push("function_code_generation".to_string());
+
+        // ARCHITECTURAL FIX: With proper address space separation, no deferral needed
+        // Labels are now correctly assigned to code space addresses during property generation
+
         for (i, function) in ir.functions.iter().enumerate() {
             let function_start_size = self.code_space.len();
             log::debug!(
@@ -2233,6 +2279,7 @@ impl ZMachineCodeGen {
             // CRITICAL: Patch function header with actual local count after instruction generation
             self.finalize_function_header(function.id)?;
         }
+        self.compilation_context_stack.pop(); // Exit function code generation context
 
         // Phase 2.1: Generate room handler routines (on_enter, on_exit, on_look)
         // TODO: Temporarily disabled due to branch target ID 50 conflict
@@ -5287,6 +5334,7 @@ impl ZMachineCodeGen {
             // Generate function header (local variable count + types)
             self.generate_function_header(function, ir)?;
             self.function_addresses.insert(function.id, func_addr);
+            self.function_names.insert(function.id, function.name.clone());
             self.record_final_address(function.id, func_addr);
 
             // Generate function body with boundary protection
@@ -9153,6 +9201,188 @@ impl ZMachineCodeGen {
 
     // PLACEHOLDER: Instruction emission functions moved to codegen_instructions.rs module
     // This comment preserves the section organization while the functions are now extracted
+
+    /// Write comprehensive memory layout debug file
+    fn write_memory_layout_debug_file(
+        &self,
+        header_size: usize,
+        globals_base: usize,
+        globals_size: usize,
+        abbreviations_base: usize,
+        abbreviations_size: usize,
+        object_base: usize,
+        object_size: usize,
+        dictionary_base: usize,
+        dictionary_size: usize,
+        string_base: usize,
+        string_size: usize,
+        code_base: usize,
+        code_size: usize,
+        total_size: usize,
+    ) -> Result<(), CompilerError> {
+        use std::fs::File;
+        use std::io::Write;
+
+        let mut debug_file = File::create("memory_layout_debug.txt").map_err(|e| {
+            CompilerError::CodeGenError(format!("Failed to create debug file: {}", e))
+        })?;
+
+        writeln!(debug_file, "=== Z-MACHINE MEMORY LAYOUT DEBUG ===").unwrap();
+        writeln!(
+            debug_file,
+            "Generated: {}",
+            std::process::Command::new("date")
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_else(|_| "unknown".to_string())
+        )
+        .unwrap();
+        writeln!(debug_file).unwrap();
+
+        writeln!(debug_file, "MEMORY REGIONS:").unwrap();
+        writeln!(
+            debug_file,
+            "Region           Start    End      Length   Purpose"
+        )
+        .unwrap();
+        writeln!(
+            debug_file,
+            "-----------------------------------------------"
+        )
+        .unwrap();
+        writeln!(
+            debug_file,
+            "Header           0x{:04x}   0x{:04x}   {:4} bytes  Z-Machine header",
+            0, header_size, header_size
+        )
+        .unwrap();
+        writeln!(
+            debug_file,
+            "Globals          0x{:04x}   0x{:04x}   {:4} bytes  Global variables",
+            globals_base,
+            globals_base + globals_size,
+            globals_size
+        )
+        .unwrap();
+        writeln!(
+            debug_file,
+            "Abbreviations    0x{:04x}   0x{:04x}   {:4} bytes  String compression",
+            abbreviations_base,
+            abbreviations_base + abbreviations_size,
+            abbreviations_size
+        )
+        .unwrap();
+        writeln!(
+            debug_file,
+            "Objects          0x{:04x}   0x{:04x}   {:4} bytes  Object table + properties",
+            object_base,
+            object_base + object_size,
+            object_size
+        )
+        .unwrap();
+        writeln!(
+            debug_file,
+            "Dictionary       0x{:04x}   0x{:04x}   {:4} bytes  Word parsing dictionary",
+            dictionary_base,
+            dictionary_base + dictionary_size,
+            dictionary_size
+        )
+        .unwrap();
+        writeln!(
+            debug_file,
+            "Strings          0x{:04x}   0x{:04x}   {:4} bytes  Encoded text literals",
+            string_base,
+            string_base + string_size,
+            string_size
+        )
+        .unwrap();
+        writeln!(
+            debug_file,
+            "Code             0x{:04x}   0x{:04x}   {:4} bytes  Executable functions",
+            code_base,
+            code_base + code_size,
+            code_size
+        )
+        .unwrap();
+        writeln!(
+            debug_file,
+            "-----------------------------------------------"
+        )
+        .unwrap();
+        writeln!(
+            debug_file,
+            "Total            0x{:04x}   0x{:04x}   {:4} bytes  Complete Z-Machine file",
+            0, total_size, total_size
+        )
+        .unwrap();
+        writeln!(debug_file).unwrap();
+
+        writeln!(debug_file, "CRASH ANALYSIS:").unwrap();
+        writeln!(debug_file, "Crash location: 0x012a").unwrap();
+        if 0x012a >= globals_base && 0x012a < globals_base + globals_size {
+            writeln!(
+                debug_file,
+                "0x012a falls in: GLOBALS region (0x{:04x}-0x{:04x})",
+                globals_base,
+                globals_base + globals_size
+            )
+            .unwrap();
+        } else if 0x012a >= abbreviations_base && 0x012a < abbreviations_base + abbreviations_size {
+            writeln!(
+                debug_file,
+                "0x012a falls in: ABBREVIATIONS region (0x{:04x}-0x{:04x})",
+                abbreviations_base,
+                abbreviations_base + abbreviations_size
+            )
+            .unwrap();
+        } else if 0x012a >= object_base && 0x012a < object_base + object_size {
+            writeln!(
+                debug_file,
+                "0x012a falls in: OBJECTS region (0x{:04x}-0x{:04x})",
+                object_base,
+                object_base + object_size
+            )
+            .unwrap();
+        } else if 0x012a >= code_base && 0x012a < code_base + code_size {
+            writeln!(
+                debug_file,
+                "0x012a falls in: CODE region (0x{:04x}-0x{:04x}) - THIS IS CORRECT",
+                code_base,
+                code_base + code_size
+            )
+            .unwrap();
+        } else {
+            writeln!(
+                debug_file,
+                "0x012a falls in: UNALLOCATED/GAP region - THIS IS THE PROBLEM"
+            )
+            .unwrap();
+        }
+        writeln!(debug_file).unwrap();
+
+        writeln!(debug_file, "FUNCTION ADDRESS MAPPINGS:").unwrap();
+        for (ir_id, address) in &self.reference_context.ir_id_to_address {
+            if let Some(function_name) = self.function_names.get(ir_id) {
+                writeln!(
+                    debug_file,
+                    "IR ID {:4} -> 0x{:04x} ({})",
+                    ir_id, address, function_name
+                )
+                .unwrap();
+            } else if let Some(builtin_name) = self.builtin_function_names.get(ir_id) {
+                writeln!(
+                    debug_file,
+                    "IR ID {:4} -> 0x{:04x} (builtin: {})",
+                    ir_id, address, builtin_name
+                )
+                .unwrap();
+            } else {
+                writeln!(debug_file, "IR ID {:4} -> 0x{:04x}", ir_id, address).unwrap();
+            }
+        }
+
+        Ok(())
+    }
 
     /// Phase-by-phase pattern detection for debugging
     fn detect_phase_patterns(&self, _phase_name: &str) {
