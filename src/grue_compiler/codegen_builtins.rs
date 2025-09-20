@@ -51,7 +51,7 @@ impl ZMachineCodeGen {
             let operand_location = self.code_space.len() + 1; // +1 for opcode byte (code space relative)
             let _layout = self.emit_instruction(
                 0x8D,                                          // print_paddr opcode (1OP:141)
-                &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
+                &[Operand::LargeConstant(placeholder_word())], // Reserve space for string address (resolved via UnresolvedReference)
                 None,                                          // No store
                 None,                                          // No branch
             )?;
@@ -118,7 +118,7 @@ impl ZMachineCodeGen {
 
                     let layout = self.emit_instruction(
                         0x8D,                                          // print_paddr opcode - 1OP:141
-                        &[Operand::LargeConstant(placeholder_word())], // Placeholder address
+                        &[Operand::LargeConstant(placeholder_word())], // Reserve space for address (resolved via UnresolvedReference)
                         None,                                          // No store
                         None,                                          // No branch
                     )?;
@@ -195,7 +195,7 @@ impl ZMachineCodeGen {
             // Generate print_paddr instruction (same as working print implementation)
             let layout1 = self.emit_instruction(
                 0x8D,                                          // print_paddr opcode - 1OP:141
-                &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
+                &[Operand::LargeConstant(placeholder_word())], // Reserve space for string address (resolved via UnresolvedReference)
                 None,                                          // No store
                 None,                                          // No branch
             )?;
@@ -544,7 +544,7 @@ impl ZMachineCodeGen {
 
         let layout = self.emit_instruction(
             0x8D,                                          // print_paddr
-            &[Operand::LargeConstant(placeholder_word())], // Placeholder address
+            &[Operand::LargeConstant(placeholder_word())], // Reserve space for address (resolved via UnresolvedReference)
             None,
             None,
         )?;
@@ -581,7 +581,7 @@ impl ZMachineCodeGen {
 
         let layout = self.emit_instruction(
             0x8D,                                          // print_paddr
-            &[Operand::LargeConstant(placeholder_word())], // Placeholder address
+            &[Operand::LargeConstant(placeholder_word())], // Reserve space for address (resolved via UnresolvedReference)
             None,
             None,
         )?;
@@ -761,12 +761,17 @@ impl ZMachineCodeGen {
         // CRITICAL: Crash immediately if get_child returned 0 (no children)
         // This implements the "hard failure" requirement - no graceful handling
         // If object has no children, this is a programming error in the game
+
+        // ARCHITECTURE FIX: Call emit_instruction WITHOUT branch_offset to avoid double-emission
         self.emit_instruction(
             0x00,                          // jz (1OP:0) - branch if value is zero
             &[Operand::Variable(obj_var)], // Check if child object number is 0
             None,
-            Some(-32767), // Large negative offset causes runtime crash
+            None, // NO branch_offset - we handle branch manually
         )?;
+
+        // Manually emit branch placeholder that will cause crash (large negative offset)
+        self.emit_word(0x8000 | ((-32767i16) as u16))?; // Encode large negative branch offset directly
 
         // === PHASE 2: Count children by traversing sibling chain ===
 
@@ -799,12 +804,17 @@ impl ZMachineCodeGen {
 
         // Check if we've reached end of sibling chain (get_sibling returned 0)
         // Use jz to branch forward if chain ends, otherwise continue loop
+
+        // ARCHITECTURE FIX: Call emit_instruction WITHOUT branch_offset to avoid double-emission
         self.emit_instruction(
             0x00,                          // jz (1OP:0) - branch if value is zero
             &[Operand::Variable(obj_var)], // Check if sibling is 0 (end of chain)
             None,
-            Some(2), // Skip next instruction if end of chain
+            None, // NO branch_offset - we handle branch manually
         )?;
+
+        // Manually emit branch offset to skip next instruction (offset = 2)
+        self.emit_word(0x8000 | 2)?; // Branch format: bit 15=1 (long form), offset=2
 
         // Jump back to count loop start (unconditional backward jump)
         let backward_jump_offset =
@@ -910,12 +920,17 @@ impl ZMachineCodeGen {
         )?;
 
         // Check if we've reached end of sibling chain (get_sibling returned 0)
+
+        // ARCHITECTURE FIX: Call emit_instruction WITHOUT branch_offset to avoid double-emission
         self.emit_instruction(
             0x00,                          // jz (1OP:0) - branch if value is zero
             &[Operand::Variable(obj_var)], // Check if sibling is 0 (end of chain)
             None,
-            Some(2), // Skip next instruction if end of chain
+            None, // NO branch_offset - we handle branch manually
         )?;
+
+        // Manually emit branch offset to skip next instruction (offset = 2)
+        self.emit_word(0x8000 | 2)?; // Branch format: bit 15=1 (long form), offset=2
 
         // Jump back to population loop start (unconditional backward jump)
         let backward_jump_offset =

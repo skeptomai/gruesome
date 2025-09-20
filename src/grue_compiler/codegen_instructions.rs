@@ -1,8 +1,7 @@
 // Import placeholder_word for consistent placeholder handling throughout the codebase
 use crate::grue_compiler::codegen::{placeholder_word, ConstantValue, ZMachineCodeGen};
 use crate::grue_compiler::codegen::{
-    InstructionForm, InstructionLayout, LegacyReferenceType, MemorySpace, Operand, OperandType,
-    UnresolvedReference, UNIMPLEMENTED_OPCODE,
+    InstructionForm, InstructionLayout, Operand, OperandType, UNIMPLEMENTED_OPCODE,
 };
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::{IrInstruction, IrValue};
@@ -1680,6 +1679,9 @@ impl ZMachineCodeGen {
         store_var: Option<u8>,
         branch_offset: Option<i16>,
     ) -> Result<(), CompilerError> {
+        if branch_offset.is_some() {
+            eprintln!("BRANCH_TRACE: emit_short_form called with branch_offset={:?} at code_address=0x{:04x}", branch_offset, self.code_address);
+        }
         if operands.len() > 1 {
             return Err(CompilerError::CodeGenError(format!(
                 "Short form requires 0 or 1 operands, got {}",
@@ -1820,7 +1822,7 @@ impl ZMachineCodeGen {
         // Track branch placeholder location
         let branch_location = if let Some(offset) = branch_offset {
             let loc = self.code_address;
-            log::debug!("BRANCH_PLACEHOLDER: Emitting 0xFFFF at code_address=0x{:04x} for branch (passed offset={:?})", loc, offset);
+            log::debug!("BRANCH_PLACEHOLDER: Emitting 0x{:04x} at code_address=0x{:04x} for branch (passed offset={:?})", placeholder_word(), loc, offset);
 
             // CRITICAL CHECK: Make sure we're not accidentally using the offset value as the placeholder
             if offset == 415 {
@@ -1830,8 +1832,9 @@ impl ZMachineCodeGen {
             // INSTRUMENT: What value are we actually passing to emit_word?
             if self.code_address >= 0x335 && self.code_address <= 0x340 {
                 eprintln!(
-                    "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
-                    self.code_address
+                    "CRITICAL: About to emit_word at 0x{:04x} with value 0x{:04x}",
+                    self.code_address,
+                    placeholder_word()
                 );
                 eprintln!("  But wait, let's check if this is actually being called...");
             }
@@ -2026,7 +2029,7 @@ impl ZMachineCodeGen {
         // Track branch placeholder location
         let branch_location = if let Some(offset) = branch_offset {
             let loc = self.code_address;
-            log::debug!("BRANCH_PLACEHOLDER: Emitting 0xFFFF at code_address=0x{:04x} for branch (passed offset={:?})", loc, offset);
+            log::debug!("BRANCH_PLACEHOLDER: Emitting 0x{:04x} at code_address=0x{:04x} for branch (passed offset={:?})", placeholder_word(), loc, offset);
 
             // CRITICAL CHECK: Make sure we're not accidentally using the offset value as the placeholder
             if offset == 415 {
@@ -2036,8 +2039,9 @@ impl ZMachineCodeGen {
             // INSTRUMENT: What value are we actually passing to emit_word?
             if self.code_address >= 0x335 && self.code_address <= 0x340 {
                 eprintln!(
-                    "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
-                    self.code_address
+                    "CRITICAL: About to emit_word at 0x{:04x} with value 0x{:04x}",
+                    self.code_address,
+                    placeholder_word()
                 );
                 eprintln!("  But wait, let's check if this is actually being called...");
             }
@@ -2185,7 +2189,7 @@ impl ZMachineCodeGen {
         // Track branch placeholder location
         let branch_location = if let Some(offset) = branch_offset {
             let loc = self.code_address;
-            log::debug!("BRANCH_PLACEHOLDER: Emitting 0xFFFF at code_address=0x{:04x} for branch (passed offset={:?})", loc, offset);
+            log::debug!("BRANCH_PLACEHOLDER: Emitting 0x{:04x} at code_address=0x{:04x} for branch (passed offset={:?})", placeholder_word(), loc, offset);
 
             // CRITICAL CHECK: Make sure we're not accidentally using the offset value as the placeholder
             if offset == 415 {
@@ -2195,8 +2199,9 @@ impl ZMachineCodeGen {
             // INSTRUMENT: What value are we actually passing to emit_word?
             if self.code_address >= 0x335 && self.code_address <= 0x340 {
                 eprintln!(
-                    "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
-                    self.code_address
+                    "CRITICAL: About to emit_word at 0x{:04x} with value 0x{:04x}",
+                    self.code_address,
+                    placeholder_word()
                 );
                 eprintln!("  But wait, let's check if this is actually being called...");
             }
@@ -2234,13 +2239,13 @@ impl ZMachineCodeGen {
                 // 2. emit_instruction receives operands=[Variable(0), LargeConstant(1)]
                 // 3. adapt_operand_for_long_form sees LargeConstant(1) and incorrectly thinks
                 //    "maybe this 1 is actually unresolved IR ID 1"
-                // 4. Attempts to resolve IR ID 1 → gets function address → emits 0xFFFF placeholder
+                // 4. Attempts to resolve IR ID 1 → gets function address → emits placeholder
                 // 5. Result: je instruction gets 0xFF 0xFF instead of correct operands
                 //
                 // CONCLUSION: If an operand reaches this point, it's already fully resolved.
                 // Any remaining IR ID resolution should have happened earlier in the pipeline.
                 //
-                // REMOVED: try_resolve_ir_id_if_needed() call that caused LargeConstant(1) → 0xFFFF bug
+                // REMOVED: try_resolve_ir_id_if_needed() call that caused LargeConstant(1) → placeholder bug
 
                 if *value <= 255 {
                     // Convert to SmallConstant if it fits (only for resolved constants)
@@ -2369,15 +2374,6 @@ impl ZMachineCodeGen {
                 self.emit_byte(zmachine_var)?;
             }
             Operand::LargeConstant(value) => {
-                // Check if this is the problematic LargeConstant(1)
-                if *value == 1 && self.code_address >= 0x336 && self.code_address <= 0x340 {
-                    eprintln!(
-                        "CRITICAL: emit_operand emitting LargeConstant(1) at code_address=0x{:04x}",
-                        self.code_address
-                    );
-                    eprintln!("This should emit 0x00 0x01 but might be causing 0x01 0x9f");
-                    eprintln!("About to call emit_word(0x{:04x})", value);
-                }
                 self.emit_word(*value)?;
             }
             Operand::Constant(value) => {
@@ -2411,7 +2407,7 @@ impl ZMachineCodeGen {
 
         // Generate function call instruction with placeholder address
         let mut operands = Vec::new();
-        operands.push(Operand::LargeConstant(0xFFFF)); // Placeholder for function address
+        operands.push(Operand::LargeConstant(placeholder_word())); // Placeholder for function address
 
         // Add arguments
         for &arg_id in args {
