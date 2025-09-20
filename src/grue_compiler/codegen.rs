@@ -162,11 +162,12 @@ pub struct UnresolvedReference {
 /// Legacy reference types for the old unified memory system
 #[derive(Debug, Clone, PartialEq)]
 pub enum LegacyReferenceType {
-    Jump,         // Unconditional jump to label
-    Branch,       // Conditional branch to label
-    Label(IrId),  // Reference to label
-    FunctionCall, // Call to function address
-    StringRef,    // Reference to string address
+    Jump,                               // Unconditional jump to label
+    Branch,                             // Conditional branch to label
+    Label(IrId),                        // Reference to label
+    FunctionCall,                       // Call to function address
+    StringRef,                          // Reference to string address
+    StaticBranch { skip_bytes: usize }, // Static calculated branch offset
 }
 
 /// Reference context for tracking what needs resolution
@@ -536,11 +537,13 @@ impl ZMachineCodeGen {
         self.main_loop_unknown_command_id = Some(unknown_command_id);
         self.encode_all_strings()?;
         log::info!(" Phase 1 complete: Content analysis and string encoding finished");
+        self.detect_phase_patterns("Phase 1");
 
         // Phase 2: Generate ALL Z-Machine sections to separated working spaces
         log::info!("🏗️ Phase 2: Generate ALL Z-Machine sections to separated memory spaces");
         self.generate_all_zmachine_sections(&ir)?;
         log::info!(" Phase 2 complete: All Z-Machine sections generated");
+        self.detect_phase_patterns("Phase 2");
 
         // DEBUG: Show space population before final assembly
         self.debug_space_population();
@@ -549,6 +552,7 @@ impl ZMachineCodeGen {
         log::info!(" Phase 3: Calculate comprehensive layout and assemble complete image");
         let mut final_game_image = self.assemble_complete_zmachine_image(&ir)?;
         log::info!(" Phase 3 complete: Final Z-Machine image assembled");
+        self.detect_phase_patterns("Phase 3");
 
         // Phase 4: Reinitialize input buffers (after all resizes are complete)
         log::debug!(" Phase 4: Reinitializing input buffers");
@@ -1055,6 +1059,7 @@ impl ZMachineCodeGen {
                 code_size,
                 code_base
             );
+            self.detect_phase_patterns("Phase 3d - AFTER code_space copy");
             log::debug!(
                 " CODE_COPY_VERIFY: Final data at code_base first 10 bytes: {:?}",
                 &self.final_data[code_base..code_base + std::cmp::min(10, code_size)]
@@ -1095,11 +1100,15 @@ impl ZMachineCodeGen {
 
         // Phase 3e.6: CENTRALIZED IR MAPPING - Consolidate ALL IR ID types
         log::debug!(" Step 3e.6: Consolidating ALL IR ID mappings (functions, strings, labels)");
+        self.detect_phase_patterns("Phase 3e.6 - BEFORE consolidate_all_ir_mappings");
         self.consolidate_all_ir_mappings();
+        self.detect_phase_patterns("Phase 3e.6 - AFTER consolidate_all_ir_mappings");
 
         // Phase 3f: Resolve all address references
         log::debug!(" Step 3f: Resolving all address references and fixups");
+        self.detect_phase_patterns("Phase 3f - BEFORE resolve_all_addresses");
         self.resolve_all_addresses()?;
+        self.detect_phase_patterns("Phase 3f - AFTER resolve_all_addresses");
 
         // Phase 3g: Finalize file metadata (length and checksum - must be last)
         // This phase calculates and writes file length and checksum.
@@ -1126,6 +1135,10 @@ impl ZMachineCodeGen {
 
         // Phase 1: Process unresolved references (modern system)
         let unresolved_count = self.reference_context.unresolved_refs.len();
+        eprintln!(
+            "🔍 RESOLVE_START: Starting with {} unresolved references in list",
+            unresolved_count
+        );
         log::info!("📋 Processing {} unresolved references", unresolved_count);
 
         // DEBUG: List all unresolved references
@@ -1170,44 +1183,6 @@ impl ZMachineCodeGen {
                 adjusted_reference.target_id,
                 adjusted_reference.reference_type
             );
-
-            // DEBUG: Track specific addresses that are problematic - EXACT CRASH LOCATION
-            if adjusted_reference.location >= 0x1220 && adjusted_reference.location <= 0x1230 {
-                log::error!(
-                    "🚨 EXACT CRASH LOCATION: Processing reference at PC 0x{:04x} (near crash location!)",
-                    adjusted_reference.location
-                );
-                log::error!("  Target ID: {}", adjusted_reference.target_id);
-                log::error!("  Type: {:?}", adjusted_reference.reference_type);
-                log::error!("  Is packed: {}", adjusted_reference.is_packed_address);
-                log::error!("  Offset size: {:?}", adjusted_reference.offset_size);
-
-                // CHECK: Is this target ID in our mapping table?
-                if let Some(&mapped_address) = self
-                    .reference_context
-                    .ir_id_to_address
-                    .get(&adjusted_reference.target_id)
-                {
-                    log::error!(
-                        "  ✅ Target ID {} FOUND in ir_id_to_address -> 0x{:04x}",
-                        adjusted_reference.target_id,
-                        mapped_address
-                    );
-                } else {
-                    log::error!(
-                        "  ❌ Target ID {} NOT FOUND in ir_id_to_address table!",
-                        adjusted_reference.target_id
-                    );
-                    log::error!(
-                        "  Available IDs: {:?}",
-                        self.reference_context
-                            .ir_id_to_address
-                            .keys()
-                            .take(20)
-                            .collect::<Vec<_>>()
-                    );
-                }
-            }
 
             // Try to resolve the reference
             match self.resolve_unresolved_reference(&adjusted_reference) {
@@ -1750,6 +1725,29 @@ impl ZMachineCodeGen {
                         label_id
                     )));
                 }
+            }
+
+            LegacyReferenceType::StaticBranch { skip_bytes } => {
+                // Handle static calculated branch offsets
+                log::debug!(
+                    "STATIC_BRANCH: Resolving static branch at location 0x{:04x} to skip {} bytes",
+                    reference.location,
+                    skip_bytes
+                );
+
+                // Calculate branch offset: target address - branch instruction end
+                // The location points to the 2-byte branch offset field within the instruction
+                let branch_instruction_start = reference.location - 2; // Back to start of branch instruction
+                let branch_instruction_end = reference.location + 2; // After the 2-byte offset field
+                let target_address = branch_instruction_end + skip_bytes;
+                let branch_offset = (target_address as i32 - branch_instruction_end as i32) as i16;
+
+                log::debug!(
+                    "STATIC_BRANCH_CALC: instr_start=0x{:04x}, instr_end=0x{:04x}, target=0x{:04x}, offset={}",
+                    branch_instruction_start, branch_instruction_end, target_address, branch_offset
+                );
+
+                return self.patch_branch_offset(reference.location, target_address);
             }
         };
 
@@ -9155,6 +9153,35 @@ impl ZMachineCodeGen {
 
     // PLACEHOLDER: Instruction emission functions moved to codegen_instructions.rs module
     // This comment preserves the section organization while the functions are now extracted
+
+    /// Phase-by-phase pattern detection for debugging
+    fn detect_phase_patterns(&self, _phase_name: &str) {
+        // Check code_space for patterns
+        let mut code_patterns = 0;
+        for i in 0..self.code_space.len().saturating_sub(1) {
+            if self.code_space[i] == 0xFF && self.code_space[i + 1] == 0xFF {
+                code_patterns += 1;
+            }
+        }
+
+        // Check final_data for patterns (if it exists and has data)
+        let mut final_patterns = 0;
+        if !self.final_data.is_empty() {
+            for i in 0..self.final_data.len().saturating_sub(1) {
+                if self.final_data[i] == 0xFF && self.final_data[i + 1] == 0xFF {
+                    final_patterns += 1;
+                }
+            }
+        }
+
+        if code_patterns > 0 || final_patterns > 0 {
+            eprintln!(
+                "    code_space size: {}, final_data size: {}",
+                self.code_space.len(),
+                self.final_data.len()
+            );
+        }
+    }
 }
 
 #[cfg(test)]

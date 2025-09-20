@@ -835,7 +835,7 @@ impl ZMachineCodeGen {
         let max_elements = 32u16; // Maximum supported child objects
         let actual_array_data_size = 2 + (max_elements as usize * 2); // length + elements
         let total_skip = actual_array_data_size + store_instruction_size;
-        let branch_offset = total_skip - branch_instruction_size;
+        let _branch_offset = total_skip - branch_instruction_size; // Not used anymore - calculated in resolution
 
         // Emit always-true conditional branch to skip over array data during execution
         // This prevents the array data from being executed as Z-Machine instructions
@@ -843,8 +843,26 @@ impl ZMachineCodeGen {
             0x51, // je (2OP:17) - test equality, branch if true
             &[Operand::SmallConstant(1), Operand::SmallConstant(1)], // 1 == 1 (always true)
             None,
-            Some(branch_offset as i16), // Branch forward over array data
+            Some(-1), // Placeholder - will be resolved by StaticBranch
         )?;
+
+        // Create UnresolvedReference for the static branch offset
+        let branch_location = self.current_address() - 2; // Location of the 2-byte branch offset
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::StaticBranch {
+                    skip_bytes: total_skip,
+                },
+                location: branch_location,
+                target_id: 0, // Not used for static branches
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
+
+        log::debug!("get_object_contents: Added StaticBranch UnresolvedReference at location 0x{:04x} to skip {} bytes",
+                   branch_location, total_skip);
 
         // Allocate array data in memory (execution will jump over this)
         let array_data_start = self.current_address();

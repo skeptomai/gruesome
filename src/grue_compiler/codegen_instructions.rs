@@ -1,7 +1,8 @@
 // Import placeholder_word for consistent placeholder handling throughout the codebase
 use crate::grue_compiler::codegen::{placeholder_word, ConstantValue, ZMachineCodeGen};
 use crate::grue_compiler::codegen::{
-    InstructionForm, InstructionLayout, Operand, OperandType, UNIMPLEMENTED_OPCODE,
+    InstructionForm, InstructionLayout, LegacyReferenceType, MemorySpace, Operand, OperandType,
+    UnresolvedReference, UNIMPLEMENTED_OPCODE,
 };
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::{IrInstruction, IrValue};
@@ -436,18 +437,37 @@ impl ZMachineCodeGen {
                     let branch_instruction_size = 4;
                     let store_instruction_size = 3; // store instruction with large constant
                     let total_skip = array_data_size + store_instruction_size;
-                    let branch_offset = total_skip - branch_instruction_size; // From after branch to after array+store
+                    let _branch_offset = total_skip - branch_instruction_size; // Not used anymore - calculated in resolution
 
+                    // Emit branch instruction with placeholder - will be resolved later
                     self.emit_instruction(
                         0x51,                                                    // je (2OP:17)
                         &[Operand::SmallConstant(1), Operand::SmallConstant(1)], // Always true: 1 == 1
                         None,
-                        Some(branch_offset as i16), // Branch forward by array_data_size
+                        Some(-1), // Placeholder - will be resolved by StaticBranch
                     )?;
 
+                    // Create UnresolvedReference for the static branch offset
+                    let branch_location = self.current_address() - 2; // Location of the 2-byte branch offset
+                    self.reference_context
+                        .unresolved_refs
+                        .push(UnresolvedReference {
+                            reference_type: LegacyReferenceType::StaticBranch {
+                                skip_bytes: total_skip,
+                            },
+                            location: branch_location,
+                            target_id: 0, // Not used for static branches
+                            is_packed_address: false,
+                            offset_size: 2,
+                            location_space: MemorySpace::Code,
+                        });
+
+                    log::debug!("CreateArray: Added StaticBranch UnresolvedReference at location 0x{:04x} to skip {} bytes",
+                               branch_location, total_skip);
+
                     let current_addr = self.current_address();
-                    log::debug!("CreateArray: emitted conditional branch from 0x{:04x} branching +{} bytes (total_skip={}, branch_size={}), array data at 0x{:04x}",
-                                current_addr - branch_instruction_size, branch_offset, total_skip, branch_instruction_size, current_addr);
+                    log::debug!("CreateArray: emitted conditional branch from 0x{:04x} with placeholder (total_skip={}, branch_size={}), array data at 0x{:04x}",
+                                current_addr - branch_instruction_size, total_skip, branch_instruction_size, current_addr);
 
                     // NOW emit the array data (execution will jump over this)
                     // Emit array length header
@@ -1650,6 +1670,10 @@ impl ZMachineCodeGen {
             }
 
             // Emit placeholder word for branch offset - will be resolved later
+            eprintln!("🔍 DIRECT_CALL_INSTRUCTION: instruction form branch at 0x{:04x} - NO UnresolvedReference", self.code_address);
+
+            // All branch placeholders now go through UnresolvedReference system
+
             self.emit_word(placeholder_word())?;
         }
 
@@ -1715,6 +1739,10 @@ impl ZMachineCodeGen {
             }
 
             // Emit placeholder word for branch offset - will be resolved later
+            eprintln!("🔍 DIRECT_CALL_INSTRUCTION: instruction form branch at 0x{:04x} - NO UnresolvedReference", self.code_address);
+
+            // All branch placeholders now go through UnresolvedReference system
+
             self.emit_word(placeholder_word())?;
         }
 
@@ -1743,10 +1771,6 @@ impl ZMachineCodeGen {
         }
         // Track short form emission at 0x338-0x339
         if self.code_address >= 0x337 && self.code_address <= 0x33a {
-            eprintln!(
-                "emit_short_form_with_layout at code_address=0x{:04x}",
-                self.code_address
-            );
             eprintln!("  opcode=0x{:02x}", opcode);
             eprintln!("  operands={:?}", operands);
             eprintln!("  store_var={:?}", store_var);
@@ -1825,6 +1849,10 @@ impl ZMachineCodeGen {
             }
 
             // Emit placeholder word for branch offset - will be resolved later
+            eprintln!("🔍 DIRECT_CALL_INSTRUCTION: instruction form branch at 0x{:04x} - NO UnresolvedReference", self.code_address);
+
+            // All branch placeholders now go through UnresolvedReference system
+
             self.emit_word(placeholder_word())?;
             Some(loc)
         } else {
@@ -1911,6 +1939,10 @@ impl ZMachineCodeGen {
             }
 
             // Emit placeholder word for branch offset - will be resolved later
+            eprintln!("🔍 DIRECT_CALL_INSTRUCTION: instruction form branch at 0x{:04x} - NO UnresolvedReference", self.code_address);
+
+            // All branch placeholders now go through UnresolvedReference system
+
             self.emit_word(placeholder_word())?;
         }
 
@@ -2032,6 +2064,10 @@ impl ZMachineCodeGen {
             }
 
             // Emit placeholder word for branch offset - will be resolved later
+            eprintln!("🔍 DIRECT_CALL_INSTRUCTION: instruction form branch at 0x{:04x} - NO UnresolvedReference", self.code_address);
+
+            // All branch placeholders now go through UnresolvedReference system
+
             self.emit_word(placeholder_word())?;
             Some(loc)
         } else {
@@ -2061,11 +2097,6 @@ impl ZMachineCodeGen {
     ) -> Result<InstructionLayout, CompilerError> {
         // CRITICAL CHECK: Are we emitting an instruction with operand 415?
         if self.code_address >= 0x334 && self.code_address <= 0x340 {
-            eprintln!(
-                "emit_long_form_with_layout at 0x{:04x}: opcode=0x{:02x}, operands={:?}",
-                self.code_address, opcode, operands
-            );
-
             for (i, op) in operands.iter().enumerate() {
                 match op {
                     Operand::LargeConstant(415) | Operand::Constant(415) => {
@@ -2192,6 +2223,10 @@ impl ZMachineCodeGen {
             }
 
             // Emit placeholder word for branch offset - will be resolved later
+            eprintln!("🔍 DIRECT_CALL_INSTRUCTION: instruction form branch at 0x{:04x} - NO UnresolvedReference", self.code_address);
+
+            // All branch placeholders now go through UnresolvedReference system
+
             self.emit_word(placeholder_word())?;
             Some(loc)
         } else {
@@ -2298,12 +2333,7 @@ impl ZMachineCodeGen {
     /// Emit a single operand
     fn emit_operand(&mut self, operand: &Operand) -> Result<(), CompilerError> {
         // CRITICAL CHECK
-        if self.code_address >= 0x336 && self.code_address <= 0x33a {
-            eprintln!(
-                "emit_operand at code_address=0x{:04x}: operand={:?}",
-                self.code_address, operand
-            );
-        }
+        if self.code_address >= 0x336 && self.code_address <= 0x33a {}
 
         match operand {
             Operand::SmallConstant(value) => {
@@ -2355,6 +2385,7 @@ impl ZMachineCodeGen {
                 self.emit_byte(zmachine_var)?;
             }
             Operand::LargeConstant(value) => {
+                if *value == 0xFFFF {}
                 self.emit_word(*value)?;
             }
             Operand::Constant(value) => {
@@ -2362,6 +2393,12 @@ impl ZMachineCodeGen {
                 if *value <= 255 {
                     self.emit_byte(*value as u8)?;
                 } else {
+                    if *value == 0xFFFF {
+                        eprintln!(
+                            "🔍 CONSTANT_PLACEHOLDER: Constant(0xFFFF) emitted at 0x{:04x}",
+                            self.code_address
+                        );
+                    }
                     self.emit_word(*value)?;
                 }
             }
