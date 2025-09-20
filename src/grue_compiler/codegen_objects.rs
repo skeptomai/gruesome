@@ -38,12 +38,6 @@ impl ZMachineCodeGen {
             self.object_space.resize(offset + 1, 0);
         }
 
-        log::debug!(
-            "📝 OBJECT_SPACE: Write 0x{:02x} at offset 0x{:04x} (space size: {})",
-            byte,
-            offset,
-            self.object_space.len()
-        );
         self.object_space[offset] = byte;
         Ok(())
     }

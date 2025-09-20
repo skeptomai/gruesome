@@ -1270,58 +1270,6 @@ impl ZMachineCodeGen {
         store_var: Option<u8>,
         branch_offset: Option<i16>,
     ) -> Result<InstructionLayout, CompilerError> {
-        // TEMPORARY DEBUG: Trace jl with specific operands
-        if opcode == 0x02 {
-            log::error!("JL INSTRUCTION: emit_instruction called with opcode 0x02 (jl) at code_address=0x{:04x}", self.code_address);
-            log::error!("  Operands: {:?}", operands);
-            log::error!("  branch_offset={:?}", branch_offset);
-
-            // Check if any operand contains 415
-            for (i, op) in operands.iter().enumerate() {
-                match op {
-                    Operand::SmallConstant(v) if *v == 159 => {
-                        eprintln!(
-                            "WARNING: Operand {} is SmallConstant(159) - part of 415!",
-                            i
-                        );
-                    }
-                    Operand::LargeConstant(v) if *v == 415 => {
-                        eprintln!(
-                            "BUG FOUND: Operand {} is LargeConstant(415) - label ID as operand!",
-                            i
-                        );
-                        panic!("Label ID 415 being used as operand!");
-                    }
-                    Operand::Constant(v) if *v == 415 => {
-                        eprintln!(
-                            "BUG FOUND: Operand {} is Constant(415) - label ID as operand!",
-                            i
-                        );
-                        panic!("Label ID 415 being used as operand!");
-                    }
-                    _ => {}
-                }
-            }
-            if operands.len() == 2 {
-                if let (Operand::SmallConstant(13), Operand::SmallConstant(0)) =
-                    (&operands[0], &operands[1])
-                {
-                    log::error!("  *** THIS IS THE JL(13,0) WE'RE LOOKING FOR!");
-                }
-            }
-            if let Some(offset) = branch_offset {
-                log::error!(
-                    "  Branch offset value: {} (0x{:04x})",
-                    offset,
-                    offset as u16
-                );
-                if offset == 415 || (offset as u16) == 0x019f {
-                    panic!(
-                        "CRITICAL: Branch offset is 415 - the label ID is leaking into bytecode!"
-                    );
-                }
-            }
-        }
         let start_address = self.code_address;
 
         // Comprehensive PC/address tracking for all instructions
@@ -1717,8 +1665,8 @@ impl ZMachineCodeGen {
                 }
             }
 
-            // Always emit 2-byte placeholder for branches to be resolved later
-            self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+            // Emit placeholder word for branch offset - will be resolved later
+            self.emit_word(placeholder_word())?;
         }
 
         Ok(())
@@ -1779,8 +1727,8 @@ impl ZMachineCodeGen {
                 }
             }
 
-            // Always emit 2-byte placeholder for branches to be resolved later
-            self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+            // Emit placeholder word for branch offset - will be resolved later
+            self.emit_word(placeholder_word())?;
         }
 
         Ok(())
@@ -1888,8 +1836,8 @@ impl ZMachineCodeGen {
                 eprintln!("  But wait, let's check if this is actually being called...");
             }
 
-            // Always emit 2-byte placeholder for branches to be resolved later
-            self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+            // Emit placeholder word for branch offset - will be resolved later
+            self.emit_word(placeholder_word())?;
             Some(loc)
         } else {
             None
@@ -1974,8 +1922,8 @@ impl ZMachineCodeGen {
                 }
             }
 
-            // Always emit 2-byte placeholder for branches to be resolved later
-            self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+            // Emit placeholder word for branch offset - will be resolved later
+            self.emit_word(placeholder_word())?;
         }
 
         Ok(())
@@ -2094,8 +2042,8 @@ impl ZMachineCodeGen {
                 eprintln!("  But wait, let's check if this is actually being called...");
             }
 
-            // Always emit 2-byte placeholder for branches to be resolved later
-            self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+            // Emit placeholder word for branch offset - will be resolved later
+            self.emit_word(placeholder_word())?;
             Some(loc)
         } else {
             None
@@ -2253,8 +2201,8 @@ impl ZMachineCodeGen {
                 eprintln!("  But wait, let's check if this is actually being called...");
             }
 
-            // Always emit 2-byte placeholder for branches to be resolved later
-            self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+            // Emit placeholder word for branch offset - will be resolved later
+            self.emit_word(placeholder_word())?;
             Some(loc)
         } else {
             None
@@ -2409,8 +2357,15 @@ impl ZMachineCodeGen {
                     value,
                     zmachine_var
                 );
-                log::trace!(" VARIABLE_EMIT: About to emit Variable({}) as zmachine_var=0x{:02x} at addr=0x{:04x}", 
+                log::trace!(" VARIABLE_EMIT: About to emit Variable({}) as zmachine_var=0x{:02x} at addr=0x{:04x}",
                            value, zmachine_var, self.final_code_base + self.code_address);
+
+                // CRITICAL DEBUG: Track Variable(125) encoding specifically
+                if *value == 125 {
+                    eprintln!("🔍 CRITICAL_VAR125_EMIT: Variable(125) -> 0x{:02x} at code_address=0x{:04x} (final: 0x{:04x})",
+                              zmachine_var, self.code_address, self.final_code_base + self.code_address);
+                }
+
                 self.emit_byte(zmachine_var)?;
             }
             Operand::LargeConstant(value) => {
