@@ -17,15 +17,6 @@ impl ZMachineCodeGen {
         debug!("Generate instruction called: {:?}", instruction);
 
         // Track all branch and jump instructions
-        match instruction {
-            IrInstruction::Branch { .. } | IrInstruction::Jump { .. } => {
-                eprintln!(
-                    "CONTROL FLOW at 0x{:04x}: {:?}",
-                    self.code_address, instruction
-                );
-            }
-            _ => {}
-        }
 
         // Store initial code address to detect if label should be processed
         let code_address_before = self.code_address;
@@ -274,12 +265,6 @@ impl ZMachineCodeGen {
 
             IrInstruction::Jump { label } => {
                 // Track Jump instructions near problem area
-                if self.code_address >= 0x330 && self.code_address <= 0x340 {
-                    eprintln!(
-                        "IR JUMP INSTRUCTION at code_address=0x{:04x}, jumping to label {}",
-                        self.code_address, label
-                    );
-                }
                 // Generate a proper jump instruction with correct unresolved reference
                 // This delegates to translate_jump which handles the Z-Machine jump encoding
                 self.translate_jump(*label)?;
@@ -2366,10 +2351,6 @@ impl ZMachineCodeGen {
                            value, zmachine_var, self.final_code_base + self.code_address);
 
                 // CRITICAL DEBUG: Track Variable(125) encoding specifically
-                if *value == 125 {
-                    eprintln!("🔍 CRITICAL_VAR125_EMIT: Variable(125) -> 0x{:02x} at code_address=0x{:04x} (final: 0x{:04x})",
-                              zmachine_var, self.code_address, self.final_code_base + self.code_address);
-                }
 
                 self.emit_byte(zmachine_var)?;
             }

@@ -2557,17 +2557,6 @@ impl ZMachineCodeGen {
         log::debug!("translate_jump: label={}", label);
 
         // Track jumps near problem area
-        if self.code_address >= 0x330 && self.code_address <= 0x340 {
-            eprintln!(
-                "CRITICAL: translate_jump at code_address=0x{:04x}, jumping to label {}",
-                self.code_address, label
-            );
-            eprintln!(
-                "  This jump will emit at 0x{:04x}-0x{:04x}",
-                self.code_address,
-                self.code_address + 2
-            );
-        }
 
         // OPTIMIZATION: Check if jump target is the immediately next instruction
         if self.is_next_instruction(label) {
@@ -8725,22 +8714,7 @@ impl ZMachineCodeGen {
 
     pub fn emit_byte(&mut self, byte: u8) -> Result<(), CompilerError> {
         // CRITICAL: Check for problematic bytes being written
-        let code_offset = self.code_space.len();
-        if code_offset >= 0x333 && code_offset <= 0x338 {
-            eprintln!(
-                "DEBUG: Writing 0x{:02x} at code space offset 0x{:04x}",
-                byte, code_offset
-            );
-        }
-        if code_offset == 0x335 && byte == 0x01 {
-            eprintln!("WARNING: Writing 0x01 at code space offset 0x335 - first byte of 415!");
-        }
-        if code_offset == 0x336 && byte == 0x9f {
-            eprintln!("FOUND THE BUG: Writing 0x9f at code space offset 0x336!");
-            eprintln!("Together with previous byte, this forms 0x019f = 415 decimal");
-            eprintln!("This is a label ID being written as branch bytes!");
-            panic!("BUG DETECTED: Label ID 415 written as branch bytes");
-        }
+        let _code_offset = self.code_space.len();
 
         // Clear labels at current address when we emit actual instruction bytes
         // (but not for padding or alignment bytes)
@@ -8871,12 +8845,6 @@ impl ZMachineCodeGen {
         } else {
             // Code generation phase: write to code_space
             // CRITICAL DEBUG: Track 0x7D writes to code_space
-            if byte == 0x7D {
-                eprintln!(
-                    "🔍 CRITICAL_0x7D_CODE: Writing 0x7D to code_space[0x{:04x}]",
-                    code_offset
-                );
-            }
             self.code_space[code_offset] = byte;
         }
 
