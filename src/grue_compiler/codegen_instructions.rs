@@ -329,7 +329,12 @@ impl ZMachineCodeGen {
                 if let Some(var_num) = self.ir_id_to_local_var.get(var_id).copied() {
                     // Store to local variable using 2OP:13 store instruction
                     let var_operand = Operand::SmallConstant(var_num);
-                    self.emit_instruction(0x0D, &[var_operand, value_operand], None, None)?;
+                    self.emit_instruction_to_code_space(
+                        0x0D,
+                        &[var_operand, value_operand],
+                        None,
+                        None,
+                    )?;
                     log::debug!(
                         "StoreVar: IR ID {} stored to local variable {} from IR ID {}",
                         var_id,
@@ -340,7 +345,12 @@ impl ZMachineCodeGen {
                     // CRITICAL FIX: Store to global variable G00 (Variable 16) for player object
                     // This handles runtime initialization of the player global variable
                     let global_var_operand = Operand::SmallConstant(16); // Variable 16 = Global G00
-                    self.emit_instruction(0x0D, &[global_var_operand, value_operand], None, None)?;
+                    self.emit_instruction_to_code_space(
+                        0x0D,
+                        &[global_var_operand, value_operand],
+                        None,
+                        None,
+                    )?;
                     log::debug!(
                         "StoreVar: IR ID {} stored to global Variable(16) from IR ID {} [Player Global Init]",
                         var_id, source
@@ -348,7 +358,12 @@ impl ZMachineCodeGen {
                 } else {
                     // Store to stack (variable 0) using 2OP:13 store instruction
                     let stack_operand = Operand::SmallConstant(0);
-                    self.emit_instruction(0x0D, &[stack_operand, value_operand], None, None)?;
+                    self.emit_instruction_to_code_space(
+                        0x0D,
+                        &[stack_operand, value_operand],
+                        None,
+                        None,
+                    )?;
                     self.ir_id_to_stack_var.insert(*var_id, 0);
                     log::debug!(
                         "StoreVar: IR ID {} stored to stack from IR ID {}",
@@ -1451,6 +1466,44 @@ impl ZMachineCodeGen {
 
         // Track stack operations for debugging
         self.track_stack_operation(opcode, operands, actual_store_var);
+
+        Ok(layout)
+    }
+
+    /// Emit instruction to code space regardless of current compilation phase
+    /// This is the core method for the dual-pointer architecture that ensures
+    /// all instructions land in code space even during property generation
+    pub fn emit_instruction_to_code_space(
+        &mut self,
+        opcode: u8,
+        operands: &[Operand],
+        store_var: Option<u8>,
+        branch_offset: Option<i16>,
+    ) -> Result<InstructionLayout, CompilerError> {
+        // Save current context (property space position)
+        let saved_address = self.code_address;
+
+        // Switch to code space for instruction emission
+        self.code_address = self.code_space_position;
+
+        log::debug!(
+            "DUAL_POINTER: Switching from address 0x{:04x} to code_space_position 0x{:04x} for instruction emission",
+            saved_address, self.code_space_position
+        );
+
+        // Emit instruction using existing logic (updates self.code_address)
+        let layout = self.emit_instruction(opcode, operands, store_var, branch_offset)?;
+
+        // Update code space position with new address
+        self.code_space_position = self.code_address;
+
+        log::debug!(
+            "DUAL_POINTER: Code space position updated to 0x{:04x}",
+            self.code_space_position
+        );
+
+        // Restore original context (could be property or code space)
+        self.code_address = saved_address;
 
         Ok(layout)
     }

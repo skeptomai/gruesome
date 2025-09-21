@@ -463,6 +463,153 @@ $ frotz mini_zork.z3  # → ZORK I: The Great Underground Empire...
 
 This bug demonstrates the importance of understanding Z-Machine execution flow and validates our sequential generation approach once properly implemented.
 
+## Critical Bug Analysis: Instruction Displacement in Address Space Transitions
+
+### Problem Identified (September 2025)
+
+During debugging of mini_zork.z3 execution, we discovered a systematic instruction displacement bug that causes "Invalid Long form opcode 0x00" crashes at runtime address 0x0fc0.
+
+#### Root Cause Analysis
+
+**Issue**: Labels are correctly remapped from property space to code space, but the immediately following instructions are not relocated to match the remapped label addresses.
+
+**The Address Space Timing Problem**:
+
+```
+Address Space Transition Sequence:
+1. Property Generation Phase:
+   - Label 416 encountered at 0x04d9 (property space)
+   - Label 417 encountered at 0x04d9 (property space)
+   - StoreVar instruction should follow these labels
+
+2. Architectural Fix (Address-Based Detection):
+   - Detects 0x04d9 < code_space_base_address (property space)
+   - Maps Label 416 → 0x0076 (code space)
+   - Maps Label 417 → 0x0076 (code space)
+
+3. Instruction Emission:
+   - StoreVar instruction emitted at ORIGINAL address 0x04d9 (property space)
+   - Labels now point to REMAPPED address 0x0076 (code space → 0x0fc0 after translation)
+
+4. Runtime Execution:
+   - Branch instruction correctly targets 0x0fc0 (where labels point)
+   - Address 0x0fc0 contains 0x00 (uninitialized memory)
+   - StoreVar instruction exists at 0x04d9 (where it was emitted)
+   - Result: "Invalid Long form opcode 0x00" crash
+```
+
+#### Evidence from Debug Analysis
+
+**Label Mapping (Working Correctly)**:
+```
+DEBUG: ARCHITECTURAL_FIX: Mapping property space address 0x04d9 to code space address 0x0076
+INFO: CENTRAL_IR_MAPPING: IR ID 416 -> 0x0076 [FINAL ADDRESS]
+INFO: CENTRAL_IR_MAPPING: IR ID 417 -> 0x0076 [FINAL ADDRESS]
+```
+
+**Instruction Emission (Problem Location)**:
+```
+DEBUG: StoreVar instruction emitted at PC=0x04d9 (property space)
+DEBUG: DEFERRED_LABEL_AFTER: Processing pending label 416 at instruction_start=0x0076
+```
+
+**Branch Resolution (Working Correctly)**:
+```
+DEBUG: Branch resolution: target_address=0x0fc0
+DEBUG: patch_branch_offset: wrote 0xbc 0x47 at location 0x1379
+```
+
+**Runtime Crash**:
+```
+xxd -s 0x0fc0 -l 16 /tmp/debug_examine.z3
+00000fc0: 0051 010d 0068 1c1f 0061 181a bf84 411d
+          ^^-- 0x00 byte causing "Invalid Long form opcode" crash
+```
+
+#### Why Simple Cases Work vs Complex Cases Fail
+
+**Simple conditional branches work** because:
+- Labels and instructions generated during same compilation phase
+- No address space boundary crossing occurs
+- Minimal reproduction case compiles and runs successfully
+
+**Complex examine function fails** because:
+- Property access operations trigger property generation phase
+- Labels created during property generation (property space addresses)
+- Architectural fix remaps labels to code space
+- Following StoreVar instruction still emitted at property space address
+- Creates disconnect: branch targets ≠ instruction locations
+
+#### Current Architectural Fix (Partial Solution)
+
+**Address-Based Label Detection**:
+```rust
+// CRITICAL ARCHITECTURAL FIX: Check address value directly instead of context
+let is_in_code_space = self.code_space_base_address > 0 &&
+                      code_address_before >= self.code_space_base_address;
+
+let label_address = if is_in_code_space {
+    // Address is already in code space - use it directly
+    code_address_before
+} else {
+    // Address is in property space - map to code space
+    let addr = self.next_code_space_address;
+    self.next_code_space_address += 2; // Reserve minimal space
+    addr
+};
+```
+
+**Missing Component**: When labels are remapped to code space, the immediately following instruction must also be relocated to the remapped address to maintain consistency between branch targets and instruction locations.
+
+#### Required Architectural Enhancement
+
+**Instruction Relocation Logic Needed**:
+
+The system needs to detect when:
+1. Labels are being remapped from property space to code space
+2. The next instruction that follows those labels also needs to be emitted at the remapped address
+3. Coordination between label mapping logic and instruction emission logic
+
+**Implementation Strategy**:
+```rust
+// When processing deferred labels that were remapped:
+if label_was_remapped_to_code_space {
+    // Ensure the following instruction is also emitted at the remapped address
+    // rather than the original property space address
+    self.relocate_current_instruction_to_remapped_address(remapped_address)?;
+}
+```
+
+#### Validation and Testing
+
+**Debugging Commands**:
+```bash
+# Check crash address content
+xxd -s 0x0fc0 -l 16 /tmp/debug_examine.z3
+
+# Trace label mapping
+env RUST_LOG=debug cargo run --bin grue-compiler -- examples/mini_zork.grue --output /tmp/debug.z3 2>&1 | grep -E "(416|417)"
+
+# Test minimal reproduction
+env RUST_LOG=error cargo run --bin grue-compiler -- examples/test_minimal_for.grue --output /tmp/test.z3
+```
+
+**Expected Fix Validation**:
+- Address 0x0fc0 should contain valid StoreVar instruction bytecode (0x0d...)
+- Branch instruction should successfully target executable code
+- examine() function should execute without "Invalid Long form opcode" crashes
+- Complex property access operations should work correctly
+
+#### Lessons Learned
+
+1. **Address space transitions require coordination** between label mapping and instruction emission
+2. **Architectural fixes must handle both labels and following instructions** as a unit
+3. **Property space vs code space timing** creates complex instruction displacement patterns
+4. **Simple test cases may not reveal** complex address space boundary issues
+5. **Systematic debugging requires** understanding the complete instruction emission pipeline
+
+This bug demonstrates the critical importance of maintaining consistency between where branch instructions point and where the target instructions actually exist in the compiled bytecode.
+
 ## Conclusion
 
 The Grue compiler's execution architecture successfully balances:

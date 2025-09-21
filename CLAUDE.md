@@ -1,89 +1,78 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (September 17, 2025) - UNIMPLEMENTED_OPCODE FIX ✅
+## CURRENT STATUS (September 20, 2025) - INSTRUCTION DISPLACEMENT BUG ⚠️
 
-**MAJOR SUCCESS**: Fixed critical UNIMPLEMENTED_OPCODE conflict that prevented jz instruction emission!
+**ARCHITECTURAL ISSUE IDENTIFIED**: Systematic instruction displacement causing 0x0fc0 crash in examine function!
 
-### ✅ LATEST MAJOR FIX (Session Sep 17, 2025):
+### 🎯 CURRENT CRITICAL ISSUE (Session Sep 20, 2025):
 
-**UNIMPLEMENTED_OPCODE Conflict Fix** - Root cause: Placeholder marker conflicted with valid Z-Machine opcode
-- **Problem**: UNIMPLEMENTED_OPCODE was 0x00, which is the valid opcode for jz (jump if zero) in 1OP form
-- **Fix**: Changed UNIMPLEMENTED_OPCODE from 0x00 to 0xFF (not a valid Z-Machine opcode)
-- **Impact**: All jz instructions were being rejected as "unimplemented", breaking non-comparison branches
-- **Result**: mini_zork now displays banner correctly and executes ~95% successfully
+**Instruction Displacement Bug** - Root cause: Label remapping doesn't relocate following instructions
+- **Problem**: Labels 416/417 correctly remapped from property space (0x04d9) to code space (0x0fc0)
+- **Issue**: Following StoreVar instruction emitted at original address (0x04d9) instead of remapped address (0x0fc0)
+- **Result**: Branch instruction targets 0x0fc0 but finds 0x00 (uninitialized memory) instead of the StoreVar instruction
+- **Impact**: "Invalid Long form opcode 0x00" crash at PC 0x0fc0 during examine function execution
 
-### 📊 IMPROVEMENTS - mini_zork Execution:
-- **Before Fix**: Crash at PC 0x1221, no proper conditional branches
-- **After Fix**: Game banner displays, executes to PC 0x12fc before object error
-- **Progress**: From ~90% execution to ~95% - only object 65534 error remains
-- **Code Quality**: Removed dead emit_branch_offset() function, improved placeholder consistency
+### 📊 PROGRESS STATUS - mini_zork Execution:
+- **Previous Status**: Successfully fixed 0x012a crash, moved to code space
+- **Current Status**: 0x0fc0 crash in examine function - labels mapped correctly but instructions displaced
+- **Root Cause**: Architectural fix handles label mapping but doesn't relocate immediately following instructions
+- **Execution**: Gets through banner, crashes on first examine() call
 
-### 🎯 REMAINING ISSUES (Documented for next session):
+### 🔍 TECHNICAL ANALYSIS:
 
-#### 1. **Object 65534 (0xFFFE) Error at PC 0x12fc** [IN PROGRESS]
-- Error: "invalid object 65534 > max 255"
-- Likely cause: Unresolved placeholder or incorrect object ID generation
-- Value 0xFFFE is -2 as signed 16-bit, might be placeholder bytes
-- Occurs when get_prop instruction tries to use stack value as object number
-- **Investigation Status**: Found value being popped from stack at PC 0x12fc, need to trace where it gets pushed
+**The Instruction Displacement Pattern**:
+1. **Label 416** encountered at property space address 0x04d9
+2. **LoadImmediate { target: 414, value: Integer(1) }** - doesn't emit bytecode
+3. **Label 417** at same address 0x04d9
+4. **StoreVar { var_id: 412, source: 414 }** - emits opcode 0x0d at original address 0x04d9
+5. **Architectural fix** maps labels 416/417 to code space address 0x0076 (→ 0x0fc0 after translation)
+6. **Branch instruction** correctly targets 0x0fc0, but StoreVar instruction is at 0x04d9
 
-#### 2. **Placeholder/Reference Audit Needed**
-- Found 26 UnresolvedReference creations in codegen.rs
-- Only 9 have clear placeholder emissions nearby
-- Need to verify all references have corresponding placeholders
-- Some might be relying on emit_instruction to handle placeholders
+**Confirmed Working Pattern**:
+- Simple conditional branches work correctly (tested with minimal reproduction case)
+- Issue specific to complex examine function with property access operations
+- Branch resolution logic works correctly - problem is instruction placement
 
-#### 3. **Code Pattern Inconsistencies**
-- Found places using hardcoded 0xFFFF instead of placeholder_word()
-- Fixed main instances but debug messages still have hardcoded values
-- Need systematic review of placeholder patterns
+### 🛠️ ARCHITECTURAL FIX NEEDED:
 
-#### 4. **Potential Dead Code**
-- Removed emit_branch_offset() which wasn't following placeholder/fixup pattern
-- May be other functions not following modern patterns
-- Need audit of unused or outdated functions
+**Current Fix**: Address-based label detection (code_address >= code_space_base_address)
+```rust
+// CRITICAL ARCHITECTURAL FIX: Check address value directly instead of context
+let is_in_code_space = self.code_space_base_address > 0 &&
+                      code_address_before >= self.code_space_base_address;
 
-### 🔍 KEY DEBUGGING PATTERNS (Session Sep 17, 2025):
-
-#### Useful Commands for Debugging:
-```bash
-# Check specific offset in compiled file
-xxd -s 0x127f -l 10 mini_zork.z3
-
-# Find where specific values appear
-xxd mini_zork.z3 | grep -E "ff fe|fe ff"
-
-# Trace execution with debug logging
-RUST_LOG=debug ./target/debug/gruesome mini_zork.z3 2>&1 | grep "PC=0x12fc"
-
-# Find placeholder patterns
-grep -r "emit_word(0xFFFF)" src/grue_compiler --include="*.rs" | grep -v ".bak"
-
-# Check for UnresolvedReference without placeholders
-grep -B 5 "UnresolvedReference {" src/grue_compiler/codegen.rs | grep -E "(emit_word|placeholder)"
+let label_address = if is_in_code_space {
+    code_address_before  // Use directly
+} else {
+    // Map to code space
+    let addr = self.next_code_space_address;
+    self.next_code_space_address += 2;
+    addr
+};
 ```
 
-#### Code Patterns to Watch:
-- **Correct**: `Operand::LargeConstant(placeholder_word())`
-- **Wrong**: `Operand::LargeConstant(0xFFFF)`
-- **Correct**: Create UnresolvedReference AFTER getting location from emit_instruction layout
-- **Wrong**: Calculate location manually before/after emission
+**Missing Component**: When labels are remapped to code space, the immediately following instruction must also be relocated to the remapped address to maintain consistency between branch targets and instruction locations.
 
 ### ✅ COMPLETED FIXES (All Sessions):
 1. **Branch System Fixed** - UnresolvedReference system for conditional branches
-2. **Object Mapping Fixed** - Unique Z-Machine object numbers  
+2. **Object Mapping Fixed** - Unique Z-Machine object numbers
 3. **IR ID Mapping Fixed** - Array instruction target registration
 4. **PC Calculation Fixed** - Unified calculation logic for all scenarios
 5. **UnresolvedReference Location Fixed** - Systematic reference resolution bug
 6. **Print Function Text Formatting Fixed** - Game banner displays with proper newlines
+7. **Address Space Separation Fixed** - Labels correctly assigned to code space using address-based detection
 
-### 📋 CRITICAL ARCHITECTURE DOCUMENTATION:
-- Created `COMPILER_ARCHITECTURE.md` documenting systematic bug patterns
-- **UnresolvedReference Pattern**: Location must be recorded BEFORE placeholder emission
-- **Branch Encoding Pattern**: Manual byte-by-byte encoding, not `emit_word()`
-- **Reference Type Pattern**: Jump vs Branch disambiguation rules
+### 📋 DEBUGGING COMMANDS:
+```bash
+# Check crash address content
+xxd -s 0x0fc0 -l 16 /tmp/debug_examine.z3
 
-**Current Status**: mini_zork compiler now generates functionally correct Z-Machine bytecode that executes ~90% successfully. Game banner displays properly with correct newlines, major systematic reference resolution working.
+# Trace label mapping
+env RUST_LOG=debug cargo run --bin grue-compiler -- examples/mini_zork.grue --output /tmp/debug.z3 2>&1 | grep -E "(416|417)"
+
+# Test minimal reproduction
+env RUST_LOG=error cargo run --bin grue-compiler -- examples/test_minimal_for.grue --output /tmp/test.z3
+```
 
 ## 🚨 CRITICAL: PRINT NEWLINE ARCHITECTURE - DO NOT BREAK AGAIN
 
@@ -144,6 +133,7 @@ When the user says any of the following:
 - "Send it"
 - "Commit and push"
 - "comment, commit, push"
+- "clean up, comment, commit"
 
 You should automatically:
 1. Add a descriptive comment to any recently modified code (if not already commented)
@@ -537,30 +527,7 @@ The interpreter correctly handles calls to address 0x0000 according to the Z-Mac
 - In `do_call()` function in interpreter.rs, there's a special check: `if packed_addr == 0`
 - When calling address 0, it returns 0 (false) without executing any code
 
-## Project Status Summary
-
-### Z-Machine Interpreter: Complete ✅
-- **v3 Games**: Fully playable (Zork I, Seastalker, The Lurking Horror)
-- **v4+ Games**: Fully playable (AMFV, Bureaucracy, Border Zone)
-- All opcodes, timers, sound effects, and display features implemented
-- Version-aware architecture with proper fallback handling
-
-### Grue Z-Machine Compiler: Complete ✅
-- **Full Pipeline**: Lexer → Parser → Semantic → IR → CodeGen
-- **Features**: String literals, function calls, control flow, object manipulation
-- **Testing**: 108 compiler tests passing, golden file validation working
-- **Built-in Functions**: `print()`, `move()`, `get_location()`
-- **Cross-Platform Builds**: All binaries available for macOS and Windows
-
-### Documentation & Quality
-- Comprehensive architecture documentation (13KB guide)
-- Zero clippy warnings, consistent formatting
-- Professional CI/CD with cross-platform releases
-- Enhanced testing infrastructure with pre-CI validation
-- Clean historical preservation system
-
-
-## Current Architecture Status
+## Project Architecture Status
 
 ### Z-Machine Interpreter: Complete ✅
 - **v3 Games**: Fully playable (Zork I, Seastalker, The Lurking Horror)
@@ -572,14 +539,18 @@ The interpreter correctly handles calls to address 0x0000 according to the Z-Mac
 - **Full Pipeline**: Lexer → Parser → Semantic → IR → CodeGen ✅
 - **V3 Support**: Production ready with comprehensive test coverage ✅
 - **V4/V5 Support**: Experimental - disabled in release builds due to known issues ⚠️
-- **Release Policy**: V4/V5 compilation blocked in release builds, available in debug only
-- **Test Organization**: V3 tests in CI, V4/V5 tests isolated in `tests/experimental/`
-- **Binary Behavior**: Release binaries reject V4/V5, debug builds allow with warnings
 - **Current Status**: V3 compilation stable and production-ready, V4/V5 development ongoing
+
+### Documentation & Quality
+- Comprehensive architecture documentation
+- Zero clippy warnings, consistent formatting
+- Professional CI/CD with cross-platform releases
+- Enhanced testing infrastructure with pre-CI validation
 
 ## Historical Documentation
 
 Development history and detailed implementation logs have been archived to `CLAUDE_HISTORICAL.md` for reference. This file is not automatically loaded but preserves all technical implementation details from the development process.
-- never give me percentages of completion and never give me time estimates to complete tasks
-- don't give percentages complete or percentage estimates for completion
-- we want to maintain determinism build over build. Use IndexSet and IndexMap rather than HashSet or HashMap. The Index versions have deterministic enumeration
+
+## Important Guidelines
+- Never give percentages of completion or time estimates to complete tasks
+- Use IndexSet and IndexMap rather than HashSet or HashMap for deterministic enumeration across builds

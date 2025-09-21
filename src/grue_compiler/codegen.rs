@@ -215,6 +215,10 @@ pub struct ZMachineCodeGen {
     pub code_space_base_address: usize, // Base address where code generation starts (e.g., 0x0f4a)
     pub next_code_space_address: usize, // Next available address in code space (independent of current phase)
 
+    // Dual-pointer architecture for phase-independent instruction emission
+    pub property_space_position: usize, // Current position in property generation
+    pub code_space_position: usize, // Current position for instruction emission (always code space)
+
     // Code generation state
     pub label_addresses: IndexMap<IrId, usize>, // IR label ID -> byte address
     string_addresses: IndexMap<IrId, usize>,    // IR string ID -> byte address
@@ -346,6 +350,8 @@ impl ZMachineCodeGen {
             compilation_context_stack: vec!["initial".to_string()], // Start with initial context
             code_space_base_address: 0, // Will be set when code generation starts
             next_code_space_address: 0, // Will be initialized with code_space_base_address
+            property_space_position: HEADER_SIZE, // Start after header for property generation
+            code_space_position: 0,     // Will be initialized when code space is established
             label_addresses: IndexMap::new(),
             string_addresses: IndexMap::new(),
             function_addresses: IndexMap::new(),
@@ -858,6 +864,7 @@ impl ZMachineCodeGen {
         if self.code_space_base_address == 0 {
             self.code_space_base_address = code_base;
             self.next_code_space_address = code_base;
+            self.code_space_position = code_base; // Initialize dual-pointer code space position
         }
         self.final_string_base = string_base;
         self.final_object_base = object_base;
