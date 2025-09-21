@@ -1483,18 +1483,18 @@ impl ZMachineCodeGen {
         // Save current context (property space position)
         let saved_address = self.code_address;
 
-        // Switch to code space for instruction emission
-        self.code_address = self.code_space_position;
+        // Switch to code space for instruction emission - use current end of code_space Vec
+        self.code_address = self.code_space.len();
 
         log::debug!(
-            "DUAL_POINTER: Switching from address 0x{:04x} to code_space_position 0x{:04x} for instruction emission",
-            saved_address, self.code_space_position
+            "DUAL_POINTER: Switching from address 0x{:04x} to code_space.len() 0x{:04x} for instruction emission",
+            saved_address, self.code_space.len()
         );
 
         // Emit instruction using existing logic (updates self.code_address)
         let layout = self.emit_instruction(opcode, operands, store_var, branch_offset)?;
 
-        // Update code space position with new address
+        // Update code space position to track current end of code_space Vec
         self.code_space_position = self.code_address;
 
         log::debug!(

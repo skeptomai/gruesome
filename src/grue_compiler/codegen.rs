@@ -351,7 +351,7 @@ impl ZMachineCodeGen {
             code_space_base_address: 0, // Will be set when code generation starts
             next_code_space_address: 0, // Will be initialized with code_space_base_address
             property_space_position: HEADER_SIZE, // Start after header for property generation
-            code_space_position: 0,     // Will be initialized when code space is established
+            code_space_position: 0, // Tracks current insertion point in code_space Vec (code_space.len())
             label_addresses: IndexMap::new(),
             string_addresses: IndexMap::new(),
             function_addresses: IndexMap::new(),
