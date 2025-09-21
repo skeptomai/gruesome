@@ -1,6 +1,7 @@
 // Utility functions extracted from codegen.rs for better maintainability
 // These functions provide debugging, analysis, and validation capabilities
 
+use crate::grue_compiler::codegen::PLACEHOLDER_BYTE;
 use crate::grue_compiler::ir::{IrInstruction, IrProgram};
 use crate::grue_compiler::CompilerError;
 use std::collections::HashMap;
@@ -224,7 +225,7 @@ impl AssemblyValidator {
         // Check for remaining placeholders
         let mut placeholder_count = 0;
         for (i, &byte) in final_data.iter().enumerate() {
-            if byte == 0xFF {
+            if byte == PLACEHOLDER_BYTE {
                 // PLACEHOLDER_BYTE
                 placeholder_count += 1;
                 log::warn!(

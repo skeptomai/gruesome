@@ -16,7 +16,7 @@ use log::debug;
 /// 2. As operand data, placeholders would represent -1 or 65535, which are uncommon values
 /// 3. It's easily recognizable in hex dumps as "unresolved"
 /// 4. Creates a clear pattern when examining bytecode (FFFF stands out)
-const PLACEHOLDER_BYTE: u8 = 0xFF;
+pub const PLACEHOLDER_BYTE: u8 = 0xFF;
 
 /// Fill byte for unwritten code space areas
 /// 0xAA is used to pre-fill code space to distinguish:
@@ -3180,8 +3180,9 @@ impl ZMachineCodeGen {
         let layout = self.emit_instruction(0x02, &[obj_operand], Some(0), None)?;
 
         // Manually emit branch placeholder and create UnresolvedReference
-        let branch_location = self.code_address;
+        // CRITICAL FIX: Record exact location AFTER emitting placeholder
         self.emit_word(placeholder_word())?;
+        let branch_location = self.code_address - 2; // Location where placeholder was written
 
         // Create UnresolvedReference for the branch target (fall through to next instruction)
         let reference = UnresolvedReference {
@@ -3242,8 +3243,9 @@ impl ZMachineCodeGen {
         let layout = self.emit_instruction(0x01, &[obj_operand], Some(0), None)?;
 
         // Manually emit branch placeholder and create UnresolvedReference
-        let branch_location = self.code_address;
+        // CRITICAL FIX: Record exact location AFTER emitting placeholder
         self.emit_word(placeholder_word())?;
+        let branch_location = self.code_address - 2; // Location where placeholder was written
 
         // Create UnresolvedReference for the branch target (fall through to next instruction)
         let reference = UnresolvedReference {
@@ -6691,8 +6693,9 @@ impl ZMachineCodeGen {
         )?;
 
         // Manually emit branch placeholder and create UnresolvedReference
-        let branch_location = self.code_address;
+        // CRITICAL FIX: Record exact location AFTER emitting placeholder
         self.emit_word(placeholder_word())?;
+        let branch_location = self.code_address - 2; // Location where placeholder was written
 
         // Create UnresolvedReference for the branch we just emitted
         log::debug!(
@@ -6764,8 +6767,9 @@ impl ZMachineCodeGen {
         log::debug!("DEBUG: After emit_instruction, manually emitting branch placeholder");
 
         // Manually emit branch placeholder and create UnresolvedReference
-        let branch_location = self.code_address;
+        // CRITICAL FIX: Record exact location AFTER emitting placeholder
         self.emit_word(placeholder_word())?;
+        let branch_location = self.code_address - 2; // Location where placeholder was written
 
         log::debug!(
             "Creating Branch UnresolvedReference at location 0x{:04x} for target {}",
@@ -8065,12 +8069,20 @@ impl ZMachineCodeGen {
         // First, determine if we need 1-byte or 2-byte format
         // We need to calculate the offset assuming 1-byte first, then check if it fits
         let address_after_1byte = location + 1;
-        let _offset_1byte = (target_address as i32) - (address_after_1byte as i32) + 2;
+        let _offset_1byte = (target_address as i32) - (address_after_1byte as i32) - 2;
 
         // Always use 2-byte format since we reserved 2 bytes
         // Calculate offset for 2-byte format (address after 2 bytes)
+        //
+        // Z-Machine Specification Section 4.7.2:
+        // "Otherwise, a branch moves execution to the instruction at address:
+        //  Address after branch data + Offset - 2."
+        //
+        // This means: target_address = address_after_branch_data + offset - 2
+        // Solving for offset: offset = target_address - address_after_branch_data + 2
+        // But the spec formula shows PC = PC + Offset - 2, so we subtract 2 in the offset calculation
         let address_after_2byte = location + 2;
-        let offset_2byte = (target_address as i32) - (address_after_2byte as i32) + 2;
+        let offset_2byte = (target_address as i32) - (address_after_2byte as i32) - 2;
 
         log::error!(
             "🔧 BRANCH_CALC: address_after_2byte=0x{:04x}, offset_2byte={}, first_byte=0x{:02x}, second_byte=0x{:02x}",

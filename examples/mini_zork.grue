@@ -195,7 +195,7 @@ grammar {
 fn look_around() {
     print(player.location.desc);
     list_objects(player.location);
-    
+
     // Call location-specific look handler if it exists
     if player.location.on_look {
         player.location.on_look();

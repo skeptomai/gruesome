@@ -717,9 +717,11 @@ impl ZMachineCodeGen {
 
             // Array instructions - placeholder implementations that register target IDs
             IrInstruction::ArrayAdd { array: _, value: _ } => {
-                // Array add operation (no return value)
-                // TODO: Implement actual array add functionality
-                log::debug!("ArrayAdd: placeholder implementation");
+                // ArrayAdd: Placeholder implementation - no operation
+                log::debug!(
+                    "ArrayAdd: Placeholder implementation - no Z-Machine bytecode generated"
+                );
+                // No operation - do nothing
             }
 
             IrInstruction::ArrayRemove {
@@ -1467,7 +1469,11 @@ impl ZMachineCodeGen {
         // Track stack operations for debugging
         self.track_stack_operation(opcode, operands, actual_store_var);
 
-        Ok(layout)
+        // Branch placeholders are handled by form functions, not centrally
+        // Each instruction type knows its target_id and can create proper UnresolvedReference entries
+        let final_layout = layout;
+
+        Ok(final_layout)
     }
 
     /// Emit instruction to code space regardless of current compilation phase
@@ -1773,12 +1779,9 @@ impl ZMachineCodeGen {
                 }
             }
 
-            // Emit placeholder word for branch offset - will be resolved later
-            eprintln!("🔍 DIRECT_CALL_INSTRUCTION: instruction form branch at 0x{:04x} - NO UnresolvedReference", self.code_address);
-
-            // All branch placeholders now go through UnresolvedReference system
-
-            self.emit_word(placeholder_word())?;
+            // Branch placeholders are handled by emit_instruction() centrally
+            // Form functions should NOT emit branch placeholders to avoid double-emission
+            log::debug!("emit_form: Branch placeholder emission deferred to emit_instruction()");
         }
 
         Ok(())
@@ -1842,12 +1845,9 @@ impl ZMachineCodeGen {
                 }
             }
 
-            // Emit placeholder word for branch offset - will be resolved later
-            eprintln!("🔍 DIRECT_CALL_INSTRUCTION: instruction form branch at 0x{:04x} - NO UnresolvedReference", self.code_address);
-
-            // All branch placeholders now go through UnresolvedReference system
-
-            self.emit_word(placeholder_word())?;
+            // Branch placeholders are handled by emit_instruction() centrally
+            // Form functions should NOT emit branch placeholders to avoid double-emission
+            log::debug!("emit_form: Branch placeholder emission deferred to emit_instruction()");
         }
 
         Ok(())
@@ -1952,12 +1952,9 @@ impl ZMachineCodeGen {
                 eprintln!("  But wait, let's check if this is actually being called...");
             }
 
-            // Emit placeholder word for branch offset - will be resolved later
-            eprintln!("🔍 DIRECT_CALL_INSTRUCTION: instruction form branch at 0x{:04x} - NO UnresolvedReference", self.code_address);
-
-            // All branch placeholders now go through UnresolvedReference system
-
-            self.emit_word(placeholder_word())?;
+            // Branch placeholders are handled by emit_instruction() centrally
+            // Form functions should NOT emit branch placeholders to avoid double-emission
+            log::debug!("emit_form: Branch placeholder emission deferred to emit_instruction()");
             Some(loc)
         } else {
             None
@@ -2042,12 +2039,9 @@ impl ZMachineCodeGen {
                 }
             }
 
-            // Emit placeholder word for branch offset - will be resolved later
-            eprintln!("🔍 DIRECT_CALL_INSTRUCTION: instruction form branch at 0x{:04x} - NO UnresolvedReference", self.code_address);
-
-            // All branch placeholders now go through UnresolvedReference system
-
-            self.emit_word(placeholder_word())?;
+            // Branch placeholders are handled by emit_instruction() centrally
+            // Form functions should NOT emit branch placeholders to avoid double-emission
+            log::debug!("emit_form: Branch placeholder emission deferred to emit_instruction()");
         }
 
         Ok(())
@@ -2167,12 +2161,9 @@ impl ZMachineCodeGen {
                 eprintln!("  But wait, let's check if this is actually being called...");
             }
 
-            // Emit placeholder word for branch offset - will be resolved later
-            eprintln!("🔍 DIRECT_CALL_INSTRUCTION: instruction form branch at 0x{:04x} - NO UnresolvedReference", self.code_address);
-
-            // All branch placeholders now go through UnresolvedReference system
-
-            self.emit_word(placeholder_word())?;
+            // Branch placeholders are handled by emit_instruction() centrally
+            // Form functions should NOT emit branch placeholders to avoid double-emission
+            log::debug!("emit_form: Branch placeholder emission deferred to emit_instruction()");
             Some(loc)
         } else {
             None
@@ -2326,12 +2317,9 @@ impl ZMachineCodeGen {
                 eprintln!("  But wait, let's check if this is actually being called...");
             }
 
-            // Emit placeholder word for branch offset - will be resolved later
-            eprintln!("🔍 DIRECT_CALL_INSTRUCTION: instruction form branch at 0x{:04x} - NO UnresolvedReference", self.code_address);
-
-            // All branch placeholders now go through UnresolvedReference system
-
-            self.emit_word(placeholder_word())?;
+            // Branch placeholders are handled by emit_instruction() centrally
+            // Form functions should NOT emit branch placeholders to avoid double-emission
+            log::debug!("emit_form: Branch placeholder emission deferred to emit_instruction()");
             Some(loc)
         } else {
             None
@@ -2489,7 +2477,13 @@ impl ZMachineCodeGen {
                 self.emit_byte(zmachine_var)?;
             }
             Operand::LargeConstant(value) => {
-                if *value == 0xFFFF {}
+                // Track placeholder emissions for debugging unresolved references
+                if *value == crate::grue_compiler::codegen::placeholder_word() {
+                    log::error!(
+                        "🔴 LARGE_CONSTANT_PLACEHOLDER: LargeConstant(0x{:04x}) emitted at address=0x{:04x} without UnresolvedReference tracking",
+                        value, self.final_code_base + self.code_address
+                    );
+                }
                 self.emit_word(*value)?;
             }
             Operand::Constant(value) => {

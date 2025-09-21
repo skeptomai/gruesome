@@ -1,0 +1,30 @@
+// Minimal test case to reproduce branch offset overflow
+// Focus on the specific pattern that causes PC overflow at 0xfffff58b
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room"
+    }
+}
+
+fn test_function() {
+    let objects = test_room.contents();
+    let visible_objects = [];
+
+    for obj in objects {
+        if obj != player {
+            visible_objects.add(obj);  // This should trigger the problematic branch
+        }
+    }
+
+    if !visible_objects.empty() {
+        for obj in visible_objects {
+            print("Object: " + obj.name);
+        }
+    }
+}
+
+init {
+    player.location = test_room;
+    test_function();
+}
