@@ -28,7 +28,7 @@ fn main() {
     print("Player location set.");
 
     // This should trigger the for loop with unresolved branches
-    // list_contents(mailbox);
+    list_contents(mailbox);
 }
 
 fn list_contents(container) {

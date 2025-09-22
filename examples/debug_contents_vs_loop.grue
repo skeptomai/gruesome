@@ -1,0 +1,52 @@
+// Test to isolate container.contents() vs for loop issues
+
+world {
+    room west_of_house "West of House" {
+        desc: "West of House"
+
+        object mailbox {
+            names: ["mailbox"]
+            desc: "A mailbox."
+            openable: true
+            container: true
+
+            contains {
+                object leaflet {
+                    names: ["leaflet"]
+                    desc: "A leaflet."
+                }
+            }
+        }
+    }
+}
+
+fn main() {
+    print("Starting diagnostic test");
+
+    player.location = west_of_house;
+    print("Player location set.");
+
+    // Test 1: Just call container.contents() without for loop
+    print("Testing container.contents() call...");
+    test_contents_call(mailbox);
+
+    // Test 2: Simple for loop with known array (not container.contents())
+    print("Testing simple for loop...");
+    test_simple_loop();
+}
+
+fn test_contents_call(container) {
+    print("About to call container.contents()");
+    let contents = container.contents();
+    print("container.contents() returned successfully");
+    // Don't iterate - just test the call itself
+}
+
+fn test_simple_loop() {
+    print("About to start simple for loop");
+    // Test for loop with a simple range instead of container.contents()
+    for i in [1, 2] {
+        print("Loop iteration: " + i);
+    }
+    print("Simple for loop completed");
+}

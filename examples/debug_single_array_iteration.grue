@@ -1,0 +1,20 @@
+// Test the minimal for loop that reproduces untracked placeholders
+
+world {
+    room west_of_house "West of House" {
+        desc: "West of House"
+    }
+}
+
+fn main() {
+    print("Testing single for loop");
+
+    player.location = west_of_house;
+
+    // The simplest possible for loop to isolate the untracked placeholder source
+    for i in [1] {
+        print("Item: " + i);
+    }
+
+    print("Done");
+}

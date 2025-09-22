@@ -1116,8 +1116,11 @@ impl ZMachineCodeGen {
         // Updates: PC start, dictionary, objects, globals, static memory, abbreviations, high memory base
         log::debug!(" Step 3e: Updating header address fields with final memory layout");
         // ARCHITECTURAL FIX: PC calculation for main program with proper routine header
-        // PC must point to first instruction AFTER the routine header (header size = 1 byte for local count)
-        let calculated_pc = (self.final_code_base + 1) as u16;
+        // PC must point to first instruction AFTER the routine header
+        // Header size = 1 byte (local count) + 2 bytes per local variable
+        let local_count = self.final_data[self.final_code_base]; // First byte is local variable count
+        let header_size = 1 + (local_count as usize * 2);
+        let calculated_pc = (self.final_code_base + header_size) as u16;
         log::debug!(
             " PC_CALCULATION_DEBUG: final_code_base=0x{:04x}, calculated_pc=0x{:04x} (skips routine header)",
             self.final_code_base, calculated_pc
