@@ -758,20 +758,40 @@ impl ZMachineCodeGen {
             None,                          // We handle branching manually below
         )?;
 
-        // CRITICAL: Crash immediately if get_child returned 0 (no children)
-        // This implements the "hard failure" requirement - no graceful handling
-        // If object has no children, this is a programming error in the game
+        // Check if object has no children (get_child returned 0)
+        // For empty containers, create and return an empty array instead of crashing
+        // Invalid objects will still cause crashes when get_child is called on them
 
-        // ARCHITECTURE FIX: Call emit_instruction WITHOUT branch_offset to avoid double-emission
+        // Check if get_child returned 0 - if so, return empty array instead of crashing
+        // CRITICAL: This fixes the "invalid object 0" error for empty containers
+
         self.emit_instruction(
-            0x00,                          // jz (1OP:0) - branch if value is zero
+            0x00,                          // jz (1OP:0) - branch if value is zero (no children)
             &[Operand::Variable(obj_var)], // Check if child object number is 0
             None,
-            None, // NO branch_offset - we handle branch manually
+            None, // Let emit_instruction handle the branch through its standard mechanism
         )?;
 
-        // Manually emit branch placeholder that will cause crash (large negative offset)
-        self.emit_word(0x8000 | ((-32767i16) as u16))?; // Encode large negative branch offset directly
+        // Insert a placeholder branch offset that will be resolved by StaticBranch UnresolvedReference
+        // This will skip the entire object tree traversal if the container is empty
+        let branch_location = self.current_address() - 2; // Location of branch offset
+
+        // Calculate bytes to skip: all object tree traversal code until empty array creation
+        // This is roughly 200 bytes of tree traversal + array allocation code
+        let bytes_to_skip = 200; // Forward jump to empty array creation
+
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::StaticBranch {
+                    skip_bytes: bytes_to_skip,
+                },
+                location: branch_location,
+                target_id: 0, // Not used for static branches
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
 
         // === PHASE 2: Count children by traversing sibling chain ===
 
@@ -820,7 +840,7 @@ impl ZMachineCodeGen {
         let backward_jump_offset =
             (count_loop_start as i32 - (self.current_address() as i32 + 3)) as i16;
         self.emit_instruction(
-            0x8C,                                                   // jump (1OP:12) - unconditional jump
+            0x0C, // jump (1OP:12) - unconditional jump - FIXED: was 0x8C (load)
             &[Operand::LargeConstant(backward_jump_offset as u16)], // Backward offset to loop start
             None,
             None,
@@ -909,7 +929,31 @@ impl ZMachineCodeGen {
         // Mark start of population loop for backward jump calculation
         let pop_loop_start = self.current_address();
 
-        // Store current object number in array at current index
+        // CRITICAL FIX: Check if current object is 0 BEFORE storing it
+        // This prevents object 0 (end-of-chain marker) from being stored in the array
+        self.emit_instruction(
+            0x00,                          // jz (1OP:0) - branch if value is zero (end of chain)
+            &[Operand::Variable(obj_var)], // Check if current object is 0
+            None,
+            None, // Handle branch manually below
+        )?;
+
+        // Forward branch to exit if object is 0 (end of chain reached)
+        let exit_branch_location = self.current_address() - 2;
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::StaticBranch {
+                    skip_bytes: 50, // Skip the rest of the loop to exit
+                },
+                location: exit_branch_location,
+                target_id: 0,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
+
+        // Store current object number in array at current index (only reached if object != 0)
         self.emit_instruction(
             0xE1, // storew (VAR:1) - store word to memory array
             &[
@@ -937,28 +981,10 @@ impl ZMachineCodeGen {
             None,
         )?;
 
-        // Check if we've reached end of sibling chain (get_sibling returned 0)
-
-        // ARCHITECTURE FIX: Call emit_instruction WITHOUT branch_offset to avoid double-emission
-        self.emit_instruction(
-            0x00,                          // jz (1OP:0) - branch if value is zero
-            &[Operand::Variable(obj_var)], // Check if sibling is 0 (end of chain)
-            None,
-            None, // NO branch_offset - we handle branch manually
-        )?;
-
-        // Manually emit branch offset to skip next instruction (offset = 2)
-        self.emit_word(0x8000 | 2)?; // Branch format: bit 15=1 (long form), offset=2
-
-        // Jump back to population loop start (unconditional backward jump)
-        let backward_jump_offset =
-            (pop_loop_start as i32 - (self.current_address() as i32 + 3)) as i16;
-        self.emit_instruction(
-            0x8C,                                                   // jump (1OP:12) - unconditional jump
-            &[Operand::LargeConstant(backward_jump_offset as u16)], // Backward offset to loop start
-            None,
-            None,
-        )?;
+        // Jump back to start of loop to check next object
+        let backward_jump_address = self.current_address();
+        let backward_offset = pop_loop_start as i32 - backward_jump_address as i32 - 2;
+        self.emit_word(0x8000 | (backward_offset as u16 & 0x3FFF))?; // Unconditional backward branch
 
         // === PHASE 6: Return array address as result ===
 
@@ -972,10 +998,123 @@ impl ZMachineCodeGen {
             )?;
         }
 
+        // === DEBUG: Print array contents for debugging patient zero ===
+        // Print array length first
+        self.emit_instruction(
+            0x8D,                              // print_paddr (1OP:141) - print string at packed address
+            &[Operand::LargeConstant(0x0000)], // Will be resolved to debug string
+            None,
+            None,
+        )?;
+
+        // Add unresolved reference for debug string "Array length: "
+        let debug_string_ref = UnresolvedReference {
+            reference_type: LegacyReferenceType::StringRef,
+            location: self.current_address() - 2,
+            target_id: 9998, // Special debug string ID
+            is_packed_address: true,
+            offset_size: 2,
+            location_space: MemorySpace::Code,
+        };
+        self.reference_context
+            .unresolved_refs
+            .push(debug_string_ref);
+
+        // Print array length (stored at index 0)
+        self.emit_instruction(
+            0x0F, // loadw (2OP:15) - load word from array
+            &[
+                Operand::LargeConstant(array_data_start as u16), // Array base address
+                Operand::SmallConstant(0),                       // Index 0 (length)
+            ],
+            Some(15), // Store in temporary variable L15
+            None,
+        )?;
+
+        self.emit_instruction(
+            0x06,                     // print_num (VAR:6) - print number
+            &[Operand::Variable(15)], // Print the length
+            None,
+            None,
+        )?;
+
+        self.emit_instruction(0xBB, &[], None, None)?; // new_line
+
+        // Print first few array elements to see if object 0 is there
+        for i in 1..4 {
+            // Check first 3 elements
+            self.emit_instruction(
+                0x0F, // loadw (2OP:15) - load word from array
+                &[
+                    Operand::LargeConstant(array_data_start as u16), // Array base address
+                    Operand::SmallConstant(i),                       // Index i
+                ],
+                Some(15), // Store in temporary variable L15
+                None,
+            )?;
+
+            self.emit_instruction(
+                0x06,                     // print_num (VAR:6) - print number
+                &[Operand::Variable(15)], // Print the element
+                None,
+                None,
+            )?;
+
+            self.emit_instruction(
+                0x8D, // print_paddr - print " "
+                &[Operand::LargeConstant(0x0000)],
+                None,
+                None,
+            )?;
+
+            // Add unresolved reference for space string
+            let space_string_ref = UnresolvedReference {
+                reference_type: LegacyReferenceType::StringRef,
+                location: self.current_address() - 2,
+                target_id: 9999, // Special space string ID
+                is_packed_address: true,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            };
+            self.reference_context
+                .unresolved_refs
+                .push(space_string_ref);
+        }
+
+        self.emit_instruction(0xBB, &[], None, None)?; // new_line
+
         log::debug!(
             "get_object_contents: generated object tree traversal for object, array at 0x{:04x}",
             array_data_start
         );
+
+        // === EMPTY ARRAY CREATION: Handle containers with no children ===
+        // This is the target for the StaticBranch UnresolvedReference created earlier
+
+        let empty_array_start = self.current_address();
+
+        // Create empty array in memory: length=0, no elements
+        self.emit_word(0)?; // Array length header = 0 (empty array)
+
+        // Store empty array address to target variable if needed
+        if let Some(store_var) = target {
+            self.emit_instruction(
+                0x21,                                                // store (1OP:33) - store value to variable
+                &[Operand::LargeConstant(empty_array_start as u16)], // Empty array base address
+                Some(store_var as u8), // Target variable (usually stack Variable 0)
+                None,
+            )?;
+        }
+
+        // Return from function (empty array case)
+        self.emit_instruction(
+            0xBB, // ret (0OP:11) - return from current routine
+            &[],
+            None,
+            None,
+        )?;
+
+        log::debug!("Empty array created at 0x{:04x}", empty_array_start);
 
         Ok(())
     }

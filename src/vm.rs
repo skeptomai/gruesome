@@ -533,8 +533,19 @@ impl VM {
         } else {
             65535
         };
-        if obj_num == 0 || obj_num > max_objects {
-            eprintln!(">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} (zero or > max {max_objects})", self.pc);
+
+        // Handle object 0 as "nothing" per Z-Machine specification section 12.3
+        // Object 0 represents "no object" - operations on it should be no-ops
+        if obj_num == 0 {
+            debug!("put_property: Object 0 (nothing) - ignoring property write");
+            return Ok(()); // No-op for object 0
+        }
+
+        if obj_num > max_objects {
+            eprintln!(
+                ">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
+                self.pc
+            );
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
@@ -766,8 +777,23 @@ impl VM {
         } else {
             65535
         };
-        if obj_num == 0 || obj_num > max_objects {
-            eprintln!(">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} (zero or > max {max_objects})", self.pc);
+
+        // Handle object 0 as "nothing" per Z-Machine specification section 12.3
+        // Object 0 represents "no object" - this function should normally not be called for object 0
+        // but if it is, we return an error rather than crashing
+        if obj_num == 0 {
+            eprintln!(
+                ">>> OBJECT WARNING PC=0x{:04x}: get_object_addr called on object 0 (nothing)",
+                self.pc
+            );
+            return Err(format!("Cannot get address of object 0 (nothing)"));
+        }
+
+        if obj_num > max_objects {
+            eprintln!(
+                ">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
+                self.pc
+            );
             return Err(format!("Invalid object number: {obj_num}"));
         }
 

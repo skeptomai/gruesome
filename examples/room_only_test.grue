@@ -1,0 +1,11 @@
+// Test with just a room, no objects inside
+
+world {
+    room west_of_house "West of House" {
+        desc: "West of House"
+    }
+}
+
+fn main() {
+    print("Hello world with room");
+}

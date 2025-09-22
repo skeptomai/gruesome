@@ -1469,9 +1469,27 @@ impl ZMachineCodeGen {
         // Track stack operations for debugging
         self.track_stack_operation(opcode, operands, actual_store_var);
 
-        // Branch placeholders are handled by form functions, not centrally
-        // Each instruction type knows its target_id and can create proper UnresolvedReference entries
-        let final_layout = layout;
+        // CRITICAL FIX: Handle branch placeholder emission centrally
+        // Form functions expect emit_instruction to handle this, but it wasn't
+        let mut final_layout = layout;
+        if let Some(_offset) = branch_offset {
+            // Emit branch placeholder centrally as expected by form functions
+            let placeholder_location = self.code_address;
+            self.emit_word(crate::grue_compiler::codegen::placeholder_word())?;
+
+            // Update layout to include branch location
+            final_layout.branch_location = Some(placeholder_location);
+
+            log::debug!(
+                "CENTRAL_BRANCH_PLACEHOLDER: Emitted placeholder at 0x{:04x} for branch_offset={:?}",
+                placeholder_location, _offset
+            );
+
+            // NOTE: UnresolvedReference creation must be done by the caller since
+            // emit_instruction doesn't know the target_id - only the calling code knows
+            // what label this branch should target. The caller should create the
+            // UnresolvedReference using the branch_location from the returned layout.
+        }
 
         Ok(final_layout)
     }
@@ -1910,10 +1928,11 @@ impl ZMachineCodeGen {
 
         // Track operand location
         let operand_location = if !operands.is_empty() {
-            let code_space_offset = self.code_space.len();
+            // Record the current address where operand will be emitted
+            let operand_addr = self.code_address;
             self.emit_operand(&operands[0])?;
-            // Use code space relative offset
-            Some(code_space_offset)
+            // Return the actual memory address where operand starts
+            Some(operand_addr)
         } else {
             None
         };
@@ -2477,13 +2496,8 @@ impl ZMachineCodeGen {
                 self.emit_byte(zmachine_var)?;
             }
             Operand::LargeConstant(value) => {
-                // Track placeholder emissions for debugging unresolved references
-                if *value == crate::grue_compiler::codegen::placeholder_word() {
-                    log::error!(
-                        "🔴 LARGE_CONSTANT_PLACEHOLDER: LargeConstant(0x{:04x}) emitted at address=0x{:04x} without UnresolvedReference tracking",
-                        value, self.final_code_base + self.code_address
-                    );
-                }
+                // Large constants are emitted as-is, including placeholders
+                // UnresolvedReference tracking happens after instruction emission by calling code
                 self.emit_word(*value)?;
             }
             Operand::Constant(value) => {

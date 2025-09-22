@@ -128,6 +128,18 @@ impl ZMachineCodeGen {
         Ok((prompt_id, unknown_command_id))
     }
 
+    /// Add debug strings for debugging instrumentation
+    pub fn add_debug_strings(&mut self) -> Result<(), CompilerError> {
+        // Add debug strings with specific IDs for debugging instrumentation
+        self.strings
+            .push((9998, "[DEBUG Array Length: ]".to_string()));
+        self.strings.push((9999, " Elements: ".to_string()));
+
+        debug!("🔍 Added debug strings: ID 9998='[DEBUG Array Length: ]', ID 9999=' Elements: '");
+
+        Ok(())
+    }
+
     /// Collect strings from instructions in a block  
     pub fn collect_strings_from_block(&mut self, block: &IrBlock) -> Result<(), CompilerError> {
         for instruction in &block.instructions {

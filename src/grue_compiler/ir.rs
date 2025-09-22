@@ -950,12 +950,22 @@ impl Default for IrGenerator {
 impl IrGenerator {
     pub fn new() -> Self {
         let mut object_numbers = IndexMap::new();
-        // Player is always object #1
+        let mut symbol_ids = IndexMap::new();
+
+        // Player is always object #1 in Z-Machine numbering
         object_numbers.insert("player".to_string(), 1);
 
+        // CRITICAL FIX: Assign IR ID to player object for symbol resolution
+        // The player object needs an IR ID so that references like "player.location"
+        // can be resolved during IR generation and compilation
+        let player_ir_id = 1; // Use IR ID 1 for the player object
+        symbol_ids.insert("player".to_string(), player_ir_id);
+
+        log::error!("🎭 IR_GENERATOR_NEW: Player object assigned Z-Machine object #1 and IR ID {} in constructor", player_ir_id);
+
         IrGenerator {
-            id_counter: 1, // Start from 1, 0 is reserved
-            symbol_ids: IndexMap::new(),
+            id_counter: 2, // Start from 2 since we used ID 1 for player
+            symbol_ids,
             current_locals: Vec::new(),
             next_local_slot: 1, // Slot 0 reserved for return value
             builtin_functions: IndexMap::new(),
@@ -1045,6 +1055,31 @@ impl IrGenerator {
         }
 
         // Copy symbol mappings from generator to IR program for use in codegen
+        log::error!("🔄 FINALIZE_IR: Final symbol_ids before copying to IR program:");
+        for (name, ir_id) in &self.symbol_ids {
+            log::error!("    '{}' -> IR ID {}", name, ir_id);
+        }
+        log::error!("🔄 FINALIZE_IR: Final object_numbers before copying to IR program:");
+        for (name, obj_num) in &self.object_numbers {
+            log::error!("    '{}' -> Z-Machine object #{}", name, obj_num);
+        }
+
+        // Check specifically for player
+        if let Some(player_obj_num) = self.object_numbers.get("player") {
+            log::error!(
+                "✅ FINALIZE_IR: Player object found with Z-Machine object #{}",
+                player_obj_num
+            );
+        } else {
+            log::error!("❌ FINALIZE_IR: Player object NOT FOUND in object_numbers!");
+        }
+
+        if let Some(player_ir_id) = self.symbol_ids.get("player") {
+            log::error!("✅ FINALIZE_IR: Player IR ID found: {}", player_ir_id);
+        } else {
+            log::error!("❌ FINALIZE_IR: Player IR ID NOT FOUND in symbol_ids!");
+        }
+
         ir_program.symbol_ids = self.symbol_ids.clone();
         ir_program.object_numbers = self.object_numbers.clone();
         ir_program.id_registry = self.id_registry.clone(); // NEW: Transfer ID registry
@@ -1292,6 +1327,10 @@ impl IrGenerator {
         world: crate::grue_compiler::ast::WorldDecl,
         ir_program: &mut IrProgram,
     ) -> Result<(), CompilerError> {
+        log::error!("🌍 GENERATE_WORLD: Starting world generation");
+        log::error!("🌍 CURRENT OBJECT_NUMBERS: {:?}", self.object_numbers);
+        log::error!("🌍 CURRENT SYMBOL_IDS: {:?}", self.symbol_ids);
+
         // First pass: register all rooms and objects for symbol resolution
         for room in &world.rooms {
             let room_id = self.next_id();

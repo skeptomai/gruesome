@@ -553,6 +553,7 @@ impl ZMachineCodeGen {
         let (prompt_id, unknown_command_id) = self.add_main_loop_strings()?;
         self.main_loop_prompt_id = Some(prompt_id);
         self.main_loop_unknown_command_id = Some(unknown_command_id);
+        self.add_debug_strings()?; // Add debug strings for array debugging instrumentation
         self.encode_all_strings()?;
         log::info!(" Phase 1 complete: Content analysis and string encoding finished");
         self.detect_phase_patterns("Phase 1");
@@ -5290,17 +5291,19 @@ impl ZMachineCodeGen {
         let unknown_command_string_id = self
             .main_loop_unknown_command_id
             .expect("Main loop unknown command ID should be set during string collection");
-        self.emit_instruction(
+        let layout = self.emit_instruction(
             0x8D,                                          // print_paddr: print string at packed address
             &[Operand::LargeConstant(placeholder_word())], // Placeholder for string address
             None,
             None,
         )?;
 
-        // Add unresolved reference for the "I don't understand" string
+        // Add unresolved reference for the "I don't understand" string using layout-tracked location
         let reference = UnresolvedReference {
             reference_type: LegacyReferenceType::StringRef,
-            location: self.code_address - 2, // Location of the string address operand
+            location: layout
+                .operand_location
+                .expect("print_paddr instruction must have operand"), // FIXED: Use layout location instead of self.code_address - 2
             target_id: unknown_command_string_id,
             is_packed_address: true,
             offset_size: 2,
@@ -6218,6 +6221,103 @@ impl ZMachineCodeGen {
             "Comprehensive scan complete. {} IDs found. No fallback mappings created.",
             all_used_ids.len()
         );
+
+        // STEP 3: COMPREHENSIVE DEBUGGING - Dump all object mappings and IR translations
+        log::error!("🔍 === COMPREHENSIVE IR AND OBJECT MAPPING DUMP ===");
+
+        // Dump object numbers from IR program
+        log::error!(
+            "🏠 OBJECT_NUMBERS from IR program ({} entries):",
+            ir.object_numbers.len()
+        );
+        for (name, number) in &ir.object_numbers {
+            log::error!("    '{}' -> Z-Machine object #{}", name, number);
+        }
+
+        // Dump symbol IDs from IR program
+        log::error!(
+            "🔤 SYMBOL_IDS from IR program ({} entries):",
+            ir.symbol_ids.len()
+        );
+        for (name, ir_id) in &ir.symbol_ids {
+            log::error!("    '{}' -> IR ID {}", name, ir_id);
+        }
+
+        // Dump current codegen object mappings
+        log::error!(
+            "🗺️ CODEGEN object_numbers ({} entries):",
+            self.object_numbers.len()
+        );
+        for (name, number) in &self.object_numbers {
+            log::error!("    '{}' -> Z-Machine object #{}", name, number);
+        }
+
+        // Dump all IR ID mappings in codegen
+        log::error!("📊 IR_ID_MAPPINGS in codegen:");
+        log::error!(
+            "  ir_id_to_integer ({} entries):",
+            self.ir_id_to_integer.len()
+        );
+        for (ir_id, value) in &self.ir_id_to_integer {
+            log::error!("    IR {} -> integer {}", ir_id, value);
+        }
+
+        log::error!(
+            "  ir_id_to_object_number ({} entries):",
+            self.ir_id_to_object_number.len()
+        );
+        for (ir_id, obj_num) in &self.ir_id_to_object_number {
+            log::error!("    IR {} -> object #{}", ir_id, obj_num);
+        }
+
+        log::error!(
+            "  ir_id_to_stack_var ({} entries):",
+            self.ir_id_to_stack_var.len()
+        );
+        for (ir_id, stack_var) in &self.ir_id_to_stack_var {
+            log::error!("    IR {} -> stack var {}", ir_id, stack_var);
+        }
+
+        log::error!(
+            "  ir_id_to_local_var ({} entries):",
+            self.ir_id_to_local_var.len()
+        );
+        for (ir_id, local_var) in &self.ir_id_to_local_var {
+            log::error!("    IR {} -> local var {}", ir_id, local_var);
+        }
+
+        // Check if player object specifically exists
+        if let Some(player_obj_num) = ir.object_numbers.get("player") {
+            log::error!(
+                "✅ PLAYER OBJECT FOUND: 'player' -> Z-Machine object #{}",
+                player_obj_num
+            );
+
+            // Look for player IR ID in symbol table
+            if let Some(player_ir_id) = ir.symbol_ids.get("player") {
+                log::error!("✅ PLAYER IR ID FOUND: 'player' -> IR ID {}", player_ir_id);
+
+                // Check what IR ID {} maps to in various tables
+                if let Some(value) = self.ir_id_to_integer.get(player_ir_id) {
+                    log::error!("    Player IR {} -> integer {}", player_ir_id, value);
+                }
+                if let Some(obj_num) = self.ir_id_to_object_number.get(player_ir_id) {
+                    log::error!("    Player IR {} -> object #{}", player_ir_id, obj_num);
+                }
+                if let Some(stack_var) = self.ir_id_to_stack_var.get(player_ir_id) {
+                    log::error!("    Player IR {} -> stack var {}", player_ir_id, stack_var);
+                }
+                if let Some(local_var) = self.ir_id_to_local_var.get(player_ir_id) {
+                    log::error!("    Player IR {} -> local var {}", player_ir_id, local_var);
+                }
+            } else {
+                log::error!("❌ PLAYER IR ID NOT FOUND in symbol_ids table!");
+            }
+        } else {
+            log::error!("❌ PLAYER OBJECT NOT FOUND in object_numbers table!");
+        }
+
+        log::error!("🔍 === END COMPREHENSIVE MAPPING DUMP ===");
     }
 
     /// Collect all IR IDs referenced in a single instruction

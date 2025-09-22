@@ -1,0 +1,24 @@
+// Minimal test to isolate object error at PC=0x1020
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room"
+    }
+}
+
+fn test_list_objects() {
+    let location = test_room;
+    let objects = location.contents();
+    print("Got contents, count: " + objects.length());
+
+    for obj in objects {
+        print("Processing object: " + obj.name);
+        if obj != player {
+            print("Object is not player: " + obj.name);
+        }
+    }
+}
+
+init {
+    player.location = test_room;
+    test_list_objects();
+}

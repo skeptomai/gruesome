@@ -1,57 +1,75 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (September 20, 2025) - INSTRUCTION DISPLACEMENT BUG ⚠️
+## CURRENT STATUS (September 21, 2025) - UNTRACKED PLACEHOLDER DEBUGGING 🔍
 
-**ARCHITECTURAL ISSUE IDENTIFIED**: Systematic instruction displacement causing 0x0fc0 crash in examine function!
+**CRITICAL ISSUE**: Systematic untracked LargeConstant(0xFFFF) placeholders bypassing UnresolvedReference tracking system!
 
-### 🎯 CURRENT CRITICAL ISSUE (Session Sep 20, 2025):
+### 🎯 CURRENT CRITICAL ISSUE (Session Sep 21, 2025):
 
-**Instruction Displacement Bug** - Root cause: Label remapping doesn't relocate following instructions
-- **Problem**: Labels 416/417 correctly remapped from property space (0x04d9) to code space (0x0fc0)
-- **Issue**: Following StoreVar instruction emitted at original address (0x04d9) instead of remapped address (0x0fc0)
-- **Result**: Branch instruction targets 0x0fc0 but finds 0x00 (uninitialized memory) instead of the StoreVar instruction
-- **Impact**: "Invalid Long form opcode 0x00" crash at PC 0x0fc0 during examine function execution
+**Untracked Placeholder Bug** - Root cause: Multiple code paths emit LargeConstant(0xFFFF) without creating UnresolvedReferences
+- **Problem**: UnresolvedReference tracking system works correctly for tracked references, but some code paths bypass tracking
+- **Minimal Test Case**: `examples/minimal_for_loop.grue` - reduced problem from 6 untracked placeholders to 1
+- **Runtime Impact**: Minimal test crashes with "Property 16 not found for object 3" due to corrupted addresses
+- **Current Status**: 1 untracked placeholder at address 0x08f6 with opcode 0x8C (load) and operand 0xFFFF
 
-### 📊 PROGRESS STATUS - mini_zork Execution:
-- **Previous Status**: Successfully fixed 0x012a crash, moved to code space
-- **Current Status**: 0x0fc0 crash in examine function - labels mapped correctly but instructions displaced
-- **Root Cause**: Architectural fix handles label mapping but doesn't relocate immediately following instructions
-- **Execution**: Gets through banner, crashes on first examine() call
+### 🔧 FIXES COMPLETED IN THIS SESSION:
+1. **Fixed**: Main loop unknown command print_paddr using old `self.code_address - 2` pattern → layout.operand_location
+2. **Fixed**: get_object_contents builtin using wrong opcode 0x8C (load) instead of 0x0C (jump)
+
+### 📊 CURRENT STATUS:
+- **mini_zork**: Still has 6 untracked placeholders (reduced from major systematic issues)
+- **minimal test**: 1 untracked placeholder causing runtime crash - THIS IS THE FOCUS
 
 ### 🔍 TECHNICAL ANALYSIS:
 
-**The Instruction Displacement Pattern**:
-1. **Label 416** encountered at property space address 0x04d9
-2. **LoadImmediate { target: 414, value: Integer(1) }** - doesn't emit bytecode
-3. **Label 417** at same address 0x04d9
-4. **StoreVar { var_id: 412, source: 414 }** - emits opcode 0x0d at original address 0x04d9
-5. **Architectural fix** maps labels 416/417 to code space address 0x0076 (→ 0x0fc0 after translation)
-6. **Branch instruction** correctly targets 0x0fc0, but StoreVar instruction is at 0x04d9
+**The Untracked Placeholder Pattern**:
+1. **UnresolvedReference tracking system** works correctly - all tracked references resolve properly
+2. **Logging shows** 6 LargeConstant(0xFFFF) emissions during instruction generation
+3. **UR tracking map** shows only 1 actually untracked placeholder remains in final binary
+4. **Location**: Address 0x08f6 with instruction `8c ffff` (opcode 0x8C = load, operand 0xFFFF)
+5. **Crash**: Runtime error "Property 16 not found for object 3" when executing minimal test
 
-**Confirmed Working Pattern**:
-- Simple conditional branches work correctly (tested with minimal reproduction case)
-- Issue specific to complex examine function with property access operations
-- Branch resolution logic works correctly - problem is instruction placement
+**Confirmed Patterns**:
+- Some `LargeConstant(placeholder_word())` operands bypass UnresolvedReference creation
+- Builtin functions correctly create UnresolvedReferences (print, move, etc.)
+- Issue is NOT in conditional branch emission (that works correctly)
+- Multiple code paths emit 0x8C instructions - need to find which one bypasses UR tracking
 
-### 🛠️ ARCHITECTURAL FIX NEEDED:
+### 🛠️ DEBUGGING APPROACH NEEDED:
 
-**Current Fix**: Address-based label detection (code_address >= code_space_base_address)
-```rust
-// CRITICAL ARCHITECTURAL FIX: Check address value directly instead of context
-let is_in_code_space = self.code_space_base_address > 0 &&
-                      code_address_before >= self.code_space_base_address;
+**Systematic Investigation Method**:
+1. **Focus on minimal test case**: `examples/minimal_for_loop.grue` (1 untracked placeholder)
+2. **Identify exact source**: Find code path emitting `0x8C ffff` at address 0x08f6 without UnresolvedReference
+3. **Pattern matching**: Look for `emit_instruction(0x8C, ...)` calls that don't create UR tracking
+4. **Root cause**: Fix the bypassed code path to use proper UnresolvedReference creation
 
-let label_address = if is_in_code_space {
-    code_address_before  // Use directly
-} else {
-    // Map to code space
-    let addr = self.next_code_space_address;
-    self.next_code_space_address += 2;
-    addr
-};
+**Key Files to Investigate**:
+- `src/grue_compiler/codegen_instructions.rs` - instruction emission logic
+- `src/grue_compiler/codegen.rs` - main compilation logic
+- `src/grue_compiler/codegen_builtins.rs` - builtin function generation (partially fixed)
+
+### 📁 MINIMAL TEST CASE FOR NEXT SESSION:
+
+**File**: `examples/minimal_for_loop.grue` (already in repo)
+**Purpose**: Reproduces 1 untracked placeholder causing runtime crash
+**Test Commands**:
+```bash
+# Compile minimal test
+env RUST_LOG=error cargo run --bin grue-compiler -- examples/minimal_for_loop.grue --output /tmp/minimal.z3
+
+# Check untracked placeholders (should show "Found 1 0xffff patterns")
+# ... | grep "CRITICAL: Found"
+
+# Test execution (should crash with "Property 16 not found for object 3")
+env RUST_LOG=error ./target/debug/gruesome /tmp/minimal.z3
+
+# Find untracked placeholder location (should show address 0x08f6)
+xxd /tmp/minimal.z3 | grep -n "ffff"
 ```
 
-**Missing Component**: When labels are remapped to code space, the immediately following instruction must also be relocated to the remapped address to maintain consistency between branch targets and instruction locations.
+**Current Problem**: Address 0x08f6 contains `8c ffff` (load instruction with 0xFFFF operand) that lacks UnresolvedReference tracking, causing property corruption and runtime crash.
+
+**Next Steps**: Use systematic code path tracing to find which `emit_instruction(0x8C, ...)` call bypasses UnresolvedReference creation.
 
 ### ✅ COMPLETED FIXES (All Sessions):
 1. **Branch System Fixed** - UnresolvedReference system for conditional branches

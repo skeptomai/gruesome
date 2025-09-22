@@ -1,0 +1,6 @@
+// Test with absolutely no objects - just code
+
+fn main() {
+    print("Hello world");
+    print("No objects here!");
+}
