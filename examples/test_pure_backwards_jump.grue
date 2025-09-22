@@ -1,0 +1,10 @@
+// Test backwards jump without any array creation
+fn main() {
+    let counter = 1;
+    loop {
+        if counter > 3 {
+            break;
+        }
+        counter = counter + 1;
+    }
+}

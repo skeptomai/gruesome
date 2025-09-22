@@ -1,0 +1,6 @@
+// Absolute minimal for loop to test backwards jump
+fn main() {
+    for item in [1] {
+        // Empty body - just test the jump
+    }
+}

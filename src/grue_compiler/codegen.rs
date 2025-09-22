@@ -5444,27 +5444,42 @@ impl ZMachineCodeGen {
         function: &IrFunction,
         _ir: &IrProgram,
     ) -> Result<(), CompilerError> {
-        // CRITICAL FIX: Reset local variable counter for each function
-        // This ensures each function allocates variables 1, 2, 3, ... independently
-        self.current_function_locals = 0;
+        // CRITICAL FIX: Initialize local variable counter with declared locals
+        // This ensures the declared function locals are counted in current_function_locals
+        let declared_locals = function.local_vars.len();
+        self.current_function_locals = declared_locals as u8;
         self.current_function_name = Some(function.name.clone());
         log::debug!(
-            " FUNCTION_START: Reset local variable counter for function '{}'",
+            " FUNCTION_START: Set local variable counter to {} for function '{}' (declared locals)",
+            declared_locals,
             function.name
         );
 
         // CRITICAL FIX: Pre-allocate space for locals that will be dynamically allocated
-        // During instruction generation, local variables can be allocated for:
-        // 1. Function parameters
-        // 2. let statements (local variables)
-        // 3. Temporary storage for complex expressions
-        // We need to reserve space in the function header for these
-
-        let declared_locals = function.local_vars.len();
+        // During instruction generation, additional local variables can be allocated for:
+        // 1. Temporary storage for complex expressions
+        // 2. Additional compiler-generated variables
+        // The current_function_locals starts with declared locals and can grow during generation
         // CRITICAL FIX: Use actual local count instead of hard-coding 8 minimum
         // Simple functions with no parameters or local variables should have 0 locals
         // Complex functions will allocate locals as needed during instruction generation
         let reserved_locals = declared_locals;
+
+        // DEBUG: Print all local variables to verify for loop variables are included
+        log::debug!(
+            "🔍 LOCAL_DEBUG: Function '{}' has {} local variables:",
+            function.name,
+            declared_locals
+        );
+        for (i, local_var) in function.local_vars.iter().enumerate() {
+            log::debug!(
+                "  Local {}: name='{}', slot={}, ir_id={}",
+                i + 1,
+                local_var.name,
+                local_var.slot,
+                local_var.ir_id
+            );
+        }
 
         if reserved_locals > 15 {
             return Err(CompilerError::CodeGenError(format!(
@@ -5496,9 +5511,19 @@ impl ZMachineCodeGen {
         // CRITICAL FIX: Process function local variables and create IR ID to local variable mappings
         // The IR generator creates IrLocal entries for loop variables and other locals
         // We can now directly use the ir_id field from IrLocal
+        log::debug!(
+            "🔧 MAPPING_SETUP: Setting up IR ID to local variable mappings for {} locals",
+            function.local_vars.len()
+        );
         for (slot_index, local_var) in function.local_vars.iter().enumerate() {
             let local_var_number = (slot_index + 1) as u8; // Z-Machine locals start at 1
                                                            // Use the IR ID directly from the local variable structure
+            log::debug!(
+                "  🔧 MAPPING: IR ID {} ('{}') -> Local Variable {}",
+                local_var.ir_id,
+                local_var.name,
+                local_var_number
+            );
             self.ir_id_to_local_var
                 .insert(local_var.ir_id, local_var_number);
             log::debug!(
@@ -5559,34 +5584,40 @@ impl ZMachineCodeGen {
             if header_location < self.code_space.len() {
                 let reserved_count = self.code_space[header_location];
 
-                // Ensure we don't exceed the reserved space
-                if actual_locals > reserved_count {
-                    return Err(CompilerError::CodeGenError(format!(
-                        "Function '{}' used {} locals but only {} were reserved in header",
-                        function_name, actual_locals, reserved_count
-                    )));
-                }
-
-                // CRITICAL FIX: Don't patch the header if we've reserved space for local variables
-                // The Z-Machine needs the local count to match the actual storage space allocated
-                // If we reserved 8 locals and emit 16 bytes of storage, the header must say 8 locals
-                // Otherwise the interpreter will misalign when reading past the local variable storage
-
+                // CRITICAL FIX: Use actual locals count, not reserved count
+                // The routine header must declare the correct number of locals that are actually used
+                // Otherwise accessing higher-numbered locals will cause "out of bounds" errors
                 log::debug!(
-                    " FINALIZE: Function '{}' keeping {} reserved locals (used {} actual) to match storage space",
+                    " FINALIZE: Function '{}' patching header from {} reserved to {} actual locals",
                     function_name,
                     reserved_count,
                     actual_locals
                 );
 
-                // Keep the reserved count - don't patch the header
-                // The extra unused locals will remain initialized to 0x0000 which is correct
+                // Patch the header with the actual locals count
+                self.code_space[header_location] = actual_locals;
 
                 // Update the stored locals count for function address calculation
                 self.function_locals_count
-                    .insert(function_id, reserved_count as usize);
+                    .insert(function_id, actual_locals as usize);
 
-                // Note: V3 header now uses exact local count without pre-allocation
+                // CRITICAL: Ensure we have enough default value slots in the header
+                // The routine header needs 2 bytes per local variable for default values
+                let expected_header_size = 1 + (actual_locals as usize * 2);
+                let current_header_end = header_location + 1 + (reserved_count as usize * 2);
+
+                if actual_locals > reserved_count {
+                    // Need to insert additional default value slots
+                    let additional_slots_needed = (actual_locals - reserved_count) as usize;
+                    for _ in 0..additional_slots_needed {
+                        self.code_space.insert(current_header_end, 0x00);
+                        self.code_space.insert(current_header_end + 1, 0x00);
+                    }
+                    log::debug!(
+                        " FINALIZE: Added {} additional default value slots for extra locals",
+                        additional_slots_needed
+                    );
+                }
             } else {
                 log::debug!(
                     "❌ PATCH_ERROR: Header location 0x{:04x} is beyond code_space length {}",

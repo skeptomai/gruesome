@@ -1,0 +1,5 @@
+// Minimal test to isolate PC tracking bug
+fn main() {
+    let x = 1;
+    print("test");
+}

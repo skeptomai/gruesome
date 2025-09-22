@@ -1,0 +1,10 @@
+// Test backwards jump using if/goto pattern
+fn main() {
+    let counter = 1;
+    // Label: loop_start
+    if counter <= 3 {
+        print("Counter: ");
+        counter = counter + 1;
+        // goto loop_start  // This should create a backwards jump
+    }
+}
