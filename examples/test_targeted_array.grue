@@ -1,0 +1,5 @@
+// Most targeted test: just create one small array and exit
+fn main() {
+    let arr = [1];
+    print("Success");
+}

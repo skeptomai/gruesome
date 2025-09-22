@@ -1,0 +1,11 @@
+// Test only empty array to isolate the issue
+fn test_empty_array() {
+    let empty_arr = [];  // Only empty array
+    print("Empty array created");
+}
+
+fn main() {
+    print("Testing empty array");
+    test_empty_array();
+    print("Test complete");
+}

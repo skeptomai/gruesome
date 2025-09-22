@@ -1,0 +1,4 @@
+// Test without any arrays at all
+fn main() {
+    print("No arrays");
+}

@@ -451,45 +451,53 @@ impl ZMachineCodeGen {
                     _ => 0, // Default size
                 };
 
-                // Allocate memory space for array at current code address
-                // In Z-Machine, arrays are just memory regions containing 16-bit words
-                let array_start_address = self.code_address;
-
                 if size_value == 0 {
                     // Empty array - return null pointer (0) without emitting any data
                     log::debug!(
-                        "CreateArray: creating empty array (null pointer) at address 0x{:04x}",
-                        array_start_address
+                        "CreateArray: creating empty array (null pointer) - no memory allocation needed"
                     );
 
                     // For empty arrays, return null pointer (0) - no data allocation needed
-                    // Push null pointer (0) to stack to represent empty array
+                    // Store null pointer (0) to stack to represent empty array
                     self.emit_instruction(
-                        0x21,                         // store (1OP:33)
-                        &[Operand::LargeConstant(0)], // Null pointer (0) for empty array
-                        Some(0),                      // Store to stack (variable 0)
+                        0x0d, // store (2OP:13) - CORRECT per Z-Machine spec
+                        &[Operand::SmallConstant(0), Operand::LargeConstant(0)], // store (variable=0, value=0)
+                        None, // No store_var for 2OP instructions
                         None,
                     )?;
                 } else {
-                    // Non-empty array - for simplicity, use a placeholder address that will be allocated later
-                    // This avoids mixing array data with code instructions entirely
+                    // Non-empty array - allocate in dynamic memory space (0x0040-0x0329)
+                    let array_data_size = 2 + (size_value as usize * 2); // length (2 bytes) + elements (2 bytes each)
+                    let array_address = self.allocate_dynamic_memory(array_data_size);
+
                     log::debug!(
-                        "CreateArray: creating array of size {} - using placeholder address for now",
-                        size_value
+                        "CreateArray: creating array of size {} at address 0x{:04x} ({} bytes)",
+                        size_value,
+                        array_address,
+                        array_data_size
                     );
 
-                    // Use a small valid address that won't be interpreted as invalid object number
-                    // Z-Machine object numbers are typically 1-255, so use something in valid range
-                    let array_address = 0x0080; // Small address in static data space
+                    // Write array length header (2 bytes, big-endian)
+                    let length_bytes = (size_value as u16).to_be_bytes();
+                    self.write_to_dynamic_memory(array_address, &length_bytes)?;
+
+                    // Write array elements (initialized to 0)
+                    for i in 0..size_value {
+                        let element_address = array_address + 2 + (i as usize * 2);
+                        self.write_to_dynamic_memory(element_address, &[0, 0])?;
+                        // Each element is 2 bytes (word)
+                    }
+
+                    // Emit correct store instruction to put array address on stack
                     self.emit_instruction(
-                        0x21,                                     // store (1OP:33)
-                        &[Operand::LargeConstant(array_address)], // Valid static data address
-                        Some(0),                                  // Store to stack (variable 0)
+                        0x0d, // store (2OP:13) - CORRECT per Z-Machine spec
+                        &[
+                            Operand::SmallConstant(0),
+                            Operand::LargeConstant(array_address as u16),
+                        ], // store (variable=0, value=address)
+                        None, // No store_var for 2OP instructions
                         None,
                     )?;
-
-                    // TODO: Implement proper array data allocation in a separate data space
-                    // For now this fixes the PC advancement issue by not emitting array data in code space
                 }
             }
 

@@ -1,0 +1,14 @@
+// TARGETED REPRODUCTION: Branch calculation overflow with multiple arrays
+// This is the minimal case that reproduces the mini_zork instruction decoding failure
+
+fn trigger_bug() {
+    let first_array = [1];     // First array works fine
+    let second_array = [];     // Second array causes branch overflow to 0xfffff09f
+    print("Should not reach here");
+}
+
+fn main() {
+    print("Testing double array bug");
+    trigger_bug();
+    print("Bug test complete");
+}

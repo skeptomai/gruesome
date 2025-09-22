@@ -1,0 +1,5 @@
+// Test just a store instruction without array creation
+fn main() {
+    let x = 64; // This should generate a store instruction similar to our array address
+    print("Done");
+}

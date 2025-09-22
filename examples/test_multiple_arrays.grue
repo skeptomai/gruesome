@@ -1,0 +1,6 @@
+// Test multiple array allocation
+fn main() {
+    let arr1 = [1];       // Should be at 0x0040 (4 bytes: length + 1 element)
+    let arr2 = [2, 3];    // Should be at 0x0044 (6 bytes: length + 2 elements)
+    print("Arrays created");
+}

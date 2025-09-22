@@ -1,0 +1,6 @@
+// Try to manually trigger a stack store to test the hypothesis
+fn main() {
+    // If we could manually create an instruction that stores to stack (variable 0)
+    // we could test if the problem is with store_var=Some(0) in general
+    print("Simple test");
+}

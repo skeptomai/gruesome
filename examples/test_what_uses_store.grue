@@ -1,0 +1,8 @@
+// Test what actually uses store instructions successfully
+fn main() {
+    // This uses LoadImmediate
+    let x = 42;
+
+    // This probably uses a different instruction pattern
+    print("Testing");
+}

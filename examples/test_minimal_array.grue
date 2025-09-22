@@ -1,0 +1,12 @@
+// Minimal test to isolate array operation bug
+fn test_array_function() {
+    let arr = [1, 2, 3];  // Array with values
+    let empty_arr = [];   // Empty array - this might be the issue
+    print("Arrays created");
+}
+
+fn main() {
+    print("Before array test");
+    test_array_function();
+    print("After array test");
+}

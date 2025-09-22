@@ -1,0 +1,10 @@
+// Minimal function call test
+fn helper() {
+    print("Helper called");
+}
+
+fn main() {
+    print("Before call");
+    helper();
+    print("After call");
+}

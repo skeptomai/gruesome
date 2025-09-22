@@ -1,0 +1,14 @@
+// Test the complex features in list_objects that might be causing the crash
+fn test_complex_function(location_param) {
+    let simple_var = 42;  // Simple local variable
+
+    // Remove arrays and for loop to isolate other issues
+    print("Processing function");
+    print("Function completed");
+}
+
+fn main() {
+    print("Before calling complex function");
+    test_complex_function(42);  // Call with a simple parameter
+    print("After calling complex function");
+}

@@ -1,0 +1,6 @@
+// Test just array creation without any access
+fn main() {
+    let arr = [42];
+    // Don't access the array, just create it
+    print("Done");
+}

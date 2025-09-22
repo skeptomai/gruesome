@@ -1,0 +1,12 @@
+// Minimal reproduction of function call address calculation bug
+// This should reproduce the "instruction decoding failure" seen in mini_zork
+
+fn simple_helper() {
+    print("Helper function called");
+}
+
+fn main() {
+    print("Before calling helper");
+    simple_helper();
+    print("After calling helper");
+}

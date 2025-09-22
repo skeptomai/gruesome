@@ -219,6 +219,9 @@ pub struct ZMachineCodeGen {
     pub property_space_position: usize, // Current position in property generation
     pub code_space_position: usize, // Current position for instruction emission (always code space)
 
+    // Dynamic memory allocation for arrays and runtime data
+    pub dynamic_memory_position: usize, // Current position in dynamic memory (starts at 0x0040)
+
     // Code generation state
     pub label_addresses: IndexMap<IrId, usize>, // IR label ID -> byte address
     string_addresses: IndexMap<IrId, usize>,    // IR string ID -> byte address
@@ -352,6 +355,7 @@ impl ZMachineCodeGen {
             next_code_space_address: 0, // Will be initialized with code_space_base_address
             property_space_position: HEADER_SIZE, // Start after header for property generation
             code_space_position: 0, // Tracks current insertion point in code_space Vec (code_space.len())
+            dynamic_memory_position: 0x0040, // Start of dynamic memory per Z-Machine specification
             label_addresses: IndexMap::new(),
             string_addresses: IndexMap::new(),
             function_addresses: IndexMap::new(),
@@ -9078,6 +9082,48 @@ impl ZMachineCodeGen {
 
         self.emit_byte(high_byte)?;
         self.emit_byte(low_byte)?;
+        Ok(())
+    }
+
+    // === DYNAMIC MEMORY ALLOCATION ===
+    // For arrays and runtime data allocation in the 0x0040-0x0329 range
+
+    /// Allocate space in dynamic memory and return the address
+    pub fn allocate_dynamic_memory(&mut self, size: usize) -> usize {
+        let address = self.dynamic_memory_position;
+        self.dynamic_memory_position += size;
+        log::debug!(
+            "DYNAMIC_ALLOC: Allocated {} bytes at address 0x{:04x}, next available: 0x{:04x}",
+            size,
+            address,
+            self.dynamic_memory_position
+        );
+        address
+    }
+
+    /// Write data to dynamic memory space
+    pub fn write_to_dynamic_memory(
+        &mut self,
+        address: usize,
+        data: &[u8],
+    ) -> Result<(), CompilerError> {
+        // Ensure story_data has enough capacity
+        let required_size = address + data.len();
+        if self.story_data.len() < required_size {
+            self.story_data.resize(required_size, 0);
+        }
+
+        // Write the data
+        for (i, &byte) in data.iter().enumerate() {
+            self.story_data[address + i] = byte;
+        }
+
+        log::debug!(
+            "DYNAMIC_WRITE: Wrote {} bytes to address 0x{:04x}: {:02x?}",
+            data.len(),
+            address,
+            data
+        );
         Ok(())
     }
 
