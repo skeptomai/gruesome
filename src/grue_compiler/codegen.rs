@@ -5493,6 +5493,23 @@ impl ZMachineCodeGen {
         // NOTE: Parameter IR ID mappings are now set up during instruction translation phase
         // This ensures they're available when instructions are processed (see setup_function_parameter_mappings)
 
+        // CRITICAL FIX: Process function local variables and create IR ID to local variable mappings
+        // The IR generator creates IrLocal entries for loop variables and other locals
+        // We can now directly use the ir_id field from IrLocal
+        for (slot_index, local_var) in function.local_vars.iter().enumerate() {
+            let local_var_number = (slot_index + 1) as u8; // Z-Machine locals start at 1
+                                                           // Use the IR ID directly from the local variable structure
+            self.ir_id_to_local_var
+                .insert(local_var.ir_id, local_var_number);
+            log::debug!(
+                "PROCESS_LOCAL_VAR: '{}' IR ID {} at slot {} -> Z-Machine local variable {}",
+                local_var.name,
+                local_var.ir_id,
+                local_var.slot,
+                local_var_number
+            );
+        }
+
         log::debug!(
             "Generating V3 header: {} reserved locals for function '{}' (will be patched with actual count)",
             reserved_locals,
@@ -8183,9 +8200,8 @@ impl ZMachineCodeGen {
         //
         // This means: target_address = address_after_branch_data + offset - 2
         // Solving for offset: offset = target_address - address_after_branch_data + 2
-        // But the spec formula shows PC = PC + Offset - 2, so we subtract 2 in the offset calculation
         let address_after_2byte = location + 2;
-        let offset_2byte = (target_address as i32) - (address_after_2byte as i32) - 2;
+        let offset_2byte = (target_address as i32) - (address_after_2byte as i32) + 2;
 
         log::error!(
             "🔧 BRANCH_CALC: address_after_2byte=0x{:04x}, offset_2byte={}, first_byte=0x{:02x}, second_byte=0x{:02x}",

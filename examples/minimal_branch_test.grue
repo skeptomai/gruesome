@@ -1,0 +1,15 @@
+// Ultra-minimal branch test to isolate misalignment
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+    }
+}
+
+fn main() {
+    let x = 1;
+    if x == 1 {
+        print("branch taken");
+    } else {
+        print("branch not taken");
+    }
+}

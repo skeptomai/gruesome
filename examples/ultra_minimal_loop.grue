@@ -1,0 +1,13 @@
+// Ultra-minimal for loop test
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+    }
+}
+
+fn main() {
+    let items = [1];
+    for item in items {
+        print("x");
+    }
+}

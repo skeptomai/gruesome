@@ -381,7 +381,7 @@ impl ZMachineCodeGen {
             self.resolve_ir_id_to_operand(object_id)?, // Object
             self.resolve_ir_id_to_operand(attr_num)?,  // Attribute number
         ];
-        self.emit_instruction(0x0A, &operands, Some(0), None)?; // Store result in stack
+        self.emit_instruction(0x0A, &operands, Some(0), None)?; // Store result to stack (Variable form)
 
         Ok(())
     }
@@ -448,7 +448,7 @@ impl ZMachineCodeGen {
             self.resolve_ir_id_to_operand(prop_num)?,  // Property number
         ];
         // Use local variable 4 for get_child results
-        self.emit_instruction(0x11, &operands, Some(4), None)?; // Store result in local var 4
+        self.emit_instruction(0x11, &operands, Some(0), None)?; // Store result to stack (Variable form)
 
         Ok(())
     }

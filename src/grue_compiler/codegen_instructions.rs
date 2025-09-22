@@ -304,21 +304,37 @@ impl ZMachineCodeGen {
             }
 
             IrInstruction::LoadVar { target, var_id } => {
-                // Create operand for the variable number to load from
-                let var_operand = Operand::SmallConstant(*var_id as u8);
-
-                // Use load instruction (0xAE) to load variable to stack
-                // Z-Machine spec: 1OP:142 E load (variable) -> (result)
-                // Encoding: 1OP + variable operand type + opcode 14 = 0xAE
-                self.emit_instruction(0xAE, &[var_operand], Some(0), None)?; // load variable to stack
+                // CRITICAL FIX: Use the same mapping logic as StoreVar
+                // Look up the Z-Machine variable number for this IR ID
+                if let Some(var_num) = self.ir_id_to_local_var.get(var_id).copied() {
+                    // Load from local variable using load instruction
+                    let var_operand = Operand::SmallConstant(var_num);
+                    self.emit_instruction(0xAE, &[var_operand], Some(0), None)?; // load variable to stack
+                    log::debug!(
+                        "LoadVar: IR ID {} loaded from local variable {} -> stack",
+                        target,
+                        var_num
+                    );
+                } else if *var_id == 16 {
+                    // CRITICAL FIX: Load from global variable G00 (Variable 16) for player object
+                    let global_var_operand = Operand::SmallConstant(16); // Variable 16 = Global G00
+                    self.emit_instruction(0xAE, &[global_var_operand], Some(0), None)?;
+                    log::debug!(
+                        "LoadVar: IR ID {} loaded from global Variable(16) -> stack [Player Global Access]",
+                        var_id
+                    );
+                } else {
+                    // Fallback: Load from stack (this should be rare)
+                    let stack_operand = Operand::SmallConstant(0);
+                    self.emit_instruction(0xAE, &[stack_operand], Some(0), None)?;
+                    log::debug!(
+                        "LoadVar: IR ID {} loaded from stack Variable(0) -> stack [Fallback]",
+                        var_id
+                    );
+                }
 
                 // Map the target to stack access
                 self.use_stack_for_result(*target);
-                log::debug!(
-                    "LoadVar: IR ID {} loaded from IR ID {} -> stack",
-                    target,
-                    var_id
-                );
             }
 
             IrInstruction::StoreVar { var_id, source } => {
@@ -478,7 +494,7 @@ impl ZMachineCodeGen {
 
                     // Emit branch instruction with placeholder - will be resolved later
                     self.emit_instruction(
-                        0x51,                                                    // je (2OP:17)
+                        0x01,                                                    // je (2OP:1)
                         &[Operand::SmallConstant(1), Operand::SmallConstant(1)], // Always true: 1 == 1
                         None,
                         Some(-1), // Placeholder - will be resolved by StaticBranch
@@ -1221,33 +1237,13 @@ impl ZMachineCodeGen {
                 // CRITICAL ARCHITECTURAL FIX: Check address value directly instead of context
                 // The hard-coded fix worked because addresses >= code_space_base are in code space
                 // This is more reliable than context tracking since it's based on actual memory layout
-                // TODO: revisit code address check - this may need refinement for edge cases
-                let is_in_code_space = self.code_space_base_address > 0
-                    && code_address_before >= self.code_space_base_address;
+                // All instructions are generated in code space, so use the instruction start address directly
+                let label_address = code_address_before;
 
                 log::debug!(
-                    "ADDRESS_SPACE_CHECK: code_address_before=0x{:04x}, code_space_base=0x{:04x}, is_in_code_space={}",
-                    code_address_before, self.code_space_base_address, is_in_code_space
+                    "LABEL_ADDRESS_FIX: Using instruction start address 0x{:04x} for deferred labels",
+                    label_address
                 );
-
-                let label_address = if is_in_code_space {
-                    // Address is already in code space - use it directly
-                    log::debug!(
-                        "ARCHITECTURAL_FIX: Using code space address 0x{:04x} directly",
-                        code_address_before
-                    );
-                    code_address_before
-                } else {
-                    // Address is in property space - map to code space
-                    log::debug!(
-                        "ARCHITECTURAL_FIX: Mapping property space address 0x{:04x} to code space address 0x{:04x}",
-                        code_address_before, self.next_code_space_address
-                    );
-                    let addr = self.next_code_space_address;
-                    // Reserve space in code space for these labels (they'll point to future code)
-                    self.next_code_space_address += 2; // Reserve minimal space
-                    addr
-                };
 
                 // Process all pending labels - they all point to the same address
                 let labels_to_process: Vec<crate::grue_compiler::ir::IrId> =
@@ -1710,6 +1706,7 @@ impl ZMachineCodeGen {
             (0x06, _) => InstructionForm::Variable, // print_num is always VAR
             (0x07, _) => InstructionForm::Variable, // random is always VAR
             (0x20, _) => InstructionForm::Variable, // call_1n is always VAR
+            // je (2OP:1) can use Long form normally, but will use Variable form if stores_result logic applies
             (0x8b, _) => InstructionForm::Variable, // quit (0OP:139) - too large for short form
             (0x8f, _) => InstructionForm::Variable, // call_1n (1OP:143) - too large for short form
             (0xE0, _) => InstructionForm::Variable, // call (VAR:224) is always VAR
@@ -1727,7 +1724,21 @@ impl ZMachineCodeGen {
                         }
                     });
 
-                    if opcode < 0x80 && can_use_long_form {
+                    // Check if instruction stores result - if so, use Variable form for explicit store_var
+                    let stores_result = match opcode {
+                        0x08..=0x09 => true, // or, and
+                        0x0F..=0x13 => true, // loadw, loadb, get_prop, get_prop_addr, get_next_prop
+                        0x14..=0x18 => true, // add, sub, mul, div, mod
+                        0x19 => true,        // call_2s
+                        0x1C => true,        // not (v1-v3 only)
+                        0x1F => true,        // undocumented - appears to store result
+                        _ => false,
+                    };
+
+                    if stores_result {
+                        // Instructions that store results need Variable form for explicit store_var
+                        InstructionForm::Variable
+                    } else if opcode < 0x80 && can_use_long_form {
                         InstructionForm::Long
                     } else {
                         InstructionForm::Variable

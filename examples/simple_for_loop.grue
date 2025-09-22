@@ -1,0 +1,20 @@
+// Ultra simple for loop test
+
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+    }
+}
+
+fn main() {
+    print("Testing simple for loop");
+
+    // Create a simple array to iterate
+    let items = ["apple", "banana"];
+
+    for item in items {
+        print("Item: " + item);
+    }
+
+    print("Loop completed");
+}

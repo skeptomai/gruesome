@@ -1,0 +1,38 @@
+// Test without for loop to isolate the issue
+
+world {
+    room west_of_house "West of House" {
+        desc: "West of House"
+
+        object mailbox {
+            names: ["mailbox"]
+            desc: "A mailbox."
+            openable: true
+            container: true
+
+            contains {
+                object leaflet {
+                    names: ["leaflet"]
+                    desc: "A leaflet."
+                }
+            }
+        }
+    }
+}
+
+fn main() {
+    print("Starting minimal test");
+
+    // Test writing to player property instead of mailbox
+    player.location = west_of_house;
+    print("Player location set.");
+
+    // Call the function but without the for loop
+    list_contents_no_loop(mailbox);
+}
+
+fn list_contents_no_loop(container) {
+    let contents = container.contents();
+    // Just access the array without looping
+    print("Array length test");
+}

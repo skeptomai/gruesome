@@ -385,12 +385,14 @@ mod codegen_tests {
                     var_type: Some(Type::Int),
                     slot: 1,
                     mutable: true,
+                    ir_id: 100,
                 },
                 IrLocal {
                     name: "temp2".to_string(),
                     var_type: Some(Type::Int),
                     slot: 2,
                     mutable: true,
+                    ir_id: 101,
                 },
             ],
         };

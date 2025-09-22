@@ -152,6 +152,7 @@ pub struct IrLocal {
     pub var_type: Option<Type>,
     pub slot: u8, // Local variable slot
     pub mutable: bool,
+    pub ir_id: IrId, // IR ID for this local variable (for codegen mapping)
 }
 
 /// Global variable in IR
@@ -1275,7 +1276,8 @@ impl IrGenerator {
                 name: param.name.clone(),
                 var_type: param.param_type.clone(),
                 slot: self.next_local_slot,
-                mutable: true, // Parameters are typically mutable
+                mutable: true,   // Parameters are typically mutable
+                ir_id: param_id, // Link to the parameter's IR ID
             };
             self.current_locals.push(local_param);
 
@@ -1842,6 +1844,7 @@ impl IrGenerator {
                     var_type: var_decl.var_type,
                     slot: self.next_local_slot,
                     mutable: var_decl.mutable,
+                    ir_id: var_id, // Link to the variable's IR ID
                 };
                 self.current_locals.push(local_var);
                 self.symbol_ids.insert(var_decl.name, var_id);
@@ -2004,14 +2007,30 @@ impl IrGenerator {
                     name: for_stmt.variable.clone(),
                     var_type: Some(Type::Any), // Type inferred from array elements
                     slot: self.next_local_slot,
-                    mutable: false, // Loop variables are immutable
+                    mutable: false,     // Loop variables are immutable
+                    ir_id: loop_var_id, // Link to the loop variable's IR ID
                 };
                 self.current_locals.push(local_var);
-                self.symbol_ids.insert(for_stmt.variable, loop_var_id);
+                self.symbol_ids
+                    .insert(for_stmt.variable.clone(), loop_var_id);
                 self.next_local_slot += 1;
 
                 // Create index variable for array iteration
                 let index_var = self.next_id();
+                // CRITICAL FIX: Index variable must be a local variable for inc_chk instruction to work
+                let index_local_var = IrLocal {
+                    name: format!("{}_index", for_stmt.variable.clone()), // Give it a unique name
+                    var_type: Some(Type::Int), // Index is always an integer
+                    slot: self.next_local_slot,
+                    mutable: true,    // Index needs to be mutable for increment
+                    ir_id: index_var, // Link to the index variable's IR ID
+                };
+                self.current_locals.push(index_local_var);
+                // CRITICAL: Add index variable to symbol_ids so it can be mapped to local variable
+                let index_var_name = format!("{}_index", for_stmt.variable.clone());
+                self.symbol_ids.insert(index_var_name, index_var);
+                self.next_local_slot += 1;
+
                 let zero_temp = self.next_id();
                 block.add_instruction(IrInstruction::LoadImmediate {
                     target: zero_temp,
