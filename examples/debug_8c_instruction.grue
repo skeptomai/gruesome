@@ -1,0 +1,12 @@
+// Minimal test to isolate the 0x8C SmallConstant(0) -> 0xFFFF bug
+
+world {
+    room test_room "Test Room" {
+        desc: "Test"
+    }
+}
+
+fn main() {
+    // This should emit the problematic 0x8C instruction
+    print("test " + "123");
+}
