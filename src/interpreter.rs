@@ -2404,15 +2404,6 @@ impl Interpreter {
 
         debug!("do_call: saving return_pc={:05x}", self.vm.pc);
 
-        // Debug: Track function calls that might corrupt PC
-        if self.vm.pc > 0x1000 || addr > 0x1000 {
-            log::error!(
-                "FUNCTION_CALL: calling addr=0x{:04x} from PC=0x{:04x}",
-                addr,
-                self.vm.pc
-            );
-        }
-
         // Special debug for calls that return to the newlines after the quote
         if self.vm.pc == 0xcc6a {
             debug!(

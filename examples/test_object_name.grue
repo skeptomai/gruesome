@@ -1,0 +1,12 @@
+world {
+    object test_obj {
+        name: "test"
+        description: "A test object."
+    }
+}
+
+function main() {
+    print("Object name: ");
+    print(test_obj.name);
+    print("\nDone.\n");
+}

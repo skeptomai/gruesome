@@ -35,6 +35,12 @@ impl ZMachineCodeGen {
             self.ir_id_to_integer.keys().collect::<Vec<_>>()
         );
 
+        // Check if this is a runtime concatenation pattern
+        if let Some((left_id, right_id)) = self.ir_id_to_runtime_concat.get(&arg_id).cloned() {
+            log::debug!("PRINT_RUNTIME_CONCAT: Generating runtime concatenation print for IR ID {} (left={}, right={})", arg_id, left_id, right_id);
+            return self.generate_runtime_concat_print(left_id, right_id);
+        }
+
         // Check if this is a string literal
         if let Some(string_value) = self.ir_id_to_string.get(&arg_id).cloned() {
             let print_string = string_value;
@@ -86,19 +92,35 @@ impl ZMachineCodeGen {
             // Try to resolve it as a simple operand (variable, constant, etc.)
             match self.resolve_ir_id_to_operand(arg_id) {
                 Ok(operand) => {
-                    // We can resolve it - generate print_num for numeric values
-                    log::debug!(
-                        "IR ID {} resolved to operand {:?} - generating print_num",
-                        arg_id,
-                        operand
-                    );
+                    // Check if this is a stack variable that might be a string (from property access)
+                    // Property access results like item.name return packed string addresses
+                    if matches!(operand, Operand::Variable(0)) {
+                        log::debug!(
+                            "IR ID {} resolved to stack Variable(0) - assuming string result, using print_paddr",
+                            arg_id
+                        );
 
-                    self.emit_instruction(
-                        0x06,       // print_num opcode - now correctly uses VAR form
-                        &[operand], // The resolved operand (Variable(0) is now valid)
-                        None,       // No store
-                        None,       // No branch
-                    )?;
+                        self.emit_instruction(
+                            0x8D,       // print_paddr opcode - print packed string address
+                            &[operand], // The stack variable containing the string address
+                            None,       // No store
+                            None,       // No branch
+                        )?;
+                    } else {
+                        // Non-stack variables are likely numeric
+                        log::debug!(
+                            "IR ID {} resolved to operand {:?} - generating print_num",
+                            arg_id,
+                            operand
+                        );
+
+                        self.emit_instruction(
+                            0x06,       // print_num opcode - for numeric values
+                            &[operand], // The resolved operand
+                            None,       // No store
+                            None,       // No branch
+                        )?;
+                    }
                 }
                 Err(_) => {
                     // Cannot resolve to simple operand - this is a complex expression
@@ -156,6 +178,107 @@ impl ZMachineCodeGen {
         // Do NOT add return instruction here - this is inline code generation
         // The return instruction was causing premature termination of init blocks
         // Each builtin call should continue to the next instruction
+
+        Ok(())
+    }
+
+    /// Generate runtime string concatenation for print operations
+    pub fn generate_runtime_concat_print(
+        &mut self,
+        left_id: IrId,
+        right_id: IrId,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "RUNTIME_CONCAT_PRINT: Generating print sequence for left={}, right={}",
+            left_id,
+            right_id
+        );
+
+        // Check what types of operands we have and generate appropriate print sequence
+        let left_is_string = self.ir_id_to_string.contains_key(&left_id);
+        let right_is_string = self.ir_id_to_string.contains_key(&right_id);
+
+        if left_is_string {
+            // Print the literal string first
+            log::debug!("RUNTIME_CONCAT: Printing literal left operand");
+            if let Some(string_value) = self.ir_id_to_string.get(&left_id).cloned() {
+                let string_id = self.find_or_create_string_id(&string_value)?;
+                self.emit_print_string_instruction(string_id)?;
+            }
+        } else {
+            // Print runtime value (stack/local variable)
+            log::debug!("RUNTIME_CONCAT: Printing runtime left operand from stack/local");
+            self.emit_print_runtime_value(left_id)?;
+        }
+
+        if right_is_string {
+            // Print the literal string second
+            log::debug!("RUNTIME_CONCAT: Printing literal right operand");
+            if let Some(string_value) = self.ir_id_to_string.get(&right_id).cloned() {
+                let string_id = self.find_or_create_string_id(&string_value)?;
+                self.emit_print_string_instruction(string_id)?;
+            }
+        } else {
+            // Print runtime value (stack/local variable)
+            log::debug!("RUNTIME_CONCAT: Printing runtime right operand from stack/local");
+            self.emit_print_runtime_value(right_id)?;
+        }
+
+        Ok(())
+    }
+
+    /// Emit print instruction for a string ID
+    fn emit_print_string_instruction(&mut self, string_id: IrId) -> Result<(), CompilerError> {
+        // Create unresolved reference for string address
+        let reference = UnresolvedReference {
+            location: self.current_address() + 1,
+            reference_type: LegacyReferenceType::StringRef,
+            target_id: string_id,
+            is_packed_address: true,
+            offset_size: 2,
+            location_space: MemorySpace::Strings,
+        };
+
+        // Generate print_paddr instruction
+        self.emit_instruction(0x8D, &[Operand::LargeConstant(0x0000)], None, None)?;
+        self.reference_context.unresolved_refs.push(reference);
+
+        Ok(())
+    }
+
+    /// Emit print instruction for a runtime value (stack/local variable)
+    fn emit_print_runtime_value(&mut self, value_id: IrId) -> Result<(), CompilerError> {
+        // Load the runtime value and convert to string for printing
+
+        if let Some(&stack_var) = self.ir_id_to_stack_var.get(&value_id) {
+            log::debug!("PRINT_RUNTIME: Printing stack variable {}", stack_var);
+            // For now, load stack variable and print as number
+            // TODO: Implement proper string conversion
+            self.emit_instruction(0x8C, &[Operand::SmallConstant(0)], Some(0), None)?; // Load from stack to temporary
+            self.emit_instruction(0x86, &[Operand::SmallConstant(0)], None, None)?;
+        // Print number from stack
+        } else if let Some(&local_var) = self.ir_id_to_local_var.get(&value_id) {
+            log::debug!("PRINT_RUNTIME: Printing local variable {}", local_var);
+            // For now, load local variable and print as number
+            // TODO: Implement proper string conversion
+            self.emit_instruction(
+                0x8C,
+                &[Operand::SmallConstant(local_var as u8)],
+                Some(0),
+                None,
+            )?;
+            self.emit_instruction(0x86, &[Operand::SmallConstant(0)], None, None)?;
+        // Print number from stack
+        } else {
+            log::warn!(
+                "PRINT_RUNTIME: Unknown runtime value type for IR ID {}",
+                value_id
+            );
+            // Fallback: print placeholder
+            let placeholder = format!("[RUNTIME_UNKNOWN_{}]", value_id);
+            let string_id = self.find_or_create_string_id(&placeholder)?;
+            self.emit_print_string_instruction(string_id)?;
+        }
 
         Ok(())
     }

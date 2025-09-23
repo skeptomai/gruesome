@@ -188,6 +188,14 @@ pub struct ArrayInfo {
     pub base_address: Option<u16>, // For future Z-Machine memory implementation
 }
 
+/// String property patch - tracks object properties containing string values that need patching
+#[derive(Debug, Clone)]
+pub struct StringPropertyPatch {
+    pub object_address: usize,  // Address of the object property table
+    pub property_offset: usize, // Offset within property table where string address should be written
+    pub string_value: String,   // The string value to find address for
+}
+
 /// Constant value types for control flow optimization
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConstantValue {
@@ -224,7 +232,7 @@ pub struct ZMachineCodeGen {
 
     // Code generation state
     pub label_addresses: IndexMap<IrId, usize>, // IR label ID -> byte address
-    string_addresses: IndexMap<IrId, usize>,    // IR string ID -> byte address
+    pub string_addresses: IndexMap<IrId, usize>, // IR string ID -> byte address
     function_addresses: IndexMap<IrId, usize>,  // IR function ID -> function header byte address
     function_locals_count: IndexMap<IrId, usize>, // IR function ID -> locals count (for header size calculation)
     function_header_locations: IndexMap<IrId, usize>, // IR function ID -> header byte location for patching
@@ -249,6 +257,8 @@ pub struct ZMachineCodeGen {
     function_names: IndexMap<IrId, String>,
     /// Mapping from IR IDs to array metadata (for dynamic lists)
     ir_id_to_array_info: IndexMap<IrId, ArrayInfo>,
+    /// Mapping from IR IDs to runtime concatenation patterns (left_id, right_id)
+    pub ir_id_to_runtime_concat: IndexMap<IrId, (IrId, IrId)>,
     /// Mapping from object names to object numbers (from IR generator)
     object_numbers: IndexMap<String, u16>,
     /// Global property registry: property name -> property number
@@ -283,6 +293,7 @@ pub struct ZMachineCodeGen {
 
     // Address resolution
     pub reference_context: ReferenceContext,
+    pub string_property_patches: Vec<StringPropertyPatch>, // String properties that need patching after string addresses are known
 
     // Control flow analysis - NEW ARCHITECTURE
     /// Track constant values resolved during generation
@@ -373,6 +384,7 @@ impl ZMachineCodeGen {
             builtin_function_names: IndexMap::new(),
             function_names: IndexMap::new(),
             ir_id_to_array_info: IndexMap::new(),
+            ir_id_to_runtime_concat: IndexMap::new(),
             object_numbers: IndexMap::new(),
             property_numbers: IndexMap::new(),
             object_properties: IndexMap::new(),
@@ -396,6 +408,7 @@ impl ZMachineCodeGen {
                 unresolved_refs: Vec::new(),
                 all_references_created: Vec::new(),
             },
+            string_property_patches: Vec::new(),
             constant_values: IndexMap::new(),
             labels_at_current_address: Vec::new(),
 
@@ -634,6 +647,11 @@ impl ZMachineCodeGen {
         for (string_id, string_data) in encoded_strings {
             self.allocate_string_space(string_id, &string_data)?;
         }
+
+        // Calculate string addresses immediately after allocation
+        // This allows object properties to reference string addresses during generation
+        self.calculate_string_addresses_early()?;
+
         log::info!(
             " Step 2a complete: String space populated ({} bytes)",
             self.string_space.len()
@@ -3913,6 +3931,98 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
+    /// Generate runtime string concatenation for mixed literal + runtime values
+    fn generate_runtime_string_concat(
+        &mut self,
+        left: IrId,
+        right: IrId,
+        target: IrId,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "RUNTIME_STRING_CONCAT: Generating runtime concatenation for left={}, right={}, target={}",
+            left, right, target
+        );
+
+        // For now, implement a simple approach:
+        // 1. Load both operands to stack variables
+        // 2. Generate Z-Machine instructions to concatenate at runtime
+        // 3. Store result for target
+
+        // Check what types of operands we have
+        let left_is_string = self.ir_id_to_string.contains_key(&left);
+        let right_is_string = self.ir_id_to_string.contains_key(&right);
+
+        if left_is_string && !right_is_string {
+            // Case: "literal" + runtime_value
+            log::debug!("RUNTIME_CONCAT: literal + runtime pattern");
+            return self.generate_literal_plus_runtime_concat(left, right, target);
+        } else if !left_is_string && right_is_string {
+            // Case: runtime_value + "literal"
+            log::debug!("RUNTIME_CONCAT: runtime + literal pattern");
+            return self.generate_runtime_plus_literal_concat(left, right, target);
+        } else {
+            // Both runtime or other combinations - implement as needed
+            log::debug!(
+                "RUNTIME_CONCAT: both runtime or complex pattern - fallback to print sequence"
+            );
+            return self.generate_complex_runtime_concat(left, right, target);
+        }
+    }
+
+    /// Handle "literal" + runtime_value concatenation
+    fn generate_literal_plus_runtime_concat(
+        &mut self,
+        left: IrId,
+        right: IrId,
+        target: IrId,
+    ) -> Result<(), CompilerError> {
+        // For now, use a simple approach: generate print instructions
+        // This creates a target that when printed will output: literal + runtime_value
+
+        // Create a special runtime concatenation ID that stores the pattern
+        self.ir_id_to_runtime_concat.insert(target, (left, right));
+
+        log::debug!(
+            "LITERAL_PLUS_RUNTIME: Stored concat pattern for target {}",
+            target
+        );
+        Ok(())
+    }
+
+    /// Handle runtime_value + "literal" concatenation
+    fn generate_runtime_plus_literal_concat(
+        &mut self,
+        left: IrId,
+        right: IrId,
+        target: IrId,
+    ) -> Result<(), CompilerError> {
+        // Similar to above but reversed order
+        self.ir_id_to_runtime_concat.insert(target, (left, right));
+
+        log::debug!(
+            "RUNTIME_PLUS_LITERAL: Stored concat pattern for target {}",
+            target
+        );
+        Ok(())
+    }
+
+    /// Handle complex runtime concatenation cases
+    fn generate_complex_runtime_concat(
+        &mut self,
+        left: IrId,
+        right: IrId,
+        target: IrId,
+    ) -> Result<(), CompilerError> {
+        // For complex cases, store the pattern for later resolution
+        self.ir_id_to_runtime_concat.insert(target, (left, right));
+
+        log::debug!(
+            "COMPLEX_RUNTIME: Stored complex concat pattern for target {}",
+            target
+        );
+        Ok(())
+    }
+
     /// SINGLE-PATH MIGRATION: String concatenation support for BinaryOp Add operations
     /// Implements compile-time string concatenation as done in the legacy system
 
@@ -4817,6 +4927,42 @@ impl ZMachineCodeGen {
                 size_byte,
                 prop_data.len()
             );
+
+            // Check if this is a string property that needs resolution
+            if let IrPropertyValue::String(s) = prop_value {
+                debug!(
+                    "PROP_STRING_DEBUG: Object property {} contains string: '{}'",
+                    prop_num, s
+                );
+                if let Ok(string_id) = self.find_string_id(s) {
+                    debug!(
+                        "PROP_STRING_DEBUG: Found string_id={} for string '{}'",
+                        string_id, s
+                    );
+                    // Create an UnresolvedReference for the string address
+                    let string_ref = UnresolvedReference {
+                        reference_type: LegacyReferenceType::StringRef,
+                        location: addr_offset + 1, // Location where string address will be written (after size byte)
+                        target_id: string_id,
+                        is_packed_address: false, // String addresses are not packed
+                        offset_size: 2,           // String addresses are 2 bytes
+                        location_space: MemorySpace::Objects,
+                    };
+                    self.reference_context
+                        .unresolved_refs
+                        .push(string_ref.clone());
+                    debug!(
+                        "Created string property reference: string_id={}, location=0x{:04x}",
+                        string_id,
+                        self.object_table_addr + addr_offset + 1
+                    );
+                } else {
+                    debug!(
+                        "PROP_STRING_DEBUG: Could not find string_id for string '{}'",
+                        s
+                    );
+                }
+            }
 
             // Ensure capacity for property header + data + terminator
             let final_addr = self.object_table_addr + addr_offset;
@@ -9626,6 +9772,64 @@ impl ZMachineCodeGen {
                 self.final_data.len()
             );
         }
+    }
+
+    /// Calculate string addresses early so they're available during object property generation
+    fn calculate_string_addresses_early(&mut self) -> Result<(), CompilerError> {
+        // Estimate the string base address using the same logic as the final layout
+        // This is a simplified version of the calculation in calculate_precise_layout()
+
+        // Start with header size (64 bytes)
+        let mut current_address = 64;
+
+        // Add globals space (480 bytes for 240 globals * 2 bytes each)
+        current_address += 480;
+
+        // Add abbreviations space (192 bytes for 96 abbreviations * 2 bytes each)
+        current_address += 192;
+
+        // Add object space (estimate)
+        current_address += self.object_space.len();
+
+        // Add dictionary space (estimate - we'll use 100 bytes as a reasonable estimate)
+        current_address += 100;
+
+        // Align string base for Z-Machine requirements
+        let string_base = match self.version {
+            ZMachineVersion::V3 => {
+                // V3 requires string addresses to be even
+                if current_address % 2 != 0 {
+                    current_address += 1; // Add padding byte
+                }
+                current_address
+            }
+            ZMachineVersion::V4 | ZMachineVersion::V5 => {
+                // V4+ requires string addresses to be divisible by 4
+                let remainder = current_address % 4;
+                if remainder != 0 {
+                    current_address += 4 - remainder; // Add padding
+                }
+                current_address
+            }
+        };
+
+        // Now calculate final addresses for all strings
+        for (&string_id, &string_offset) in &self.string_offsets {
+            let final_addr = string_base + string_offset;
+            self.string_addresses.insert(string_id, final_addr);
+            debug!(
+                "Early string address: string_id={} -> 0x{:04x} (base=0x{:04x} + offset=0x{:04x})",
+                string_id, final_addr, string_base, string_offset
+            );
+        }
+
+        debug!(
+            "Early string address calculation complete: {} strings processed with base=0x{:04x}",
+            self.string_addresses.len(),
+            string_base
+        );
+
+        Ok(())
     }
 }
 

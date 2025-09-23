@@ -577,14 +577,20 @@ impl ZMachineCodeGen {
                 property_num,
                 value,
             } => {
-                // Generate Z-Machine put_prop instruction (VAR:227, opcode 0x03)
+                // Generate Z-Machine put_prop instruction (VAR:227, opcode 0xE3)
                 // Use proper object resolution via global variables
+                let obj_operand = self.resolve_ir_id_to_operand(*object)?; // Object (properly resolved)
+                let val_operand = self.resolve_ir_id_to_operand(*value)?; // Value (properly resolved)
                 let operands = vec![
-                    self.resolve_ir_id_to_operand(*object)?, // Object (properly resolved)
+                    obj_operand,
                     Operand::Constant(*property_num as u16), // Property number
-                    self.resolve_ir_id_to_operand(*value)?,  // Value (properly resolved)
+                    val_operand,
                 ];
-                self.emit_instruction(0x03, &operands, None, None)?;
+                log::debug!(
+                    "PUT_PROP_DEBUG: object IR ID {}, property {}, value IR ID {} -> operands: {:?}",
+                    object, property_num, value, operands
+                );
+                self.emit_instruction(0xE3, &operands, None, None)?;
                 log::debug!(
                     "Generated put_prop for property number {} with resolved object",
                     property_num

@@ -1,0 +1,17 @@
+// Simple for loop test to isolate the infinite loop issue
+fn test_for_loop() {
+    let arr = [1, 2, 3];
+    print("Starting for loop");
+
+    for item in arr {
+        print("Item found");
+    }
+
+    print("For loop completed");
+}
+
+fn main() {
+    print("Testing for loop");
+    test_for_loop();
+    print("Test complete");
+}

@@ -449,6 +449,21 @@ impl ZMachineCodeGen {
         Ok(new_id)
     }
 
+    /// Find existing string ID for the given string (without creating)
+    pub fn find_string_id(&self, s: &str) -> Result<IrId, CompilerError> {
+        // Check if string already exists
+        for (id, existing_string) in &self.strings {
+            if existing_string == s {
+                return Ok(*id);
+            }
+        }
+
+        Err(CompilerError::CodeGenError(format!(
+            "String '{}' not found in string table",
+            s
+        )))
+    }
+
     /// Get string value from IR ID
     pub fn get_string_value(&self, ir_id: IrId) -> Result<String, CompilerError> {
         // Check strings collection first
@@ -653,7 +668,28 @@ impl ZMachineCodeGen {
         right: IrId,
         target: IrId,
     ) -> Result<(), CompilerError> {
-        // Get the string values for left and right operands
+        // Check if either operand is a runtime value
+        let left_is_runtime = self.ir_id_to_stack_var.contains_key(&left)
+            || self.ir_id_to_local_var.contains_key(&left)
+            || self.ir_id_to_integer.contains_key(&left);
+        let right_is_runtime = self.ir_id_to_stack_var.contains_key(&right)
+            || self.ir_id_to_local_var.contains_key(&right)
+            || self.ir_id_to_integer.contains_key(&right);
+
+        if left_is_runtime || right_is_runtime {
+            // Runtime string concatenation - this should be handled at print time
+            debug!(
+                "🔤 Runtime string concatenation detected: left={} (runtime={}), right={} (runtime={})",
+                left, left_is_runtime, right, right_is_runtime
+            );
+
+            // Store the left and right IR IDs for the print builtin to handle at runtime
+            self.ir_id_to_runtime_concat.insert(target, (left, right));
+
+            return Ok(());
+        }
+
+        // Both operands are compile-time strings - do regular concatenation
         let left_str = self.get_string_value(left)?;
         let right_str = self.get_string_value(right)?;
 
@@ -711,11 +747,15 @@ impl ZMachineCodeGen {
     ) -> (u8, Vec<u8>) {
         let data = match prop_value {
             IrPropertyValue::String(s) => {
-                // Encode string using Z-Machine encoding
-                if let Ok(encoded) = self.encode_string(s) {
-                    encoded
+                // For string properties, store the address where the string is located, not the string data itself
+                // Use the existing UnresolvedReference system to resolve the string address later
+                if let Ok(string_id) = self.find_string_id(s) {
+                    // Create an UnresolvedReference for this string - it will be resolved during final assembly
+                    // For now, return a placeholder that will be patched
+                    vec![0xFF, 0xFF] // Placeholder that will be replaced by string address resolution
                 } else {
-                    Vec::new()
+                    // String not found in string table - this shouldn't happen for valid properties
+                    vec![0, 0]
                 }
             }
             IrPropertyValue::Byte(b) => {

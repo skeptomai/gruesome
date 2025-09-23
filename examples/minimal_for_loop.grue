@@ -32,6 +32,7 @@ fn main() {
 }
 
 fn list_contents(container) {
+    print("in the list contents function");
     let contents = container.contents();
     for item in contents {  // <-- This for loop has unresolved branch placeholders
         print("  " + item.name);

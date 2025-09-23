@@ -1,0 +1,23 @@
+// Test simple object name property access
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+
+        object test_obj {
+            names: ["test"]
+            name: "test"
+            desc: "A test object."
+        }
+    }
+}
+
+fn main() {
+    print("Testing simple name access:");
+    print("Direct string test");  // This should definitely work
+    print(test_obj.name);  // Simple property access, no concatenation
+}
+
+init {
+    player.location = test_room;
+    main();
+}

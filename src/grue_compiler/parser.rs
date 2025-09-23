@@ -321,10 +321,19 @@ impl Parser {
 
     fn parse_expression_as_string(&mut self) -> Result<String, CompilerError> {
         // Parse expression and convert to string representation
-        // This is a simplified approach - in a real compiler, we'd store the expression
+        // Handle simple string literals directly for object descriptions
+        if matches!(self.peek().kind, TokenKind::StringLiteral(_)) {
+            if let TokenKind::StringLiteral(s) = &self.peek().kind {
+                let result = s.clone();
+                self.advance();
+                return Ok(result);
+            }
+        }
+
+        // For non-string-literal expressions, parse the full expression
         let _expr = self.parse_expression()?;
-        // For now, return a placeholder string
-        // TODO: Properly evaluate string expressions during semantic analysis
+        // For now, return a placeholder string for complex expressions
+        // TODO: Properly evaluate complex expressions during semantic analysis
         Ok("[expression]".to_string())
     }
 

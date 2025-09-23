@@ -1464,9 +1464,20 @@ impl IrGenerator {
         // Convert properties to Z-Machine properties
         let mut properties = IrProperties::new();
 
-        // Set standard properties
-        properties.set_string(StandardProperty::ShortName as u8, obj.identifier.clone());
-        properties.set_string(StandardProperty::LongName as u8, obj.description.clone());
+        // Set standard properties correctly
+        // Short name should be from the names list, not the identifier
+        let short_name = if !obj.names.is_empty() {
+            obj.names[0].clone()
+        } else {
+            obj.identifier.clone()
+        };
+        properties.set_string(StandardProperty::ShortName as u8, short_name);
+
+        // Set description from parsed desc field (obj.description comes from desc: "..." in AST)
+        if !obj.description.is_empty() {
+            let desc_prop_num = self.property_manager.get_property_number("description");
+            properties.set_string(desc_prop_num, obj.description.clone());
+        }
 
         // Convert AST properties to Z-Machine properties using property manager
         for (prop_name, prop_value) in &obj.properties {
@@ -2054,23 +2065,20 @@ impl IrGenerator {
                     var_id: index_var,
                 });
 
-                // CRITICAL FIX: Implement single-iteration loop for placeholder arrays
-                // The contents() method returns a placeholder value, not a real array
-                // So we should iterate exactly once with our placeholder object (player = 1)
-                // Compare index with 1 to terminate after first iteration
-                let one_temp = self.next_id();
-                block.add_instruction(IrInstruction::LoadImmediate {
-                    target: one_temp,
-                    value: IrValue::Integer(1), // Array length = 1 (single placeholder object)
+                // Get the actual array length instead of hardcoding it
+                let array_length_temp = self.next_id();
+                block.add_instruction(IrInstruction::ArrayLength {
+                    target: array_length_temp,
+                    array: iterable_temp,
                 });
 
-                // Compare index < array_length (1)
+                // Compare index < array_length
                 let condition_temp = self.next_id();
                 block.add_instruction(IrInstruction::BinaryOp {
                     target: condition_temp,
                     op: IrBinaryOp::Less,
                     left: index_temp,
-                    right: one_temp,
+                    right: array_length_temp,
                 });
 
                 // Branch based on condition
