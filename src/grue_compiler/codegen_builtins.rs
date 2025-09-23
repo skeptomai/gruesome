@@ -250,14 +250,25 @@ impl ZMachineCodeGen {
     fn emit_print_runtime_value(&mut self, value_id: IrId) -> Result<(), CompilerError> {
         // Load the runtime value and convert to string for printing
 
-        if let Some(&_stack_var) = self.ir_id_to_stack_var.get(&value_id) {
-            log::debug!("PRINT_RUNTIME: Printing value from stack");
-            // Print the value directly from the stack (Variable(0))
-            self.emit_instruction(0x86, &[Operand::Variable(0)], None, None)?;
+        if let Some(&stack_var) = self.ir_id_to_stack_var.get(&value_id) {
+            log::debug!("PRINT_RUNTIME: Printing stack variable {}", stack_var);
+            // For now, load stack variable and print as number
+            // TODO: Implement proper string conversion
+            self.emit_instruction(0x8C, &[Operand::SmallConstant(0)], Some(0), None)?; // Load from stack to temporary
+            self.emit_instruction(0x86, &[Operand::SmallConstant(0)], None, None)?;
+        // Print number from stack
         } else if let Some(&local_var) = self.ir_id_to_local_var.get(&value_id) {
             log::debug!("PRINT_RUNTIME: Printing local variable {}", local_var);
-            // Print the value directly from the local variable
-            self.emit_instruction(0x86, &[Operand::Variable(local_var as u8)], None, None)?;
+            // For now, load local variable and print as number
+            // TODO: Implement proper string conversion
+            self.emit_instruction(
+                0x8C,
+                &[Operand::SmallConstant(local_var as u8)],
+                Some(0),
+                None,
+            )?;
+            self.emit_instruction(0x86, &[Operand::SmallConstant(0)], None, None)?;
+        // Print number from stack
         } else {
             log::warn!(
                 "PRINT_RUNTIME: Unknown runtime value type for IR ID {}",
