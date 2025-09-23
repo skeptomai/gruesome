@@ -1,0 +1,3 @@
+fn main() {
+    print("ZORK is a registered trademark of Infocom, Inc.");
+}

@@ -68,7 +68,7 @@ impl ZMachineCodeGen {
                 reference_type: LegacyReferenceType::StringRef,
                 location: operand_address,
                 target_id: string_id,
-                is_packed_address: true,
+                is_packed_address: false,
                 offset_size: 2,
                 location_space: MemorySpace::Code,
             };
@@ -153,7 +153,7 @@ impl ZMachineCodeGen {
                         reference_type: LegacyReferenceType::StringRef,
                         location: operand_address,
                         target_id: string_id,
-                        is_packed_address: true,
+                        is_packed_address: false,
                         offset_size: 2,
                         location_space: MemorySpace::Code,
                     };
@@ -166,7 +166,7 @@ impl ZMachineCodeGen {
                         reference_type: LegacyReferenceType::StringRef,
                         location: operand_address,
                         target_id: string_id,
-                        is_packed_address: true,
+                        is_packed_address: false,
                         offset_size: 2,
                         location_space: MemorySpace::Code,
                     };
@@ -234,7 +234,7 @@ impl ZMachineCodeGen {
             location: self.current_address() + 1,
             reference_type: LegacyReferenceType::StringRef,
             target_id: string_id,
-            is_packed_address: true,
+            is_packed_address: false,
             offset_size: 2,
             location_space: MemorySpace::Strings,
         };
@@ -339,7 +339,7 @@ impl ZMachineCodeGen {
                 reference_type: LegacyReferenceType::StringRef,
                 location: operand_address,
                 target_id: string_id,
-                is_packed_address: true,
+                is_packed_address: false,
                 offset_size: 2,
                 location_space: MemorySpace::Code,
             };
@@ -679,7 +679,7 @@ impl ZMachineCodeGen {
             reference_type: LegacyReferenceType::StringRef,
             location: operand_address,
             target_id: string_id,
-            is_packed_address: true,
+            is_packed_address: false,
             offset_size: 2,
             location_space: MemorySpace::Code,
         };
@@ -716,7 +716,7 @@ impl ZMachineCodeGen {
             reference_type: LegacyReferenceType::StringRef,
             location: operand_address,
             target_id: string_id,
-            is_packed_address: true,
+            is_packed_address: false,
             offset_size: 2,
             location_space: MemorySpace::Code,
         };
@@ -1135,7 +1135,7 @@ impl ZMachineCodeGen {
             reference_type: LegacyReferenceType::StringRef,
             location: self.current_address() - 2,
             target_id: 9998, // Special debug string ID
-            is_packed_address: true,
+            is_packed_address: false,
             offset_size: 2,
             location_space: MemorySpace::Code,
         };
@@ -1195,7 +1195,7 @@ impl ZMachineCodeGen {
                 reference_type: LegacyReferenceType::StringRef,
                 location: self.current_address() - 2,
                 target_id: 9999, // Special space string ID
-                is_packed_address: true,
+                is_packed_address: false,
                 offset_size: 2,
                 location_space: MemorySpace::Code,
             };
