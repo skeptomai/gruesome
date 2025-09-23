@@ -1,0 +1,22 @@
+// Test case for runtime value concatenation
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room"
+    }
+}
+
+fn get_dynamic_string() {
+    return "dynamic";
+}
+
+fn main() {
+    // Simple static string - this should work
+    print("Static string works");
+
+    // Function call result concatenation - this should trigger runtime path
+    print("The " + get_dynamic_string() + " is here.");
+
+    // Another concatenation pattern with function result
+    print(get_dynamic_string() + ": examined.");
+}

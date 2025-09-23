@@ -35,13 +35,58 @@
 
 ### **PREVIOUS CRITICAL ISSUE** (September 21, 2025) - RESOLVED ✅:
 
-### 🎯 CURRENT CRITICAL ISSUE (Session Sep 21, 2025):
+### 🔍 CURRENT DEBUGGING SESSION (Sep 23, 2025) - STRING CORRUPTION IDENTIFIED
 
-**Untracked Placeholder Bug** - Root cause: Multiple code paths emit LargeConstant(0xFFFF) without creating UnresolvedReferences
-- **Problem**: UnresolvedReference tracking system works correctly for tracked references, but some code paths bypass tracking
-- **Minimal Test Case**: `examples/minimal_for_loop.grue` - reduced problem from 6 untracked placeholders to 1
-- **Runtime Impact**: Minimal test crashes with "Property 16 not found for object 3" due to corrupted addresses
-- **Current Status**: 1 untracked placeholder at address 0x08f6 with opcode 0x8C (load) and operand 0xFFFF
+**CRITICAL FINDINGS - AVOID CIRCULAR INVESTIGATION**:
+
+#### ✅ **CONFIRMED REAL ISSUES**:
+1. **Banner String Corruption**: `"Infocom, Inc."` displays as `"Infocom,  E ."` - this is REAL corruption
+2. **Runtime Crash**: Invalid opcode 0x00 at address 0x1465 AFTER banner prints (separate issue)
+3. **Untracked Placeholder**: 1 placeholder at 0x03a1 in Objects region (separate from string issues)
+
+#### ❌ **INVESTIGATION MISTAKES TO AVOID**:
+1. **DON'T investigate `emit_print_runtime_value`** - mini_zork banner uses static strings, not runtime concatenation
+2. **DON'T focus on untracked placeholders** - they're in object properties, not string printing code
+3. **DON'T confuse the crash with string corruption** - banner partially works, crash happens later
+
+#### 🎯 **REAL ROOT CAUSE**: Z-Machine string encoding/decoding corruption
+- **Specific symptom**: "Inc." → "E ." character substitution
+- **Evidence**: Source has `"Infocom, Inc."`, output shows `"Infocom,  E ."`
+- **Location**: String encoding in compiler OR string decoding in interpreter
+
+#### 📋 **NEXT STEPS** (avoid rabbit holes):
+1. **Test string encoding**: Check if compiler encodes "Inc." correctly to Z-Machine format
+2. **Test string decoding**: Check if interpreter decodes the encoded string correctly
+3. **Character mapping bug**: Investigate Z-Machine character set mapping corruption
+
+### 🔍 DETAILED ANALYSIS - Multiple Runtime Value Sources:
+
+**Function Call Results** (PRIMARY TRIGGER):
+- Function returns are completely runtime entities - unknown at compile time
+- `get_dynamic_string()` → stored in `ir_id_to_stack_var`, not `ir_id_to_string`
+- Concatenation like `"The " + get_dynamic_string() + " is here."` triggers buggy path
+
+**Other Runtime Value Sources** (24 instances in mini_zork):
+1. **Object property access**: `obj.name` → runtime computation → stack storage
+2. **Comparison operations**: Binary comparisons store results on stack
+3. **Load operations**: Various load operations store to stack
+4. **Function parameters**: Stored as local variables
+5. **Local variables**: User-declared variables
+6. **Object contents**: `get_object_contents` results
+
+**Concatenation Logic Flow**:
+```rust
+// CORRECT PATH (static strings):
+"Hello" → ir_id_to_string.contains_key() = true → print_paddr (0x8D) ✅
+
+// BROKEN PATH (runtime values):
+get_string() → ir_id_to_string.contains_key() = false → emit_print_runtime_value → 0x8C (loadw) ❌
+```
+
+**Technical Issue**:
+- `0x8C` = loadw instruction for array access, NOT for stack/variable access
+- `SmallConstant(0)` = literal constant 0, NOT stack Variable(0)
+- Creates untracked LargeConstant(0xFFFF) placeholders bypassing UnresolvedReference system
 
 ### 🔧 FIXES COMPLETED IN THIS SESSION:
 1. **Fixed**: Main loop unknown command print_paddr using old `self.code_address - 2` pattern → layout.operand_location
@@ -364,10 +409,13 @@ This has been a recurring source of debugging confusion. The compiler-generated 
 ❌ **NEVER use local variables for immediate expression results**
 ❌ **NEVER try to "fix" stack usage by converting to local variables**
 ❌ **NEVER bypass stack for function calls thinking it's "cleaner"**
+❌ **NEVER use loadw (0x8C) instruction for stack/variable access**
 
 ✅ **ALWAYS use stack for function returns, intermediate expressions, immediate consumption**
 ✅ **ALWAYS use local variables only for persistent, named variables**
 ✅ **ALWAYS follow the Z-Machine specification exactly for variable usage**
+✅ **ALWAYS use Variable(0) for stack access, Variable(N) for local variable N**
+✅ **ALWAYS use print_num (0x86) with Variable() operands for runtime value printing**
 
 ### **WHY THIS MATTERS:**
 - Stack management is NOT broken in the interpreter - it works correctly with Zork I
@@ -380,6 +428,12 @@ This has been a recurring source of debugging confusion. The compiler-generated 
 **From Z-Machine spec sect06.4**: "All routines return a value" and "Routine calls preserve local variables and the stack (except when the return value is stored in a local variable or onto the top of the stack)."
 
 **CRITICAL**: This pattern has caused repeated bugs. When implementing binary operations, function calls, or control flow, ALWAYS check: "Should this use stack or local variable according to the Z-Machine specification?"
+
+### **CURRENT EXAMPLE (Sep 23, 2025): emit_print_runtime_value Bug**
+- **Problem**: Used `0x8C` (loadw) with `SmallConstant(0)` for stack access
+- **Correct**: Use `0x86` (print_num) with `Variable(0)` for stack, `Variable(N)` for local vars
+- **Root Cause**: Violated Z-Machine spec by using wrong instruction for variable access
+- **Impact**: Runtime string concatenation corrupted banner text in mini_zork
 
 ## CRITICAL: Z-Machine Stack vs Local Variable Usage - Aug 28, 2025
 

@@ -1,0 +1,23 @@
+// Test case for object property string concatenation issue
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room"
+
+        object test_obj {
+            names: ["mailbox", "box"]
+            desc: "A simple mailbox"
+        }
+    }
+}
+
+fn main() {
+    // Simple static string - this should work
+    print("Static string works");
+
+    // Object property concatenation - this likely breaks banner
+    print("The " + test_obj.name + " is here.");
+
+    // Another concatenation pattern
+    print(test_obj.name + ": examined.");
+}
