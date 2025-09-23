@@ -1,0 +1,19 @@
+// Test banner strings to verify encoding fix
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+    }
+}
+
+fn main() {
+    print("DORK I: The Last Great Empire");
+    print("Copyright (c) 2025 Grue Games. All rights reserved.");
+    print("ZORK is a registered trademark of Infocom, Inc.");
+    print("DORK is .... not");
+    print("Revision 1 / Serial number 8675309");
+}
+
+init {
+    player.location = test_room;
+    main();
+}

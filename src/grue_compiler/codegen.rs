@@ -5753,7 +5753,7 @@ impl ZMachineCodeGen {
 
                 // CRITICAL: Ensure we have enough default value slots in the header
                 // The routine header needs 2 bytes per local variable for default values
-                let expected_header_size = 1 + (actual_locals as usize * 2);
+                let _expected_header_size = 1 + (actual_locals as usize * 2);
                 let current_header_end = header_location + 1 + (reserved_count as usize * 2);
 
                 if actual_locals > reserved_count {

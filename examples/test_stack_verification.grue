@@ -1,0 +1,20 @@
+world {
+    room test_room "Test Room" {
+        desc: "Simple test room"
+        exits: {}
+    }
+}
+
+object test_obj names [test] {
+    desc: "test description"
+}
+
+fn test_property() {
+    local prop_value;
+    prop_value = test_obj.name;
+    print(prop_value);
+}
+
+init {
+    test_property();
+}

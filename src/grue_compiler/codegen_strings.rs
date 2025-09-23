@@ -747,15 +747,12 @@ impl ZMachineCodeGen {
     ) -> (u8, Vec<u8>) {
         let data = match prop_value {
             IrPropertyValue::String(s) => {
-                // For string properties, store the address where the string is located, not the string data itself
-                // Use the existing UnresolvedReference system to resolve the string address later
-                if let Ok(string_id) = self.find_string_id(s) {
-                    // Create an UnresolvedReference for this string - it will be resolved during final assembly
-                    // For now, return a placeholder that will be patched
-                    vec![0xFF, 0xFF] // Placeholder that will be replaced by string address resolution
+                // Encode string using Z-Machine text encoding for property values
+                // This encodes the actual string content, not a reference address
+                if let Ok(encoded) = self.encode_string(s) {
+                    encoded
                 } else {
-                    // String not found in string table - this shouldn't happen for valid properties
-                    vec![0, 0]
+                    Vec::new()
                 }
             }
             IrPropertyValue::Byte(b) => {
