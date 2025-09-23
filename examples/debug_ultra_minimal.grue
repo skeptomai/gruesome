@@ -1,0 +1,22 @@
+// Ultra minimal - just player and room, no objects
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field."
+    }
+}
+
+grammar {
+    verb "look" {
+        default => look_around()
+    }
+}
+
+fn look_around() {
+    print(player.location.desc);
+}
+
+init {
+    player.location = west_of_house;
+    print("Ultra Minimal");
+    look_around();
+}

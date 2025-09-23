@@ -2085,39 +2085,8 @@ impl ZMachineCodeGen {
         let initial_code_size = self.code_space.len();
 
         // Phase 2.1: Generate ALL function definitions
-        // PHASE 2A: Pre-register all function addresses to solve forward reference issues
-        log::info!(" PRE-REGISTERING: All function addresses for forward reference resolution");
-        let mut simulated_address = self.code_space.len();
-        for (_i, function) in ir.functions.iter().enumerate() {
-            // Simulate alignment padding
-            if matches!(self.version, ZMachineVersion::V4 | ZMachineVersion::V5) {
-                while simulated_address % 4 != 0 {
-                    simulated_address += 1; // Account for padding bytes
-                }
-            }
-
-            // Pre-register this function's address
-            self.function_addresses
-                .insert(function.id, simulated_address);
-            self.reference_context
-                .ir_id_to_address
-                .insert(function.id, simulated_address);
-
-            log::debug!(
-                " PRE-REGISTERED: Function '{}' (IR ID {}) at projected address 0x{:04x}",
-                function.name,
-                function.id,
-                simulated_address
-            );
-
-            // Estimate function size for next function's address calculation
-            // Header: 1 byte (local count) + 2*locals (default values) + body instructions
-            let estimated_size =
-                1 + (function.local_vars.len() * 2) + (function.body.instructions.len() * 4);
-            simulated_address += estimated_size;
-        }
-
-        // PHASE 2B: Now generate actual function code with all addresses pre-registered
+        // REMOVED: Legacy PRE-REGISTRATION system that created stale function addresses
+        // Now all function addresses are resolved through UnresolvedReference system only
         log::info!(" TRANSLATING: All function definitions");
         self.compilation_context_stack
             .push("function_code_generation".to_string());
@@ -6341,15 +6310,8 @@ impl ZMachineCodeGen {
             return Ok(Operand::LargeConstant(object_number));
         }
 
-        // Check if this IR ID maps to a function address
-        if let Some(&function_addr) = self.reference_context.ir_id_to_address.get(&ir_id) {
-            log::debug!(
-                " resolve_ir_id_to_operand: IR ID {} resolved to LargeConstant({}) [Function address]",
-                ir_id,
-                function_addr
-            );
-            return Ok(Operand::LargeConstant(function_addr as u16));
-        }
+        // REMOVED: Legacy function address lookup that bypassed UnresolvedReference tracking
+        // This was causing stale addresses to be used instead of proper placeholder resolution
 
         // CRITICAL: Unknown IR ID - this indicates a missing instruction target registration
         // For now, temporarily restore fallback but with comprehensive logging

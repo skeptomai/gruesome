@@ -134,7 +134,7 @@ mod parser_tests {
                 let obj = &room.objects[0];
                 assert_eq!(obj.identifier, "mailbox");
                 assert_eq!(obj.names, vec!["small mailbox", "mailbox", "box"]);
-                assert_eq!(obj.description, "[expression]"); // Placeholder for now
+                assert_eq!(obj.description, "A small mailbox.");
 
                 assert_eq!(obj.properties.len(), 2);
                 match obj.properties.get("openable").unwrap() {

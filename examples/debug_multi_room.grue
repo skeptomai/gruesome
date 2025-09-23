@@ -1,0 +1,73 @@
+// Test multiple rooms with exits - to see if this triggers more placeholders
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house."
+
+        exits: {
+            north: north_of_house,
+            east: south_of_house
+        }
+    }
+
+    room north_of_house "North of House" {
+        desc: "You are facing the north side of a white house."
+        exits: {
+            south: west_of_house
+        }
+    }
+
+    room south_of_house "South of House" {
+        desc: "You are facing the south side of a white house."
+        exits: {
+            west: west_of_house
+        }
+    }
+}
+
+grammar {
+    verb "look" {
+        default => look_around()
+    }
+
+    verb "go" {
+        noun => handle_go($noun)
+    }
+
+    verb "north" {
+        default => handle_go("north")
+    }
+
+    verb "south" {
+        default => handle_go("south")
+    }
+
+    verb "east" {
+        default => handle_go("east")
+    }
+
+    verb "west" {
+        default => handle_go("west")
+    }
+}
+
+fn look_around() {
+    print(player.location.desc);
+}
+
+fn handle_go(direction) {
+    let exit = player.location.exits[direction];
+
+    if exit.none() {
+        print("You can't go that way.");
+        return;
+    }
+
+    move(player, exit.destination);
+    look_around();
+}
+
+init {
+    player.location = west_of_house;
+    print("Multi-Room Test");
+    look_around();
+}

@@ -1,0 +1,38 @@
+// Medium complexity test to isolate invalid opcode issue
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house."
+
+        object mailbox {
+            names: ["small mailbox", "mailbox", "box"]
+            desc: "The small mailbox is closed."
+            openable: true
+            container: true
+        }
+    }
+
+    room north_of_house "North of House" {
+        desc: "You are facing the north side of a white house."
+    }
+}
+
+fn examine(obj) {
+    if (obj == mailbox) {
+        print(mailbox.desc);
+    } else {
+        print("You see nothing special about it.");
+    }
+}
+
+fn look_around() {
+    print(player.location.desc);
+}
+
+fn main() {
+    print("DORK I: The Last Great Empire");
+    look_around();
+}
+
+init {
+    main();
+}

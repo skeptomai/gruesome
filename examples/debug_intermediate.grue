@@ -1,0 +1,66 @@
+// Intermediate complexity - test container objects without complex functions
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house."
+
+        object mailbox {
+            names: ["mailbox", "box"]
+            desc: "A small mailbox."
+            openable: true
+            container: true
+
+            contains {
+                object leaflet {
+                    names: ["leaflet", "paper"]
+                    desc: "A leaflet."
+                }
+            }
+        }
+    }
+}
+
+grammar {
+    verb "look" {
+        default => look_around()
+    }
+
+    verb "examine" {
+        noun => examine($noun)
+    }
+
+    verb "open" {
+        noun => handle_open($noun)
+    }
+}
+
+fn look_around() {
+    print(player.location.desc);
+}
+
+fn examine(obj) {
+    if obj.location == player.location || obj.location == player {
+        print(obj.desc);
+    } else {
+        print("You can't see any such thing.");
+    }
+}
+
+fn handle_open(obj) {
+    if !obj.openable {
+        print("You can't open that.");
+        return;
+    }
+
+    if obj.open {
+        print("It's already open.");
+    } else {
+        obj.open = true;
+        print("Opened.");
+    }
+}
+
+init {
+    player.location = west_of_house;
+    print("Intermediate Test");
+    look_around();
+}

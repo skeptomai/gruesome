@@ -1,0 +1,14 @@
+// Simple test case to isolate invalid opcode issue
+world {
+    room start_room "Start Room" {
+        desc: "You are in a simple room."
+    }
+}
+
+fn main() {
+    print("Testing simple execution");
+}
+
+init {
+    main();
+}

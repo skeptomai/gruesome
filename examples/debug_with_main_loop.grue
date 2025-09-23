@@ -1,0 +1,37 @@
+// Test with main loop to isolate invalid opcode issue
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house."
+
+        object mailbox {
+            names: ["small mailbox", "mailbox", "box"]
+            desc: "The small mailbox is closed."
+            openable: true
+            container: true
+        }
+    }
+}
+
+fn look_around() {
+    print(player.location.desc);
+}
+
+fn handle_command() {
+    // Simple command handling
+    print("I don't understand that.");
+}
+
+fn main_loop() {
+    print("DORK I: The Last Great Empire");
+    look_around();
+
+    // Main game loop
+    while (true) {
+        print("> ");
+        handle_command();
+    }
+}
+
+init {
+    main_loop();
+}

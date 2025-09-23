@@ -1,0 +1,39 @@
+// Minimal test case - player + 1 room + 1 object + minimal functions
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house."
+
+        object mailbox {
+            names: ["mailbox", "box"]
+            desc: "A small mailbox."
+        }
+    }
+}
+
+grammar {
+    verb "look" {
+        default => look_around()
+    }
+
+    verb "examine" {
+        noun => examine($noun)
+    }
+}
+
+fn look_around() {
+    print(player.location.desc);
+}
+
+fn examine(obj) {
+    if obj.location == player.location || obj.location == player {
+        print(obj.desc);
+    } else {
+        print("You can't see any such thing.");
+    }
+}
+
+init {
+    player.location = west_of_house;
+    print("Minimal Test");
+    look_around();
+}

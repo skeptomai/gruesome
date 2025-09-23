@@ -1,0 +1,95 @@
+// Test with 15 functions to approach mini_zork complexity
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house."
+
+        object mailbox {
+            names: ["small mailbox", "mailbox", "box"]
+            desc: "The small mailbox is closed."
+            openable: true
+            container: true
+        }
+    }
+
+    room kitchen "Kitchen" {
+        desc: "You are in the kitchen of the white house."
+    }
+}
+
+fn look_around() {
+    print(player.location.desc);
+}
+
+fn handle_command() {
+    print("I don't understand that.");
+}
+
+fn list_inventory() {
+    print("You are carrying nothing.");
+}
+
+fn examine_mailbox() {
+    print("The mailbox is small and closed.");
+}
+
+fn open_mailbox() {
+    print("You open the mailbox.");
+}
+
+fn close_mailbox() {
+    print("You close the mailbox.");
+}
+
+fn take_inventory() {
+    print("You are carrying nothing special.");
+}
+
+fn examine_house() {
+    print("The house is a beautiful colonial house.");
+}
+
+fn go_north() {
+    print("You can't go that way.");
+}
+
+fn go_south() {
+    print("You head south.");
+}
+
+fn look_kitchen() {
+    print("This is a typical kitchen.");
+}
+
+fn check_cupboards() {
+    print("The cupboards are mostly empty.");
+}
+
+fn list_contents(obj) {
+    print("Contents:");
+}
+
+fn move_player(destination) {
+    player.location = destination;
+}
+
+fn main_loop() {
+    print("DORK I: The Last Great Empire");
+    look_around();
+    handle_command();
+    list_inventory();
+    examine_mailbox();
+    open_mailbox();
+    close_mailbox();
+    take_inventory();
+    examine_house();
+    go_north();
+    go_south();
+    look_kitchen();
+    check_cupboards();
+    list_contents(mailbox);
+    move_player(kitchen);
+}
+
+init {
+    main_loop();
+}

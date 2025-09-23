@@ -1,0 +1,106 @@
+// Targeted test for complex property operations that may trigger additional untracked placeholders
+// This test focuses on the specific patterns found in mini_zork but not in simpler test cases
+
+world {
+    room test_room "Test Room" {
+        desc: "A test room for complex property operations."
+
+        object container_box {
+            names: ["box", "container"]
+            desc: "A test container."
+            openable: true
+            container: true
+
+            contains {
+                object test_item {
+                    names: ["item", "thing"]
+                    desc: "A test item."
+                }
+            }
+        }
+    }
+}
+
+grammar {
+    verb "test" {
+        default => run_property_tests()
+    }
+
+    verb "look" {
+        default => look_around()
+    }
+}
+
+fn look_around() {
+    print(player.location.desc);
+    list_objects(player.location);
+}
+
+fn list_objects(location) {
+    let objects = location.contents();
+    let visible_objects = [];
+
+    for obj in objects {
+        if obj != player {
+            visible_objects.add(obj);
+        }
+    }
+
+    if !visible_objects.empty() {
+        for obj in visible_objects {
+            print("There is " + obj.name + " here.");
+        }
+    }
+}
+
+fn list_contents(container) {
+    let contents = container.contents();
+    for item in contents {
+        print("  " + item.name);
+    }
+}
+
+fn run_property_tests() {
+    // Test complex property operations similar to mini_zork
+    let container = container_box;
+
+    // Test empty() method calls
+    if container.empty() {
+        print("Container is empty.");
+    } else {
+        print("Container has contents.");
+    }
+
+    // Test contents() iteration
+    let items = container.contents();
+    print("Container contains " + items.length + " items.");
+
+    // Test complex conditionals with property access
+    if container.container && !container.open {
+        print("Container is closed.");
+        container.open = true;
+        print("Opened container.");
+    }
+
+    // Test nested property access
+    if container.location.container && container.location.open {
+        print("Complex property check succeeded.");
+    }
+
+    // Test property assignment with complex expressions
+    player.location.visited = true;
+    container.open = false;
+
+    // Test list_contents function call
+    if !container.empty() {
+        print("Container contents:");
+        list_contents(container);
+    }
+}
+
+init {
+    player.location = test_room;
+    print("Complex Property Test");
+    print("Type 'test' to run property operations that may trigger untracked placeholders.");
+    look_around();
+}
