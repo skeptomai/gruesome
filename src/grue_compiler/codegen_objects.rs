@@ -353,6 +353,13 @@ impl ZMachineCodeGen {
         player_properties.set_word(location_prop, initial_location);
         player_properties.set_string(desc_prop, "yourself".to_string());
 
+        // Add before property (property 4) with default value 0 (no handler)
+        let before_prop = ir
+            .property_manager
+            .get_property_number_by_name("before")
+            .unwrap_or_else(|| panic!("Property 'before' not found in PropertyManager"));
+        player_properties.set_word(before_prop, 0);
+
         all_objects.push(ObjectData {
             id: 9999u32, // Use high ID to avoid conflicts with actual IR objects
             name: "player".to_string(),

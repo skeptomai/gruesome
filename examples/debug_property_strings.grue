@@ -1,0 +1,17 @@
+// Minimal test case for property string debugging
+world {
+    room test_room "Test Room" {
+        desc: "Simple room description"
+    }
+}
+
+fn main() {
+    print("Direct string works:");
+    print("This is a direct string");
+    print("Property string broken:");
+    print(test_room.desc);
+}
+
+init {
+    main();
+}

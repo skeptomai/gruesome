@@ -1,0 +1,49 @@
+// Mini Zork - Simplified Version without Dynamic String Concatenation
+// This version removes complex expressions to test basic compilation
+world {
+    room west_of_house "West of House" {
+        desc: "You are standing in an open field west of a white house, with a boarded front door."
+
+        object mailbox {
+            names: ["small mailbox", "mailbox", "box"]
+            desc: "A small mailbox."
+            openable: true
+            container: true
+
+            contains {
+                object leaflet {
+                    names: ["leaflet", "paper"]
+                    desc: "WELCOME TO ZORK! ZORK is a game of adventure, danger, and low cunning. In it you will explore some of the most amazing territory ever seen by mortals. No computer should be without one!"
+                }
+            }
+        }
+
+        exits: {
+            north: north_of_house
+        }
+    }
+
+    room north_of_house "North of House" {
+        desc: "You are facing the north side of a white house. There is no door here, and all the windows are boarded up."
+        exits: {
+            south: west_of_house
+        }
+    }
+}
+
+fn main() {
+    print("DORK I: The Last Great Empire");
+    print("Copyright (c) 2025 Grue Games. All rights reserved.");
+    print("ZORK is a registered trademark of Infocom, Inc.");
+    print("DORK is .... not");
+    print("Revision 1 / Serial number 8675309");
+    print("");
+
+    print(player.location.name);
+    print(player.location.desc);
+}
+
+init {
+    player.location = west_of_house;
+    main();
+}

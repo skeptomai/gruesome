@@ -746,14 +746,11 @@ impl ZMachineCodeGen {
         prop_value: &IrPropertyValue,
     ) -> (u8, Vec<u8>) {
         let data = match prop_value {
-            IrPropertyValue::String(s) => {
-                // Encode string using Z-Machine text encoding for property values
-                // This encodes the actual string content, not a reference address
-                if let Ok(encoded) = self.encode_string(s) {
-                    encoded
-                } else {
-                    Vec::new()
-                }
+            IrPropertyValue::String(_s) => {
+                // String properties store addresses, not raw string data
+                // Return placeholder bytes that will be overwritten by UnresolvedReference
+                // String addresses are 2 bytes (big-endian)
+                vec![0xFF, 0xFF] // Placeholder for 2-byte string address
             }
             IrPropertyValue::Byte(b) => {
                 // Single byte property

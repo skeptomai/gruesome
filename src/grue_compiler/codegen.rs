@@ -6278,11 +6278,13 @@ impl ZMachineCodeGen {
         // Check if this IR ID maps to a stack variable (e.g., result of GetProperty)
         if let Some(&stack_var) = self.ir_id_to_stack_var.get(&ir_id) {
             log::debug!(
-                " resolve_ir_id_to_operand: IR ID {} resolved to Variable({}) [Stack result]",
+                " resolve_ir_id_to_operand: IR ID {} resolved to Variable(0) [Stack result, original_depth={}]",
                 ir_id,
                 stack_var
             );
-            return Ok(Operand::Variable(stack_var));
+            // CRITICAL FIX: Z-Machine stack is accessed via Variable(0), not the tracking number
+            // The stack_var is just for internal tracking depth, but all stack access uses Variable(0)
+            return Ok(Operand::Variable(0));
         }
 
         // Check if this IR ID maps to a local variable (e.g., function parameter)

@@ -1,0 +1,27 @@
+// Test different levels of property access
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room."
+    }
+}
+
+fn main() {
+    print("=== TESTING PROPERTY ACCESS LEVELS ===");
+
+    print("1. Direct object property:");
+    print(test_room.name);
+
+    print("2. Player location (single chain):");
+    print(player.location);
+
+    print("3. Chained property access:");
+    print(player.location.name);
+
+    print("4. Double chained:");
+    print(player.location.desc);
+}
+
+init {
+    player.location = test_room;
+    main();
+}

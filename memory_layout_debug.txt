@@ -1,5 +1,5 @@
 === Z-MACHINE MEMORY LAYOUT DEBUG ===
-Generated: Mon Sep 22 21:30:32 PDT 2025
+Generated: Tue Sep 23 06:37:27 PDT 2025
 
 MEMORY REGIONS:
 Region           Start    End      Length   Purpose
@@ -7,17 +7,161 @@ Region           Start    End      Length   Purpose
 Header           0x0000   0x0040     64 bytes  Z-Machine header
 Globals          0x0040   0x0220    480 bytes  Global variables
 Abbreviations    0x0220   0x02e0    192 bytes  String compression
-Objects          0x02e0   0x0718   1080 bytes  Object table + properties
-Dictionary       0x0718   0x0722     10 bytes  Word parsing dictionary
-Strings          0x0722   0x0804    226 bytes  Encoded text literals
-Code             0x0804   0x0829     37 bytes  Executable functions
+Objects          0x02e0   0x0784   1188 bytes  Object table + properties
+Dictionary       0x0784   0x078e     10 bytes  Word parsing dictionary
+Strings          0x078e   0x0eac   1822 bytes  Encoded text literals
+Code             0x0eac   0x1736   2186 bytes  Executable functions
 -----------------------------------------------
-Total            0x0000   0x0829   2089 bytes  Complete Z-Machine file
+Total            0x0000   0x1736   5942 bytes  Complete Z-Machine file
 
 CRASH ANALYSIS:
 Crash location: 0x012a
 0x012a falls in: GLOBALS region (0x0040-0x0220)
 
 FUNCTION ADDRESS MAPPINGS:
-IR ID 8000 -> 0x0804
-IR ID    2 -> 0x0812
+IR ID 8000 -> 0x0eac
+IR ID    2 -> 0x0ede
+IR ID    3 -> 0x0f2a
+IR ID    4 -> 0x0f60
+IR ID    5 -> 0x0fe8
+IR ID    6 -> 0x1034
+IR ID    7 -> 0x10a8
+IR ID    8 -> 0x10ce
+IR ID    9 -> 0x11ea
+IR ID   10 -> 0x12ae
+IR ID   11 -> 0x12d0
+IR ID   12 -> 0x12fe
+IR ID   13 -> 0x1378
+IR ID   14 -> 0x14de
+IR ID   15 -> 0x15e6
+IR ID   73 -> 0x0f0c
+IR ID   81 -> 0x0f1d
+IR ID   82 -> 0x0f26
+IR ID   83 -> 0x0f26
+IR ID   74 -> 0x0f29
+IR ID   75 -> 0x0f29
+IR ID   94 -> 0x0f4f
+IR ID   95 -> 0x0f5a
+IR ID   96 -> 0x0f5e
+IR ID  107 -> 0x0f70
+IR ID  108 -> 0x0f78
+IR ID  109 -> 0x0f78
+IR ID  115 -> 0x0f85
+IR ID  116 -> 0x0f8d
+IR ID  117 -> 0x0f8d
+IR ID  122 -> 0x0f97
+IR ID  123 -> 0x0f9e
+IR ID  135 -> 0x0fb8
+IR ID  136 -> 0x0fbf
+IR ID  137 -> 0x0fbf
+IR ID  141 -> 0x0fd0
+IR ID  142 -> 0x0fe7
+IR ID  143 -> 0x0fe7
+IR ID  124 -> 0x0fe7
+IR ID  156 -> 0x0ff8
+IR ID  157 -> 0x1000
+IR ID  158 -> 0x1000
+IR ID  164 -> 0x100d
+IR ID  165 -> 0x1015
+IR ID  166 -> 0x1015
+IR ID  172 -> 0x1022
+IR ID  173 -> 0x1029
+IR ID  174 -> 0x1033
+IR ID  187 -> 0x1042
+IR ID  188 -> 0x104a
+IR ID  189 -> 0x104a
+IR ID  195 -> 0x1057
+IR ID  196 -> 0x105f
+IR ID  197 -> 0x105f
+IR ID  207 -> 0x1087
+IR ID  208 -> 0x109f
+IR ID  209 -> 0x109f
+IR ID  228 -> 0x10b6
+IR ID  229 -> 0x10be
+IR ID  230 -> 0x10be
+IR ID  245 -> 0x10e0
+IR ID  246 -> 0x11a4
+IR ID  247 -> 0x11a4
+IR ID  251 -> 0x11ae
+IR ID  252 -> 0x11b5
+IR ID  263 -> 0x11bc
+IR ID  264 -> 0x11c6
+IR ID  265 -> 0x11e8
+IR ID  253 -> 0x11e8
+IR ID  286 -> 0x120c
+IR ID  287 -> 0x1213
+IR ID  288 -> 0x1213
+IR ID  290 -> 0x1218
+IR ID  291 -> 0x1220
+IR ID  292 -> 0x1220
+IR ID  297 -> 0x122a
+IR ID  298 -> 0x1236
+IR ID  299 -> 0x1236
+IR ID  306 -> 0x1247
+IR ID  314 -> 0x1258
+IR ID  315 -> 0x1261
+IR ID  316 -> 0x1261
+IR ID  307 -> 0x1264
+IR ID  308 -> 0x1264
+IR ID  327 -> 0x128b
+IR ID  335 -> 0x129c
+IR ID  336 -> 0x12a5
+IR ID  337 -> 0x12a5
+IR ID  328 -> 0x12a8
+IR ID  329 -> 0x12a8
+IR ID  348 -> 0x12c7
+IR ID  349 -> 0x12ca
+IR ID  350 -> 0x12ce
+IR ID  361 -> 0x12e0
+IR ID  362 -> 0x12e8
+IR ID  363 -> 0x12e8
+IR ID  369 -> 0x12ed
+IR ID  370 -> 0x12f9
+IR ID  371 -> 0x12fd
+IR ID  389 -> 0x1323
+IR ID  390 -> 0x132a
+IR ID  391 -> 0x132a
+IR ID  405 -> 0x136c
+IR ID  406 -> 0x1373
+IR ID  407 -> 0x1373
+IR ID  416 -> 0x1391
+IR ID  417 -> 0x1453
+IR ID  418 -> 0x1453
+IR ID  426 -> 0x145f
+IR ID  427 -> 0x1469
+IR ID  436 -> 0x1476
+IR ID  442 -> 0x1480
+IR ID  443 -> 0x1483
+IR ID  444 -> 0x1483
+IR ID  437 -> 0x1486
+IR ID  438 -> 0x1486
+IR ID  428 -> 0x1492
+IR ID  450 -> 0x149c
+IR ID  451 -> 0x14a3
+IR ID  452 -> 0x14a3
+IR ID  455 -> 0x14ab
+IR ID  462 -> 0x14ae
+IR ID  463 -> 0x14b8
+IR ID  464 -> 0x14da
+IR ID  456 -> 0x14dd
+IR ID  457 -> 0x14dd
+IR ID  483 -> 0x14f1
+IR ID  484 -> 0x15b3
+IR ID  485 -> 0x15b3
+IR ID  491 -> 0x15b9
+IR ID  492 -> 0x15c3
+IR ID  493 -> 0x15e5
+IR ID  511 -> 0x1600
+IR ID  512 -> 0x16c2
+IR ID  513 -> 0x16c2
+IR ID  521 -> 0x16cb
+IR ID  522 -> 0x16d5
+IR ID  535 -> 0x16f2
+IR ID  536 -> 0x170f
+IR ID  537 -> 0x170f
+IR ID  523 -> 0x171b
+IR ID  552 -> 0x1720
+IR ID  553 -> 0x1727
+IR ID  554 -> 0x1727
+IR ID 9000 -> 0x1728
+IR ID 9001 -> 0x1729
