@@ -1,14 +1,17 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (September 24, 2025) - ARRAY INDEX CRASH FULLY RESOLVED ✅
+## CURRENT STATUS (September 24, 2025) - OPCODE CLASSIFICATION FIXED, STACK ARCHITECTURE ISSUE IDENTIFIED ⚠️
 
-**MAJOR SUCCESS**: Array index crash bug in `opcodes_math.rs:46` completely fixed through comprehensive VAR opcode classification!
+**MAJOR PROGRESS**: Opcode classification conflicts resolved, fundamental stack architecture issue identified!
 
 ### 🎉 COMPLETED FIXES (Session Sep 24, 2025):
-1. **✅ Array Index Crash ELIMINATED**: Fixed missing VAR opcode 0x08 (push) in `is_true_var_opcode()` function
-2. **✅ Comprehensive VAR Opcode Classification**: Added all VAR opcodes (0x00-0x1F) per Z-Machine specification
-3. **✅ No Golden File Regressions**: Existing functionality remains intact
-4. **✅ Systematic Fix Applied**: General solution implemented rather than targeted exception
+1. **✅ VAR/2OP Opcode Classification Fixed**: Removed conflicting raw opcode mappings (0x00-0x1F) from `is_true_var_opcode()`
+2. **✅ "Invalid Long form opcode 0x00" Errors Eliminated**: 2OP:0 (je) instructions now properly classified
+3. **✅ No Golden File Regressions**: basic_test.grue continues to work correctly
+4. **🔍 Stack Architecture Issue Identified**: Root cause of for-loop failures found
+
+### 🚨 CRITICAL ARCHITECTURAL ISSUE IDENTIFIED:
+**Z-Machine Stack Compliance Violation**: Our compiler treats the Z-Machine stack as having "stack slots" (Variable(2), Variable(3), etc.) when the Z-Machine specification only supports LIFO access via Variable(0). This causes stack underflow when multiple intermediate values try to access the same Variable(0) position.
 
 ### 🎉 PREVIOUS COMPLETED FIXES (Session Sep 23, 2025):
 1. **✅ Stack Architecture Fixed**: Variable(0) correctly accessed instead of Variable(3)

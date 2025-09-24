@@ -18,29 +18,23 @@
 - **Status**: Systematic issue affecting for-loop constructs
 - **Root Cause**: Array/operand indexing bug in math opcodes
 
-## SYSTEMATIC REMEDIATION PLAN
+## SYSTEMATIC REMEDIATION PLAN - UPDATED SEPTEMBER 24, 2025
 
-### PHASE 1: Array Index Investigation (Highest Priority)
-```bash
-# Immediate debugging steps:
-1. Enable RUST_BACKTRACE=full for precise crash location
-2. Add comprehensive logging to opcodes_math.rs around line 46
-3. Identify which specific opcode and operand pattern triggers the crash
-4. Create minimal reproduction case without for-loops
-```
+### ✅ PHASE 1 COMPLETED: Array Index Crash Resolution
+**ROOT CAUSE IDENTIFIED AND FIXED**: VAR opcode classification conflict in `is_true_var_opcode()` function
+- **Issue**: Raw opcode 0x00 was forced to VAR form, preventing 2OP:0 (je) for loop conditions
+- **Fix**: Removed conflicting raw opcode mappings (0x00-0x1F), kept only VAR-only opcodes (0x08, 0x09)
+- **Result**: "Invalid Long form opcode 0x00" errors eliminated ✅
 
-**Why Priority**: This affects the simplest cases (bare for-loops) and has a precise crash location.
+### 🔄 PHASE 2: Stack Architecture Redesign (Current Priority)
+**ROOT CAUSE IDENTIFIED**: Fundamental Z-Machine stack compliance violation
+- **Issue**: Compiler treats stack as random-access with "stack slots" - Z-Machine only supports LIFO stack via Variable(0)
+- **Symptoms**: Stack underflow in for-loops when multiple values resolve to same Variable(0)
+- **Impact**: All complex expressions that need multiple intermediate values fail
 
-### PHASE 2: Object Reference Corruption Investigation
-```bash
-# Systematic debugging approach:
-1. Use TXD disassembler to examine PC=0x0ebd in mini_zork_v3.z3
-2. Identify the exact instruction causing object 37889 access
-3. Trace object number assignment during compilation
-4. Check for integer overflow/underflow in object calculations
-```
-
-**Focus**: Compare working `basic_test_v3.z3` vs failing `mini_zork_v3.z3` object layouts.
+### PHASE 3: Object Reference Corruption Investigation (Deferred)
+- **Status**: Still present in mini_zork (object 37889 > max 255)
+- **Priority**: Lower - architectural stack issues must be fixed first
 
 ## RECOMMENDED INVESTIGATION ORDER
 

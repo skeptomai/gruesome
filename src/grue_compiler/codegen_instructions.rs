@@ -1635,39 +1635,10 @@ impl ZMachineCodeGen {
             0xFE => true, // PRINT_TABLE (VAR:254 = opcode 1E, so 0xFE)
             0xFF => true, // CHECK_ARG_COUNT (VAR:255 = opcode 1F, so 0xFF)
 
-            // Raw opcodes that should always be VAR form (for Z-Machine spec compliance)
-            0x00 => true, // call_vs (raw opcode 0)
-            0x01 => true, // storew (raw opcode 1)
-            0x02 => true, // storeb (raw opcode 2)
-            0x03 => true, // put_prop (raw opcode 3)
-            0x04 => true, // sread (raw opcode 4)
-            0x05 => true, // print_char (raw opcode 5)
-            0x06 => true, // print_num (raw opcode 6)
-            0x07 => true, // random (raw opcode 7)
-            0x08 => true, // push (raw opcode 8) - THE CRITICAL FIX!
-            0x09 => true, // pull (raw opcode 9)
-            0x0A => true, // split_window (raw opcode A)
-            0x0B => true, // set_window (raw opcode B)
-            0x0C => true, // call_vs2 (raw opcode C)
-            0x0D => true, // erase_window (raw opcode D)
-            0x0E => true, // erase_line (raw opcode E)
-            0x0F => true, // set_cursor (raw opcode F)
-            0x10 => true, // get_cursor (raw opcode 10)
-            0x11 => true, // set_text_style (raw opcode 11)
-            0x12 => true, // buffer_mode (raw opcode 12)
-            0x13 => true, // output_stream (raw opcode 13)
-            0x14 => true, // input_stream (raw opcode 14)
-            0x15 => true, // sound_effect (raw opcode 15)
-            0x16 => true, // read_char (raw opcode 16)
-            0x17 => true, // scan_table (raw opcode 17)
-            0x18 => true, // not (raw opcode 18)
-            0x19 => true, // call_vn (raw opcode 19)
-            0x1A => true, // call_vn2 (raw opcode 1A)
-            0x1B => true, // tokenise (raw opcode 1B)
-            0x1C => true, // encode_text (raw opcode 1C)
-            0x1D => true, // copy_table (raw opcode 1D)
-            0x1E => true, // print_table (raw opcode 1E)
-            0x1F => true, // check_arg_count (raw opcode 1F)
+            // Only specific opcodes that are genuinely VAR-only go here
+            // 0x08 (push) and 0x09 (pull) are VAR-only opcodes that don't conflict with 2OP
+            0x08 => true, // push (raw opcode 8) - VAR-only, no 2OP conflict
+            0x09 => true, // pull (raw opcode 9) - VAR-only, no 2OP conflict
 
             _ => false,
         }
