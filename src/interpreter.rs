@@ -420,6 +420,21 @@ impl Interpreter {
                 }
             };
 
+            // Add detailed debugging for array index crash investigation
+            if pc >= 0x0380 && pc <= 0x0390 {
+                debug!(
+                    "🔍 CRASH_DEBUG: PC=0x{:04x} opcode=0x{:02x} form={:?} operand_count={:?} operand_types={:?} operands={:?} size={}",
+                    pc, instruction.opcode, instruction.form, instruction.operand_count, instruction.operand_types, instruction.operands, instruction.size
+                );
+                debug!("🔍 RAW_BYTES at PC=0x{:04x}: {:02x} {:02x} {:02x} {:02x}",
+                       pc,
+                       self.vm.game.memory.get(pc as usize).unwrap_or(&0),
+                       self.vm.game.memory.get((pc + 1) as usize).unwrap_or(&0),
+                       self.vm.game.memory.get((pc + 2) as usize).unwrap_or(&0),
+                       self.vm.game.memory.get((pc + 3) as usize).unwrap_or(&0)
+                );
+            }
+
             // Debug: trace execution flow around the problematic area
             if (0x0680..=0x06d0).contains(&pc) {
                 debug!(

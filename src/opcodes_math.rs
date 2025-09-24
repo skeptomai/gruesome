@@ -40,6 +40,16 @@ impl Interpreter {
 
             // 2OP:0x08 - or (bitwise OR)
             (0x08, crate::instruction::OperandCount::OP2) => {
+                debug!("🔍 MATH_DEBUG: OR instruction - operands.len()={}, operands={:?}, expected 2 operands for 2OP", operands.len(), operands);
+
+                // CRITICAL: 2OP instructions require exactly 2 operands
+                if operands.len() != 2 {
+                    return Err(format!(
+                        "MATH_BUG: 2OP OR instruction has {} operands instead of 2. Operands: {:?}, Instruction: {:?}",
+                        operands.len(), operands, inst
+                    ));
+                }
+
                 debug!("or {} {}", operands[0], operands[1]);
                 if let Some(store_var) = inst.store_var {
                     self.vm

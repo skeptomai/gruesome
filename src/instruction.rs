@@ -183,6 +183,8 @@ impl Instruction {
             }
             InstructionForm::Variable => {
                 // Variable form: opcode in bottom 5 bits
+                // Per Z-Machine spec section 4.3.3:
+                // "In variable form, if bit 5 is 0 then the count is 2OP; if it is 1, then the count is VAR"
                 let op_count = if opcode_byte & 0x20 == 0 {
                     OperandCount::OP2
                 } else {

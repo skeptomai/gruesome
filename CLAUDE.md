@@ -1,10 +1,16 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (September 23, 2025) - PROPERTY SYSTEM FIXED ✅
+## CURRENT STATUS (September 24, 2025) - ARRAY INDEX CRASH FULLY RESOLVED ✅
 
-**MAJOR SUCCESS**: Object property access system now working correctly!
+**MAJOR SUCCESS**: Array index crash bug in `opcodes_math.rs:46` completely fixed through comprehensive VAR opcode classification!
 
-### 🎉 COMPLETED FIXES (Session Sep 23, 2025):
+### 🎉 COMPLETED FIXES (Session Sep 24, 2025):
+1. **✅ Array Index Crash ELIMINATED**: Fixed missing VAR opcode 0x08 (push) in `is_true_var_opcode()` function
+2. **✅ Comprehensive VAR Opcode Classification**: Added all VAR opcodes (0x00-0x1F) per Z-Machine specification
+3. **✅ No Golden File Regressions**: Existing functionality remains intact
+4. **✅ Systematic Fix Applied**: General solution implemented rather than targeted exception
+
+### 🎉 PREVIOUS COMPLETED FIXES (Session Sep 23, 2025):
 1. **✅ Stack Architecture Fixed**: Variable(0) correctly accessed instead of Variable(3)
 2. **✅ Property Mapping Fixed**: Property access now uses correct property number 14 instead of property 1
 3. **✅ String Encoding Fixed**: Banner strings display perfectly ("Infocom, Inc." not "Infocom,  E .")
