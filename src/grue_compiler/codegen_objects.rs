@@ -360,6 +360,13 @@ impl ZMachineCodeGen {
             .unwrap_or_else(|| panic!("Property 'before' not found in PropertyManager"));
         player_properties.set_word(before_prop, 0);
 
+        // Add capacity property for player inventory management
+        let capacity_prop = ir
+            .property_manager
+            .get_property_number_by_name("capacity")
+            .unwrap_or_else(|| panic!("Property 'capacity' not found in PropertyManager"));
+        player_properties.set_word(capacity_prop, 100); // Default player capacity
+
         all_objects.push(ObjectData {
             id: 9999u32, // Use high ID to avoid conflicts with actual IR objects
             name: "player".to_string(),

@@ -754,14 +754,30 @@ impl ZMachineCodeGen {
             }
             IrPropertyValue::Byte(b) => {
                 // Single byte property
+                log::debug!(
+                    "ENCODE_PROP_DEBUG: Property {} = Byte({}), data_len=1",
+                    prop_num,
+                    b
+                );
                 vec![*b]
             }
             IrPropertyValue::Word(w) => {
                 // Two-byte property (big-endian)
+                log::debug!(
+                    "ENCODE_PROP_DEBUG: Property {} = Word({}), data_len=2",
+                    prop_num,
+                    w
+                );
                 vec![(w >> 8) as u8, (*w & 0xFF) as u8]
             }
             IrPropertyValue::Bytes(bytes) => {
                 // Multi-byte property
+                log::debug!(
+                    "ENCODE_PROP_DEBUG: Property {} = Bytes({:?}), data_len={}",
+                    prop_num,
+                    bytes,
+                    bytes.len()
+                );
                 bytes.clone()
             }
         };
@@ -773,9 +789,23 @@ impl ZMachineCodeGen {
         if size == 0 {
             // Empty property - use 1 byte minimum
             let size_byte = 32 * (1 - 1) + prop_num; // 0 * 32 + prop_num = prop_num
+            log::debug!(
+                "ENCODE_PROP_DEBUG: Property {} empty, size_byte=0x{:02x}",
+                prop_num,
+                size_byte
+            );
             return (size_byte, vec![0]);
         }
         let size_byte = 32 * (size - 1) + prop_num;
+        log::debug!(
+            "ENCODE_PROP_DEBUG: Property {} final: data_len={}, size_byte=0x{:02x} (32*{}+{}={})",
+            prop_num,
+            data.len(),
+            size_byte,
+            size - 1,
+            prop_num,
+            size_byte
+        );
 
         (size_byte, data)
     }

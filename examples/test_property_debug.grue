@@ -1,0 +1,9 @@
+world {
+    room test_room {
+        description: "Test room for property debugging."
+    }
+}
+
+fn main() {
+    test_room.visited = true;
+}

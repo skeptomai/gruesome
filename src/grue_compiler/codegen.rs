@@ -881,13 +881,15 @@ impl ZMachineCodeGen {
         let total_size = current_address;
 
         // Store final addresses for header generation
-        self.final_code_base = code_base;
+        // CRITICAL FIX: Do NOT set final_code_base yet - this triggers dual-mode emit_byte behavior
+        // Only store code_base for layout calculation, set final_code_base when actually writing
+        let calculated_code_base = code_base;
 
         // CRITICAL FIX: Initialize code space address tracking for proper label assignment
         if self.code_space_base_address == 0 {
-            self.code_space_base_address = code_base;
-            self.next_code_space_address = code_base;
-            self.code_space_position = code_base; // Initialize dual-pointer code space position
+            self.code_space_base_address = calculated_code_base;
+            self.next_code_space_address = calculated_code_base;
+            self.code_space_position = calculated_code_base; // Initialize dual-pointer code space position
         }
         self.final_string_base = string_base;
         self.final_object_base = object_base;
@@ -896,24 +898,24 @@ impl ZMachineCodeGen {
 
         // CRITICAL: Convert all code generation offsets to final addresses
         log::debug!(" Step 3-CONVERT: Converting code space offsets to final addresses");
-        self.convert_offsets_to_addresses();
+        self.convert_offsets_to_addresses(calculated_code_base);
 
         // CRITICAL FIX: Convert relative function addresses to absolute addresses
         // During Phase 2, functions were stored with relative addresses (code_space offset)
-        // Now that we know final_code_base, convert them to absolute addresses
+        // Now that we know calculated_code_base, convert them to absolute addresses
         log::debug!(
             " PHASE3_FIX: Converting {} function addresses from relative to absolute",
             self.function_addresses.len()
         );
         let mut updated_mappings = Vec::new();
         for (func_id, relative_addr) in self.function_addresses.iter_mut() {
-            let absolute_addr = self.final_code_base + *relative_addr;
+            let absolute_addr = calculated_code_base + *relative_addr;
             log::debug!(
                 " PHASE3_FIX: Function ID {} address 0x{:04x} → 0x{:04x} (relative + 0x{:04x})",
                 func_id,
                 *relative_addr,
                 absolute_addr,
-                self.final_code_base
+                calculated_code_base
             );
             *relative_addr = absolute_addr;
             updated_mappings.push((*func_id, absolute_addr));
@@ -976,12 +978,12 @@ impl ZMachineCodeGen {
         log::info!(
             "  ├─ Strings:      0x{:04x}-0x{:04x} ({} bytes) - Encoded text literals",
             string_base,
-            code_base,
+            calculated_code_base,
             string_size
         );
         log::info!(
             "  ├─ Code:         0x{:04x}-0x{:04x} ({} bytes) - Executable functions",
-            code_base,
+            calculated_code_base,
             total_size,
             code_size
         );
@@ -993,13 +995,13 @@ impl ZMachineCodeGen {
         // PC calculation preview (final calculation happens in Step 3e)
         let expected_pc = if self.init_routine_locals_count > 0 {
             let init_header_size = 1 + (self.init_routine_locals_count as usize * 2);
-            code_base + init_header_size
+            calculated_code_base + init_header_size
         } else {
-            code_base // No init block, PC points to first function header
+            calculated_code_base // No init block, PC points to first function header
         };
         log::info!(
             "🎯 PC CALCULATION: PC will point to 0x{:04x} (init_locals_count={}, code_base=0x{:04x})",
-            expected_pc, self.init_routine_locals_count, code_base
+            expected_pc, self.init_routine_locals_count, calculated_code_base
         );
 
         // Write detailed memory layout debug file
@@ -1015,7 +1017,7 @@ impl ZMachineCodeGen {
             dictionary_size,
             string_base,
             string_size,
-            code_base,
+            calculated_code_base,
             code_size,
             total_size,
         )?;
@@ -1090,7 +1092,7 @@ impl ZMachineCodeGen {
 
         // Copy string space
         if !self.string_space.is_empty() {
-            self.final_data[string_base..code_base].copy_from_slice(&self.string_space);
+            self.final_data[string_base..calculated_code_base].copy_from_slice(&self.string_space);
             log::debug!(
                 " String space copied: {} bytes at 0x{:04x}",
                 self.string_space.len(),
@@ -1102,15 +1104,15 @@ impl ZMachineCodeGen {
         if !self.code_space.is_empty() {
             log::debug!(
                 " CODE_COPY_DEBUG: code_base=0x{:04x}, total_size=0x{:04x}, code_space.len()={}",
-                code_base,
+                calculated_code_base,
                 total_size,
                 self.code_space.len()
             );
             log::debug!(
                 " CODE_COPY_DEBUG: Slice bounds [{}..{}] = {} bytes",
-                code_base,
+                calculated_code_base,
                 total_size,
-                total_size - code_base
+                total_size - calculated_code_base
             );
 
             log::debug!(
@@ -1118,17 +1120,18 @@ impl ZMachineCodeGen {
                 &self.code_space[0..std::cmp::min(10, self.code_space.len())]
             );
 
-            self.final_data[code_base..total_size].copy_from_slice(&self.code_space);
+            self.final_data[calculated_code_base..total_size].copy_from_slice(&self.code_space);
 
             log::debug!(
                 " Code space copied: {} bytes at 0x{:04x}",
                 code_size,
-                code_base
+                calculated_code_base
             );
             self.detect_phase_patterns("Phase 3d - AFTER code_space copy");
             log::debug!(
                 " CODE_COPY_VERIFY: Final data at code_base first 10 bytes: {:?}",
-                &self.final_data[code_base..code_base + std::cmp::min(10, code_size)]
+                &self.final_data
+                    [calculated_code_base..calculated_code_base + std::cmp::min(10, code_size)]
             );
         }
 
@@ -1137,6 +1140,15 @@ impl ZMachineCodeGen {
         // Critical: Never touches static fields like serial number or version.
         // Updates: PC start, dictionary, objects, globals, static memory, abbreviations, high memory base
         log::debug!(" Step 3e: Updating header address fields with final memory layout");
+
+        // CRITICAL FIX: NOW set final_code_base after all copying is done and before any final assembly operations
+        // This ensures emit_byte only switches to final_data mode when we're actually done with space copying
+        self.final_code_base = calculated_code_base;
+        log::debug!(
+            " FINAL_CODE_BASE_SET: final_code_base=0x{:04x} - emit_byte now writes to final_data",
+            self.final_code_base
+        );
+
         // ARCHITECTURAL FIX: PC calculation for main program with proper routine header
         // PC must point to first instruction AFTER the routine header
         // Header size = 1 byte (local count) + 2 bytes per local variable
@@ -8843,19 +8855,16 @@ impl ZMachineCodeGen {
     }
 
     /// Convert all code space offsets to absolute addresses during final assembly
-    pub fn convert_offsets_to_addresses(&mut self) {
+    pub fn convert_offsets_to_addresses(&mut self, code_base: usize) {
         debug!("Convert offsets: Converting all code space offsets to absolute addresses");
-        debug!(
-            "Convert offsets: final_code_base=0x{:04x}",
-            self.final_code_base
-        );
+        debug!("Convert offsets: code_base=0x{:04x}", code_base);
 
         let mut converted_addresses = IndexMap::new();
 
         for (&ir_id, &offset) in &self.reference_context.ir_id_to_address {
             // Check if this looks like a code space offset (should be < code_space.len())
             if offset < self.code_space.len() {
-                let absolute_address = self.final_code_base + offset;
+                let absolute_address = code_base + offset;
                 debug!(
                     "Convert offsets: IR ID {} offset 0x{:04x} -> absolute 0x{:04x}",
                     ir_id, offset, absolute_address
