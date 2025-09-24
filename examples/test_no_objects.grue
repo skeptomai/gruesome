@@ -1,0 +1,14 @@
+// Test with minimal objects - only player
+
+world {
+    // NO rooms or objects
+}
+
+fn main() {
+    print("Starting test with no objects");
+
+    // Remove all object references
+    print("Minimal test.");
+}
+
+// Remove list_contents function too since it needs objects

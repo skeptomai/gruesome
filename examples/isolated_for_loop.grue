@@ -1,0 +1,32 @@
+// Isolated for-loop test case - minimal repro for control flow bug
+
+world {
+    room test_room "Test Room" {
+        desc: "Test Room"
+
+        object container {
+            names: ["container"]
+            desc: "A test container."
+            container: true
+
+            contains {
+                object item {
+                    names: ["item"]
+                    desc: "A test item."
+                }
+            }
+        }
+    }
+}
+
+fn main() {
+    player.location = test_room;
+    test_for_loop(container);
+}
+
+fn test_for_loop(container) {
+    let contents = container.contents();
+    for item in contents {  // <-- This for loop has the control flow bug
+        print("Found item");
+    }
+}

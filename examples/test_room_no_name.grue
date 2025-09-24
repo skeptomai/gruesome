@@ -1,0 +1,14 @@
+// Test room without name
+
+world {
+    room west_of_house {  // NO string name
+        desc: "West of House"
+    }
+}
+
+fn main() {
+    print("Starting test with room without name");
+
+    player.location = west_of_house;
+    print("Player location set.");
+}

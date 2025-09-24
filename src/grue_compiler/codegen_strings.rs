@@ -66,6 +66,16 @@ impl ZMachineCodeGen {
             }
         }
 
+        // Collect strings from auto-generated player object
+        // The player object is auto-generated with short_name "yourself"
+        // but isn't in ir.objects, so we need to collect it explicitly
+        let player_short_name = "yourself";
+        let string_id = self.find_or_create_string_id(player_short_name)?;
+        debug!(
+            "👤 Collected auto-generated player short name: '{}' -> ID {}",
+            player_short_name, string_id
+        );
+
         // Collect strings from objects
         for object in &ir.objects {
             // Collect object short name

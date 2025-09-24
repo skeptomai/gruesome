@@ -4915,6 +4915,7 @@ impl ZMachineCodeGen {
                     "PROP_STRING_DEBUG: Object property {} contains string: '{}'",
                     prop_num, s
                 );
+                // INVESTIGATE: Use find_string_id to see what fails and why
                 if let Ok(string_id) = self.find_string_id(s) {
                     debug!(
                         "PROP_STRING_DEBUG: Found string_id={} for string '{}'",
@@ -4938,10 +4939,25 @@ impl ZMachineCodeGen {
                         self.object_table_addr + addr_offset + 1
                     );
                 } else {
-                    debug!(
-                        "PROP_STRING_DEBUG: Could not find string_id for string '{}'",
+                    // ROOT CAUSE INVESTIGATION: Log detailed debugging about missing strings
+                    log::error!(
+                        "🔍 STRING_COLLECTION_BUG: Could not find string_id for string '{}' during object property encoding!",
                         s
                     );
+                    log::error!(
+                        "🔍 Available strings: {:?}",
+                        self.strings
+                            .iter()
+                            .map(|(id, s)| (id, s))
+                            .collect::<Vec<_>>()
+                    );
+                    log::error!(
+                        "🔍 This creates untracked placeholder - string collection phase bug!"
+                    );
+                    // For now, fail fast to investigate
+                    return Err(CompilerError::CodeGenError(format!(
+                        "String '{}' not found during object property encoding - indicates string collection phase bug", s
+                    )));
                 }
             }
 
@@ -6659,7 +6675,7 @@ impl ZMachineCodeGen {
         } else {
             // Return without value - use rtrue (0OP instruction)
             self.emit_instruction(
-                0xB0, // rtrue opcode
+                0x00, // rtrue opcode (0OP:0)
                 &[],  // No operands
                 None, // No store
                 None, // No branch

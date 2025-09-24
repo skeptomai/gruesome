@@ -1,0 +1,24 @@
+// Ultra-minimal for-loop test case
+
+world {
+    room test_room "Test Room" {
+        desc: "Test Room"
+
+        object container {
+            names: ["container"]
+            container: true
+            contains {
+                object item1 {
+                    names: ["item1"]
+                }
+            }
+        }
+    }
+}
+
+fn main() {
+    let contents = container.contents();
+    for item in contents {  // <-- Isolated for-loop bug
+        // Empty body to minimize
+    }
+}

@@ -1,0 +1,27 @@
+// Test without mailbox object
+
+world {
+    room west_of_house "West of House" {
+        desc: "West of House"
+
+        // NO mailbox object
+    }
+}
+
+fn main() {
+    print("Starting test without mailbox");
+
+    player.location = west_of_house;
+    print("Player location set.");
+
+    // Test with empty room instead of mailbox
+    list_contents(west_of_house);
+}
+
+fn list_contents(container) {
+    print("in the list contents function");
+    let contents = container.contents();
+    for item in contents {
+        print("  " + item.name);
+    }
+}

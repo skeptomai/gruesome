@@ -1,0 +1,9 @@
+world {
+    room test_room {
+        description "Test room."
+    }
+}
+
+fn main() {
+    print("Hello");
+}

@@ -1,0 +1,33 @@
+// Test without leaflet object
+
+world {
+    room west_of_house "West of House" {
+        desc: "West of House"
+
+        object mailbox {
+            names: ["mailbox"]
+            desc: "A mailbox."
+            openable: true
+            container: true
+
+            // NO contains block - removed leaflet
+        }
+    }
+}
+
+fn main() {
+    print("Starting test without leaflet");
+
+    player.location = west_of_house;
+    print("Player location set.");
+
+    list_contents(mailbox);
+}
+
+fn list_contents(container) {
+    print("in the list contents function");
+    let contents = container.contents();
+    for item in contents {
+        print("  " + item.name);
+    }
+}

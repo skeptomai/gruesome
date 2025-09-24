@@ -1,0 +1,14 @@
+// Test with just the room
+
+world {
+    room west_of_house "West of House" {
+        desc: "West of House"
+    }
+}
+
+fn main() {
+    print("Starting test with just room");
+
+    player.location = west_of_house;
+    print("Player location set.");
+}

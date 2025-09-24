@@ -1634,6 +1634,7 @@ impl ZMachineCodeGen {
             0xE5 => InstructionForm::Variable, // print_char (VAR:229 = opcode 5, full byte 0xE5) is always VAR
             0xE6 => InstructionForm::Variable, // print_num (VAR:230 = opcode 6, full byte 0xE6) is always VAR
             0xE7 => InstructionForm::Variable, // random (VAR:231 = opcode 7, full byte 0xE7) is always VAR
+            0xE8 => InstructionForm::Variable, // push (VAR:232 = opcode 8, full byte 0xE8) is always VAR
             _ => match operand_count {
                 0 => InstructionForm::Short, // 0OP
                 1 => InstructionForm::Short, // 1OP
@@ -1686,6 +1687,7 @@ impl ZMachineCodeGen {
             (0x8b, _) => InstructionForm::Variable, // quit (0OP:139) - too large for short form
             (0x8f, _) => InstructionForm::Variable, // call_1n (1OP:143) - too large for short form
             (0xE0, _) => InstructionForm::Variable, // call (VAR:224) is always VAR
+            (0xE8, _) => InstructionForm::Variable, // push (VAR:232) is always VAR
 
             // Default operand-count based logic
             _ => match operands.len() {

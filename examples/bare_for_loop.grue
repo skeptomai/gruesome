@@ -1,0 +1,7 @@
+// Absolute minimal for-loop - just the loop construct
+
+fn main() {
+    for i in [1, 2] {
+        // Completely empty body
+    }
+}
