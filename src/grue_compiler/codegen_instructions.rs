@@ -303,27 +303,37 @@ impl ZMachineCodeGen {
             }
 
             IrInstruction::LoadVar { target, var_id } => {
-                // CRITICAL FIX: Use the same mapping logic as StoreVar
-                // Look up the Z-Machine variable number for this IR ID
+                // STACK ARCHITECTURE FIX: LoadVar should preserve storage type
+                // If loading from local variable, result should also be in local variable
+                // If loading from stack/global, result can use stack
+
                 if let Some(var_num) = self.ir_id_to_local_var.get(var_id).copied() {
-                    // Load from local variable using load instruction
+                    // Loading from local variable -> result should also be local variable
+                    self.use_local_var_for_result(*target);
+                    let target_var = self.get_store_var_for_target(*target);
+
                     let var_operand = Operand::SmallConstant(var_num);
-                    self.emit_instruction(0xAE, &[var_operand], Some(0), None)?; // load variable to stack
+                    self.emit_instruction(0xAE, &[var_operand], target_var, None)?;
                     log::debug!(
-                        "LoadVar: IR ID {} loaded from local variable {} -> stack",
+                        "LoadVar: IR ID {} loaded from local variable {} -> local variable {}",
                         target,
-                        var_num
+                        var_num,
+                        target_var.unwrap_or(0)
                     );
                 } else if *var_id == 16 {
-                    // CRITICAL FIX: Load from global variable G00 (Variable 16) for player object
-                    let global_var_operand = Operand::SmallConstant(16); // Variable 16 = Global G00
+                    // Loading from global variable -> result can use stack (globals don't need persistence)
+                    self.use_stack_for_result(*target);
+
+                    let global_var_operand = Operand::SmallConstant(16);
                     self.emit_instruction(0xAE, &[global_var_operand], Some(0), None)?;
                     log::debug!(
                         "LoadVar: IR ID {} loaded from global Variable(16) -> stack [Player Global Access]",
                         var_id
                     );
                 } else {
-                    // Fallback: Load from stack (this should be rare)
+                    // Fallback: Load from stack -> result uses stack
+                    self.use_stack_for_result(*target);
+
                     let stack_operand = Operand::SmallConstant(0);
                     self.emit_instruction(0xAE, &[stack_operand], Some(0), None)?;
                     log::debug!(
@@ -331,9 +341,6 @@ impl ZMachineCodeGen {
                         var_id
                     );
                 }
-
-                // Map the target to stack access
-                self.use_stack_for_result(*target);
             }
 
             IrInstruction::StoreVar { var_id, source } => {
