@@ -53,12 +53,16 @@ impl ZMachineCodeGen {
             self.encoded_strings.insert(string_id, encoded);
 
             // Generate print_paddr instruction with unresolved string reference
+            log::error!("🔧 PRINT_BUILTIN: About to emit 0x8D instruction with placeholder");
             let layout = self.emit_instruction(
                 0x8D,                                          // print_paddr opcode (1OP:141)
                 &[Operand::LargeConstant(placeholder_word())], // Reserve space for string address (resolved via UnresolvedReference)
                 None,                                          // No store
                 None,                                          // No branch
             )?;
+            log::error!(
+                "🔧 PRINT_BUILTIN: emit_instruction returned, now creating UnresolvedReference"
+            );
 
             // Add unresolved reference for the string address using layout's operand location
             let operand_address = layout
@@ -72,7 +76,9 @@ impl ZMachineCodeGen {
                 offset_size: 2,
                 location_space: MemorySpace::Code,
             };
+            log::error!("🔧 PRINT_BUILTIN: Created UnresolvedReference for string_id={} at location=0x{:04x}", string_id, operand_address);
             self.add_reference_to_tracking_lists(reference);
+            log::error!("🔧 PRINT_BUILTIN: Added UnresolvedReference to tracking lists");
 
             // Emit new_line instruction after print_paddr for proper line breaks
             self.emit_instruction(

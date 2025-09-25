@@ -1,0 +1,23 @@
+// Test just for loop to isolate branch placeholder issue
+world {
+    room west_of_house "West of House" {
+        object mailbox {
+            names: ["mailbox"]
+            contains {
+                object leaflet {
+                    names: ["leaflet"]
+                }
+            }
+        }
+    }
+}
+
+fn main() {
+    print("Testing for loop");
+
+    let contents = mailbox.contents();
+    for item in contents {  // This for loop likely has untracked branch placeholders
+        print("Found item");
+    }
+    print("Loop complete");
+}

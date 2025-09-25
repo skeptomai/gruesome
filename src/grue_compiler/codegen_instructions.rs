@@ -1321,6 +1321,47 @@ impl ZMachineCodeGen {
             opcode, start_address, operands, store_var
         );
 
+        // CRITICAL: Debug ALL instructions with 0xFFFF placeholders
+        for (i, op) in operands.iter().enumerate() {
+            if let Operand::LargeConstant(0xFFFF) = op {
+                log::error!("🚨 ALL_UNTRACKED_PLACEHOLDERS: opcode=0x{:02x} operand[{}] is placeholder 0xFFFF at PC=0x{:04x}", opcode, i, start_address);
+            }
+        }
+
+        // CRITICAL: Debug ALL instructions at the problematic addresses
+        if start_address == 0x00d7 || start_address == 0x0100 {
+            log::error!(
+                "🔍 PROBLEM_ADDRESS: Emitting opcode=0x{:02x} at PC=0x{:04x} operands={:?}",
+                opcode,
+                start_address,
+                operands
+            );
+        }
+
+        // CRITICAL: Debug jump instructions (0x0C) with placeholder operands
+        if opcode == 0x0C {
+            log::error!(
+                "🔍 JUMP_DEBUG: Emitting jump (0x0C) at PC=0x{:04x} operands={:?}",
+                start_address,
+                operands
+            );
+            for (i, op) in operands.iter().enumerate() {
+                if let Operand::LargeConstant(val) = op {
+                    if *val == 0xFFFF {
+                        log::error!("🚨 UNTRACKED_JUMP: Jump (0x0C) operand[{}] is placeholder 0xFFFF at PC=0x{:04x} - will encode as '8c ffff'!", i, start_address);
+                    } else {
+                        log::error!(
+                            "🔍 JUMP_DEBUG: Jump (0x0C) operand[{}] is LargeConstant(0x{:04x})",
+                            i,
+                            val
+                        );
+                    }
+                }
+            }
+        }
+
+        // Removed untracked placeholder detection from here - moved to final validation phase
+
         // Note: opcode 0x00 is legitimate for jz (jump if zero) instruction
 
         // Log stack operations specifically

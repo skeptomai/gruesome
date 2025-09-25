@@ -1,0 +1,13 @@
+// Test just string concatenation to isolate untracked placeholder
+world {
+    room west_of_house "West of House" {
+        object mailbox {
+            names: ["mailbox"]
+        }
+    }
+}
+
+fn main() {
+    print("Starting test");
+    print("  " + mailbox.name);  // This line should trigger untracked placeholder
+}

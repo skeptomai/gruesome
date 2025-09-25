@@ -1,5 +1,5 @@
 === Z-MACHINE MEMORY LAYOUT DEBUG ===
-Generated: Wed Sep 24 19:12:29 PDT 2025
+Generated: Wed Sep 24 20:36:36 PDT 2025
 
 MEMORY REGIONS:
 Region           Start    End      Length   Purpose
@@ -7,23 +7,17 @@ Region           Start    End      Length   Purpose
 Header           0x0000   0x0040     64 bytes  Z-Machine header
 Globals          0x0040   0x0220    480 bytes  Global variables
 Abbreviations    0x0220   0x02e0    192 bytes  String compression
-Objects          0x02e0   0x072a   1098 bytes  Object table + properties
-Dictionary       0x072a   0x0734     10 bytes  Word parsing dictionary
-Strings          0x0734   0x07ce    154 bytes  Encoded text literals
-Code             0x07ce   0x08f9    299 bytes  Executable functions
+Objects          0x02e0   0x0329     73 bytes  Object table + properties
+Dictionary       0x0329   0x0333     10 bytes  Word parsing dictionary
+Strings          0x0334   0x0374     64 bytes  Encoded text literals
+Code             0x0374   0x037d      9 bytes  Executable functions
 -----------------------------------------------
-Total            0x0000   0x08f9   2297 bytes  Complete Z-Machine file
+Total            0x0000   0x037d    893 bytes  Complete Z-Machine file
 
 CRASH ANALYSIS:
 Crash location: 0x012a
 0x012a falls in: GLOBALS region (0x0040-0x0220)
 
 FUNCTION ADDRESS MAPPINGS:
-IR ID    2 -> 0x07ce
-IR ID    3 -> 0x07e6
-IR ID   28 -> 0x07fd
-IR ID   29 -> 0x08bf
-IR ID   30 -> 0x08bf
-IR ID   36 -> 0x08c5
-IR ID   37 -> 0x08d0
-IR ID   38 -> 0x08f0
+IR ID 8000 -> 0x0374
+IR ID    1 -> 0x0378

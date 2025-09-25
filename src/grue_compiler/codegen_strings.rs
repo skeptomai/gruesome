@@ -107,13 +107,13 @@ impl ZMachineCodeGen {
             // Collect strings from object properties
             for (_, prop_value) in &object.properties.properties {
                 if let IrPropertyValue::String(s) = prop_value {
-                    if !s.is_empty() {
-                        let string_id = self.find_or_create_string_id(s)?;
-                        debug!(
-                            "📦 Collected object property string: '{}' -> ID {}",
-                            s, string_id
-                        );
-                    }
+                    // CRITICAL FIX: Collect ALL strings, including empty strings
+                    // Empty strings are needed during object property encoding
+                    let string_id = self.find_or_create_string_id(s)?;
+                    debug!(
+                        "📦 Collected object property string: '{}' -> ID {}",
+                        s, string_id
+                    );
                 }
             }
         }
@@ -144,6 +144,11 @@ impl ZMachineCodeGen {
         self.strings
             .push((9998, "[DEBUG Array Length: ]".to_string()));
         self.strings.push((9999, " Elements: ".to_string()));
+
+        // CRITICAL FIX: Always ensure empty string is collected
+        // Empty strings are needed for object property encoding
+        let empty_string_id = self.find_or_create_string_id("")?;
+        debug!("🔍 Added required empty string: ID {}", empty_string_id);
 
         debug!("🔍 Added debug strings: ID 9998='[DEBUG Array Length: ]', ID 9999=' Elements: '");
 
