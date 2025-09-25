@@ -7421,7 +7421,11 @@ impl ZMachineCodeGen {
                 target
             );
         } else {
-            // For non-comparison operations (arithmetic, logical), generate bytecode
+            // For non-comparison operations (arithmetic, logical), use local variables
+            // for persistent storage to avoid stack architecture violations
+            self.use_local_var_for_result(target);
+            let store_var = self.get_store_var_for_target(target);
+
             // Handle different binary operations
             match op {
                 IrBinaryOp::Add => {
@@ -7436,20 +7440,18 @@ impl ZMachineCodeGen {
                         // Regular arithmetic addition - resolve operands now
                         let left_op = self.resolve_ir_id_to_operand(left)?;
                         let right_op = self.resolve_ir_id_to_operand(right)?;
-                        self.generate_binary_op(op, left_op, right_op, Some(0))?;
+                        self.generate_binary_op(op, left_op, right_op, store_var)?;
                     }
                 }
                 _ => {
                     // All other arithmetic/logical operations - resolve operands now
                     let left_op = self.resolve_ir_id_to_operand(left)?;
                     let right_op = self.resolve_ir_id_to_operand(right)?;
-                    self.generate_binary_op(op, left_op, right_op, Some(0))?;
+                    self.generate_binary_op(op, left_op, right_op, store_var)?;
                 }
             }
 
-            // Register result target
-            self.use_stack_for_result(target);
-            log::debug!("BinaryOp ({:?}) result: IR ID {} -> stack", op, target);
+            log::debug!("BinaryOp ({:?}) result: IR ID {} -> local variable {:?}", op, target, store_var);
         }
 
         Ok(())
