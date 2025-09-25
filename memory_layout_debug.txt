@@ -1,5 +1,5 @@
 === Z-MACHINE MEMORY LAYOUT DEBUG ===
-Generated: Wed Sep 24 17:53:21 PDT 2025
+Generated: Wed Sep 24 18:13:23 PDT 2025
 
 MEMORY REGIONS:
 Region           Start    End      Length   Purpose
