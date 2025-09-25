@@ -435,8 +435,9 @@ impl ZMachineCodeGen {
                 log::debug!("Creating array with size {:?}", size);
 
                 // CRITICAL: Register target for array result
-                self.use_stack_for_result(*target);
-                log::debug!("CreateArray: IR ID {} -> stack", target);
+                // STACK ARCHITECTURE FIX: Use local variable for persistent array reference
+                self.use_local_var_for_result(*target);
+                log::debug!("CreateArray: IR ID {} -> local variable", target);
 
                 // Extract size value from IrValue
                 let size_value = match size {
@@ -668,7 +669,8 @@ impl ZMachineCodeGen {
                 // This loads array[index] where array is base address and index is word offset
 
                 // CRITICAL: Register target for array element result
-                self.use_stack_for_result(*target);
+                // STACK ARCHITECTURE FIX: Use local variable for persistent array element value
+                self.use_local_var_for_result(*target);
 
                 // Get operands for array base address and index
                 let array_operand = self.resolve_ir_id_to_operand(*array)?;
@@ -677,14 +679,15 @@ impl ZMachineCodeGen {
                 // Use loadw instruction (2OP:15, opcode 0x0F) to load word from array
                 // Z-Machine spec: loadw array word-index -> (result)
                 // This calculates array + 2*word-index and loads the 16-bit word at that address
+                let store_var = self.get_store_var_for_target(*target);
                 self.emit_instruction(
                     0x0F, // loadw (2OP:15)
                     &[array_operand, index_operand],
-                    Some(0), // Store result to stack
+                    store_var,
                     None,
                 )?;
                 log::debug!(
-                    "GetArrayElement: IR ID {} = loadw(array IR ID {}, index IR ID {}) -> stack",
+                    "GetArrayElement: IR ID {} = loadw(array IR ID {}, index IR ID {}) -> local variable",
                     target,
                     array,
                     index
@@ -718,10 +721,11 @@ impl ZMachineCodeGen {
 
             IrInstruction::ArrayLength { target, array: _ } => {
                 // Array length operation - placeholder returns 0
-                self.use_stack_for_result(*target);
+                // STACK ARCHITECTURE FIX: Use local variable for persistent length value
+                self.use_local_var_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
-                log::debug!("ArrayLength: IR ID {} -> stack (placeholder: 0)", target);
+                log::debug!("ArrayLength: IR ID {} -> local variable (placeholder: 0)", target);
             }
 
             IrInstruction::ArrayContains {

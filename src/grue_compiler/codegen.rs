@@ -7335,6 +7335,47 @@ impl ZMachineCodeGen {
         );
     }
 
+    /// Map IR ID to local variable storage for persistent values
+    /// Use this for values that need to survive multiple operations (like for-loop variables)
+    pub fn use_local_var_for_result(&mut self, target_id: IrId) {
+        let next_local = self.next_available_local_var();
+        self.ir_id_to_local_var.insert(target_id, next_local);
+        log::debug!(
+            "use_local_var_for_result: IR ID {} -> Variable({}) [Local variable]",
+            target_id,
+            next_local
+        );
+    }
+
+    /// Find the next available local variable slot (Variables 1-15 in Z-Machine)
+    fn next_available_local_var(&self) -> u8 {
+        // Variables 1-15 are local variables in Z-Machine
+        // Variable 0 = stack, Variables 16+ = globals
+        for var_num in 1..=15 {
+            if !self.ir_id_to_local_var.values().any(|&v| v == var_num) {
+                return var_num;
+            }
+        }
+        panic!("COMPILER ERROR: Ran out of local variables (max 15 per routine in Z-Machine)");
+    }
+
+    /// Get the store variable number for an IR ID target
+    /// This is used for Z-Machine instruction store_var parameter
+    pub fn get_store_var_for_target(&self, target_ir_id: IrId) -> Option<u8> {
+        // Check if this IR ID is assigned to a local variable
+        if let Some(&local_var) = self.ir_id_to_local_var.get(&target_ir_id) {
+            return Some(local_var);
+        }
+
+        // Check if this IR ID is assigned to stack
+        if self.ir_id_to_stack_var.contains_key(&target_ir_id) {
+            return Some(0); // Variable 0 = stack
+        }
+
+        // Default: use stack if no specific assignment
+        Some(0)
+    }
+
     /// Get current code address for instruction generation
     pub fn current_address(&self) -> usize {
         self.code_space.len()

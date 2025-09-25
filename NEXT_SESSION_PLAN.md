@@ -1,116 +1,120 @@
-# NEXT SESSION PLAN - September 24, 2025 (Session End)
+# NEXT SESSION PLAN - September 24, 2025 (Current Session - Stack Rearchitecture)
 
-## 🎉 MAJOR SUCCESS ACHIEVED: Array Index Crash COMPLETELY FIXED
+## 🎉 MAJOR PROGRESS ACHIEVED: Opcode Classification Fixed, Stack Issue Root Cause Identified
 
 ### ✅ **What Was Accomplished This Session**
 
-**ROOT CAUSE IDENTIFIED AND RESOLVED**:
-- **Critical Bug**: Array index crash `index out of bounds: the len is 1 but the index is 1` in `opcodes_math.rs:46`
-- **Root Cause**: Missing VAR opcode 0x08 (push) in `is_true_var_opcode()` function in `codegen_instructions.rs`
-- **Impact**: Compiler emitted 0xC8 instead of 0xE8, causing 2OP:8 (OR) vs VAR:232 (push) confusion
-- **Solution**: Added comprehensive VAR opcode classification (0x00-0x1F) per Z-Machine specification
+**OPCODE CLASSIFICATION FIX COMPLETED**:
+- **Critical Bug**: VAR/2OP opcode classification conflict in `is_true_var_opcode()` function
+- **Root Cause**: Raw opcodes 0x00-0x1F were forced to VAR form, preventing 2OP:0 (je) for loop conditions
+- **Solution**: Removed conflicting raw opcode mappings, kept only genuinely VAR-only opcodes (0x08, 0x09)
+- **Result**: "Invalid Long form opcode 0x00" errors eliminated ✅
 
-**SYSTEMATIC APPROACH FOLLOWED**:
-- User emphasized: "fix these opcode problems in a general fashion" rather than targeted exceptions
-- Implemented complete Z-Machine specification compliance for all VAR opcodes
-- No regressions: all golden files continue to work correctly
+**STACK ARCHITECTURE ROOT CAUSE IDENTIFIED**:
+- **Fundamental Issue**: Compiler violates Z-Machine stack specification
+- **Problem**: Treats stack as random-access with "stack slots" when Z-Machine only supports LIFO via Variable(0)
+- **Impact**: Stack underflow when multiple intermediate values try to access same Variable(0)
+- **📋 Comprehensive Plan Created**: `STACK_REARCHITECTURE_PLAN.md`
 
-### ✅ **Test Results**
+### ✅ **Test Results After Opcode Fix**
 
 **BEFORE FIX**:
 - ❌ `bare_for_loop.grue` → Array index crash
-- ❌ `minimal_for_loop.grue` → Array index crash
+- ❌ `minimal_for_loop.grue` → "Invalid Long form opcode 0x00"
 
 **AFTER FIX**:
-- ✅ `bare_for_loop.grue` → Compiles and runs (gets stack underflow - different runtime issue)
-- ✅ `minimal_for_loop.grue` → Compiles successfully
-- ✅ `basic_test.grue` → Compiles successfully
-- ✅ `tests/golden_files/basic_test_v3.z3` → Runs correctly (no regressions)
+- 🔄 `bare_for_loop.grue` → Stack underflow at PC 0x038d (stack architecture issue)
+- 🔄 `minimal_for_loop.grue` → Stack underflow at PC 0x08d5 (stack architecture issue)
+- ✅ `basic_test.grue` → Continues to work correctly (no regressions)
 
-## 🎯 **REMAINING ISSUES FOR NEXT SESSION**
+**PROGRESS**: Opcode classification errors eliminated, underlying stack architecture issue exposed.
 
-### **PHASE 2: Runtime Behavior Issues** (NOT Array Index Crashes)
+## 🎯 **CURRENT SESSION: Stack Architecture Implementation**
 
-#### 1. **Stack Underflow Issues**
-- **Status**: NEW issue revealed after array crash fix
-- **Example**: `bare_for_loop.grue` now gets stack underflow at PC 0x038c
-- **Root Cause**: Unknown - needs investigation
-- **Priority**: High - blocking for-loop functionality
+### **IMMEDIATE FOCUS: For-Loop Stack Redesign**
 
-#### 2. **Object Reference Corruption** (Pre-existing)
-- **Status**: Still present in mini_zork
-- **Error**: `invalid object 37889 > max 255` at PC=0x0ebd
-- **Repro Case**: `tests/golden_files/mini_zork_v3.z3`
-- **Priority**: Medium - affects complex gameplay scenarios
+Following `STACK_REARCHITECTURE_PLAN.md` Phase 1 implementation:
 
-#### 3. **Instruction Decoding Issues** (Newly Discovered)
-- **Status**: Some files still have malformed instructions
-- **Example**: "Invalid Long form opcode 0x00" at address 0x07f8 in complex files
-- **Root Cause**: Unknown - may be related to opcode classification changes
-- **Priority**: Medium - affects some complex examples
-
-## 📋 **IMMEDIATE NEXT STEPS FOR NEXT SESSION**
-
-### **START HERE**: Stack Underflow Investigation
-
-```bash
-# 1. Get precise crash context for stack underflow
-RUST_LOG=error ./target/debug/gruesome /tmp/test_bare_fix.z3
-
-# 2. Examine instruction at crash location
-xxd -s 0x038c -l 16 /tmp/test_bare_fix.z3
-
-# 3. Check for push/pop balance issues in compiled code
-env RUST_LOG=debug cargo run --bin grue-compiler -- examples/bare_for_loop.grue --output /tmp/debug_stack.z3 2>&1 | grep -E "(push|pull|stack)"
+#### **Step 1: Implement Local Variable Assignment Function**
+```rust
+// Add to src/grue_compiler/codegen.rs
+pub fn use_local_var_for_result(&mut self, target_id: IrId) {
+    let next_local = self.next_available_local_var();
+    self.ir_id_to_local_var.insert(target_id, next_local);
+}
 ```
 
-### **KEY FILES TO EXAMINE**
+#### **Step 2: Fix For-Loop Instructions**
+Target these specific instructions in `src/grue_compiler/codegen_instructions.rs`:
+- `IrInstruction::CreateArray` → use local variables instead of stack
+- `IrInstruction::ArrayLength` → use local variables instead of stack
+- `IrInstruction::GetArrayElement` → use local variables instead of stack
 
-1. **Modified File**: `/Users/cb/Projects/infocom-testing-old/infocom/src/grue_compiler/codegen_instructions.rs`
-   - Lines 1602-1674: `is_true_var_opcode()` function
-   - **Change**: Added comprehensive VAR opcode list
-   - **Status**: Successfully implemented, no known issues
+#### **Step 3: Test Incremental Progress**
+```bash
+# Primary test case
+env RUST_LOG=error cargo run --bin grue-compiler -- examples/bare_for_loop.grue --output /tmp/stack_fix_test.z3
+env RUST_LOG=error ./target/debug/gruesome /tmp/stack_fix_test.z3
+# Expected: No stack underflow errors
 
-2. **Test Cases**:
-   - `examples/bare_for_loop.grue` - stack underflow issue
-   - `examples/minimal_for_loop.grue` - compiles successfully
-   - `examples/mini_zork.grue` - object reference corruption (pre-existing)
+# Regression test
+env RUST_LOG=error ./target/debug/gruesome /tmp/debug_basic.z3
+# Expected: Continue to work
+```
 
-## 🔍 **INVESTIGATION APPROACH FOR NEXT SESSION**
+## 📋 **IMPLEMENTATION ORDER (This Session)**
 
-### **Systematic Stack Debugging**
+### **Priority 1: Core Infrastructure**
+1. **Add `use_local_var_for_result()` function** to codegen.rs
+2. **Add `next_available_local_var()` helper function**
+3. **Test infrastructure with debug logging**
 
-1. **Focus on stack balance**: Check if push/pull instructions are properly paired
-2. **Compare working vs failing**: Why does `minimal_for_loop.grue` compile but `bare_for_loop.grue` gets stack underflow?
-3. **Examine instruction sequences**: Look for stack manipulation patterns in compiled output
+### **Priority 2: For-Loop Specific Changes**
+1. **Fix `CreateArray` instruction** to use local variables
+2. **Fix `ArrayLength` instruction** to use local variables
+3. **Test `bare_for_loop.grue` after each change**
 
-### **Files Updated This Session**
+### **Priority 3: Validation**
+1. **Ensure `basic_test.grue` still works** (regression check)
+2. **Test `minimal_for_loop.grue`** (more complex case)
+3. **Debug logging verification** (stack vs local usage)
 
-- **Primary**: `/Users/cb/Projects/infocom-testing-old/infocom/src/grue_compiler/codegen_instructions.rs`
-- **Documentation**: `/Users/cb/Projects/infocom-testing-old/infocom/REMAINING_ISSUES.md`
-- **Status**: `/Users/cb/Projects/infocom-testing-old/infocom/CLAUDE.md`
+## ✅ **SUCCESS CRITERIA FOR THIS SESSION**
 
-## ✅ **SUCCESS CRITERIA FOR NEXT SESSION**
-
-**Phase 2 Goals**:
-- ✅ Resolve stack underflow in `bare_for_loop.grue`
-- ✅ Understand runtime behavior differences between working/failing cases
-- ✅ Begin investigation of object reference corruption in mini_zork
+**Phase 1 Goals**:
+- ✅ Implement local variable assignment infrastructure
+- ✅ Fix stack underflow in `bare_for_loop.grue`
+- ✅ Maintain functionality of `basic_test.grue`
+- ✅ Show clear debug logs of stack vs local variable usage
 
 **Test Commands Ready**:
 ```bash
-# Quick test suite
+# Quick validation suite
 env RUST_LOG=error cargo run --bin grue-compiler -- examples/bare_for_loop.grue --output /tmp/test1.z3
-env RUST_LOG=error cargo run --bin grue-compiler -- examples/minimal_for_loop.grue --output /tmp/test2.z3
-env RUST_LOG=error ./target/debug/gruesome /tmp/test1.z3
-env RUST_LOG=error ./target/debug/gruesome /tmp/test2.z3
+env RUST_LOG=error ./target/debug/gruesome /tmp/test1.z3  # Should not show "STACK UNDERFLOW"
+
+env RUST_LOG=error cargo run --bin grue-compiler -- examples/basic_test.grue --output /tmp/test2.z3
+env RUST_LOG=error ./target/debug/gruesome /tmp/test2.z3  # Should continue to work
 ```
+
+## 🔄 **NEXT SESSIONS AFTER THIS ONE**
+
+### **Phase 2**: Expand Beyond For-Loops
+- Function call return values (must stay on stack per Z-Machine spec)
+- Property access patterns
+- Complex expression evaluation
+
+### **Phase 3**: Optimization and Edge Cases
+- Performance improvements
+- Nested loops and complex control flow
+- Error handling
 
 ## 🚨 **CRITICAL REMINDERS**
 
-- **Array index crash is SOLVED** - do not re-investigate unless new evidence appears
-- **VAR opcode classification is correct** - comprehensive solution implemented
-- **Golden file compatibility maintained** - no regressions introduced
-- **Focus on runtime behavior issues** - stack management, object corruption
+- **Stack architecture is the root cause** - opcode issues were symptoms
+- **Z-Machine only supports LIFO stack** - no random access to "stack slots"
+- **Local variables (1-15) are the correct solution** for persistent intermediate values
+- **Function returns must stay on stack** per Z-Machine specification
+- **Incremental testing is critical** - fix one instruction type at a time
 
-The major architectural bug has been resolved. Next session should focus on runtime execution behavior rather than compilation issues.
+The fundamental architectural problem has been identified and planned. Implementation begins now.

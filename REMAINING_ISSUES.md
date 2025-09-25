@@ -31,6 +31,7 @@
 - **Issue**: Compiler treats stack as random-access with "stack slots" - Z-Machine only supports LIFO stack via Variable(0)
 - **Symptoms**: Stack underflow in for-loops when multiple values resolve to same Variable(0)
 - **Impact**: All complex expressions that need multiple intermediate values fail
+- **📋 DETAILED PLAN**: See `STACK_REARCHITECTURE_PLAN.md` for comprehensive redesign strategy
 
 ### PHASE 3: Object Reference Corruption Investigation (Deferred)
 - **Status**: Still present in mini_zork (object 37889 > max 255)
