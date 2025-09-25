@@ -23,13 +23,42 @@
 
 ### **CRITICAL ARCHITECTURAL ISSUES** (Deferred for Future Sessions):
 
-#### 1. **Stack Management Architecture Bug** 📚
-- **Issue**: `use_stack_for_result()` incorrectly treats local variables as "stack slots"
-- **Root Cause**: Z-Machine has ONE stack (Variable 0), not multiple stack slots (Variable 1, 2, 3...)
-- **Current Workaround**: `resolve_ir_id_to_operand()` forces all to Variable(0) - works but masks issue
-- **Proper Fix Needed**: Refactor entire stack management to use Z-Machine stack correctly
-- **Files**: `src/grue_compiler/codegen.rs:7333-7346` (use_stack_for_result function)
-- **Priority**: Medium (current workaround functions correctly)
+#### 1. **STACK vs LOCAL VARIABLE MISUSE CYCLE** 🔄 **CRITICAL ANTI-PATTERN**
+- **PROBLEM**: We repeatedly cycle between two broken approaches:
+  1. **Overuse Stack**: Treat stack as "random access slots" (Variable(2), Variable(3)...)
+     - **Breaks**: Stack underflow from unbalanced push/pop
+     - **Manifestation**: Chained property access fails, stack depth mismatches
+  2. **Overuse Locals**: Allocate local variables beyond function limits (Variables 5,6,7,8...)
+     - **Breaks**: "Reading local variable N but routine only has 4 locals"
+     - **Manifestation**: String corruption, garbage text, invalid object references
+
+- **ROOT CAUSE**: Fundamental misunderstanding of Z-Machine storage model
+  - **Stack (Variable 0)**: LIFO-only, automatic push/pop, for expression evaluation
+  - **Locals (Variables 1-15)**: Random access, persistent per function, for named variables
+
+- **CORRECT USAGE PATTERN**:
+  ```rust
+  // ✅ STACK: Immediate consumption, expression evaluation, function results
+  if instruction_result_consumed_immediately_by_next_instruction() {
+      self.use_stack_for_result(target);
+  }
+
+  // ✅ LOCAL: Persistent variables, multiple references, named variables
+  if variable_referenced_multiple_times_or_across_instructions() {
+      self.use_local_var_for_result(target);
+  }
+  ```
+
+- **PREVENTION**: Before changing ANY `use_stack_for_result`/`use_local_var_for_result`, ask:
+  1. Is this value consumed immediately by the next instruction? → Stack
+  2. Is this value referenced multiple times or across instructions? → Local
+  3. Does the function have available local variable slots? → Check limit
+  4. Will this create unbalanced stack operations? → Trace push/pop
+
+- **DETECTION PATTERNS**:
+  - Stack underflow = Unbalanced stack operations
+  - "Reading local variable N but routine only has X locals" = Local overflow
+  - String corruption = Using 0-values from invalid variable reads
 
 #### 2. **Polymorphic Dispatch Missing** 🔮
 - **Issue**: No dynamic method dispatch for object-oriented property access

@@ -68,7 +68,7 @@ impl ZMachineCodeGen {
                 reference_type: LegacyReferenceType::StringRef,
                 location: operand_address,
                 target_id: string_id,
-                is_packed_address: false,
+                is_packed_address: true,
                 offset_size: 2,
                 location_space: MemorySpace::Code,
             };
@@ -92,38 +92,34 @@ impl ZMachineCodeGen {
             // Try to resolve it as a simple operand (variable, constant, etc.)
             match self.resolve_ir_id_to_operand(arg_id) {
                 Ok(operand) => {
-                    // Check if this is a variable that might contain a string (from property access)
+                    // Check if this is a stack variable that might be a string (from property access)
                     // Property access results like item.name return packed string addresses
-                    // With the new stack architecture, these can be in stack (Variable 0) OR local variables (Variable 1-15)
-                    match operand {
-                        Operand::Variable(var_num) => {
-                            log::debug!(
-                                "IR ID {} resolved to Variable({}) - assuming string result, using print_paddr",
-                                arg_id, var_num
-                            );
+                    if matches!(operand, Operand::Variable(0)) {
+                        log::debug!(
+                            "IR ID {} resolved to stack Variable(0) - assuming string result, using print_paddr",
+                            arg_id
+                        );
 
-                            self.emit_instruction(
-                                0x8D,       // print_paddr opcode - print packed string address
-                                &[operand], // The variable containing the string address
-                                None,       // No store
-                                None,       // No branch
-                            )?;
-                        }
-                        _ => {
-                            // Constants and other operands are likely numeric
-                            log::debug!(
-                                "IR ID {} resolved to operand {:?} - generating print_num",
-                                arg_id,
-                                operand
-                            );
+                        self.emit_instruction(
+                            0x8D,       // print_paddr opcode - print packed string address
+                            &[operand], // The stack variable containing the string address
+                            None,       // No store
+                            None,       // No branch
+                        )?;
+                    } else {
+                        // Non-stack variables are likely numeric
+                        log::debug!(
+                            "IR ID {} resolved to operand {:?} - generating print_num",
+                            arg_id,
+                            operand
+                        );
 
-                            self.emit_instruction(
-                                0x06,       // print_num opcode - for numeric values
-                                &[operand], // The resolved operand
-                                None,       // No store
-                                None,       // No branch
-                            )?;
-                        }
+                        self.emit_instruction(
+                            0x06,       // print_num opcode - for numeric values
+                            &[operand], // The resolved operand
+                            None,       // No store
+                            None,       // No branch
+                        )?;
                     }
                 }
                 Err(_) => {
@@ -153,19 +149,6 @@ impl ZMachineCodeGen {
                     let operand_address = layout
                         .operand_location
                         .expect("print instruction must have operand");
-                    let reference = UnresolvedReference {
-                        reference_type: LegacyReferenceType::StringRef,
-                        location: operand_address,
-                        target_id: string_id,
-                        is_packed_address: false,
-                        offset_size: 2,
-                        location_space: MemorySpace::Code,
-                    };
-                    self.add_reference_to_tracking_lists(reference);
-
-                    let operand_address = layout
-                        .operand_location
-                        .expect("print_paddr instruction must have operand");
                     let reference = UnresolvedReference {
                         reference_type: LegacyReferenceType::StringRef,
                         location: operand_address,
@@ -252,34 +235,36 @@ impl ZMachineCodeGen {
 
     /// Emit print instruction for a runtime value (stack/local variable)
     fn emit_print_runtime_value(&mut self, value_id: IrId) -> Result<(), CompilerError> {
-        // Load the runtime value and convert to string for printing
+        // FIXED: Use proper Z-Machine instructions for runtime value printing
 
-        if let Some(&stack_var) = self.ir_id_to_stack_var.get(&value_id) {
-            log::debug!("PRINT_RUNTIME: Printing stack variable {}", stack_var);
-            // For now, load stack variable and print as number
-            // TODO: Implement proper string conversion
-            self.emit_instruction(0x8C, &[Operand::SmallConstant(0)], Some(0), None)?; // Load from stack to temporary
-            self.emit_instruction(0x86, &[Operand::SmallConstant(0)], None, None)?;
-        // Print number from stack
-        } else if let Some(&local_var) = self.ir_id_to_local_var.get(&value_id) {
-            log::debug!("PRINT_RUNTIME: Printing local variable {}", local_var);
-            // For now, load local variable and print as number
-            // TODO: Implement proper string conversion
+        if let Some(&_stack_var) = self.ir_id_to_stack_var.get(&value_id) {
+            log::debug!("PRINT_RUNTIME: Printing stack variable content with print_num");
+            // Use print_num with Variable(0) - proper Z-Machine stack access
             self.emit_instruction(
-                0x8C,
-                &[Operand::SmallConstant(local_var as u8)],
-                Some(0),
+                0x06,                    // print_num (VAR:230) - correct opcode 6
+                &[Operand::Variable(0)], // Variable(0) = stack - correct operand
+                None,
                 None,
             )?;
-            self.emit_instruction(0x86, &[Operand::SmallConstant(0)], None, None)?;
-        // Print number from stack
+        } else if let Some(&local_var) = self.ir_id_to_local_var.get(&value_id) {
+            log::debug!(
+                "PRINT_RUNTIME: Printing local variable {} content with print_num",
+                local_var
+            );
+            // Use print_num with correct local variable
+            self.emit_instruction(
+                0x06,                                  // print_num (VAR:230) - correct opcode 6
+                &[Operand::Variable(local_var as u8)], // Correct local variable access
+                None,
+                None,
+            )?;
         } else {
-            log::warn!(
-                "PRINT_RUNTIME: Unknown runtime value type for IR ID {}",
+            log::debug!(
+                "PRINT_RUNTIME: Unknown runtime value type for IR ID {}, using placeholder",
                 value_id
             );
-            // Fallback: print placeholder
-            let placeholder = format!("[RUNTIME_UNKNOWN_{}]", value_id);
+            // Safe fallback: print placeholder string
+            let placeholder = format!("[RUNTIME_{}]", value_id);
             let string_id = self.find_or_create_string_id(&placeholder)?;
             self.emit_print_string_instruction(string_id)?;
         }
@@ -343,7 +328,7 @@ impl ZMachineCodeGen {
                 reference_type: LegacyReferenceType::StringRef,
                 location: operand_address,
                 target_id: string_id,
-                is_packed_address: false,
+                is_packed_address: true,
                 offset_size: 2,
                 location_space: MemorySpace::Code,
             };

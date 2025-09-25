@@ -308,7 +308,7 @@ impl ZMachineCodeGen {
                 // If loading from stack/global, result can use stack
 
                 if let Some(var_num) = self.ir_id_to_local_var.get(var_id).copied() {
-                    // Loading from local variable -> result should also be local variable
+                    // Loading from local variable -> use local variable for multi-reference result
                     self.use_local_var_for_result(*target);
                     let target_var = self.get_store_var_for_target(*target);
 
@@ -676,8 +676,8 @@ impl ZMachineCodeGen {
                 // This loads array[index] where array is base address and index is word offset
 
                 // CRITICAL: Register target for array element result
-                // STACK ARCHITECTURE FIX: Use local variable for persistent array element value
-                self.use_local_var_for_result(*target);
+                // STACK ARCHITECTURE FIX: Use stack for temporary array element value
+                self.use_stack_for_result(*target);
 
                 // Get operands for array base address and index
                 let array_operand = self.resolve_ir_id_to_operand(*array)?;
@@ -694,7 +694,7 @@ impl ZMachineCodeGen {
                     None,
                 )?;
                 log::debug!(
-                    "GetArrayElement: IR ID {} = loadw(array IR ID {}, index IR ID {}) -> local variable",
+                    "GetArrayElement: IR ID {} = loadw(array IR ID {}, index IR ID {}) -> stack",
                     target,
                     array,
                     index
@@ -728,11 +728,11 @@ impl ZMachineCodeGen {
 
             IrInstruction::ArrayLength { target, array: _ } => {
                 // Array length operation - placeholder returns 0
-                // STACK ARCHITECTURE FIX: Use local variable for persistent length value
-                self.use_local_var_for_result(*target);
+                // STACK ARCHITECTURE FIX: Use stack for temporary array length value
+                self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
-                log::debug!("ArrayLength: IR ID {} -> local variable (placeholder: 0)", target);
+                log::debug!("ArrayLength: IR ID {} -> stack (placeholder: 0)", target);
             }
 
             IrInstruction::ArrayContains {

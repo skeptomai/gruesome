@@ -7340,10 +7340,15 @@ impl ZMachineCodeGen {
     pub fn use_local_var_for_result(&mut self, target_id: IrId) {
         let next_local = self.next_available_local_var();
         self.ir_id_to_local_var.insert(target_id, next_local);
+
+        // Update the function's local variable count to include dynamically allocated locals
+        self.current_function_locals = self.current_function_locals.max(next_local);
+
         log::debug!(
-            "use_local_var_for_result: IR ID {} -> Variable({}) [Local variable]",
+            "use_local_var_for_result: IR ID {} -> Variable({}) [Local variable] (function now uses {} locals)",
             target_id,
-            next_local
+            next_local,
+            self.current_function_locals
         );
     }
 
@@ -7451,7 +7456,12 @@ impl ZMachineCodeGen {
                 }
             }
 
-            log::debug!("BinaryOp ({:?}) result: IR ID {} -> local variable {:?}", op, target, store_var);
+            log::debug!(
+                "BinaryOp ({:?}) result: IR ID {} -> local variable {:?}",
+                op,
+                target,
+                store_var
+            );
         }
 
         Ok(())

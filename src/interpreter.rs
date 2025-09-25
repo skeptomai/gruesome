@@ -426,12 +426,13 @@ impl Interpreter {
                     "🔍 CRASH_DEBUG: PC=0x{:04x} opcode=0x{:02x} form={:?} operand_count={:?} operand_types={:?} operands={:?} size={}",
                     pc, instruction.opcode, instruction.form, instruction.operand_count, instruction.operand_types, instruction.operands, instruction.size
                 );
-                debug!("🔍 RAW_BYTES at PC=0x{:04x}: {:02x} {:02x} {:02x} {:02x}",
-                       pc,
-                       self.vm.game.memory.get(pc as usize).unwrap_or(&0),
-                       self.vm.game.memory.get((pc + 1) as usize).unwrap_or(&0),
-                       self.vm.game.memory.get((pc + 2) as usize).unwrap_or(&0),
-                       self.vm.game.memory.get((pc + 3) as usize).unwrap_or(&0)
+                debug!(
+                    "🔍 RAW_BYTES at PC=0x{:04x}: {:02x} {:02x} {:02x} {:02x}",
+                    pc,
+                    self.vm.game.memory.get(pc as usize).unwrap_or(&0),
+                    self.vm.game.memory.get((pc + 1) as usize).unwrap_or(&0),
+                    self.vm.game.memory.get((pc + 2) as usize).unwrap_or(&0),
+                    self.vm.game.memory.get((pc + 3) as usize).unwrap_or(&0)
                 );
             }
 
