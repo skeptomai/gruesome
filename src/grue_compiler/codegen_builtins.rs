@@ -92,34 +92,38 @@ impl ZMachineCodeGen {
             // Try to resolve it as a simple operand (variable, constant, etc.)
             match self.resolve_ir_id_to_operand(arg_id) {
                 Ok(operand) => {
-                    // Check if this is a stack variable that might be a string (from property access)
+                    // Check if this is a variable that might contain a string (from property access)
                     // Property access results like item.name return packed string addresses
-                    if matches!(operand, Operand::Variable(0)) {
-                        log::debug!(
-                            "IR ID {} resolved to stack Variable(0) - assuming string result, using print_paddr",
-                            arg_id
-                        );
+                    // With the new stack architecture, these can be in stack (Variable 0) OR local variables (Variable 1-15)
+                    match operand {
+                        Operand::Variable(var_num) => {
+                            log::debug!(
+                                "IR ID {} resolved to Variable({}) - assuming string result, using print_paddr",
+                                arg_id, var_num
+                            );
 
-                        self.emit_instruction(
-                            0x8D,       // print_paddr opcode - print packed string address
-                            &[operand], // The stack variable containing the string address
-                            None,       // No store
-                            None,       // No branch
-                        )?;
-                    } else {
-                        // Non-stack variables are likely numeric
-                        log::debug!(
-                            "IR ID {} resolved to operand {:?} - generating print_num",
-                            arg_id,
-                            operand
-                        );
+                            self.emit_instruction(
+                                0x8D,       // print_paddr opcode - print packed string address
+                                &[operand], // The variable containing the string address
+                                None,       // No store
+                                None,       // No branch
+                            )?;
+                        }
+                        _ => {
+                            // Constants and other operands are likely numeric
+                            log::debug!(
+                                "IR ID {} resolved to operand {:?} - generating print_num",
+                                arg_id,
+                                operand
+                            );
 
-                        self.emit_instruction(
-                            0x06,       // print_num opcode - for numeric values
-                            &[operand], // The resolved operand
-                            None,       // No store
-                            None,       // No branch
-                        )?;
+                            self.emit_instruction(
+                                0x06,       // print_num opcode - for numeric values
+                                &[operand], // The resolved operand
+                                None,       // No store
+                                None,       // No branch
+                            )?;
+                        }
                     }
                 }
                 Err(_) => {
