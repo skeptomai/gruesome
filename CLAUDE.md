@@ -30,20 +30,12 @@ let branch_location = self.code_space.len() - 2; // Code space offset where plac
 
 **Impact**: Property table corruption eliminated, property access restored, basic program execution works correctly.
 
-### 🎉 PREVIOUS COMPLETED FIXES (Session Sep 25, 2025 - Earlier):
-1. **✅ Variable Allocation Bug ELIMINATED**: Fixed "Ran out of local variables (max 15 per routine)" error in complex expressions
-2. **✅ Stack-Based Binary Operations**: All binary operations now use stack (Variable 0) for intermediate results
-3. **✅ Z-Machine Specification Compliance**: Proper stack usage prevents local variable exhaustion
-
-### 🎉 PREVIOUS COMPLETED FIXES (Session Sep 24, 2025):
-1. **✅ VAR/2OP Opcode Classification Fixed**: Removed conflicting raw opcode mappings from `is_true_var_opcode()`
-2. **✅ "Invalid Long form opcode 0x00" Errors Eliminated**: 2OP:0 (je) instructions now properly classified
-
-### 🎉 PREVIOUS COMPLETED FIXES (Session Sep 23, 2025):
-1. **✅ Stack Architecture Fixed**: Variable(0) correctly accessed instead of Variable(3)
-2. **✅ Property Mapping Fixed**: Property access now uses correct property number 14 instead of property 1
-3. **✅ String Encoding Fixed**: Banner strings display perfectly ("Infocom, Inc." not "Infocom,  E .")
-4. **✅ Property Values Fixed**: Properties contain valid string addresses (0x0760) instead of 0
+### **RECENT MAJOR FIXES** (Last 3 Sessions):
+- Variable allocation bug (local variable exhaustion)
+- VAR/2OP opcode classification conflicts
+- Stack vs local variable architecture issues
+- Property mapping and string encoding corruption
+- Address space collision systematic fixes
 
 ## 🚧 REMAINING ISSUES (September 25, 2025)
 
@@ -132,140 +124,6 @@ let branch_location = self.code_space.len() - 2; // Code space offset where plac
 - **Impact**: Minor (core property system works, just display formatting issue)
 - **Priority**: Low
 
-### **PREVIOUS CRITICAL ISSUE** (September 21, 2025) - RESOLVED ✅:
-
-### 🔍 CURRENT DEBUGGING SESSION (Sep 23, 2025) - STRING CORRUPTION IDENTIFIED
-
-**CRITICAL FINDINGS - AVOID CIRCULAR INVESTIGATION**:
-
-#### ✅ **CONFIRMED REAL ISSUES**:
-1. **Banner String Corruption**: `"Infocom, Inc."` displays as `"Infocom,  E ."` - this is REAL corruption
-2. **Runtime Crash**: Invalid opcode 0x00 at address 0x1465 AFTER banner prints (separate issue)
-3. **Untracked Placeholder**: 1 placeholder at 0x03a1 in Objects region (separate from string issues)
-
-#### ❌ **INVESTIGATION MISTAKES TO AVOID**:
-1. **DON'T investigate `emit_print_runtime_value`** - mini_zork banner uses static strings, not runtime concatenation
-2. **DON'T focus on untracked placeholders** - they're in object properties, not string printing code
-3. **DON'T confuse the crash with string corruption** - banner partially works, crash happens later
-
-#### 🎯 **REAL ROOT CAUSE**: Z-Machine string encoding/decoding corruption
-- **Specific symptom**: "Inc." → "E ." character substitution
-- **Evidence**: Source has `"Infocom, Inc."`, output shows `"Infocom,  E ."`
-- **Location**: String encoding in compiler OR string decoding in interpreter
-
-#### 📋 **NEXT STEPS** (avoid rabbit holes):
-1. **Test string encoding**: Check if compiler encodes "Inc." correctly to Z-Machine format
-2. **Test string decoding**: Check if interpreter decodes the encoded string correctly
-3. **Character mapping bug**: Investigate Z-Machine character set mapping corruption
-
-### 🔍 DETAILED ANALYSIS - Multiple Runtime Value Sources:
-
-**Function Call Results** (PRIMARY TRIGGER):
-- Function returns are completely runtime entities - unknown at compile time
-- `get_dynamic_string()` → stored in `ir_id_to_stack_var`, not `ir_id_to_string`
-- Concatenation like `"The " + get_dynamic_string() + " is here."` triggers buggy path
-
-**Other Runtime Value Sources** (24 instances in mini_zork):
-1. **Object property access**: `obj.name` → runtime computation → stack storage
-2. **Comparison operations**: Binary comparisons store results on stack
-3. **Load operations**: Various load operations store to stack
-4. **Function parameters**: Stored as local variables
-5. **Local variables**: User-declared variables
-6. **Object contents**: `get_object_contents` results
-
-**Concatenation Logic Flow**:
-```rust
-// CORRECT PATH (static strings):
-"Hello" → ir_id_to_string.contains_key() = true → print_paddr (0x8D) ✅
-
-// BROKEN PATH (runtime values):
-get_string() → ir_id_to_string.contains_key() = false → emit_print_runtime_value → 0x8C (loadw) ❌
-```
-
-**Technical Issue**:
-- `0x8C` = loadw instruction for array access, NOT for stack/variable access
-- `SmallConstant(0)` = literal constant 0, NOT stack Variable(0)
-- Creates untracked LargeConstant(0xFFFF) placeholders bypassing UnresolvedReference system
-
-### 🔧 FIXES COMPLETED IN THIS SESSION:
-1. **Fixed**: Main loop unknown command print_paddr using old `self.code_address - 2` pattern → layout.operand_location
-2. **Fixed**: get_object_contents builtin using wrong opcode 0x8C (load) instead of 0x0C (jump)
-
-### 📊 CURRENT STATUS:
-- **mini_zork**: Still has 6 untracked placeholders (reduced from major systematic issues)
-- **minimal test**: 1 untracked placeholder causing runtime crash - THIS IS THE FOCUS
-
-### 🔍 TECHNICAL ANALYSIS:
-
-**The Untracked Placeholder Pattern**:
-1. **UnresolvedReference tracking system** works correctly - all tracked references resolve properly
-2. **Logging shows** 6 LargeConstant(0xFFFF) emissions during instruction generation
-3. **UR tracking map** shows only 1 actually untracked placeholder remains in final binary
-4. **Location**: Address 0x08f6 with instruction `8c ffff` (opcode 0x8C = load, operand 0xFFFF)
-5. **Crash**: Runtime error "Property 16 not found for object 3" when executing minimal test
-
-**Confirmed Patterns**:
-- Some `LargeConstant(placeholder_word())` operands bypass UnresolvedReference creation
-- Builtin functions correctly create UnresolvedReferences (print, move, etc.)
-- Issue is NOT in conditional branch emission (that works correctly)
-- Multiple code paths emit 0x8C instructions - need to find which one bypasses UR tracking
-
-### 🛠️ DEBUGGING APPROACH NEEDED:
-
-**Systematic Investigation Method**:
-1. **Focus on minimal test case**: `examples/minimal_for_loop.grue` (1 untracked placeholder)
-2. **Identify exact source**: Find code path emitting `0x8C ffff` at address 0x08f6 without UnresolvedReference
-3. **Pattern matching**: Look for `emit_instruction(0x8C, ...)` calls that don't create UR tracking
-4. **Root cause**: Fix the bypassed code path to use proper UnresolvedReference creation
-
-**Key Files to Investigate**:
-- `src/grue_compiler/codegen_instructions.rs` - instruction emission logic
-- `src/grue_compiler/codegen.rs` - main compilation logic
-- `src/grue_compiler/codegen_builtins.rs` - builtin function generation (partially fixed)
-
-### 📁 MINIMAL TEST CASE FOR NEXT SESSION:
-
-**File**: `examples/minimal_for_loop.grue` (already in repo)
-**Purpose**: Reproduces 1 untracked placeholder causing runtime crash
-**Test Commands**:
-```bash
-# Compile minimal test
-env RUST_LOG=error cargo run --bin grue-compiler -- examples/minimal_for_loop.grue --output /tmp/minimal.z3
-
-# Check untracked placeholders (should show "Found 1 0xffff patterns")
-# ... | grep "CRITICAL: Found"
-
-# Test execution (should crash with "Property 16 not found for object 3")
-env RUST_LOG=error ./target/debug/gruesome /tmp/minimal.z3
-
-# Find untracked placeholder location (should show address 0x08f6)
-xxd /tmp/minimal.z3 | grep -n "ffff"
-```
-
-**Current Problem**: Address 0x08f6 contains `8c ffff` (load instruction with 0xFFFF operand) that lacks UnresolvedReference tracking, causing property corruption and runtime crash.
-
-**Next Steps**: Use systematic code path tracing to find which `emit_instruction(0x8C, ...)` call bypasses UnresolvedReference creation.
-
-### ✅ COMPLETED FIXES (All Sessions):
-1. **Branch System Fixed** - UnresolvedReference system for conditional branches
-2. **Object Mapping Fixed** - Unique Z-Machine object numbers
-3. **IR ID Mapping Fixed** - Array instruction target registration
-4. **PC Calculation Fixed** - Unified calculation logic for all scenarios
-5. **UnresolvedReference Location Fixed** - Systematic reference resolution bug
-6. **Print Function Text Formatting Fixed** - Game banner displays with proper newlines
-7. **Address Space Separation Fixed** - Labels correctly assigned to code space using address-based detection
-
-### 📋 DEBUGGING COMMANDS:
-```bash
-# Check crash address content
-xxd -s 0x0fc0 -l 16 /tmp/debug_examine.z3
-
-# Trace label mapping
-env RUST_LOG=debug cargo run --bin grue-compiler -- examples/mini_zork.grue --output /tmp/debug.z3 2>&1 | grep -E "(416|417)"
-
-# Test minimal reproduction
-env RUST_LOG=error cargo run --bin grue-compiler -- examples/test_minimal_for.grue --output /tmp/test.z3
-```
 
 ## 🚨 CRITICAL: PRINT NEWLINE ARCHITECTURE - DO NOT BREAK AGAIN
 
@@ -530,101 +388,18 @@ This has been a recurring source of debugging confusion. The compiler-generated 
 
 **CRITICAL**: This pattern has caused repeated bugs. When implementing binary operations, function calls, or control flow, ALWAYS check: "Should this use stack or local variable according to the Z-Machine specification?"
 
-### **CURRENT EXAMPLE (Sep 23, 2025): emit_print_runtime_value Bug**
-- **Problem**: Used `0x8C` (loadw) with `SmallConstant(0)` for stack access
-- **Correct**: Use `0x86` (print_num) with `Variable(0)` for stack, `Variable(N)` for local vars
-- **Root Cause**: Violated Z-Machine spec by using wrong instruction for variable access
-- **Impact**: Runtime string concatenation corrupted banner text in mini_zork
 
-## CRITICAL: Z-Machine Stack vs Local Variable Usage - Aug 28, 2025
+## Debugging Guidelines
 
-**FUNDAMENTAL PRINCIPLE**: When questioning stack vs local variable usage, refer to the Z-Machine specification - it's almost always in favor of the stack.
+**Key Principle**: Add comprehensive logging and crash early with detailed context.
 
-### **Stack Usage (Preferred)**:
-- **Temporary expression results** (comparisons, arithmetic, property access)
-- **Intermediate calculations** 
-- **Function call arguments** (pushed before call)
-- **Function return values** (returned on stack)
-- **Immediate consumption values** (used once then discarded)
+**Critical Patterns**:
+- Log all instruction emission, memory allocation, IR mappings
+- Never use fallbacks for missing mappings - crash with full context
+- Remove default/fallback behaviors that mask bugs
+- Add logging first, then investigate systematically
 
-### **Local Variable Usage (Limited)**:
-- **Function parameters** (persistent throughout function)
-- **Loop variables** (persistent across iterations)
-- **Explicit variable declarations** in source code
-- **Values that need to be stored/retrieved multiple times**
-
-### **Key Z-Machine Specification Points**:
-- Variable(0) = stack top
-- Instructions without store_var push results to stack  
-- Instructions with store_var = None consume from stack
-- Stack operations are more efficient than variable storage
-- Most Z-Machine instructions are designed for stack-based computation
-
-## CRITICAL: Systematic Debugging Patterns - Learned Aug 27, 2025
-
-**FUNDAMENTAL DEBUGGING PRINCIPLE**: Add comprehensive logging to all shared emission paths and crash early with detailed context to aid debugging.
-
-### **Always Add Logging To:**
-
-1. **Instruction Emission** (`emit_instruction`):
-   ```rust
-   log::debug!("EMIT: opcode=0x{:02x} operands={:?} store={:?} branch={:?} at address=0x{:04x}", 
-               opcode, operands, store_var, branch_offset, self.current_address);
-   ```
-
-2. **Memory Allocation** (`current_address` updates):
-   ```rust  
-   log::debug!("MEMORY: Allocated {} bytes at address 0x{:04x} -> 0x{:04x}", 
-               size, old_address, self.current_address);
-   ```
-
-3. **IR ID Mappings** (all mapping insertions):
-   ```rust
-   log::debug!("MAPPING: IR ID {} -> {} mapping type: {:?}", 
-               ir_id, target_value, mapping_type);
-   ```
-
-4. **Target Registration** (every instruction with target field):
-   ```rust
-   log::debug!("TARGET: Instruction {:?} creates target IR ID {}", 
-               instruction_type, target);
-   ```
-
-### **Crash Early Patterns:**
-
-1. **Missing Mappings** - Never use fallbacks, always crash with full context:
-   ```rust
-   panic!("COMPILER BUG: No mapping found for IR ID {}. Available mappings: {:?}", 
-          ir_id, all_mapping_tables);
-   ```
-
-2. **Invalid State** - Crash immediately when detecting inconsistencies:
-   ```rust
-   assert_eq!(expected_address, actual_address, 
-              "COMPILER BUG: Address mismatch during instruction generation");
-   ```
-
-3. **Unimplemented Paths** - Never return "Ok" from placeholder code:
-   ```rust
-   panic!("UNIMPLEMENTED: Instruction type {:?} at compilation stage", instruction);
-   ```
-
-### **Systematic Investigation Approach:**
-
-1. **Add comprehensive logging FIRST** before attempting fixes
-2. **Dump complete IR instruction sequences** to see the full picture
-3. **Trace every instruction that creates targets** to find missing mappings
-4. **Follow the data flow** from IR generation → mapping → resolution
-5. **Remove all fallback/default behaviors** that hide bugs
-
-### **Key Insight - Aug 27, 2025:**
-
-The "IR ID 83 unmapped" bug was found through systematic logging that revealed:
-- LoadVar instruction was missing target registration in one code path
-- Parameter mapping was failing for complex functions
-- Previous debugging attempts failed because they examined instruction types without tracing the actual data flow
-
-**Never** attempt fixes without first adding comprehensive logging to understand the exact execution flow causing the issue.
+For all debugging statements in this project, use the Rust `log` crate with `debug!` and `info!` macros instead of `println!`.
 
 ## CRITICAL FIX: VAR Opcode 0x13 Disambiguation
 
@@ -663,15 +438,6 @@ The "IR ID 83 unmapped" bug was found through systematic logging that revealed:
 
 **NEVER use heuristics** - Always check the Z-Machine specification at `/Users/cb/Projects/Z-Machine-Standard/sect14.html` and `sect15.html` for the definitive opcode behavior.
 
-## Debugging Guidelines
-
-For all debugging statements in this project, use the Rust `log` crate with `debug!` and `info!` macros instead of `println!`. This provides better control over debug output and follows Rust best practices.
-
-### Usage:
-- Use `debug!()` for detailed debugging information
-- Use `info!()` for important runtime information
-- Use `warn!()` for warnings
-- Use `error!()` for errors
 
 ## Critical Architecture Patterns
 
