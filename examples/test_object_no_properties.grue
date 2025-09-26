@@ -1,0 +1,16 @@
+// Test 2: Strings + simple object (no string properties)
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+    }
+}
+
+fn main() {
+    print("ZORK is a registered trademark of Infocom, Inc.");
+    print("Testing with simple object...");
+}
+
+init {
+    player.location = test_room;
+    main();
+}

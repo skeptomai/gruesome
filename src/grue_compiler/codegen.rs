@@ -188,14 +188,6 @@ pub struct ArrayInfo {
     pub base_address: Option<u16>, // For future Z-Machine memory implementation
 }
 
-/// String property patch - tracks object properties containing string values that need patching
-#[derive(Debug, Clone)]
-pub struct StringPropertyPatch {
-    pub object_address: usize,  // Address of the object property table
-    pub property_offset: usize, // Offset within property table where string address should be written
-    pub string_value: String,   // The string value to find address for
-}
-
 /// Constant value types for control flow optimization
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConstantValue {
@@ -293,7 +285,6 @@ pub struct ZMachineCodeGen {
 
     // Address resolution
     pub reference_context: ReferenceContext,
-    pub string_property_patches: Vec<StringPropertyPatch>, // String properties that need patching after string addresses are known
 
     // Control flow analysis - NEW ARCHITECTURE
     /// Track constant values resolved during generation
@@ -408,7 +399,6 @@ impl ZMachineCodeGen {
                 unresolved_refs: Vec::new(),
                 all_references_created: Vec::new(),
             },
-            string_property_patches: Vec::new(),
             constant_values: IndexMap::new(),
             labels_at_current_address: Vec::new(),
 
@@ -4997,8 +4987,8 @@ impl ZMachineCodeGen {
                         reference_type: LegacyReferenceType::StringRef,
                         location: addr_offset + 1, // Location where string address will be written (after size byte)
                         target_id: string_id,
-                        is_packed_address: false, // String addresses are not packed
-                        offset_size: 2,           // String addresses are 2 bytes
+                        is_packed_address: true, // String addresses should be packed for print_paddr compatibility
+                        offset_size: 2,          // String addresses are 2 bytes
                         location_space: MemorySpace::Objects,
                     };
                     self.reference_context

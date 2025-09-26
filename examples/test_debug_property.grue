@@ -1,0 +1,22 @@
+// Debug test: Just print before and after property access
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+
+        object test_obj {
+            names: ["object", "test"]
+            desc: "Simple description"
+        }
+    }
+}
+
+fn main() {
+    print("Before property access");
+    print(test_obj.desc);
+    print("After property access");
+}
+
+init {
+    player.location = test_room;
+    main();
+}

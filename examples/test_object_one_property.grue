@@ -1,0 +1,21 @@
+// Test 3: Strings + object with one string property
+world {
+    room test_room "Test Room" {
+        desc: "A test room with Infocom references."
+
+        object test_obj {
+            names: ["object", "test"]
+            desc: "A test object from Infocom, Inc."
+        }
+    }
+}
+
+fn main() {
+    print("ZORK is a registered trademark of Infocom, Inc.");
+    print("Testing with object property...");
+}
+
+init {
+    player.location = test_room;
+    main();
+}

@@ -1,0 +1,27 @@
+// Test: Property creation without access
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+
+        object test_obj {
+            names: ["object", "test"]
+            desc: "Contains the word Infocom, Inc. in description."
+        }
+
+        object another_obj {
+            names: ["thing"]
+            desc: "Another object with Infocom, Inc. references."
+        }
+    }
+}
+
+fn main() {
+    print("ZORK is a registered trademark of Infocom, Inc.");
+    print("Properties created but not accessed.");
+    print("This should work fine.");
+}
+
+init {
+    player.location = test_room;
+    main();
+}

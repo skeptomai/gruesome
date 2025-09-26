@@ -1,0 +1,23 @@
+// Test 4: Strings + property access
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+
+        object test_obj {
+            names: ["object", "test"]
+            desc: "Contains the word Infocom, Inc. in description."
+        }
+    }
+}
+
+fn main() {
+    print("ZORK is a registered trademark of Infocom, Inc.");
+    print("Testing property access...");
+    // Access the object's description property
+    print(test_obj.desc);
+}
+
+init {
+    player.location = test_room;
+    main();
+}
