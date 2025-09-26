@@ -225,7 +225,7 @@ pub struct ZMachineCodeGen {
     // Code generation state
     pub label_addresses: IndexMap<IrId, usize>, // IR label ID -> byte address
     pub string_addresses: IndexMap<IrId, usize>, // IR string ID -> byte address
-    function_addresses: IndexMap<IrId, usize>,  // IR function ID -> function header byte address
+    pub function_addresses: IndexMap<IrId, usize>, // IR function ID -> function header byte address
     function_locals_count: IndexMap<IrId, usize>, // IR function ID -> locals count (for header size calculation)
     function_header_locations: IndexMap<IrId, usize>, // IR function ID -> header byte location for patching
     current_function_locals: u8, // Track local variables allocated in current function (0-15)
@@ -341,7 +341,7 @@ pub struct ZMachineCodeGen {
     pub final_object_base: usize,
 
     /// Room handler routine mappings (room_id:handler_name -> routine_id)
-    room_handler_routines: Option<IndexMap<String, IrId>>,
+    pub room_handler_routines: Option<IndexMap<String, IrId>>,
 }
 
 impl ZMachineCodeGen {
@@ -619,7 +619,7 @@ impl ZMachineCodeGen {
 
         // Check if String ID 148 is in encoded_strings
         if self.encoded_strings.contains_key(&148) {
-            log::debug!("String ID {} found in encoded_strings", ir_id);
+            log::debug!("String ID {} found in encoded_strings", 148);
         } else {
             log::debug!("String ID {} not found in encoded_strings", 148);
             log::debug!(
@@ -646,6 +646,11 @@ impl ZMachineCodeGen {
             " Step 2a complete: String space populated ({} bytes)",
             self.string_space.len()
         );
+
+        // Phase 2a.5: Generate room handler routines BEFORE object generation
+        // This ensures room handler addresses are available when setting object properties
+        log::info!(" TRANSLATING: Room handler routines (before objects)");
+        self.generate_room_handler_routines(ir)?;
 
         // Phase 2b: Generate objects/properties to object_space
         log::debug!("🏠 Step 2b: Generating object space");
@@ -1064,8 +1069,9 @@ impl ZMachineCodeGen {
                 object_base
             );
 
-            // CRITICAL FIX: Patch property table addresses from object space relative to absolute addresses
-            self.patch_property_table_addresses(object_base)?;
+            // CRITICAL FIX (Sep 26, 2025): Property table addresses are already absolute
+            // The previous patch_property_table_addresses function was corrupting property data
+            // by writing over property size bytes. Object table addresses work correctly without patching.
         }
 
         // Copy dictionary space
@@ -2348,10 +2354,7 @@ impl ZMachineCodeGen {
         }
         self.compilation_context_stack.pop(); // Exit function code generation context
 
-        // Phase 2.1: Generate room handler routines (on_enter, on_exit, on_look)
-        // TODO: Temporarily disabled due to branch target ID 50 conflict
-        // log::info!(" TRANSLATING: Room handler routines");
-        // self.generate_room_handler_routines(ir)?;
+        // Phase 2.1: Room handler routines already generated in Phase 2a.5 (before objects)
 
         // Phase 2.2: Init block now handled as part of main routine (above)
 
@@ -5022,6 +5025,31 @@ impl ZMachineCodeGen {
                 }
             }
 
+            // Check if this is a function property that needs resolution
+            if let IrPropertyValue::Function(function_id) = prop_value {
+                debug!(
+                    "PROP_FUNCTION_DEBUG: Object property {} contains function ID: {}",
+                    prop_num, function_id
+                );
+                // Create an UnresolvedReference for the function address
+                let function_ref = UnresolvedReference {
+                    reference_type: LegacyReferenceType::FunctionCall,
+                    location: addr_offset + 1, // Location where function address will be written (after size byte)
+                    target_id: (*function_id).try_into().unwrap(),
+                    is_packed_address: false, // Function addresses in properties are direct addresses
+                    offset_size: 1,           // Function addresses are 1 byte in properties
+                    location_space: MemorySpace::Objects,
+                };
+                self.reference_context
+                    .unresolved_refs
+                    .push(function_ref.clone());
+                debug!(
+                    "Created function property reference: function_id={}, location=0x{:04x}",
+                    function_id,
+                    self.object_table_addr + addr_offset + 1
+                );
+            }
+
             // Ensure capacity for property header + data + terminator
             let final_addr = self.object_table_addr + addr_offset;
             self.ensure_capacity(final_addr + 1 + prop_data.len() + 1);
@@ -5096,147 +5124,6 @@ impl ZMachineCodeGen {
         );
 
         Ok(prop_table_addr)
-    }
-
-    /// CRITICAL FIX: Patch property table addresses in object entries from object space relative to absolute addresses
-    fn patch_property_table_addresses(&mut self, object_base: usize) -> Result<(), CompilerError> {
-        log::debug!(" PATCH: Starting property table address patching");
-
-        // Calculate how many objects exist based on object space size
-        // Each object entry is 9 bytes in V3: attributes(4) + parent(1) + sibling(1) + child(1) + prop_table_addr(2)
-        let obj_entry_size = match self.version {
-            ZMachineVersion::V3 => 9,
-            ZMachineVersion::V4 | ZMachineVersion::V5 => 14,
-        };
-
-        // Find where objects end by looking for property defaults table
-        // Property defaults come first, then objects, then property tables
-        let default_props = match self.version {
-            ZMachineVersion::V3 => 31,
-            ZMachineVersion::V4 | ZMachineVersion::V5 => 63,
-        };
-        let defaults_size = default_props * 2; // 2 bytes per default
-        let objects_start = defaults_size; // Objects start after defaults
-
-        // Calculate maximum possible objects from remaining space
-        let remaining_space = self.object_space.len() - objects_start;
-        let max_objects = remaining_space / obj_entry_size;
-
-        log::debug!(" PATCH: Object space layout analysis:");
-        log::debug!("  - Object space size: {} bytes", self.object_space.len());
-        log::debug!(
-            "  - Defaults table: {} bytes (0x00-0x{:02x})",
-            defaults_size,
-            defaults_size - 1
-        );
-        log::debug!("  - Objects start at: 0x{:02x}", objects_start);
-        log::debug!(
-            "  - Max objects: {} ({}x{} bytes)",
-            max_objects,
-            max_objects,
-            obj_entry_size
-        );
-
-        // Patch property table addresses for each object
-        let mut objects_patched = 0;
-        for obj_index in 0..max_objects {
-            let obj_offset_in_space = objects_start + (obj_index * obj_entry_size);
-            let prop_addr_offset = obj_offset_in_space + 7; // Property table address at bytes 7-8
-
-            // Check if we're still within object space bounds
-            if prop_addr_offset + 1 >= self.object_space.len() {
-                break; // Reached end of object space
-            }
-
-            // Read the current object space relative property table address
-            let final_addr_offset = object_base + prop_addr_offset;
-
-            debug!(
-                " PATCH DETAILED: Object {} (index {}):",
-                obj_index + 1,
-                obj_index
-            );
-            debug!("  - obj_offset_in_space: 0x{:04x}", obj_offset_in_space);
-            debug!("  - prop_addr_offset: 0x{:04x}", prop_addr_offset);
-            debug!("  - final_addr_offset: 0x{:04x} (object_base 0x{:04x} + prop_addr_offset 0x{:04x})", 
-                   final_addr_offset, object_base, prop_addr_offset);
-
-            // Debug what we're reading from final_data
-            let byte1 = self.final_data[final_addr_offset];
-            let byte2 = self.final_data[final_addr_offset + 1];
-            debug!(
-                "  - Reading bytes from final_data[0x{:04x}]: 0x{:02x} 0x{:02x}",
-                final_addr_offset, byte1, byte2
-            );
-            debug!(
-                "  - As chars: '{}' '{}'",
-                if (0x20..=0x7e).contains(&byte1) {
-                    byte1 as char
-                } else {
-                    '.'
-                },
-                if (0x20..=0x7e).contains(&byte2) {
-                    byte2 as char
-                } else {
-                    '.'
-                }
-            );
-
-            let space_relative_addr = ((byte1 as u16) << 8) | (byte2 as u16);
-            debug!(
-                "  - Decoded space_relative_addr: 0x{:04x}",
-                space_relative_addr
-            );
-
-            // Check if this looks like a valid property table address (non-zero, within reasonable bounds)
-            if space_relative_addr == 0 || space_relative_addr > self.object_space.len() as u16 {
-                log::debug!(
-                    " PATCH: Object {} has invalid prop table addr 0x{:04x}, skipping",
-                    obj_index + 1,
-                    space_relative_addr
-                );
-                continue; // Skip invalid or empty addresses
-            }
-
-            // Calculate absolute final memory address
-            let absolute_addr = object_base + (space_relative_addr as usize);
-            debug!("  - Calculated absolute_addr: 0x{:04x} (object_base 0x{:04x} + space_relative 0x{:04x})", 
-                   absolute_addr, object_base, space_relative_addr);
-
-            // Write the corrected absolute address back to final_data
-            let new_high_byte = (absolute_addr >> 8) as u8;
-            let new_low_byte = (absolute_addr & 0xFF) as u8;
-            debug!(
-                "  - Writing absolute addr 0x{:04x} as bytes: 0x{:02x} 0x{:02x}",
-                absolute_addr, new_high_byte, new_low_byte
-            );
-
-            self.final_data[final_addr_offset] = new_high_byte; // High byte
-            self.final_data[final_addr_offset + 1] = new_low_byte; // Low byte
-
-            // Verify what we just wrote
-            let verify_byte1 = self.final_data[final_addr_offset];
-            let verify_byte2 = self.final_data[final_addr_offset + 1];
-            let verify_addr = ((verify_byte1 as u16) << 8) | (verify_byte2 as u16);
-            debug!(
-                "  - VERIFICATION: Read back 0x{:02x} 0x{:02x} = 0x{:04x}",
-                verify_byte1, verify_byte2, verify_addr
-            );
-
-            objects_patched += 1;
-            log::debug!(
-                " PATCH: Object {} property table address: 0x{:04x} → 0x{:04x} (corrected)",
-                obj_index + 1,
-                space_relative_addr,
-                absolute_addr
-            );
-        }
-
-        log::debug!(
-            " PATCH: Property table address patching complete: {} objects patched",
-            objects_patched
-        );
-        Ok(())
     }
 
     /// Encode an object name as Z-Machine text

@@ -119,10 +119,11 @@ pub enum PropertyValue {
     Boolean(bool),
     Integer(i16),
     String(String),
-    Byte(u8),       // For numbered properties
-    Bytes(Vec<u8>), // For multi-byte numbered properties
-    Object(String), // Reference to another object
-    Room(String),   // Reference to a room
+    Byte(u8),            // For numbered properties
+    Bytes(Vec<u8>),      // For multi-byte numbered properties
+    Object(String),      // Reference to another object
+    Room(String),        // Reference to a room
+    Function(BlockStmt), // Inline function definition
 }
 
 /// Object type declaration for enhanced object system

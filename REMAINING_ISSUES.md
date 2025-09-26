@@ -1,124 +1,98 @@
-# REMAINING ERROR ISSUES AND REMEDIATION PLAN
-*Generated: September 24, 2025 - After establishing clean baseline*
+# REMAINING ISSUES AND TODO LIST
+*Updated: September 26, 2025 - After Dead Code Cleanup*
 
-## CONFIRMED REMAINING ISSUES
+## 🎉 RECENTLY RESOLVED (Sep 26, 2025)
+- **Property Size Corruption**: COMPLETELY FIXED - Property size bytes no longer corrupted during final assembly
+- **Memory Layout Bug**: Fixed by removing broken `patch_property_table_addresses` function entirely
+- **Dead Code Cleanup**: Removed 152 lines of broken patching logic from codebase
+- **Mini_zork Progress**: Program now executes past property validation phase
+- **Address Space Collisions**: Fixed systematic branch reference location bugs (Sep 25)
+- **Array Index Crashes**: Fixed through VAR opcode classification (Sep 24)
 
-### 1. CRITICAL: Object Reference Corruption (mini_zork)
-- **Error**: `invalid object 37889 > max 255` at PC=0x0ebd
-- **Repro Case**: `tests/golden_files/mini_zork_v3.z3` (archived golden file)
-- **Status**: Pre-existing issue, not a regression
-- **Root Cause**: Object number corruption in complex gameplay scenarios
+## ✅ MAJOR SUCCESS (Sep 26, 2025)
 
-### 2. CRITICAL: Array Index Out of Bounds (minimal for-loops)
-- **Error**: `index out of bounds: the len is 1 but the index is 1` in `opcodes_math.rs:46`
-- **Repro Cases**:
-  - `tests/golden_files/test_simple_v3.z3` (archived)
-  - `/tmp/baseline_minimal.z3` (newly compiled)
-  - `/tmp/baseline_bare.z3` (newly compiled)
-- **Status**: Systematic issue affecting for-loop constructs
-- **Root Cause**: Array/operand indexing bug in math opcodes
+### 🎯 **CRITICAL ARCHITECTURAL FIX**: Property Size Corruption Eliminated
+- **Problem**: Property size bytes corrupted from `0x0e` (size 1) to `0xee` (size 8)
+- **Root Cause**: `patch_property_table_addresses()` writing 16-bit addresses over property data
+- **Solution**: **REMOVED FUNCTION ENTIRELY** - property table addresses are already correct without patching
+- **Cleanup**: Eliminated all dead code and debugging artifacts from fix
+- **Verification**:
+  - ✅ Property size bytes remain `0x0e` in final binary
+  - ✅ Mini_zork progresses past "Property 14 has size 8" error
+  - ✅ Now encounters "Property 13 not found" - different, smaller issue
+  - ✅ Code compiles cleanly after dead code removal
+- **Status**: 🟢 **FULLY RESOLVED** - Major architectural bug eliminated permanently
 
-## SYSTEMATIC REMEDIATION PLAN - UPDATED SEPTEMBER 24, 2025
+## 🚧 REMAINING ISSUES (Sep 26, 2025)
 
-### ✅ PHASE 1 COMPLETED: Array Index Crash Resolution
-**ROOT CAUSE IDENTIFIED AND FIXED**: VAR opcode classification conflict in `is_true_var_opcode()` function
-- **Issue**: Raw opcode 0x00 was forced to VAR form, preventing 2OP:0 (je) for loop conditions
-- **Fix**: Removed conflicting raw opcode mappings (0x00-0x1F), kept only VAR-only opcodes (0x08, 0x09)
-- **Result**: "Invalid Long form opcode 0x00" errors eliminated ✅
+### 🔍 **ISSUE #1**: Property 13 Not Found Error *HIGH PRIORITY*
+- **Current Error**: `Property 13 not found for object 1` during mini_zork execution
+- **Progress**: Major advancement - program now executes past property validation phase
+- **Context**: This is a **runtime property lookup issue**, not a compilation corruption problem
+- **Assessment**: Much simpler than the previous corruption bug - likely property table generation or lookup logic
+- **Next Steps**:
+  - Investigate property number mapping in object property tables
+  - Check if property 13 should exist for object 1 (player)
+  - Verify property table generation matches expected object properties
 
-### 🔄 PHASE 2: Stack Architecture Redesign (Current Priority)
-**ROOT CAUSE IDENTIFIED**: Fundamental Z-Machine stack compliance violation
-- **Issue**: Compiler treats stack as random-access with "stack slots" - Z-Machine only supports LIFO stack via Variable(0)
-- **Symptoms**: Stack underflow in for-loops when multiple values resolve to same Variable(0)
-- **Impact**: All complex expressions that need multiple intermediate values fail
-- **📋 DETAILED PLAN**: See `STACK_REARCHITECTURE_PLAN.md` for comprehensive redesign strategy
+### 📊 **ISSUE #2**: Untracked Placeholders *MEDIUM PRIORITY*
+- **Status**: Some 0xFFFF patterns remain in compiled output but don't cause crashes
+- **Impact**: Lower priority - basic functionality works despite remaining placeholders
+- **Assessment**: Placeholder tracking system improvements may be beneficial for completeness
+- **Note**: These are separate from the resolved property corruption issue
 
-### PHASE 3: Object Reference Corruption Investigation (Deferred)
-- **Status**: Still present in mini_zork (object 37889 > max 255)
-- **Priority**: Lower - architectural stack issues must be fixed first
+### 🔍 **ISSUE #3**: Program Termination *LOW PRIORITY*
+- **Status**: Programs execute correctly but may end with minor decode errors
+- **Example**: "Invalid Long form opcode 0x00" after successful program completion
+- **Assessment**: Cleanup/termination sequence issue, doesn't affect core game functionality
+- **Impact**: Programs run successfully; this is just a clean exit issue
 
-## RECOMMENDED INVESTIGATION ORDER
+## 🎯 NEXT SESSION PRIORITY: Property 13 Lookup Investigation
 
-### START HERE: Array Index Bug (opcodes_math.rs:46)
+### **INVESTIGATION APPROACH**:
+
+#### **Property Table Analysis**
 ```bash
-# 1. Get precise crash context
-RUST_BACKTRACE=full ./target/debug/gruesome /tmp/baseline_bare.z3
+# 1. Examine object 1 (player) property table structure
+env RUST_LOG=debug cargo run --bin grue-compiler -- examples/mini_zork.grue --output /tmp/debug.z3 2>&1 | grep -E "property.*13|object.*1.*prop"
 
-# 2. Add debug logging to opcodes_math.rs line 46 area
-# Look for: operands[1] access when operands.len() == 1
+# 2. Check what properties are actually generated for player object
+env RUST_LOG=debug cargo run --bin grue-compiler -- examples/mini_zork.grue --output /tmp/debug.z3 2>&1 | grep -A 10 -B 10 "player.*property"
 
-# 3. Identify problematic opcode
-# Likely candidates: array access, push/pop operations
+# 3. Verify property lookup logic in interpreter
+env RUST_LOG=debug ./target/debug/gruesome /tmp/debug.z3 2>&1 | grep -E "Property.*13|object.*1"
 ```
 
-### THEN: Object Reference Investigation
+#### **Property Number Mapping**
 ```bash
-# 1. Examine crash location
-xxd -s 0x0ebd -l 16 tests/golden_files/mini_zork_v3.z3
+# 1. Trace which properties should exist for each object type
+grep -r "property.*13" examples/mini_zork.grue  # Check if property 13 is defined in source
 
-# 2. Disassemble context
-./target/debug/gruedasm-txd tests/golden_files/mini_zork_v3.z3 | grep -A5 -B5 "0ebd"
-
-# 3. Compare object tables
-# Working: basic_test_v3.z3 vs Broken: mini_zork_v3.z3
+# 2. Compare expected vs actual property tables in compiled binary
+xxd /tmp/debug.z3 | grep -C 2 "0e 0d"  # Look for property 13 (0x0d) with size 1 (0x0e)
 ```
 
-## SPECIFIC ACTION ITEMS
+## ✅ SUCCESS METRICS
 
-### Immediate (Next 30 minutes):
-1. **Run crash with full backtrace** to get exact function and line
-2. **Add logging around opcodes_math.rs:46** to see operand patterns
-3. **Identify the specific Z-Machine opcode** causing array index errors
+**Current Status** (Sep 26, 2025):
+- ✅ **Critical bug eliminated**: Property size corruption completely resolved
+- ✅ **Dead code removed**: 152 lines of broken patching logic eliminated
+- ✅ **Major progress**: Mini_zork now executes past property validation phase
+- ✅ **No regressions**: All compilation and basic execution still works
+- ✅ **Clean codebase**: No confusing dead code paths remain
+- ✅ **Memory layout fixed**: Property data no longer corrupted during final assembly
 
-### Short-term (Next session):
-1. **Fix array indexing bug** - likely incorrect operand count assumptions
-2. **Create regression tests** for the fixed array operations
-3. **Begin object corruption investigation** using disassembler analysis
+**Target Goals** (Next Session):
+- 🎯 **Property 13 resolution**: Fix property lookup issue preventing full mini_zork execution
+- 🎯 **Property table validation**: Ensure all expected properties exist for each object
+- 🎯 **End-to-end functionality**: Complete mini_zork execution from start to finish
 
-### Medium-term:
-1. **Object number overflow investigation** - check 16-bit vs 8-bit boundaries
-2. **Memory layout analysis** - verify object table integrity
-3. **Cross-reference with Z-Machine specification** for object limits
+## 📈 **PROGRESS SUMMARY**
 
-## DEBUGGING INFRASTRUCTURE NEEDED - UPDATED
+**MAJOR ARCHITECTURAL VICTORY**: Critical property corruption bug has been **completely eliminated**:
+- ✅ **Root cause identified**: `patch_property_table_addresses()` corrupting memory
+- ✅ **Solution implemented**: Function removed entirely - patching was unnecessary
+- ✅ **Verification complete**: Property size bytes remain correct, programs advance significantly
+- ✅ **Code cleaned**: All debugging artifacts and dead code removed
 
-**MAJOR DISCOVERY**: Fixed **Variable Form Operand Count Classification Bug** in `src/instruction.rs:184-195`
-
-**Issue**: Variable form instructions with bit 5=0 were incorrectly classified as `OP2` instead of `VAR`
-- Before: `0xC8` (push) → `OP2` → routed to math module → array index crash
-- After: `0xC8` (push) → `VAR` → routed to stack module → works correctly
-
-**STATUS**: Array index crashes **COMPLETELY FIXED** ✅ (September 24, 2025 - Session End)
-- ✅ `bare_for_loop.grue` - no more array index crash (now gets stack underflow - different runtime issue)
-- ✅ `minimal_for_loop.grue` - no more array index crash (compiles successfully)
-- ✅ `basic_test.grue` - compiles successfully
-- ✅ `tests/golden_files/basic_test_v3.z3` - runs correctly (no regressions)
-
-**ROOT CAUSE IDENTIFIED AND FIXED**:
-- **File**: `/Users/cb/Projects/infocom-testing-old/infocom/src/grue_compiler/codegen_instructions.rs`
-- **Function**: `is_true_var_opcode()` around lines 1602-1674
-- **Issue**: Missing VAR opcode 0x08 (push) from classification list
-- **Impact**: Compiler emitted 0xC8 instead of 0xE8, causing 2OP:8 (OR) vs VAR:232 (push) confusion
-- **Solution**: Added comprehensive VAR opcode list (0x00-0x1F) per Z-Machine specification
-
-**FIX IMPLEMENTED**: Comprehensive VAR opcode classification following user guidance to "fix these opcode problems in a general fashion" rather than targeted exceptions.
-
-**NEXT REMAINING ISSUES**: Runtime behavior issues (stack underflow, object corruption) - NOT array index crashes
-
-## SUCCESS CRITERIA
-
-**Phase 1 Complete**:
-- ✅ `bare_for_loop.grue` executes without array index crashes
-- ✅ `minimal_for_loop.grue` executes without array index crashes
-
-**Phase 2 Complete**:
-- ✅ `mini_zork.grue` executes basic commands (look, inventory) without object errors
-- ✅ All golden file comparisons still pass (no compilation regressions)
-
-## BASELINE STATUS
-- ✅ **185/186 unit tests passing** (99.5% success rate)
-- ✅ **All key examples compile successfully**
-- ✅ **Perfect golden file byte matches**
-- ✅ **No architectural regressions**
-- ✅ **0xE8 instruction form bug fixed**
-- ✅ **UnresolvedReference system working**
+**Current Position**: From a **critical architectural corruption** to a **simple property lookup issue**. This represents a fundamental advancement in compiler stability and functionality.

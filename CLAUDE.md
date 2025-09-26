@@ -1,8 +1,15 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (September 25, 2025) - ADDRESS SPACE COLLISION BUGS FIXED ✅
+## CURRENT STATUS (September 26, 2025) - PROPERTY SIZE CORRUPTION FIXED ✅
 
-**MAJOR BREAKTHROUGH**: Address space collision bugs completely resolved through systematic branch reference fixes!
+**CRITICAL BREAKTHROUGH**: Property size encoding corruption completely fixed - mini_zork now progresses past property validation!
+
+### 🎉 COMPLETED FIXES (Session Sep 26, 2025):
+1. **✅ PROPERTY SIZE CORRUPTION ELIMINATED**: Fixed systematic corruption where property size bytes were overwritten during final assembly
+2. **✅ Memory Layout Bug Identified**: Discovered `patch_property_table_addresses` function was writing to wrong memory locations
+3. **✅ Root Cause Analysis Completed**: Traced exact corruption from `0x0e` (property 14, size 1) → `0xee` (property 14, size 8)
+4. **✅ Architecture Fix Applied**: Disabled broken patching function - object table addresses are already correct
+5. **✅ Mini_zork Progress**: Program now executes past property validation phase
 
 ### 🎉 COMPLETED FIXES (Session Sep 25, 2025):
 1. **✅ Address Space Collision ELIMINATED**: Fixed fundamental bug where branch references used final memory addresses instead of code space offsets
@@ -29,6 +36,29 @@ let branch_location = self.code_space.len() - 2; // Code space offset where plac
 ```
 
 **Impact**: Property table corruption eliminated, property access restored, basic program execution works correctly.
+
+### 🔧 TECHNICAL SOLUTION (Sep 26, 2025): Property Size Corruption Fix
+
+**Root Cause**: The `patch_property_table_addresses()` function in `codegen.rs:1074` was corrupting property data by overwriting property size bytes with property table addresses. Specific corruption pattern:
+- Property 14 size byte: `0x0e` (correct: property 14, size 1)
+- Got overwritten with: `0xee` (incorrect: property 14, size 8)
+- Error: "Property 14 has size 8 (>2), cannot use put_prop"
+
+**Technical Analysis**:
+1. **Memory Layout Issue**: Function was writing 16-bit address `0x02ee` where low byte `0xee` overwrote property size byte at `final_data[0x03ad]`
+2. **Unnecessary Patching**: Object table addresses were already correct after `object_space` copy - no patching needed
+3. **Wrong Target Addresses**: Function was writing to property data region instead of object table entries
+
+**Fix Applied**:
+```rust
+// REMOVED: The entire patch_property_table_addresses() call
+// Object table addresses are already absolute after object space copy
+//
+// Before fix: final_data[0x03ad] = 0xee (corruption)
+// After fix:  final_data[0x03ad] = 0x0e (correct)
+```
+
+**Verification**: mini_zork now progresses past property validation and encounters new error "Property 13 not found" - major progress!
 
 ### **RECENT MAJOR FIXES** (Last 3 Sessions):
 - Variable allocation bug (local variable exhaustion)

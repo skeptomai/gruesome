@@ -264,6 +264,11 @@ impl IrProperties {
             .insert(prop_num, IrPropertyValue::String(value));
     }
 
+    pub fn set_function(&mut self, prop_num: u8, function_id: usize) {
+        self.properties
+            .insert(prop_num, IrPropertyValue::Function(function_id));
+    }
+
     pub fn get(&self, prop_num: u8) -> Option<&IrPropertyValue> {
         self.properties.get(&prop_num)
     }
@@ -294,10 +299,11 @@ impl Default for IrProperties {
 /// Property values can be 1, 2, or many bytes
 #[derive(Debug, Clone)]
 pub enum IrPropertyValue {
-    Byte(u8),       // 1-byte property
-    Word(u16),      // 2-byte property
-    Bytes(Vec<u8>), // Multi-byte property
-    String(String), // String property (will be converted to bytes)
+    Byte(u8),        // 1-byte property
+    Word(u16),       // 2-byte property
+    Bytes(Vec<u8>),  // Multi-byte property
+    String(String),  // String property (will be converted to bytes)
+    Function(usize), // Function ID (stored as byte property)
 }
 
 /// Property manager for handling inheritance and dynamic property access
@@ -1512,6 +1518,22 @@ impl IrGenerator {
                         properties.set_word(prop_num, room_num);
                     }
                 }
+                crate::grue_compiler::ast::PropertyValue::Function(block) => {
+                    // Create an inline function for this property
+                    let function_name = format!("{}_{}", obj.identifier, prop_name);
+                    let function_decl = crate::grue_compiler::ast::FunctionDecl {
+                        name: function_name.clone(),
+                        parameters: vec![],
+                        return_type: None,
+                        body: block.clone(),
+                    };
+
+                    // Generate IR for the function
+                    let function_ir = self.generate_function(function_decl)?;
+
+                    // Store the function ID as a byte property (function addresses are 1 byte in properties)
+                    properties.set_function(prop_num, function_ir.id.try_into().unwrap());
+                }
             }
         }
 
@@ -1546,6 +1568,22 @@ impl IrGenerator {
                 }
                 crate::grue_compiler::ast::PropertyValue::Boolean(_) => {
                     // Already handled above, but included for exhaustiveness
+                }
+                crate::grue_compiler::ast::PropertyValue::Function(block) => {
+                    // Create an inline function for this numbered property
+                    let function_name = format!("{}_prop{}", obj.identifier, prop_num);
+                    let function_decl = crate::grue_compiler::ast::FunctionDecl {
+                        name: function_name.clone(),
+                        parameters: vec![],
+                        return_type: None,
+                        body: block.clone(),
+                    };
+
+                    // Generate IR for the function
+                    let function_ir = self.generate_function(function_decl)?;
+
+                    // Store the function ID as a byte property (function addresses are 1 byte in properties)
+                    properties.set_function(*prop_num, function_ir.id.try_into().unwrap());
                 }
             }
         }

@@ -288,7 +288,13 @@ impl Parser {
     }
 
     fn parse_property_value(&mut self) -> Result<PropertyValue, CompilerError> {
-        match &self.peek().kind {
+        let token = self.peek();
+        log::debug!(
+            "🔧 PARSER_DEBUG: parse_property_value sees token: {:?} at position {:?}",
+            token.kind,
+            token.position
+        );
+        match &token.kind {
             TokenKind::True => {
                 self.advance();
                 Ok(PropertyValue::Boolean(true))
@@ -307,11 +313,21 @@ impl Parser {
                 self.advance();
                 Ok(PropertyValue::String(value))
             }
+            TokenKind::LeftBrace => {
+                // Parse block as inline function definition
+                log::debug!("🔧 PARSER_DEBUG: Parsing function block for property value");
+                let block = self.parse_block()?;
+                log::debug!(
+                    "🔧 PARSER_DEBUG: Successfully parsed function block with {} statements",
+                    block.statements.len()
+                );
+                Ok(PropertyValue::Function(block))
+            }
             _ => {
                 // For now, treat everything else as an error
                 let token = self.peek();
                 Err(CompilerError::ExpectedToken(
-                    "boolean, integer, or string value".to_string(),
+                    "boolean, integer, string, or block value".to_string(),
                     format!("{:?}", token.kind),
                     token.position,
                 ))

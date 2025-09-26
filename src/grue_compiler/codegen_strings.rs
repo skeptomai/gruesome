@@ -795,6 +795,16 @@ impl ZMachineCodeGen {
                 );
                 bytes.clone()
             }
+            IrPropertyValue::Function(_function_id) => {
+                // Function properties store addresses as 1-byte properties
+                // Return placeholder byte that will be overwritten by UnresolvedReference
+                log::debug!(
+                    "ENCODE_PROP_DEBUG: Property {} = Function({}), data_len=1 (placeholder)",
+                    prop_num,
+                    _function_id
+                );
+                vec![0xFF] // Placeholder for 1-byte function address
+            }
         };
 
         // Calculate size byte according to Z-Machine specification
