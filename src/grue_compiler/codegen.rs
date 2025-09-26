@@ -619,11 +619,11 @@ impl ZMachineCodeGen {
 
         // Check if String ID 148 is in encoded_strings
         if self.encoded_strings.contains_key(&148) {
-            log::debug!(" STRING_DEBUG: String ID 148 IS in encoded_strings");
+            log::debug!("String ID {} found in encoded_strings", ir_id);
         } else {
-            log::debug!("❌ STRING_DEBUG: String ID 148 is NOT in encoded_strings");
+            log::debug!("String ID {} not found in encoded_strings", 148);
             log::debug!(
-                " STRING_DEBUG: Available encoded string IDs: {:?}",
+                "Available encoded string IDs: {:?}",
                 self.encoded_strings.keys().collect::<Vec<_>>()
             );
         }
@@ -3250,7 +3250,7 @@ impl ZMachineCodeGen {
         // Manually emit branch placeholder and create UnresolvedReference
         // CRITICAL FIX: Record exact location AFTER emitting placeholder
         self.emit_word(placeholder_word())?;
-        let branch_location = self.code_address - 2; // Location where placeholder was written
+        let branch_location = self.code_space.len() - 2; // Code space offset where placeholder was written
 
         // Create UnresolvedReference for the branch target (fall through to next instruction)
         let reference = UnresolvedReference {
@@ -3313,7 +3313,7 @@ impl ZMachineCodeGen {
         // Manually emit branch placeholder and create UnresolvedReference
         // CRITICAL FIX: Record exact location AFTER emitting placeholder
         self.emit_word(placeholder_word())?;
-        let branch_location = self.code_address - 2; // Location where placeholder was written
+        let branch_location = self.code_space.len() - 2; // Code space offset where placeholder was written
 
         // Create UnresolvedReference for the branch target (fall through to next instruction)
         let reference = UnresolvedReference {
@@ -7073,7 +7073,7 @@ impl ZMachineCodeGen {
         // Manually emit branch placeholder and create UnresolvedReference
         // CRITICAL FIX: Record exact location AFTER emitting placeholder
         self.emit_word(placeholder_word())?;
-        let branch_location = self.code_address - 2; // Location where placeholder was written
+        let branch_location = self.code_space.len() - 2; // Code space offset where placeholder was written
 
         // Create UnresolvedReference for the branch we just emitted
         log::debug!(
@@ -7142,12 +7142,12 @@ impl ZMachineCodeGen {
             opcode, operands, None, // No store
             None, // No branch_offset - we'll handle manually to avoid double-emission
         )?;
-        log::debug!("DEBUG: After emit_instruction, manually emitting branch placeholder");
+        log::debug!("Manually emitting branch placeholder after emit_instruction");
 
         // Manually emit branch placeholder and create UnresolvedReference
         // CRITICAL FIX: Record exact location AFTER emitting placeholder
         self.emit_word(placeholder_word())?;
-        let branch_location = self.code_address - 2; // Location where placeholder was written
+        let branch_location = self.code_space.len() - 2; // Code space offset where placeholder was written
 
         log::debug!(
             "Creating Branch UnresolvedReference at location 0x{:04x} for target {}",
@@ -8235,7 +8235,7 @@ impl ZMachineCodeGen {
         &mut self,
         reference: &UnresolvedReference,
     ) -> Result<(), CompilerError> {
-        log::debug!("=== RESOLVE_SINGLE_REFERENCE DEBUG ===");
+        log::debug!("Resolving reference: {:?}", reference);
         log::debug!("Target IR ID: {}", reference.target_id);
         log::debug!("Reference type: {:?}", reference.reference_type);
         log::debug!("Reference location: 0x{:04x}", reference.location);

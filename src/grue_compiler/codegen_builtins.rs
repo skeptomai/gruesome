@@ -892,7 +892,7 @@ impl ZMachineCodeGen {
 
         // Insert a placeholder branch offset that will be resolved by StaticBranch UnresolvedReference
         // This will skip the entire object tree traversal if the container is empty
-        let branch_location = self.current_address() - 2; // Location of branch offset
+        let branch_location = self.code_space.len() - 2; // Code space offset where placeholder was written
 
         // Calculate bytes to skip: all object tree traversal code until empty array creation
         // This is roughly 200 bytes of tree traversal + array allocation code
@@ -985,7 +985,7 @@ impl ZMachineCodeGen {
         )?;
 
         // Create UnresolvedReference for the static branch offset
-        let branch_location = self.current_address() - 2; // Location of the 2-byte branch offset
+        let branch_location = self.code_space.len() - 2; // Code space offset where placeholder was written
         self.reference_context
             .unresolved_refs
             .push(UnresolvedReference {
@@ -1057,7 +1057,7 @@ impl ZMachineCodeGen {
         )?;
 
         // Forward branch to exit if object is 0 (end of chain reached)
-        let exit_branch_location = self.current_address() - 2;
+        let exit_branch_location = self.code_space.len() - 2; // Code space offset where placeholder was written
         self.reference_context
             .unresolved_refs
             .push(UnresolvedReference {
@@ -1128,8 +1128,8 @@ impl ZMachineCodeGen {
         // Add unresolved reference for debug string "Array length: "
         let debug_string_ref = UnresolvedReference {
             reference_type: LegacyReferenceType::StringRef,
-            location: self.current_address() - 2,
-            target_id: 9998, // Special debug string ID
+            location: self.code_space.len() - 2, // Code space offset where placeholder was written
+            target_id: 9998,                     // Special debug string ID
             is_packed_address: false,
             offset_size: 2,
             location_space: MemorySpace::Code,
@@ -1188,8 +1188,8 @@ impl ZMachineCodeGen {
             // Add unresolved reference for space string
             let space_string_ref = UnresolvedReference {
                 reference_type: LegacyReferenceType::StringRef,
-                location: self.current_address() - 2,
-                target_id: 9999, // Special space string ID
+                location: self.code_space.len() - 2, // Code space offset where placeholder was written
+                target_id: 9999,                     // Special space string ID
                 is_packed_address: false,
                 offset_size: 2,
                 location_space: MemorySpace::Code,
