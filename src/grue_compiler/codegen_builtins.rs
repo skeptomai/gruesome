@@ -222,9 +222,22 @@ impl ZMachineCodeGen {
 
     /// Emit print instruction for a string ID
     fn emit_print_string_instruction(&mut self, string_id: IrId) -> Result<(), CompilerError> {
-        // Create unresolved reference for string address
+        // Generate print_paddr instruction FIRST to get precise operand location
+        let layout = self.emit_instruction(
+            0x8D,                                          // print_paddr opcode
+            &[Operand::LargeConstant(placeholder_word())], // Use placeholder for address resolution
+            None,
+            None,
+        )?;
+
+        // Get the exact operand location from the instruction layout
+        let operand_address = layout
+            .operand_location
+            .expect("print_paddr instruction must have operand");
+
+        // Create unresolved reference with correct location
         let reference = UnresolvedReference {
-            location: self.current_address() + 1,
+            location: operand_address,                     // ✅ CORRECT: Use precise operand location
             reference_type: LegacyReferenceType::StringRef,
             target_id: string_id,
             is_packed_address: false,
@@ -232,8 +245,6 @@ impl ZMachineCodeGen {
             location_space: MemorySpace::Strings,
         };
 
-        // Generate print_paddr instruction
-        self.emit_instruction(0x8D, &[Operand::LargeConstant(0x0000)], None, None)?;
         self.reference_context.unresolved_refs.push(reference);
 
         Ok(())
