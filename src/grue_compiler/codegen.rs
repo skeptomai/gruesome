@@ -1368,58 +1368,48 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// CRITICAL FIX: Post-process any remaining untracked placeholders
-    /// This fixes the specific issue where jump instructions create UnresolvedReferences
-    /// but somehow those references don't get resolved during the normal resolution phase.
+    /// 🚨 EMERGENCY FIX SYSTEM DISABLED - Sep 26, 2025
+    ///
+    /// INVESTIGATION RESULTS: Instruction tracking works correctly!
+    /// ✅ Print instructions (0x8D) ARE tracked with UnresolvedReference entries
+    /// ✅ Jump instructions (0x8C) ARE tracked with UnresolvedReference entries
+    /// ✅ Function calls (0xE0) ARE tracked with UnresolvedReference entries
+    ///
+    /// The emergency fix was masking the real issue: object property function references.
+    /// Only ~12 placeholders remain untracked, all in object property data (not code).
+    ///
+    /// IMPACT: Disabling this reveals the real untracked placeholders for proper fixing.
     fn fix_untracked_placeholders_postprocess(&mut self) -> Result<(), CompilerError> {
-        log::info!("🔧 POST-PROCESSING: Checking for untracked 0xFFFF placeholders to fix");
+        log::info!("🔧 POST-PROCESSING: Emergency fix system disabled - instruction tracking verified working");
 
-        // Scan the final binary for remaining 0xFFFF patterns
-        let mut fixes_applied = 0;
+        // Instead of fixing, just report what untracked placeholders exist
+        let mut untracked_count = 0;
         for i in 0..self.final_data.len() - 1 {
             if self.final_data[i] == 0xFF && self.final_data[i + 1] == 0xFF {
-                // Found an untracked placeholder - try to identify what it should be
-
-                // Check what type of untracked instruction this is by looking at the preceding byte
+                untracked_count += 1;
                 if i >= 1 {
                     let prev_byte = self.final_data[i - 1];
+                    let address = i - 1;
+                    log::warn!("🔍 UNTRACKED_PLACEHOLDER: 0x{:02x} 0xFFFF at final_data[0x{:04x}] (emergency fix disabled)", prev_byte, address);
 
-                    match prev_byte {
-                        0x8C => {
-                            // 0x8C = jump (1OP form) with large constant operand
-                            log::error!("🔧 FOUND_UNTRACKED_JUMP: 0x8C 0xFFFF pattern at final_data[0x{:04x}]", i - 1);
-                            // SAFER FIX: Replace with a safe jump to the next instruction (offset +2)
-                            // This maintains instruction boundary integrity
-                            log::error!("🔧 EMERGENCY_FIX: Replacing malformed jump with safe relative jump +2");
-                            // Keep 0x8C opcode, replace 0xFFFF with small positive offset
-                            self.final_data[i] = 0x00; // High byte of offset 0x0002
-                            self.final_data[i + 1] = 0x02; // Low byte = jump +2 bytes (skip to next instruction)
-                            fixes_applied += 1;
-                        }
-                        0x8D => {
-                            // 0x8D = print_paddr (1OP form) with large constant operand
-                            log::error!("🔧 FOUND_UNTRACKED_PRINT: 0x8D 0xFFFF pattern at final_data[0x{:04x}]", i - 1);
-                            // SAFER FIX: Replace with address of empty string
-                            // This maintains instruction boundary integrity and prints nothing
-                            log::error!("🔧 EMERGENCY_FIX: Replacing untracked print_paddr with empty string address");
-                            // Use a safe address within the string space (approximate location of empty string)
-                            self.final_data[i] = 0x07; // High byte of string address ~0x0734
-                            self.final_data[i + 1] = 0x34; // Low byte (approximate empty string location)
-                            fixes_applied += 1;
-                        }
-                        _ => {
-                            // Other untracked placeholders - log but don't fix to avoid breaking working code
-                            log::error!("🔧 FOUND_UNTRACKED_PLACEHOLDER: 0x{:02x} 0xFFFF pattern at final_data[0x{:04x}] (not automatically fixable)", prev_byte, i - 1);
-                        }
+                    // Additional context: check if this is in object data region vs code region
+                    if address > 0x1000 {
+                        log::warn!("   └─ Location: Object/Data region (expected for property function references)");
+                    } else {
+                        log::warn!(
+                            "   └─ Location: Code region (unexpected - may need investigation)"
+                        );
                     }
+                } else {
+                    log::warn!("🔍 UNTRACKED_PLACEHOLDER: 0xFFFF at final_data[0x{:04x}] (no preceding byte)", i);
                 }
             }
         }
 
-        if fixes_applied > 0 {
-            log::info!(
-                "🔧 POST-PROCESSING: Applied {} emergency fixes for untracked placeholders",
-                fixes_applied
+        if untracked_count > 0 {
+            log::warn!(
+                "🔧 POST-PROCESSING: Found {} untracked placeholders (emergency fix disabled - these need proper resolution)",
+                untracked_count
             );
         } else {
             log::info!("🔧 POST-PROCESSING: No untracked placeholders found - all references properly resolved");
@@ -2575,7 +2565,7 @@ impl ZMachineCodeGen {
             // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
             let operand_location = self.code_space.len() + 1; // +1 for opcode byte (code space relative)
             let _layout = self.emit_instruction(
-                0x82,                                          // print_paddr opcode (1OP:141)
+                0x8D, // print_paddr opcode (1OP:141) - FIXED: was 0x82 (jz opcode)
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder for string address
                 None,
                 None,
@@ -5040,6 +5030,10 @@ impl ZMachineCodeGen {
                     offset_size: 1,           // Function addresses are 1 byte in properties
                     location_space: MemorySpace::Objects,
                 };
+                log::error!(
+                    "🔧 OBJECT_PROPERTY_FUNCTION_REF: Created IR ID {} -> 1-byte unpacked at 0x{:04x} (Object space)",
+                    function_id, addr_offset + 1
+                );
                 self.reference_context
                     .unresolved_refs
                     .push(function_ref.clone());

@@ -400,34 +400,33 @@ impl ZMachineCodeGen {
             room_properties.set_byte(visited_prop, 0); // Initially not visited
             room_properties.set_word(location_prop, 0); // Rooms don't have a location
 
-            // Look up on_look handler routine address
-            let on_look_addr = if let Some(ref room_handlers) = self.room_handler_routines {
+            // Set up on_look handler routine address with proper function property tracking
+            if let Some(ref room_handlers) = self.room_handler_routines {
                 let handler_key = format!("{}:on_look", room.id);
                 if let Some(handler_id) = room_handlers.get(&handler_key) {
-                    if let Some(&routine_addr) = self.function_addresses.get(handler_id) {
-                        log::debug!("🔧 ROOM_HANDLER_PROPERTY: Room {} on_look -> routine ID {} at address 0x{:04x}",
-                                   room.name, handler_id, routine_addr);
-                        routine_addr as u8 // Convert to 1-byte address for function property
-                    } else {
-                        log::warn!("🔧 ROOM_HANDLER_PROPERTY: Room {} on_look routine ID {} not found in function_addresses",
-                                  room.name, handler_id);
-                        0
-                    }
+                    log::debug!("🔧 ROOM_HANDLER_PROPERTY: Room {} on_look -> routine ID {} (using Function property)",
+                               room.name, handler_id);
+
+                    // Create a proper Function property value that will be processed by the main encoding loop
+                    use crate::grue_compiler::ir::IrPropertyValue;
+                    room_properties.properties.insert(
+                        on_look_prop,
+                        IrPropertyValue::Function((*handler_id).try_into().unwrap()),
+                    );
                 } else {
                     log::debug!(
                         "🔧 ROOM_HANDLER_PROPERTY: Room {} has no on_look handler",
                         room.name
                     );
-                    0
+                    room_properties.set_byte(on_look_prop, 0);
                 }
             } else {
                 log::debug!(
                     "🔧 ROOM_HANDLER_PROPERTY: No room handlers generated yet for room {}",
                     room.name
                 );
-                0
+                room_properties.set_byte(on_look_prop, 0);
             };
-            room_properties.set_byte(on_look_prop, on_look_addr);
 
             all_objects.push(ObjectData {
                 id: room.id,

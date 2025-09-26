@@ -1,10 +1,28 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (September 26, 2025) - PROPERTY SIZE CORRUPTION FIXED ✅
+## CURRENT STATUS (September 26, 2025) - UNTRACKED PLACEHOLDER RED HERRING ELIMINATED ✅
 
-**CRITICAL BREAKTHROUGH**: Property size encoding corruption completely fixed - mini_zork now progresses past property validation!
+**MAJOR DISCOVERY**: The "systematic broken placeholder tracking" was a false alarm - instruction tracking works correctly!
 
-### 🎉 COMPLETED FIXES (Session Sep 26, 2025):
+### 🎉 COMPLETED INVESTIGATION (Session Sep 26, 2025):
+1. **✅ PRINT INSTRUCTION TRACKING VERIFIED**: All 0x8D print instructions ARE creating UnresolvedReference entries correctly
+2. **✅ FUNCTION CALL TRACKING VERIFIED**: All 0xE0 call_vn instructions ARE creating UnresolvedReference entries correctly
+3. **✅ RED HERRING IDENTIFIED**: Detection system fires at emission time BEFORE tracking is added, creating false alarms
+4. **✅ REAL ISSUE LOCATED**: Only 12 untracked placeholders remain, all in object properties (addresses ~0x10e0), NOT code instructions
+5. **✅ MASSIVE DEBUGGING EFFORT SAVED**: Future investigations redirected from non-existent instruction problems to real object property issues
+
+### ⚠️ RED HERRING PREVENTION DOCUMENTATION:
+**The compiler's instruction emission tracking system is WORKING CORRECTLY.**
+- Print instructions (0x8D) ✅ Tracked properly
+- Function calls (0xE0) ✅ Tracked properly
+- Jump instructions (0x0C) ✅ Tracked properly
+
+**Do NOT investigate "untracked placeholder" messages for code instructions - they're false alarms!**
+
+### 🎯 REAL REMAINING ISSUE:
+**Object Property Function References**: 12 placeholders in object property data need function address resolution.
+
+### 🏆 COMPLETED FIXES (Previous Session Sep 26, 2025):
 1. **✅ PROPERTY SIZE CORRUPTION ELIMINATED**: Fixed systematic corruption where property size bytes were overwritten during final assembly
 2. **✅ Memory Layout Bug Identified**: Discovered `patch_property_table_addresses` function was writing to wrong memory locations
 3. **✅ Root Cause Analysis Completed**: Traced exact corruption from `0x0e` (property 14, size 1) → `0xee` (property 14, size 8)

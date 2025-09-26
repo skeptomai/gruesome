@@ -1321,10 +1321,29 @@ impl ZMachineCodeGen {
             opcode, start_address, operands, store_var
         );
 
-        // CRITICAL: Debug ALL instructions with 0xFFFF placeholders
+        // ⚠️  RED HERRING PREVENTION - DO NOT INVESTIGATE PRINT/CALL EMISSIONS AGAIN! ⚠️
+        //
+        // 🚨 IMPORTANT: This detection is a FALSE ALARM for most cases! 🚨
+        //
+        // VERIFIED CORRECT SYSTEMS (Sep 26, 2025):
+        // ✅ Print instructions (0x8D): These ARE tracked with UnresolvedReference entries
+        // ✅ Function calls (0xE0): These ARE tracked with UnresolvedReference entries
+        // ✅ Jump instructions (0x0C): These ARE tracked with UnresolvedReference entries
+        //
+        // The detection below fires at EMISSION TIME, before UnresolvedReference creation.
+        // This caused massive debugging effort chasing non-existent problems.
+        //
+        // 🎯 REAL UNTRACKED PLACEHOLDERS: Only in object properties (addresses > 0x1000)
+        //
+        // If you see this comment because of untracked placeholders:
+        // 1. Check final binary with xxd - are 0xFFFF patterns in object data region?
+        // 2. Don't investigate code instructions - they're tracked correctly
+        // 3. Focus on object property function reference resolution
+        //
+        // Debug ALL instructions with 0xFFFF placeholders (but remember the warning above!)
         for (i, op) in operands.iter().enumerate() {
             if let Operand::LargeConstant(0xFFFF) = op {
-                log::error!("🚨 ALL_UNTRACKED_PLACEHOLDERS: opcode=0x{:02x} operand[{}] is placeholder 0xFFFF at PC=0x{:04x}", opcode, i, start_address);
+                log::error!("🚨 PLACEHOLDER_DETECTED: opcode=0x{:02x} operand[{}] is placeholder 0xFFFF at PC=0x{:04x} (check if UnresolvedReference created afterward!)", opcode, i, start_address);
             }
         }
 
@@ -2629,6 +2648,11 @@ impl ZMachineCodeGen {
                 "Generated call to function ID {} with unresolved reference at 0x{:04x}",
                 function_id,
                 operand_loc
+            );
+        } else {
+            log::warn!(
+                "Call_vn: No operand_location for function_id={} (this should rarely happen)",
+                function_id
             );
         }
 

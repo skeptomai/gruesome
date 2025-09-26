@@ -237,7 +237,7 @@ impl ZMachineCodeGen {
 
         // Create unresolved reference with correct location
         let reference = UnresolvedReference {
-            location: operand_address,                     // ✅ CORRECT: Use precise operand location
+            location: operand_address, // ✅ CORRECT: Use precise operand location
             reference_type: LegacyReferenceType::StringRef,
             target_id: string_id,
             is_packed_address: false,
@@ -1130,8 +1130,8 @@ impl ZMachineCodeGen {
         // === DEBUG: Print array contents for debugging patient zero ===
         // Print array length first
         self.emit_instruction(
-            0x8D,                              // print_paddr (1OP:141) - print string at packed address
-            &[Operand::LargeConstant(0x0000)], // Will be resolved to debug string
+            0x8D, // print_paddr (1OP:141) - print string at packed address
+            &[Operand::LargeConstant(placeholder_word())], // FIXED: Use placeholder_word() instead of 0x0000
             None,
             None,
         )?;
@@ -1190,8 +1190,8 @@ impl ZMachineCodeGen {
             )?;
 
             self.emit_instruction(
-                0x8D, // print_paddr - print " "
-                &[Operand::LargeConstant(0x0000)],
+                0x8D,                                          // print_paddr - print " "
+                &[Operand::LargeConstant(placeholder_word())], // FIXED: Use placeholder_word() instead of 0x0000
                 None,
                 None,
             )?;
