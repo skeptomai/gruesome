@@ -14,3 +14,4 @@ debug.log
 
 # Claude Code settings
 .claude/settings.local.json
+memory_layout_debug.txt
