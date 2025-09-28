@@ -2736,7 +2736,61 @@ impl ZMachineCodeGen {
                         "Available user functions: {:?}",
                         self.function_addresses.keys().collect::<Vec<_>>()
                     );
-                    // For now, skip unknown function calls to prevent errors
+
+                    // CRITICAL FIX: Generate proper function call instruction with UnresolvedReference
+                    // Even for unknown functions, we need to emit a call instruction to maintain control flow
+                    log::debug!("FALLBACK: Generating call instruction with UnresolvedReference for function {}", function);
+
+                    let mut operands = Vec::new();
+                    operands.push(Operand::LargeConstant(placeholder_word())); // Function address placeholder
+
+                    // Add function arguments
+                    for &arg_id in args {
+                        if let Some(literal_value) = self.get_literal_value(arg_id) {
+                            operands.push(Operand::LargeConstant(literal_value));
+                        } else {
+                            // Use existing operand resolution for other types
+                            match self.resolve_ir_id_to_operand(arg_id) {
+                                Ok(operand) => operands.push(operand),
+                                Err(_) => {
+                                    log::warn!(
+                                        "Failed to resolve argument {} for function {}",
+                                        arg_id,
+                                        function
+                                    );
+                                    operands.push(Operand::SmallConstant(0)); // Fallback
+                                }
+                            }
+                        }
+                    }
+
+                    // Determine store variable
+                    let store_var = if target.is_some() {
+                        Some(0) // Store on stack (Variable 0)
+                    } else {
+                        None // Void function call
+                    };
+
+                    // Generate call instruction
+                    let operand_location = self.final_code_base + self.code_space.len() + 2; // +2 for opcode and operand types bytes
+                    let _layout = self.emit_instruction(
+                        0x61, // call_1s opcode for 1 operand, call_vs (0xE0) for multiple
+                        &operands, store_var, None,
+                    )?;
+
+                    // Create UnresolvedReference for function address
+                    self.reference_context
+                        .unresolved_refs
+                        .push(UnresolvedReference {
+                            reference_type: LegacyReferenceType::FunctionCall,
+                            location: operand_location,
+                            target_id: function,
+                            is_packed_address: true,
+                            offset_size: 2,
+                            location_space: MemorySpace::Code,
+                        });
+
+                    log::debug!("FALLBACK: Created UnresolvedReference for function {} at location 0x{:04x}", function, operand_location);
                 }
             }
         }
@@ -4040,8 +4094,8 @@ impl ZMachineCodeGen {
         let layout = self.emit_instruction(
             0x20,                                          // call_vs opcode (VAR form of call)
             &[Operand::LargeConstant(placeholder_word())], // Placeholder for main loop routine address
-            None,                                          // No store (main loop doesn't return)
-            None,                                          // No branch
+            Some(0x00), // Store result on stack (Z-Machine spec compliance)
+            None,       // No branch
         )?;
 
         // Add unresolved reference for main loop call
@@ -4978,12 +5032,39 @@ impl ZMachineCodeGen {
             text_buffer_addr, parse_buffer_addr
         );
 
-        // 3. Read user input using Z-Machine sread instruction
+        // 3. Store buffer addresses in global variables (like Zork I pattern)
+        // Zork I uses SREAD G6d,G6e - we'll use similar globals G6d(109) and G6e(110)
+        const TEXT_BUFFER_GLOBAL: u8 = 109; // Global G6d = Variable(109)
+        const PARSE_BUFFER_GLOBAL: u8 = 110; // Global G6e = Variable(110)
+
+        // Store text buffer address in global G6d
+        self.emit_instruction(
+            0x0D, // store opcode (2OP instruction)
+            &[
+                Operand::Variable(TEXT_BUFFER_GLOBAL), // Variable to store to
+                Operand::LargeConstant(text_buffer_addr), // Value to store
+            ],
+            None, // No store result (store instruction doesn't return a value)
+            None, // No branch
+        )?;
+
+        // Store parse buffer address in global G6e
+        self.emit_instruction(
+            0x0D, // store opcode (2OP instruction)
+            &[
+                Operand::Variable(PARSE_BUFFER_GLOBAL), // Variable to store to
+                Operand::LargeConstant(parse_buffer_addr), // Value to store
+            ],
+            None, // No store result (store instruction doesn't return a value)
+            None, // No branch
+        )?;
+
+        // 4. Read user input using Z-Machine sread instruction with global variables (like Zork I)
         self.emit_instruction(
             0x04, // sread opcode (VAR instruction)
             &[
-                Operand::LargeConstant(text_buffer_addr),
-                Operand::LargeConstant(parse_buffer_addr),
+                Operand::Variable(TEXT_BUFFER_GLOBAL), // Global G6d = Variable(109)
+                Operand::Variable(PARSE_BUFFER_GLOBAL), // Global G6e = Variable(110)
             ],
             None, // No store
             None, // No branch
@@ -4998,6 +5079,14 @@ impl ZMachineCodeGen {
 
         // Remove the problematic jump instruction that causes infinite loops
         // Main loop now: prompt -> sread -> command processing -> quit (no loop back)
+
+        // Add explicit return instruction to prevent fall-through garbage return values
+        self.emit_instruction(
+            0x0B,                         // ret: return from routine
+            &[Operand::SmallConstant(0)], // Return value 0
+            None,                         // No store
+            None,                         // No branch
+        )?;
 
         debug!(
             "Simplified main loop generation complete at 0x{:04x} (no loop-back)",
@@ -6562,19 +6651,19 @@ impl ZMachineCodeGen {
             init_block.instructions.len()
         );
 
-        // CRITICAL ARCHITECTURE FIX: Generate init block AS the main routine
-        // Like Zork I: PC points directly to routine header, then instructions execute
+        // CRITICAL ARCHITECTURE: Generate init block AS the main program entry point routine
+        // Like Zork I: PC points directly to init routine header, then init instructions execute
 
         // Set init block context flag
         self.in_init_block = true;
 
-        // Record this as the main routine that PC will point to
-        let main_routine_address = self.code_address;
+        // Record this as the init routine that PC will point to (main program entry point)
+        let init_routine_address = self.code_address;
         let init_routine_id = 8000u32;
 
         log::info!(
-            " ZORK_ARCHITECTURE: Generating main routine at 0x{:04x} (PC target, header first)",
-            main_routine_address
+            " ZORK_ARCHITECTURE: Generating init routine at 0x{:04x} (PC target, header first)",
+            init_routine_address
         );
 
         // Set up function context for init block (no local variables)
@@ -6601,8 +6690,8 @@ impl ZMachineCodeGen {
 
         // Record main routine address and header location for patching
         self.function_addresses
-            .insert(init_routine_id, main_routine_address);
-        self.record_final_address(init_routine_id, main_routine_address);
+            .insert(init_routine_id, init_routine_address);
+        self.record_final_address(init_routine_id, init_routine_address);
 
         // Store header location for later local count patching
         self.function_header_locations
@@ -6634,10 +6723,12 @@ impl ZMachineCodeGen {
             );
         }
 
-        // ARCHITECTURAL FIX: Finalize main routine header with actual local variable count
+        // ARCHITECTURAL FIX: Finalize init routine header with actual local variable count
+        // NOTE: Init routine (ID 8000) IS the main program entry point that PC starts at
+        // This is NOT the main loop routine (ID 9000) - that gets finalized separately
         log::debug!(
-            "🔧 MAIN_ROUTINE_FINALIZE: Patching header with {} local variables used",
-            self.current_function_locals
+            "🔧 INIT_ROUTINE_FINALIZE: Patching init routine header (ID {}) with {} local variables used",
+            init_routine_id, self.current_function_locals
         );
         self.finalize_function_header(init_routine_id)?;
 
@@ -6690,13 +6781,13 @@ impl ZMachineCodeGen {
         self.in_init_block = false;
 
         log::info!(
-            " MAIN_ROUTINE: Complete at 0x{:04x} (PC target: 0x{:04x}, 0 locals)",
+            " INIT_ROUTINE: Complete at 0x{:04x} (PC target: 0x{:04x}, 0 locals)",
             self.code_address - 1,
-            main_routine_address
+            init_routine_address
         );
 
-        // Return main routine address and 0 locals (simple init block)
-        Ok((main_routine_address, 0))
+        // Return init routine address and 0 locals (simple init block)
+        Ok((init_routine_address, 0))
     }
 
     /// Write the Z-Machine file header with custom entry point

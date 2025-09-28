@@ -31,12 +31,39 @@ Revision 1 / Serial number 8675309
 
 ### 🎯 REMAINING ISSUES (Documented for next session):
 
-#### 1. **Object 65534 (0xFFFE) Error at PC 0x12fc** [IN PROGRESS]
-- Error: "invalid object 65534 > max 255"
-- Likely cause: Unresolved placeholder or incorrect object ID generation
-- Value 0xFFFE is -2 as signed 16-bit, might be placeholder bytes
-- Occurs when get_prop instruction tries to use stack value as object number
-- **Investigation Status**: Found value being popped from stack at PC 0x12fc, need to trace where it gets pushed
+#### 1. **Object 65534 (0xFFFE) Error - ROOT CAUSE IDENTIFIED** ✅ [INVESTIGATION COMPLETE]
+
+**CRITICAL BUG FOUND**: Main loop generation violates Z-Machine specification causing stack corruption.
+
+**Root Cause**: `src/grue_compiler/codegen.rs` line ~5000 (search "Implicit init: calling main loop routine"):
+```rust
+let layout = self.emit_instruction(
+    0x20,                                          // call_vs opcode (VAR form of call)
+    &[Operand::LargeConstant(placeholder_word())], // Placeholder for main loop routine address
+    None,                                          // ❌ WRONG: No store (main loop doesn't return)
+    None,                                          // No branch
+)?;
+```
+
+**The Problem**:
+- ALL Z-Machine call instructions MUST store their result somewhere
+- When `store_var = None`, the result gets pushed onto the **stack**
+- Main loop returns 0 or garbage value (possibly 65534/0xFFFE)
+- This garbage value corrupts the stack for subsequent operations
+- Later stack operations find 65534 and treat it as an object ID
+- Results in "Property 16 not found for object 3" error
+
+**Architecture Issue**:
+- **Interactive Mode**: Generates automatic main loop (ID 9000) that gets called from init
+- **Script Mode**: No main loop, just executes init (works perfectly - test_minimal.grue, basic_test.grue)
+- **Custom Mode**: Calls user main function (may have same issue)
+
+**Evidence**:
+- Simple cases (test_minimal.grue, basic_test.grue) work: Script mode, init-only, no main loop
+- Complex cases (mini_zork.grue) fail: Interactive mode, automatic main loop generation
+- Value 65534 appears on stack before PC 0x12f3 (confirmed via execution tracing)
+
+**Fix Required**: Change `None` to proper stack storage: `Some(0x00)` to store result on stack Variable(0) instead of pushing garbage
 
 #### 2. **Placeholder/Reference Audit Needed**
 - Found 26 UnresolvedReference creations in codegen.rs
@@ -53,6 +80,40 @@ Revision 1 / Serial number 8675309
 - Removed emit_branch_offset() which wasn't following placeholder/fixup pattern
 - May be other functions not following modern patterns
 - Need audit of unused or outdated functions
+
+## 📊 MAIN BRANCH ANALYSIS (September 28, 2025)
+
+**MERGE TEST RESULTS**: Tested merging banner-restoration fixes with main branch improvements. **OUTCOME**: Main branch has serious regressions preventing basic functionality.
+
+### **MAIN BRANCH ARCHITECTURAL IMPROVEMENTS** (Valid concepts, broken implementation):
+
+#### 1. **Stack vs Local Variable Architecture** 📚
+- **Goal**: Implement Z-Machine specification-compliant variable usage patterns
+- **Implementation**: Modified codegen to distinguish stack (Variable 0) vs local variables (Variable 1-15)
+- **Status**: Breaking basic property access - "Property 14 not found for object 2" immediately on startup
+- **Code Changes**: Enhanced `resolve_ir_id_to_operand()` with proper Z-Machine compliance checks
+
+#### 2. **End-of-Routine Alignment Architecture** 🎯
+- **Goal**: Fix routine boundary alignment and PC calculation consistency
+- **Implementation**: Enhanced PC calculation logic to handle function headers vs instruction offsets
+- **Status**: Unknown impact due to property access failures preventing execution
+- **Code Changes**: Modified routine header generation and PC offset calculations
+
+#### 3. **VAR Opcode Classification System** 🔧
+- **Goal**: Comprehensive classification of VAR opcodes (0x00-0x1F) per Z-Machine specification
+- **Implementation**: Added systematic VAR opcode handling in `is_true_var_opcode()` function
+- **Status**: Array index crash prevention (positive improvement)
+- **Code Changes**: Enhanced opcode classification in `opcodes_math.rs`
+
+#### 4. **Enhanced UnresolvedReference System** 🔗
+- **Goal**: More robust placeholder tracking and resolution for complex references
+- **Implementation**: Expanded reference tracking with better error handling
+- **Status**: Unknown effectiveness due to basic property access failing
+
+### **CONCLUSION**:
+Main branch contains **valid architectural concepts** but applied them to an **unstable foundation**. The improvements would be beneficial if applied to the stable banner-restoration branch incrementally with proper testing.
+
+**DECISION**: Continue on banner-restoration branch with stable baseline, cherry-pick main branch improvements individually after fixing object 65534 error.
 
 ### 🔍 KEY DEBUGGING PATTERNS (Session Sep 17, 2025):
 

@@ -1,0 +1,22 @@
+// Dictionary-only test to isolate dictionary lookup from property issues
+
+init {
+    print("Testing dictionary lookup");
+    print("Type 'quit' to test dictionary");
+
+    // Simple main loop without complex property access
+    loop {
+        sread text_buffer parse_buffer;
+        print("You typed something.");
+
+        // Check for quit - this would test dictionary lookup
+        if parse_buffer[1] == quit_word_id {
+            print("Quit detected!");
+            break;
+        }
+
+        print("Unknown command. Try 'quit'.");
+    }
+
+    print("Program ended.");
+}
