@@ -5071,7 +5071,7 @@ impl ZMachineCodeGen {
         )?;
 
         // 4. Process parsed input - check for quit command
-        self.generate_command_processing(parse_buffer_addr)?;
+        self.generate_command_processing(_ir, parse_buffer_addr)?;
 
         // 5. For testing: Instead of jumping back to loop start, just end execution
         // TODO: Fix UnresolvedReference handling for proper loop-back
@@ -5097,19 +5097,30 @@ impl ZMachineCodeGen {
 
     /// Generate command processing logic after SREAD instruction
     /// This checks the parse buffer for commands and handles quit
-    fn generate_command_processing(&mut self, parse_buffer_addr: u16) -> Result<(), CompilerError> {
-        debug!("Generating simplified command processing logic (no branching to avoid UnresolvedReference issues)");
+    fn generate_command_processing(
+        &mut self,
+        ir: &IrProgram,
+        _parse_buffer_addr: u16,
+    ) -> Result<(), CompilerError> {
+        debug!("Generating grammar-based command processing with pattern matching");
 
-        // Simplified test: Just execute quit instruction after any input
-        // This tests the quit functionality without complex branching
-        self.emit_instruction(
-            0x0A, // quit: terminate the Z-Machine program
-            &[],  // No operands
-            None, // No store
-            None, // No branch
-        )?;
+        // Check if there are any grammar rules to process
+        if ir.grammar.is_empty() {
+            debug!("No grammar rules found, generating simplified quit command");
+            // Fallback to quit if no grammar is defined
+            self.emit_instruction(
+                0x0A, // quit: terminate the Z-Machine program
+                &[],  // No operands
+                None, // No store
+                None, // No branch
+            )?;
+            return Ok(());
+        }
 
-        // If we reach here somehow (shouldn't happen after quit), print unknown command
+        // Generate grammar pattern matching engine
+        self.generate_grammar_pattern_matching(&ir.grammar)?;
+
+        // Default handler: print unknown command and continue
         let unknown_command_string_id = self
             .main_loop_unknown_command_id
             .expect("Main loop unknown command ID should be set during string collection");
@@ -5131,6 +5142,82 @@ impl ZMachineCodeGen {
                 offset_size: 2,
                 location_space: MemorySpace::Code,
             });
+
+        Ok(())
+    }
+
+    /// Generate grammar pattern matching engine that processes user input
+    /// This examines parse buffer tokens and matches them against defined grammar patterns
+    fn generate_grammar_pattern_matching(
+        &mut self,
+        grammar_rules: &[crate::grue_compiler::ir::IrGrammar],
+    ) -> Result<(), CompilerError> {
+        debug!(
+            "Generating grammar pattern matching for {} verbs",
+            grammar_rules.len()
+        );
+
+        // For each grammar verb, generate pattern matching logic
+        for grammar in grammar_rules {
+            debug!("Processing grammar verb: '{}'", grammar.verb);
+
+            // Generate verb matching: check if first token matches this verb
+            self.generate_verb_matching(&grammar.verb, &grammar.patterns)?;
+        }
+
+        debug!("Grammar pattern matching generation complete");
+        Ok(())
+    }
+
+    /// Generate Z-Machine code to match a specific verb and its patterns
+    fn generate_verb_matching(
+        &mut self,
+        verb: &str,
+        patterns: &[crate::grue_compiler::ir::IrPattern],
+    ) -> Result<(), CompilerError> {
+        debug!(
+            "Generating verb matching for '{}' with {} patterns",
+            verb,
+            patterns.len()
+        );
+
+        // TODO: For now, generate simplified pattern matching
+        // This is a foundational implementation that can be enhanced
+
+        // Generate a function call for the first pattern's handler as a proof of concept
+        if let Some(first_pattern) = patterns.first() {
+            match &first_pattern.handler {
+                crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, _args) => {
+                    debug!(
+                        "Generating call to function ID {} for verb '{}'",
+                        func_id, verb
+                    );
+
+                    // Generate function call instruction
+                    self.emit_instruction(
+                        0x20, // call_1s: call routine with 1 argument, store result
+                        &[Operand::LargeConstant(placeholder_word())], // Function address placeholder
+                        Some(0),                                       // Store result on stack
+                        None,                                          // No branch
+                    )?;
+
+                    // Add unresolved reference for function call
+                    self.reference_context
+                        .unresolved_refs
+                        .push(UnresolvedReference {
+                            reference_type: LegacyReferenceType::FunctionCall,
+                            location: self.code_address - 2,
+                            target_id: *func_id,
+                            is_packed_address: true,
+                            offset_size: 2,
+                            location_space: MemorySpace::Code,
+                        });
+                }
+                crate::grue_compiler::ir::IrHandler::Block(_block) => {
+                    debug!("Block handlers not yet implemented for verb '{}'", verb);
+                }
+            }
+        }
 
         Ok(())
     }

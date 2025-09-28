@@ -1726,7 +1726,7 @@ impl IrGenerator {
                     .collect();
 
                 let ir_handler = match pattern.handler {
-                    crate::grue_compiler::ast::Handler::FunctionCall(_name, args) => {
+                    crate::grue_compiler::ast::Handler::FunctionCall(name, args) => {
                         // Convert arguments to IR values
                         let mut ir_args = Vec::new();
                         for arg in args {
@@ -1734,8 +1734,23 @@ impl IrGenerator {
                             ir_args.push(ir_value);
                         }
 
-                        // Function ID will be resolved in a later pass
-                        IrHandler::FunctionCall(0, ir_args) // Placeholder
+                        // CRITICAL FIX: Look up function ID using symbol table resolution
+                        // Previously used placeholder function ID 0, causing "Routine ID 0 not found" errors
+                        // during code generation. Now properly resolves function names to their assigned IR IDs.
+                        // This enables grammar pattern handlers like handle_look() to be correctly called.
+                        let func_id = if let Some(&id) = self.symbol_ids.get(&name) {
+                            id
+                        } else {
+                            return Err(CompilerError::SemanticError(
+                                format!(
+                                    "Grammar handler function '{}' not found. All functions must be defined before grammar patterns.",
+                                    name
+                                ),
+                                0,
+                            ));
+                        };
+
+                        IrHandler::FunctionCall(func_id, ir_args)
                     }
                     crate::grue_compiler::ast::Handler::Block(block) => {
                         let ir_block = self.generate_block(block)?;
