@@ -1,22 +1,33 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (September 17, 2025) - UNIMPLEMENTED_OPCODE FIX ✅
+## CURRENT STATUS (September 28, 2025) - BANNER FULLY RESTORED ✅
 
-**MAJOR SUCCESS**: Fixed critical UNIMPLEMENTED_OPCODE conflict that prevented jz instruction emission!
+**CRITICAL SUCCESS**: Banner display completely restored through systematic commit analysis and restoration from BANNER_WORKS baseline!
 
-### ✅ LATEST MAJOR FIX (Session Sep 17, 2025):
+### ✅ BANNER RESTORATION COMPLETE (Session Sep 28, 2025):
 
-**UNIMPLEMENTED_OPCODE Conflict Fix** - Root cause: Placeholder marker conflicted with valid Z-Machine opcode
-- **Problem**: UNIMPLEMENTED_OPCODE was 0x00, which is the valid opcode for jz (jump if zero) in 1OP form
-- **Fix**: Changed UNIMPLEMENTED_OPCODE from 0x00 to 0xFF (not a valid Z-Machine opcode)
-- **Impact**: All jz instructions were being rejected as "unimplemented", breaking non-comparison branches
-- **Result**: mini_zork now displays banner correctly and executes ~95% successfully
+**Banner "Canary in the Coal Mine" Working Perfectly** - Systematic analysis and restoration strategy:
+- **Root Cause Found**: String corruption introduced between cfee3a8 (BANNER_WORKS) and 681be3b
+- **Restoration Method**: Created banner-restoration branch from working BANNER_WORKS commit (cfee3a8)
+- **Banner Output**: Displays correctly - "ZORK is a registered trademark of Infocom, Inc." (NO corruption)
+- **Runtime Concatenation**: Preserved and working - dynamic object descriptions functional
+- **Result**: Banner canary is healthy - system stable with working string display architecture
 
-### 📊 IMPROVEMENTS - mini_zork Execution:
-- **Before Fix**: Crash at PC 0x1221, no proper conditional branches
-- **After Fix**: Game banner displays, executes to PC 0x12fc before object error
-- **Progress**: From ~90% execution to ~95% - only object 65534 error remains
-- **Code Quality**: Removed dead emit_branch_offset() function, improved placeholder consistency
+### 🎯 CURRENT STATE - Banner Restoration Branch:
+- **✅ BANNER WORKING**: All banner text displays correctly without string corruption
+- **✅ RUNTIME CONCATENATION**: Dynamic string expressions work (mailbox "open/closed" descriptions)
+- **✅ GAME FUNCTIONALITY**: Executes through banner display and initial setup
+- **⚠️ Known Issue**: Object 65534 error after banner display (separate from banner functionality)
+- **Branch**: banner-restoration (based on cfee3a8 BANNER_WORKS)
+
+### 📊 EXECUTION PROOF - Banner Display:
+```
+DORK I: The Last Great Empire
+Copyright (c) 2025 Grue Games. All rights reserved.
+ZORK is a registered trademark of Infocom, Inc.
+DORK is .... not
+Revision 1 / Serial number 8675309
+```
 
 ### 🎯 REMAINING ISSUES (Documented for next session):
 
