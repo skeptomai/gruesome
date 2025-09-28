@@ -414,6 +414,70 @@ This has been a recurring source of debugging confusion. The compiler-generated 
 
 **CRITICAL**: This pattern has caused repeated bugs. When implementing binary operations, function calls, or control flow, ALWAYS check: "Should this use stack or local variable according to the Z-Machine specification?"
 
+## Grammar System Implementation Plan (Sep 28, 2025)
+
+### Execution Plan for Grammar System Development
+
+#### Phase 1: Fix Property System Foundation (CURRENT PRIORITY)
+**Blocker**: Property placeholders return 65534 instead of valid object references
+- **Root Cause**: Property data generation uses placeholder values instead of resolved references
+- **Impact**: `obj.name` property access fails, blocking object name resolution
+- **Required For**: Grammar system needs working property access for object identification
+
+**Implementation Steps**:
+1. **Debug property data generation**: Trace why properties store 65534 placeholders
+2. **Fix property value resolution**: Ensure property data contains valid addresses/values
+3. **Verify property access**: Test `obj.name` returns proper string content
+4. **Validate object system**: Confirm all object properties work correctly
+
+#### Phase 2: Basic Grammar Pattern Matching
+**Scope**: Handle simple verb+noun patterns
+- **Target**: Implement basic grammar pattern recognition engine
+- **Example**: `verb "examine" { noun => examine($noun) }`
+- **Requirement**: Working property system from Phase 1
+
+#### Phase 3: Object Name Resolution
+**Scope**: Match input words to visible objects
+- **Target**: Convert "mailbox" → actual mailbox object reference
+- **Challenge**: Handle aliases ("small mailbox" → same object)
+- **Requirement**: Property access for object name matching
+
+#### Phase 4: Multi-word Noun Phrases
+**Scope**: Handle complex object references
+- **Target**: "jewel-encrusted egg" → parse as single object reference
+- **Algorithm**: Longest-match-first with disambiguation prompts
+- **Challenge**: 3 dictionary words → 1 object resolution
+
+#### Phase 5: Advanced Grammar Patterns
+**Scope**: Prepositions, multiple objects, context validation
+- **Target**: `verb "put" { noun + "in" + noun => handle_put_in($1, $3) }`
+- **Integration**: Complete natural language processing pipeline
+
+### Property System Fix Plan (IMMEDIATE PRIORITY)
+
+**Current Problem**:
+```rust
+// Property values stored as 65534 placeholders instead of object references
+obj.name → returns address but displays nothing
+test_obj.property → 65534 instead of valid value
+```
+
+**Investigation Strategy**:
+1. **Trace property generation**: Find where 65534 placeholders originate
+2. **Check UnresolvedReference system**: Verify property references get resolved
+3. **Debug object table layout**: Ensure property data structure is correct
+4. **Fix placeholder resolution**: Replace 65534 with actual property values
+
+**Key Files to Examine**:
+- `src/grue_compiler/codegen.rs` - Object and property generation
+- `src/grue_compiler/codegen_instructions.rs` - Property instruction emission
+- Property access code paths in instruction generation
+
+**Success Criteria**:
+- `obj.name` returns readable string content
+- Property access works without crashes
+- Object system supports grammar pattern matching
+
 ## CRITICAL: Z-Machine Stack vs Local Variable Usage - Aug 28, 2025
 
 **FUNDAMENTAL PRINCIPLE**: When questioning stack vs local variable usage, refer to the Z-Machine specification - it's almost always in favor of the stack.

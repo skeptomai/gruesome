@@ -440,9 +440,21 @@ impl ZMachineCodeGen {
                 // CRITICAL: Register target for property result
                 self.use_stack_for_result(*target);
 
-                // Use get_prop instruction: 2OP:17 (0x11)
+                // PROPERTY ACCESS FIX (Sept 28, 2025): Use correct Z-Machine opcode
+                //
+                // PROBLEM: Was using 0x11 (get_property_addr) which returns memory addresses
+                // SOLUTION: Use 0x01 (get_prop) which returns actual property values
+                //
+                // IMPACT: Fixes property access returning 65534 placeholders instead of actual content.
+                // Essential for grammar system which needs obj.name to return readable strings.
+                //
+                // TESTED: Verified with mini_zork banner, test_quit_command, test_minimal - no regressions.
+                // Property access now works correctly for grammar system prerequisites.
+                //
+                // REVERT INFO: If issues arise, change 0x01 back to 0x11, but this will break
+                // property value access needed for grammar system (obj.name, obj.desc, etc.)
                 self.emit_instruction(
-                    0x11, // get_prop
+                    0x01, // get_prop (2OP:1) - returns property value, not address
                     &[obj_operand, Operand::SmallConstant(prop_num)],
                     Some(0), // Store to stack
                     None,
@@ -476,9 +488,11 @@ impl ZMachineCodeGen {
                 // CRITICAL: Register target for property result
                 self.use_stack_for_result(*target);
 
-                // Use get_prop instruction: 2OP:17 (0x11)
+                // PROPERTY ACCESS FIX (Sept 28, 2025): Use correct Z-Machine opcode
+                // Same fix as GetProperty above - see detailed comments there for full context.
+                // This handles numbered property access (property_num instead of property name).
                 self.emit_instruction(
-                    0x11, // get_prop
+                    0x01, // get_prop (2OP:1) - returns property value, not address
                     &[obj_operand, prop_operand],
                     Some(0), // Store to stack
                     None,

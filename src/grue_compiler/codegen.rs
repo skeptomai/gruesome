@@ -3099,8 +3099,8 @@ impl ZMachineCodeGen {
         let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
         let prop_operand = self.resolve_ir_id_to_operand(args[1])?;
 
-        // Generate get_prop instruction (2OP:17)
-        let layout = self.emit_instruction(0x11, &[obj_operand, prop_operand], Some(0), None)?;
+        // Generate get_prop instruction (2OP:1) - gets property value
+        let layout = self.emit_instruction(0x01, &[obj_operand, prop_operand], Some(0), None)?;
 
         // emit_instruction already pushed bytes to code_space
 
@@ -3906,10 +3906,10 @@ impl ZMachineCodeGen {
         // Resolve object operand
         let obj_operand = self.resolve_ir_id_to_operand(object)?;
 
-        // Generate get_prop instruction (2OP:17, hex 0x11)
-        // FIXED: Use stack for property access results (temporary values)
+        // Generate get_prop instruction (2OP:1, hex 0x01) - gets property VALUE
+        // FIXED: Use correct opcode for property value access (not address)
         let layout = self.emit_instruction(
-            0x11, // get_prop opcode (2OP:17)
+            0x01, // get_prop opcode (2OP:1) - returns property value
             &[obj_operand, Operand::SmallConstant(property_num)],
             Some(0), // Store result on stack
             None,    // No branch

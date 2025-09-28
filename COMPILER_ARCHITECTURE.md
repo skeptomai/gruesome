@@ -4,6 +4,90 @@
 
 This document captures systematic issues we've encountered multiple times to prevent regression and aid future debugging.
 
+## Grammar System Architecture
+
+### Grammar System Overview
+
+The **grammar system** is the core text adventure command processing engine that converts natural language input into executable game actions. It bridges the gap between raw player input and compiled game logic.
+
+### Current vs Target Architecture
+
+**Current Simplified Implementation:**
+```
+Input: "quit" → sread → dictionary lookup → Z-Machine quit instruction
+```
+
+**Target Grammar System:**
+```
+Input: "take red book" → sread → tokenization → grammar matching → object resolution → function execution
+```
+
+### Core Components
+
+#### 1. Grammar Pattern Engine
+```rust
+pub struct GrammarPattern {
+    pub verb: String,
+    pub pattern: Vec<TokenType>,  // [Verb, Noun] or [Verb, "all"]
+    pub handler: IRNode,          // Function call to execute
+}
+
+pub enum TokenType {
+    Verb,
+    Noun,
+    Preposition(String),  // "from", "with", "to"
+    Literal(String),      // "all", "inventory"
+}
+```
+
+#### 2. Object Resolution System
+```rust
+pub struct ObjectResolver {
+    pub visible_objects: Vec<ObjectRef>,
+    pub disambiguation_needed: bool,
+}
+```
+
+#### 3. Multi-word Noun Recognition
+- **Challenge**: "jewel-encrusted egg" = 3 dictionary words → 1 object
+- **Solution**: Noun phrase parsing with longest-match-first strategy
+- **Dependencies**: Working property system for object name access
+
+### Integration Points
+
+#### Dictionary Enhancement
+- **Current**: Simple word lookup for basic commands
+- **Target**: Multi-word noun phrase recognition with alias matching
+
+#### Property System Requirements
+- **Current**: Property access fails (65534 placeholders)
+- **Required**: Object name resolution needs `obj.name` property access
+- **Blocking**: Must fix property placeholders before grammar implementation
+
+#### Z-Machine Instruction Bridge
+- **Current**: Direct Z-Machine calls (quit, sread)
+- **Target**: Grammar patterns → Grue functions → compiled Z-Machine sequences
+
+### Grammar DSL Examples
+
+```grue
+verb "take" {
+    noun => handle_take($noun),
+    "all" => take_all(),
+    noun + "from" + noun => handle_take_from($1, $3)
+}
+
+verb "examine" {
+    noun => examine($noun),
+    default => look_around()
+}
+
+verb "put" {
+    noun + "in" + noun => handle_put_in($1, $3),
+    noun + "on" + noun => handle_put_on($1, $3)
+}
+```
+
 ### 0. Print Newline Architecture Bug ⚠️⚠️⚠️
 
 **THIS HAS BEEN BROKEN AND FIXED MULTIPLE TIMES - CRITICAL PATTERN**
