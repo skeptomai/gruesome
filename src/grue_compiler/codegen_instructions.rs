@@ -440,21 +440,26 @@ impl ZMachineCodeGen {
                 // CRITICAL: Register target for property result
                 self.use_stack_for_result(*target);
 
-                // PROPERTY ACCESS FIX (Sept 28, 2025): Use correct Z-Machine opcode
+                // PROPERTY ACCESS CORRECTION (Sept 28, 2025): Fixed branch out of bounds bug
                 //
-                // PROBLEM: Was using 0x11 (get_property_addr) which returns memory addresses
-                // SOLUTION: Use 0x01 (get_prop) which returns actual property values
+                // BUG DISCOVERY: The "property fix" commit 604f7b4 incorrectly changed get_prop
+                // from 0x11 to 0x01, causing all property access to generate branch out of bounds errors.
                 //
-                // IMPACT: Fixes property access returning 65534 placeholders instead of actual content.
-                // Essential for grammar system which needs obj.name to return readable strings.
+                // Z-MACHINE SPECIFICATION (sect15.html):
+                // - get_prop (0x11): 2OP:17 - Returns property VALUE (correct for property access)
+                // - je (0x01): 2OP:1 - Jump if equal with BRANCHING (wrong instruction entirely!)
                 //
-                // TESTED: Verified with mini_zork banner, test_quit_command, test_minimal - no regressions.
-                // Property access now works correctly for grammar system prerequisites.
+                // ROOT CAUSE ANALYSIS:
+                // 1. Changed get_prop opcode from 0x11 → 0x01 in commit 604f7b4
+                // 2. This made property access use je (jump-if-equal) instead of get_prop
+                // 3. je is a branching instruction that generates branch data
+                // 4. Branch targets calculated incorrectly, causing out-of-bounds jumps
+                // 5. All property access programs crashed with "Branch to address 0xXXX is outside memory bounds"
                 //
-                // REVERT INFO: If issues arise, change 0x01 back to 0x11, but this will break
-                // property value access needed for grammar system (obj.name, obj.desc, etc.)
+                // RESOLUTION: Reverted to correct opcode 0x11 (get_prop per Z-Machine spec)
+                // IMPACT: Property access now works without branch errors, mini_zork reaches command prompt
                 self.emit_instruction(
-                    0x01, // get_prop (2OP:1) - returns property value, not address
+                    0x11, // get_prop (2OP:17) - returns property value, not address
                     &[obj_operand, Operand::SmallConstant(prop_num)],
                     Some(0), // Store to stack
                     None,
@@ -488,11 +493,11 @@ impl ZMachineCodeGen {
                 // CRITICAL: Register target for property result
                 self.use_stack_for_result(*target);
 
-                // PROPERTY ACCESS FIX (Sept 28, 2025): Use correct Z-Machine opcode
-                // Same fix as GetProperty above - see detailed comments there for full context.
+                // PROPERTY ACCESS CORRECTION (Sept 28, 2025): Fixed branch out of bounds bug
+                // Same fix as GetProperty above - reverted from 0x01 (je) back to 0x11 (get_prop).
                 // This handles numbered property access (property_num instead of property name).
                 self.emit_instruction(
-                    0x01, // get_prop (2OP:1) - returns property value, not address
+                    0x11, // get_prop (2OP:17) - returns property value, not address
                     &[obj_operand, prop_operand],
                     Some(0), // Store to stack
                     None,
