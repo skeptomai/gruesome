@@ -1,6 +1,30 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (September 28, 2025) - BANNER FULLY RESTORED ✅
+## CURRENT STATUS (September 28, 2025) - OBJECT LOOKUP LIMITATION IDENTIFIED ⚠️
+
+**CRITICAL INVESTIGATION COMPLETE**: "Invalid object 608" runtime error fully analyzed and root cause identified.
+
+### 🔍 OBJECT LOOKUP INVESTIGATION COMPLETE (Session Sep 28, 2025):
+
+**Root Cause Identified**: Grammar system passes parse buffer dictionary addresses (e.g., 608) to handler functions as `$noun` parameters, but these addresses are incorrectly treated as object IDs in property operations.
+
+**Technical Details**:
+- **Parse Buffer Address**: Variable(110) correctly stores parse buffer address 608
+- **Grammar Handler**: Functions like `look_at_obj($noun)` receive dictionary addresses as parameters
+- **Property Assignment**: Code like `obj.open = false` generates `clear_attr(608, 1)` instead of `clear_attr(validObjectID, 1)`
+- **Crash Location**: PC 0x141e with instruction `opcode=0x0c` (clear_attr) using object 608
+
+**Current Implementation Status**:
+- ✅ **Parse Buffer Handling**: Correctly extracts dictionary addresses from user input
+- ✅ **Grammar Pattern Matching**: Successfully identifies verbs and nouns
+- ⚠️ **Object Lookup**: Only supports hardcoded objects 1-2, insufficient for real games
+- ❌ **Dictionary-to-Object Mapping**: Missing comprehensive address→ID resolution system
+
+**Architectural Fix Required**: Complete implementation of `generate_object_lookup_from_noun()` function to properly map dictionary addresses to Z-Machine object IDs (1-255) before property operations.
+
+**Current Baseline**: Stable compilation and execution up to user input processing. Ready for architectural improvement to object lookup system.
+
+## PREVIOUS STATUS (September 28, 2025) - BANNER FULLY RESTORED ✅
 
 **CRITICAL SUCCESS**: Banner display completely restored through systematic commit analysis and restoration from BANNER_WORKS baseline!
 

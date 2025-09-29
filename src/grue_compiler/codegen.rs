@@ -5400,7 +5400,21 @@ impl ZMachineCodeGen {
     fn generate_object_lookup_from_noun(&mut self) -> Result<(), CompilerError> {
         debug!("🔍 OBJECT_LOOKUP_START: Generating object lookup from noun dictionary address at 0x{:04x}", self.code_address);
 
-        // Phase 3.1 Step 2: Basic object lookup implementation
+        // ⚠️  CRITICAL LIMITATION IDENTIFIED (Sept 28, 2025):
+        // This function causes "invalid object 608" runtime crash during user input processing.
+        //
+        // ROOT CAUSE: Grammar system passes parse buffer dictionary addresses (e.g., 608)
+        // to handler functions as $noun parameters, but these addresses are treated as
+        // object IDs in property operations like obj.open = false, generating clear_attr
+        // instructions with dictionary address instead of valid object ID (1-255).
+        //
+        // CURRENT STATE: Only hardcoded lookup for objects 1-2, insufficient for real games.
+        // ARCHITECTURAL FIX NEEDED: Complete dictionary-address-to-object-ID mapping system.
+        //
+        // CRASH SEQUENCE: noun lookup → Variable(1)=608 → clear_attr(608, 1) → "invalid object"
+        // PROPER FLOW: noun lookup → dictionary→object mapping → Variable(3)=objectID → clear_attr(objectID, 1)
+
+        // Phase 3.1 Step 2: Basic object lookup implementation (INCOMPLETE)
         // Initialize result variable to 0 (not found)
         self.emit_instruction(
             0x0D, // store
