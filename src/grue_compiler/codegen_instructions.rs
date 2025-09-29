@@ -1750,28 +1750,25 @@ impl ZMachineCodeGen {
             None
         };
 
-        // Track branch placeholder location
+        // Handle branch encoding - distinguish between hardcoded offsets and label references
         let branch_location = if let Some(offset) = branch_offset {
-            let loc = self.code_address;
-            log::debug!("BRANCH_PLACEHOLDER: Emitting 0xFFFF at code_address=0x{:04x} for branch (passed offset={:?})", loc, offset);
-
-            // CRITICAL CHECK: Make sure we're not accidentally using the offset value as the placeholder
-            if offset == 415 {
-                panic!("BUG FOUND: branch_offset is 415 (the label ID!) instead of a placeholder marker!");
-            }
-
-            // INSTRUMENT: What value are we actually passing to emit_word?
-            if self.code_address >= 0x335 && self.code_address <= 0x340 {
-                eprintln!(
-                    "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
-                    self.code_address
+            // Check if this is a small hardcoded offset (0-63) that can be encoded directly
+            if offset >= 0 && offset <= 63 {
+                log::debug!(
+                    "BRANCH_DIRECT: Encoding hardcoded offset {} directly as single byte",
+                    offset
                 );
-                eprintln!("  But wait, let's check if this is actually being called...");
+                // Encode as single-byte branch: bit 7=0, bit 6=1 (branch on true), offset in bits 0-5
+                let branch_byte = 0x40 | (offset as u8 & 0x3F);
+                self.emit_byte(branch_byte)?;
+                None // No placeholder needed
+            } else {
+                // This is either a large offset or a label reference - emit placeholder
+                let loc = self.code_address;
+                log::debug!("BRANCH_PLACEHOLDER: Emitting 0xFFFF at code_address=0x{:04x} for branch (offset={})", loc, offset);
+                self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+                Some(loc)
             }
-
-            // Always emit 2-byte placeholder for branches to be resolved later
-            self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
-            Some(loc)
         } else {
             None
         };
@@ -1948,28 +1945,25 @@ impl ZMachineCodeGen {
             None
         };
 
-        // Track branch placeholder location
+        // Handle branch encoding - distinguish between hardcoded offsets and label references
         let branch_location = if let Some(offset) = branch_offset {
-            let loc = self.code_address;
-            log::debug!("BRANCH_PLACEHOLDER: Emitting 0xFFFF at code_address=0x{:04x} for branch (passed offset={:?})", loc, offset);
-
-            // CRITICAL CHECK: Make sure we're not accidentally using the offset value as the placeholder
-            if offset == 415 {
-                panic!("BUG FOUND: branch_offset is 415 (the label ID!) instead of a placeholder marker!");
-            }
-
-            // INSTRUMENT: What value are we actually passing to emit_word?
-            if self.code_address >= 0x335 && self.code_address <= 0x340 {
-                eprintln!(
-                    "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
-                    self.code_address
+            // Check if this is a small hardcoded offset (0-63) that can be encoded directly
+            if offset >= 0 && offset <= 63 {
+                log::debug!(
+                    "BRANCH_DIRECT: Encoding hardcoded offset {} directly as single byte",
+                    offset
                 );
-                eprintln!("  But wait, let's check if this is actually being called...");
+                // Encode as single-byte branch: bit 7=0, bit 6=1 (branch on true), offset in bits 0-5
+                let branch_byte = 0x40 | (offset as u8 & 0x3F);
+                self.emit_byte(branch_byte)?;
+                None // No placeholder needed
+            } else {
+                // This is either a large offset or a label reference - emit placeholder
+                let loc = self.code_address;
+                log::debug!("BRANCH_PLACEHOLDER: Emitting 0xFFFF at code_address=0x{:04x} for branch (offset={})", loc, offset);
+                self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+                Some(loc)
             }
-
-            // Always emit 2-byte placeholder for branches to be resolved later
-            self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
-            Some(loc)
         } else {
             None
         };
@@ -2107,28 +2101,25 @@ impl ZMachineCodeGen {
             None
         };
 
-        // Track branch placeholder location
+        // Handle branch encoding - distinguish between hardcoded offsets and label references
         let branch_location = if let Some(offset) = branch_offset {
-            let loc = self.code_address;
-            log::debug!("BRANCH_PLACEHOLDER: Emitting 0xFFFF at code_address=0x{:04x} for branch (passed offset={:?})", loc, offset);
-
-            // CRITICAL CHECK: Make sure we're not accidentally using the offset value as the placeholder
-            if offset == 415 {
-                panic!("BUG FOUND: branch_offset is 415 (the label ID!) instead of a placeholder marker!");
-            }
-
-            // INSTRUMENT: What value are we actually passing to emit_word?
-            if self.code_address >= 0x335 && self.code_address <= 0x340 {
-                eprintln!(
-                    "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
-                    self.code_address
+            // Check if this is a small hardcoded offset (0-63) that can be encoded directly
+            if offset >= 0 && offset <= 63 {
+                log::debug!(
+                    "BRANCH_DIRECT: Encoding hardcoded offset {} directly as single byte",
+                    offset
                 );
-                eprintln!("  But wait, let's check if this is actually being called...");
+                // Encode as single-byte branch: bit 7=0, bit 6=1 (branch on true), offset in bits 0-5
+                let branch_byte = 0x40 | (offset as u8 & 0x3F);
+                self.emit_byte(branch_byte)?;
+                None // No placeholder needed
+            } else {
+                // This is either a large offset or a label reference - emit placeholder
+                let loc = self.code_address;
+                log::debug!("BRANCH_PLACEHOLDER: Emitting 0xFFFF at code_address=0x{:04x} for branch (offset={})", loc, offset);
+                self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+                Some(loc)
             }
-
-            // Always emit 2-byte placeholder for branches to be resolved later
-            self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
-            Some(loc)
         } else {
             None
         };
