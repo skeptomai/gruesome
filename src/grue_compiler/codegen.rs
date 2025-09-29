@@ -5124,24 +5124,29 @@ impl ZMachineCodeGen {
         let unknown_command_string_id = self
             .main_loop_unknown_command_id
             .expect("Main loop unknown command ID should be set during string collection");
-        self.emit_instruction(
+        let layout = self.emit_instruction(
             0x8D,                                          // print_paddr: print string at packed address
             &[Operand::LargeConstant(placeholder_word())], // Placeholder for string address
             None,
             None,
         )?;
 
-        // Add unresolved reference for the "I don't understand" string
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::StringRef,
-                location: self.code_address - 2, // Location of the string address operand
-                target_id: unknown_command_string_id,
-                is_packed_address: true,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        // FIXED: Use layout.operand_location instead of hardcoded offset calculation
+        // This was previously using self.code_address - 2 which caused placeholder resolution failures
+        if let Some(operand_location) = layout.operand_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::StringRef,
+                    location: operand_location, // Correct operand location from emit_instruction
+                    target_id: unknown_command_string_id,
+                    is_packed_address: true,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        } else {
+            panic!("BUG: emit_instruction didn't return operand_location for placeholder");
+        }
 
         Ok(())
     }
@@ -5176,49 +5181,324 @@ impl ZMachineCodeGen {
         patterns: &[crate::grue_compiler::ir::IrPattern],
     ) -> Result<(), CompilerError> {
         debug!(
-            "Generating verb matching for '{}' with {} patterns",
+            "🔍 VERB_MATCH_START: Generating verb matching for '{}' with {} patterns at address 0x{:04x}",
             verb,
-            patterns.len()
+            patterns.len(),
+            self.code_address
         );
 
-        // TODO: For now, generate simplified pattern matching
-        // This is a foundational implementation that can be enhanced
+        // Phase 3.1: Extract tokens from parse buffer for object resolution
+        // Parse buffer layout after SREAD:
+        // [0] = max words, [1] = actual word count
+        // [2] = word 1 dict addr (low), [3] = word 1 dict addr (high)
+        // [4] = word 1 text pos, [5] = word 1 length
+        // [6] = word 2 dict addr (low), [7] = word 2 dict addr (high)
+        // etc.
 
-        // Generate a function call for the first pattern's handler as a proof of concept
-        if let Some(first_pattern) = patterns.first() {
-            match &first_pattern.handler {
-                crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, _args) => {
-                    debug!(
-                        "Generating call to function ID {} for verb '{}'",
-                        func_id, verb
-                    );
+        // Constants for buffer globals (matching the ones used in main loop)
+        const PARSE_BUFFER_GLOBAL: u8 = 110; // Global G6e = Variable(110)
 
-                    // Generate function call instruction
-                    self.emit_instruction(
-                        0x20, // call_1s: call routine with 1 argument, store result
-                        &[Operand::LargeConstant(placeholder_word())], // Function address placeholder
-                        Some(0),                                       // Store result on stack
-                        None,                                          // No branch
-                    )?;
+        // Step 1: Read word count from parse buffer[1]
+        debug!("📊 LOAD_WORD_COUNT: Generating loadw instruction at 0x{:04x} to read word count into Variable(1)", self.code_address);
+        self.emit_instruction(
+            0x8C, // loadw: load word from array
+            &[
+                Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address (Variable 110)
+                Operand::SmallConstant(1),              // Offset 1 = word count
+            ],
+            Some(1), // Store word count in local variable 1
+            None,
+        )?;
 
-                    // Add unresolved reference for function call
+        // Step 2: Check if we have at least 2 words (verb + noun)
+        // If word_count >= 2, extract noun and call handler with object parameter
+        // If word_count < 2, call handler with no parameters
+
+        // Phase 3.1: Distinguish between Default (verb-only) and Noun patterns
+        // Find appropriate patterns for verb-only and noun cases
+        let default_pattern = patterns.iter().find(|p| {
+            p.pattern
+                .contains(&crate::grue_compiler::ir::IrPatternElement::Default)
+        });
+        let noun_pattern = patterns.iter().find(|p| {
+            p.pattern
+                .contains(&crate::grue_compiler::ir::IrPatternElement::Noun)
+        });
+
+        debug!(
+            "🎯 PATTERN_ANALYSIS: default_pattern={}, noun_pattern={}",
+            default_pattern.is_some(),
+            noun_pattern.is_some()
+        );
+
+        // We need at least one pattern to proceed
+        if default_pattern.is_none() && noun_pattern.is_none() {
+            return Err(CompilerError::ParseError(
+                format!("Verb '{}' has no valid patterns", verb),
+                0,
+            ));
+        }
+
+        // Check if we have a noun (word count >= 2)
+        debug!(
+            "🔀 BRANCH_CHECK: Generating jl instruction at 0x{:04x} to check if Variable(1) < 2",
+            self.code_address
+        );
+        self.emit_instruction(
+            0x02, // jl: jump if less than
+            &[
+                Operand::Variable(1),      // word count
+                Operand::SmallConstant(2), // compare with 2
+            ],
+            None,
+            Some(5), // Branch offset 5 to skip noun extraction
+        )?;
+
+        // VERB+NOUN CASE: We have at least 2 words, process noun pattern
+        if let Some(pattern) = noun_pattern {
+            if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, _args) =
+                &pattern.handler
+            {
+                debug!(
+                    "⚠️ NOUN_CASE_EXECUTING: Generating noun pattern call to function ID {} for verb '{}' at 0x{:04x}",
+                    func_id, verb, self.code_address
+                );
+
+                // We have a noun: Extract second word dictionary address
+                self.emit_instruction(
+                    0x8C, // loadw: load word from array
+                    &[
+                        Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
+                        Operand::SmallConstant(3),              // Offset 3 = word 2 dict addr
+                    ],
+                    Some(2), // Store noun dictionary address in local variable 2
+                    None,
+                )?;
+
+                // Phase 3.1 Step 2: Object lookup from noun dictionary address
+                // Call object resolution function to convert dictionary address to object ID
+                self.generate_object_lookup_from_noun()?;
+
+                // Call handler with resolved object ID parameter
+                let layout = self.emit_instruction(
+                    0x21, // call_2s: call routine with 2 arguments, store result
+                    &[
+                        Operand::LargeConstant(placeholder_word()), // Function address placeholder
+                        Operand::Variable(3), // Resolved object ID from variable 3
+                    ],
+                    Some(0), // Store result on stack
+                    None,    // No branch
+                )?;
+
+                // FIXED: Use layout.operand_location instead of hardcoded offset calculation
+                // This was previously using self.code_address - 2 which caused placeholder resolution failures
+                if let Some(operand_location) = layout.operand_location {
                     self.reference_context
                         .unresolved_refs
                         .push(UnresolvedReference {
                             reference_type: LegacyReferenceType::FunctionCall,
-                            location: self.code_address - 2,
+                            location: operand_location, // Correct operand location from emit_instruction
                             target_id: *func_id,
                             is_packed_address: true,
                             offset_size: 2,
                             location_space: MemorySpace::Code,
                         });
+                } else {
+                    panic!("BUG: emit_instruction didn't return operand_location for placeholder");
                 }
-                crate::grue_compiler::ir::IrHandler::Block(_block) => {
-                    debug!("Block handlers not yet implemented for verb '{}'", verb);
+
+                // Jump over the verb-only case
+                self.emit_instruction(
+                    0x0C,                         // jump
+                    &[Operand::SmallConstant(8)], // Skip verb-only handler
+                    None,
+                    None,
+                )?;
+            }
+        }
+
+        // VERB-ONLY CASE: We have less than 2 words, process default pattern or noun pattern with object ID 0
+        if let Some(pattern) = default_pattern {
+            // Handle default pattern (verb-only)
+            if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, _args) =
+                &pattern.handler
+            {
+                debug!(
+                    "Generating default pattern call to function ID {} for verb '{}'",
+                    func_id, verb
+                );
+
+                let layout = self.emit_instruction(
+                    0x20, // call_1s: call routine with 1 argument (just return addr)
+                    &[Operand::LargeConstant(placeholder_word())], // Function address placeholder
+                    Some(0), // Store result on stack
+                    None, // No branch
+                )?;
+
+                // FIXED: Use layout.operand_location instead of hardcoded offset calculation
+                // This was previously using self.code_address - 2 which caused placeholder resolution failures
+                if let Some(operand_location) = layout.operand_location {
+                    self.reference_context
+                        .unresolved_refs
+                        .push(UnresolvedReference {
+                            reference_type: LegacyReferenceType::FunctionCall,
+                            location: operand_location, // Correct operand location from emit_instruction
+                            target_id: *func_id,
+                            is_packed_address: true,
+                            offset_size: 2,
+                            location_space: MemorySpace::Code,
+                        });
+                } else {
+                    panic!("BUG: emit_instruction didn't return operand_location for placeholder");
+                }
+            }
+        } else if let Some(pattern) = noun_pattern {
+            // No default pattern, but we have a noun pattern - call it with object ID 0
+            if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, _args) =
+                &pattern.handler
+            {
+                debug!(
+                    "Generating noun pattern call with object ID 0 for verb '{}' using function ID {}",
+                    verb, func_id
+                );
+
+                let layout = self.emit_instruction(
+                    0x21, // call_2s: call routine with 2 arguments
+                    &[
+                        Operand::LargeConstant(placeholder_word()), // Function address placeholder
+                        Operand::SmallConstant(0),                  // Object ID 0 (no object)
+                    ],
+                    Some(0), // Store result on stack
+                    None,    // No branch
+                )?;
+
+                // FIXED: Use layout.operand_location instead of hardcoded offset calculation
+                // This was previously using self.code_address - 2 which caused placeholder resolution failures
+                if let Some(operand_location) = layout.operand_location {
+                    self.reference_context
+                        .unresolved_refs
+                        .push(UnresolvedReference {
+                            reference_type: LegacyReferenceType::FunctionCall,
+                            location: operand_location, // Correct operand location from emit_instruction
+                            target_id: *func_id,
+                            is_packed_address: true,
+                            offset_size: 2,
+                            location_space: MemorySpace::Code,
+                        });
+                } else {
+                    panic!("BUG: emit_instruction didn't return operand_location for placeholder");
                 }
             }
         }
 
+        Ok(())
+    }
+
+    /// Generate Z-Machine code to resolve a noun dictionary address to an object ID
+    /// Input: Variable 2 contains the noun dictionary address from parse buffer
+    /// Output: Variable 3 contains the matching object ID (or 0 if not found)
+    fn generate_object_lookup_from_noun(&mut self) -> Result<(), CompilerError> {
+        debug!("🔍 OBJECT_LOOKUP_START: Generating object lookup from noun dictionary address at 0x{:04x}", self.code_address);
+
+        // Phase 3.1 Step 2: Basic object lookup implementation
+        // Initialize result variable to 0 (not found)
+        self.emit_instruction(
+            0x0D, // store
+            &[
+                Operand::Variable(3),      // Result variable 3
+                Operand::SmallConstant(0), // Initialize to 0 (not found)
+            ],
+            None,
+            None,
+        )?;
+
+        // Check object 1 (lamp) - get property 7 (names)
+        debug!(
+            "🏷️ GET_PROP_OBJ1: Generating get_prop instruction at 0x{:04x} for object 1 property 7",
+            self.code_address
+        );
+        self.emit_instruction(
+            0x11, // get_prop: get property value
+            &[
+                Operand::SmallConstant(1), // Object 1
+                Operand::SmallConstant(7), // Property 7 (names)
+            ],
+            Some(5), // Store property value in variable 5
+            None,
+        )?;
+
+        // Compare property value with noun dictionary address for object 1
+        self.emit_instruction(
+            0x01, // je: jump if equal
+            &[
+                Operand::Variable(5), // Property value
+                Operand::Variable(2), // Noun dictionary address
+            ],
+            None,
+            Some(8), // Branch forward to set result to object 1
+        )?;
+
+        // Check object 2 (box) - get property 7 (names)
+        self.emit_instruction(
+            0x11, // get_prop: get property value
+            &[
+                Operand::SmallConstant(2), // Object 2
+                Operand::SmallConstant(7), // Property 7 (names)
+            ],
+            Some(5), // Store property value in variable 5
+            None,
+        )?;
+
+        // Compare property value with noun dictionary address for object 2
+        self.emit_instruction(
+            0x01, // je: jump if equal
+            &[
+                Operand::Variable(5), // Property value
+                Operand::Variable(2), // Noun dictionary address
+            ],
+            None,
+            Some(5), // Branch forward to set result to object 2
+        )?;
+
+        // No match found - jump to end (variable 3 stays 0)
+        self.emit_instruction(
+            0x0C,                         // jump
+            &[Operand::SmallConstant(8)], // Jump to end
+            None,
+            None,
+        )?;
+
+        // Target for object 1 match: Set result to object 1
+        self.emit_instruction(
+            0x0D, // store
+            &[
+                Operand::Variable(3),      // Result variable
+                Operand::SmallConstant(1), // Object 1
+            ],
+            None,
+            None,
+        )?;
+
+        // Jump to end to skip object 2 setting
+        self.emit_instruction(
+            0x0C,                         // jump
+            &[Operand::SmallConstant(4)], // Jump over object 2 setting
+            None,
+            None,
+        )?;
+
+        // Target for object 2 match: Set result to object 2
+        self.emit_instruction(
+            0x0D, // store
+            &[
+                Operand::Variable(3),      // Result variable
+                Operand::SmallConstant(2), // Object 2
+            ],
+            None,
+            None,
+        )?;
+
+        debug!("Object lookup generation complete - result in variable 3");
         Ok(())
     }
 

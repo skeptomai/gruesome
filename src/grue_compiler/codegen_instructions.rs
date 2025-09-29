@@ -1209,58 +1209,6 @@ impl ZMachineCodeGen {
         store_var: Option<u8>,
         branch_offset: Option<i16>,
     ) -> Result<InstructionLayout, CompilerError> {
-        // TEMPORARY DEBUG: Trace jl with specific operands
-        if opcode == 0x02 {
-            log::error!("JL INSTRUCTION: emit_instruction called with opcode 0x02 (jl) at code_address=0x{:04x}", self.code_address);
-            log::error!("  Operands: {:?}", operands);
-            log::error!("  branch_offset={:?}", branch_offset);
-
-            // Check if any operand contains 415
-            for (i, op) in operands.iter().enumerate() {
-                match op {
-                    Operand::SmallConstant(v) if *v == 159 => {
-                        eprintln!(
-                            "WARNING: Operand {} is SmallConstant(159) - part of 415!",
-                            i
-                        );
-                    }
-                    Operand::LargeConstant(v) if *v == 415 => {
-                        eprintln!(
-                            "BUG FOUND: Operand {} is LargeConstant(415) - label ID as operand!",
-                            i
-                        );
-                        panic!("Label ID 415 being used as operand!");
-                    }
-                    Operand::Constant(v) if *v == 415 => {
-                        eprintln!(
-                            "BUG FOUND: Operand {} is Constant(415) - label ID as operand!",
-                            i
-                        );
-                        panic!("Label ID 415 being used as operand!");
-                    }
-                    _ => {}
-                }
-            }
-            if operands.len() == 2 {
-                if let (Operand::SmallConstant(13), Operand::SmallConstant(0)) =
-                    (&operands[0], &operands[1])
-                {
-                    log::error!("  *** THIS IS THE JL(13,0) WE'RE LOOKING FOR!");
-                }
-            }
-            if let Some(offset) = branch_offset {
-                log::error!(
-                    "  Branch offset value: {} (0x{:04x})",
-                    offset,
-                    offset as u16
-                );
-                if offset == 415 || (offset as u16) == 0x019f {
-                    panic!(
-                        "CRITICAL: Branch offset is 415 - the label ID is leaking into bytecode!"
-                    );
-                }
-            }
-        }
         let start_address = self.code_address;
 
         // Comprehensive PC/address tracking for all instructions

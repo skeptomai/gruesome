@@ -477,7 +477,7 @@ pub struct IrPattern {
 }
 
 /// Pattern elements in IR
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum IrPatternElement {
     Literal(String),
     Noun,
