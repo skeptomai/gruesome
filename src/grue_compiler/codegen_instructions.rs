@@ -1758,7 +1758,7 @@ impl ZMachineCodeGen {
                     "BRANCH_DIRECT: Encoding hardcoded offset {} directly as single byte",
                     offset
                 );
-                // Encode as single-byte branch: bit 7=0, bit 6=1 (branch on true), offset in bits 0-5
+                // Encode as single-byte branch: bit 7=condition, bit 6=1 (single-byte), offset in bits 0-5
                 let branch_byte = 0x40 | (offset as u8 & 0x3F);
                 self.emit_byte(branch_byte)?;
                 None // No placeholder needed
@@ -1953,7 +1953,7 @@ impl ZMachineCodeGen {
                     "BRANCH_DIRECT: Encoding hardcoded offset {} directly as single byte",
                     offset
                 );
-                // Encode as single-byte branch: bit 7=0, bit 6=1 (branch on true), offset in bits 0-5
+                // Encode as single-byte branch: bit 7=condition, bit 6=1 (single-byte), offset in bits 0-5
                 let branch_byte = 0x40 | (offset as u8 & 0x3F);
                 self.emit_byte(branch_byte)?;
                 None // No placeholder needed
@@ -2109,7 +2109,7 @@ impl ZMachineCodeGen {
                     "BRANCH_DIRECT: Encoding hardcoded offset {} directly as single byte",
                     offset
                 );
-                // Encode as single-byte branch: bit 7=0, bit 6=1 (branch on true), offset in bits 0-5
+                // Encode as single-byte branch: bit 7=condition, bit 6=1 (single-byte), offset in bits 0-5
                 let branch_byte = 0x40 | (offset as u8 & 0x3F);
                 self.emit_byte(branch_byte)?;
                 None // No placeholder needed

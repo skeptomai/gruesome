@@ -1,0 +1,6 @@
+// Single branch test
+init {
+    if (true) {
+        print("yes");
+    }
+}

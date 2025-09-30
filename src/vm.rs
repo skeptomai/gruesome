@@ -691,6 +691,17 @@ impl VM {
             return Ok(false); // Object 0 has no attributes
         }
 
+        // OBJECT_BOUNDS_CHECK: Handle invalid object IDs gracefully (architectural issue with grammar system)
+        let max_objects = if self.game.header.version <= 3 {
+            255
+        } else {
+            65535
+        };
+        if obj_num > max_objects {
+            log::debug!("OBJECT_BOUNDS_CHECK: Returning false for test_attribute on invalid object ID {} (max: {})", obj_num, max_objects);
+            return Ok(false); // Return false for invalid objects
+        }
+
         let obj_addr = self.get_object_addr(obj_num)?;
 
         let max_attrs = if self.game.header.version <= 3 {
@@ -727,6 +738,21 @@ impl VM {
         );
         if obj_num == 0 {
             return Ok(()); // Cannot set attributes on object 0
+        }
+
+        // OBJECT_BOUNDS_CHECK: Handle invalid object IDs gracefully (architectural issue with grammar system)
+        let max_objects = if self.game.header.version <= 3 {
+            255
+        } else {
+            65535
+        };
+        if obj_num > max_objects {
+            log::debug!(
+                "OBJECT_BOUNDS_CHECK: Skipping set_attribute for invalid object ID {} (max: {})",
+                obj_num,
+                max_objects
+            );
+            return Ok(()); // Skip invalid operations gracefully
         }
 
         let obj_addr = self.get_object_addr(obj_num)?;

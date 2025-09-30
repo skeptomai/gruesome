@@ -1,0 +1,27 @@
+// Test case for unresolved branch placeholder issue
+// This tries to reproduce conditions where branch placeholders don't get resolved
+
+init {
+    // Test pattern 1: Complex conditional with numeric comparison
+    let value = get_test_value();
+    if (value == 2340) {  // Use the same constant as in the failing case
+        print("Value matches 2340");
+    } else {
+        print("Value is different");
+    }
+
+    // Test pattern 2: Nested conditionals with variables
+    let test_var = 42;
+    if (test_var == 100) {
+        print("First condition");
+    } else if (test_var == 42) {
+        print("Second condition");
+    } else {
+        print("Default case");
+    }
+}
+
+fn get_test_value() -> int {
+    // This simulates computation that might generate complex branching
+    return 2340;
+}

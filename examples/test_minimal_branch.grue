@@ -1,0 +1,8 @@
+// Minimal branch test case
+init {
+    if (42 == 2340) {
+        print("match");
+    } else {
+        print("no match");
+    }
+}

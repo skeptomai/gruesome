@@ -1,0 +1,16 @@
+// Simple game to test dictionary-to-object mapping
+world {
+    room start "Test Room" {
+        desc: "A simple test room."
+
+        object box {
+            names: ["small box", "box"]
+            desc: "A small wooden box."
+            openable: true
+        }
+    }
+}
+
+init {
+    print("Welcome to the dictionary mapping test!");
+}
