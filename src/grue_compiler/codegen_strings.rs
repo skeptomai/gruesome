@@ -329,26 +329,56 @@ impl ZMachineCodeGen {
     /// Dictionary Generation Functions
 
     /// Generate dictionary space with minimal word parsing dictionary
-    pub fn generate_dictionary_space(&mut self, _ir: &IrProgram) -> Result<(), CompilerError> {
-        debug!("📚 Generating dictionary with basic commands for Z-Machine compliance");
+    pub fn generate_dictionary_space(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
+        debug!("📚 Generating dictionary with grammar verbs and basic commands");
 
         // Z-Machine dictionary format:
+        // - Word separators count (1 byte): 0
         // - Entry length (1 byte): 6 for v3
         // - Number of entries (2 bytes): count
-        // - Entries (6 bytes each for v3): encoded Z-characters + address
+        // - Entries (6 bytes each for v3): encoded Z-characters (sorted alphabetically)
 
-        // Add "quit" command to dictionary
-        // Z-character encoding for "quit": approximately 0x1462a5 (packed into 3 words)
-        let quit_encoded = self.encode_word_to_zchars("quit")?;
+        // Collect all words that need to be in the dictionary
+        use std::collections::BTreeSet;
+        let mut words = BTreeSet::new();
 
+        // Add built-in commands
+        words.insert("quit".to_string());
+
+        // Add all grammar verbs
+        for grammar in &ir.grammar {
+            words.insert(grammar.verb.to_lowercase());
+            debug!("📚 Adding grammar verb to dictionary: '{}'", grammar.verb);
+
+            // Also add any literal words from patterns (prepositions, etc.)
+            for pattern in &grammar.patterns {
+                for element in &pattern.pattern {
+                    if let crate::grue_compiler::ir::IrPatternElement::Literal(word) = element {
+                        words.insert(word.to_lowercase());
+                        debug!("📚 Adding pattern literal to dictionary: '{}'", word);
+                    }
+                }
+            }
+        }
+
+        // BTreeSet automatically keeps words sorted alphabetically
+        let word_count = words.len();
+        debug!("📚 Total dictionary entries: {}", word_count);
+
+        // Build dictionary data
         let mut dictionary_data = vec![
-            0x00, // Word separators count (0)
-            0x06, // Entry length: 6 bytes per entry
-            0x00, 0x01, // Number of entries: 1 (just "quit")
+            0x00,                             // Word separators count (0)
+            0x06,                             // Entry length: 6 bytes per entry
+            ((word_count >> 8) & 0xFF) as u8, // Entry count high byte
+            (word_count & 0xFF) as u8,        // Entry count low byte
         ];
 
-        // Add the "quit" entry (6 bytes)
-        dictionary_data.extend_from_slice(&quit_encoded);
+        // Encode and add each word
+        for word in &words {
+            let encoded = self.encode_word_to_zchars(word)?;
+            dictionary_data.extend_from_slice(&encoded);
+            debug!("📚 Added dictionary entry: '{}' -> {:02x?}", word, encoded);
+        }
 
         // Allocate dictionary space and write data
         self.allocate_dictionary_space(dictionary_data.len())?;
@@ -357,8 +387,9 @@ impl ZMachineCodeGen {
         }
 
         debug!(
-            "📚 Dictionary space generated: {} bytes with 'quit' command",
-            dictionary_data.len()
+            "📚 Dictionary space generated: {} bytes with {} entries",
+            dictionary_data.len(),
+            word_count
         );
         Ok(())
     }

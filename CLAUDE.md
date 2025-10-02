@@ -1,6 +1,72 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (September 28, 2025) - OBJECT LOOKUP LIMITATION IDENTIFIED ⚠️
+## CURRENT STATUS (October 1, 2025) - FIXING HARDCODED BRANCH OFFSETS 🔧
+
+**CRITICAL RULE ESTABLISHED**: **NEVER** use hardcoded branch offsets or instruction size estimates. **ALWAYS** use label-based UnresolvedReference system.
+
+### ⚠️ ONGOING: Systematic Hardcoded Offset Elimination (Session Oct 1, 2025)
+
+**Cardinal Rule Violations Found**: Multiple locations in grammar system using hardcoded offset calculations instead of proper label-based resolution.
+
+**Why Hardcoded Offsets Always Fail**:
+- Instruction sizes vary based on operand types and values
+- Code changes invalidate offset calculations instantly
+- Branch encoding (1-byte vs 2-byte) depends on final resolved offset
+- No way to accurately predict final instruction layout during emission
+
+**Fixes Applied**:
+1. ✅ **Object Lookup Loop Branches** (lines 5596-5687): Fixed 3 branch instructions to use `layout.branch_location`
+2. 🔧 **Verb Word Count Branch** (line 5364-5378): Currently fixing hardcoded offset 66
+
+**Current Error**: Branch to 0x0c30 outside bounds at PC 0x0933
+- **Root Cause**: Hardcoded `branch_offset_to_verb_only = 66` at line 5364
+- **Symptom**: Placeholder `0xffff` only partially patched, resulting in invalid offset 767 (0x02ff)
+- **Fix Required**: Replace with label-based UnresolvedReference to verb-only handler
+
+**Correct Pattern** (ALWAYS use this):
+```rust
+// 1. Create label
+let skip_to_target_label = self.next_string_id;
+self.next_string_id += 1;
+
+// 2. Emit branch with placeholder
+let layout = self.emit_instruction(
+    0x02, // jl
+    &[operands...],
+    None,
+    Some(0x7FFF), // Placeholder triggers 2-byte branch encoding
+)?;
+
+// 3. Register UnresolvedReference using layout.branch_location
+if let Some(branch_location) = layout.branch_location {
+    self.reference_context.unresolved_refs.push(UnresolvedReference {
+        reference_type: LegacyReferenceType::Branch,
+        location: branch_location,
+        target_id: skip_to_target_label,
+        ...
+    });
+}
+
+// 4. Later: Register label at actual target
+self.label_addresses.insert(skip_to_target_label, self.code_address);
+self.record_final_address(skip_to_target_label, self.code_address);
+```
+
+**WRONG Pattern** (NEVER use this):
+```rust
+// ❌ NEVER calculate offsets manually
+let offset = if some_condition { 66 } else { 12 };
+self.emit_instruction(opcode, operands, None, Some(offset))?;
+
+// ❌ NEVER use self.code_address - N for reference locations
+location: self.code_address - 2  // WRONG!
+```
+
+**Current Working Files**:
+- **Test File**: `/tmp/test_fixed_branches.z3` (partial fixes applied)
+- **Source**: `src/grue_compiler/codegen.rs` (line 5364 needs fix)
+
+## PREVIOUS STATUS (September 28, 2025) - OBJECT LOOKUP LIMITATION IDENTIFIED ⚠️
 
 **CRITICAL INVESTIGATION COMPLETE**: "Invalid object 608" runtime error fully analyzed and root cause identified.
 

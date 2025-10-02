@@ -1884,7 +1884,7 @@ impl ZMachineCodeGen {
         };
         let instruction_byte = 0xC0 | var_bit | (opcode & 0x1F);
 
-        debug!("emit_variable_form: opcode=0x{:02x}, var_bit=0x{:02x}, instruction_byte=0x{:02x} at address 0x{:04x}", 
+        debug!("emit_variable_form: opcode=0x{:02x}, var_bit=0x{:02x}, instruction_byte=0x{:02x} at address 0x{:04x}",
                opcode, var_bit, instruction_byte, self.code_address);
 
         log::debug!(

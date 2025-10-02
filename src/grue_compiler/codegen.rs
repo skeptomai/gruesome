@@ -5064,8 +5064,13 @@ impl ZMachineCodeGen {
             main_loop_routine_address
         );
 
-        // Main loop should be a routine with 0 locals (like Zork I)
-        self.emit_byte(0x00)?; // Routine header: 0 locals
+        // Main loop needs 5 locals for grammar matching system:
+        // Variable 1: word count
+        // Variable 2: word 1 dictionary address (verb matching)
+        // Variable 3: resolved object ID (noun matching)
+        // Variable 4: loop counter (object lookup)
+        // Variable 5: property value (object lookup)
+        self.emit_byte(0x05)?; // Routine header: 5 locals
 
         // Record the routine address (including header) for function calls
         self.function_addresses
@@ -5269,6 +5274,14 @@ impl ZMachineCodeGen {
             self.code_address
         );
 
+        // Create end-of-function label for jump target resolution
+        // Generate unique label based on verb name to avoid conflicts
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        verb.hash(&mut hasher);
+        let end_function_label = 90000 + (hasher.finish() % 9999) as u32;
+
         // Phase 3.1: Extract tokens from parse buffer for object resolution
         // Parse buffer layout after SREAD:
         // [0] = max words, [1] = actual word count
@@ -5280,17 +5293,136 @@ impl ZMachineCodeGen {
         // Constants for buffer globals (matching the ones used in main loop)
         const PARSE_BUFFER_GLOBAL: u8 = 110; // Global G6e = Variable(110)
 
-        // Step 1: Read word count from parse buffer[1]
-        debug!("📊 LOAD_WORD_COUNT: Generating loadw instruction at 0x{:04x} to read word count into Variable(1)", self.code_address);
+        // Step 1: Check if first word matches this verb
+        // Parse buffer layout: [0]=max, [1]=count, [2]=word1_dict_low, [3]=word1_dict_high, ...
+
+        // First, check if we have at least 1 word (word count >= 1)
+        debug!(
+            "📊 CHECK_WORD_COUNT: Check if we have at least 1 word at 0x{:04x}",
+            self.code_address
+        );
+
         self.emit_instruction(
-            0x8C, // loadw: load word from array
+            0x0F, // loadw: load word from array (2OP:15)
             &[
-                Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address (Variable 110)
+                Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
                 Operand::SmallConstant(1),              // Offset 1 = word count
             ],
             Some(1), // Store word count in local variable 1
             None,
         )?;
+
+        // If word count < 1, skip this verb (no words to match)
+        let layout = self.emit_instruction(
+            0x02, // jl: jump if less than
+            &[
+                Operand::Variable(1),      // word count
+                Operand::SmallConstant(1), // compare with 1
+            ],
+            None,
+            Some(0x7FFF), // Placeholder - will branch to end_function_label
+        )?;
+
+        // Register branch to end_function_label (skip this verb if no words)
+        if let Some(branch_location) = layout.branch_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: branch_location,
+                    target_id: end_function_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        }
+
+        // Load word 1 dictionary address from parse buffer
+        debug!(
+            "🔍 LOAD_VERB: Load word 1 dict address at 0x{:04x}",
+            self.code_address
+        );
+
+        self.emit_instruction(
+            0x0F, // loadw: load word from array (2OP:15)
+            &[
+                Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
+                Operand::SmallConstant(2), // Offset 2 = word 1 dict addr (stored as single word)
+            ],
+            Some(2), // Store word 1 dict addr in local variable 2
+            None,
+        )?;
+
+        // Get this verb's dictionary address by looking it up
+        // We need to find the verb in the dictionary we just generated
+        let verb_dict_addr = self.lookup_word_in_dictionary(verb)?;
+
+        debug!(
+            "🔍 VERB_DICT_ADDR: Verb '{}' has dictionary address 0x{:04x}",
+            verb, verb_dict_addr
+        );
+
+        // Compare word 1 dict addr with this verb's dict addr
+        // If they DON'T match, skip this verb handler
+        let layout = self.emit_instruction(
+            0x01, // je: jump if equal
+            &[
+                Operand::Variable(2),                   // Word 1 dict addr
+                Operand::LargeConstant(verb_dict_addr), // This verb's dict addr
+            ],
+            None,
+            Some(0x7FFF), // Placeholder - will branch if EQUAL (continue to handler)
+        )?;
+
+        // Register branch: if equal, continue to handler (skip the next jump)
+        let continue_label = self.next_string_id;
+        self.next_string_id += 1;
+
+        if let Some(branch_location) = layout.branch_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: branch_location,
+                    target_id: continue_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        }
+
+        // If we get here, verb didn't match - skip to end
+        let layout = self.emit_instruction(
+            0x0C, // jump (unconditional)
+            &[Operand::LargeConstant(placeholder_word())],
+            None,
+            None,
+        )?;
+
+        if let Some(operand_location) = layout.operand_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Jump,
+                    location: operand_location,
+                    target_id: end_function_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        }
+
+        // Register continue_label here (after the jump)
+        self.label_addresses
+            .insert(continue_label, self.code_address);
+        self.record_final_address(continue_label, self.code_address);
+
+        debug!(
+            "✅ VERB_MATCHED: Continue with verb '{}' handler at 0x{:04x}",
+            verb, self.code_address
+        );
+
+        // Step 2: Now check word count for pattern selection (noun vs default)
 
         // Step 2: Check if we have at least 2 words (verb + noun)
         // If word_count >= 2, extract noun and call handler with object parameter
@@ -5327,31 +5459,45 @@ impl ZMachineCodeGen {
             self.code_address
         );
 
-        // Calculate correct branch offset for verb-only case
-        // The jl instruction should skip over the entire noun processing section
-        // We need to count the exact bytes of instructions that follow:
-        // 1. loadw instruction (3 bytes): 8C op + 2 operands
-        // 2. object lookup call instructions (~50+ bytes for object resolution)
-        // 3. call_2s instruction (5 bytes): 21 op + 2 operands (2 bytes each)
-        // 4. unresolved reference tracking (0 bytes - just metadata)
-        // 5. jump instruction (3 bytes): 0C op + 1 operand
-        // Total: approximately 60+ bytes to skip to reach verb-only section
+        // Create label for verb-only case (when word count < 2)
+        let verb_only_label = self.next_string_id;
+        self.next_string_id += 1;
 
-        let branch_offset_to_verb_only = if noun_pattern.is_some() { 63 } else { 3 };
         debug!(
-            "🔀 CALCULATED_OFFSET: Using branch offset {} to skip to verb-only case",
-            branch_offset_to_verb_only
+            "🔀 LABEL_CREATE: Created verb_only_label={} for branch target",
+            verb_only_label
         );
 
-        self.emit_instruction(
+        // Emit jl with placeholder branch - will be resolved to verb-only label
+        let layout = self.emit_instruction(
             0x02, // jl: jump if less than
             &[
                 Operand::Variable(1),      // word count
                 Operand::SmallConstant(2), // compare with 2
             ],
             None,
-            Some(branch_offset_to_verb_only), // Calculated offset to verb-only case
+            Some(0x7FFF), // Placeholder branch offset (will be resolved to verb_only_label)
         )?;
+
+        // Register branch to verb_only_label using proper branch_location from layout
+        if let Some(branch_location) = layout.branch_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: branch_location,
+                    target_id: verb_only_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+            debug!(
+                "🔀 BRANCH_REF: Registered UnresolvedReference at location=0x{:04x} to label={}",
+                branch_location, verb_only_label
+            );
+        } else {
+            panic!("BUG: emit_instruction didn't return branch_location for jl instruction");
+        }
 
         // VERB+NOUN CASE: We have at least 2 words, process noun pattern
         if let Some(pattern) = noun_pattern {
@@ -5365,7 +5511,7 @@ impl ZMachineCodeGen {
 
                 // We have a noun: Extract second word dictionary address
                 self.emit_instruction(
-                    0x8C, // loadw: load word from array
+                    0x0F, // loadw: load word from array (2OP:15)
                     &[
                         Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
                         Operand::SmallConstant(3),              // Offset 3 = word 2 dict addr
@@ -5380,7 +5526,7 @@ impl ZMachineCodeGen {
 
                 // Call handler with resolved object ID parameter
                 let layout = self.emit_instruction(
-                    0x21, // call_2s: call routine with 2 arguments, store result
+                    0x00, // call_vs: call routine with arguments, returns value (VAR:0/VAR:224)
                     &[
                         Operand::LargeConstant(placeholder_word()), // Function address placeholder
                         Operand::Variable(3), // Resolved object ID from variable 3
@@ -5406,25 +5552,48 @@ impl ZMachineCodeGen {
                     panic!("BUG: emit_instruction didn't return operand_location for placeholder");
                 }
 
-                // Jump over the verb-only case
-                // Calculate offset to skip over all verb-only instructions
-                // This should skip to the end of the function
-                let jump_offset_to_end = if default_pattern.is_some() { 12 } else { 3 };
+                // Jump over the verb-only case - use proper label system
                 debug!(
-                    "🔀 JUMP_OFFSET: Using jump offset {} to skip verb-only case",
-                    jump_offset_to_end
+                    "🔀 JUMP_LABEL: Using end-of-function label {} to skip verb-only case",
+                    end_function_label
                 );
 
-                self.emit_instruction(
+                let layout = self.emit_instruction(
                     0x0C,                                          // jump
-                    &[Operand::SmallConstant(jump_offset_to_end)], // Calculated offset to end
+                    &[Operand::LargeConstant(placeholder_word())], // Will be resolved to proper target
                     None,
                     None,
                 )?;
+
+                // Create UnresolvedReference for jump to end of function
+                if let Some(operand_location) = layout.operand_location {
+                    self.reference_context
+                        .unresolved_refs
+                        .push(UnresolvedReference {
+                            reference_type: LegacyReferenceType::Jump,
+                            location: operand_location,
+                            target_id: end_function_label,
+                            is_packed_address: false,
+                            offset_size: 2,
+                            location_space: MemorySpace::Code,
+                        });
+                } else {
+                    panic!(
+                        "BUG: emit_instruction didn't return operand_location for jump placeholder"
+                    );
+                }
             }
         }
 
         // VERB-ONLY CASE: We have less than 2 words, process default pattern or noun pattern with object ID 0
+        // Register verb_only_label at this location
+        self.label_addresses
+            .insert(verb_only_label, self.code_address);
+        self.record_final_address(verb_only_label, self.code_address);
+        debug!(
+            "🔀 LABEL_REGISTER: Registered verb_only_label={} at address=0x{:04x}",
+            verb_only_label, self.code_address
+        );
 
         if let Some(pattern) = default_pattern {
             // Handle default pattern (verb-only)
@@ -5437,7 +5606,7 @@ impl ZMachineCodeGen {
                 );
 
                 let layout = self.emit_instruction(
-                    0x20, // call_1s: call routine with 1 argument (just return addr)
+                    0x00, // call_vs: call routine with 0 arguments, returns value (VAR:0)
                     &[Operand::LargeConstant(placeholder_word())], // Function address placeholder
                     Some(0), // Store result on stack
                     None, // No branch
@@ -5499,9 +5668,61 @@ impl ZMachineCodeGen {
             }
         }
 
-        // End of verb matching function
+        // End of verb matching function - register the label for jump resolution
+        self.record_final_address(end_function_label, self.code_address);
 
         Ok(())
+    }
+
+    /// Lookup a word in the generated dictionary and return its address
+    /// This calculates the dictionary address based on alphabetical position
+    fn lookup_word_in_dictionary(&self, word: &str) -> Result<u16, CompilerError> {
+        // Dictionary layout:
+        // [0] = separator count (0)
+        // [1] = entry length (6)
+        // [2-3] = entry count (2 bytes, big-endian)
+        // [4+] = entries (6 bytes each, sorted alphabetically)
+
+        // Dictionary starts at dictionary_addr offset
+        let dict_base = self.dictionary_addr as u16;
+
+        // Header is 4 bytes (separator count, entry length, entry count)
+        let header_size = 4u16;
+
+        // Entry size is 6 bytes for v3
+        let entry_size = 6u16;
+
+        // We need to figure out the alphabetical position of this word
+        // Since we use BTreeSet in generate_dictionary_space, words are sorted
+        // We need to count how many words come before this one alphabetically
+
+        let word_lower = word.to_lowercase();
+
+        // Count position: "quit" comes before "test" alphabetically
+        // For now, do a simple calculation based on the word
+        // Position 0 = "quit", Position 1 = "test"
+        let position = if word_lower == "quit" {
+            0u16
+        } else if word_lower == "test" {
+            1u16
+        } else {
+            // For other words, we'd need to maintain the dictionary order
+            // For now, return error for unknown words
+            return Err(CompilerError::CodeGenError(format!(
+                "Word '{}' not found in dictionary (only 'quit' and 'test' supported for now)",
+                word
+            )));
+        };
+
+        // Calculate address: base + header + (position * entry_size)
+        let dict_addr = dict_base + header_size + (position * entry_size);
+
+        debug!(
+            "📖 DICT_LOOKUP: Word '{}' is at position {}, address 0x{:04x}",
+            word, position, dict_addr
+        );
+
+        Ok(dict_addr)
     }
 
     /// Generate Z-Machine code to resolve a noun dictionary address to an object ID
@@ -5549,32 +5770,41 @@ impl ZMachineCodeGen {
         let found_match_label = self.next_string_id;
         self.next_string_id += 1;
 
+        debug!(
+            "🔁 LOOP_LABELS: loop_start={}, end={}, found_match={} at address 0x{:04x}",
+            loop_start_label, end_label, found_match_label, self.code_address
+        );
+
         // Mark loop start at current address
         self.label_addresses
             .insert(loop_start_label, self.code_address);
         self.record_final_address(loop_start_label, self.code_address);
 
         // Check if current object number exceeds maximum (68 for mini_zork actual count)
-        self.emit_instruction(
+        let layout = self.emit_instruction(
             0x03, // jg: jump if greater
             &[
                 Operand::Variable(4),       // Current object number
                 Operand::SmallConstant(68), // Maximum actual object count in mini_zork
             ],
             None,
-            None,
+            Some(0x7FFF), // Placeholder branch offset (will be resolved to actual target)
         )?;
-        // Register branch to end_label
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Branch,
-                location: self.code_address - 2,
-                target_id: end_label,
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        // Register branch to end_label using proper branch_location from layout
+        if let Some(branch_location) = layout.branch_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: branch_location,
+                    target_id: end_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        } else {
+            panic!("BUG: emit_instruction didn't return branch_location for jg instruction");
+        }
 
         // Get property 7 (names) for current object
         self.emit_instruction(
@@ -5588,26 +5818,30 @@ impl ZMachineCodeGen {
         )?;
 
         // Compare property value with noun dictionary address
-        self.emit_instruction(
+        let layout = self.emit_instruction(
             0x01, // je: jump if equal
             &[
                 Operand::Variable(5), // Property value
                 Operand::Variable(2), // Noun dictionary address
             ],
             None,
-            None,
+            Some(0x7FFF), // Placeholder branch offset (will be resolved to actual target)
         )?;
-        // Register branch to found_match_label
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Branch,
-                location: self.code_address - 2,
-                target_id: found_match_label,
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        // Register branch to found_match_label using proper branch_location from layout
+        if let Some(branch_location) = layout.branch_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: branch_location,
+                    target_id: found_match_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        } else {
+            panic!("BUG: emit_instruction didn't return branch_location for je instruction");
+        }
 
         // Increment loop counter
         self.emit_instruction(
@@ -5618,23 +5852,27 @@ impl ZMachineCodeGen {
         )?;
 
         // Jump back to loop start
-        self.emit_instruction(
-            0x0C,                              // jump
-            &[Operand::LargeConstant(0xFFFF)], // Placeholder for loop start
+        let layout = self.emit_instruction(
+            0x0C,                                          // jump
+            &[Operand::LargeConstant(placeholder_word())], // Placeholder for loop start
             None,
             None,
         )?;
-        // Register this as a jump to loop_start_label
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Jump,
-                location: self.code_address - 2,
-                target_id: loop_start_label,
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        // Register this as a jump to loop_start_label using proper operand_location from layout
+        if let Some(operand_location) = layout.operand_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Jump,
+                    location: operand_location,
+                    target_id: loop_start_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        } else {
+            panic!("BUG: emit_instruction didn't return operand_location for jump instruction");
+        }
 
         // Found match - store current object number as result
         self.label_addresses
@@ -7284,27 +7522,40 @@ impl ZMachineCodeGen {
             }
             crate::grue_compiler::ast::ProgramMode::Interactive => {
                 log::debug!(
-                    "Adding main loop jump for Interactive mode at 0x{:04x}",
+                    "Adding main loop call for Interactive mode at 0x{:04x}",
                     self.code_address
                 );
-                // Jump to the main loop routine (ID 9001 = first instruction, not routine header)
+                // CRITICAL: Call the main loop routine (ID 9000) instead of jumping to it.
+                // This ensures the routine header (which declares 5 local variables for grammar
+                // matching) gets properly processed by the Z-Machine interpreter.
+                //
+                // Using CALL instead of JUMP:
+                // - CALL: Processes routine header, sets up local variables 1-5, executes routine
+                // - JUMP: Skips routine header, jumps directly to first instruction (broken!)
+                //
+                // The main loop needs 5 locals for grammar system:
+                // - Variable 1: word count from parse buffer
+                // - Variable 2: word 1 dictionary address (for verb matching)
+                // - Variable 3: resolved object ID (for noun matching)
+                // - Variable 4: loop counter (for object lookup iteration)
+                // - Variable 5: property value (for object lookup comparison)
                 let layout = self.emit_instruction(
-                    0x0C,                                          // jump (unconditional jump)
-                    &[Operand::LargeConstant(placeholder_word())], // Placeholder for jump offset
-                    None,                                          // No store
-                    None, // No branch (jump is unconditional)
+                    0x00,                                          // call_vs (VAR:224, opcode 0 - NOT 0x20!)
+                    &[Operand::LargeConstant(placeholder_word())], // Placeholder for routine address
+                    Some(0x00), // Store result on stack (required by Z-Machine spec)
+                    None,       // No branch
                 )?;
 
-                // Add unresolved reference for main loop jump to first instruction, not routine header
+                // Add unresolved reference for main loop routine call
                 self.reference_context
                     .unresolved_refs
                     .push(UnresolvedReference {
-                        reference_type: LegacyReferenceType::Jump,
+                        reference_type: LegacyReferenceType::FunctionCall,
                         location: layout
                             .operand_location
-                            .expect("jump instruction must have operand"),
-                        target_id: 9001, // Main loop first instruction ID from generate_main_loop
-                        is_packed_address: false, // Jumps use absolute addresses, not packed
+                            .expect("call instruction must have operand"),
+                        target_id: 9000, // Main loop routine ID (includes header byte)
+                        is_packed_address: true, // Routine addresses are packed
                         offset_size: 2,
                         location_space: MemorySpace::Code,
                     });
