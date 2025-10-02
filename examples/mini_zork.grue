@@ -189,10 +189,6 @@ grammar {
     verb "read" {
         noun => handle_read($noun)
     }
-
-    verb "quit" {
-        default => handle_quit()
-    }
 }
 
 fn look_around() {
@@ -406,11 +402,6 @@ fn take_all() {
     }
 }
 
-fn handle_quit() {
-    print("Thanks for playing!");
-    // Exit by returning from main game loop
-}
-
 init {
     // Set up initial game state
     player.location = west_of_house;
@@ -425,5 +416,5 @@ init {
     print("");
     
     // Show initial location
-    // look_around(); // Temporarily commented out to bypass property access issues and test sread/quit
+    look_around();
 }

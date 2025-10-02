@@ -69,15 +69,15 @@ fn encode_word_v3(word: &str) -> (u16, u16) {
         let ch = ch.to_ascii_lowercase();
         let code = match ch {
             'a'..='z' => ch as u8 - b'a' + 6,
-            ' ' => 0, // Space is Z-character 0 per Z-Machine specification
-            _ => 0,   // Default to space for unknown chars
+            ' ' => 5,
+            _ => 5, // Default to space for unknown chars
         };
         chars.push(code);
     }
 
-    // Pad with 0s (spaces) if needed
+    // Pad with 5s (spaces) if needed
     while chars.len() < 6 {
-        chars.push(0);
+        chars.push(5);
     }
 
     // Pack into two 16-bit words
@@ -90,7 +90,7 @@ fn encode_word_v3(word: &str) -> (u16, u16) {
     (word1, word2)
 }
 
-/// Encode a word for dictionary lookup (V4+) - 9 Z-characters in 6 bytes
+/// Encode a word for dictionary lookup (V4+) - 9 Z-characters in 6 bytes  
 fn encode_word_v4_plus(word: &str) -> (u16, u16, u16) {
     let mut chars = Vec::new();
 
@@ -99,15 +99,15 @@ fn encode_word_v4_plus(word: &str) -> (u16, u16, u16) {
         let ch = ch.to_ascii_lowercase();
         let code = match ch {
             'a'..='z' => ch as u8 - b'a' + 6,
-            ' ' => 0, // Space is Z-character 0 per Z-Machine specification
-            _ => 0,   // Default to space for unknown chars
+            ' ' => 5,
+            _ => 5, // Default to space for unknown chars
         };
         chars.push(code);
     }
 
-    // Pad with 0s (spaces) if needed to reach 9 characters
+    // Pad with 5s (spaces) if needed to reach 9 characters
     while chars.len() < 9 {
-        chars.push(0);
+        chars.push(5);
     }
 
     // Pack all 9 characters into three 16-bit words
@@ -147,9 +147,7 @@ impl VM {
         );
 
         // Encode the search word (v3: 6 Z-characters in 2 words)
-        let (search_word1, mut search_word2) = encode_word_v3(word);
-        // Remove end-of-string bit for comparison (dictionary entries don't include this bit)
-        search_word2 &= 0x7FFF;
+        let (search_word1, search_word2) = encode_word_v3(word);
         debug!(
             "V3 encoded '{}' as: {:04x} {:04x}",
             word, search_word1, search_word2
@@ -224,9 +222,7 @@ impl VM {
         );
 
         // Encode the search word (v4+: 9 Z-characters in 3 words)
-        let (search_word1, search_word2, mut search_word3) = encode_word_v4_plus(word);
-        // Remove end-of-string bit for comparison (dictionary entries don't include this bit)
-        search_word3 &= 0x7FFF;
+        let (search_word1, search_word2, search_word3) = encode_word_v4_plus(word);
         debug!(
             "V4+ encoded '{}' as: {:04x} {:04x} {:04x}",
             word, search_word1, search_word2, search_word3
