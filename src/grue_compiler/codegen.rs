@@ -310,6 +310,10 @@ pub struct ZMachineCodeGen {
     pub final_code_base: usize,
     pub final_string_base: usize,
     pub final_object_base: usize,
+
+    /// Dictionary words in alphabetically sorted order (for word position lookup)
+    /// Populated during generate_dictionary_space(), used by lookup_word_in_dictionary()
+    pub dictionary_words: Vec<String>,
 }
 
 impl ZMachineCodeGen {
@@ -383,6 +387,7 @@ impl ZMachineCodeGen {
             final_code_base: 0,
             final_string_base: 0,
             final_object_base: 0,
+            dictionary_words: Vec::new(),
         }
     }
 
@@ -5692,27 +5697,19 @@ impl ZMachineCodeGen {
         // Entry size is 6 bytes for v3
         let entry_size = 6u16;
 
-        // We need to figure out the alphabetical position of this word
-        // Since we use BTreeSet in generate_dictionary_space, words are sorted
-        // We need to count how many words come before this one alphabetically
-
+        // Find the word's position in the sorted dictionary_words list
         let word_lower = word.to_lowercase();
 
-        // Count position: "quit" comes before "test" alphabetically
-        // For now, do a simple calculation based on the word
-        // Position 0 = "quit", Position 1 = "test"
-        let position = if word_lower == "quit" {
-            0u16
-        } else if word_lower == "test" {
-            1u16
-        } else {
-            // For other words, we'd need to maintain the dictionary order
-            // For now, return error for unknown words
-            return Err(CompilerError::CodeGenError(format!(
-                "Word '{}' not found in dictionary (only 'quit' and 'test' supported for now)",
-                word
-            )));
-        };
+        let position = self
+            .dictionary_words
+            .iter()
+            .position(|w| w == &word_lower)
+            .ok_or_else(|| {
+                CompilerError::CodeGenError(format!(
+                    "Word '{}' not found in dictionary. Available words: {:?}",
+                    word, self.dictionary_words
+                ))
+            })? as u16;
 
         // Calculate address: base + header + (position * entry_size)
         let dict_addr = dict_base + header_size + (position * entry_size);

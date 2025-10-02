@@ -365,6 +365,9 @@ impl ZMachineCodeGen {
         let word_count = words.len();
         debug!("📚 Total dictionary entries: {}", word_count);
 
+        // Save sorted words for later lookup_word_in_dictionary() calls
+        self.dictionary_words = words.iter().cloned().collect();
+
         // Build dictionary data
         let mut dictionary_data = vec![
             0x00,                             // Word separators count (0)
