@@ -2588,7 +2588,7 @@ impl ZMachineCodeGen {
             // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
             let operand_location = self.final_code_base + self.code_space.len() + 2; // +2 for opcode and operand types bytes
             let _layout = self.emit_instruction(
-                0xE0, // call_vs opcode (VAR:224 = opcode 0, so 0xE0)
+                0x00, // call_vs raw opcode (emit_instruction expects 0x00-0x1F, not encoded 0xE0)
                 &operands, store_var, None,
             )?;
 
@@ -2674,7 +2674,7 @@ impl ZMachineCodeGen {
                     // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
                     let operand_location = self.final_code_base + self.code_space.len() + 2; // +2 for opcode and operand types bytes
                     let _layout = self.emit_instruction(
-                        0xE0, // call_vs opcode (VAR:224)
+                        0x00, // call_vs raw opcode (emit_instruction expects 0x00-0x1F, not encoded 0xE0)
                         &operands, store_var, None,
                     )?;
 
@@ -4167,7 +4167,7 @@ impl ZMachineCodeGen {
 
         // Generate call to main loop routine
         let layout = self.emit_instruction(
-            0x20,                                          // call_vs opcode (VAR form of call)
+            0x00, // call_vs raw opcode (emit_instruction expects 0x00-0x1F)
             &[Operand::LargeConstant(placeholder_word())], // Placeholder for main loop routine address
             Some(0x00), // Store result on stack (Z-Machine spec compliance)
             None,       // No branch
@@ -4994,7 +4994,7 @@ impl ZMachineCodeGen {
 
             // Call the user's main function
             let layout = self.emit_instruction(
-                0xE0,                                          // call_1s (call with 1 operand, store result)
+                0x00, // call_vs raw opcode (emit_instruction expects 0x00-0x1F, not encoded 0xE0)
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder for main function address
                 Some(0x00), // Store result in local variable 0 (discarded)
                 None,       // No branch
@@ -6284,15 +6284,18 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Generate function call with proper operands
+    /// UNUSED: Old function call generation - replaced by generate_call_with_reference
+    /// Left here for reference but should not be called
+    #[allow(dead_code)]
     fn generate_call(
         &mut self,
         function_addr: Operand,
         args: &[Operand],
         store_var: Option<u8>,
     ) -> Result<(), CompilerError> {
-        // For Version 3, use VAR:224 (call) for all function calls - the only call instruction available
-        let opcode = 0xE0; // call (VAR:224) - the only call instruction in Version 3
+        // NOTE: This function used 0xE0 (encoded byte) instead of 0x00 (raw opcode)
+        // This was architecturally incorrect - emit_instruction expects raw opcodes 0x00-0x1F
+        let opcode = 0x00; // call_vs raw opcode (FIXED from incorrect 0xE0)
 
         let mut operands = vec![function_addr];
         operands.extend_from_slice(args);
@@ -6373,11 +6376,9 @@ impl ZMachineCodeGen {
             }
         }
 
-        // Choose appropriate call instruction based on argument count
-        let opcode = match args.len() {
-            0 => 0x20, // call_1n (1OP:32) - call with no args, no store
-            _ => 0xE0, // call_vs (VAR:224) - call with args, store result
-        };
+        // Use call_vs (raw opcode 0x00) for all cases - it handles 0+ arguments
+        // emit_instruction expects raw opcodes 0x00-0x1F, not encoded bytes like 0xE0 or 0x20
+        let opcode = 0x00; // call_vs raw opcode - works with any number of arguments
 
         // Determine store variable for return value
         let store_var = target.map(|_| 0x00); // Placeholder store variable
