@@ -105,12 +105,12 @@ impl Interpreter {
             (0x0A, crate::instruction::OperandCount::OP1) => {
                 // print_obj - print short name of object
                 let obj_num = operands[0];
-                log::error!(
+                log::debug!(
                     "PRINT_OBJ DEBUG: obj_num={} at PC {:05x}",
                     obj_num,
                     self.vm.pc - inst.size as u32
                 );
-                log::error!(
+                log::debug!(
                     "Stack depth: {}, Call stack depth: {}",
                     self.vm.stack.len(),
                     self.vm.call_stack.len()

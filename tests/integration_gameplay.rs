@@ -55,11 +55,12 @@ yes
 ";
 
     // Run game with script as input using shell piping
+    // Set DISPLAY_MODE=terminal to force simple terminal mode for testable output
     // Stderr is redirected to /dev/null to suppress debug output
     let output = Command::new("sh")
         .arg("-c")
         .arg(format!(
-            "echo '{}' | ./target/debug/gruesome resources/test/zork1/DATA/ZORK1.DAT 2>/dev/null",
+            "echo '{}' | DISPLAY_MODE=terminal ./target/debug/gruesome resources/test/zork1/DATA/ZORK1.DAT 2>/dev/null",
             script
         ))
         .output()
@@ -138,11 +139,12 @@ yes
 ";
 
     // Run game with script as input using echo to pipe commands
+    // Set DISPLAY_MODE=terminal to force simple terminal mode for testable output
     // We capture stdout but suppress stderr to avoid debug noise
     let output = Command::new("sh")
         .arg("-c")
         .arg(format!(
-            "echo '{}' | ./target/debug/gruesome resources/test/zork1/DATA/ZORK1.DAT",
+            "echo '{}' | DISPLAY_MODE=terminal ./target/debug/gruesome resources/test/zork1/DATA/ZORK1.DAT",
             script
         ))
         .stdout(Stdio::piped())
