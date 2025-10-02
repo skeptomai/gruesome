@@ -1,6 +1,51 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 2, 2025) - MAIN LOOP RESTORED ✅
+## CURRENT STATUS (October 2, 2025) - DICTIONARY ENCODING FIXED ✅
+
+**CRITICAL FIX**: Dictionary encoding restored to Infocom convention (space=5) for commercial game compatibility!
+
+### ✅ DICTIONARY ENCODING FIX (Session Oct 2, 2025):
+
+**NEVER CHANGE SPACE ENCODING FROM 5 TO 0** - This breaks all commercial Infocom games!
+
+**Root Cause Identified**:
+- Commit 90495e8 changed dictionary space encoding from Z-character 5 to Z-character 0
+- Change was made to match Z-Machine specification for compiled mini_zork.grue
+- **BROKE ALL COMMERCIAL GAMES**: Zork I, AMFV, etc. stopped recognizing ANY words
+
+**Technical Details**:
+- **Commercial Game Dictionaries**: Built with space=5 encoding (Infocom convention)
+- **After Bad Change**: Interpreter searched with space=0, dictionaries used space=5
+- **Symptom**: "I don't know the word 'look'" - NO words matched
+- **All Integration Tests Failed**: 2 of 4 gameplay tests failing
+
+**The Fix** (commit ae4468b):
+```rust
+// CORRECT encoding (Infocom convention):
+' ' => 5,        // Space is Z-character 5
+_ => 5,          // Default to space
+while chars.len() < 6 { chars.push(5); }  // Pad with 5s
+
+// WRONG encoding (breaks commercial games):
+' ' => 0,        // Space is Z-character 0 per spec
+_ => 0,          // Default to space
+while chars.len() < 6 { chars.push(0); }  // Pad with 0s
+```
+
+**Critical File**: `src/dictionary.rs` - Lines 72-73, 80, 102-103, 110
+
+**Verification**:
+- ✅ Zork I: "look", "open mailbox", "quit" all work correctly
+- ✅ All 4 integration gameplay tests passing
+- ✅ AMFV gameplay tests passing
+- ✅ Dictionary lookup fully functional
+
+**Trade-off Accepted**:
+- Commercial game compatibility prioritized over Z-Machine spec compliance
+- Compiled mini_zork.grue may need adjustments (compiler must match interpreter)
+- Future: Consider version-aware encoding (space=5 for v3, investigate v4+ spec)
+
+## PREVIOUS STATUS (October 2, 2025) - MAIN LOOP RESTORED ✅
 
 **MAJOR SUCCESS**: Main loop now properly loops! Fixed missing loop-back jump that was disabled during debugging.
 

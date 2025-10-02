@@ -586,6 +586,52 @@ graph LR
 - Abbreviation table support for compression
 - Unicode escape sequences for extended characters
 
+### Dictionary Encoding - CRITICAL COMPATIBILITY NOTE
+
+**⚠️ NEVER CHANGE SPACE ENCODING FROM 5 TO 0** - This breaks all commercial Infocom games!
+
+The interpreter uses **Infocom convention** (space = Z-character 5) rather than strict Z-Machine specification (space = Z-character 0) for dictionary encoding. This is required for compatibility with commercial games.
+
+#### Encoding Implementation (`src/dictionary.rs`)
+
+```rust
+// CORRECT encoding (Infocom convention):
+fn encode_word_v3(word: &str) -> (u16, u16) {
+    let code = match ch {
+        'a'..='z' => ch as u8 - b'a' + 6,
+        ' ' => 5,        // Space is Z-character 5 (Infocom convention)
+        _ => 5,          // Default to space
+    };
+    // Pad with 5s (spaces)
+    while chars.len() < 6 { chars.push(5); }
+}
+
+// WRONG encoding (breaks commercial games):
+' ' => 0,        // Z-Machine spec says 0, but commercial games use 5
+```
+
+#### Why This Matters
+
+**Commercial Game Compatibility**:
+- All Infocom games (Zork I, AMFV, etc.) were compiled with space=5 encoding
+- Dictionary lookups compare encoded search words against game dictionaries
+- Mismatch causes ALL words to fail: "I don't know the word 'look'"
+
+**Historical Context**:
+- Commit 90495e8 (Sep 28, 2025) changed space encoding from 5 to 0 for spec compliance
+- Change enabled 'quit' in compiled mini_zork.grue but broke ALL commercial games
+- Reverted in commit ae4468b to restore commercial game compatibility
+
+#### Trade-offs
+
+**Decision**: Prioritize commercial game compatibility over Z-Machine spec compliance
+
+**Implications**:
+- ✅ All commercial Infocom games work correctly
+- ✅ Integration tests pass (Zork I, AMFV gameplay)
+- ⚠️ Compiled games from grue-compiler must use matching encoding
+- 🔮 Future: Consider version-aware encoding (space=5 for v3, investigate v4+ spec)
+
 ### Input Echo Compliance
 - **Section 7.1.1.1**: Input echoed to output streams as typed
 - **Section 7.2**: Buffer mode controls word-wrapping, not display timing
