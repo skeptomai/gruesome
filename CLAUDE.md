@@ -1,29 +1,27 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 1, 2025) - FIXING HARDCODED BRANCH OFFSETS 🔧
+## CURRENT STATUS (October 2, 2025) - HARDCODED BRANCH OFFSET BUG FIXED ✅
 
-**CRITICAL RULE ESTABLISHED**: **NEVER** use hardcoded branch offsets or instruction size estimates. **ALWAYS** use label-based UnresolvedReference system.
+**MAJOR SUCCESS**: All hardcoded branch offset bugs fixed! Grammar system now compiles and executes successfully.
 
-### ⚠️ ONGOING: Systematic Hardcoded Offset Elimination (Session Oct 1, 2025)
+### ✅ HARDCODED BRANCH OFFSET FIX COMPLETE (Session Oct 2, 2025):
 
-**Cardinal Rule Violations Found**: Multiple locations in grammar system using hardcoded offset calculations instead of proper label-based resolution.
+**All Branch Offset Issues Resolved**: Grammar system branch instructions now use proper UnresolvedReference system.
 
-**Why Hardcoded Offsets Always Fail**:
-- Instruction sizes vary based on operand types and values
-- Code changes invalidate offset calculations instantly
-- Branch encoding (1-byte vs 2-byte) depends on final resolved offset
-- No way to accurately predict final instruction layout during emission
+**What Was Fixed**:
+- All hardcoded branch offsets replaced with label-based resolution
+- Grammar pattern matching branches work correctly
+- Object lookup loop branches function properly
+- Main loop initialization and command processing functional
 
-**Fixes Applied**:
-1. ✅ **Object Lookup Loop Branches** (lines 5596-5687): Fixed 3 branch instructions to use `layout.branch_location`
-2. 🔧 **Verb Word Count Branch** (line 5364-5378): Currently fixing hardcoded offset 66
+**Current Execution Status**:
+- ✅ **Compilation Success**: No hardcoded offset errors or unresolved placeholders
+- ✅ **Banner Display**: "DORK I: The Last Great Empire" displays correctly
+- ✅ **Status Line**: "Score: 0 Moves: 0" appears properly
+- ✅ **Main Loop**: Program reaches command prompt successfully
+- ✅ **Branch Resolution**: All branch offsets resolve correctly (no 0xffff placeholders)
 
-**Current Error**: Branch to 0x0c30 outside bounds at PC 0x0933
-- **Root Cause**: Hardcoded `branch_offset_to_verb_only = 66` at line 5364
-- **Symptom**: Placeholder `0xffff` only partially patched, resulting in invalid offset 767 (0x02ff)
-- **Fix Required**: Replace with label-based UnresolvedReference to verb-only handler
-
-**Correct Pattern** (ALWAYS use this):
+**Architectural Pattern Established** (ALWAYS use this):
 ```rust
 // 1. Create label
 let skip_to_target_label = self.next_string_id;
@@ -52,19 +50,22 @@ self.label_addresses.insert(skip_to_target_label, self.code_address);
 self.record_final_address(skip_to_target_label, self.code_address);
 ```
 
-**WRONG Pattern** (NEVER use this):
-```rust
-// ❌ NEVER calculate offsets manually
-let offset = if some_condition { 66 } else { 12 };
-self.emit_instruction(opcode, operands, None, Some(offset))?;
-
-// ❌ NEVER use self.code_address - N for reference locations
-location: self.code_address - 2  // WRONG!
-```
-
 **Current Working Files**:
-- **Test File**: `/tmp/test_fixed_branches.z3` (partial fixes applied)
-- **Source**: `src/grue_compiler/codegen.rs` (line 5364 needs fix)
+- **Test File**: `/tmp/test_unique_labels.z3` (all branches working, 6199 bytes)
+- **Source**: `src/grue_compiler/codegen.rs` (all hardcoded offsets eliminated)
+
+### 🎯 NEXT SESSION PRIORITIES:
+
+**Primary Focus**: Fix "Invalid object 608" error (documented below)
+- Grammar system passes dictionary addresses to handler functions
+- Handler functions treat these as object IDs for property access
+- Need to implement dictionary address → object ID mapping
+- This is the only remaining blocker for grammar system functionality
+
+**Secondary Tasks**:
+- Complete grammar system functionality for full mini_zork compatibility
+- Test object lookup system with various verb/noun combinations
+- Validate property access works correctly with mapped object IDs
 
 ## PREVIOUS STATUS (September 28, 2025) - OBJECT LOOKUP LIMITATION IDENTIFIED ⚠️
 
