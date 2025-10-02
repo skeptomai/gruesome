@@ -106,12 +106,12 @@ impl Interpreter {
                 // print_obj - print short name of object
                 let obj_num = operands[0];
                 log::error!(
-                    "🎯 PRINT_OBJ DEBUG: obj_num={} at PC {:05x}",
+                    "PRINT_OBJ DEBUG: obj_num={} at PC {:05x}",
                     obj_num,
                     self.vm.pc - inst.size as u32
                 );
                 log::error!(
-                    "🎯 Stack depth: {}, Call stack depth: {}",
+                    "Stack depth: {}, Call stack depth: {}",
                     self.vm.stack.len(),
                     self.vm.call_stack.len()
                 );
@@ -134,7 +134,7 @@ impl Interpreter {
                 // Get object's short description
                 match self.vm.get_object_name(obj_num) {
                     Ok(name) => {
-                        log::error!("🎯 Successfully got object name: '{}'", name);
+                        log::debug!(" Successfully got object name: '{}'", name);
                         self.output_text(&name)?;
                     }
                     Err(e) => {

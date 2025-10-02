@@ -390,13 +390,11 @@ impl VM {
             65535
         };
         if obj_num > max_objects {
-            eprintln!(
-                ">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
-                self.pc
-            );
-            log::debug!(
-                "OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
-                self.pc
+            log::error!(
+                "Object validation error at PC 0x{:04x}: invalid object {} exceeds maximum {}",
+                self.pc,
+                obj_num,
+                max_objects
             );
             return Err(format!("Invalid object number: {obj_num}"));
         }
@@ -470,13 +468,11 @@ impl VM {
             65535
         };
         if obj_num > max_objects {
-            eprintln!(
-                ">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
-                self.pc
-            );
-            log::debug!(
-                "OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
-                self.pc
+            log::error!(
+                "Object validation error at PC 0x{:04x}: invalid object {} exceeds maximum {}",
+                self.pc,
+                obj_num,
+                max_objects
             );
             return Err(format!("Invalid object number: {obj_num}"));
         }
@@ -534,7 +530,12 @@ impl VM {
             65535
         };
         if obj_num == 0 || obj_num > max_objects {
-            eprintln!(">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} (zero or > max {max_objects})", self.pc);
+            log::error!(
+                "Object validation error at PC 0x{:04x}: invalid object {} (zero or exceeds maximum {})",
+                self.pc,
+                obj_num,
+                max_objects
+            );
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
@@ -617,13 +618,11 @@ impl VM {
             65535
         };
         if obj_num > max_objects {
-            eprintln!(
-                ">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
-                self.pc
-            );
-            log::debug!(
-                "OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
-                self.pc
+            log::error!(
+                "Object validation error at PC 0x{:04x}: invalid object {} exceeds maximum {}",
+                self.pc,
+                obj_num,
+                max_objects
             );
             return Err(format!("Invalid object number: {obj_num}"));
         }
@@ -793,7 +792,12 @@ impl VM {
             65535
         };
         if obj_num == 0 || obj_num > max_objects {
-            eprintln!(">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} (zero or > max {max_objects})", self.pc);
+            log::error!(
+                "Object validation error at PC 0x{:04x}: invalid object {} (zero or exceeds maximum {})",
+                self.pc,
+                obj_num,
+                max_objects
+            );
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
@@ -966,10 +970,10 @@ impl VM {
 
     /// Get the short name of an object (version-aware)
     pub fn get_object_name(&self, obj_num: u16) -> Result<String, String> {
-        log::error!("📖 GET_OBJECT_NAME: Accessing object {}", obj_num);
+        log::debug!(" GET_OBJECT_NAME: Accessing object {}", obj_num);
 
         if obj_num == 0 {
-            log::error!("📖 Object 0 requested - returning empty string");
+            log::debug!(" Object 0 requested - returning empty string");
             return Ok(String::new()); // Object 0 has no name
         }
 
@@ -979,13 +983,11 @@ impl VM {
             65535
         };
         if obj_num > max_objects {
-            eprintln!(
-                ">>> OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
-                self.pc
-            );
-            log::debug!(
-                "OBJECT ERROR PC=0x{:04x}: invalid object {obj_num} > max {max_objects}",
-                self.pc
+            log::error!(
+                "Object validation error at PC 0x{:04x}: invalid object {} exceeds maximum {}",
+                self.pc,
+                obj_num,
+                max_objects
             );
             return Err(format!("Invalid object number: {obj_num}"));
         }
@@ -1000,20 +1002,20 @@ impl VM {
         };
         let obj_tree_base = property_defaults + default_props * 2;
 
-        log::error!("📖 Object table layout:");
-        log::error!("📖 object_table_addr: 0x{:04x}", obj_table_addr);
-        log::error!("📖 property_defaults: 0x{:04x}", property_defaults);
-        log::error!("📖 default_props: {}", default_props);
-        log::error!("📖 obj_tree_base: 0x{:04x}", obj_tree_base);
+        log::debug!(" Object table layout:");
+        log::debug!(" object_table_addr: 0x{:04x}", obj_table_addr);
+        log::debug!(" property_defaults: 0x{:04x}", property_defaults);
+        log::debug!(" default_props: {}", default_props);
+        log::debug!(" obj_tree_base: 0x{:04x}", obj_tree_base);
 
         // Calculate object entry address (version-dependent size)
         let obj_size = if self.game.header.version <= 3 { 9 } else { 14 };
         let obj_addr = obj_tree_base + ((obj_num - 1) as usize * obj_size);
 
-        log::error!("📖 Object {} address calculation:", obj_num);
-        log::error!("📖 obj_size: {}", obj_size);
-        log::error!(
-            "📖 obj_addr: 0x{:04x} = 0x{:04x} + (({} - 1) * {})",
+        log::debug!(" Object {} address calculation:", obj_num);
+        log::debug!(" obj_size: {}", obj_size);
+        log::debug!(
+            " obj_addr: 0x{:04x} = 0x{:04x} + (({} - 1) * {})",
             obj_addr,
             obj_tree_base,
             obj_num,
@@ -1024,11 +1026,11 @@ impl VM {
         let prop_table_offset = if self.game.header.version <= 3 { 7 } else { 12 };
         let prop_table_addr = self.read_word((obj_addr + prop_table_offset) as u32) as usize;
 
-        log::error!("📖 Property table lookup:");
-        log::error!("📖 prop_table_offset: {}", prop_table_offset);
-        log::error!("📖 reading from: 0x{:04x}", obj_addr + prop_table_offset);
-        log::error!("📖 prop_table_addr: 0x{:04x}", prop_table_addr);
-        log::error!("📖 file size: {} bytes", self.game.memory.len());
+        log::debug!(" Property table lookup:");
+        log::debug!(" prop_table_offset: {}", prop_table_offset);
+        log::debug!(" reading from: 0x{:04x}", obj_addr + prop_table_offset);
+        log::debug!(" prop_table_addr: 0x{:04x}", prop_table_addr);
+        log::debug!(" file size: {} bytes", self.game.memory.len());
 
         // Bounds check BEFORE accessing memory
         if prop_table_addr >= self.game.memory.len() {
@@ -1046,7 +1048,7 @@ impl VM {
 
         // The first byte is the text-length of the short name
         let text_len = self.game.memory[prop_table_addr] as usize;
-        log::error!("📖 Object {} text_len: {}", obj_num, text_len);
+        log::debug!(" Object {} text_len: {}", obj_num, text_len);
 
         if text_len > 0 {
             // Decode the object name (stored as Z-string)
