@@ -5165,24 +5165,33 @@ impl ZMachineCodeGen {
         // 4. Process parsed input - check for quit command
         self.generate_command_processing(_ir, parse_buffer_addr)?;
 
-        // 5. For testing: Instead of jumping back to loop start, just end execution
-        // TODO: Fix UnresolvedReference handling for proper loop-back
-        debug!("Simplified main loop: ending execution instead of loop-back to avoid UnresolvedReference issues");
+        // 5. Jump back to start of main loop for next command
+        debug!("Generating loop-back jump to continue main loop");
 
-        // Remove the problematic jump instruction that causes infinite loops
-        // Main loop now: prompt -> sread -> command processing -> quit (no loop back)
-
-        // Add explicit return instruction to prevent fall-through garbage return values
-        self.emit_instruction(
-            0x0B,                         // ret: return from routine
-            &[Operand::SmallConstant(0)], // Return value 0
-            None,                         // No store
-            None,                         // No branch
+        let layout = self.emit_instruction(
+            0x0C,                                          // jump opcode (1OP:12)
+            &[Operand::LargeConstant(placeholder_word())], // Placeholder for loop start address
+            None,                                          // No store
+            None,                                          // No branch
         )?;
 
+        // Register UnresolvedReference to jump back to main loop start
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::Jump,
+                location: layout
+                    .operand_location
+                    .expect("jump instruction must have operand location"),
+                target_id: main_loop_jump_id, // Jump to first instruction after routine header
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
+
         debug!(
-            "Simplified main loop generation complete at 0x{:04x} (no loop-back)",
-            self.code_address
+            "Main loop generation complete at 0x{:04x} (with loop-back to 0x{:04x})",
+            self.code_address, main_loop_first_instruction
         );
         Ok(())
     }
@@ -5198,19 +5207,12 @@ impl ZMachineCodeGen {
 
         // Check if there are any grammar rules to process
         if ir.grammar.is_empty() {
-            debug!("No grammar rules found, generating simplified quit command");
-            // Fallback to quit if no grammar is defined
-            self.emit_instruction(
-                0x0A, // quit: terminate the Z-Machine program
-                &[],  // No operands
-                None, // No store
-                None, // No branch
-            )?;
-            return Ok(());
+            debug!("No grammar rules found - no grammar to process");
+            // No grammar defined - just continue to unknown command message
+        } else {
+            // Generate grammar pattern matching engine
+            self.generate_grammar_pattern_matching(&ir.grammar)?;
         }
-
-        // Generate grammar pattern matching engine
-        self.generate_grammar_pattern_matching(&ir.grammar)?;
 
         // Default handler: print unknown command and continue
         let unknown_command_string_id = self
