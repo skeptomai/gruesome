@@ -1184,9 +1184,27 @@ impl ZMachineCodeGen {
     /// This precise layout tracking enables accurate reference patching for addresses,
     /// labels, and cross-references without hardcoded offset assumptions.
     ///
+    /// # CRITICAL OPCODE CONVENTION
+    ///
+    /// The `opcode` parameter MUST be the RAW opcode number (0x00-0x1F), NOT the encoded
+    /// instruction byte. This function determines the proper instruction form (Long, Short,
+    /// Variable, Extended) and encodes it correctly.
+    ///
+    /// ## Examples of CORRECT usage:
+    /// - call_vs (VAR:224) → pass `0x00`, NOT `0xE0` or `0x20`
+    /// - put_prop (VAR:227) → pass `0x03`, NOT `0xE3`
+    /// - jl (2OP:2) → pass `0x02`
+    /// - print_paddr (1OP:141) → pass `0x0D`, NOT `0x8D`
+    ///
+    /// ## Why this matters:
+    /// The function uses `is_true_var_opcode(opcode)` to determine if bit 5 should be set
+    /// in the instruction byte. If you pass an encoded byte (e.g., 0x20 instead of 0x00),
+    /// the function won't recognize it as a VAR opcode and will encode it incorrectly,
+    /// causing runtime failures.
+    ///
     /// # Arguments
     ///
-    /// * `opcode` - The Z-Machine opcode (may need form bits applied)
+    /// * `opcode` - Raw Z-Machine opcode number (0x00-0x1F)
     /// * `operands` - Slice of operands for the instruction
     /// * `store_var` - Optional variable number to store result (None for non-storing instructions)
     /// * `branch_offset` - Optional branch offset for conditional instructions (None for non-branching)
@@ -1210,6 +1228,18 @@ impl ZMachineCodeGen {
         branch_offset: Option<i16>,
     ) -> Result<InstructionLayout, CompilerError> {
         let start_address = self.code_address;
+
+        // CRITICAL VALIDATION: Validate that opcode is in expected range
+        // Valid raw opcodes are 0x00-0x1F
+        // Encoded instruction bytes start at 0x80 for SHORT form, 0xC0 for VAR form
+        if opcode > 0x1F && opcode < 0x80 {
+            return Err(CompilerError::CodeGenError(format!(
+                "Invalid opcode 0x{:02x} at address 0x{:04x} - opcodes should be raw numbers 0x00-0x1F, not encoded instruction bytes. \
+                Did you mean to use one of the opcode constants? Common mistakes: \
+                call_vs is 0x00 (not 0x20 or 0xE0), put_prop is 0x03 (not 0xE3), print_paddr is 0x0D (not 0x8D)",
+                opcode, start_address
+            )));
+        }
 
         // Comprehensive PC/address tracking for all instructions
         debug!(
@@ -2320,7 +2350,9 @@ impl ZMachineCodeGen {
         let store_var = target.map(|_| 0); // Store to stack if target specified
 
         // Emit the call instruction (VAR form call_vs)
-        let layout = self.emit_instruction(0xE0, &operands, store_var, None)?;
+        // CRITICAL: Use raw opcode 0x00, NOT encoded byte 0xE0
+        // emit_instruction will determine the VAR form encoding
+        let layout = self.emit_instruction(0x00, &operands, store_var, None)?;
 
         // CRITICAL: Register function reference for patching
         if let Some(operand_loc) = layout.operand_location {

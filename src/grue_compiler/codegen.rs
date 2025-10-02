@@ -5645,7 +5645,7 @@ impl ZMachineCodeGen {
                 );
 
                 let layout = self.emit_instruction(
-                    0x21, // call_2s: call routine with 2 arguments
+                    0x19, // call_2s: call routine with 2 arguments (2OP:25 / 0x19)
                     &[
                         Operand::LargeConstant(placeholder_word()), // Function address placeholder
                         Operand::SmallConstant(0),                  // Object ID 0 (no object)

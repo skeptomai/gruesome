@@ -518,10 +518,11 @@ impl ZMachineCodeGen {
 
         // TODO: Implement full visibility logic - complex algorithm
         // For now, return true (visible) as a placeholder
+        // Use 2OP "or" with value and 0 to push value onto stack
         self.emit_instruction(
-            0x21,                         // store (1OP:33)
-            &[Operand::LargeConstant(1)], // Return true
-            Some(0),                      // Store on stack
+            0x08, // or (2OP:8) - returns first operand when OR'd with 0
+            &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
+            Some(0), // Store result on stack
             None,
         )?;
 
@@ -732,8 +733,8 @@ impl ZMachineCodeGen {
                     // Store a placeholder value (non-zero = success, represents empty array)
                     // Use store instruction: 1OP:33 (0x21)
                     self.emit_instruction(
-                        0x21,                         // store (1OP:33)
-                        &[Operand::LargeConstant(1)], // Non-zero placeholder value
+                        0x08, // or (2OP:8) - load constant by OR'ing with 0
+                        &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
                         Some(store_var as u8),
                         None, // No branch
                     )?;
@@ -757,8 +758,8 @@ impl ZMachineCodeGen {
                 if let Some(store_var) = target {
                     // Store a placeholder value for non-constant operands
                     self.emit_instruction(
-                        0x21,                         // store (1OP:33)
-                        &[Operand::LargeConstant(1)], // Non-zero placeholder value
+                        0x08, // or (2OP:8) - load constant by OR'ing with 0
+                        &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
                         Some(store_var as u8),
                         None, // No branch
                     )?;
@@ -785,8 +786,8 @@ impl ZMachineCodeGen {
         // For now, always return false (object is not empty) as a safe placeholder
         if let Some(store_var) = target {
             self.emit_instruction(
-                0x21,                         // store (1OP:33)
-                &[Operand::LargeConstant(0)], // False - object is not empty
+                0x08, // or (2OP:8) - load constant by OR'ing with 0
+                &[Operand::LargeConstant(0), Operand::SmallConstant(0)], // 0 | 0 = 0 (false)
                 Some(store_var as u8),
                 None,
             )?;
@@ -811,8 +812,8 @@ impl ZMachineCodeGen {
         // For now, always return false (value is not none) as a safe placeholder
         if let Some(store_var) = target {
             self.emit_instruction(
-                0x21,                         // store (1OP:33)
-                &[Operand::LargeConstant(0)], // False - object is not empty
+                0x08, // or (2OP:8) - load constant by OR'ing with 0
+                &[Operand::LargeConstant(0), Operand::SmallConstant(0)], // 0 | 0 = 0 (false)
                 Some(store_var as u8),
                 None,
             )?;
@@ -837,8 +838,8 @@ impl ZMachineCodeGen {
         // For now, always return size 1 as a safe placeholder
         if let Some(store_var) = target {
             self.emit_instruction(
-                0x21,                         // store (1OP:33)
-                &[Operand::LargeConstant(1)], // Size 1
+                0x08, // or (2OP:8) - load constant by OR'ing with 0
+                &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
                 Some(store_var as u8),
                 None,
             )?;
