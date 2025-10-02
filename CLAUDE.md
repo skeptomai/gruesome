@@ -1,25 +1,25 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 2, 2025) - HARDCODED BRANCH OFFSET BUG FIXED ✅
+## CURRENT STATUS (October 2, 2025) - MAIN LOOP RESTORED ✅
 
-**MAJOR SUCCESS**: All hardcoded branch offset bugs fixed! Grammar system now compiles and executes successfully.
+**MAJOR SUCCESS**: Main loop now properly loops! Fixed missing loop-back jump that was disabled during debugging.
 
-### ✅ HARDCODED BRANCH OFFSET FIX COMPLETE (Session Oct 2, 2025):
+### ✅ MAIN LOOP FIX COMPLETE (Session Oct 2, 2025):
 
-**All Branch Offset Issues Resolved**: Grammar system branch instructions now use proper UnresolvedReference system.
+**Loop-Back Jump Restored**: Main loop now correctly jumps back to start after command processing.
 
 **What Was Fixed**:
-- All hardcoded branch offsets replaced with label-based resolution
-- Grammar pattern matching branches work correctly
-- Object lookup loop branches function properly
-- Main loop initialization and command processing functional
+- Re-enabled loop-back jump at end of main loop (was disabled with TODO during debugging)
+- Added proper UnresolvedReference for jump target to loop start
+- Main loop now: prompt → sread → command processing → jump back (repeat)
 
 **Current Execution Status**:
 - ✅ **Compilation Success**: No hardcoded offset errors or unresolved placeholders
 - ✅ **Banner Display**: "DORK I: The Last Great Empire" displays correctly
 - ✅ **Status Line**: "Score: 0 Moves: 0" appears properly
-- ✅ **Main Loop**: Program reaches command prompt successfully
+- ✅ **Main Loop Working**: Program waits for input and loops correctly (tested without grammar)
 - ✅ **Branch Resolution**: All branch offsets resolve correctly (no 0xffff placeholders)
+- ⚠️ **Grammar System**: Temporarily simplified due to architectural control flow issues
 
 **Architectural Pattern Established** (ALWAYS use this):
 ```rust
@@ -56,16 +56,16 @@ self.record_final_address(skip_to_target_label, self.code_address);
 
 ### 🎯 NEXT SESSION PRIORITIES:
 
-**Primary Focus**: Fix "Invalid object 608" error (documented below)
-- Grammar system passes dictionary addresses to handler functions
-- Handler functions treat these as object IDs for property access
-- Need to implement dictionary address → object ID mapping
-- This is the only remaining blocker for grammar system functionality
+**Primary Focus**: Fix grammar system architectural issues
+- **Issue**: Grammar pattern matching contains branch with offset=1 causing premature return from main loop
+- **Root Cause**: After calling handler function, code falls through to next verb instead of jumping back to loop
+- **Required Fix**: Add jump back to main loop start after successful handler execution
+- **Current State**: Grammar processing temporarily simplified to allow basic loop testing
 
 **Secondary Tasks**:
-- Complete grammar system functionality for full mini_zork compatibility
-- Test object lookup system with various verb/noun combinations
-- Validate property access works correctly with mapped object IDs
+- Fix "Invalid object 608" error (dictionary address → object ID mapping)
+- Complete grammar system control flow architecture
+- Test full verb/noun pattern matching with proper looping
 
 ## PREVIOUS STATUS (September 28, 2025) - OBJECT LOOKUP LIMITATION IDENTIFIED ⚠️
 
