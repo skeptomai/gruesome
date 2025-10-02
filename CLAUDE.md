@@ -1,6 +1,53 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 2, 2025) - DICTIONARY ENCODING FIXED ✅
+## CURRENT STATUS (October 2, 2025) - OPCODE CLEANUP COMPLETE ✅
+
+**SYSTEMATIC FIX**: All call instruction opcodes standardized to use raw opcode 0x00 instead of mixed encoded bytes (0xE0, 0x20).
+
+### ✅ CALL OPCODE STANDARDIZATION (Session Oct 2, 2025):
+
+**Architecture Clarified**: `emit_instruction()` expects raw opcodes (0x00-0x1F) OR fully encoded bytes (0x80+), NOT the range 0x20-0x7F.
+
+**Changes Made**:
+- Line 2591: `0xE0` → `0x00` for call_vs
+- Line 2677: `0xE0` → `0x00` for call_vs
+- Line 4170: `0x20` → `0x00` for call_vs (main loop call)
+- Line 4997: `0xE0` → `0x00` for call_vs (user main call)
+- Lines 6378-6379: Removed `args.len()` match, now always uses `0x00`
+- Line 6295: Marked unused `generate_call()` with `#[allow(dead_code)]`
+
+**Rationale**: call_vs (VAR:224) has raw opcode 0x00. The `emit_instruction` function handles VAR form encoding internally (0xE0 = 0xC0 | 0x20 | 0x00). Using encoded bytes was architecturally incorrect.
+
+**Verification**:
+- ✅ All 170 tests passing (108 compiler, 53 unit, 4 integration, 5 disasm)
+- ✅ Commercial games (Zork I, AMFV) confirmed working
+- ✅ No regressions introduced
+- ✅ Consistent opcode usage throughout compiler
+
+### ⚠️ KNOWN ISSUE: Grammar System Runtime Error (Pre-existing)
+
+**Error**: "Failed to decode instruction at 01017: Invalid Long form opcode 0x00 at address 1017"
+
+**Status**: Pre-existing issue in golden file `tests/golden_files/mini_zork_v3.z3`, not caused by recent changes.
+
+**Root Cause Investigation**:
+- Bytes at PC 0x1014: `1b 9e 10` (set_colour instruction - V5+ only, inappropriate for V3)
+- Interpreter mis-decodes at PC 0x1014, then PC doesn't advance properly
+- Eventually tries to decode byte 0x00 at PC 0x1017, which fails validation
+- Same bytes in both new compilation and golden file - confirms pre-existing
+
+**Why set_colour in V3?**:
+- set_colour (opcode 0x1B) is defined for V5+ only per Z-Machine spec
+- Appears in compiled V3 mini_zork at PC 0x1014
+- Not explicitly emitted by compiler (SET_COLOUR constant defined but unused)
+- Likely part of data/lookup table being incorrectly executed
+- OR control flow issue causing execution to jump into wrong memory region
+
+**Current Assessment**: This blocks grammar system execution but is a separate architectural issue from the opcode cleanup. Requires deeper investigation of grammar system control flow and memory layout.
+
+**Action**: Documented for future work. Moving to substantive grammar system improvements.
+
+## PREVIOUS STATUS (October 2, 2025) - DICTIONARY ENCODING FIXED ✅
 
 **CRITICAL FIX**: Dictionary encoding restored to Infocom convention (space=5) for commercial game compatibility!
 
