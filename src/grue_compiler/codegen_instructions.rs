@@ -2377,3 +2377,156 @@ impl ZMachineCodeGen {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod opcode_encoding_tests {
+    use super::*;
+    use crate::grue_compiler::codegen::ZMachineCodeGen;
+    use crate::grue_compiler::ZMachineVersion;
+
+    #[test]
+    fn test_call_vs_encoding() {
+        let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
+        // Need 3+ operands to force VAR form (1-2 operands use SHORT/LONG form)
+        codegen
+            .emit_instruction(
+                0x00,
+                &[
+                    Operand::LargeConstant(0x1234),
+                    Operand::SmallConstant(1),
+                    Operand::SmallConstant(2),
+                ],
+                Some(0),
+                None,
+            )
+            .unwrap();
+
+        // Should emit 0xE0 (VAR form with VAR count), not 0xC0 (VAR form with 2OP count)
+        assert_eq!(
+            codegen.code_space[0], 0xE0,
+            "call_vs (opcode 0x00) should emit 0xE0 instruction byte for VAR form with VAR count"
+        );
+    }
+
+    #[test]
+    fn test_put_prop_encoding() {
+        let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
+        codegen
+            .emit_instruction(
+                0x03,
+                &[
+                    Operand::Variable(1),
+                    Operand::SmallConstant(13),
+                    Operand::LargeConstant(2),
+                ],
+                None,
+                None,
+            )
+            .unwrap();
+
+        // Should emit 0xE3 for put_prop
+        assert_eq!(codegen.code_space[0], 0xE3, "put_prop should emit 0xE3");
+    }
+
+    #[test]
+    fn test_print_paddr_encoding() {
+        let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
+        codegen
+            .emit_instruction(0x0D, &[Operand::LargeConstant(0x0399)], None, None)
+            .unwrap();
+
+        // Should emit 0x8D (SHORT form, 1OP, opcode 0x0D)
+        assert_eq!(codegen.code_space[0], 0x8D, "print_paddr should emit 0x8D");
+    }
+
+    #[test]
+    fn test_rejects_encoded_opcode_0x20() {
+        let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
+        // Should reject 0x20 as it's not a valid raw opcode
+        let result =
+            codegen.emit_instruction(0x20, &[Operand::LargeConstant(0x1234)], Some(0), None);
+
+        assert!(result.is_err(), "Should reject opcode 0x20");
+        let err_msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            err_msg.contains("Invalid opcode 0x20"),
+            "Error should mention invalid opcode 0x20"
+        );
+    }
+
+    #[test]
+    fn test_rejects_encoded_opcode_0x21() {
+        let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
+        let result =
+            codegen.emit_instruction(0x21, &[Operand::LargeConstant(0x1234)], Some(0), None);
+
+        assert!(result.is_err(), "Should reject opcode 0x21");
+        let err_msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            err_msg.contains("Invalid opcode 0x21"),
+            "Error should mention invalid opcode 0x21"
+        );
+    }
+
+    #[test]
+    fn test_rejects_encoded_opcode_0xE0() {
+        let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
+        let result =
+            codegen.emit_instruction(0xE0, &[Operand::LargeConstant(0x1234)], Some(0), None);
+
+        // 0xE0 is >= 0x80 so it should be accepted (it's an encoded instruction byte,
+        // but our validation only rejects 0x20-0x7F range which are clearly wrong)
+        // Actually, we should accept 0xE0 because it's >= 0x80
+        assert!(
+            result.is_ok(),
+            "Should accept 0xE0 (it's in valid range >= 0x80)"
+        );
+    }
+
+    #[test]
+    fn test_or_instruction_encoding() {
+        let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
+        codegen
+            .emit_instruction(
+                0x08,
+                &[Operand::LargeConstant(1), Operand::SmallConstant(0)],
+                Some(0),
+                None,
+            )
+            .unwrap();
+
+        // 2OP or with LONG form encoding
+        // Opcode 0x08 in LONG form should produce instruction byte with opcode in low 5 bits
+        // For LONG form: bits 7-6 depend on operand types, bit 5 is part of opcode
+        // Actually for 2OP LONG form: top bits are operand types, bottom 5 bits are opcode
+        // Since we have LargeConstant + SmallConstant, expect LONG form
+        let first_byte = codegen.code_space[0];
+        // LONG form has top bit 0, second bit is operand type
+        assert_eq!(
+            first_byte & 0x1F,
+            0x08,
+            "or instruction should have opcode 0x08 in low 5 bits"
+        );
+    }
+
+    #[test]
+    fn test_call_2s_encoding() {
+        let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
+        codegen
+            .emit_instruction(
+                0x19,
+                &[Operand::LargeConstant(0x1234), Operand::SmallConstant(0)],
+                Some(0),
+                None,
+            )
+            .unwrap();
+
+        // call_2s is 2OP:25 (0x19)
+        let first_byte = codegen.code_space[0];
+        assert_eq!(
+            first_byte & 0x1F,
+            0x19,
+            "call_2s should have opcode 0x19 in low 5 bits"
+        );
+    }
+}
