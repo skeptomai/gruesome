@@ -1013,7 +1013,7 @@ impl ZMachineCodeGen {
             // Check what's at the problematic location before copying
             let problem_offset = 0x335; // This becomes 0x127F after adding code_base
             if problem_offset < self.code_space.len() {
-                eprintln!("BEFORE COPY: code_space[0x{:04x}..0x{:04x}] = {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
+                log::debug!("BEFORE COPY: code_space[0x{:04x}..0x{:04x}] = {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
  problem_offset,
  problem_offset + 6,
  self.code_space[problem_offset],
@@ -1446,17 +1446,18 @@ impl ZMachineCodeGen {
  );
 
                     if final_location == 0x127e || final_location == 0x127f {
-                        eprintln!(
+                        log::debug!(
                             "CRITICAL: Writing jump offset to location 0x{:04x}",
                             final_location
                         );
-                        eprintln!(" Target ID: {}", reference.target_id);
-                        eprintln!(" Resolved address: 0x{:04x}", resolved_address);
-                        eprintln!(" Instruction PC: 0x{:04x}", instruction_pc);
-                        eprintln!(" Offset: {} (0x{:04x})", offset, offset as u16);
-                        eprintln!(
+                        log::debug!(" Target ID: {}", reference.target_id);
+                        log::debug!(" Resolved address: 0x{:04x}", resolved_address);
+                        log::debug!(" Instruction PC: 0x{:04x}", instruction_pc);
+                        log::debug!(" Offset: {} (0x{:04x})", offset, offset as u16);
+                        log::debug!(
                             " Offset bytes: 0x{:02x} 0x{:02x}",
-                            offset_bytes[0], offset_bytes[1]
+                            offset_bytes[0],
+                            offset_bytes[1]
                         );
                     }
 
@@ -2286,7 +2287,7 @@ impl ZMachineCodeGen {
             // Print string literal using print_paddr
             // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
             let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
-            let layout = self.emit_instruction(
+            let _layout = self.emit_instruction(
                 0x82,                                          // print_paddr opcode (1OP:141)
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder for string address
                 None,
@@ -2386,11 +2387,12 @@ impl ZMachineCodeGen {
 
         // CRITICAL DEBUG: Track jumps near problem area
         if self.code_address >= 0x330 && self.code_address <= 0x340 {
-            eprintln!(
+            log::debug!(
                 "CRITICAL: translate_jump at code_address=0x{:04x}, jumping to label {}",
-                self.code_address, label
+                self.code_address,
+                label
             );
-            eprintln!(
+            log::debug!(
                 " This jump will emit at 0x{:04x}-0x{:04x}",
                 self.code_address,
                 self.code_address + 2
@@ -2585,7 +2587,7 @@ impl ZMachineCodeGen {
             // Generate call instruction
             // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
             let operand_location = self.final_code_base + self.code_space.len() + 2; // +2 for opcode and operand types bytes
-            let layout = self.emit_instruction(
+            let _layout = self.emit_instruction(
                 0xE0, // call_vs opcode (VAR:224 = opcode 0, so 0xE0)
                 &operands, store_var, None,
             )?;
@@ -2671,7 +2673,7 @@ impl ZMachineCodeGen {
                     // Generate call instruction
                     // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
                     let operand_location = self.final_code_base + self.code_space.len() + 2; // +2 for opcode and operand types bytes
-                    let layout = self.emit_instruction(
+                    let _layout = self.emit_instruction(
                         0xE0, // call_vs opcode (VAR:224)
                         &operands, store_var, None,
                     )?;
@@ -3126,7 +3128,8 @@ impl ZMachineCodeGen {
         // This fixes the "invalid object 608" crash where dictionary addresses
         // are mistakenly used as object IDs
         if let Operand::SmallConstant(obj_id) = obj_operand {
-            if obj_id == 0 || obj_id > 255 {
+            if obj_id == 0 {
+                // || obj_id > 255
                 log::debug!(
  "OBJECT_ID_BOUNDS_CHECK: test_attr for invalid object ID {} (valid range: 1-255), returning false",
  obj_id
@@ -3195,7 +3198,8 @@ impl ZMachineCodeGen {
         // This fixes the "invalid object 608" crash where dictionary addresses
         // are mistakenly used as object IDs
         if let Operand::SmallConstant(obj_id) = obj_operand {
-            if obj_id == 0 || obj_id > 255 {
+            if obj_id == 0 {
+                // || obj_id > 255
                 log::debug!(
  "OBJECT_ID_BOUNDS_CHECK: Skipping set_attr for invalid object ID {} (valid range: 1-255)",
  obj_id
@@ -3250,7 +3254,8 @@ impl ZMachineCodeGen {
         // This fixes the "invalid object 608" crash where dictionary addresses
         // are mistakenly used as object IDs
         if let Operand::SmallConstant(obj_id) = obj_operand {
-            if obj_id == 0 || obj_id > 255 {
+            if obj_id == 0 {
+                // || obj_id > 255
                 log::debug!(
  "OBJECT_ID_BOUNDS_CHECK: Skipping clear_attr for invalid object ID {} (valid range: 1-255)",
  obj_id
@@ -8930,9 +8935,10 @@ impl ZMachineCodeGen {
         // CRITICAL: Check for problematic bytes being written
         let code_offset = self.code_space.len();
         if code_offset >= 0x333 && code_offset <= 0x338 {
-            eprintln!(
+            log::debug!(
                 "DEBUG: Writing 0x{:02x} at code space offset 0x{:04x}",
-                byte, code_offset
+                byte,
+                code_offset
             );
         }
         // Historical note: Previously checked for specific addresses 0x335/0x336
@@ -9057,9 +9063,11 @@ impl ZMachineCodeGen {
 
         // CRITICAL: Track writes to our problematic location
         if code_offset >= 0x330 && code_offset <= 0x340 {
-            eprintln!(
+            log::debug!(
                 "WRITE[0x{:04x}]: 0x{:02x} (code_addr=0x{:04x})",
-                code_offset, byte, self.code_address
+                code_offset,
+                byte,
+                self.code_address
             );
 
             // Identify what this byte likely represents
@@ -9071,7 +9079,8 @@ impl ZMachineCodeGen {
                     "0OP_OPCODE"
                 } else if byte >= 0x80 && byte <= 0xAF {
                     "1OP_OPCODE"
-                } else if byte >= 0x00 && byte <= 0x7F {
+                } else if byte <= 0x7F {
+                    // byte >= 0x00 &&
                     if byte <= 0x1F {
                         "2OP_OPCODE"
                     } else {
@@ -9085,7 +9094,7 @@ impl ZMachineCodeGen {
             } else {
                 "FIRST_BYTE"
             };
-            eprintln!(
+            log::debug!(
                 " Type: {} {}",
                 byte_type,
                 if byte == 0x02 {
@@ -9115,13 +9124,14 @@ impl ZMachineCodeGen {
 
                 // TEMPORARY DEBUG: Track writes to problem area (jl at 0x127f)
                 if self.code_address >= 0x127f && self.code_address <= 0x1284 {
-                    eprintln!(
+                    log::debug!(
                         "WRITING TO 0x{:04x}: byte=0x{:02x}",
-                        self.code_address, byte
+                        self.code_address,
+                        byte
                     );
                     if self.code_address == 0x1283 && byte == 0x9f {
-                        eprintln!("CRITICAL: Writing 0x9f to offset 0x1283!");
-                        eprintln!(
+                        log::debug!("CRITICAL: Writing 0x9f to offset 0x1283!");
+                        log::debug!(
                             "Previous bytes: {:02x} {:02x} {:02x} {:02x}",
                             if self.code_address >= 4 {
                                 self.final_data[self.code_address - 4]

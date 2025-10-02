@@ -19,9 +19,10 @@ impl ZMachineCodeGen {
         // CRITICAL DEBUG: Track all branch and jump instructions
         match instruction {
             IrInstruction::Branch { .. } | IrInstruction::Jump { .. } => {
-                eprintln!(
+                log::debug!(
                     "CONTROL FLOW at 0x{:04x}: {:?}",
-                    self.code_address, instruction
+                    self.code_address,
+                    instruction
                 );
             }
             _ => {}
@@ -275,9 +276,10 @@ impl ZMachineCodeGen {
             IrInstruction::Jump { label } => {
                 // CRITICAL DEBUG: Track Jump instructions near problem area
                 if self.code_address >= 0x330 && self.code_address <= 0x340 {
-                    eprintln!(
+                    log::debug!(
                         "IR JUMP INSTRUCTION at code_address=0x{:04x}, jumping to label {}",
-                        self.code_address, label
+                        self.code_address,
+                        label
                     );
                 }
                 // Generate a proper jump instruction with correct unresolved reference
@@ -291,25 +293,25 @@ impl ZMachineCodeGen {
                 false_label,
             } => {
                 if self.code_address == 0x0001 || self.code_address == 0x32f {
-                    eprintln!("CRITICAL BRANCH at code_address=0x{:04x}: condition={}, true_label={}, false_label={}", 
+                    log::debug!("CRITICAL BRANCH at code_address=0x{:04x}: condition={}, true_label={}, false_label={}", 
                               self.code_address, condition, true_label, false_label);
-                    eprintln!("  Before emit_conditional_branch_instruction");
+                    log::debug!("  Before emit_conditional_branch_instruction");
                 }
                 let before_addr = self.code_address;
                 // Delegate to the proper conditional branch function that handles binary operations
                 self.emit_conditional_branch_instruction(*condition, *true_label, *false_label)?;
                 let after_addr = self.code_address;
                 if before_addr == 0x0001 || before_addr == 0x32f {
-                    eprintln!(
+                    log::debug!(
                         "  After Branch: moved from 0x{:04x} to 0x{:04x} ({} bytes)",
                         before_addr,
                         after_addr,
                         after_addr - before_addr
                     );
-                    eprintln!("  Expected: opcode + 2 operands + 2 branch bytes = 5 bytes");
-                    eprintln!("  Actual: {} bytes", after_addr - before_addr);
+                    log::debug!("  Expected: opcode + 2 operands + 2 branch bytes = 5 bytes");
+                    log::debug!("  Actual: {} bytes", after_addr - before_addr);
                     if after_addr - before_addr != 5 {
-                        eprintln!("  ERROR: Branch instruction missing branch placeholder!");
+                        log::debug!("  ERROR: Branch instruction missing branch placeholder!");
                     }
                 }
             }
@@ -1621,11 +1623,11 @@ impl ZMachineCodeGen {
         if let Some(_offset) = branch_offset {
             // INSTRUMENT: What value are we actually passing to emit_word?
             if self.code_address >= 0x335 && self.code_address <= 0x340 {
-                eprintln!(
+                log::debug!(
                     "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
                     self.code_address
                 );
-                eprintln!("  But wait, let's check if this is actually being called...");
+                log::debug!("  But wait, let's check if this is actually being called...");
             }
 
             // Always emit 2-byte placeholder for branches to be resolved later
@@ -1675,11 +1677,11 @@ impl ZMachineCodeGen {
         if let Some(_offset) = branch_offset {
             // INSTRUMENT: What value are we actually passing to emit_word?
             if self.code_address >= 0x335 && self.code_address <= 0x340 {
-                eprintln!(
+                log::debug!(
                     "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
                     self.code_address
                 );
-                eprintln!("  But wait, let's check if this is actually being called...");
+                log::debug!("  But wait, let's check if this is actually being called...");
             }
 
             // Always emit 2-byte placeholder for branches to be resolved later
@@ -1703,28 +1705,30 @@ impl ZMachineCodeGen {
     ) -> Result<InstructionLayout, CompilerError> {
         // DEBUG jz at critical location
         if opcode == 0x00 && self.code_address == 0x032f {
-            eprintln!("JZ_CRITICAL: Emitting jz at 0x032f");
-            eprintln!(
+            log::debug!("JZ_CRITICAL: Emitting jz at 0x032f");
+            log::debug!(
                 "  operands={:?}, store_var={:?}, branch_offset={:?}",
-                operands, store_var, branch_offset
+                operands,
+                store_var,
+                branch_offset
             );
         }
         // CRITICAL DEBUG: Track short form emission at 0x338-0x339
         if self.code_address >= 0x337 && self.code_address <= 0x33a {
-            eprintln!(
+            log::debug!(
                 "emit_short_form_with_layout at code_address=0x{:04x}",
                 self.code_address
             );
-            eprintln!("  opcode=0x{:02x}", opcode);
-            eprintln!("  operands={:?}", operands);
-            eprintln!("  store_var={:?}", store_var);
-            eprintln!("  branch_offset={:?}", branch_offset);
+            log::debug!("  opcode=0x{:02x}", opcode);
+            log::debug!("  operands={:?}", operands);
+            log::debug!("  store_var={:?}", store_var);
+            log::debug!("  branch_offset={:?}", branch_offset);
 
             if !operands.is_empty() {
                 if let Operand::SmallConstant(val) = &operands[0] {
                     if *val == 159 {
-                        eprintln!("FOUND THE CULPRIT: Short form instruction with operand 159!");
-                        eprintln!("This will emit 0x9f as the operand");
+                        log::debug!("FOUND THE CULPRIT: Short form instruction with operand 159!");
+                        log::debug!("This will emit 0x9f as the operand");
                     }
                 }
             }
@@ -1859,11 +1863,11 @@ impl ZMachineCodeGen {
         if let Some(_offset) = branch_offset {
             // INSTRUMENT: What value are we actually passing to emit_word?
             if self.code_address >= 0x335 && self.code_address <= 0x340 {
-                eprintln!(
+                log::debug!(
                     "CRITICAL: About to emit_word at 0x{:04x} with value 0xFFFF",
                     self.code_address
                 );
-                eprintln!("  But wait, let's check if this is actually being called...");
+                log::debug!("  But wait, let's check if this is actually being called...");
             }
 
             // Always emit 2-byte placeholder for branches to be resolved later
@@ -2013,9 +2017,11 @@ impl ZMachineCodeGen {
     ) -> Result<InstructionLayout, CompilerError> {
         // CRITICAL CHECK: Are we emitting an instruction with operand 415?
         if self.code_address >= 0x334 && self.code_address <= 0x340 {
-            eprintln!(
+            log::debug!(
                 "emit_long_form_with_layout at 0x{:04x}: opcode=0x{:02x}, operands={:?}",
-                self.code_address, opcode, operands
+                self.code_address,
+                opcode,
+                operands
             );
 
             for (i, op) in operands.iter().enumerate() {
@@ -2027,7 +2033,7 @@ impl ZMachineCodeGen {
                         );
                     }
                     Operand::SmallConstant(1) if self.code_address == 0x335 => {
-                        eprintln!(
+                        log::debug!(
                             "WARNING: SmallConstant(1) at critical location - might be part of 415"
                         );
                     }
@@ -2247,31 +2253,32 @@ impl ZMachineCodeGen {
     fn emit_operand(&mut self, operand: &Operand) -> Result<(), CompilerError> {
         // CRITICAL CHECK
         if self.code_address >= 0x336 && self.code_address <= 0x33a {
-            eprintln!(
+            log::debug!(
                 "emit_operand at code_address=0x{:04x}: operand={:?}",
-                self.code_address, operand
+                self.code_address,
+                operand
             );
         }
 
         match operand {
             Operand::SmallConstant(value) => {
                 if *value == 1 && self.code_address == 0x338 {
-                    eprintln!("CRITICAL: Emitting SmallConstant(1) at 0x338");
-                    eprintln!("This is part of the 415 problem!");
+                    log::debug!("CRITICAL: Emitting SmallConstant(1) at 0x338");
+                    log::debug!("This is part of the 415 problem!");
                 }
                 if *value == 159 && self.code_address == 0x339 {
-                    eprintln!("CRITICAL: Emitting SmallConstant(159) at 0x339");
-                    eprintln!("Together with previous byte, this is 0x019f = 415!");
+                    log::debug!("CRITICAL: Emitting SmallConstant(159) at 0x339");
+                    log::debug!("Together with previous byte, this is 0x019f = 415!");
                 }
 
                 // CRITICAL CHECK: Looking for what makes the 0x9f byte
                 if self.code_address == 0x339 {
-                    eprintln!(
+                    log::debug!(
                         "FOUND: About to emit byte 0x{:02x} at code_address=0x339",
                         value
                     );
                     if *value == 0x9f {
-                        eprintln!("THIS IS THE 0x9f BYTE! SmallConstant(159)");
+                        log::debug!("THIS IS THE 0x9f BYTE! SmallConstant(159)");
                     }
                 }
 
@@ -2302,12 +2309,12 @@ impl ZMachineCodeGen {
             Operand::LargeConstant(value) => {
                 // CRITICAL DEBUG: Check if this is the problematic LargeConstant(1)
                 if *value == 1 && self.code_address >= 0x336 && self.code_address <= 0x340 {
-                    eprintln!(
+                    log::debug!(
                         "CRITICAL: emit_operand emitting LargeConstant(1) at code_address=0x{:04x}",
                         self.code_address
                     );
-                    eprintln!("This should emit 0x00 0x01 but might be causing 0x01 0x9f");
-                    eprintln!("About to call emit_word(0x{:04x})", value);
+                    log::debug!("This should emit 0x00 0x01 but might be causing 0x01 0x9f");
+                    log::debug!("About to call emit_word(0x{:04x})", value);
                 }
                 self.emit_word(*value)?;
             }

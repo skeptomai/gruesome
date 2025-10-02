@@ -19,7 +19,11 @@ use std::process::Command;
 /// that we find exactly 449 routines in Zork I, matching txd's output.
 /// It also verifies that the disassembler produces all expected
 /// header information and code markers.
+///
+/// NOTE: This test is slow (60+ seconds) because it disassembles all of Zork I.
+/// Run explicitly with: cargo test -- --ignored
 #[test]
+#[ignore]
 fn test_disassembler_routine_count() {
     // Build the disassembler binary first
     let build_output = Command::new("cargo")
