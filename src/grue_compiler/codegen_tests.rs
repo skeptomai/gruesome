@@ -328,9 +328,9 @@ mod codegen_tests {
 
     // #[test]
     // fn test_branch_offset_encoding() {
-    //     // This test was for the removed emit_branch_offset function.
-    //     // Branch offsets are now handled through the placeholder/fixup pattern
-    //     // which is tested in the integration tests.
+    // // This test was for the removed emit_branch_offset function.
+    // // Branch offsets are now handled through the placeholder/fixup pattern
+    // // which is tested in the integration tests.
     // }
 
     #[test]
@@ -743,13 +743,13 @@ mod codegen_tests {
             "No unresolved placeholders should remain - this indicates no corruption"
         );
 
-        log::info!("✅ SEPARATED SPACES TEST PASSED");
-        log::info!("   Final bytecode: {} bytes", final_bytecode.len());
-        log::info!("   Code space: {} bytes", codegen.code_space.len());
-        log::info!("   String space: {} bytes", codegen.string_space.len());
-        log::info!("   Object space: {} bytes", codegen.object_space.len());
+        log::info!(" SEPARATED SPACES TEST PASSED");
+        log::info!(" Final bytecode: {} bytes", final_bytecode.len());
+        log::info!(" Code space: {} bytes", codegen.code_space.len());
+        log::info!(" String space: {} bytes", codegen.string_space.len());
+        log::info!(" Object space: {} bytes", codegen.object_space.len());
         log::info!(
-            "   Pending fixups: {} (all resolved)",
+            " Pending fixups: {} (all resolved)",
             codegen.pending_fixups.len()
         );
     }
@@ -843,8 +843,8 @@ mod codegen_tests {
         );
 
         log::info!("🛡️ CORRUPTION PREVENTION TEST PASSED");
-        log::info!("   No 0x9A4D corruption pattern found");
-        log::info!("   No unresolved placeholders found");
-        log::info!("   Final bytecode: {} bytes", bytecode_new.len());
+        log::info!(" No 0x9A4D corruption pattern found");
+        log::info!(" No unresolved placeholders found");
+        log::info!(" Final bytecode: {} bytes", bytecode_new.len());
     }
 }

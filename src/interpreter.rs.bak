@@ -44,7 +44,7 @@ pub struct Interpreter {
     pub step_range: Option<(u32, u32)>,
     /// V3 input handler (for v1-v3 games)
     pub(crate) v3_input: Option<V3Input>,
-    /// V4+ input handler (for v4+ games)
+    /// V4+ input handler (for v4+ games)  
     pub(crate) v4_input: Option<V4Input>,
     /// Display manager
     pub(crate) display: Option<Box<dyn ZMachineDisplay>>,
@@ -138,7 +138,7 @@ impl Interpreter {
         if !routines_in_range.is_empty() {
             println!("Routines in range:");
             for (addr, name) in routines_in_range {
-                println!(" 0x{addr:04x}: {name}");
+                println!("  0x{addr:04x}: {name}");
             }
         }
         println!();
@@ -172,9 +172,9 @@ impl Interpreter {
             if let Ok(val) = self.vm.read_global(i) {
                 let name = crate::debug_symbols::get_global_name(i + 0x10).unwrap_or("");
                 if !name.is_empty() {
-                    println!(" G{i:02x} {name}: {val} (0x{val:04x})");
+                    println!("  G{i:02x} {name}: {val} (0x{val:04x})");
                 } else {
-                    println!(" G{i:02x}: {val} (0x{val:04x})");
+                    println!("  G{i:02x}: {val} (0x{val:04x})");
                 }
             }
         }
@@ -184,7 +184,7 @@ impl Interpreter {
         for i in 0..5.min(self.vm.stack.len()) {
             let idx = self.vm.stack.len() - 1 - i;
             println!(
-                " [{}]: {} (0x{:04x})",
+                "  [{}]: {} (0x{:04x})",
                 i, self.vm.stack[idx], self.vm.stack[idx]
             );
         }
@@ -193,17 +193,17 @@ impl Interpreter {
         if let Some(frame) = self.vm.call_stack.last() {
             println!("\nCurrent call frame:");
             println!(
-                " Return PC: {}",
+                "  Return PC: {}",
                 self.routine_names.format_address(frame.return_pc)
             );
-            println!(" Locals: {:?}", frame.locals);
+            println!("  Locals: {:?}", frame.locals);
         }
 
         // Show call stack
         println!("\nCall stack:");
         for (i, frame) in self.vm.call_stack.iter().rev().enumerate() {
             println!(
-                " [{}] Return to: {}",
+                "  [{}] Return to: {}",
                 i,
                 self.routine_names.format_address(frame.return_pc)
             );
@@ -243,7 +243,7 @@ impl Interpreter {
                     if let Ok(has_attr) = self.vm.test_attribute(location, attr) {
                         if has_attr {
                             debug!(
-                                " Location {} has attribute {} ({})",
+                                "  Location {} has attribute {} ({})",
                                 location,
                                 attr,
                                 match attr {
@@ -263,7 +263,7 @@ impl Interpreter {
                 for light_attr in [2, 3, 8, 15] {
                     if let Ok(has_light) = self.vm.test_attribute(location, light_attr) {
                         debug!(
-                            " Location {} light check attr {} ({}): {}",
+                            "  Location {} light check attr {} ({}): {}",
                             location,
                             light_attr,
                             match light_attr {
@@ -286,7 +286,7 @@ impl Interpreter {
         for attr in 0..32 {
             if let Ok(has_attr) = self.vm.test_attribute(player_obj, attr) {
                 if has_attr {
-                    debug!(" Player {} has attribute {}", player_obj, attr);
+                    debug!("  Player {} has attribute {}", player_obj, attr);
                 }
             }
         }
@@ -297,7 +297,7 @@ impl Interpreter {
             for light_attr in [2, 8, 12, 15] {
                 if let Ok(has_light_attr) = self.vm.test_attribute(obj, light_attr) {
                     if has_light_attr {
-                        debug!(" Object {} has light attribute {}", obj, light_attr);
+                        debug!("  Object {} has light attribute {}", obj, light_attr);
                     }
                 }
             }
@@ -307,9 +307,9 @@ impl Interpreter {
         debug!("=== Attempting to set light attribute on West of House ===");
         if let Ok(location) = self.vm.read_variable(16) {
             if location == 180 {
-                debug!(" West of House (180) currently has no light attributes");
-                debug!(" In a working game, this location should be naturally lit");
-                debug!(" This suggests the lighting check may use a different mechanism");
+                debug!("  West of House (180) currently has no light attributes");
+                debug!("  In a working game, this location should be naturally lit");
+                debug!("  This suggests the lighting check may use a different mechanism");
             }
         }
 
@@ -355,8 +355,8 @@ impl Interpreter {
 
             // Debug: Track all PC values and advancement
             if pc > 0x1000 || pc == 0x1717 || (0x0b70..=0x0b80).contains(&pc) {
-                log::debug!(
-                    " EXECUTION LOOP: PC=0x{:04x} ({}) memory_len={}",
+                log::error!(
+                    "🚨 EXECUTION LOOP: PC=0x{:04x} ({}) memory_len={}",
                     pc,
                     pc,
                     self.vm.game.memory.len()
@@ -381,19 +381,19 @@ impl Interpreter {
 
             // Check for problematic Trinity PC range
             if (0x13fc0..=0x13ff0).contains(&pc) {
-                debug!(" TRINITY EXECUTION at PC {:05x}", pc);
+                debug!("🚨 TRINITY EXECUTION at PC {:05x}", pc);
             }
 
             // Debug: Track PC bounds checking to find 0x1717 crash source
             if pc >= self.vm.game.memory.len() as u32 {
-                log::debug!(
-                    " PC OUT OF BOUNDS: PC=0x{:04x} ({}) >= memory_len={}",
+                log::error!(
+                    "🚨 PC OUT OF BOUNDS: PC=0x{:04x} ({}) >= memory_len={}",
                     pc,
                     pc,
                     self.vm.game.memory.len()
                 );
-                log::debug!(
-                    " STACK STATE: depth={}, top values={:?}",
+                log::error!(
+                    "🚨 STACK STATE: depth={}, top values={:?}",
                     self.vm.stack.len(),
                     self.vm.stack.iter().rev().take(5).collect::<Vec<_>>()
                 );
@@ -402,7 +402,7 @@ impl Interpreter {
             // CRITICAL PC TRACKING: Log every instruction fetch around crash point
             if (0x0bd0..=0x0be0).contains(&pc) {
                 let opcode_byte = self.vm.game.memory[pc as usize];
-                log::debug!(
+                log::error!(
                     "🎯 CRITICAL_PC: PC=0x{:04x} fetching_byte=0x{:02x}",
                     pc,
                     opcode_byte
@@ -454,11 +454,11 @@ impl Interpreter {
                 };
                 println!("\n[{pc:05x}] {instruction}{routine_info}");
                 println!(
-                    " Opcode: 0x{:02x}, Form: {:?}",
+                    "  Opcode: 0x{:02x}, Form: {:?}",
                     instruction.opcode, instruction.form
                 );
                 if !instruction.operands.is_empty() {
-                    print!(" Operands:");
+                    print!("  Operands:");
                     for (i, (op_type, value)) in instruction
                         .operand_types
                         .iter()
@@ -482,17 +482,17 @@ impl Interpreter {
                     println!();
                 }
                 if let Some(store) = instruction.store_var {
-                    println!(" Store to: V{store:02x}");
+                    println!("  Store to: V{store:02x}");
                 }
                 if let Some(branch) = &instruction.branch {
                     println!(
-                        " Branch: offset={}, on_true={}",
+                        "  Branch: offset={}, on_true={}",
                         branch.offset, branch.on_true
                     );
                 }
 
                 // Wait for user input
-                print!(" Press Enter to continue (or 'q' to quit, 'm' for memory dump)... ");
+                print!("  Press Enter to continue (or 'q' to quit, 'm' for memory dump)... ");
                 io::stdout().flush().ok();
 
                 let mut input = String::new();
@@ -523,16 +523,16 @@ impl Interpreter {
                 || new_pc == 0x1717
                 || (0x0b70..=0x0b90).contains(&old_pc)
             {
-                log::debug!(
-                    " PC ADVANCE: 0x{:04x} + {} -> 0x{:04x} (memory_len={})",
+                log::error!(
+                    "🚨 PC ADVANCE: 0x{:04x} + {} -> 0x{:04x} (memory_len={})",
                     old_pc,
                     instruction.size,
                     new_pc,
                     self.vm.game.memory.len()
                 );
-                log::debug!(" INSTRUCTION: {}", instruction);
+                log::error!("🚨 INSTRUCTION: {}", instruction);
                 if new_pc > self.vm.game.memory.len() as u32 {
-                    log::debug!(" *** OUT OF BOUNDS! ***");
+                    log::error!("🚨 *** OUT OF BOUNDS! ***");
                 }
             }
 
@@ -541,7 +541,7 @@ impl Interpreter {
             // Debug PC advancement for Trinity offset issue
             if old_pc == 0x125c7 {
                 debug!(
-                    " PC ADVANCEMENT: 0x{:05x} + {} = 0x{:05x} (instruction: {})",
+                    "🚨 PC ADVANCEMENT: 0x{:05x} + {} = 0x{:05x} (instruction: {})",
                     old_pc,
                     instruction.size,
                     self.vm.pc,
@@ -573,13 +573,13 @@ impl Interpreter {
             // CRITICAL DEBUG: Trace instruction execution around the error point
             if (0x00bf0..=0x00c10).contains(&old_pc) {
                 debug!(
-                    " EXEC: PC {:05x} opcode {:02x} operands {:?}",
+                    "🔍 EXEC: PC {:05x} opcode {:02x} operands {:?}",
                     old_pc, instruction.opcode, instruction.operands
                 );
                 if instruction.opcode == 0x0E {
                     // insert_obj
                     debug!(
-                        " About to execute insert_obj with operands {:?}",
+                        "🚨 About to execute insert_obj with operands {:?}",
                         instruction.operands
                     );
                 }
@@ -598,26 +598,24 @@ impl Interpreter {
                     // Branch taken, PC was updated by branch logic
                     let pc_after_exec = self.vm.pc;
                     if pc_after_exec == 0x13fe7 {
-                        debug!(" INVALID JUMP: Branch from {:05x} to invalid PC {:05x} (opcode: {:02x})", 
- pc_before_exec, pc_after_exec, instruction.opcode);
+                        debug!("🚨 INVALID JUMP: Branch from {:05x} to invalid PC {:05x} (opcode: {:02x})", 
+                               pc_before_exec, pc_after_exec, instruction.opcode);
                     }
                 }
                 ExecutionResult::Called => {
                     // Routine called, PC was updated
                     let pc_after_exec = self.vm.pc;
                     if pc_after_exec == 0x13fe7 {
-                        debug!(
-                            " INVALID JUMP: Call from {:05x} to invalid PC {:05x} (opcode: {:02x})",
-                            pc_before_exec, pc_after_exec, instruction.opcode
-                        );
+                        debug!("🚨 INVALID JUMP: Call from {:05x} to invalid PC {:05x} (opcode: {:02x})", 
+                               pc_before_exec, pc_after_exec, instruction.opcode);
                     }
                 }
                 ExecutionResult::Returned(_value) => {
                     // Return value already handled by do_return
                     let pc_after_exec = self.vm.pc;
                     if pc_after_exec == 0x13fe7 {
-                        debug!(" INVALID JUMP: Return from {:05x} to invalid PC {:05x} (opcode: {:02x})", 
- pc_before_exec, pc_after_exec, instruction.opcode);
+                        debug!("🚨 INVALID JUMP: Return from {:05x} to invalid PC {:05x} (opcode: {:02x})", 
+                               pc_before_exec, pc_after_exec, instruction.opcode);
                     }
                 }
                 ExecutionResult::Quit => {
@@ -661,13 +659,13 @@ impl Interpreter {
             || (inst.opcode == 0x0A
                 && matches!(inst.operand_count, crate::instruction::OperandCount::OP1))
         {
-            log::debug!(
-                " Executing instruction at PC 0x{:04x}: {}",
+            log::error!(
+                "🚨 Executing instruction at PC 0x{:04x}: {}",
                 current_pc,
                 inst
             );
-            log::debug!(
-                " Stack depth: {}, Call stack depth: {}",
+            log::error!(
+                "🚨 Stack depth: {}, Call stack depth: {}",
                 self.vm.stack.len(),
                 self.vm.call_stack.len()
             );
@@ -703,7 +701,7 @@ impl Interpreter {
                 if store_var as usize > frame.num_locals as usize {
                     let pc = self.vm.pc - inst.size as u32;
                     debug!("Instruction at {:05x}: {} trying to store to V{:02x} but routine only has {} locals", 
- pc, inst, store_var, frame.num_locals);
+                           pc, inst, store_var, frame.num_locals);
                     debug!(
                         "Call stack depth: {}, routine started at PC {:05x}",
                         self.vm.call_stack.len(),
@@ -726,7 +724,7 @@ impl Interpreter {
                     if var_num as usize > frame.num_locals as usize {
                         let pc = self.vm.pc - inst.size as u32;
                         debug!("Instruction at {:05x}: {} trying to read from V{:02x} but routine only has {} locals", 
- pc, inst, var_num, frame.num_locals);
+                               pc, inst, var_num, frame.num_locals);
                     }
                 }
             }
@@ -1020,7 +1018,7 @@ impl Interpreter {
                     if let Some(var_num) = inst.operands.first() {
                         if *var_num == 0x52 {
                             // If checking global 0x52 (LIT)
-                            debug!(" -> This is checking LIT global (0x52)");
+                            debug!("  -> This is checking LIT global (0x52)");
                         }
                     }
                 }
@@ -1098,9 +1096,9 @@ impl Interpreter {
 
                 // COMPREHENSIVE JUMP LOGGING
                 log::debug!(
- "🔧 JUMP_INSTRUCTION: PC=0x{:04x} operand=0x{:04x} offset={} -> new_PC=0x{:04x}",
- self.vm.pc, operand, offset, new_pc
- );
+                    "🔧 JUMP_INSTRUCTION: PC=0x{:04x} operand=0x{:04x} offset={} -> new_PC=0x{:04x}",
+                    self.vm.pc, operand, offset, new_pc
+                );
                 log::debug!(
                     "🔧 JUMP_CALC: PC(0x{:04x}) + offset({}) - 2 = 0x{:04x} (memory_len={})",
                     self.vm.pc,
@@ -1111,13 +1109,13 @@ impl Interpreter {
 
                 // Critical bounds checking - this is where PC corruption occurs
                 if new_pc >= self.vm.game.memory.len() as u32 {
-                    log::debug!(
-                        " JUMP_OUT_OF_BOUNDS: new_PC=0x{:04x} >= memory_len={} - INVALID JUMP!",
+                    log::error!(
+                        "🚨 JUMP_OUT_OF_BOUNDS: new_PC=0x{:04x} >= memory_len={} - INVALID JUMP!",
                         new_pc,
                         self.vm.game.memory.len()
                     );
-                    log::debug!(
-                        " JUMP_DEBUG: raw_operand=0x{:04x} as_signed={} current_PC=0x{:04x}",
+                    log::error!(
+                        "🚨 JUMP_DEBUG: raw_operand=0x{:04x} as_signed={} current_PC=0x{:04x}",
                         operand,
                         offset,
                         self.vm.pc
@@ -1131,15 +1129,15 @@ impl Interpreter {
 
                 // Debug: Track jumps that might lead to 0x1717 crash
                 if new_pc == 0x1717 || new_pc > 0x1000 {
-                    log::debug!(
-                        " JUMP CALCULATION: PC=0x{:04x} offset={} (0x{:04x}) -> new_pc=0x{:04x}",
+                    log::error!(
+                        "🚨 JUMP CALCULATION: PC=0x{:04x} offset={} (0x{:04x}) -> new_pc=0x{:04x}",
                         self.vm.pc,
                         offset,
                         offset as u16,
                         new_pc
                     );
-                    log::debug!(
-                        " JUMP OPERAND: raw_operand=0x{:04x} as_i16={}",
+                    log::error!(
+                        "🚨 JUMP OPERAND: raw_operand=0x{:04x} as_i16={}",
                         operand,
                         operand as i16
                     );
@@ -1181,7 +1179,7 @@ impl Interpreter {
                 // This might be data being executed as code
                 let pc = self.vm.pc - inst.size as u32;
                 debug!("WARNING: Invalid 2OP:0x00 at PC {:05x} with operands {:04x}, {:04x} - treating as NOP", 
- pc, op1, op2);
+                       pc, op1, op2);
                 Ok(ExecutionResult::Continue)
             }
             0x01 => {
@@ -1220,7 +1218,7 @@ impl Interpreter {
 
                 if pc == 0x5fdf && value == 1 {
                     debug!(
-                        " new_value as i16 = {}, op2 as i16 = {}, condition = {}",
+                        "  new_value as i16 = {}, op2 as i16 = {}, condition = {}",
                         new_value as i16, op2 as i16, condition
                     );
                 }
@@ -1312,8 +1310,8 @@ impl Interpreter {
 
                 debug!("insert_obj: obj={}, dest={}", obj_num, dest_num);
                 if obj_num == 0 {
-                    debug!(" insert_obj interpreter called with object 0!");
-                    debug!(" op1: {}, op2: {}", op1, op2);
+                    debug!("❌ insert_obj interpreter called with object 0!");
+                    debug!("   op1: {}, op2: {}", op1, op2);
                 }
 
                 self.vm.insert_object(obj_num, dest_num)?;
@@ -1344,25 +1342,28 @@ impl Interpreter {
                 let obj_num = op1;
                 let prop_num = op2 as u8;
 
-                log::debug!(
-                    " get_prop at PC 0x{:04x}: obj={}, prop={}",
+                log::error!(
+                    "🔍 get_prop at PC 0x{:04x}: obj={}, prop={}",
                     self.vm.pc - inst.size as u32,
                     obj_num,
                     prop_num
                 );
-                log::debug!(" Stack depth before get_property: {}", self.vm.stack.len());
-                log::debug!(" Call stack depth: {}", self.vm.call_stack.len());
+                log::error!(
+                    "🔍 Stack depth before get_property: {}",
+                    self.vm.stack.len()
+                );
+                log::error!("🔍 Call stack depth: {}", self.vm.call_stack.len());
 
                 let value = self.vm.get_property(obj_num, prop_num)?;
 
-                log::debug!(" get_property returned: {}", value);
-                log::debug!(" Stack depth after get_property: {}", self.vm.stack.len());
+                log::error!("🔍 get_property returned: {}", value);
+                log::error!("🔍 Stack depth after get_property: {}", self.vm.stack.len());
 
                 if let Some(store_var) = inst.store_var {
-                    log::debug!(" Storing result {} in variable {}", value, store_var);
+                    log::error!("🔍 Storing result {} in variable {}", value, store_var);
                     self.vm.write_variable(store_var, value)?;
                 }
-                log::debug!(" get_prop completed successfully");
+                log::error!("🔍 get_prop completed successfully");
                 Ok(ExecutionResult::Continue)
             }
             0x19 => {
@@ -1375,7 +1376,7 @@ impl Interpreter {
                 if pc == 0xcc6e || pc == 0xcc84 || pc == 0xcca4 {
                     let unpacked = (routine_addr as u32).wrapping_mul(4);
                     debug!("*** SPACING ROUTINE CALL at PC {:05x}: calling packed addr {:04x} (unpacked: {:05x}) with arg {}", 
- pc, routine_addr, unpacked, arg);
+                           pc, routine_addr, unpacked, arg);
                 }
 
                 self.do_call(routine_addr, &[arg], inst.store_var)?;
@@ -1393,7 +1394,7 @@ impl Interpreter {
 
                 // Don't store anything - we don't know what this instruction does
                 // Storing 0 was causing bugs (e.g., clearing the LIT variable)
-                debug!(" -> Treating as NOP, not storing any result");
+                debug!("  -> Treating as NOP, not storing any result");
 
                 Ok(ExecutionResult::Continue)
             }
@@ -1486,7 +1487,7 @@ impl Interpreter {
                 _ => {}
             }
             return Err(format!("Variable 2OP instruction at PC {:05x} requires at least 2 operands, got {} - opcode: {:02x}", 
- pc, operands.len(), inst.opcode));
+                               pc, operands.len(), inst.opcode));
         }
 
         // Handle each 2OP instruction based on its specific requirements
@@ -1500,11 +1501,11 @@ impl Interpreter {
                 // Debug output for the problematic JE at 13fd7
                 if pc == 0x13fd7 {
                     debug!(
-                        " TRINITY JE at 13fd7: operands={:?}, should branch to 1406d",
+                        "🚨 TRINITY JE at 13fd7: operands={:?}, should branch to 1406d",
                         operands
                     );
                     for (i, op) in operands.iter().enumerate() {
-                        debug!(" operand[{}] = {:04x}", i, op);
+                        debug!("  operand[{}] = {:04x}", i, op);
                     }
                 }
 
@@ -1518,7 +1519,7 @@ impl Interpreter {
 
                 if pc == 0x13fd7 {
                     debug!(
-                        " condition={}, branch_on_true={:?}",
+                        "  condition={}, branch_on_true={:?}",
                         condition,
                         inst.branch.as_ref().map(|b| b.on_true)
                     );
@@ -1573,7 +1574,7 @@ impl Interpreter {
                 let byte_addr = array_addr + (word_index as u32 * 2);
 
                 debug!("storew: array_addr=0x{:04x}, word_index={}, value=0x{:04x}, byte_addr=0x{:04x}", 
- array_addr, word_index, value, byte_addr);
+                       array_addr, word_index, value, byte_addr);
 
                 self.vm.write_word(byte_addr, value)?;
                 Ok(ExecutionResult::Continue)
@@ -1615,7 +1616,7 @@ impl Interpreter {
                     operands.len()
                 );
                 for (i, op) in operands.iter().enumerate() {
-                    debug!("🕐 operand[{}] = 0x{:04x}", i, op);
+                    debug!("🕐   operand[{}] = 0x{:04x}", i, op);
                 }
 
                 // Trinity-specific timer debug
@@ -1762,7 +1763,7 @@ impl Interpreter {
                 debug!("Text buffer contents (len={}):", text_len);
                 for i in 0..text_len {
                     let ch = self.vm.read_byte(text_buffer + 2 + i as u32);
-                    debug!(" [{}] = 0x{:02x} '{}'", i, ch, ch as char);
+                    debug!("  [{}] = 0x{:02x} '{}'", i, ch, ch as char);
                 }
 
                 // Extra debug: dump the exact parse buffer contents
@@ -1770,14 +1771,14 @@ impl Interpreter {
                     info!("*** Parse buffer dump at 0x{:04x}:", parse_buffer);
                     for i in 0..16 {
                         let byte = self.vm.read_byte(parse_buffer + i);
-                        info!(" +{}: 0x{:02x}", i, byte);
+                        info!("  +{}: 0x{:02x}", i, byte);
                     }
                     // Interpret the second word entry
                     let word2_addr = self.vm.read_word(parse_buffer + 6);
                     let word2_len = self.vm.read_byte(parse_buffer + 8);
                     let word2_pos = self.vm.read_byte(parse_buffer + 9);
                     info!(
-                        " Word 2: addr=0x{:04x}, len={}, pos={}",
+                        "  Word 2: addr=0x{:04x}, len={}, pos={}",
                         word2_addr, word2_len, word2_pos
                     );
                 }
@@ -1790,7 +1791,7 @@ impl Interpreter {
                     for i in 0..20 {
                         let ch = self.vm.read_byte(text_buffer + i as u32);
                         info!(
-                            " +{}: 0x{:02x} '{}'",
+                            "  +{}: 0x{:02x} '{}'",
                             i,
                             ch,
                             if (32..127).contains(&ch) {
@@ -1811,14 +1812,14 @@ impl Interpreter {
 
                 // Debug: Show what's in the parse buffer
                 let word_count = self.vm.read_byte(parse_buffer + 1);
-                debug!(" Parse buffer word count: {}", word_count);
+                debug!("  Parse buffer word count: {}", word_count);
                 for i in 0..word_count {
                     let offset = parse_buffer + 2 + (i as u32 * 4);
                     let dict_addr = self.vm.read_word(offset);
                     let word_len = self.vm.read_byte(offset + 2);
                     let text_pos = self.vm.read_byte(offset + 3);
                     debug!(
-                        " Word {}: dict_addr=0x{:04x}, len={}, pos={}",
+                        "    Word {}: dict_addr=0x{:04x}, len={}, pos={}",
                         i, dict_addr, word_len, text_pos
                     );
 
@@ -1839,7 +1840,7 @@ impl Interpreter {
                         for j in 0..8 {
                             let ch = self.vm.read_byte(text_buffer + 2 + text_pos as u32 + j);
                             info!(
-                                " pos {}: 0x{:02x} '{}'",
+                                "      pos {}: 0x{:02x} '{}'",
                                 text_pos + j as u8,
                                 ch,
                                 if (32..127).contains(&ch) {
@@ -2049,9 +2050,9 @@ impl Interpreter {
                 let field_length = (form & 0x7F) as u32;
 
                 debug!(
- "scan_table: searching for 0x{:04x} in table at 0x{:04x}, len={}, form=0x{:02x}",
- search_value, table_addr, table_len, form
- );
+                    "scan_table: searching for 0x{:04x} in table at 0x{:04x}, len={}, form=0x{:02x}",
+                    search_value, table_addr, table_len, form
+                );
                 debug!(
                     "scan_table: current PC = 0x{:05x} (EXPECTED: 0x125cb)",
                     self.vm.pc
@@ -2060,11 +2061,11 @@ impl Interpreter {
                 // Debug the PC before scan_table to trace the offset issue
                 if self.vm.pc >= 0x125c0 && self.vm.pc <= 0x125e0 {
                     debug!(
-                        " PC OFFSET ISSUE: scan_table at PC {:05x}, should be 125cb",
+                        "🚨 PC OFFSET ISSUE: scan_table at PC {:05x}, should be 125cb",
                         self.vm.pc
                     );
                 }
-                debug!(" is_word={}, field_length={}", is_word, field_length);
+                debug!("  is_word={}, field_length={}", is_word, field_length);
 
                 let mut found_addr = 0u16;
                 let mut current_addr = table_addr;
@@ -2078,13 +2079,13 @@ impl Interpreter {
                     };
 
                     debug!(
-                        " Entry {}: 0x{:04x} at addr 0x{:04x}",
+                        "  Entry {}: 0x{:04x} at addr 0x{:04x}",
                         i, table_value, current_addr
                     );
 
                     if table_value == search_value {
                         found_addr = current_addr as u16;
-                        debug!(" *** MATCH FOUND at addr 0x{:04x} ***", found_addr);
+                        debug!("  *** MATCH FOUND at addr 0x{:04x} ***", found_addr);
                         break;
                     }
 
@@ -2109,23 +2110,23 @@ impl Interpreter {
                 // Debug Trinity scan_table branch calculation
                 if self.vm.pc == 0x125cb {
                     debug!(
-                        " TRINITY SCAN_TABLE at 125cb: condition={}, found_addr=0x{:04x}",
+                        "🔍 TRINITY SCAN_TABLE at 125cb: condition={}, found_addr=0x{:04x}",
                         condition, found_addr
                     );
                     if let Some(ref branch) = inst.branch {
                         debug!(
-                            " Branch info: on_true={}, offset={}",
+                            "🔍 Branch info: on_true={}, offset={}",
                             branch.on_true, branch.offset
                         );
                         let should_branch = condition == branch.on_true;
                         debug!(
-                            " Should branch: {} (condition={}, on_true={})",
+                            "🔍 Should branch: {} (condition={}, on_true={})",
                             should_branch, condition, branch.on_true
                         );
                         if should_branch {
                             let calc_target = (self.vm.pc as i32 + branch.offset as i32 - 2) as u32;
                             debug!(
-                                " Calculated target: 0x{:05x} (expected: 0x125dc)",
+                                "🔍 Calculated target: 0x{:05x} (expected: 0x125dc)",
                                 calc_target
                             );
                         }
@@ -2186,9 +2187,9 @@ impl Interpreter {
 
             // COMPREHENSIVE BRANCH LOGGING
             log::debug!(
- "🔧 BRANCH_CONDITION: PC=0x{:04x} condition={} branch.on_true={} should_branch={} offset={}",
- self.vm.pc, condition, branch.on_true, should_branch, branch.offset
- );
+                "🔧 BRANCH_CONDITION: PC=0x{:04x} condition={} branch.on_true={} should_branch={} offset={}",
+                self.vm.pc, condition, branch.on_true, should_branch, branch.offset
+            );
 
             if should_branch {
                 match branch.offset {
@@ -2205,16 +2206,16 @@ impl Interpreter {
                         let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
 
                         log::debug!(
- "🔧 BRANCH_JUMP: PC=0x{:04x} offset={} -> new_PC=0x{:04x} (memory_len={})",
- self.vm.pc, offset, new_pc, self.vm.game.memory.len()
- );
+                            "🔧 BRANCH_JUMP: PC=0x{:04x} offset={} -> new_PC=0x{:04x} (memory_len={})",
+                            self.vm.pc, offset, new_pc, self.vm.game.memory.len()
+                        );
 
                         // Critical bounds checking for branches too
                         if new_pc >= self.vm.game.memory.len() as u32 {
-                            log::debug!(
- " BRANCH_OUT_OF_BOUNDS: new_PC=0x{:04x} >= memory_len={} - INVALID BRANCH!",
- new_pc, self.vm.game.memory.len()
- );
+                            log::error!(
+                                "🚨 BRANCH_OUT_OF_BOUNDS: new_PC=0x{:04x} >= memory_len={} - INVALID BRANCH!",
+                                new_pc, self.vm.game.memory.len()
+                            );
                             return Err(format!(
                                 "Branch to address 0x{:04x} is outside memory bounds ({})",
                                 new_pc,
@@ -2224,7 +2225,7 @@ impl Interpreter {
 
                         // Debug output for Trinity JE branch
                         if self.vm.pc == 0x13fde {
-                            debug!(" TRINITY BRANCH from 13fde: offset={}, new_pc={:05x} (should be 1406d)", offset, new_pc);
+                            debug!("🚨 TRINITY BRANCH from 13fde: offset={}, new_pc={:05x} (should be 1406d)", offset, new_pc);
                         }
 
                         // Add specific debug for the problematic branch
@@ -2237,12 +2238,12 @@ impl Interpreter {
 
                         // Debug scan_table branch calculation for Trinity quit issue
                         if self.vm.pc >= 0x125cb && self.vm.pc <= 0x125dd {
-                            debug!(" SCAN_TABLE BRANCH at PC {:05x}: condition={}, branch.on_true={}, should_branch={}, offset={}", 
- self.vm.pc, condition, branch.on_true, should_branch, branch.offset);
+                            debug!("🔍 SCAN_TABLE BRANCH at PC {:05x}: condition={}, branch.on_true={}, should_branch={}, offset={}", 
+                                   self.vm.pc, condition, branch.on_true, should_branch, branch.offset);
                             if should_branch {
                                 let calc_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
-                                debug!(" SCAN_TABLE: Current PC={:05x}, offset={}, calculated target={:05x} (expected 125dc)", 
- self.vm.pc, offset, calc_pc);
+                                debug!("🔍 SCAN_TABLE: Current PC={:05x}, offset={}, calculated target={:05x} (expected 125dc)", 
+                                       self.vm.pc, offset, calc_pc);
                             }
                         }
 
@@ -2407,8 +2408,8 @@ impl Interpreter {
 
         // Debug: Track function calls that might corrupt PC
         if self.vm.pc > 0x1000 || addr > 0x1000 {
-            log::debug!(
-                " FUNCTION_CALL: calling addr=0x{:04x} from PC=0x{:04x}",
+            log::error!(
+                "🚨 FUNCTION_CALL: calling addr=0x{:04x} from PC=0x{:04x}",
                 addr,
                 self.vm.pc
             );
@@ -2637,7 +2638,7 @@ impl Interpreter {
         if let Some(table_addr) = self.output_streams.current_stream3_table {
             let current_count = self.vm.read_word(table_addr as u32);
             debug!("output_text: capturing '{}' to stream 3 table at 0x{:04x}, current_count={} (CAPTURE ONLY)", 
- text, table_addr, current_count);
+                   text, table_addr, current_count);
 
             // Write text to table starting at table+2+current_count
             for (i, ch) in text.chars().enumerate() {
@@ -2674,7 +2675,7 @@ impl Interpreter {
         if let Some(table_addr) = self.output_streams.current_stream3_table {
             let current_count = self.vm.read_word(table_addr as u32);
             debug!("output_char: redirecting '{}' to stream 3 table at 0x{:04x}, current_count={} (CAPTURE ONLY)", 
- ch, table_addr, current_count);
+                   ch, table_addr, current_count);
 
             // Write character to table at table+2+current_count
             let addr = table_addr + 2 + current_count;

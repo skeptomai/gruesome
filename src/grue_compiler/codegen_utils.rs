@@ -12,24 +12,24 @@ pub struct CodeGenUtils;
 impl CodeGenUtils {
     /// Log comprehensive IR inventory for debugging and analysis
     pub fn log_ir_inventory(ir: &IrProgram) {
-        log::info!(" IR INVENTORY: Comprehensive input analysis");
-        log::info!("  ├─ Functions: {} definitions", ir.functions.len());
+        log::info!("IR inventory: comprehensive input analysis");
+        log::info!(" ├─ Functions: {} definitions", ir.functions.len());
         log::info!(
-            "  ├─ Init block: {}",
+            " ├─ Init block: {}",
             if ir.init_block.is_some() {
                 "present"
             } else {
                 "missing"
             }
         );
-        log::info!("  ├─ Grammar rules: {} rules", ir.grammar.len());
-        log::info!("  ├─ Objects: {} definitions", ir.objects.len());
-        log::info!("  ├─ Rooms: {} definitions", ir.rooms.len());
-        log::info!("  ├─ String table: {} strings", ir.string_table.len());
+        log::info!(" ├─ Grammar rules: {} rules", ir.grammar.len());
+        log::info!(" ├─ Objects: {} definitions", ir.objects.len());
+        log::info!(" ├─ Rooms: {} definitions", ir.rooms.len());
+        log::info!(" ├─ String table: {} strings", ir.string_table.len());
 
         let total_ir_instructions = Self::count_total_ir_instructions(ir);
         log::info!(
-            "  └─ Total IR instructions: {} instructions",
+            " └─ Total IR instructions: {} instructions",
             total_ir_instructions
         );
 
@@ -98,12 +98,12 @@ impl CodeGenUtils {
             }
         }
 
-        log::debug!("📊 IR INSTRUCTION BREAKDOWN:");
+        log::debug!(" IR INSTRUCTION BREAKDOWN:");
         let mut sorted_counts: Vec<_> = instruction_counts.iter().collect();
         sorted_counts.sort_by(|a, b| b.1.cmp(a.1)); // Sort by count descending
 
         for (instruction_type, count) in sorted_counts {
-            log::debug!("  ├─ {}: {}", instruction_type, count);
+            log::debug!(" ├─ {}: {}", instruction_type, count);
         }
     }
 

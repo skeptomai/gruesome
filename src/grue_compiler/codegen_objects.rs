@@ -282,10 +282,10 @@ impl ZMachineCodeGen {
 
     /// Generate object and property tables
     pub fn generate_object_tables(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
-        log::info!("🏗️  === OBJECT TABLE GENERATION DEBUG ===");
-        log::info!("🏗️  Target version: {:?}", self.version);
+        log::info!("=== OBJECT TABLE GENERATION DEBUG ===");
+        log::info!("Target version: {:?}", self.version);
         log::info!(
-            "🏗️  IR contains: {} rooms, {} objects",
+            "IR contains: {} rooms, {} objects",
             ir.rooms.len(),
             ir.objects.len()
         );
@@ -370,7 +370,7 @@ impl ZMachineCodeGen {
             child: None, // Player can contain objects (inventory)
         });
         log::info!(
-            "🏗️  Object #1: PLAYER - location property {} = {}, desc property {} = 'yourself'",
+            "Object #1: PLAYER - location property {} = {}, desc property {} = 'yourself'",
             location_prop,
             initial_location,
             desc_prop
@@ -405,7 +405,7 @@ impl ZMachineCodeGen {
             });
 
             log::info!(
-                "🏗️  Object #{}: ROOM '{}' (ID: {}, short: '{}')",
+                "Object #{}: ROOM '{}' (ID: {}, short: '{}')",
                 all_objects.len(),
                 room.name,
                 room.id,
@@ -443,7 +443,7 @@ impl ZMachineCodeGen {
             });
 
             log::info!(
-                "🏗️  Object #{}: OBJECT '{}' (ID: {}, short: '{}')",
+                "Object #{}: OBJECT '{}' (ID: {}, short: '{}')",
                 all_objects.len(),
                 object.name,
                 object.id,
@@ -451,9 +451,9 @@ impl ZMachineCodeGen {
             );
         }
 
-        log::info!("🏗️  === OBJECT ID MAPPING ===",);
+        log::info!("=== OBJECT ID MAPPING ===",);
         log::info!(
-            "🏗️  Total objects to generate: {} ({} rooms + {} objects + 1 player)",
+            "Total objects to generate: {} ({} rooms + {} objects + 1 player)",
             all_objects.len(),
             ir.rooms.len(),
             ir.objects.len()
@@ -465,7 +465,7 @@ impl ZMachineCodeGen {
             let obj_num = (index + 1) as u8; // Objects are numbered starting from 1
             object_id_to_number.insert(object.id, obj_num);
             log::info!(
-                "🏗️  ID Mapping: IR ID {} → Object #{} ('{}')",
+                "ID Mapping: IR ID {} → Object #{} ('{}')",
                 object.id,
                 obj_num,
                 object.short_name

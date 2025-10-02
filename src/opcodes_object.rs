@@ -76,7 +76,7 @@ impl Interpreter {
                     let size_byte = self.vm.read_byte(size_byte_addr);
                     let size = ((size_byte >> 5) & 0x07) + 1;
                     debug!(
-                        "  Size byte at {:04x}: {:02x}, property size: {}",
+                        " Size byte at {:04x}: {:02x}, property size: {}",
                         size_byte_addr, size_byte, size
                     );
                     size as u16
@@ -119,12 +119,12 @@ impl Interpreter {
                 // Validate object number range BEFORE accessing
                 if obj_num == 0 || obj_num > 255 {
                     log::error!(
-                        "🚨 INVALID OBJECT NUMBER: {} is out of valid range (1-255)",
+                        " INVALID OBJECT NUMBER: {} is out of valid range (1-255)",
                         obj_num
                     );
-                    log::error!("🚨 This suggests stack corruption or invalid instruction operand");
+                    log::error!(" This suggests stack corruption or invalid instruction operand");
                     log::error!(
-                        "🚨 Current instruction size: {}, PC before: {:05x}",
+                        " Current instruction size: {}, PC before: {:05x}",
                         inst.size,
                         self.vm.pc - inst.size as u32
                     );
@@ -210,9 +210,9 @@ impl Interpreter {
                     operands[0], operands[1], current_pc
                 );
                 if operands[0] == 0 {
-                    debug!("❌ insert_obj Z-Machine opcode called with object 0!");
-                    debug!("   operands: {:?}", operands);
-                    debug!("   instruction: {:?}", inst);
+                    debug!(" insert_obj Z-Machine opcode called with object 0!");
+                    debug!(" operands: {:?}", operands);
+                    debug!(" instruction: {:?}", inst);
                 }
                 self.vm.insert_object(operands[0], operands[1])?;
                 Ok(ExecutionResult::Continue)
@@ -227,8 +227,8 @@ impl Interpreter {
                 // Debug logging for object 0 case (the Frotz compatibility issue)
                 if obj_num == 0 {
                     debug!("WARNING: get_prop called with object 0 at PC {:05x} - this should not happen!", self.vm.pc);
-                    debug!("  Property number: {}", prop_num);
-                    debug!("  This likely means Variable(16) returned 0 instead of 1 (player object number)");
+                    debug!(" Property number: {}", prop_num);
+                    debug!(" This likely means Variable(16) returned 0 instead of 1 (player object number)");
                 }
 
                 let value = self.vm.get_property(obj_num, prop_num)?;
@@ -332,24 +332,24 @@ impl Interpreter {
         matches!(
             (opcode, operand_count),
             // 1OP object operations
-            (0x01, crate::instruction::OperandCount::OP1) |  // get_sibling
-            (0x02, crate::instruction::OperandCount::OP1) |  // get_child
-            (0x03, crate::instruction::OperandCount::OP1) |  // get_parent
-            (0x04, crate::instruction::OperandCount::OP1) |  // get_prop_len
-            (0x09, crate::instruction::OperandCount::OP1) |  // remove_obj
-            (0x0A, crate::instruction::OperandCount::OP1) |  // print_obj
-            // 2OP object operations
-            (0x06, crate::instruction::OperandCount::OP2) |  // jin
-            (0x0A, crate::instruction::OperandCount::OP2) |  // test_attr
-            (0x0B, crate::instruction::OperandCount::OP2) |  // set_attr
-            (0x0C, crate::instruction::OperandCount::OP2) |  // clear_attr
-            (0x0E, crate::instruction::OperandCount::OP2) |  // insert_obj
-            (0x11, crate::instruction::OperandCount::OP2) |  // get_prop
-            (0x12, crate::instruction::OperandCount::OP2) |  // get_prop_addr
-            (0x13, crate::instruction::OperandCount::OP2) |  // get_next_prop
-            // VAR object operations
-            (0x03, crate::instruction::OperandCount::VAR) // put_prop
-                                                          // Note: VAR:0x13 is handled specially in the interpreter routing
+            (0x01, crate::instruction::OperandCount::OP1) | // get_sibling
+ (0x02, crate::instruction::OperandCount::OP1) | // get_child
+ (0x03, crate::instruction::OperandCount::OP1) | // get_parent
+ (0x04, crate::instruction::OperandCount::OP1) | // get_prop_len
+ (0x09, crate::instruction::OperandCount::OP1) | // remove_obj
+ (0x0A, crate::instruction::OperandCount::OP1) | // print_obj
+ // 2OP object operations
+ (0x06, crate::instruction::OperandCount::OP2) | // jin
+ (0x0A, crate::instruction::OperandCount::OP2) | // test_attr
+ (0x0B, crate::instruction::OperandCount::OP2) | // set_attr
+ (0x0C, crate::instruction::OperandCount::OP2) | // clear_attr
+ (0x0E, crate::instruction::OperandCount::OP2) | // insert_obj
+ (0x11, crate::instruction::OperandCount::OP2) | // get_prop
+ (0x12, crate::instruction::OperandCount::OP2) | // get_prop_addr
+ (0x13, crate::instruction::OperandCount::OP2) | // get_next_prop
+ // VAR object operations
+ (0x03, crate::instruction::OperandCount::VAR) // put_prop
+                                                           // Note: VAR:0x13 is handled specially in the interpreter routing
         )
     }
 

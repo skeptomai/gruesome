@@ -216,7 +216,7 @@ impl ZMachineCodeGen {
         let old_addr = self.final_assembly_address;
         self.final_assembly_address = new_addr;
         log::warn!(
-            "🔄 FINAL_ASSEMBLY_ADDRESS_UPDATE: {} | 0x{:04x} → 0x{:04x} (delta: {:+})",
+            "FINAL_ASSEMBLY_ADDRESS_UPDATE: {} | 0x{:04x} → 0x{:04x} (delta: {:+})",
             context,
             old_addr,
             new_addr,
