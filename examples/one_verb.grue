@@ -1,0 +1,23 @@
+// One verb test - add single simple verb
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room."
+    }
+}
+
+grammar {
+    verb "test" {
+        default => test_function()
+    }
+}
+
+fn test_function() {
+    print("Test function called");
+}
+
+init {
+    player.location = test_room;
+    print("One verb test");
+    print("Type 'test' to test");
+}

@@ -1540,6 +1540,10 @@ impl ZMachineCodeGen {
             (0x03, 3) => InstructionForm::Variable, // put_prop is always VAR
 
             // Always VAR form opcodes (regardless of operand count)
+            // CRITICAL: call_vs (opcode 0x00) MUST use VAR form even with 1 operand
+            // This is required for init → main loop calls to work correctly.
+            // Without this, opcode 0x00 with 1 operand would use SHORT form (incorrect).
+            (0x00, _) => InstructionForm::Variable, // call_vs (VAR:224) is always VAR
             (0x04, _) => InstructionForm::Variable, // sread is always VAR
             (0x05, _) => InstructionForm::Variable, // print_char is always VAR
             (0x06, _) => InstructionForm::Variable, // print_num is always VAR

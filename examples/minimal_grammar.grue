@@ -1,0 +1,24 @@
+// Minimal grammar test for UnresolvedReference main loop debugging
+// Start with just one verb, no nouns, to validate basic architecture
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room."
+    }
+}
+
+grammar {
+    verb "quit" {
+        default => handle_quit()
+    }
+}
+
+fn handle_quit() {
+    print("Thanks for testing!");
+}
+
+init {
+    player.location = test_room;
+    print("Minimal grammar test");
+    print("Type 'quit' to exit");
+}

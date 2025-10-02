@@ -1,0 +1,12 @@
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room."
+    }
+}
+
+init {
+    player.location = test_room;
+    print("Simple test - no grammar");
+    print("This should work without crashing");
+    print("Program ends here");
+}

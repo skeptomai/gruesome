@@ -1,0 +1,15 @@
+// No grammar test - isolate main loop with zero verbs
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room."
+    }
+}
+
+// NO grammar section at all
+
+init {
+    player.location = test_room;
+    print("No grammar test");
+    print("Should show unknown command message");
+}
