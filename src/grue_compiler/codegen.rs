@@ -1507,18 +1507,9 @@ impl ZMachineCodeGen {
                     reference.location
                 );
 
-                // TEMPORARY: Check for our problematic label 415
-                if reference.target_id == 415 {
-                    eprintln!(
-                        "CRITICAL: Resolving branch for label 415 at location 0x{:04x}",
-                        reference.location
-                    );
-                    if let Some(&target_addr) = self.reference_context.ir_id_to_address.get(&415) {
-                        eprintln!(" Label 415 maps to address 0x{:04x}", target_addr);
-                    } else {
-                        eprintln!(" ERROR: Label 415 not found in ir_id_to_address!");
-                    }
-                }
+                // Historical note: Previously tracked label 415 branch resolution
+                // This was temporary debugging code for systematic branch calculation bugs
+                // Fixed by proper UnresolvedReference system
 
                 // Check if this Branch reference is at location 0x127f or nearby
                 if reference.location == 0x127f
@@ -6455,14 +6446,9 @@ impl ZMachineCodeGen {
             );
 
             // CRITICAL CHECK: Is 415 being returned?
-            if literal_value == 415 {
-                eprintln!("BUG FOUND: resolve_ir_id_to_operand returning LargeConstant(415) for IR ID {}!", ir_id);
-                eprintln!("This means IR ID {} is mapped to the value 415", ir_id);
-                eprintln!("Stack trace:");
-                let bt = std::backtrace::Backtrace::force_capture();
-                eprintln!("{}", bt);
-                panic!("Label ID 415 being used as operand value!");
-            }
+            // Historical note: Previously checked for literal_value == 415 (label ID bug)
+            // This was a systematic issue where label IDs were being used as operand values
+            // Fixed by proper IR ID mapping - keeping note for future reference
 
             return Ok(Operand::LargeConstant(literal_value));
         }
@@ -7257,11 +7243,8 @@ impl ZMachineCodeGen {
         };
         debug!("Allocate label: IR ID {} -> relative=0x{:04x}, final_code_base=0x{:04x}, address=0x{:04x}", ir_id, relative_address, self.final_code_base, address);
 
-        if ir_id == 415 {
-            eprintln!("CRITICAL: Recording label 415 at address 0x{:04x}", address);
-            eprintln!(" relative_address = 0x{:04x}", relative_address);
-            eprintln!(" final_code_base = 0x{:04x}", self.final_code_base);
-        }
+        // Historical note: Previously tracked label 415 specifically for debugging
+        // Label ID conflicts have been resolved through proper IR ID mapping
 
         self.label_addresses.insert(ir_id, address);
         self.record_final_address(ir_id, address);
@@ -8952,15 +8935,9 @@ impl ZMachineCodeGen {
                 byte, code_offset
             );
         }
-        if code_offset == 0x335 && byte == 0x01 {
-            eprintln!("WARNING: Writing 0x01 at code space offset 0x335 - first byte of 415!");
-        }
-        if code_offset == 0x336 && byte == 0x9f {
-            eprintln!("FOUND THE BUG: Writing 0x9f at code space offset 0x336!");
-            eprintln!("Together with previous byte, this forms 0x019f = 415 decimal");
-            eprintln!("This is a label ID being written as branch bytes!");
-            panic!("BUG DETECTED: Label ID 415 written as branch bytes");
-        }
+        // Historical note: Previously checked for specific addresses 0x335/0x336
+        // This was debugging code for the label ID 415 bug (label IDs written as branch bytes)
+        // Fixed by proper branch offset calculation - removed panic checks
 
         // Clear labels at current address when we emit actual instruction bytes
         // (but not for padding or alignment bytes)
@@ -9125,11 +9102,9 @@ impl ZMachineCodeGen {
                 }
             );
 
-            if (code_offset == 0x334 || code_offset == 0x335) && byte == 0xFF {
-                eprintln!(" CRITICAL: Writing 0xFF at 0x{:03x} - this is a JUMP placeholder that will overlap with JL branch bytes!", code_offset);
-                eprintln!(" This JUMP ends right where the JL's branch bytes should be read from (file offset 0x127E-0x127F)");
-                // Don't panic - let it continue so we can see more
-            }
+            // Historical note: Previously tracked JUMP placeholder writes at 0x334-0x335
+            // This was debugging code for overlap detection with JL branch bytes
+            // Fixed by proper placeholder resolution order
         }
 
         // Phase-aware writing: code generation writes to code_space, address patching writes to final_data
@@ -9178,20 +9153,11 @@ impl ZMachineCodeGen {
  )));
             }
         } else {
+            // Historical note: Previously tracked specific byte writes at 0x338/0x339
+            // This was debugging code for the label ID 415 bug
+            // Fixed by proper branch offset calculation
+
             // Code generation phase: write to code_space
-            if code_offset == 0x338 && byte == 0x01 {
-                eprintln!("GOTCHA! Writing 0x01 to code_space[0x338]");
-                eprintln!("Stack trace:");
-                let bt = std::backtrace::Backtrace::force_capture();
-                eprintln!("{}", bt);
-            }
-            if code_offset == 0x339 && byte == 0x9f {
-                eprintln!("GOTCHA! Writing 0x9f to code_space[0x339]");
-                eprintln!("Stack trace:");
-                let bt = std::backtrace::Backtrace::force_capture();
-                eprintln!("{}", bt);
-                // Don't panic, let's see what happens next
-            }
             self.code_space[code_offset] = byte;
 
             // TEMPORARY DEBUG: Track problematic sequence in code_space
@@ -9206,14 +9172,9 @@ impl ZMachineCodeGen {
                     "FOUND SEQUENCE IN CODE_SPACE: 02 0d 00 01 9f at offset 0x{:04x}",
                     code_offset - 4
                 );
-                log::debug!("This is jl(13,0) with branch bytes 01 9f (415)!");
-                eprintln!("CRITICAL: Writing problematic bytes 0x01 0x9f to code_space at offset 0x{:04x}", code_offset - 1);
-                eprintln!(
-                    " These bytes decode to 415 decimal - likely a label ID not a branch offset!"
-                );
-                eprintln!(" Stack trace:");
-                let backtrace = std::backtrace::Backtrace::capture();
-                eprintln!("{}", backtrace);
+                // Historical note: Previously tracked sequence detection for label ID 415 bug
+                // This code detected when label IDs were being written as branch bytes
+                log::debug!("This is jl(13,0) with branch bytes 01 9f (415) - tracking disabled");
             }
         }
 
@@ -9493,17 +9454,9 @@ impl ZMachineCodeGen {
                 addr
             );
 
-            // Track writes to problematic jl instruction area
-            if addr >= 0x127f && addr <= 0x1284 {
-                eprintln!("DIRECT WRITE to 0x{:04x}: byte=0x{:02x}", addr, byte);
-                eprintln!(" Stack trace:");
-                let backtrace = std::backtrace::Backtrace::capture();
-                eprintln!("{}", backtrace);
-                if addr == 0x1283 && byte == 0x9f {
-                    eprintln!("CRITICAL: Direct write of 0x9f to 0x1283!");
-                    panic!("Found the bug: Direct write of label ID 415 (0x019f) to branch offset location!");
-                }
-            }
+            // Historical note: Previously tracked direct writes to addresses 0x127f-0x1284
+            // This was debugging code for the label ID 415 bug with panic on 0x9f write
+            // Fixed by proper branch offset calculation - removed panic checks
 
             self.final_data[addr] = byte;
             Ok(())
