@@ -1272,6 +1272,13 @@ impl ZMachineCodeGen {
             )));
         }
 
+        // CRITICAL: Detect V5+ opcodes in V3 compilation
+        if opcode == 0x1a || opcode == 0x1b || opcode == 0x1c {
+            panic!("COMPILER BUG: V5+ opcode 0x{:02x} (call_2n/set_colour/clear_colour) emitted in V3 target at address 0x{:04x}. \
+                    V3 must use call_vs (0x00) for all function calls. Check grammar generation or function call code.",
+                   opcode, self.code_address);
+        }
+
         // CRITICAL: Prevent "Cannot insert object 0" runtime errors by detecting dangerous insert_obj instructions
         if opcode == 0x0E && !operands.is_empty() {
             // This is insert_obj - check if first operand could produce object 0

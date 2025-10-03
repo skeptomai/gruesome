@@ -389,6 +389,22 @@ impl Instruction {
 
         let size = offset - addr;
 
+        // Debug size calculation for PC offset bugs
+        if addr == 0x079c || addr == 0x0798 || addr == 0x0794 {
+            debug!("🔍 PC DEBUG at {:05x}:", addr);
+            debug!("  Start addr: 0x{:05x}", addr);
+            debug!("  Final offset: 0x{:05x}", offset);
+            debug!("  Calculated size: {} bytes", size);
+            debug!("  Opcode byte: 0x{:02x}", opcode_byte);
+            debug!("  Opcode: 0x{:02x}", opcode);
+            debug!("  Form: {:?}", form);
+            debug!("  Operand count: {:?}", operand_count);
+            debug!("  Operands: {:?}", operands);
+            debug!("  Store var: {:?}", store_var);
+            debug!("  Branch: {:?}", branch);
+            debug!("  Next PC should be: 0x{:05x}", addr + size);
+        }
+
         // Debug size calculation for Trinity PC offset bug
         if addr == 0x125c7 {
             debug!("🚨 TRINITY PC OFFSET DEBUG at 125c7:");

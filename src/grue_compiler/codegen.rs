@@ -6386,7 +6386,9 @@ impl ZMachineCodeGen {
         let opcode = 0x00; // call_vs raw opcode - works with any number of arguments
 
         // Determine store variable for return value
-        let store_var = target.map(|_| 0x00); // Placeholder store variable
+        // CRITICAL V3 FIX: ALL function calls must store result, even if discarded
+        // V5+ has call_1n/call_2n for no-store calls, but V3 requires storing to stack
+        let store_var = Some(0x00); // Always store to stack (Variable 0)
 
         // Generate the call instruction with placeholder address
         let layout = self.emit_instruction(opcode, &operands, store_var, None)?;
@@ -8283,10 +8285,17 @@ impl ZMachineCodeGen {
         // CRITICAL FIX: Always use 2-byte format since we reserved 2 bytes
         // The Z-Machine interpreter expects consistent instruction sizes
         // Using 1-byte format with padding causes invalid opcode 0x00 decoding
-        // First byte: Bit 7: 0 (2-byte format), Bit 6: 1 (branch on true), Bits 5-0: high 6 bits
-        // Second byte: Low 8 bits
+        //
+        // Z-Machine branch encoding:
+        // Bit 7: Branch polarity (1 = branch on true, 0 = branch on false)
+        // Bit 6: Branch format (1 = 1-byte, 0 = 2-byte)
+        // Bits 5-0: High 6 bits of offset (for 2-byte format)
+        //
+        // For 2-byte format: Bit 6 MUST be 0
+        // First byte: bits [7: polarity, 6: 0 (2-byte), 5-0: high 6 bits of offset]
+        // Second byte: Low 8 bits of offset
         let offset_u16 = offset_2byte as u16;
-        let first_byte = 0x40 | ((offset_u16 >> 8) as u8 & 0x3F); // Bit 7: 0 (2-byte), Bit 6: 1 (true), top 6 bits
+        let first_byte = 0x00 | ((offset_u16 >> 8) as u8 & 0x3F); // Bit 6=0 for 2-byte format
         let second_byte = (offset_u16 & 0xFF) as u8;
 
         // TEMPORARY: Check what we're writing

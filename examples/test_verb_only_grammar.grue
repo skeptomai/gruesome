@@ -1,0 +1,20 @@
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+    }
+}
+
+grammar {
+    verb "test" {
+        default => test_action()
+    }
+}
+
+init {
+    print("Starting");
+    player.location = test_room;
+}
+
+fn test_action() {
+    print("Test worked!");
+}
