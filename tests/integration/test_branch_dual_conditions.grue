@@ -1,0 +1,25 @@
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+    }
+}
+
+init {
+    let a = 5;
+    let b = 5;
+    
+    if (a == b) {
+        print("MATCH: a equals b");
+    } else {
+        print("NO MATCH: a does not equal b");
+    }
+    
+    let c = 5;
+    let d = 7;
+    
+    if (c == d) {
+        print("MATCH: c equals d");
+    } else {
+        print("NO MATCH: c does not equal d");
+    }
+}

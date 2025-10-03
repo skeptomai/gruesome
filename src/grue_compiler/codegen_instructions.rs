@@ -1336,8 +1336,9 @@ impl ZMachineCodeGen {
 
         let form = self.determine_instruction_form_with_operands(operands, opcode);
         log::debug!(
-            " FORM_DETERMINATION: opcode=0x{:02x} -> form={:?}",
+            " FORM_DETERMINATION: opcode=0x{:02x} operands={:?} -> form={:?}",
             opcode,
+            operands,
             form
         );
 
@@ -1615,6 +1616,14 @@ impl ZMachineCodeGen {
         };
 
         let instruction_byte = (op1_bit << 6) | (op2_bit << 5) | (opcode & 0x1F);
+        log::debug!(
+            "🔧 LONG_FORM: op1={:?} op1_bit={} op2={:?} op2_bit={} instruction_byte=0x{:02x}",
+            operands[0],
+            op1_bit,
+            operands[1],
+            op2_bit,
+            instruction_byte
+        );
         self.emit_byte(instruction_byte)?;
 
         // Emit operands
@@ -1797,9 +1806,12 @@ impl ZMachineCodeGen {
                 None // No placeholder needed
             } else {
                 // This is either a large offset or a label reference - emit placeholder
+                // Use the offset value as placeholder to preserve branch sense information in bit 15
                 let loc = self.code_address;
-                log::debug!("BRANCH_PLACEHOLDER: Emitting 0xFFFF at code_address=0x{:04x} for branch (offset={})", loc, offset);
-                self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+                let placeholder_value = offset as u16;
+                log::debug!("BRANCH_PLACEHOLDER: Emitting 0x{:04x} at code_address=0x{:04x} for branch (offset={})",
+                    placeholder_value, loc, offset);
+                self.emit_word(placeholder_value)?; // Will be replaced during branch resolution
                 Some(loc)
             }
         } else {
@@ -1992,9 +2004,12 @@ impl ZMachineCodeGen {
                 None // No placeholder needed
             } else {
                 // This is either a large offset or a label reference - emit placeholder
+                // Use the offset value as placeholder to preserve branch sense information in bit 15
                 let loc = self.code_address;
-                log::debug!("BRANCH_PLACEHOLDER: Emitting 0xFFFF at code_address=0x{:04x} for branch (offset={})", loc, offset);
-                self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+                let placeholder_value = offset as u16;
+                log::debug!("BRANCH_PLACEHOLDER: Emitting 0x{:04x} at code_address=0x{:04x} for branch (offset={})",
+                    placeholder_value, loc, offset);
+                self.emit_word(placeholder_value)?; // Will be replaced during branch resolution
                 Some(loc)
             }
         } else {
@@ -2076,6 +2091,14 @@ impl ZMachineCodeGen {
             0x00
         };
         let instruction_byte = op1_bit | op2_bit | (opcode & 0x1F);
+        log::debug!(
+            "🔧 LONG_FORM_LAYOUT: op1={:?}->{:?} op2={:?}->{:?} instruction_byte=0x{:02x}",
+            operands[0],
+            op1_type,
+            operands[1],
+            op2_type,
+            instruction_byte
+        );
 
         // Debug: What opcode is trying to be generated as 0x3E?
         if instruction_byte == 0x3E {
@@ -2150,9 +2173,12 @@ impl ZMachineCodeGen {
                 None // No placeholder needed
             } else {
                 // This is either a large offset or a label reference - emit placeholder
+                // Use the offset value as placeholder to preserve branch sense information in bit 15
                 let loc = self.code_address;
-                log::debug!("BRANCH_PLACEHOLDER: Emitting 0xFFFF at code_address=0x{:04x} for branch (offset={})", loc, offset);
-                self.emit_word(placeholder_word())?; // Will be replaced during branch resolution
+                let placeholder_value = offset as u16;
+                log::debug!("BRANCH_PLACEHOLDER: Emitting 0x{:04x} at code_address=0x{:04x} for branch (offset={})",
+                    placeholder_value, loc, offset);
+                self.emit_word(placeholder_value)?; // Will be replaced during branch resolution
                 Some(loc)
             }
         } else {

@@ -1,0 +1,16 @@
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+    }
+}
+
+init {
+    let a = 5;
+    let b = 7;  // Different value
+
+    if (a == b) {
+        print("EQUAL");
+    }
+
+    print("DONE");
+}

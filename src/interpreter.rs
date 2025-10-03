@@ -1185,8 +1185,17 @@ impl Interpreter {
                 Ok(ExecutionResult::Continue)
             }
             0x01 => {
-                // je
+                // je - branch if equal
+                let pc = self.vm.pc - inst.size as u32;
+                debug!("JE at PC=0x{:04x}: comparing op1={} vs op2={}, stack_depth={}, stack_top_3={:?}",
+                    pc, op1, op2, self.vm.stack.len(),
+                    if self.vm.stack.len() >= 3 {
+                        Some(&self.vm.stack[self.vm.stack.len()-3..])
+                    } else {
+                        None
+                    });
                 let condition = op1 == op2;
+                debug!("JE: condition={} (equal={})", condition, op1 == op2);
                 self.do_branch(inst, condition)
             }
             0x02 => {

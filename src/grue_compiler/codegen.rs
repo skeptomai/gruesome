@@ -5159,7 +5159,7 @@ impl ZMachineCodeGen {
         )?;
 
         // 4. Process parsed input - check for quit command
-        self.generate_command_processing(_ir, parse_buffer_addr)?;
+        self.generate_command_processing(_ir, parse_buffer_addr, main_loop_jump_id)?;
 
         // 5. Jump back to start of main loop for next command
         debug!("Generating loop-back jump to continue main loop");
@@ -5198,6 +5198,7 @@ impl ZMachineCodeGen {
         &mut self,
         ir: &IrProgram,
         _parse_buffer_addr: u16,
+        main_loop_jump_id: u32,
     ) -> Result<(), CompilerError> {
         debug!("Generating grammar-based command processing with pattern matching");
 
@@ -5207,7 +5208,7 @@ impl ZMachineCodeGen {
         // No grammar defined - just continue to unknown command message
         } else {
             // Generate grammar pattern matching engine
-            self.generate_grammar_pattern_matching(&ir.grammar)?;
+            self.generate_grammar_pattern_matching(&ir.grammar, main_loop_jump_id)?;
         }
 
         // Default handler: print unknown command and continue
@@ -5246,6 +5247,7 @@ impl ZMachineCodeGen {
     fn generate_grammar_pattern_matching(
         &mut self,
         grammar_rules: &[crate::grue_compiler::ir::IrGrammar],
+        main_loop_jump_id: u32,
     ) -> Result<(), CompilerError> {
         debug!(
             "Generating grammar pattern matching for {} verbs",
@@ -5257,7 +5259,7 @@ impl ZMachineCodeGen {
             debug!("Processing grammar verb: '{}'", grammar.verb);
 
             // Generate verb matching: check if first token matches this verb
-            self.generate_verb_matching(&grammar.verb, &grammar.patterns)?;
+            self.generate_verb_matching(&grammar.verb, &grammar.patterns, main_loop_jump_id)?;
         }
 
         debug!("Grammar pattern matching generation complete");
@@ -5269,6 +5271,7 @@ impl ZMachineCodeGen {
         &mut self,
         verb: &str,
         patterns: &[crate::grue_compiler::ir::IrPattern],
+        main_loop_jump_id: u32,
     ) -> Result<(), CompilerError> {
         debug!(
  " VERB_MATCH_START: Generating verb matching for '{}' with {} patterns at address 0x{:04x}",
@@ -5376,7 +5379,7 @@ impl ZMachineCodeGen {
         self.emit_instruction(
             0x0d, // store: store value into variable
             &[
-                Operand::SmallConstant(6),              // Destination: Variable 6 (temporary)
+                Operand::SmallConstant(6), // Destination: Variable 6 (temporary)
                 Operand::LargeConstant(verb_dict_addr), // Value to store
             ],
             None,
@@ -5392,7 +5395,7 @@ impl ZMachineCodeGen {
                 Operand::Variable(6), // This verb's dict addr (from temporary Variable 6)
             ],
             None,
-            Some(0x7FFF), // Placeholder - will branch if EQUAL (continue to handler)
+            Some(0xBFFF_u16 as i16), // Placeholder - will branch if EQUAL (branch-on-true, 2-byte format)
         )?;
 
         // Register branch: if equal, continue to handler (skip the next jump)
@@ -5573,27 +5576,27 @@ impl ZMachineCodeGen {
                     panic!("BUG: emit_instruction didn't return operand_location for placeholder");
                 }
 
-                // Jump over the verb-only case - use proper label system
+                // Jump back to main loop to read new input - handler has successfully executed
                 debug!(
-                    "🔀 JUMP_LABEL: Using end-of-function label {} to skip verb-only case",
-                    end_function_label
+                    "🔀 JUMP_MAIN_LOOP: Jumping back to main loop start (label {}) after successful handler",
+                    main_loop_jump_id
                 );
 
                 let layout = self.emit_instruction(
                     0x0C,                                          // jump
-                    &[Operand::LargeConstant(placeholder_word())], // Will be resolved to proper target
+                    &[Operand::LargeConstant(placeholder_word())], // Will be resolved to main loop start
                     None,
                     None,
                 )?;
 
-                // Create UnresolvedReference for jump to end of function
+                // Create UnresolvedReference for jump back to main loop start
                 if let Some(operand_location) = layout.operand_location {
                     self.reference_context
                         .unresolved_refs
                         .push(UnresolvedReference {
                             reference_type: LegacyReferenceType::Jump,
                             location: operand_location,
-                            target_id: end_function_label,
+                            target_id: main_loop_jump_id,
                             is_packed_address: false,
                             offset_size: 2,
                             location_space: MemorySpace::Code,
@@ -5649,6 +5652,36 @@ impl ZMachineCodeGen {
                 } else {
                     panic!("BUG: emit_instruction didn't return operand_location for placeholder");
                 }
+
+                // Jump back to main loop to read new input - default handler has successfully executed
+                debug!(
+                    "🔀 JUMP_MAIN_LOOP: Jumping back to main loop start (label {}) after default handler",
+                    main_loop_jump_id
+                );
+
+                let layout = self.emit_instruction(
+                    0x0C,                                          // jump
+                    &[Operand::LargeConstant(placeholder_word())], // Will be resolved to main loop start
+                    None,
+                    None,
+                )?;
+
+                if let Some(operand_location) = layout.operand_location {
+                    self.reference_context
+                        .unresolved_refs
+                        .push(UnresolvedReference {
+                            reference_type: LegacyReferenceType::Jump,
+                            location: operand_location,
+                            target_id: main_loop_jump_id,
+                            is_packed_address: false,
+                            offset_size: 2,
+                            location_space: MemorySpace::Code,
+                        });
+                } else {
+                    panic!(
+                        "BUG: emit_instruction didn't return operand_location for jump placeholder"
+                    );
+                }
             }
         } else if let Some(pattern) = noun_pattern {
             // No default pattern, but we have a noun pattern - call it with object ID 0
@@ -5685,6 +5718,36 @@ impl ZMachineCodeGen {
                         });
                 } else {
                     panic!("BUG: emit_instruction didn't return operand_location for placeholder");
+                }
+
+                // Jump back to main loop to read new input - noun handler (with ID 0) has successfully executed
+                debug!(
+                    "🔀 JUMP_MAIN_LOOP: Jumping back to main loop start (label {}) after noun handler (ID 0)",
+                    main_loop_jump_id
+                );
+
+                let layout = self.emit_instruction(
+                    0x0C,                                          // jump
+                    &[Operand::LargeConstant(placeholder_word())], // Will be resolved to main loop start
+                    None,
+                    None,
+                )?;
+
+                if let Some(operand_location) = layout.operand_location {
+                    self.reference_context
+                        .unresolved_refs
+                        .push(UnresolvedReference {
+                            reference_type: LegacyReferenceType::Jump,
+                            location: operand_location,
+                            target_id: main_loop_jump_id,
+                            is_packed_address: false,
+                            offset_size: 2,
+                            location_space: MemorySpace::Code,
+                        });
+                } else {
+                    panic!(
+                        "BUG: emit_instruction didn't return operand_location for jump placeholder"
+                    );
                 }
             }
         }
@@ -6946,23 +7009,15 @@ impl ZMachineCodeGen {
  );
 
             // Resolve operands for the comparison
-            if self.code_address >= 0x330 && self.code_address <= 0x340 {
-                log::debug!(
-                    "CRITICAL COMPARISON at code_address=0x{:04x}: left_id={}, right_id={}",
-                    self.code_address,
-                    left,
-                    right
-                );
-            }
             let left_operand = self.resolve_ir_id_to_operand(left)?;
             let right_operand = self.resolve_ir_id_to_operand(right)?;
-            if self.code_address >= 0x330 && self.code_address <= 0x340 {
-                log::debug!(
-                    "CRITICAL OPERANDS: left={:?}, right={:?}",
-                    left_operand,
-                    right_operand
-                );
-            }
+            log::debug!(
+                "🔍 COMPARISON: left_id={} -> {:?}, right_id={} -> {:?}",
+                left,
+                left_operand,
+                right,
+                right_operand
+            );
             if right == 415 || left == 415 {
                 panic!("ERROR: Label ID 415 is being used as an operand in comparison!");
             }
@@ -6983,19 +7038,18 @@ impl ZMachineCodeGen {
                 }
             };
 
-            // Determine which label to branch to
-            let branch_target = if branch_on_true {
-                true_label
-            } else {
-                false_label
-            };
+            // CRITICAL FIX: We want to skip the THEN block when the condition is FALSE
+            // So we branch to false_label (skip) when the condition is FALSE
+            // This means we need to INVERT branch_on_true
+            let branch_target = false_label; // Always branch to the skip-THEN label
+            let emit_branch_on_true = !branch_on_true; // Invert the sense
 
             log::debug!(
-                "GENERATING_DIRECT_BRANCH: {:?} with opcode 0x{:02x}, branching to {} on {}",
+                "GENERATING_DIRECT_BRANCH: {:?} with opcode 0x{:02x}, branching to {} on {} (inverted)",
                 op,
                 opcode,
                 branch_target,
-                if branch_on_true { "true" } else { "false" }
+                if emit_branch_on_true { "true" } else { "false" }
             );
 
             // Generate the comparison branch instruction
@@ -7003,11 +7057,7 @@ impl ZMachineCodeGen {
                 opcode,
                 &[left_operand, right_operand],
                 branch_target,
-                if branch_on_true {
-                    false_label
-                } else {
-                    true_label
-                },
+                emit_branch_on_true,
             )?;
 
             let after_addr = self.code_address;
@@ -7118,15 +7168,15 @@ impl ZMachineCodeGen {
         &mut self,
         opcode: u8,
         operands: &[Operand],
-        true_label: IrId,
-        _false_label: IrId,
+        target_label: IrId,
+        branch_on_true: bool,
     ) -> Result<(), CompilerError> {
         log::debug!(
- " EMIT_COMPARISON_BRANCH: opcode=0x{:02x}, operands={:?}, true={}, false={} at code_addr=0x{:04x}",
+ " EMIT_COMPARISON_BRANCH: opcode=0x{:02x}, operands={:?}, target={}, branch_on_true={} at code_addr=0x{:04x}",
  opcode,
  operands,
- true_label,
- _false_label,
+ target_label,
+ branch_on_true,
  self.code_address
  );
 
@@ -7140,28 +7190,21 @@ impl ZMachineCodeGen {
         let before_addr = self.code_address;
 
         // FIXED: Emit comparison instruction WITH placeholder branch offset
-        // The emit_instruction function handles placeholder emission properly
-        log::debug!(
-            "DEBUG: About to emit comparison branch with true_label={}",
-            true_label
-        );
+        // The placeholder value encodes whether we branch on true (bit 15=1) or false (bit 15=0)
+        let placeholder = if branch_on_true {
+            0xBFFF_u16 as i16 // bit 15=1 for branch-on-TRUE
+        } else {
+            0x7FFF_u16 as i16 // bit 15=0 for branch-on-FALSE
+        };
 
-        // TEMPORARY CHECK: Is label ID being passed incorrectly?
-        if true_label == 415 {
-            log::debug!(
-                "FOUND IT: true_label is 415, about to emit comparison at code_address=0x{:04x}",
-                self.code_address
-            );
-        }
-
-        // Check what's passed to emit_instruction
-        log::debug!("EMIT_COMPARISON_BRANCH: Calling emit_instruction with branch_offset=Some(0xFF) at code_address=0x{:04x}", self.code_address);
+        log::debug!("EMIT_COMPARISON_BRANCH: Calling emit_instruction with placeholder=0x{:04x} (branch_on_true={}) at code_address=0x{:04x}",
+            placeholder as u16, branch_on_true, self.code_address);
 
         let layout = self.emit_instruction(
             opcode,
             operands,
-            None,       // No store
-            Some(0xFF), // Placeholder branch offset - will be replaced during resolution
+            None,              // No store
+            Some(placeholder), // Placeholder encodes branch polarity
         )?;
         log::debug!("DEBUG: After emit_instruction, checking branch_location");
 
@@ -7170,14 +7213,14 @@ impl ZMachineCodeGen {
             log::debug!(
                 "Creating Branch UnresolvedReference at location 0x{:04x} for target {}",
                 branch_location,
-                true_label
+                target_label
             );
             self.reference_context
                 .unresolved_refs
                 .push(UnresolvedReference {
                     reference_type: LegacyReferenceType::Branch,
                     location: branch_location, // Use exact location from emit_instruction
-                    target_id: true_label,
+                    target_id: target_label,
                     is_packed_address: false,
                     offset_size: 2,
                     location_space: MemorySpace::Code,
@@ -8312,9 +8355,20 @@ impl ZMachineCodeGen {
         // For 2-byte format: Bit 6 MUST be 0
         // First byte: bits [7: polarity, 6: 0 (2-byte), 5-0: high 6 bits of offset]
         // Second byte: Low 8 bits of offset
+
+        // Read the existing placeholder to determine branch sense (bit 15)
+        let high_byte = self.final_data[location] as u16;
+        let low_byte = self.final_data[location + 1] as u16;
+        let placeholder = (high_byte << 8) | low_byte;
+        let branch_on_true = (placeholder & 0x8000) != 0; // Check bit 15
+
         let offset_u16 = offset_2byte as u16;
-        let first_byte = 0x00 | ((offset_u16 >> 8) as u8 & 0x3F); // Bit 6=0 for 2-byte format
+        let polarity_bit = if branch_on_true { 0x80 } else { 0x00 }; // Bit 7
+        let first_byte = polarity_bit | ((offset_u16 >> 8) as u8 & 0x3F); // Bit 6=0 for 2-byte format
         let second_byte = (offset_u16 & 0xFF) as u8;
+
+        log::debug!("🔧 BRANCH_PATCH: location=0x{:04x} placeholder=0x{:04x} branch_on_true={} target=0x{:04x} offset={} encoded=[0x{:02x} 0x{:02x}]",
+            location, placeholder, branch_on_true, target_address, offset_2byte, first_byte, second_byte);
 
         // TEMPORARY: Check what we're writing
         if first_byte == 0x01 && second_byte == 0x9f {
