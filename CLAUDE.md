@@ -1,20 +1,14 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 3, 2025) - MAIN LOOP HEADER BUG FIXED ✅
+## CURRENT STATUS (October 3, 2025) - BRANCH LOGIC FIXED ✅
 
-**CRITICAL FIX**: Main loop routine header was missing required local variable initialization bytes.
+**CRITICAL FIX**: Conditional branches now correctly skip THEN blocks when conditions are false.
 
-**The Bug**: Z-Machine V3 routine headers require 2-byte initial values for each declared local variable. Main loop declared 5 locals but didn't emit the 10 bytes of initialization data.
+**The Bug**: Comparison branches jumped TO the THEN block when true, but fell through to the THEN block when false (should have skipped it).
 
-**The Fix** (codegen.rs line 5071-5074):
-```rust
-// V3 requires initial values for each local variable (2 bytes each)
-for _ in 0..5 {
-    self.emit_word(0x0000)?; // Initialize all locals to 0
-}
-```
+**The Fix**: Inverted branch logic to target false_label (after THEN) instead of true_label, using branch-on-FALSE to skip when condition doesn't match.
 
-**Impact**: Simple test cases now execute past init, grammar system tests can run.
+**Tests**: All 170+ tests passing, including new branch behavior tests.
 
 ## CRITICAL: NEVER MODIFY THE INTERPRETER
 
