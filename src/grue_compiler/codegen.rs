@@ -5365,13 +5365,31 @@ impl ZMachineCodeGen {
             verb, verb_dict_addr
         );
 
-        // Compare word 1 dict addr with this verb's dict addr
+        // CRITICAL FIX: Load dictionary address into a temporary variable first
+        // because je (opcode 0x01) in Long form can't handle LargeConstant > 255.
+        // Dictionary addresses are typically > 255, causing je to be encoded as
+        // VAR form (0xe1 = storew) which requires 3 operands instead of 2.
+        //
+        // Solution: Load the large constant into Variable 6 using store instruction,
+        // then use je with two Variable operands (Long form encoding).
+        // Note: store opcode (0x0d/2OP:13) operands are: (variable, value)
+        self.emit_instruction(
+            0x0d, // store: store value into variable
+            &[
+                Operand::SmallConstant(6),              // Destination: Variable 6 (temporary)
+                Operand::LargeConstant(verb_dict_addr), // Value to store
+            ],
+            None,
+            None,
+        )?;
+
+        // Compare word 1 dict addr with this verb's dict addr (now in Variable 6)
         // If they DON'T match, skip this verb handler
         let layout = self.emit_instruction(
             0x01, // je: jump if equal
             &[
-                Operand::Variable(2),                   // Word 1 dict addr
-                Operand::LargeConstant(verb_dict_addr), // This verb's dict addr
+                Operand::Variable(2), // Word 1 dict addr
+                Operand::Variable(6), // This verb's dict addr (from temporary Variable 6)
             ],
             None,
             Some(0x7FFF), // Placeholder - will branch if EQUAL (continue to handler)
