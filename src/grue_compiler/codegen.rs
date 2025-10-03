@@ -5068,6 +5068,11 @@ impl ZMachineCodeGen {
         // Variable 5: property value (object lookup)
         self.emit_byte(0x05)?; // Routine header: 5 locals
 
+        // V3 requires initial values for each local variable (2 bytes each)
+        for _ in 0..5 {
+            self.emit_word(0x0000)?; // Initialize all locals to 0
+        }
+
         // Record the routine address (including header) for function calls
         self.function_addresses
             .insert(main_loop_id, main_loop_routine_address);

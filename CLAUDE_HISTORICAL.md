@@ -1,10 +1,311 @@
 # Historical Implementation Documentation
 # ARCHIVED: Development History and Implementation Details
 
-> **NOTE**: This file contains historical development information that was removed from CLAUDE.md 
-> during the v0.8.1+ production cleanup. This information is preserved for reference but is not 
-> automatically loaded by Claude. The project has reached maturity and these implementation 
+> **NOTE**: This file contains historical development information that was removed from CLAUDE.md
+> during the v0.8.1+ production cleanup. This information is preserved for reference but is not
+> automatically loaded by Claude. The project has reached maturity and these implementation
 > details are now documented elsewhere or completed.
+
+---
+
+## ARCHIVED: Pre-October 2, 2025 Status Updates
+
+This section contains historical status updates moved from CLAUDE.md during October 2025 cleanup.
+
+## PREVIOUS STATUS (October 2, 2025) - DICTIONARY ENCODING FIXED ✅
+
+**CRITICAL FIX**: Dictionary encoding restored to Infocom convention (space=5) for commercial game compatibility!
+
+### ✅ DICTIONARY ENCODING FIX (Session Oct 2, 2025):
+
+**NEVER CHANGE SPACE ENCODING FROM 5 TO 0** - This breaks all commercial Infocom games!
+
+**Root Cause Identified**:
+- Commit 90495e8 changed dictionary space encoding from Z-character 5 to Z-character 0
+- Change was made to match Z-Machine specification for compiled mini_zork.grue
+- **BROKE ALL COMMERCIAL GAMES**: Zork I, AMFV, etc. stopped recognizing ANY words
+
+**Technical Details**:
+- **Commercial Game Dictionaries**: Built with space=5 encoding (Infocom convention)
+- **After Bad Change**: Interpreter searched with space=0, dictionaries used space=5
+- **Symptom**: "I don't know the word 'look'" - NO words matched
+- **All Integration Tests Failed**: 2 of 4 gameplay tests failing
+
+**The Fix** (commit ae4468b):
+```rust
+// CORRECT encoding (Infocom convention):
+' ' => 5,        // Space is Z-character 5
+_ => 5,          // Default to space
+while chars.len() < 6 { chars.push(5); }  // Pad with 5s
+
+// WRONG encoding (breaks commercial games):
+' ' => 0,        // Space is Z-character 0 per spec
+_ => 0,          // Default to space
+while chars.len() < 6 { chars.push(0); }  // Pad with 0s
+```
+
+**Critical File**: `src/dictionary.rs` - Lines 72-73, 80, 102-103, 110
+
+**Verification**:
+- ✅ Zork I: "look", "open mailbox", "quit" all work correctly
+- ✅ All 4 integration gameplay tests passing
+- ✅ AMFV gameplay tests passing
+- ✅ Dictionary lookup fully functional
+
+**Trade-off Accepted**:
+- Commercial game compatibility prioritized over Z-Machine spec compliance
+- Compiled mini_zork.grue may need adjustments (compiler must match interpreter)
+- Future: Consider version-aware encoding (space=5 for v3, investigate v4+ spec)
+
+## PREVIOUS STATUS (October 2, 2025) - MAIN LOOP RESTORED ✅
+
+**MAJOR SUCCESS**: Main loop now properly loops! Fixed missing loop-back jump that was disabled during debugging.
+
+### ✅ MAIN LOOP FIX COMPLETE (Session Oct 2, 2025):
+
+**Loop-Back Jump Restored**: Main loop now correctly jumps back to start after command processing.
+
+**What Was Fixed**:
+- Re-enabled loop-back jump at end of main loop (was disabled with TODO during debugging)
+- Added proper UnresolvedReference for jump target to loop start
+- Main loop now: prompt → sread → command processing → jump back (repeat)
+
+**Current Execution Status**:
+- ✅ **Compilation Success**: No hardcoded offset errors or unresolved placeholders
+- ✅ **Banner Display**: "DORK I: The Last Great Empire" displays correctly
+- ✅ **Status Line**: "Score: 0 Moves: 0" appears properly
+- ✅ **Main Loop Working**: Program waits for input and loops correctly (tested without grammar)
+- ✅ **Branch Resolution**: All branch offsets resolve correctly (no 0xffff placeholders)
+- ⚠️ **Grammar System**: Temporarily simplified due to architectural control flow issues
+
+**Architectural Pattern Established** (ALWAYS use this):
+```rust
+// 1. Create label
+let skip_to_target_label = self.next_string_id;
+self.next_string_id += 1;
+
+// 2. Emit branch with placeholder
+let layout = self.emit_instruction(
+    0x02, // jl
+    &[operands...],
+    None,
+    Some(0x7FFF), // Placeholder triggers 2-byte branch encoding
+)?;
+
+// 3. Register UnresolvedReference using layout.branch_location
+if let Some(branch_location) = layout.branch_location {
+    self.reference_context.unresolved_refs.push(UnresolvedReference {
+        reference_type: LegacyReferenceType::Branch,
+        location: branch_location,
+        target_id: skip_to_target_label,
+        ...
+    });
+}
+
+// 4. Later: Register label at actual target
+self.label_addresses.insert(skip_to_target_label, self.code_address);
+self.record_final_address(skip_to_target_label, self.code_address);
+```
+
+**Current Working Files**:
+- **Test File**: `/tmp/test_unique_labels.z3` (all branches working, 6199 bytes)
+- **Source**: `src/grue_compiler/codegen.rs` (all hardcoded offsets eliminated)
+
+### 🎯 NEXT SESSION PRIORITIES:
+
+**Primary Focus**: Fix grammar system architectural issues
+- **Issue**: Grammar pattern matching contains branch with offset=1 causing premature return from main loop
+- **Root Cause**: After calling handler function, code falls through to next verb instead of jumping back to loop
+- **Required Fix**: Add jump back to main loop start after successful handler execution
+- **Current State**: Grammar processing temporarily simplified to allow basic loop testing
+
+**Secondary Tasks**:
+- Fix "Invalid object 608" error (dictionary address → object ID mapping)
+- Complete grammar system control flow architecture
+- Test full verb/noun pattern matching with proper looping
+
+## PREVIOUS STATUS (September 28, 2025) - OBJECT LOOKUP LIMITATION IDENTIFIED ⚠️
+
+**CRITICAL INVESTIGATION COMPLETE**: "Invalid object 608" runtime error fully analyzed and root cause identified.
+
+### 🔍 OBJECT LOOKUP INVESTIGATION COMPLETE (Session Sep 28, 2025):
+
+**Root Cause Identified**: Grammar system passes parse buffer dictionary addresses (e.g., 608) to handler functions as `$noun` parameters, but these addresses are incorrectly treated as object IDs in property operations.
+
+**Technical Details**:
+- **Parse Buffer Address**: Variable(110) correctly stores parse buffer address 608
+- **Grammar Handler**: Functions like `look_at_obj($noun)` receive dictionary addresses as parameters
+- **Property Assignment**: Code like `obj.open = false` generates `clear_attr(608, 1)` instead of `clear_attr(validObjectID, 1)`
+- **Crash Location**: PC 0x141e with instruction `opcode=0x0c` (clear_attr) using object 608
+
+**Current Implementation Status**:
+- ✅ **Parse Buffer Handling**: Correctly extracts dictionary addresses from user input
+- ✅ **Grammar Pattern Matching**: Successfully identifies verbs and nouns
+- ⚠️ **Object Lookup**: Only supports hardcoded objects 1-2, insufficient for real games
+- ❌ **Dictionary-to-Object Mapping**: Missing comprehensive address→ID resolution system
+
+**Architectural Fix Required**: Complete implementation of `generate_object_lookup_from_noun()` function to properly map dictionary addresses to Z-Machine object IDs (1-255) before property operations.
+
+**Current Baseline**: Stable compilation and execution up to user input processing. Ready for architectural improvement to object lookup system.
+
+## PREVIOUS STATUS (September 28, 2025) - BANNER FULLY RESTORED ✅
+
+**CRITICAL SUCCESS**: Banner display completely restored through systematic commit analysis and restoration from BANNER_WORKS baseline!
+
+### ✅ BANNER RESTORATION COMPLETE (Session Sep 28, 2025):
+
+**Banner "Canary in the Coal Mine" Working Perfectly** - Systematic analysis and restoration strategy:
+- **Root Cause Found**: String corruption introduced between cfee3a8 (BANNER_WORKS) and 681be3b
+- **Restoration Method**: Created banner-restoration branch from working BANNER_WORKS commit (cfee3a8)
+- **Banner Output**: Displays correctly - "ZORK is a registered trademark of Infocom, Inc." (NO corruption)
+- **Runtime Concatenation**: Preserved and working - dynamic object descriptions functional
+- **Result**: Banner canary is healthy - system stable with working string display architecture
+
+### 🎯 CURRENT STATE - Banner Restoration Branch:
+- **✅ BANNER WORKING**: All banner text displays correctly without string corruption
+- **✅ RUNTIME CONCATENATION**: Dynamic string expressions work (mailbox "open/closed" descriptions)
+- **✅ GAME FUNCTIONALITY**: Executes through banner display and initial setup
+- **⚠️ Known Issue**: Object 65534 error after banner display (separate from banner functionality)
+- **Branch**: banner-restoration (based on cfee3a8 BANNER_WORKS)
+
+### 📊 EXECUTION PROOF - Banner Display:
+```
+DORK I: The Last Great Empire
+Copyright (c) 2025 Grue Games. All rights reserved.
+ZORK is a registered trademark of Infocom, Inc.
+DORK is .... not
+Revision 1 / Serial number 8675309
+```
+
+### 🎯 REMAINING ISSUES (Documented for next session):
+
+#### 1. **Object 65534 (0xFFFE) Error - ROOT CAUSE IDENTIFIED** ✅ [INVESTIGATION COMPLETE]
+
+**CRITICAL BUG FOUND**: Main loop generation violates Z-Machine specification causing stack corruption.
+
+**Root Cause**: `src/grue_compiler/codegen.rs` line ~5000 (search "Implicit init: calling main loop routine"):
+```rust
+let layout = self.emit_instruction(
+    0x20,                                          // call_vs opcode (VAR form of call)
+    &[Operand::LargeConstant(placeholder_word())], // Placeholder for main loop routine address
+    None,                                          // ❌ WRONG: No store (main loop doesn't return)
+    None,                                          // No branch
+)?;
+```
+
+**The Problem**:
+- ALL Z-Machine call instructions MUST store their result somewhere
+- When `store_var = None`, the result gets pushed onto the **stack**
+- Main loop returns 0 or garbage value (possibly 65534/0xFFFE)
+- This garbage value corrupts the stack for subsequent operations
+- Later stack operations find 65534 and treat it as an object ID
+- Results in "Property 16 not found for object 3" error
+
+**Architecture Issue**:
+- **Interactive Mode**: Generates automatic main loop (ID 9000) that gets called from init
+- **Script Mode**: No main loop, just executes init (works perfectly - test_minimal.grue, basic_test.grue)
+- **Custom Mode**: Calls user main function (may have same issue)
+
+**Evidence**:
+- Simple cases (test_minimal.grue, basic_test.grue) work: Script mode, init-only, no main loop
+- Complex cases (mini_zork.grue) fail: Interactive mode, automatic main loop generation
+- Value 65534 appears on stack before PC 0x12f3 (confirmed via execution tracing)
+
+**Fix Required**: Change `None` to proper stack storage: `Some(0x00)` to store result on stack Variable(0) instead of pushing garbage
+
+#### 2. **Placeholder/Reference Audit Needed**
+- Found 26 UnresolvedReference creations in codegen.rs
+- Only 9 have clear placeholder emissions nearby
+- Need to verify all references have corresponding placeholders
+- Some might be relying on emit_instruction to handle placeholders
+
+#### 3. **Code Pattern Inconsistencies**
+- Found places using hardcoded 0xFFFF instead of placeholder_word()
+- Fixed main instances but debug messages still have hardcoded values
+- Need systematic review of placeholder patterns
+
+#### 4. **Potential Dead Code**
+- Removed emit_branch_offset() which wasn't following placeholder/fixup pattern
+- May be other functions not following modern patterns
+- Need audit of unused or outdated functions
+
+## 📊 MAIN BRANCH ANALYSIS (September 28, 2025)
+
+**MERGE TEST RESULTS**: Tested merging banner-restoration fixes with main branch improvements. **OUTCOME**: Main branch has serious regressions preventing basic functionality.
+
+### **MAIN BRANCH ARCHITECTURAL IMPROVEMENTS** (Valid concepts, broken implementation):
+
+#### 1. **Stack vs Local Variable Architecture** 📚
+- **Goal**: Implement Z-Machine specification-compliant variable usage patterns
+- **Implementation**: Modified codegen to distinguish stack (Variable 0) vs local variables (Variable 1-15)
+- **Status**: Breaking basic property access - "Property 14 not found for object 2" immediately on startup
+- **Code Changes**: Enhanced `resolve_ir_id_to_operand()` with proper Z-Machine compliance checks
+
+#### 2. **End-of-Routine Alignment Architecture** 🎯
+- **Goal**: Fix routine boundary alignment and PC calculation consistency
+- **Implementation**: Enhanced PC calculation logic to handle function headers vs instruction offsets
+- **Status**: Unknown impact due to property access failures preventing execution
+- **Code Changes**: Modified routine header generation and PC offset calculations
+
+#### 3. **VAR Opcode Classification System** 🔧
+- **Goal**: Comprehensive classification of VAR opcodes (0x00-0x1F) per Z-Machine specification
+- **Implementation**: Added systematic VAR opcode handling in `is_true_var_opcode()` function
+- **Status**: Array index crash prevention (positive improvement)
+- **Code Changes**: Enhanced opcode classification in `opcodes_math.rs`
+
+#### 4. **Enhanced UnresolvedReference System** 🔗
+- **Goal**: More robust placeholder tracking and resolution for complex references
+- **Implementation**: Expanded reference tracking with better error handling
+- **Status**: Unknown effectiveness due to basic property access failing
+
+### **CONCLUSION**:
+Main branch contains **valid architectural concepts** but applied them to an **unstable foundation**. The improvements would be beneficial if applied to the stable banner-restoration branch incrementally with proper testing.
+
+**DECISION**: Continue on banner-restoration branch with stable baseline, cherry-pick main branch improvements individually after fixing object 65534 error.
+
+### 🔍 KEY DEBUGGING PATTERNS (Session Sep 17, 2025):
+
+#### Useful Commands for Debugging:
+```bash
+# Check specific offset in compiled file
+xxd -s 0x127f -l 10 mini_zork.z3
+
+# Find where specific values appear
+xxd mini_zork.z3 | grep -E "ff fe|fe ff"
+
+# Trace execution with debug logging
+RUST_LOG=debug ./target/debug/gruesome mini_zork.z3 2>&1 | grep "PC=0x12fc"
+
+# Find placeholder patterns
+grep -r "emit_word(0xFFFF)" src/grue_compiler --include="*.rs" | grep -v ".bak"
+
+# Check for UnresolvedReference without placeholders
+grep -B 5 "UnresolvedReference {" src/grue_compiler/codegen.rs | grep -E "(emit_word|placeholder)"
+```
+
+#### Code Patterns to Watch:
+- **Correct**: `Operand::LargeConstant(placeholder_word())`
+- **Wrong**: `Operand::LargeConstant(0xFFFF)`
+- **Correct**: Create UnresolvedReference AFTER getting location from emit_instruction layout
+- **Wrong**: Calculate location manually before/after emission
+
+### ✅ COMPLETED FIXES (All Sessions):
+1. **Branch System Fixed** - UnresolvedReference system for conditional branches
+2. **Object Mapping Fixed** - Unique Z-Machine object numbers
+3. **IR ID Mapping Fixed** - Array instruction target registration
+4. **PC Calculation Fixed** - Unified calculation logic for all scenarios
+5. **UnresolvedReference Location Fixed** - Systematic reference resolution bug
+6. **Print Function Text Formatting Fixed** - Game banner displays with proper newlines
+
+### 📋 CRITICAL ARCHITECTURE DOCUMENTATION:
+- Created `COMPILER_ARCHITECTURE.md` documenting systematic bug patterns
+- **UnresolvedReference Pattern**: Location must be recorded BEFORE placeholder emission
+- **Branch Encoding Pattern**: Manual byte-by-byte encoding, not `emit_word()`
+- **Reference Type Pattern**: Jump vs Branch disambiguation rules
+
+**Current Status**: mini_zork compiler now generates functionally correct Z-Machine bytecode that executes ~90% successfully. Game banner displays properly with correct newlines, major systematic reference resolution working.
+
+---
 
 ## Timer System Implementation (ARCHIVED)
 

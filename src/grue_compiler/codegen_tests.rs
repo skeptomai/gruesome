@@ -847,4 +847,139 @@ mod codegen_tests {
         log::info!(" No unresolved placeholders found");
         log::info!(" Final bytecode: {} bytes", bytecode_new.len());
     }
+
+    #[test]
+    fn test_minimal_grammar_generation() {
+        // Test grammar system in isolation
+        env_logger::builder().is_test(true).try_init().ok();
+
+        let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
+
+        // Create minimal IR with just one verb
+        let mut ir = create_minimal_ir();
+        ir.program_mode = crate::grue_compiler::ast::ProgramMode::Interactive;
+
+        // Create a simple test function to be called by the grammar
+        let test_func = IrFunction {
+            id: 100,
+            name: "test_verb".to_string(),
+            parameters: Vec::new(),
+            return_type: None,
+            body: IrBlock {
+                id: 101,
+                instructions: vec![IrInstruction::Return { value: None }],
+            },
+            local_vars: Vec::new(),
+        };
+        ir.functions.push(test_func);
+
+        // Add TWO grammar rules with noun patterns
+        // Mini_zork has 16 verbs - maybe the bug needs multiple verbs
+        let verb_rule1 = IrGrammar {
+            verb: "test".to_string(),
+            patterns: vec![
+                IrPattern {
+                    pattern: vec![IrPatternElement::Default],
+                    handler: IrHandler::FunctionCall(100, vec![]),
+                },
+                IrPattern {
+                    pattern: vec![IrPatternElement::Noun],
+                    handler: IrHandler::FunctionCall(100, vec![]),
+                },
+            ],
+        };
+        ir.grammar.push(verb_rule1);
+
+        let verb_rule2 = IrGrammar {
+            verb: "look".to_string(),
+            patterns: vec![
+                IrPattern {
+                    pattern: vec![IrPatternElement::Default],
+                    handler: IrHandler::FunctionCall(100, vec![]),
+                },
+                IrPattern {
+                    pattern: vec![IrPatternElement::Noun],
+                    handler: IrHandler::FunctionCall(100, vec![]),
+                },
+            ],
+        };
+        ir.grammar.push(verb_rule2);
+
+        // Generate the code
+        eprintln!("\n🔍 Starting grammar code generation test...");
+        let result = codegen.generate_complete_game_image(ir);
+
+        if result.is_err() {
+            eprintln!(
+                "❌ Grammar generation error: {:?}",
+                result.as_ref().unwrap_err()
+            );
+        }
+        assert!(
+            result.is_ok(),
+            "Grammar system should compile without errors"
+        );
+
+        let story_data = result.unwrap();
+        eprintln!("✅ Generated {} bytes of bytecode", story_data.len());
+
+        // Write the bytecode to a temp file for inspection
+        std::fs::write("/tmp/test_grammar.z3", &story_data).ok();
+        eprintln!("📝 Wrote bytecode to /tmp/test_grammar.z3");
+
+        // Check that code was generated
+        assert!(story_data.len() > 64);
+
+        // Look for the problematic byte pattern at any location
+        let mut found_bad_pattern = false;
+        let mut bad_pattern_locations = Vec::new();
+
+        for i in 0..story_data.len().saturating_sub(2) {
+            if story_data[i] == 0x1b && story_data[i + 1] == 0x9e {
+                found_bad_pattern = true;
+                bad_pattern_locations.push(i);
+                eprintln!("\n❌ Found bad pattern 0x1b 0x9e at offset 0x{:04x}", i);
+
+                // Show context
+                let start = i.saturating_sub(8);
+                let end = (i + 16).min(story_data.len());
+                eprint!("  Context: ");
+                for j in start..end {
+                    if j == i {
+                        eprint!("[{:02x}] ", story_data[j]);
+                    } else {
+                        eprint!("{:02x} ", story_data[j]);
+                    }
+                }
+                eprintln!();
+
+                // Decode the instruction at this location
+                eprintln!("  Byte 0x1b = 00011011:");
+                eprintln!("    bits 7-6 = 00 → LONG form (2OP)");
+                eprintln!("    bit 6 = 0 → operand 1 is SmallConstant");
+                eprintln!("    bit 5 = 0 → operand 2 is SmallConstant");
+                eprintln!("    bits 4-0 = 11011 = 27 decimal = 2OP:27 (set_attr)");
+                eprintln!("  This looks like: set_attr(0x9e=158, 0x10=16)");
+                eprintln!("  But object 158 doesn't exist!");
+            }
+        }
+
+        if !found_bad_pattern {
+            eprintln!(
+                "✅ Grammar generation test passed: {} bytes, no bad patterns",
+                story_data.len()
+            );
+        } else {
+            eprintln!(
+                "\n📊 Summary: Found {} instances of bad pattern 0x1b 0x9e",
+                bad_pattern_locations.len()
+            );
+            eprintln!("Locations: {:?}", bad_pattern_locations);
+        }
+
+        assert!(
+            !found_bad_pattern,
+            "Grammar system should not emit 0x1b 0x9e pattern"
+        );
+    }
 }

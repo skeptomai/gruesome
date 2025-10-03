@@ -730,4 +730,395 @@ cargo build --target x86_64-unknown-linux-gnu
 - `quetzal/` - Save/restore functionality
 - `text.rs` - Z-string decoding
 
+## Grue Compiler Grammar System Architecture
+
+The Grue compiler implements a complete natural language grammar system for Z-Machine games, enabling verb+noun pattern matching with dynamic object resolution. This system translates high-level grammar declarations into optimized Z-Machine bytecode.
+
+### Grammar System Overview
+
+```mermaid
+graph TB
+    subgraph "Main Loop Structure"
+        LOOP_START[Main Loop Entry<br/>ID 9000]
+        PROMPT[Print Prompt '>']
+        SREAD[Read User Input<br/>SREAD instruction]
+        COMMAND[Command Processing]
+        JUMP_BACK[Jump to Loop Start<br/>Infinite Loop]
+    end
+
+    subgraph "Command Processing Pipeline"
+        GRAMMAR[Grammar Pattern Matching]
+        UNKNOWN[Unknown Command Message]
+    end
+
+    subgraph "Grammar Pattern Matching"
+        VERB1[Verb Handler 1]
+        VERB2[Verb Handler 2]
+        VERBN[Verb Handler N]
+    end
+
+    subgraph "Verb Matching Logic"
+        PARSE_BUF[Parse Buffer Access<br/>Globals 109, 110]
+        DICT_CMP[Dictionary Comparison]
+        WORD_COUNT[Word Count Check]
+        BRANCH_PATTERN{Pattern Type}
+    end
+
+    subgraph "Pattern Handlers"
+        OBJ_LOOKUP[Object Lookup<br/>Dictionary→Object ID]
+        HANDLER_NOUN[Handler with Object]
+        HANDLER_VERB[Handler No Object]
+    end
+
+    LOOP_START --> PROMPT
+    PROMPT --> SREAD
+    SREAD --> COMMAND
+    COMMAND --> GRAMMAR
+    GRAMMAR --> VERB1
+    GRAMMAR --> VERB2
+    GRAMMAR --> VERBN
+    GRAMMAR --> UNKNOWN
+    UNKNOWN --> JUMP_BACK
+
+    VERB1 --> PARSE_BUF
+    PARSE_BUF --> DICT_CMP
+    DICT_CMP --> WORD_COUNT
+    WORD_COUNT --> BRANCH_PATTERN
+
+    BRANCH_PATTERN -->|Verb+Noun| OBJ_LOOKUP
+    BRANCH_PATTERN -->|Verb-Only| HANDLER_VERB
+    OBJ_LOOKUP --> HANDLER_NOUN
+
+    HANDLER_NOUN --> JUMP_BACK
+    HANDLER_VERB --> JUMP_BACK
+    JUMP_BACK --> LOOP_START
+```
+
+### Main Loop Architecture
+
+**Location**: `src/grue_compiler/codegen.rs` lines 5048-5188
+
+The main loop (ID 9000) is a self-contained Z-Machine routine with 5 local variables:
+
+```rust
+// Main loop routine structure
+Routine Header: 0x05 (5 locals)
+Variable 1: Word count from parse buffer
+Variable 2: Word 1 dictionary address (verb)
+Variable 3: Resolved object ID (noun → object mapping)
+Variable 4: Loop counter (object lookup iteration)
+Variable 5: Property value (object name comparison)
+```
+
+**Execution Flow**:
+1. Print prompt "> " via `print_paddr` (string reference)
+2. Store buffer addresses in Globals 109 (text) and 110 (parse)
+3. Execute SREAD instruction with global variables
+4. Call command processing (falls through to grammar system)
+5. Print unknown command message if no match
+6. Jump back to step 1 (infinite loop)
+
+**Global Variables**:
+- `TEXT_BUFFER_GLOBAL` (109 / G6d): Text input buffer address
+- `PARSE_BUFFER_GLOBAL` (110 / G6e): Parse buffer address (tokenized words)
+
+### Parse Buffer Layout
+
+After SREAD execution, the parse buffer contains tokenized user input:
+
+```
+Parse Buffer Structure (byte offsets):
+[0]     = max words capacity
+[1]     = actual word count
+[2-3]   = word 1 dictionary address (16-bit big-endian)
+[4]     = word 1 text position in input buffer
+[5]     = word 1 character length
+[6-7]   = word 2 dictionary address (16-bit big-endian)
+[8]     = word 2 text position
+[9]     = word 2 character length
+... (pattern continues for additional words)
+```
+
+### Grammar Pattern Matching Engine
+
+**Location**: `src/grue_compiler/codegen.rs` lines 5241-5260
+
+The grammar system processes all defined verb handlers sequentially:
+
+```rust
+fn generate_grammar_pattern_matching(
+    grammar_rules: &[IrGrammar]
+) -> Result<(), CompilerError> {
+    // For each grammar verb, generate pattern matching logic
+    for grammar in grammar_rules {
+        self.generate_verb_matching(&grammar.verb, &grammar.patterns)?;
+    }
+
+    // Fall through to unknown command message if no match
+}
+```
+
+**Key Characteristics**:
+- Sequential verb matching (first match wins)
+- No fallthrough between verbs (each verb has explicit branches)
+- Unknown command message only reached if ALL verbs fail
+
+### Verb Matching Logic
+
+**Location**: `src/grue_compiler/codegen.rs` lines 5263-5673
+
+Each verb handler implements a multi-phase matching algorithm:
+
+#### Phase 1: Parse Buffer Access
+```
+Load Global 110 → parse buffer address
+Load buffer[1] → word count (Variable 1)
+Load buffer[2-3] → word 1 dictionary address (Variable 2)
+```
+
+#### Phase 2: Verb Dictionary Comparison
+```
+Call lookup_word_in_dictionary(verb_name) → expected_address
+Compare Variable 2 (parsed verb) with expected_address
+Branch if not equal → try next verb
+```
+
+**Dictionary Lookup Algorithm** (lines 5675-5716):
+- Dictionary base address from layout phase
+- Header: 4 bytes (separator count, entry length, entry count)
+- Entry size: 6 bytes for v3
+- Position: Binary search in sorted dictionary_words list
+- Address calculation: `base + header + (position × entry_size)`
+
+#### Phase 3: Pattern Selection
+
+**Word Count Branch** (lines 5423-5449):
+```
+Compare Variable 1 (word_count) with 2
+Branch if less than 2 → verb_only_label
+Continue to verb+noun pattern
+```
+
+**Label Generation** (lines 5275-5281):
+```rust
+// Unique labels via verb name hashing
+let mut hasher = DefaultHasher::new();
+verb.hash(&mut hasher);
+let end_function_label = 90000 + (hasher.finish() % 9999) as u32;
+```
+
+### Verb+Noun Pattern (Phase 3.1)
+
+**Location**: Lines 5454-5583
+
+**Execution Steps**:
+1. Load word 2 dictionary address from buffer[6-7] → Variable 2
+2. Call `generate_object_lookup_from_noun()` → Variable 3 = object ID
+3. Call handler function with object parameter: `call_vs(handler, Variable 3)`
+4. Jump to end_function_label (skip verb-only case)
+
+**UnresolvedReference Pattern**:
+```rust
+// Function call with packed address
+UnresolvedReference {
+    reference_type: LegacyReferenceType::FunctionCall,
+    location: layout.operand_location, // From emit_instruction
+    target_id: func_id,
+    is_packed_address: true,
+    offset_size: 2,
+    location_space: MemorySpace::Code,
+}
+```
+
+### Verb-Only Pattern (Phase 3.2)
+
+**Location**: Lines 5586-5667
+
+**Execution Steps**:
+1. Register `verb_only_label` at current code address
+2. Check for default pattern (verb-only handler)
+3. If found: `call_vs(handler)` with no arguments
+4. If not found: `call_vs(noun_handler, 0)` with object ID 0
+5. Fall through to end_function_label
+
+**Critical Label Registration** (lines 5588-5594):
+```rust
+self.label_addresses.insert(verb_only_label, self.code_address);
+self.record_final_address(verb_only_label, self.code_address);
+```
+
+### Dynamic Object Lookup System
+
+**Location**: `src/grue_compiler/codegen.rs` lines 5721-5887
+
+**Algorithm Overview**: Loop-based dictionary address → object ID mapping
+
+**Critical Architectural Fix (Sept 30, 2025)**:
+- Replaced hardcoded 2-object limitation with dynamic loop
+- Supports all 68 objects in mini_zork (configurable maximum)
+- Uses proper UnresolvedReference system for all branches
+
+**Implementation Details**:
+
+```
+1. Initialize Variables:
+   Variable 3 = 0 (result, not found)
+   Variable 4 = 1 (loop counter, first object)
+
+2. Loop Start (dynamically allocated label):
+   Register loop_start_label at current address
+
+3. Bounds Check:
+   If Variable 4 > 68 → branch to end_label
+
+4. Property Access:
+   get_prop(Variable 4, 7) → Variable 5
+   (Property 7 = object name dictionary address)
+
+5. Dictionary Comparison:
+   If Variable 5 == Variable 2 → branch to found_match_label
+
+6. Loop Increment:
+   inc Variable 4 (next object)
+   jump to loop_start_label
+
+7. Match Found:
+   store Variable 4 → Variable 3 (object ID as result)
+   fall through to end_label
+
+8. End Label:
+   Variable 3 contains object ID (or 0 if not found)
+```
+
+**Key Features**:
+- **Dynamic Label Allocation**: Uses `next_string_id` counter to avoid conflicts
+- **Comprehensive Coverage**: Checks all objects (1-68 configurable)
+- **Zero on Failure**: Variable 3 = 0 indicates object not found
+- **Proper Placeholder Resolution**: All branches use layout-tracked locations
+
+### UnresolvedReference System Integration
+
+All grammar system jumps, branches, and calls use the UnresolvedReference pattern:
+
+**Branch Instructions** (conditional jumps):
+```rust
+let layout = self.emit_instruction(0x01, operands, None, Some(0x7FFF))?;
+self.reference_context.unresolved_refs.push(UnresolvedReference {
+    reference_type: LegacyReferenceType::Branch,
+    location: layout.branch_location.expect("branch instruction needs location"),
+    target_id: target_label,
+    is_packed_address: false,
+    offset_size: 2,
+    location_space: MemorySpace::Code,
+});
+```
+
+**Jump Instructions** (unconditional jumps):
+```rust
+let layout = self.emit_instruction(0x0C, &[Operand::LargeConstant(placeholder_word())], None, None)?;
+self.reference_context.unresolved_refs.push(UnresolvedReference {
+    reference_type: LegacyReferenceType::Jump,
+    location: layout.operand_location.expect("jump instruction needs operand"),
+    target_id: target_label,
+    is_packed_address: false,
+    offset_size: 2,
+    location_space: MemorySpace::Code,
+});
+```
+
+**Function Calls** (handler invocation):
+```rust
+let layout = self.emit_instruction(0x00, &[Operand::LargeConstant(placeholder_word()), ...], Some(0), None)?;
+self.reference_context.unresolved_refs.push(UnresolvedReference {
+    reference_type: LegacyReferenceType::FunctionCall,
+    location: layout.operand_location.expect("call instruction needs operand"),
+    target_id: function_id,
+    is_packed_address: true, // Function addresses are packed
+    offset_size: 2,
+    location_space: MemorySpace::Code,
+});
+```
+
+### Critical Implementation Patterns
+
+**1. Layout-Based Location Tracking** (NOT hardcoded offsets):
+```rust
+// CORRECT: Use layout.operand_location from emit_instruction
+if let Some(operand_location) = layout.operand_location {
+    // Use operand_location for reference
+} else {
+    panic!("BUG: emit_instruction didn't return operand_location");
+}
+
+// WRONG: Never calculate locations manually
+// self.code_address - 2  // NEVER DO THIS
+```
+
+**2. Label Registration Order**:
+```rust
+// Labels registered BEFORE jumping to them (forward references)
+let label_id = allocate_unique_label();
+emit_jump_to(label_id); // Creates UnresolvedReference
+// ... other code ...
+self.label_addresses.insert(label_id, self.code_address); // Resolves reference
+```
+
+**3. Placeholder Values**:
+- Branch placeholders: `0x7FFF`
+- Jump/call placeholders: `placeholder_word()` returns `0xFFFF`
+- String references: `placeholder_word()` for packed addresses
+
+### Control Flow Summary
+
+```
+Main Loop (ID 9000)
+  ↓
+[Print Prompt]
+  ↓
+[SREAD User Input]
+  ↓
+[Command Processing]
+  ↓
+[Grammar Pattern Matching] ← Sequential verb handlers
+  ↓
+[Verb 1 Matching]
+  ├─ Parse buffer access
+  ├─ Dictionary comparison
+  ├─ Word count check
+  ├─ Branch: No match → try Verb 2
+  ├─ Branch: Verb-only → call handler() → return
+  └─ Verb+Noun:
+      ├─ Object lookup loop (dictionary → object ID)
+      ├─ Call handler(object_id) → return
+      └─ Jump to end label
+  ↓
+[Verb 2 Matching] ← Similar structure
+  ↓
+[Verb N Matching]
+  ↓
+[Unknown Command Message] ← Only if ALL verbs fail
+  ↓
+[Jump to Main Loop Start] ← Infinite loop
+```
+
+### Performance Characteristics
+
+- **Dictionary Lookup**: O(log n) binary search in sorted word list
+- **Object Lookup**: O(n) linear scan through objects (worst case 68 iterations for mini_zork)
+- **Verb Matching**: O(v) where v = number of defined verbs (sequential)
+- **Memory Usage**: 5 local variables + parse buffer (typically 128 bytes)
+
+### Integration with IR Pipeline
+
+**AST → IR → Codegen Flow**:
+1. **AST**: `GrammarDecl` with `VerbDecl` and `PatternElement` enums
+2. **IR**: `IrGrammar` with `IrPattern` and `IrHandler` structures
+3. **Codegen**: Z-Machine bytecode generation with placeholder resolution
+
+**Pattern Element Types** (`src/grue_compiler/ast.rs` lines 160-204):
+- `Literal(String)` - Exact word match
+- `Noun` - Object reference (requires lookup)
+- `Default` - Verb-only pattern (no noun)
+- `Adjective`, `MultiWordNoun`, `Preposition` - Advanced patterns (future)
+
 This modular architecture provides a robust, maintainable foundation for a complete Z-Machine interpreter with excellent game compatibility, clean code organization, and clear separation of concerns across functional domains.
