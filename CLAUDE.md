@@ -1,30 +1,36 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 4, 2025) - INFINITE LOOP FIXED, STACK ISSUE REVEALED ✅🔍
+## CURRENT STATUS (October 4, 2025) - IR OPTIMIZED, INVESTIGATING STACK UNDERFLOW ✅🔍
 
-**PROGRESS**: Fixed two critical bugs, revealed deeper architectural issue.
+**PROGRESS**: Fixed three bugs, reduced redundant jumps 66%, investigating stack management.
 
 ### Bug 1: Opcode Form Selection ✅ FIXED
 - **Issue**: Raw opcode 0x08 emitted as 2OP:OR (0xC8) instead of VAR:push (0xE8)
 - **Fix**: `emit_instruction_typed()` respects Opcode enum variant
 - **Details**: See `OPCODE_FORM_BUG_ANALYSIS.md`
 
-### Bug 2: Infinite Loop (Jump Offset 2) ✅ FIXED
+### Bug 2: Infinite Loop (Jump Offset 2) ✅ PARTIALLY FIXED
 - **Issue**: 32 jumps with offset=2 created infinite loops (jump to self)
-- **Root Cause**: LoadImmediate doesn't emit code → labels defer to next instruction → jump lands at target immediately after itself
-- **Fix**: Convert offset-2 jumps to NOP instructions during resolution
-- **File**: `src/grue_compiler/codegen.rs:1496-1511`
+- **Root Cause**: LoadImmediate doesn't emit code → labels defer to next instruction
+- **Fix 1**: Convert offset-2 jumps to NOP during resolution (`codegen.rs:1496-1511`)
+- **Fix 2**: Eliminate redundant jumps in if-statements without else (`ir.rs:1931-1936`)
+- **Result**: Reduced from 32 to 11 offset-2 jumps (66% improvement)
+
+### Bug 2b: Remaining 11 Offset-2 Jumps 📋 DOCUMENTED
+- **Pattern**: Complex expression control flow (MethodCall, PropertyAccess)
+- **Locations**:
+  - `ir.rs:2433` - MethodCall with LoadImmediate fallback
+  - `ir.rs:2554` - PropertyAccess null-check with LoadImmediate
+- **Analysis**: Both branches end with LoadImmediate (no Z-code emitted)
+- **Status**: Converted to NOPs (harmless), requires sophisticated control-flow analysis to eliminate
+- **Details**: See `docs/ARCHITECTURE.md` - "Complex Expression Control Flow Patterns"
 
 ### Bug 3: Stack Underflow 🔍 INVESTIGATING
-- **Issue**: Stack underflow at PC 0x13DE after NOPs fixed infinite loops
-- **Root Cause**: 32 offset-2 jumps indicates systematic IR generation problem
-- **Pattern**: `Jump → Label → LoadImmediate(no code) → Label → Jump` creates redundant jumps
-- **Impact**: Converting jumps to NOPs reveals code paths that break stack assumptions
-
-**Next Steps (Three Options)**:
-- **Option A**: Fix IR generation to avoid creating redundant jump/label patterns
-- **Option B**: Make LoadImmediate emit store instructions when deferred labels exist
-- **Option C**: Fix stack management to handle the revealed code paths correctly
+- **Issue**: Stack underflow at PC 0x13a7 when running compiled mini_zork
+- **Previous PC**: 0x13DE (before IR optimization)
+- **Analysis**: The offset-2 jumps were masking the real issue - stack management problem
+- **Hypothesis**: NOPs reveal code paths where stack operations are unbalanced
+- **Next Step**: Investigate stack push/pull patterns in compiled code
 
 **Tests**: All 174 tests passing.
 
