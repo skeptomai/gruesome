@@ -1,21 +1,29 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 4, 2025) - OPCODE FORM SELECTION FIXED ✅
+## CURRENT STATUS (October 4, 2025) - INFINITE LOOP FIXED, STACK ISSUE REVEALED ✅🔍
 
-**CRITICAL FIX**: Opcode form selection now respects Opcode enum variant (Op2 vs OpVar).
+**PROGRESS**: Fixed two critical bugs, revealed deeper architectural issue.
 
-**The Bug**: Compiler selected instruction forms based solely on operand count, causing raw opcode 0x08 to be emitted as 2OP:OR (0xC8) instead of VAR:push (0xE8). Same issue with 0x09 (2OP:AND vs VAR:pull).
+### Bug 1: Opcode Form Selection ✅ FIXED
+- **Issue**: Raw opcode 0x08 emitted as 2OP:OR (0xC8) instead of VAR:push (0xE8)
+- **Fix**: `emit_instruction_typed()` respects Opcode enum variant
+- **Details**: See `OPCODE_FORM_BUG_ANALYSIS.md`
 
-**The Fix**:
-1. `emit_instruction_typed()` determines form from Opcode variant, not operand count
-2. `is_true_var_opcode()` includes push/pull (0x08/0x09) to set bit 5
-3. `should_not_emit_store_variable()` receives encoded byte to distinguish forms
+### Bug 2: Infinite Loop (Jump Offset 2) ✅ FIXED
+- **Issue**: 32 jumps with offset=2 created infinite loops (jump to self)
+- **Root Cause**: LoadImmediate doesn't emit code → labels defer to next instruction → jump lands at target immediately after itself
+- **Fix**: Convert offset-2 jumps to NOP instructions during resolution
+- **File**: `src/grue_compiler/codegen.rs:1496-1511`
 
-**Analysis**: See `OPCODE_FORM_BUG_ANALYSIS.md` for complete root cause analysis.
+### Bug 3: Stack Underflow 🔍 INVESTIGATING
+- **Issue**: Stack underflow at PC 0x13DE after NOPs fixed infinite loops
+- **Root Cause**: 32 offset-2 jumps indicates systematic IR generation problem
+- **Pattern**: `Jump → Label → LoadImmediate(no code) → Label → Jump` creates redundant jumps
+- **Impact**: Converting jumps to NOPs reveals code paths that break stack assumptions
+
+**Next Step**: Fix IR generation to avoid redundant jump/label patterns, OR make LoadImmediate emit code when deferred labels exist.
 
 **Tests**: All 174 tests passing.
-
-**IMPORTANT**: After context purge/reload, read `OPCODE_FORM_BUG_ANALYSIS.md` to understand the opcode form architecture.
 
 ## CRITICAL: NEVER MODIFY THE INTERPRETER
 
