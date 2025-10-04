@@ -1,14 +1,21 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 3, 2025) - BRANCH LOGIC FIXED ✅
+## CURRENT STATUS (October 4, 2025) - OPCODE FORM SELECTION FIXED ✅
 
-**CRITICAL FIX**: Conditional branches now correctly skip THEN blocks when conditions are false.
+**CRITICAL FIX**: Opcode form selection now respects Opcode enum variant (Op2 vs OpVar).
 
-**The Bug**: Comparison branches jumped TO the THEN block when true, but fell through to the THEN block when false (should have skipped it).
+**The Bug**: Compiler selected instruction forms based solely on operand count, causing raw opcode 0x08 to be emitted as 2OP:OR (0xC8) instead of VAR:push (0xE8). Same issue with 0x09 (2OP:AND vs VAR:pull).
 
-**The Fix**: Inverted branch logic to target false_label (after THEN) instead of true_label, using branch-on-FALSE to skip when condition doesn't match.
+**The Fix**:
+1. `emit_instruction_typed()` determines form from Opcode variant, not operand count
+2. `is_true_var_opcode()` includes push/pull (0x08/0x09) to set bit 5
+3. `should_not_emit_store_variable()` receives encoded byte to distinguish forms
 
-**Tests**: All 170+ tests passing, including new branch behavior tests.
+**Analysis**: See `OPCODE_FORM_BUG_ANALYSIS.md` for complete root cause analysis.
+
+**Tests**: All 174 tests passing.
+
+**IMPORTANT**: After context purge/reload, read `OPCODE_FORM_BUG_ANALYSIS.md` to understand the opcode form architecture.
 
 ## CRITICAL: NEVER MODIFY THE INTERPRETER
 

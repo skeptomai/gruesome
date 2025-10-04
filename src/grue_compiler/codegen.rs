@@ -1493,6 +1493,23 @@ impl ZMachineCodeGen {
  resolved_address, instruction_pc, offset, offset_bytes[0], offset_bytes[1], final_location
  );
 
+                    // CRITICAL FIX: Offset 2 means jump to next instruction (fall-through)
+                    // This happens when LoadImmediate (no code) separates a jump from its target label
+                    // Convert these to NOP instructions (0xB4 opcode) to avoid infinite loops
+                    if offset == 2 {
+                        log::debug!(
+                            "FALL_THROUGH_JUMP: Jump at PC=0x{:04x} to target=0x{:04x} has offset 2 (fall-through) - converting to NOP",
+                            instruction_pc, resolved_address
+                        );
+                        // Replace the 3-byte jump instruction with 3 NOP instructions
+                        // Jump is: [0x8C] [offset_high] [offset_low]
+                        // Replace with: [0xB4] [0xB4] [0xB4] (three NOP opcodes)
+                        self.write_byte_at(instruction_pc, 0xB4)?; // NOP at jump opcode location
+                        self.write_byte_at(final_location, 0xB4)?; // NOP at offset high byte
+                        self.write_byte_at(final_location + 1, 0xB4)?; // NOP at offset low byte
+                        return Ok(());
+                    }
+
                     if final_location == 0x127e || final_location == 0x127f {
                         log::debug!(
                             "CRITICAL: Writing jump offset to location 0x{:04x}",
