@@ -33,11 +33,11 @@ struct OpcodeEntry {
 
 fn main() {
     println!("Reading opcodes_spec.toml...");
-    let spec_content = fs::read_to_string("opcodes_spec.toml")
-        .expect("Failed to read opcodes_spec.toml");
+    let spec_content =
+        fs::read_to_string("opcodes_spec.toml").expect("Failed to read opcodes_spec.toml");
 
-    let spec: OpcodeSpec = toml::from_str(&spec_content)
-        .expect("Failed to parse opcodes_spec.toml");
+    let spec: OpcodeSpec =
+        toml::from_str(&spec_content).expect("Failed to parse opcodes_spec.toml");
 
     println!("Generating opcodes.rs...");
     let generated_code = generate_opcodes_module(&spec);
@@ -65,19 +65,39 @@ fn generate_opcodes_module(spec: &OpcodeSpec) -> String {
 
     // Generate Op0 enum
     output.push_str(&generate_enum("Op0", &spec.op0, "0OP form instructions"));
-    output.push_str(&generate_metadata_impl("Op0", &spec.op0, "InstructionForm::Short"));
+    output.push_str(&generate_metadata_impl(
+        "Op0",
+        &spec.op0,
+        "InstructionForm::Short",
+    ));
 
     // Generate Op1 enum
     output.push_str(&generate_enum("Op1", &spec.op1, "1OP form instructions"));
-    output.push_str(&generate_metadata_impl("Op1", &spec.op1, "InstructionForm::Short"));
+    output.push_str(&generate_metadata_impl(
+        "Op1",
+        &spec.op1,
+        "InstructionForm::Short",
+    ));
 
     // Generate Op2 enum
-    output.push_str(&generate_enum("Op2", &spec.op2, "2OP form instructions (can use LONG or VAR form)"));
-    output.push_str(&generate_metadata_impl("Op2", &spec.op2, "InstructionForm::Long"));
+    output.push_str(&generate_enum(
+        "Op2",
+        &spec.op2,
+        "2OP form instructions (can use LONG or VAR form)",
+    ));
+    output.push_str(&generate_metadata_impl(
+        "Op2",
+        &spec.op2,
+        "InstructionForm::Long",
+    ));
 
     // Generate OpVar enum
     output.push_str(&generate_enum("OpVar", &spec.var, "VAR form instructions"));
-    output.push_str(&generate_metadata_impl("OpVar", &spec.var, "InstructionForm::Variable"));
+    output.push_str(&generate_metadata_impl(
+        "OpVar",
+        &spec.var,
+        "InstructionForm::Variable",
+    ));
 
     // Generate combined Opcode enum
     output.push_str(&generate_combined_enum());
@@ -102,7 +122,8 @@ fn generate_enum(name: &str, opcodes: &[OpcodeEntry], doc: &str) -> String {
     // Group opcodes by value to detect conflicts
     let mut value_groups: HashMap<u8, Vec<&OpcodeEntry>> = HashMap::new();
     for opcode in opcodes {
-        value_groups.entry(opcode.value)
+        value_groups
+            .entry(opcode.value)
             .or_insert_with(Vec::new)
             .push(opcode);
     }
@@ -110,7 +131,10 @@ fn generate_enum(name: &str, opcodes: &[OpcodeEntry], doc: &str) -> String {
     for opcode in opcodes {
         let conflicts = &value_groups[&opcode.value];
 
-        output.push_str(&format!("    /// {} ({})\n", opcode.description, opcode.number));
+        output.push_str(&format!(
+            "    /// {} ({})\n",
+            opcode.description, opcode.number
+        ));
         if let Some(max_ver) = opcode.max_version {
             output.push_str(&format!("    /// V{}-V{}\n", opcode.min_version, max_ver));
         } else {
@@ -152,7 +176,10 @@ fn generate_metadata_impl(enum_name: &str, opcodes: &[OpcodeEntry], form: &str) 
     output.push_str("        match self {\n");
     for opcode in opcodes {
         if opcode.stores {
-            output.push_str(&format!("            {}::{} => true,\n", enum_name, opcode.name));
+            output.push_str(&format!(
+                "            {}::{} => true,\n",
+                enum_name, opcode.name
+            ));
         }
     }
     output.push_str("            _ => false,\n");
@@ -165,7 +192,10 @@ fn generate_metadata_impl(enum_name: &str, opcodes: &[OpcodeEntry], form: &str) 
     output.push_str("        match self {\n");
     for opcode in opcodes {
         if opcode.branches {
-            output.push_str(&format!("            {}::{} => true,\n", enum_name, opcode.name));
+            output.push_str(&format!(
+                "            {}::{} => true,\n",
+                enum_name, opcode.name
+            ));
         }
     }
     output.push_str("            _ => false,\n");
@@ -180,14 +210,16 @@ fn generate_metadata_impl(enum_name: &str, opcodes: &[OpcodeEntry], form: &str) 
     // Group by version
     let mut by_version: HashMap<u8, Vec<&str>> = HashMap::new();
     for opcode in opcodes {
-        by_version.entry(opcode.min_version)
+        by_version
+            .entry(opcode.min_version)
             .or_insert_with(Vec::new)
             .push(&opcode.name);
     }
 
     for version in 1..=8 {
         if let Some(names) = by_version.get(&version) {
-            let pattern = names.iter()
+            let pattern = names
+                .iter()
                 .map(|n| format!("{}::{}", enum_name, n))
                 .collect::<Vec<_>>()
                 .join(" | ");
@@ -313,8 +345,11 @@ fn generate_convenience_constants(spec: &OpcodeSpec) -> String {
     // Most common 0OP opcodes
     for name in &["Quit", "NewLine", "Rtrue", "Rfalse"] {
         if spec.op0.iter().any(|op| &op.name == name) {
-            output.push_str(&format!("pub const {}: Opcode = Opcode::Op0(Op0::{});\n",
-                name.to_uppercase(), name));
+            output.push_str(&format!(
+                "pub const {}: Opcode = Opcode::Op0(Op0::{});\n",
+                name.to_uppercase(),
+                name
+            ));
         }
     }
     output.push_str("\n");
@@ -322,8 +357,11 @@ fn generate_convenience_constants(spec: &OpcodeSpec) -> String {
     // Most common 1OP opcodes
     for name in &["PrintPaddr", "Jz", "Load", "Ret", "Jump"] {
         if spec.op1.iter().any(|op| &op.name == name) {
-            output.push_str(&format!("pub const {}: Opcode = Opcode::Op1(Op1::{});\n",
-                name.to_uppercase(), name));
+            output.push_str(&format!(
+                "pub const {}: Opcode = Opcode::Op1(Op1::{});\n",
+                name.to_uppercase(),
+                name
+            ));
         }
     }
     output.push_str("\n");
@@ -331,8 +369,11 @@ fn generate_convenience_constants(spec: &OpcodeSpec) -> String {
     // Most common 2OP opcodes
     for name in &["Je", "Jl", "Jg", "Add", "Sub", "Mul", "Div", "Store"] {
         if spec.op2.iter().any(|op| &op.name == name) {
-            output.push_str(&format!("pub const {}: Opcode = Opcode::Op2(Op2::{});\n",
-                name.to_uppercase(), name));
+            output.push_str(&format!(
+                "pub const {}: Opcode = Opcode::Op2(Op2::{});\n",
+                name.to_uppercase(),
+                name
+            ));
         }
     }
     output.push_str("\n");
@@ -340,8 +381,11 @@ fn generate_convenience_constants(spec: &OpcodeSpec) -> String {
     // Most common VAR opcodes
     for name in &["CallVs", "PutProp", "Sread", "PrintChar", "PrintNum"] {
         if spec.var.iter().any(|op| &op.name == name) {
-            output.push_str(&format!("pub const {}: Opcode = Opcode::OpVar(OpVar::{});\n",
-                name.to_uppercase(), name));
+            output.push_str(&format!(
+                "pub const {}: Opcode = Opcode::OpVar(OpVar::{});\n",
+                name.to_uppercase(),
+                name
+            ));
         }
     }
 

@@ -81,7 +81,18 @@ impl Op0 {
     /// Minimum Z-Machine version required
     pub const fn min_version(&self) -> u8 {
         match self {
-            Op0::Rtrue | Op0::Rfalse | Op0::Print | Op0::PrintRet | Op0::Nop | Op0::Save | Op0::Restore | Op0::Restart | Op0::RetPopped | Op0::Pop | Op0::Quit | Op0::NewLine => 1,
+            Op0::Rtrue
+            | Op0::Rfalse
+            | Op0::Print
+            | Op0::PrintRet
+            | Op0::Nop
+            | Op0::Save
+            | Op0::Restore
+            | Op0::Restart
+            | Op0::RetPopped
+            | Op0::Pop
+            | Op0::Quit
+            | Op0::NewLine => 1,
             Op0::ShowStatus | Op0::Verify => 3,
         }
     }
@@ -178,7 +189,20 @@ impl Op1 {
     /// Minimum Z-Machine version required
     pub const fn min_version(&self) -> u8 {
         match self {
-            Op1::Jz | Op1::GetSibling | Op1::GetChild | Op1::GetParent | Op1::GetPropLen | Op1::Inc | Op1::Dec | Op1::PrintAddr | Op1::RemoveObj | Op1::PrintObj | Op1::Ret | Op1::Jump | Op1::PrintPaddr | Op1::Load => 1,
+            Op1::Jz
+            | Op1::GetSibling
+            | Op1::GetChild
+            | Op1::GetParent
+            | Op1::GetPropLen
+            | Op1::Inc
+            | Op1::Dec
+            | Op1::PrintAddr
+            | Op1::RemoveObj
+            | Op1::PrintObj
+            | Op1::Ret
+            | Op1::Jump
+            | Op1::PrintPaddr
+            | Op1::Load => 1,
             Op1::Call1s => 4,
             Op1::Call1n => 5,
         }
@@ -324,7 +348,30 @@ impl Op2 {
     /// Minimum Z-Machine version required
     pub const fn min_version(&self) -> u8 {
         match self {
-            Op2::Je | Op2::Jl | Op2::Jg | Op2::DecChk | Op2::IncChk | Op2::Jin | Op2::Test | Op2::Or | Op2::And | Op2::TestAttr | Op2::SetAttr | Op2::ClearAttr | Op2::Store | Op2::InsertObj | Op2::Loadw | Op2::Loadb | Op2::GetProp | Op2::GetPropAddr | Op2::GetNextProp | Op2::Add | Op2::Sub | Op2::Mul | Op2::Div | Op2::Mod => 1,
+            Op2::Je
+            | Op2::Jl
+            | Op2::Jg
+            | Op2::DecChk
+            | Op2::IncChk
+            | Op2::Jin
+            | Op2::Test
+            | Op2::Or
+            | Op2::And
+            | Op2::TestAttr
+            | Op2::SetAttr
+            | Op2::ClearAttr
+            | Op2::Store
+            | Op2::InsertObj
+            | Op2::Loadw
+            | Op2::Loadb
+            | Op2::GetProp
+            | Op2::GetPropAddr
+            | Op2::GetNextProp
+            | Op2::Add
+            | Op2::Sub
+            | Op2::Mul
+            | Op2::Div
+            | Op2::Mod => 1,
             Op2::Call2s => 4,
             Op2::Call2n | Op2::SetColour | Op2::Throw => 5,
         }
@@ -470,10 +517,38 @@ impl OpVar {
     /// Minimum Z-Machine version required
     pub const fn min_version(&self) -> u8 {
         match self {
-            OpVar::CallVs | OpVar::Storew | OpVar::Storeb | OpVar::PutProp | OpVar::PrintChar | OpVar::PrintNum | OpVar::Random | OpVar::Push | OpVar::Pull => 1,
-            OpVar::SplitWindow | OpVar::SetWindow | OpVar::OutputStream | OpVar::InputStream | OpVar::SoundEffect => 3,
-            OpVar::Aread | OpVar::CallVs2 | OpVar::EraseWindow | OpVar::EraseLine | OpVar::SetCursor | OpVar::GetCursor | OpVar::SetTextStyle | OpVar::BufferMode | OpVar::ReadChar | OpVar::ScanTable => 4,
-            OpVar::Not | OpVar::CallVn | OpVar::CallVn2 | OpVar::Tokenise | OpVar::EncodeText | OpVar::CopyTable | OpVar::PrintTable | OpVar::CheckArgCount => 5,
+            OpVar::CallVs
+            | OpVar::Storew
+            | OpVar::Storeb
+            | OpVar::PutProp
+            | OpVar::PrintChar
+            | OpVar::PrintNum
+            | OpVar::Random
+            | OpVar::Push
+            | OpVar::Pull => 1,
+            OpVar::SplitWindow
+            | OpVar::SetWindow
+            | OpVar::OutputStream
+            | OpVar::InputStream
+            | OpVar::SoundEffect => 3,
+            OpVar::Aread
+            | OpVar::CallVs2
+            | OpVar::EraseWindow
+            | OpVar::EraseLine
+            | OpVar::SetCursor
+            | OpVar::GetCursor
+            | OpVar::SetTextStyle
+            | OpVar::BufferMode
+            | OpVar::ReadChar
+            | OpVar::ScanTable => 4,
+            OpVar::Not
+            | OpVar::CallVn
+            | OpVar::CallVn2
+            | OpVar::Tokenise
+            | OpVar::EncodeText
+            | OpVar::CopyTable
+            | OpVar::PrintTable
+            | OpVar::CheckArgCount => 5,
         }
     }
 
@@ -558,35 +633,75 @@ pub trait OpcodeMetadata {
 }
 
 impl OpcodeMetadata for Op0 {
-    fn raw_value(&self) -> u8 { self.raw_value() }
-    fn stores_result(&self) -> bool { self.stores_result() }
-    fn branches(&self) -> bool { self.branches() }
-    fn min_version(&self) -> u8 { self.min_version() }
-    fn form(&self) -> InstructionForm { self.form() }
+    fn raw_value(&self) -> u8 {
+        self.raw_value()
+    }
+    fn stores_result(&self) -> bool {
+        self.stores_result()
+    }
+    fn branches(&self) -> bool {
+        self.branches()
+    }
+    fn min_version(&self) -> u8 {
+        self.min_version()
+    }
+    fn form(&self) -> InstructionForm {
+        self.form()
+    }
 }
 
 impl OpcodeMetadata for Op1 {
-    fn raw_value(&self) -> u8 { self.raw_value() }
-    fn stores_result(&self) -> bool { self.stores_result() }
-    fn branches(&self) -> bool { self.branches() }
-    fn min_version(&self) -> u8 { self.min_version() }
-    fn form(&self) -> InstructionForm { self.form() }
+    fn raw_value(&self) -> u8 {
+        self.raw_value()
+    }
+    fn stores_result(&self) -> bool {
+        self.stores_result()
+    }
+    fn branches(&self) -> bool {
+        self.branches()
+    }
+    fn min_version(&self) -> u8 {
+        self.min_version()
+    }
+    fn form(&self) -> InstructionForm {
+        self.form()
+    }
 }
 
 impl OpcodeMetadata for Op2 {
-    fn raw_value(&self) -> u8 { self.raw_value() }
-    fn stores_result(&self) -> bool { self.stores_result() }
-    fn branches(&self) -> bool { self.branches() }
-    fn min_version(&self) -> u8 { self.min_version() }
-    fn form(&self) -> InstructionForm { self.form() }
+    fn raw_value(&self) -> u8 {
+        self.raw_value()
+    }
+    fn stores_result(&self) -> bool {
+        self.stores_result()
+    }
+    fn branches(&self) -> bool {
+        self.branches()
+    }
+    fn min_version(&self) -> u8 {
+        self.min_version()
+    }
+    fn form(&self) -> InstructionForm {
+        self.form()
+    }
 }
 
 impl OpcodeMetadata for OpVar {
-    fn raw_value(&self) -> u8 { self.raw_value() }
-    fn stores_result(&self) -> bool { self.stores_result() }
-    fn branches(&self) -> bool { self.branches() }
-    fn min_version(&self) -> u8 { self.min_version() }
-    fn form(&self) -> InstructionForm { self.form() }
+    fn raw_value(&self) -> u8 {
+        self.raw_value()
+    }
+    fn stores_result(&self) -> bool {
+        self.stores_result()
+    }
+    fn branches(&self) -> bool {
+        self.branches()
+    }
+    fn min_version(&self) -> u8 {
+        self.min_version()
+    }
+    fn form(&self) -> InstructionForm {
+        self.form()
+    }
 }
 
 // Convenience constants for common opcodes

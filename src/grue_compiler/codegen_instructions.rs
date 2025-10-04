@@ -1217,6 +1217,123 @@ impl ZMachineCodeGen {
     /// or an error if instruction generation fails.
     ///
     /// # Example
+    /// Emit Z-Machine instruction with type-safe opcode enum.
+    ///
+    /// **NEW TYPE-SAFE VERSION** - Provides compile-time validation of:
+    /// - Instruction form (0OP/1OP/2OP/VAR encoded into type)
+    /// - Store variable requirements (panics if instruction doesn't store but store_var provided)
+    /// - Branch requirements (panics if instruction doesn't branch but branch_offset provided)
+    /// - Z-Machine version requirements (panics if opcode requires newer version than target)
+    ///
+    /// **Examples**:
+    /// ```ignore
+    /// use crate::grue_compiler::opcodes::*;
+    ///
+    /// // 0OP instruction - no operands
+    /// self.emit_instruction_typed(Opcode::Op0(Op0::Quit), &[], None, None)?;
+    ///
+    /// // 1OP instruction - print string
+    /// self.emit_instruction_typed(
+    ///     Opcode::Op1(Op1::PrintPaddr),
+    ///     &[Operand::LargeConstant(string_addr)],
+    ///     None,  // Doesn't store
+    ///     None   // Doesn't branch
+    /// )?;
+    ///
+    /// // 2OP instruction with branch
+    /// self.emit_instruction_typed(
+    ///     Opcode::Op2(Op2::Je),
+    ///     &[Operand::Variable(1), Operand::SmallConstant(5)],
+    ///     None,           // Doesn't store
+    ///     Some(offset)    // Branches
+    /// )?;
+    ///
+    /// // VAR instruction with store
+    /// self.emit_instruction_typed(
+    ///     Opcode::OpVar(OpVar::CallVs),
+    ///     &[Operand::LargeConstant(func_addr), Operand::Variable(1)],
+    ///     Some(0),  // Store to stack
+    ///     None      // Doesn't branch
+    /// )?;
+    ///
+    /// // Or use convenience constants:
+    /// self.emit_instruction_typed(QUIT, &[], None, None)?;
+    /// self.emit_instruction_typed(ADD, &[op1, op2], Some(0), None)?;
+    /// ```
+    ///
+    /// **Validation** (all enforced with panic):
+    /// - Opcode version must be <= target version
+    /// - store_var must be None if opcode doesn't store
+    /// - branch_offset must be None if opcode doesn't branch
+    ///
+    /// **Migration from u8 version**:
+    /// ```ignore
+    /// // Old:
+    /// self.emit_instruction(0x0A, &[], None, None)?;
+    ///
+    /// // New:
+    /// self.emit_instruction_typed(Opcode::Op0(Op0::Quit), &[], None, None)?;
+    /// // Or:
+    /// self.emit_instruction_typed(QUIT, &[], None, None)?;
+    /// ```
+    pub fn emit_instruction_typed(
+        &mut self,
+        opcode: super::opcodes::Opcode,
+        operands: &[Operand],
+        store_var: Option<u8>,
+        branch_offset: Option<i16>,
+    ) -> Result<InstructionLayout, CompilerError> {
+        #[allow(unused_imports)]
+        use super::opcodes::OpcodeMetadata;
+
+        let start_address = self.code_address;
+        let raw_opcode = opcode.raw_value();
+
+        // VALIDATION 1: Version check
+        let min_version = opcode.min_version();
+        let target_version = match self.version {
+            super::ZMachineVersion::V3 => 3,
+            super::ZMachineVersion::V4 => 4,
+            super::ZMachineVersion::V5 => 5,
+        };
+
+        if min_version > target_version {
+            panic!(
+                "COMPILER BUG: Opcode {:?} requires Z-Machine v{}, but targeting v{} at address 0x{:04x}",
+                opcode, min_version, target_version, start_address
+            );
+        }
+
+        // VALIDATION 2: Store variable check
+        if store_var.is_some() && !opcode.stores_result() {
+            panic!(
+                "COMPILER BUG: Opcode {:?} does not store a result, but store_var={:?} was provided at address 0x{:04x}",
+                opcode, store_var, start_address
+            );
+        }
+
+        // VALIDATION 3: Branch offset check
+        if branch_offset.is_some() && !opcode.branches() {
+            panic!(
+                "COMPILER BUG: Opcode {:?} does not branch, but branch_offset={:?} was provided at address 0x{:04x}",
+                opcode, branch_offset, start_address
+            );
+        }
+
+        log::debug!(
+            "EMIT_TYPED: addr=0x{:04x} opcode={:?} (0x{:02x}) operands={:?} store={:?} branch={:?}",
+            start_address,
+            opcode,
+            raw_opcode,
+            operands,
+            store_var,
+            branch_offset
+        );
+
+        // Delegate to existing u8 implementation
+        self.emit_instruction(raw_opcode, operands, store_var, branch_offset)
+    }
+
     ///
     /// ```ignore
     /// let layout = self.emit_instruction(0x8D, &[Operand::LargeConstant(placeholder_word())], None, None)?;

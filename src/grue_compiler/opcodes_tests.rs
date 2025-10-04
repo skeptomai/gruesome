@@ -4,8 +4,8 @@
 
 #[cfg(test)]
 mod tests {
-    use super::super::opcodes::*;
     use super::super::codegen::InstructionForm;
+    use super::super::opcodes::*;
 
     #[test]
     fn test_op0_raw_values() {
@@ -52,8 +52,14 @@ mod tests {
         assert_eq!(output_stream.raw_value(), 0x13);
 
         // But different store behavior
-        assert!(get_next_prop.stores_result(), "get_next_prop MUST store result");
-        assert!(!output_stream.stores_result(), "output_stream MUST NOT store result");
+        assert!(
+            get_next_prop.stores_result(),
+            "get_next_prop MUST store result"
+        );
+        assert!(
+            !output_stream.stores_result(),
+            "output_stream MUST NOT store result"
+        );
 
         // Different forms
         assert_eq!(get_next_prop.form(), InstructionForm::Long);
@@ -195,33 +201,68 @@ mod tests {
     #[test]
     fn test_all_op0_opcodes_unique() {
         let opcodes = vec![
-            Op0::Rtrue, Op0::Rfalse, Op0::Print, Op0::PrintRet,
-            Op0::Nop, Op0::Save, Op0::Restore, Op0::Restart,
-            Op0::RetPopped, Op0::Pop, Op0::Quit, Op0::NewLine,
-            Op0::ShowStatus, Op0::Verify,
+            Op0::Rtrue,
+            Op0::Rfalse,
+            Op0::Print,
+            Op0::PrintRet,
+            Op0::Nop,
+            Op0::Save,
+            Op0::Restore,
+            Op0::Restart,
+            Op0::RetPopped,
+            Op0::Pop,
+            Op0::Quit,
+            Op0::NewLine,
+            Op0::ShowStatus,
+            Op0::Verify,
         ];
 
         let mut values = std::collections::HashSet::new();
         for opcode in opcodes {
-            assert!(values.insert(opcode.raw_value()),
-                "Duplicate opcode value: 0x{:02X}", opcode.raw_value());
+            assert!(
+                values.insert(opcode.raw_value()),
+                "Duplicate opcode value: 0x{:02X}",
+                opcode.raw_value()
+            );
         }
     }
 
     #[test]
     fn test_all_op2_opcodes_unique() {
         let opcodes = vec![
-            Op2::Je, Op2::Jl, Op2::Jg, Op2::DecChk, Op2::IncChk,
-            Op2::Jin, Op2::Test, Op2::Or, Op2::And, Op2::TestAttr,
-            Op2::SetAttr, Op2::ClearAttr, Op2::Store, Op2::InsertObj,
-            Op2::Loadw, Op2::Loadb, Op2::GetProp, Op2::GetPropAddr,
-            Op2::GetNextProp, Op2::Add, Op2::Sub, Op2::Mul, Op2::Div, Op2::Mod,
+            Op2::Je,
+            Op2::Jl,
+            Op2::Jg,
+            Op2::DecChk,
+            Op2::IncChk,
+            Op2::Jin,
+            Op2::Test,
+            Op2::Or,
+            Op2::And,
+            Op2::TestAttr,
+            Op2::SetAttr,
+            Op2::ClearAttr,
+            Op2::Store,
+            Op2::InsertObj,
+            Op2::Loadw,
+            Op2::Loadb,
+            Op2::GetProp,
+            Op2::GetPropAddr,
+            Op2::GetNextProp,
+            Op2::Add,
+            Op2::Sub,
+            Op2::Mul,
+            Op2::Div,
+            Op2::Mod,
         ];
 
         let mut values = std::collections::HashSet::new();
         for opcode in opcodes {
-            assert!(values.insert(opcode.raw_value()),
-                "Duplicate opcode value: 0x{:02X}", opcode.raw_value());
+            assert!(
+                values.insert(opcode.raw_value()),
+                "Duplicate opcode value: 0x{:02X}",
+                opcode.raw_value()
+            );
         }
     }
 }
