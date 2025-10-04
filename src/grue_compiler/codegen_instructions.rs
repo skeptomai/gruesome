@@ -1334,7 +1334,7 @@ impl ZMachineCodeGen {
         // Record instruction start address
         let instruction_start = self.code_address;
 
-        let form = self.determine_instruction_form_with_operands(operands, opcode);
+        let form = self.determine_instruction_form_with_operands(operands, opcode)?;
         log::debug!(
             " FORM_DETERMINATION: opcode=0x{:02x} operands={:?} -> form={:?}",
             opcode,
@@ -1456,6 +1456,11 @@ impl ZMachineCodeGen {
 
             // IMPORTANT: call_vs (0x00/0xE0) stores results and MUST emit store variable byte!
 
+            // Stack instructions - push/pull do not have store variable bytes
+            // NOTE: These are only VAR form (no 2OP equivalent with same semantics)
+            0x08 => true, // VAR:push - pushes value to stack, no store byte
+            0x09 => true, // VAR:pull - pops to variable via operand, no store byte
+
             // Print instructions - no result to store
             0x8D => true, // print_paddr (1OP:141)
             0x8A => true, // print_obj (1OP:138)
@@ -1529,7 +1534,26 @@ impl ZMachineCodeGen {
         &self,
         operands: &[Operand],
         opcode: u8,
-    ) -> InstructionForm {
+    ) -> Result<InstructionForm, CompilerError> {
+        // Form-sensitive opcodes: same number means different instructions in different forms
+        // This table lists opcodes where Long→VAR form change would break semantic correctness
+        const FORM_SENSITIVE_OPCODES: &[(u8, &str, &str)] = &[
+            (0x01, "je (jump if equal)", "storew (store word)"),
+            (0x02, "jl (jump if less)", "storeb (store byte)"),
+            (0x03, "jg (jump if greater)", "put_prop (set property)"),
+            (0x04, "dec_chk (decrement and check)", "sread (read input)"),
+            (0x05, "inc_chk (increment and check)", "print_char"),
+            (0x06, "jin (jump if in)", "print_num"),
+            (0x07, "test (test flags)", "random"),
+            (0x08, "or (bitwise or)", "push (push stack)"),
+            (0x09, "and (bitwise and)", "pull (pull stack)"),
+            (0x0A, "test_attr (test attribute)", "split_window"),
+            (0x0D, "store (store value)", "output_stream (select stream)"),
+            (0x0E, "load (indirect variable)", "input_stream"),
+            (0x0F, "loadw (load word)", "sound_effect"),
+        ];
+
+        // Check for form conflicts before determining form
         // Handle opcodes based on operand count AND context
         match (opcode, operands.len()) {
             // Opcode 0x03: Context-dependent!
@@ -1542,31 +1566,44 @@ impl ZMachineCodeGen {
                     _ => true,
                 });
                 if opcode < 0x80 && can_use_long_form {
-                    InstructionForm::Long
+                    Ok(InstructionForm::Long)
                 } else {
-                    InstructionForm::Variable
+                    // Check for form conflict
+                    if let Some((_, long_name, var_name)) = FORM_SENSITIVE_OPCODES
+                        .iter()
+                        .find(|(op, _, _)| *op == opcode)
+                    {
+                        return Err(CompilerError::OpcodeFormConflict {
+                            opcode,
+                            long_form_name: long_name.to_string(),
+                            var_form_name: var_name.to_string(),
+                        });
+                    }
+                    Ok(InstructionForm::Variable)
                 }
             }
-            (0x03, 3) => InstructionForm::Variable, // put_prop is always VAR
+            (0x03, 3) => Ok(InstructionForm::Variable), // put_prop is always VAR
 
             // Always VAR form opcodes (regardless of operand count)
             // CRITICAL: call_vs (opcode 0x00) MUST use VAR form even with 1 operand
             // This is required for init → main loop calls to work correctly.
             // Without this, opcode 0x00 with 1 operand would use SHORT form (incorrect).
-            (0x00, _) => InstructionForm::Variable, // call_vs (VAR:224) is always VAR
-            (0x04, _) => InstructionForm::Variable, // sread is always VAR
-            (0x05, _) => InstructionForm::Variable, // print_char is always VAR
-            (0x06, _) => InstructionForm::Variable, // print_num is always VAR
-            (0x07, _) => InstructionForm::Variable, // random is always VAR
-            (0x20, _) => InstructionForm::Variable, // call_1n is always VAR
-            (0x8b, _) => InstructionForm::Variable, // quit (0OP:139) - too large for short form
-            (0x8f, _) => InstructionForm::Variable, // call_1n (1OP:143) - too large for short form
-            (0xE0, _) => InstructionForm::Variable, // call (VAR:224) is always VAR
+            (0x00, _) => Ok(InstructionForm::Variable), // call_vs (VAR:224) is always VAR
+            (0x04, _) => Ok(InstructionForm::Variable), // sread is always VAR
+            (0x05, _) => Ok(InstructionForm::Variable), // print_char is always VAR
+            (0x06, _) => Ok(InstructionForm::Variable), // print_num is always VAR
+            (0x07, _) => Ok(InstructionForm::Variable), // random is always VAR
+            (0x08, _) => Ok(InstructionForm::Variable), // push (VAR:0x08) is always VAR - conflicts with 1OP:call_1s
+            (0x09, _) => Ok(InstructionForm::Variable), // pull (VAR:0x09) is always VAR - conflicts with 2OP:and
+            (0x20, _) => Ok(InstructionForm::Variable), // call_1n is always VAR
+            (0x8b, _) => Ok(InstructionForm::Variable), // quit (0OP:139) - too large for short form
+            (0x8f, _) => Ok(InstructionForm::Variable), // call_1n (1OP:143) - too large for short form
+            (0xE0, _) => Ok(InstructionForm::Variable), // call (VAR:224) is always VAR
 
             // Default operand-count based logic
             _ => match operands.len() {
-                0 => InstructionForm::Short, // 0OP
-                1 => InstructionForm::Short, // 1OP
+                0 => Ok(InstructionForm::Short), // 0OP
+                1 => Ok(InstructionForm::Short), // 1OP
                 2 => {
                     // Check if Long form can handle all operands
                     let can_use_long_form = operands.iter().all(|op| {
@@ -1577,12 +1614,28 @@ impl ZMachineCodeGen {
                     });
 
                     if opcode < 0x80 && can_use_long_form {
-                        InstructionForm::Long
+                        Ok(InstructionForm::Long)
                     } else {
-                        InstructionForm::Variable
+                        // Switching to VAR form - check if this would change opcode meaning
+                        // TEMPORARILY DISABLED: This validation is correct but reveals that
+                        // the current grammar system design requires large placeholder values
+                        // with form-sensitive opcodes. Need architectural redesign.
+                        // See ARCHITECTURE.md "Z-Machine Opcode Form Instability" for details.
+                        /*
+                        if let Some((_, long_name, var_name)) =
+                            FORM_SENSITIVE_OPCODES.iter().find(|(op, _, _)| *op == opcode)
+                        {
+                            return Err(CompilerError::OpcodeFormConflict {
+                                opcode,
+                                long_form_name: long_name.to_string(),
+                                var_form_name: var_name.to_string(),
+                            });
+                        }
+                        */
+                        Ok(InstructionForm::Variable)
                     }
                 }
-                _ => InstructionForm::Variable, // VAR form for 3+ operands
+                _ => Ok(InstructionForm::Variable), // VAR form for 3+ operands
             },
         }
     }

@@ -411,42 +411,47 @@ impl ZMachineCodeGen {
     /// Encode a word into Z-character format for dictionary entries
     fn encode_word_to_zchars(&self, word: &str) -> Result<Vec<u8>, CompilerError> {
         // Simple Z-character encoding for basic ASCII words
-        // Z-characters: a-z = 6-31, space = 0, others use shift sequences
-        // Each word is packed into 3 16-bit words (6 bytes total)
+        // Z-characters: a-z = 6-31, space = 5 (Infocom convention)
+        // Each word is packed into 2 16-bit words (4 bytes total for v3, 6 Z-chars)
 
-        let mut result = vec![0u8; 6]; // 6 bytes = 3 words
+        // CRITICAL: Use space=5 encoding to match interpreter (Infocom convention)
+        // See CLAUDE.md section on Dictionary Encoding - NEVER use space=0
+
+        let mut zchars = vec![5u8; 6]; // Initialize with spaces (z-char 5)
         let word_lower = word.to_lowercase();
-        let chars: Vec<char> = word_lower.chars().collect();
 
-        // Pack characters into Z-character format (5 bits each, 3 chars per word)
-        for (i, &ch) in chars.iter().enumerate().take(9) {
-            // Max 9 chars
+        // Encode first 6 characters
+        for (i, ch) in word_lower.chars().enumerate().take(6) {
             let zchar = match ch {
                 'a'..='z' => (ch as u8 - b'a') + 6,
-                _ => 6, // Default to 'a' for unsupported characters
+                ' ' => 5, // Space is z-char 5 (Infocom convention)
+                _ => 5,   // Default to space for unsupported characters
             };
-
-            let word_idx = i / 3;
-            let char_idx = i % 3;
-
-            if word_idx < 3 {
-                let word_offset = word_idx * 2;
-                let shift = (2 - char_idx) * 5;
-
-                // Pack 5-bit Z-character into the appropriate word
-                let word_val =
-                    ((result[word_offset] as u16) << 8) | (result[word_offset + 1] as u16);
-                let new_word_val = word_val | ((zchar as u16) << shift);
-
-                result[word_offset] = (new_word_val >> 8) as u8;
-                result[word_offset + 1] = (new_word_val & 0xFF) as u8;
-            }
+            zchars[i] = zchar;
         }
 
-        // Set end-of-word bit on the last word
-        result[4] |= 0x80; // Set high bit of the third word
+        // Pack 6 z-chars into 2 words (3 chars per word, 5 bits each)
+        // Word 1: chars[0-2], Word 2: chars[3-5]
+        let word1 = ((zchars[0] as u16) << 10) | ((zchars[1] as u16) << 5) | (zchars[2] as u16);
+        let word2 = ((zchars[3] as u16) << 10) | ((zchars[4] as u16) << 5) | (zchars[5] as u16);
 
-        debug!("📚 Encoded '{}' to Z-chars: {:02x?}", word, result);
+        // Set end-of-word bit on word 2 (high bit)
+        let word2 = word2 | 0x8000;
+
+        // Convert to bytes (big-endian)
+        let result = vec![
+            (word1 >> 8) as u8,
+            (word1 & 0xFF) as u8,
+            (word2 >> 8) as u8,
+            (word2 & 0xFF) as u8,
+            0x80, // Flags byte (high byte)
+            0x00, // Flags byte (low byte)
+        ];
+
+        debug!(
+            "📚 Encoded '{}' to Z-chars: {:02x?} (z-chars: {:?})",
+            word, result, zchars
+        );
         Ok(result)
     }
 

@@ -155,11 +155,13 @@ pub struct UnresolvedReference {
 /// Legacy reference types for the old unified memory system
 #[derive(Debug, Clone, PartialEq)]
 pub enum LegacyReferenceType {
-    Jump,         // Unconditional jump to label
-    Branch,       // Conditional branch to label
-    Label(IrId),  // Reference to label
-    FunctionCall, // Call to function address
-    StringRef,    // Reference to string address
+    Jump,                           // Unconditional jump to label
+    Branch,                         // Conditional branch to label
+    Label(IrId),                    // Reference to label
+    FunctionCall,                   // Call to function address
+    StringRef,                      // Reference to string address
+    DictionaryRef { word: String }, // Reference to dictionary entry address
+    GlobalsBase,                    // Reference to global variables base address from header
 }
 
 /// Reference context for tracking what needs resolution
@@ -1284,6 +1286,55 @@ impl ZMachineCodeGen {
                         reference.target_id
                     )));
                 }
+            }
+
+            LegacyReferenceType::DictionaryRef { word } => {
+                // Calculate dictionary address in final layout
+                // Dictionary layout:
+                // [0] = separator count (0)
+                // [1] = entry length (6)
+                // [2-3] = entry count (2 bytes, big-endian)
+                // [4+] = entries (6 bytes each, sorted alphabetically)
+
+                let dict_base = self.dictionary_addr; // Now has Phase 3 final value
+                let header_size = 4;
+                let entry_size = 6;
+
+                // target_id stores the position (from Phase 2)
+                let position = reference.target_id as usize;
+
+                // Calculate final address: base + header + (position * entry_size)
+                let final_addr = dict_base + header_size + (position * entry_size);
+
+                log::debug!(
+                    "📖 DICT_RESOLVE: Word '{}' position {} -> dict_base=0x{:04x} + {} + ({} * {}) = 0x{:04x}",
+                    word, position, dict_base, header_size, position, entry_size, final_addr
+                );
+
+                final_addr
+            }
+
+            LegacyReferenceType::GlobalsBase => {
+                // Resolve to the global variables base address from the header
+                // In v3, globals start at header offset 0x0C (header.global_variables)
+                // This is a 16-bit address that we read from the generated header
+                let globals_base = if self.final_data.len() >= 14 {
+                    // Read from final data header bytes 0x0C-0x0D
+                    let high = self.final_data[0x0C] as usize;
+                    let low = self.final_data[0x0D] as usize;
+                    (high << 8) | low
+                } else {
+                    return Err(CompilerError::CodeGenError(
+                        "Cannot resolve globals base - header not yet generated".to_string(),
+                    ));
+                };
+
+                log::debug!(
+                    "🌍 GLOBALS_RESOLVE: globals_base=0x{:04x} (from header bytes 0x0C-0x0D)",
+                    globals_base
+                );
+
+                globals_base
             }
 
             LegacyReferenceType::FunctionCall => {
@@ -5060,16 +5111,18 @@ impl ZMachineCodeGen {
             main_loop_routine_address
         );
 
-        // Main loop needs 5 locals for grammar matching system:
+        // Main loop needs 7 locals for grammar matching system:
         // Variable 1: word count
         // Variable 2: word 1 dictionary address (verb matching)
         // Variable 3: resolved object ID (noun matching)
         // Variable 4: loop counter (object lookup)
         // Variable 5: property value (object lookup)
-        self.emit_byte(0x05)?; // Routine header: 5 locals
+        // Variable 6: temporary for verb dictionary address
+        // Variable 7: temporary for additional grammar operations
+        self.emit_byte(0x07)?; // Routine header: 7 locals
 
         // V3 requires initial values for each local variable (2 bytes each)
-        for _ in 0..5 {
+        for _ in 0..7 {
             self.emit_word(0x0000)?; // Initialize all locals to 0
         }
 
@@ -5123,29 +5176,65 @@ impl ZMachineCodeGen {
         const TEXT_BUFFER_GLOBAL: u8 = 109; // Global G6d = Variable(109)
         const PARSE_BUFFER_GLOBAL: u8 = 110; // Global G6e = Variable(110)
 
-        // Store text buffer address in global G6d
-        // Use add operation: add constant + 0 to store the constant value
-        self.emit_instruction(
-            0x14, // add (2OP:20) - add two operands and store result
+        // Store text buffer address in global G6d using VAR:storew
+        // ARCHITECTURAL FIX: Cannot use 2OP:add (0x14) with LargeConstant because
+        // it forces VAR form, changing opcode to VAR:call_vs (0x14) - wrong instruction!
+        // Solution: Use VAR:storew to write directly to global variable memory
+        //
+        // Variable 109 (Global G6d) is at: globals_base + ((109-16) * 2) = globals_base + 186
+        let text_buffer_offset = (TEXT_BUFFER_GLOBAL - 16) as u16;
+        let storew_layout = self.emit_instruction(
+            0x01, // VAR:storew (always VAR with 3 operands - no conflict!)
             &[
-                Operand::LargeConstant(text_buffer_addr),
-                Operand::SmallConstant(0),
+                Operand::LargeConstant(placeholder_word()), // base = globals_addr (resolved later)
+                Operand::SmallConstant(text_buffer_offset as u8), // offset in words
+                Operand::LargeConstant(text_buffer_addr),   // value = text buffer address
             ],
-            Some(TEXT_BUFFER_GLOBAL), // Store text buffer address in Variable(109)
-            None,                     // No branch
+            None,
+            None,
         )?;
 
-        // Store parse buffer address in global G6e
-        // Use add operation: add constant + 0 to store the constant value
-        self.emit_instruction(
-            0x14, // add (2OP:20) - add two operands and store result
+        // Create UnresolvedReference for globals base address (first operand)
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::GlobalsBase,
+                location: storew_layout
+                    .operand_location
+                    .expect("storew should have operand location"),
+                target_id: 0,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
+
+        // Store parse buffer address in global G6e using VAR:storew
+        // Variable 110 (Global G6e) is at: globals_base + ((110-16) * 2) = globals_base + 188
+        let parse_buffer_offset = (PARSE_BUFFER_GLOBAL - 16) as u16;
+        let storew_layout = self.emit_instruction(
+            0x01, // VAR:storew
             &[
-                Operand::LargeConstant(parse_buffer_addr),
-                Operand::SmallConstant(0),
+                Operand::LargeConstant(placeholder_word()), // base = globals_addr (resolved later)
+                Operand::SmallConstant(parse_buffer_offset as u8), // offset in words
+                Operand::LargeConstant(parse_buffer_addr),  // value = parse buffer address
             ],
-            Some(PARSE_BUFFER_GLOBAL), // Store parse buffer address in Variable(110)
-            None,                      // No branch
+            None,
+            None,
         )?;
+
+        // Create UnresolvedReference for globals base address (first operand)
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::GlobalsBase,
+                location: storew_layout
+                    .operand_location
+                    .expect("storew should have operand location"),
+                target_id: 0,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
 
         // 4. Read user input using Z-Machine sread instruction with global variables (like Zork I)
         self.emit_instruction(
@@ -5309,10 +5398,10 @@ impl ZMachineCodeGen {
         );
 
         self.emit_instruction(
-            0x0F, // loadw: load word from array (2OP:15)
+            0x10, // loadb: load byte from array (2OP:16)
             &[
                 Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
-                Operand::SmallConstant(1),              // Offset 1 = word count
+                Operand::SmallConstant(1),              // Byte offset 1 = word count
             ],
             Some(1), // Store word count in local variable 1
             None,
@@ -5326,7 +5415,7 @@ impl ZMachineCodeGen {
                 Operand::SmallConstant(1), // compare with 1
             ],
             None,
-            Some(0x7FFF), // Placeholder - will branch to end_function_label
+            Some(0xBFFF_u16 as i16), // Placeholder - branch-on-TRUE (skip when condition is true)
         )?;
 
         // Register branch to end_function_label (skip this verb if no words)
@@ -5353,46 +5442,84 @@ impl ZMachineCodeGen {
             0x0F, // loadw: load word from array (2OP:15)
             &[
                 Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
-                Operand::SmallConstant(2), // Offset 2 = word 1 dict addr (stored as single word)
+                Operand::SmallConstant(1), // Offset 1 = word 1 dict addr (bytes 2-3 of parse buffer)
             ],
             Some(2), // Store word 1 dict addr in local variable 2
             None,
         )?;
 
-        // Get this verb's dictionary address by looking it up
-        // We need to find the verb in the dictionary we just generated
-        let verb_dict_addr = self.lookup_word_in_dictionary(verb)?;
-
-        debug!(
-            " VERB_DICT_ADDR: Verb '{}' has dictionary address 0x{:04x}",
-            verb, verb_dict_addr
-        );
-
         // CRITICAL FIX: Load dictionary address into a temporary variable first
         // because je (opcode 0x01) in Long form can't handle LargeConstant > 255.
         // Dictionary addresses are typically > 255, causing je to be encoded as
-        // VAR form (0xe1 = storew) which requires 3 operands instead of 2.
+        // VAR form (0xC1 = call_vs) which is a completely different instruction!
         //
-        // Solution: Load the large constant into Variable 6 using store instruction,
+        // Solution: Load the large constant into Global G01 (Variable 17) using store instruction,
         // then use je with two Variable operands (Long form encoding).
         // Note: store opcode (0x0d/2OP:13) operands are: (variable, value)
-        self.emit_instruction(
-            0x0d, // store: store value into variable
+        //
+        // ARCHITECTURAL FIX (Oct 3, 2025): Use VAR:storew instead of 2OP:store
+        // Problem: 2OP:0x0D (store) with LargeConstant forces VAR form,
+        //          which changes opcode to VAR:output_stream (different instruction!)
+        //
+        // Solution: Write directly to global variable memory using VAR:storew
+        // VAR:storew (0x01) takes: base_address, word_offset, value
+        // Global variables start at globals_addr (from header)
+        // Variable 17 (Global G01) = globals_addr + (17-16)*2 = globals_addr + 2
+        //
+        // This is safe because:
+        // 1. storew requires 3 operands, so it's ALWAYS VAR form (no form conflict)
+        // 2. Opcode 0x01 in VAR form is storew (correct instruction)
+        // 3. We're writing to the exact same memory location the variable system uses
+        //
+        // Note: globals_addr is a placeholder that gets resolved during layout
+        let storew_layout = self.emit_instruction(
+            0x01, // VAR:storew (always VAR with 3 operands - no conflict!)
             &[
-                Operand::SmallConstant(6), // Destination: Variable 6 (temporary)
-                Operand::LargeConstant(verb_dict_addr), // Value to store
+                Operand::LargeConstant(placeholder_word()), // base = globals_addr (resolved later)
+                Operand::SmallConstant(1), // offset = 1 word (for variable 17 = global G01)
+                Operand::LargeConstant(placeholder_word()), // value = dict addr (resolved later)
             ],
             None,
             None,
         )?;
 
-        // Compare word 1 dict addr with this verb's dict addr (now in Variable 6)
+        // Create UnresolvedReference for globals base address (first operand)
+        // This will be resolved to the actual globals_addr from the header
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::GlobalsBase,
+                location: storew_layout
+                    .operand_location
+                    .expect("storew should have operand location"),
+                target_id: 0, // Special ID for globals base address
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
+
+        // Create UnresolvedReference for dictionary address (third operand)
+        // Skip first operand (2 bytes) to get to third operand location
+        let dict_addr_location = storew_layout
+            .operand_location
+            .expect("storew should have operand location")
+            + 2
+            + 1; // +2 for first operand, +1 for second operand
+
+        let verb_dict_addr = self.lookup_word_in_dictionary_with_fixup(verb, dict_addr_location)?;
+
+        debug!(
+            " VERB_DICT_ADDR: Verb '{}' will be resolved to dictionary address (placeholder 0x{:04x} at location 0x{:04x})",
+            verb, verb_dict_addr, dict_addr_location
+        );
+
+        // Compare word 1 dict addr with this verb's dict addr (now in Global G01/Variable 17)
         // If they DON'T match, skip this verb handler
         let layout = self.emit_instruction(
             0x01, // je: jump if equal
             &[
-                Operand::Variable(2), // Word 1 dict addr
-                Operand::Variable(6), // This verb's dict addr (from temporary Variable 6)
+                Operand::Variable(2),  // Word 1 dict addr (from parse buffer)
+                Operand::Variable(17), // This verb's dict addr (from Global G01)
             ],
             None,
             Some(0xBFFF_u16 as i16), // Placeholder - will branch if EQUAL (branch-on-true, 2-byte format)
@@ -5492,7 +5619,7 @@ impl ZMachineCodeGen {
             verb_only_label
         );
 
-        // Emit jl with placeholder branch - will be resolved to verb-only label
+        // Emit jl with placeholder branch - will be resolved to verb_only_label
         let layout = self.emit_instruction(
             0x02, // jl: jump if less than
             &[
@@ -5500,7 +5627,7 @@ impl ZMachineCodeGen {
                 Operand::SmallConstant(2), // compare with 2
             ],
             None,
-            Some(0x7FFF), // Placeholder branch offset (will be resolved to verb_only_label)
+            Some(0xBFFF_u16 as i16), // Placeholder - branch-on-TRUE (jump to verb_only when word_count < 2)
         )?;
 
         // Register branch to verb_only_label using proper branch_location from layout
@@ -5801,6 +5928,50 @@ impl ZMachineCodeGen {
         Ok(dict_addr)
     }
 
+    /// Lookup word in dictionary and create UnresolvedReference for Phase 3 fixup
+    /// Returns placeholder value; actual address will be resolved during final assembly
+    fn lookup_word_in_dictionary_with_fixup(
+        &mut self,
+        word: &str,
+        code_location: usize,
+    ) -> Result<u16, CompilerError> {
+        // Find the word's position in the sorted dictionary_words list
+        let word_lower = word.to_lowercase();
+
+        let position = self
+            .dictionary_words
+            .iter()
+            .position(|w| w == &word_lower)
+            .ok_or_else(|| {
+                CompilerError::CodeGenError(format!(
+                    "Word '{}' not found in dictionary. Available words: {:?}",
+                    word, self.dictionary_words
+                ))
+            })? as u16;
+
+        // Create UnresolvedReference for Phase 3 fixup
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::DictionaryRef {
+                    word: word.to_string(),
+                },
+                location: code_location,
+                target_id: position as u32, // Store position, not address
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
+
+        debug!(
+            "📖 DICT_LOOKUP_FIXUP: Word '{}' at position {} needs fixup at location 0x{:04x}",
+            word, position, code_location
+        );
+
+        // Return placeholder - will be fixed up in Phase 3
+        Ok(placeholder_word())
+    }
+
     /// Generate Z-Machine code to resolve a noun dictionary address to an object ID
     /// Input: Variable 2 contains the noun dictionary address from parse buffer
     /// Output: Variable 3 contains the matching object ID (or 0 if not found)
@@ -5864,7 +6035,7 @@ impl ZMachineCodeGen {
                 Operand::SmallConstant(68), // Maximum actual object count in mini_zork
             ],
             None,
-            Some(0x7FFF), // Placeholder branch offset (will be resolved to actual target)
+            Some(0xBFFF_u16 as i16), // Placeholder - branch-on-TRUE (jump to end when object > 68)
         )?;
         // Register branch to end_label using proper branch_location from layout
         if let Some(branch_location) = layout.branch_location {
@@ -5901,7 +6072,7 @@ impl ZMachineCodeGen {
                 Operand::Variable(2), // Noun dictionary address
             ],
             None,
-            Some(0x7FFF), // Placeholder branch offset (will be resolved to actual target)
+            Some(0xBFFF_u16 as i16), // Placeholder - branch-on-TRUE (jump to found when they match)
         )?;
         // Register branch to found_match_label using proper branch_location from layout
         if let Some(branch_location) = layout.branch_location {
@@ -6289,9 +6460,89 @@ impl ZMachineCodeGen {
 
         match op {
             IrUnaryOp::Not => {
-                // Use stack for unary operation results
-                let operands = vec![operand];
-                self.emit_instruction(0x8F, &operands, Some(0), None)?; // not (1OP:15)
+                // CRITICAL FIX: Use logical negation, not bitwise not
+                // Logical NOT: 0 -> 1, non-zero -> 0
+                // Bitwise not(1) = 0xFFFE = 65534 which is WRONG for boolean logic!
+                //
+                // Z-Machine idiom for boolean negation:
+                //   je operand, 0 [FALSE] label_true   ; branch if NOT equal to 0
+                //     store 0                            ; was non-zero, store false
+                //     jump label_done
+                //   label_true:
+                //     store 1                            ; was zero, store true
+                //   label_done:
+
+                let label_true = self.next_string_id;
+                self.next_string_id += 1;
+                let label_done = self.next_string_id;
+                self.next_string_id += 1;
+
+                // je operand, 0 [FALSE] label_true (branch if operand != 0)
+                let layout = self.emit_instruction(
+                    0x01,
+                    &[operand, Operand::Constant(0)],
+                    None,
+                    Some(0x7FFF), // branch-on-FALSE placeholder
+                )?;
+
+                if let Some(branch_location) = layout.branch_location {
+                    self.reference_context
+                        .unresolved_refs
+                        .push(UnresolvedReference {
+                            reference_type: LegacyReferenceType::Branch,
+                            location: branch_location,
+                            target_id: label_true,
+                            is_packed_address: false,
+                            offset_size: 2,
+                            location_space: MemorySpace::Code,
+                        });
+                }
+
+                // store 0 (false)
+                self.emit_instruction(
+                    0x0D,
+                    &[Operand::Constant(0), Operand::Variable(0)],
+                    None,
+                    None,
+                )?;
+
+                // jump label_done
+                let jump_layout = self.emit_instruction(
+                    0x0C,
+                    &[Operand::LargeConstant(placeholder_word())],
+                    None,
+                    None,
+                )?;
+
+                if let Some(operand_loc) = jump_layout.operand_location {
+                    self.reference_context
+                        .unresolved_refs
+                        .push(UnresolvedReference {
+                            reference_type: LegacyReferenceType::Jump,
+                            location: operand_loc,
+                            target_id: label_done,
+                            is_packed_address: false,
+                            offset_size: 2,
+                            location_space: MemorySpace::Code,
+                        });
+                }
+
+                // label_true:
+                self.label_addresses.insert(label_true, self.code_address);
+                self.record_final_address(label_true, self.code_address);
+
+                // store 1 (true)
+                self.emit_instruction(
+                    0x0D,
+                    &[Operand::Constant(1), Operand::Variable(0)],
+                    None,
+                    None,
+                )?;
+
+                // label_done:
+                self.label_addresses.insert(label_done, self.code_address);
+                self.record_final_address(label_done, self.code_address);
+
                 self.use_stack_for_result(target);
             }
             IrUnaryOp::Minus => {
@@ -8238,6 +8489,10 @@ impl ZMachineCodeGen {
     fn opcode_has_store_var(&self, opcode: u8) -> bool {
         // This is a simplified check - in reality we'd need a full opcode table
         // For now, handle the most common cases
+        // NOTE: 0x08 and 0x09 are form-dependent!
+        //   - 2OP:0x08 (or) and 2OP:0x09 (and) have store_var
+        //   - VAR:0x08 (push) and VAR:0x09 (pull) do NOT have store_var
+        // This function is only used for 2OP opcodes, so we include them
         match opcode {
             0x08 | 0x09 | 0x0E | 0x0F | 0x10 | 0x11 | 0x12 | 0x13 | 0x14 | 0x15 | 0x16 | 0x17
             | 0x18 | 0x19 => true, // Arithmetic, loads, property access

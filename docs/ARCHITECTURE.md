@@ -1122,3 +1122,230 @@ Main Loop (ID 9000)
 - `Adjective`, `MultiWordNoun`, `Preposition` - Advanced patterns (future)
 
 This modular architecture provides a robust, maintainable foundation for a complete Z-Machine interpreter with excellent game compatibility, clean code organization, and clear separation of concerns across functional domains.
+
+## CRITICAL: Z-Machine Opcode Form Instability
+
+### The Problem
+
+**Z-Machine opcodes are not stable across instruction forms** - the same opcode number means different instructions depending on the form (Long/Short/Variable/Extended). The grue-compiler's `emit_instruction` function treats opcode numbers as stable, which causes it to emit incorrect instructions when operand constraints force form changes.
+
+### Why This Occurs
+
+The `emit_instruction` function in `src/grue_compiler/codegen_instructions.rs` (line 1225) automatically selects instruction form based on operand types:
+
+```rust
+// Lines 1570-1583: Form determination logic
+match operands.len() {
+    2 => {
+        // Check if Long form can handle all operands
+        let can_use_long_form = operands.iter().all(|op| {
+            match op {
+                Operand::LargeConstant(value) => *value <= 255,
+                _ => true,
+            }
+        });
+
+        if opcode < 0x80 && can_use_long_form {
+            InstructionForm::Long    // 2OP: opcodes as expected
+        } else {
+            InstructionForm::Variable  // ⚠️ BUG: Same opcode, different meaning!
+        }
+    }
+    _ => InstructionForm::Variable,
+}
+```
+
+**The Bug**: When `LargeConstant > 255`, the form switches from Long (2OP) to Variable (VAR), but the opcode number remains unchanged even though it now refers to a different instruction.
+
+### Examples of Form-Sensitive Opcodes
+
+| Opcode | Long Form (2OP) | Variable Form (VAR) | Conflict |
+|--------|-----------------|---------------------|----------|
+| 0x01 | `je` (jump if equal) | `storew` (store word) | ✅ |
+| 0x0D | `store` (store value) | `output_stream` (select stream) | ✅ |
+| 0x03 | `jl` (jump if less) | `put_prop` (set property) | ✅ |
+| 0x13 | `get_next_prop` (object) | `get_next_prop` OR `output_stream` (disambiguated by store_var) | ⚠️ |
+
+### Historical Context
+
+**First Discovery (Commit 45b7b37)**:
+- Problem: `je` instruction with `LargeConstant > 255` became `storew` (VAR:0x01)
+- Solution: Load large constant into variable first, then use `je` with variable reference
+- Date: September 30, 2025
+
+**Current Discovery (October 3, 2025)**:
+- Problem: `store` instruction with `LargeConstant > 255` became `output_stream` (VAR:0x0D)
+- Issue: Cannot use "load first" workaround because `store` itself is the loading mechanism
+- Location: `src/grue_compiler/codegen.rs` lines 5406-5414 (grammar verb matching)
+
+**The Circular Dependency**:
+```rust
+// We wanted to emit:
+// 2OP:0x0D store Variable(6), LargeConstant(0xFFFF)
+
+// But it generated:
+// VAR:0x0D output_stream Variable(6), LargeConstant(0xFFFF)
+
+// We can't fix it with:
+// store temp_var, LargeConstant(0xFFFF)   ← This IS the broken instruction!
+// store Variable(6), temp_var              ← Would work, but first line fails
+```
+
+### The Three Solution Approaches
+
+#### Option 1: Compile-Time Validation (RECOMMENDED)
+
+Add validation to detect when opcode meaning would change across forms:
+
+```rust
+// In determine_instruction_form_with_operands (lines 1570-1583)
+const FORM_SENSITIVE_OPCODES: &[(u8, &str, &str)] = &[
+    (0x01, "je (2OP)", "storew (VAR)"),
+    (0x0D, "store (2OP)", "output_stream (VAR)"),
+    (0x03, "jl (2OP)", "put_prop (VAR)"),
+    // ... add all form-sensitive opcodes
+];
+
+match operands.len() {
+    2 => {
+        let can_use_long_form = /* ... check as before ... */;
+
+        if opcode < 0x80 && can_use_long_form {
+            InstructionForm::Long
+        } else {
+            // Check if switching to VAR form would change instruction meaning
+            if let Some((_, long_name, var_name)) =
+                FORM_SENSITIVE_OPCODES.iter().find(|(op, _, _)| *op == opcode) {
+                return Err(CompilerError::OpcodeFormConflict {
+                    opcode,
+                    long_form_name: long_name.to_string(),
+                    var_form_name: var_name.to_string(),
+                    operands: operands.to_vec(),
+                });
+            }
+            InstructionForm::Variable
+        }
+    }
+    _ => InstructionForm::Variable,
+}
+```
+
+**Pros**:
+- Catches all instances at compile time
+- Clear error messages guide developers to correct solutions
+- No runtime overhead
+- Prevents future bugs
+
+**Cons**:
+- Requires maintaining opcode conflict table
+- Errors force developers to rewrite code
+
+#### Option 2: Automatic Opcode Mapping (REJECTED)
+
+Map 2OP opcodes to equivalent VAR opcodes when form changes:
+
+```rust
+const OPCODE_2OP_TO_VAR: &[(u8, u8)] = &[
+    (0x01, 0x??),  // je → ??? (no VAR equivalent)
+    (0x0D, 0x??),  // store → ??? (no VAR equivalent)
+];
+```
+
+**Rejected Because**: Most 2OP instructions don't have semantic VAR equivalents. This would only work for a small subset of opcodes.
+
+#### Option 3: Instruction Sequence Rewriting (CURRENT SOLUTION)
+
+Rewrite problematic instruction patterns into equivalent sequences:
+
+```rust
+// For store with LargeConstant:
+// ORIGINAL (doesn't work):
+emit_instruction(0x0D, [Variable(dest), LargeConstant(value)])
+
+// SOLUTION 1: Use stack as intermediate
+emit_instruction(push, [LargeConstant(value)])  // Push to stack
+emit_instruction(pull, [Variable(dest)])         // Pull from stack
+
+// SOLUTION 2: Manual Long form emission (if guaranteed ≤ 255)
+if value <= 255 {
+    self.emit_byte(long_form_header);
+    self.emit_byte(dest);
+    self.emit_byte(value as u8);
+}
+```
+
+**Pros**:
+- Works around immediate problems
+- No need to maintain conflict tables
+- Keeps existing `emit_instruction` API
+
+**Cons**:
+- Bug-prone (easy to forget when to use workaround)
+- Larger code size (multiple instructions vs single)
+- Performance overhead (extra stack operations)
+- Doesn't prevent future bugs
+
+### Implementation Plan
+
+**Phase 1: Documentation** ✅
+- Add this section to ARCHITECTURE.md
+- Document all known form-sensitive opcodes
+- Explain root cause and solutions
+
+**Phase 2: Validation (Option 1)**
+- Create comprehensive opcode conflict table
+- Add validation to `determine_instruction_form_with_operands`
+- Define `CompilerError::OpcodeFormConflict` variant
+- Write tests to verify detection
+
+**Phase 3: Fix Immediate Bugs (Option 3)**
+- Fix grammar system `store` instruction (lines 5406-5414)
+- Use push+pull sequence for large constants
+- Verify all tests pass with workaround
+
+**Phase 4: Systematic Audit**
+- Search codebase for all `emit_instruction` calls with `LargeConstant`
+- Check each against opcode conflict table
+- Apply Option 3 workarounds where needed
+- Add regression tests
+
+### Integration Points
+
+**Key Files**:
+- `src/grue_compiler/codegen_instructions.rs:1225` - `emit_instruction` entry point
+- `src/grue_compiler/codegen_instructions.rs:1570-1583` - Form determination logic
+- `src/grue_compiler/codegen.rs:5406-5414` - Grammar system `store` bug location
+
+**Testing Strategy**:
+1. Unit test: Verify validation detects all conflicts
+2. Integration test: Compile programs with large constants
+3. Runtime test: Execute compiled bytecode in interpreter
+4. Regression test: Ensure commit 45b7b37 pattern doesn't recur
+
+### Detection Commands
+
+Find potential conflicts in existing code:
+
+```bash
+# Find all emit_instruction calls with LargeConstant
+grep -n "emit_instruction.*LargeConstant" src/grue_compiler/*.rs
+
+# Check specific form-sensitive opcodes
+grep -n "emit_instruction(0x01" src/grue_compiler/*.rs  # je
+grep -n "emit_instruction(0x0D" src/grue_compiler/*.rs  # store
+grep -n "emit_instruction(0x03" src/grue_compiler/*.rs  # jl
+```
+
+### Lessons Learned
+
+1. **Z-Machine Spec Complexity**: Opcode semantics depend on context (form, operand count, store_var presence)
+2. **Abstraction Leakage**: High-level API (`emit_instruction`) cannot fully hide low-level constraints
+3. **Validation is Critical**: Silent bugs (wrong instruction, valid bytecode) are hardest to debug
+4. **Test Coverage**: Need tests that verify semantic correctness, not just syntactic validity
+
+### References
+
+- **Z-Machine Standards Document v1.1**: Section 4 (Instruction Formats), Section 15 (Opcode Tables)
+- **Commit 45b7b37**: First instance of form instability bug (`je` → `storew` conflict)
+- **Current Bug Report**: October 3, 2025 (grammar system `store` → `output_stream` conflict)
+- **File Locations**: See "Integration Points" above

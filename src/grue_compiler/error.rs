@@ -35,6 +35,11 @@ pub enum CompilerError {
     StringTooLong(String),
     InvalidBytecode(String),
     UnresolvedReference(String),
+    OpcodeFormConflict {
+        opcode: u8,
+        long_form_name: String,
+        var_form_name: String,
+    },
 
     // Runtime/execution errors
     ExecutionError(String),
@@ -105,6 +110,19 @@ impl fmt::Display for CompilerError {
             CompilerError::UnresolvedReference(msg) => {
                 write!(f, "Unresolved reference: {}", msg)
             }
+            CompilerError::OpcodeFormConflict {
+                opcode,
+                long_form_name,
+                var_form_name,
+            } => {
+                write!(
+                    f,
+                    "Opcode form conflict: opcode 0x{:02x} means '{}' in Long/2OP form but '{}' in Variable/VAR form. \
+                     Cannot use LargeConstant > 255 with this opcode. \
+                     Use push+pull sequence or store value in variable first.",
+                    opcode, long_form_name, var_form_name
+                )
+            }
             CompilerError::ExecutionError(msg) => {
                 write!(f, "Runtime execution error: {}", msg)
             }
@@ -146,6 +164,15 @@ impl CompilerError {
             }
             CompilerError::InvalidOpcode(_, _) => {
                 Some("This may be caused by a compiler bug in bytecode generation. Try simplifying the code.".to_string())
+            }
+            CompilerError::OpcodeFormConflict { long_form_name, .. } => {
+                Some(format!(
+                    "To use '{}' with large constants, either:\n\
+                     1. Store the constant in a variable first (if constant > 255)\n\
+                     2. Use push+pull sequence to move value via stack\n\
+                     3. Ensure constant values are ≤ 255 to use Long form",
+                    long_form_name
+                ))
             }
             CompilerError::UnresolvedReference(msg) => {
                 Some(format!("Check that all referenced functions and variables are properly declared: {}", msg))

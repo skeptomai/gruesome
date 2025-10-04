@@ -78,27 +78,6 @@ impl Interpreter {
                 let addr = operands[0] as u32 + operands[1] as u32;
                 let value = self.vm.read_byte(addr) as u16;
 
-                // Debug the leaves issue
-                let pc = self.vm.pc - inst.size as u32;
-                if pc == 0x6345 || pc == 0x6349 {
-                    debug!(
-                        "loadb at 0x{:04x}: base=0x{:04x}, offset={}, addr=0x{:04x}, value={}",
-                        pc, operands[0], operands[1], addr, value
-                    );
-                    // Also show what V01 points to
-                    if operands[0] == 1 {
-                        // If using V01
-                        if let Ok(v01) = self.vm.read_variable(1) {
-                            debug!("  V01 = 0x{:04x}", v01);
-                            // Show parse buffer entry
-                            for i in 0..4 {
-                                let byte = self.vm.read_byte(v01 as u32 + i);
-                                debug!("    V01[{}] = {}", i, byte);
-                            }
-                        }
-                    }
-                }
-
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, value)?;
                 }
@@ -116,7 +95,7 @@ impl Interpreter {
                         && inst.operand_count == crate::instruction::OperandCount::OP2
                     {
                         // This is actually 2OP:21 (storew) in Variable form
-                        debug!("Note: Variable form storew with OP2 at PC {:05x} - this is 2OP:21 in Variable form", 
+                        debug!("Note: Variable form storew with OP2 at PC {:05x} - this is 2OP:21 in Variable form",
                                self.vm.pc - inst.size as u32);
                     }
                     return Err(format!(
