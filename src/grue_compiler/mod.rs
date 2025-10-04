@@ -14,6 +14,8 @@ pub mod ir;
 pub mod lexer;
 pub mod object_system;
 pub mod opcodes;
+#[cfg(test)]
+mod opcodes_tests;
 pub mod parser;
 pub mod semantic;
 

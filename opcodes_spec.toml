@@ -1,0 +1,844 @@
+# Z-Machine Opcode Specification
+# Based on Z-Machine Standards Document v1.1
+# Reference: /Users/cb/Projects/Z-Machine-Standard/sect15.html
+
+# 0OP Form Instructions (encoded as SHORT form with operand type 11)
+[[op0]]
+name = "Rtrue"
+value = 0x00
+number = 176
+stores = false
+branches = false
+min_version = 1
+description = "Return true (1) from current routine"
+
+[[op0]]
+name = "Rfalse"
+value = 0x01
+number = 177
+stores = false
+branches = false
+min_version = 1
+description = "Return false (0) from current routine"
+
+[[op0]]
+name = "Print"
+value = 0x02
+number = 178
+stores = false
+branches = false
+min_version = 1
+description = "Print literal string embedded in instruction stream"
+
+[[op0]]
+name = "PrintRet"
+value = 0x03
+number = 179
+stores = false
+branches = false
+min_version = 1
+description = "Print literal string, print newline, return true"
+
+[[op0]]
+name = "Nop"
+value = 0x04
+number = 180
+stores = false
+branches = false
+min_version = 1
+description = "No operation"
+
+[[op0]]
+name = "Save"
+value = 0x05
+number = 181
+stores = false
+branches = true
+min_version = 1
+max_version = 3
+description = "Save game state (V1-3, branches on success)"
+
+[[op0]]
+name = "Restore"
+value = 0x06
+number = 182
+stores = false
+branches = true
+min_version = 1
+max_version = 3
+description = "Restore game state (V1-3, branches on success)"
+
+[[op0]]
+name = "Restart"
+value = 0x07
+number = 183
+stores = false
+branches = false
+min_version = 1
+description = "Restart the game"
+
+[[op0]]
+name = "RetPopped"
+value = 0x08
+number = 184
+stores = false
+branches = false
+min_version = 1
+description = "Pop value from stack and return it"
+
+[[op0]]
+name = "Pop"
+value = 0x09
+number = 185
+stores = false
+branches = false
+min_version = 1
+max_version = 4
+description = "Pop and discard top of stack (V1-4)"
+
+[[op0]]
+name = "Quit"
+value = 0x0A
+number = 186
+stores = false
+branches = false
+min_version = 1
+description = "Quit the game"
+
+[[op0]]
+name = "NewLine"
+value = 0x0B
+number = 187
+stores = false
+branches = false
+min_version = 1
+description = "Print a newline"
+
+[[op0]]
+name = "ShowStatus"
+value = 0x0C
+number = 188
+stores = false
+branches = false
+min_version = 3
+max_version = 3
+description = "Show status line (V3 only)"
+
+[[op0]]
+name = "Verify"
+value = 0x0D
+number = 189
+stores = false
+branches = true
+min_version = 3
+description = "Verify game file checksum"
+
+# 1OP Form Instructions (encoded as SHORT form)
+[[op1]]
+name = "Jz"
+value = 0x00
+number = 128
+stores = false
+branches = true
+min_version = 1
+description = "Jump if zero"
+
+[[op1]]
+name = "GetSibling"
+value = 0x01
+number = 129
+stores = true
+branches = true
+min_version = 1
+description = "Get object's sibling, branch if exists"
+
+[[op1]]
+name = "GetChild"
+value = 0x02
+number = 130
+stores = true
+branches = true
+min_version = 1
+description = "Get object's child, branch if exists"
+
+[[op1]]
+name = "GetParent"
+value = 0x03
+number = 131
+stores = true
+branches = false
+min_version = 1
+description = "Get object's parent"
+
+[[op1]]
+name = "GetPropLen"
+value = 0x04
+number = 132
+stores = true
+branches = false
+min_version = 1
+description = "Get property data length"
+
+[[op1]]
+name = "Inc"
+value = 0x05
+number = 133
+stores = false
+branches = false
+min_version = 1
+description = "Increment variable"
+
+[[op1]]
+name = "Dec"
+value = 0x06
+number = 134
+stores = false
+branches = false
+min_version = 1
+description = "Decrement variable"
+
+[[op1]]
+name = "PrintAddr"
+value = 0x07
+number = 135
+stores = false
+branches = false
+min_version = 1
+description = "Print string at byte address"
+
+[[op1]]
+name = "Call1s"
+value = 0x08
+number = 136
+stores = true
+branches = false
+min_version = 4
+description = "Call routine with 0 args, store result (V4+)"
+
+[[op1]]
+name = "RemoveObj"
+value = 0x09
+number = 137
+stores = false
+branches = false
+min_version = 1
+description = "Remove object from parent"
+
+[[op1]]
+name = "PrintObj"
+value = 0x0A
+number = 138
+stores = false
+branches = false
+min_version = 1
+description = "Print object's short name"
+
+[[op1]]
+name = "Ret"
+value = 0x0B
+number = 139
+stores = false
+branches = false
+min_version = 1
+description = "Return with value"
+
+[[op1]]
+name = "Jump"
+value = 0x0C
+number = 140
+stores = false
+branches = false
+min_version = 1
+description = "Unconditional jump"
+
+[[op1]]
+name = "PrintPaddr"
+value = 0x0D
+number = 141
+stores = false
+branches = false
+min_version = 1
+description = "Print string at packed address"
+
+[[op1]]
+name = "Load"
+value = 0x0E
+number = 142
+stores = true
+branches = false
+min_version = 1
+description = "Load variable value"
+
+# Opcode 0x0F has version conflict - using V5+ version only for now
+# [[op1]]
+# name = "Not"
+# value = 0x0F
+# number = 143
+# stores = true
+# branches = false
+# min_version = 1
+# max_version = 4
+# description = "Bitwise NOT (V1-4) or Call1n (V5+)"
+
+[[op1]]
+name = "Call1n"
+value = 0x0F
+number = 143
+stores = false
+branches = false
+min_version = 5
+description = "Call routine with 0 args, discard result (V5+)"
+
+# 2OP Form Instructions (encoded as LONG or VAR form)
+[[op2]]
+name = "Je"
+value = 0x01
+number = 1
+stores = false
+branches = true
+min_version = 1
+description = "Jump if equal (supports up to 4 operands in VAR form V4+)"
+
+[[op2]]
+name = "Jl"
+value = 0x02
+number = 2
+stores = false
+branches = true
+min_version = 1
+description = "Jump if less than (signed)"
+
+[[op2]]
+name = "Jg"
+value = 0x03
+number = 3
+stores = false
+branches = true
+min_version = 1
+description = "Jump if greater than (signed)"
+
+[[op2]]
+name = "DecChk"
+value = 0x04
+number = 4
+stores = false
+branches = true
+min_version = 1
+description = "Decrement variable and branch if < value"
+
+[[op2]]
+name = "IncChk"
+value = 0x05
+number = 5
+stores = false
+branches = true
+min_version = 1
+description = "Increment variable and branch if > value"
+
+[[op2]]
+name = "Jin"
+value = 0x06
+number = 6
+stores = false
+branches = true
+min_version = 1
+description = "Jump if obj1 is direct child of obj2"
+
+[[op2]]
+name = "Test"
+value = 0x07
+number = 7
+stores = false
+branches = true
+min_version = 1
+description = "Jump if (bitmap & flags) == flags"
+
+[[op2]]
+name = "Or"
+value = 0x08
+number = 8
+stores = true
+branches = false
+min_version = 1
+description = "Bitwise OR"
+
+[[op2]]
+name = "And"
+value = 0x09
+number = 9
+stores = true
+branches = false
+min_version = 1
+description = "Bitwise AND"
+
+[[op2]]
+name = "TestAttr"
+value = 0x0A
+number = 10
+stores = false
+branches = true
+min_version = 1
+description = "Branch if object has attribute"
+
+[[op2]]
+name = "SetAttr"
+value = 0x0B
+number = 11
+stores = false
+branches = false
+min_version = 1
+description = "Set object attribute"
+
+[[op2]]
+name = "ClearAttr"
+value = 0x0C
+number = 12
+stores = false
+branches = false
+min_version = 1
+description = "Clear object attribute"
+
+[[op2]]
+name = "Store"
+value = 0x0D
+number = 13
+stores = false
+branches = false
+min_version = 1
+description = "Store value in variable"
+
+[[op2]]
+name = "InsertObj"
+value = 0x0E
+number = 14
+stores = false
+branches = false
+min_version = 1
+description = "Insert obj1 as first child of obj2"
+
+[[op2]]
+name = "Loadw"
+value = 0x0F
+number = 15
+stores = true
+branches = false
+min_version = 1
+description = "Load word from array"
+
+[[op2]]
+name = "Loadb"
+value = 0x10
+number = 16
+stores = true
+branches = false
+min_version = 1
+description = "Load byte from array"
+
+[[op2]]
+name = "GetProp"
+value = 0x11
+number = 17
+stores = true
+branches = false
+min_version = 1
+description = "Get object property value"
+
+[[op2]]
+name = "GetPropAddr"
+value = 0x12
+number = 18
+stores = true
+branches = false
+min_version = 1
+description = "Get address of object property data"
+
+[[op2]]
+name = "GetNextProp"
+value = 0x13
+number = 19
+stores = true
+branches = false
+min_version = 1
+description = "Get next property number"
+
+[[op2]]
+name = "Add"
+value = 0x14
+number = 20
+stores = true
+branches = false
+min_version = 1
+description = "Add (signed)"
+
+[[op2]]
+name = "Sub"
+value = 0x15
+number = 21
+stores = true
+branches = false
+min_version = 1
+description = "Subtract (signed)"
+
+[[op2]]
+name = "Mul"
+value = 0x16
+number = 22
+stores = true
+branches = false
+min_version = 1
+description = "Multiply (signed)"
+
+[[op2]]
+name = "Div"
+value = 0x17
+number = 23
+stores = true
+branches = false
+min_version = 1
+description = "Divide (signed)"
+
+[[op2]]
+name = "Mod"
+value = 0x18
+number = 24
+stores = true
+branches = false
+min_version = 1
+description = "Modulo (signed)"
+
+[[op2]]
+name = "Call2s"
+value = 0x19
+number = 25
+stores = true
+branches = false
+min_version = 4
+description = "Call routine with 1 arg, store result (V4+)"
+
+[[op2]]
+name = "Call2n"
+value = 0x1A
+number = 26
+stores = false
+branches = false
+min_version = 5
+description = "Call routine with 1 arg, discard result (V5+)"
+
+[[op2]]
+name = "SetColour"
+value = 0x1B
+number = 27
+stores = false
+branches = false
+min_version = 5
+description = "Set foreground/background color (V5+)"
+
+[[op2]]
+name = "Throw"
+value = 0x1C
+number = 28
+stores = false
+branches = false
+min_version = 5
+description = "Throw to catch frame (V5+)"
+
+# VAR Form Instructions (0-4 operands in V3, 0-8 in V4+)
+[[var]]
+name = "CallVs"
+value = 0x00
+number = 224
+stores = true
+branches = false
+min_version = 1
+description = "Call routine, store result"
+
+[[var]]
+name = "Storew"
+value = 0x01
+number = 225
+stores = false
+branches = false
+min_version = 1
+description = "Store word in array"
+
+[[var]]
+name = "Storeb"
+value = 0x02
+number = 226
+stores = false
+branches = false
+min_version = 1
+description = "Store byte in array"
+
+[[var]]
+name = "PutProp"
+value = 0x03
+number = 227
+stores = false
+branches = false
+min_version = 1
+description = "Set object property value"
+
+# Opcode 0x04 has version conflict - using V4+ version only for now
+# [[var]]
+# name = "Sread"
+# value = 0x04
+# number = 228
+# stores = false
+# branches = false
+# min_version = 1
+# max_version = 3
+# description = "Read line of input (V1-3)"
+
+[[var]]
+name = "Aread"
+value = 0x04
+number = 228
+stores = true
+branches = false
+min_version = 4
+description = "Read line of input with result (V4+)"
+
+[[var]]
+name = "PrintChar"
+value = 0x05
+number = 229
+stores = false
+branches = false
+min_version = 1
+description = "Print single character"
+
+[[var]]
+name = "PrintNum"
+value = 0x06
+number = 230
+stores = false
+branches = false
+min_version = 1
+description = "Print signed number"
+
+[[var]]
+name = "Random"
+value = 0x07
+number = 231
+stores = true
+branches = false
+min_version = 1
+description = "Random number generator"
+
+[[var]]
+name = "Push"
+value = 0x08
+number = 232
+stores = false
+branches = false
+min_version = 1
+description = "Push value onto stack"
+
+[[var]]
+name = "Pull"
+value = 0x09
+number = 233
+stores = false
+branches = false
+min_version = 1
+max_version = 5
+description = "Pop stack into variable (V1-5)"
+
+[[var]]
+name = "SplitWindow"
+value = 0x0A
+number = 234
+stores = false
+branches = false
+min_version = 3
+description = "Split screen window (V3+)"
+
+[[var]]
+name = "SetWindow"
+value = 0x0B
+number = 235
+stores = false
+branches = false
+min_version = 3
+description = "Select active window (V3+)"
+
+[[var]]
+name = "CallVs2"
+value = 0x0C
+number = 236
+stores = true
+branches = false
+min_version = 4
+description = "Call routine with up to 7 args, store result (V4+)"
+
+[[var]]
+name = "EraseWindow"
+value = 0x0D
+number = 237
+stores = false
+branches = false
+min_version = 4
+description = "Erase window (V4+)"
+
+[[var]]
+name = "EraseLine"
+value = 0x0E
+number = 238
+stores = false
+branches = false
+min_version = 4
+description = "Erase line in window (V4+)"
+
+[[var]]
+name = "SetCursor"
+value = 0x0F
+number = 239
+stores = false
+branches = false
+min_version = 4
+description = "Set cursor position (V4+)"
+
+[[var]]
+name = "GetCursor"
+value = 0x10
+number = 240
+stores = false
+branches = false
+min_version = 4
+description = "Get cursor position into array (V4+)"
+
+[[var]]
+name = "SetTextStyle"
+value = 0x11
+number = 241
+stores = false
+branches = false
+min_version = 4
+description = "Set text style (V4+)"
+
+[[var]]
+name = "BufferMode"
+value = 0x12
+number = 242
+stores = false
+branches = false
+min_version = 4
+description = "Set buffering mode (V4+)"
+
+[[var]]
+name = "OutputStream"
+value = 0x13
+number = 243
+stores = false
+branches = false
+min_version = 3
+description = "Select output stream (V3+)"
+
+[[var]]
+name = "InputStream"
+value = 0x14
+number = 244
+stores = false
+branches = false
+min_version = 3
+description = "Select input stream (V3+)"
+
+[[var]]
+name = "SoundEffect"
+value = 0x15
+number = 245
+stores = false
+branches = false
+min_version = 3
+description = "Play sound effect (V3+)"
+
+[[var]]
+name = "ReadChar"
+value = 0x16
+number = 246
+stores = true
+branches = false
+min_version = 4
+description = "Read single character (V4+)"
+
+[[var]]
+name = "ScanTable"
+value = 0x17
+number = 247
+stores = true
+branches = true
+min_version = 4
+description = "Scan table for value (V4+)"
+
+[[var]]
+name = "Not"
+value = 0x18
+number = 248
+stores = true
+branches = false
+min_version = 5
+description = "Bitwise NOT (V5+)"
+
+[[var]]
+name = "CallVn"
+value = 0x19
+number = 249
+stores = false
+branches = false
+min_version = 5
+description = "Call routine, discard result (V5+)"
+
+[[var]]
+name = "CallVn2"
+value = 0x1A
+number = 250
+stores = false
+branches = false
+min_version = 5
+description = "Call routine with up to 7 args, discard result (V5+)"
+
+[[var]]
+name = "Tokenise"
+value = 0x1B
+number = 251
+stores = false
+branches = false
+min_version = 5
+description = "Tokenize text buffer (V5+)"
+
+[[var]]
+name = "EncodeText"
+value = 0x1C
+number = 252
+stores = false
+branches = false
+min_version = 5
+description = "Encode text into dictionary format (V5+)"
+
+[[var]]
+name = "CopyTable"
+value = 0x1D
+number = 253
+stores = false
+branches = false
+min_version = 5
+description = "Copy table (V5+)"
+
+[[var]]
+name = "PrintTable"
+value = 0x1E
+number = 254
+stores = false
+branches = false
+min_version = 5
+description = "Print formatted table (V5+)"
+
+[[var]]
+name = "CheckArgCount"
+value = 0x1F
+number = 255
+stores = false
+branches = true
+min_version = 5
+description = "Branch if routine called with >= n args (V5+)"
