@@ -1925,8 +1925,21 @@ impl IrGenerator {
                 log::debug!("IR if: Adding then label {}", then_label);
                 block.add_instruction(IrInstruction::Label { id: then_label });
                 self.generate_statement(*if_stmt.then_branch, block)?;
-                log::debug!("IR if: Adding jump to end label {}", end_label);
-                block.add_instruction(IrInstruction::Jump { label: end_label });
+
+                // Only emit jump to end_label if there's an else branch
+                // Without else branch, fall-through naturally reaches end_label
+                if if_stmt.else_branch.is_some() {
+                    log::debug!(
+                        "IR if: Adding jump to end label {} (else branch exists)",
+                        end_label
+                    );
+                    block.add_instruction(IrInstruction::Jump { label: end_label });
+                } else {
+                    log::debug!(
+                        "IR if: Skipping jump to end label {} (no else branch - fall-through)",
+                        end_label
+                    );
+                }
 
                 // Else branch (if present)
                 log::debug!("IR if: Adding else label {}", else_label);
