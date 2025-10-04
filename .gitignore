@@ -4,9 +4,6 @@
 debug.log
 /out
 
-# Test artifacts - regenerated from source
-/tests/golden_files/
-
 # Compiled outputs - should be in examples/ or out/ directories
 /*.z3
 /*.z5
