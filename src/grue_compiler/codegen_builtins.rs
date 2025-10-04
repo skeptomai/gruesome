@@ -202,12 +202,7 @@ impl ZMachineCodeGen {
             )?;
 
             // Add new_line instruction
-            let layout2 = self.emit_instruction_typed(
-                NEWLINE,
-                &[],
-                None,
-                None,
-            )?;
+            let layout2 = self.emit_instruction_typed(NEWLINE, &[], None, None)?;
 
             // Add unresolved reference for the string address
             let operand_address = layout1
@@ -241,12 +236,7 @@ impl ZMachineCodeGen {
             )?;
 
             // new_line
-            let layout2 = self.emit_instruction_typed(
-                NEWLINE,
-                &[],
-                None,
-                None,
-            )?;
+            let layout2 = self.emit_instruction_typed(NEWLINE, &[], None, None)?;
 
             log::debug!(
                 "generate_print_ret_builtin: Generated print_num+newline for computed value {} ({} bytes total)",
@@ -268,12 +258,7 @@ impl ZMachineCodeGen {
         }
 
         // Generate new_line instruction (0OP:187, opcode 0x8B)
-        let layout = self.emit_instruction_typed(
-            NEWLINE,
-            &[],
-            None,
-            None,
-        )?;
+        let layout = self.emit_instruction_typed(NEWLINE, &[], None, None)?;
 
         log::debug!(
             "generate_new_line_builtin: Generated new_line ({} bytes)",
@@ -523,7 +508,7 @@ impl ZMachineCodeGen {
         self.emit_instruction_typed(
             Opcode::Op2(Op2::Or),
             &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
-            Some(0), // Store result on stack
+            Some(0),                                                 // Store result on stack
             None,
         )?;
 
