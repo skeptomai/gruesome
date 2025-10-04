@@ -5,6 +5,7 @@ use crate::grue_compiler::codegen::{
 };
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::{IrInstruction, IrValue};
+use crate::grue_compiler::opcodes::*;
 use log::debug;
 
 /// Extension trait for ZMachineCodeGen to handle instruction generation
@@ -266,10 +267,10 @@ impl ZMachineCodeGen {
                     // Return with value - use ret opcode with operand
                     let return_operand = self.resolve_ir_id_to_operand(*ir_value)?;
                     let operands = vec![return_operand]; // Return resolved value
-                    self.emit_instruction(0x8B, &operands, None, None)?; // ret (1OP:11)
+                    self.emit_instruction_typed(RET, &operands, None, None)?;
                 } else {
                     // Return without value - rtrue (no operands)
-                    self.emit_instruction(0xB0, &[], None, None)?; // rtrue (0OP:0)
+                    self.emit_instruction_typed(RTRUE, &[], None, None)?;
                 }
             }
 
@@ -321,7 +322,7 @@ impl ZMachineCodeGen {
                 let var_operand = Operand::SmallConstant(*var_id as u8);
 
                 // Use load instruction (0x0E) to load variable to stack
-                self.emit_instruction(0x0E, &[var_operand], Some(0), None)?; // load variable to stack
+                self.emit_instruction_typed(LOAD, &[var_operand], Some(0), None)?;
 
                 // Map the target to stack access
                 self.use_stack_for_result(*target);
@@ -340,11 +341,11 @@ impl ZMachineCodeGen {
                 if let Some(var_num) = self.ir_id_to_local_var.get(var_id) {
                     // Store to local variable using 2OP:13 store instruction
                     let var_operand = Operand::SmallConstant(*var_num);
-                    self.emit_instruction(0x0D, &[var_operand, value_operand], None, None)?;
+                    self.emit_instruction_typed(STORE, &[var_operand, value_operand], None, None)?;
                 } else {
                     // Store to stack (variable 0) using 2OP:13 store instruction
                     let stack_operand = Operand::SmallConstant(0);
-                    self.emit_instruction(0x0D, &[stack_operand, value_operand], None, None)?;
+                    self.emit_instruction_typed(STORE, &[stack_operand, value_operand], None, None)?;
                     self.ir_id_to_stack_var.insert(*var_id, 0);
                 }
                 log::debug!(
@@ -402,9 +403,9 @@ impl ZMachineCodeGen {
                 if size_value == 0 {
                     // Empty array - push null reference (1) to stack
                     // Using load_w with address 0 to get a safe null-like value
-                    self.emit_instruction(
-                        0x0F,                         // load_w (1OP:15) - load word from address
-                        &[Operand::SmallConstant(1)], // Load from address 1 (safe)
+                    self.emit_instruction_typed(
+                        Opcode::Op2(Op2::Loadw),
+                        &[Operand::SmallConstant(0), Operand::SmallConstant(1)], // Loadw requires 2 operands
                         Some(0),                      // Store result to stack
                         None,
                     )?;
@@ -460,8 +461,8 @@ impl ZMachineCodeGen {
                 //
                 // RESOLUTION: Reverted to correct opcode 0x11 (get_prop per Z-Machine spec)
                 // IMPACT: Property access now works without branch errors, mini_zork reaches command prompt
-                self.emit_instruction(
-                    0x11, // get_prop (2OP:17) - returns property value, not address
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::GetProp),
                     &[obj_operand, Operand::SmallConstant(prop_num)],
                     Some(0), // Store to stack
                     None,
@@ -498,8 +499,8 @@ impl ZMachineCodeGen {
                 // PROPERTY ACCESS CORRECTION (Sept 28, 2025): Fixed branch out of bounds bug
                 // Same fix as GetProperty above - reverted from 0x01 (je) back to 0x11 (get_prop).
                 // This handles numbered property access (property_num instead of property name).
-                self.emit_instruction(
-                    0x11, // get_prop (2OP:17) - returns property value, not address
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::GetProp),
                     &[obj_operand, prop_operand],
                     Some(0), // Store to stack
                     None,
@@ -519,7 +520,7 @@ impl ZMachineCodeGen {
                     Operand::Constant(*property_num as u16), // Property number
                     self.resolve_ir_id_to_operand(*value)?,  // Value (properly resolved)
                 ];
-                self.emit_instruction(0x03, &operands, None, None)?;
+                self.emit_instruction_typed(Opcode::OpVar(OpVar::PutProp), &operands, None, None)?;
                 log::debug!(
                     "Generated put_prop for property number {} with resolved object",
                     property_num
@@ -539,8 +540,8 @@ impl ZMachineCodeGen {
                 self.use_stack_for_result(*target);
 
                 // Use test_attr instruction: 2OP:10 (0x0A) for testing
-                self.emit_instruction(
-                    0x0A, // test_attr (placeholder - should be property test)
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::TestAttr),
                     &[obj_operand, prop_operand],
                     Some(0), // Store to stack
                     None,
@@ -561,8 +562,8 @@ impl ZMachineCodeGen {
                 self.use_stack_for_result(*target);
 
                 // Use get_next_prop instruction: 2OP:19 (0x13)
-                self.emit_instruction(
-                    0x13, // get_next_prop
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::GetNextProp),
                     &[obj_operand, prop_operand],
                     Some(0), // Store to stack
                     None,
@@ -577,11 +578,11 @@ impl ZMachineCodeGen {
                 // CRITICAL: Register target for array empty result
                 self.use_stack_for_result(*target);
 
-                // For now, just load 0 (empty/false) as a placeholder
-                self.emit_instruction(
-                    0x8D, // load constant 0
+                // For now, just push 0 (empty/false) as a placeholder
+                self.emit_instruction_typed(
+                    Opcode::OpVar(OpVar::Push),
                     &[Operand::LargeConstant(0)],
-                    Some(0), // Store to stack
+                    None, // Push doesn't use store_var
                     None,
                 )?;
                 log::debug!("ArrayEmpty: IR ID {} -> stack (placeholder: false)", target);
@@ -598,11 +599,11 @@ impl ZMachineCodeGen {
                 // CRITICAL: Register target for array element result
                 self.use_stack_for_result(*target);
 
-                // For now, just load placeholder string address
-                self.emit_instruction(
-                    0x8D,                            // load constant
+                // For now, just push placeholder string address
+                self.emit_instruction_typed(
+                    Opcode::OpVar(OpVar::Push),
                     &[Operand::LargeConstant(1000)], // Placeholder string ID
-                    Some(0),                         // Store to stack
+                    None,                            // Push doesn't use store_var
                     None,
                 )?;
                 log::debug!(
@@ -630,7 +631,7 @@ impl ZMachineCodeGen {
                 // Array remove operation - placeholder returns 0
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
+                self.emit_instruction_typed(Opcode::OpVar(OpVar::Push), &[Operand::SmallConstant(0)], None, None)?;
                 log::debug!("ArrayRemove: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -638,7 +639,7 @@ impl ZMachineCodeGen {
                 // Array length operation - placeholder returns 0
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
+                self.emit_instruction_typed(Opcode::OpVar(OpVar::Push), &[Operand::SmallConstant(0)], None, None)?;
                 log::debug!("ArrayLength: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -650,7 +651,7 @@ impl ZMachineCodeGen {
                 // Array contains operation - placeholder returns false (0)
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
+                self.emit_instruction_typed(Opcode::OpVar(OpVar::Push), &[Operand::SmallConstant(0)], None, None)?;
                 log::debug!("ArrayContains: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -662,7 +663,7 @@ impl ZMachineCodeGen {
                 // Array indexOf operation - placeholder returns -1 (not found)
                 self.use_stack_for_result(*target);
                 // Emit instruction to push -1 onto stack as placeholder result
-                self.emit_instruction(0xE8, &[Operand::LargeConstant(65535)], None, None)?; // push -1 as unsigned
+                self.emit_instruction_typed(Opcode::OpVar(OpVar::Push), &[Operand::LargeConstant(65535)], None, None)?;
                 log::debug!("ArrayIndexOf: IR ID {} -> stack (placeholder: -1)", target);
             }
 
@@ -674,7 +675,7 @@ impl ZMachineCodeGen {
                 // Array filter operation - placeholder returns empty array (0)
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
+                self.emit_instruction_typed(Opcode::OpVar(OpVar::Push), &[Operand::SmallConstant(0)], None, None)?;
                 log::debug!("ArrayFilter: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -686,7 +687,7 @@ impl ZMachineCodeGen {
                 // Array map operation - placeholder returns empty array (0)
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
+                self.emit_instruction_typed(Opcode::OpVar(OpVar::Push), &[Operand::SmallConstant(0)], None, None)?;
                 log::debug!("ArrayMap: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -698,7 +699,7 @@ impl ZMachineCodeGen {
                 // Array find operation - placeholder returns null (0)
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
+                self.emit_instruction_typed(Opcode::OpVar(OpVar::Push), &[Operand::SmallConstant(0)], None, None)?;
                 log::debug!("ArrayFind: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -710,7 +711,7 @@ impl ZMachineCodeGen {
                 // Array join operation - placeholder returns empty string (0)
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
+                self.emit_instruction_typed(Opcode::OpVar(OpVar::Push), &[Operand::SmallConstant(0)], None, None)?;
                 log::debug!("ArrayJoin: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -718,7 +719,7 @@ impl ZMachineCodeGen {
                 // Array reverse operation - placeholder returns original array (0)
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
+                self.emit_instruction_typed(Opcode::OpVar(OpVar::Push), &[Operand::SmallConstant(0)], None, None)?;
                 log::debug!("ArrayReverse: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -730,7 +731,7 @@ impl ZMachineCodeGen {
                 // Array sort operation - placeholder returns original array (0)
                 self.use_stack_for_result(*target);
                 // Emit instruction to push 0 onto stack as placeholder result
-                self.emit_instruction(0xE8, &[Operand::SmallConstant(0)], None, None)?; // push (VAR:8)
+                self.emit_instruction_typed(Opcode::OpVar(OpVar::Push), &[Operand::SmallConstant(0)], None, None)?;
                 log::debug!("ArraySort: IR ID {} -> stack (placeholder: 0)", target);
             }
 
@@ -2566,7 +2567,7 @@ impl ZMachineCodeGen {
         // Emit the call instruction (VAR form call_vs)
         // CRITICAL: Use raw opcode 0x00, NOT encoded byte 0xE0
         // emit_instruction will determine the VAR form encoding
-        let layout = self.emit_instruction(0x00, &operands, store_var, None)?;
+        let layout = self.emit_instruction_typed(CALLVS, &operands, store_var, None)?;
 
         // CRITICAL: Register function reference for patching
         if let Some(operand_loc) = layout.operand_location {
@@ -2603,8 +2604,8 @@ mod opcode_encoding_tests {
         let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
         // Need 3+ operands to force VAR form (1-2 operands use SHORT/LONG form)
         codegen
-            .emit_instruction(
-                0x00,
+            .emit_instruction_typed(
+                CALLVS,
                 &[
                     Operand::LargeConstant(0x1234),
                     Operand::SmallConstant(1),
@@ -2626,8 +2627,8 @@ mod opcode_encoding_tests {
     fn test_put_prop_encoding() {
         let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
         codegen
-            .emit_instruction(
-                0x03,
+            .emit_instruction_typed(
+                Opcode::OpVar(OpVar::PutProp),
                 &[
                     Operand::Variable(1),
                     Operand::SmallConstant(13),
@@ -2646,7 +2647,7 @@ mod opcode_encoding_tests {
     fn test_print_paddr_encoding() {
         let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
         codegen
-            .emit_instruction(0x0D, &[Operand::LargeConstant(0x0399)], None, None)
+            .emit_instruction_typed(PRINTPADDR, &[Operand::LargeConstant(0x0399)], None, None)
             .unwrap();
 
         // Should emit 0x8D (SHORT form, 1OP, opcode 0x0D)
@@ -2701,8 +2702,8 @@ mod opcode_encoding_tests {
     fn test_or_instruction_encoding() {
         let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
         codegen
-            .emit_instruction(
-                0x08,
+            .emit_instruction_typed(
+                Opcode::Op2(Op2::Or),
                 &[Operand::LargeConstant(1), Operand::SmallConstant(0)],
                 Some(0),
                 None,
@@ -2727,8 +2728,8 @@ mod opcode_encoding_tests {
     fn test_call_2s_encoding() {
         let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
         codegen
-            .emit_instruction(
-                0x19,
+            .emit_instruction_typed(
+                Opcode::Op2(Op2::Call2s),
                 &[Operand::LargeConstant(0x1234), Operand::SmallConstant(0)],
                 Some(0),
                 None,
