@@ -1386,8 +1386,62 @@ impl ZMachineCodeGen {
             branch_offset
         );
 
-        // Delegate to existing u8 implementation
-        self.emit_instruction(raw_opcode, operands, store_var, branch_offset)
+        // CRITICAL FIX: Determine instruction form based on Opcode VARIANT, not just raw opcode
+        // The raw opcode value alone cannot distinguish between:
+        // - Op2::Or (0x08) vs OpVar::Push (0x08)
+        // - Op2::And (0x09) vs OpVar::Pull (0x09)
+        // We must respect the enum variant to choose the correct form
+        use super::opcodes::Opcode;
+        let form = match opcode {
+            Opcode::Op0(_) => InstructionForm::Short, // 0OP form
+            Opcode::Op1(_) => InstructionForm::Short, // 1OP form
+            Opcode::Op2(_) => {
+                // 2OP can be LONG or VAR form depending on operands
+                if operands.len() == 2 {
+                    let can_use_long = operands.iter().all(|op| match op {
+                        Operand::LargeConstant(v) => *v <= 255,
+                        _ => true,
+                    });
+                    if can_use_long {
+                        InstructionForm::Long
+                    } else {
+                        InstructionForm::Variable
+                    }
+                } else {
+                    InstructionForm::Variable // Fallback to VAR for unusual cases
+                }
+            }
+            Opcode::OpVar(_) => InstructionForm::Variable, // VAR form (0xC0-0xFF)
+        };
+
+        // Emit using the determined form
+        match form {
+            InstructionForm::Short => self.emit_short_form_with_layout(
+                start_address,
+                raw_opcode,
+                operands,
+                store_var,
+                branch_offset,
+            ),
+            InstructionForm::Long => self.emit_long_form_with_layout(
+                start_address,
+                raw_opcode,
+                operands,
+                store_var,
+                branch_offset,
+            ),
+            InstructionForm::Variable => self.emit_variable_form_with_layout(
+                start_address,
+                raw_opcode,
+                operands,
+                store_var,
+                branch_offset,
+            ),
+            InstructionForm::Extended => Err(CompilerError::CodeGenError(format!(
+                "Extended form not yet implemented for opcode {:?} at 0x{:04x}",
+                opcode, start_address
+            ))),
+        }
     }
 
     ///
@@ -1619,32 +1673,32 @@ impl ZMachineCodeGen {
         }
     }
 
-    /// Check if an opcode is a true VAR opcode (always requires VAR form encoding)
-    fn should_not_emit_store_variable(opcode: u8) -> bool {
-        match opcode {
+    /// Check if an ENCODED instruction byte should not emit store variable
+    /// This receives the full encoded instruction byte, not the raw opcode
+    fn should_not_emit_store_variable(instruction_byte: u8) -> bool {
+        match instruction_byte {
             // Call instructions that don't store results (void calls)
-            0x20 => true, // call_1n - no return value
-            0x8F => true, // call_1n (1OP form) - no return value
-            0x1A => true, // call_2n - no return value
-
-            // IMPORTANT: call_vs (0x00/0xE0) stores results and MUST emit store variable byte!
+            // Note: call_vs (0xE0) DOES store results and is not in this list
+            0x8F => true, // 1OP:call_1n - no return value
+            0x5A => true, // 2OP:call_2n - no return value
 
             // Stack instructions - push/pull do not have store variable bytes
-            // NOTE: These are only VAR form (no 2OP equivalent with same semantics)
-            0x08 => true, // VAR:push - pushes value to stack, no store byte
-            0x09 => true, // VAR:pull - pops to variable via operand, no store byte
+            0xE8 => true, // VAR:push (0xE8) - no store byte
+            0xE9 => true, // VAR:pull (0xE9) - no store byte
+            // Note: 2OP:OR (0x08) encodes as 0x48/0x68 depending on operand types - has store byte
+            // Note: 2OP:AND (0x09) encodes as 0x49/0x69 depending on operand types - has store byte
 
             // Print instructions - no result to store
-            0x8D => true, // print_paddr (1OP:141)
-            0x8A => true, // print_obj (1OP:138)
-            0x87 => true, // print_addr (1OP:135)
-            0xE5 => true, // print_char (VAR:229)
-            0xE6 => true, // print_num (VAR:230)
-            0xB3 => true, // print_ret (0OP:179)
-            0xBB => true, // new_line (0OP:187)
+            0x8D => true, // 1OP:print_paddr
+            0x8A => true, // 1OP:print_obj
+            0x87 => true, // 1OP:print_addr
+            0xE5 => true, // VAR:print_char
+            0xE6 => true, // VAR:print_num
+            0xB3 => true, // 0OP:print_ret
+            0xBB => true, // 0OP:new_line
 
             // Other instructions that don't store results
-            0xBA => true, // quit (0OP:186)
+            0xBA => true, // 0OP:quit
 
             _ => false,
         }
@@ -1669,6 +1723,8 @@ impl ZMachineCodeGen {
             0x05 => true, // print_char (raw opcode 5) - THIS IS THE FIX!
             0x06 => true, // print_num (raw opcode 6)
             0x07 => true, // random (raw opcode 7)
+            0x08 => true, // push (raw opcode 8) - MUST be VAR form (0xE8), NOT 2OP:or (0x08/0xC8)
+            0x09 => true, // pull (raw opcode 9) - MUST be VAR form (0xE9), NOT 2OP:and (0x09/0xC9)
 
             _ => false,
         }
@@ -1998,18 +2054,27 @@ impl ZMachineCodeGen {
         let operand_location = if !operands.is_empty() {
             let code_space_offset = self.code_space.len();
             self.emit_operand(&operands[0])?;
-            //  FIXED: Convert code space offset to final memory address
-            Some(self.final_code_base + code_space_offset)
+            // CRITICAL FIX: Store code_space offset, NOT final address
+            // The translate_space_address_to_final() will add final_code_base during resolution
+            Some(code_space_offset)
         } else {
             None
         };
 
         // Track store variable location
         // CRITICAL FIX: Some instructions do NOT emit store variable bytes
+        // Pass the encoded instruction byte, not the raw opcode, to properly distinguish forms
         let store_location = if let Some(store) = store_var {
-            if !Self::should_not_emit_store_variable(opcode) {
+            if !Self::should_not_emit_store_variable(instruction_byte) {
                 let loc = self.code_address;
+                log::debug!("STORE_BYTE: About to emit store byte 0x{:02x} at code_address=0x{:04x}, code_space.len()={}",
+                    store, self.code_address, self.code_space.len());
                 self.emit_byte(store)?;
+                log::debug!(
+                    "STORE_BYTE: After emit, code_address=0x{:04x}, code_space.len()={}",
+                    self.code_address,
+                    self.code_space.len()
+                );
                 Some(loc)
             } else {
                 None
@@ -2195,8 +2260,9 @@ impl ZMachineCodeGen {
                 self.emit_operand(operand)?;
             }
 
-            // Return location of first operand data (not operand types byte)
-            Some(self.final_code_base + first_operand_offset)
+            // CRITICAL FIX: Store code_space offset, NOT final address
+            // The translate_space_address_to_final() will add final_code_base during resolution
+            Some(first_operand_offset)
         } else {
             None
         };
@@ -2204,8 +2270,9 @@ impl ZMachineCodeGen {
         // Track store variable location
         // CRITICAL FIX: Some instructions do NOT emit store variable bytes
         // Print instructions, call instructions, etc. handle results differently
+        // Pass the encoded instruction byte, not the raw opcode, to properly distinguish forms
         let store_location = if let Some(store) = store_var {
-            if !Self::should_not_emit_store_variable(opcode) {
+            if !Self::should_not_emit_store_variable(instruction_byte) {
                 let loc = self.code_address;
                 self.emit_byte(store)?;
                 Some(loc)
@@ -2345,8 +2412,9 @@ impl ZMachineCodeGen {
 
         // Track first operand location
         let code_space_offset = self.code_space.len();
-        //  FIXED: Convert code space offset to final memory address
-        let operand_location = Some(self.final_code_base + code_space_offset);
+        // CRITICAL FIX: Store code_space offset, NOT final address
+        // The translate_space_address_to_final() will add final_code_base during resolution
+        let operand_location = Some(code_space_offset);
 
         // Emit adapted operands
         log::debug!(
@@ -2373,10 +2441,18 @@ impl ZMachineCodeGen {
 
         // Track store variable location
         // CRITICAL FIX: Some instructions do NOT emit store variable bytes
+        // Pass the encoded instruction byte, not the raw opcode, to properly distinguish forms
         let store_location = if let Some(store) = store_var {
-            if !Self::should_not_emit_store_variable(opcode) {
+            if !Self::should_not_emit_store_variable(instruction_byte) {
                 let loc = self.code_address;
+                log::debug!("STORE_BYTE: About to emit store byte 0x{:02x} at code_address=0x{:04x}, code_space.len()={}",
+                    store, self.code_address, self.code_space.len());
                 self.emit_byte(store)?;
+                log::debug!(
+                    "STORE_BYTE: After emit, code_address=0x{:04x}, code_space.len()={}",
+                    self.code_address,
+                    self.code_space.len()
+                );
                 Some(loc)
             } else {
                 None

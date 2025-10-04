@@ -1442,16 +1442,12 @@ impl ZMachineCodeGen {
                     .ir_id_to_address
                     .get(&reference.target_id)
                 {
-                    // CRITICAL FIX: After CONVERT_OFFSETS, ir_id_to_address contains absolute addresses
-                    // Check if address is already absolute (>= final_code_base) or still relative offset
-                    let resolved_address = if code_offset >= self.final_code_base {
-                        // Already absolute address from CONVERT_OFFSETS conversion
-                        code_offset
-                    } else {
-                        // Still relative offset, convert to absolute
-                        self.final_code_base + code_offset
-                    };
-                    debug!("Jump resolution: Converting code_space offset 0x{:04x} to final address 0x{:04x}", code_offset, resolved_address);
+                    // After convert_offsets_to_addresses(), ir_id_to_address contains absolute final addresses
+                    let resolved_address = code_offset; // Already absolute
+                    debug!(
+                        "Jump resolution: Using absolute address 0x{:04x} from ir_id_to_address",
+                        resolved_address
+                    );
 
                     // CRITICAL: Detect 0x1717 address calculations
                     if resolved_address == 0x1717
@@ -2461,12 +2457,19 @@ impl ZMachineCodeGen {
         }
 
         // Use emit_instruction which properly tracks component locations
+        log::debug!(
+            "JUMP_EMIT: Starting Jump instruction at code_address=0x{:04x}, code_space.len()={}",
+            self.code_address,
+            self.code_space.len()
+        );
         let layout = self.emit_instruction_typed(
             Opcode::Op1(Op1::Jump),                        // jump opcode (1OP:140)
             &[Operand::LargeConstant(placeholder_word())], // Placeholder for jump offset
             None,
             None,
         )?;
+        log::debug!("JUMP_EMIT: After Jump instruction, code_address=0x{:04x}, code_space.len()={}, operand_location={:?}",
+            self.code_address, self.code_space.len(), layout.operand_location);
 
         // CRITICAL FIX: Use the layout.operand_location from emit_instruction
         // This ensures the location is correctly calculated after emitting the opcode
