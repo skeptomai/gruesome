@@ -21,7 +21,10 @@
 - **Pattern**: `Jump → Label → LoadImmediate(no code) → Label → Jump` creates redundant jumps
 - **Impact**: Converting jumps to NOPs reveals code paths that break stack assumptions
 
-**Next Step**: Fix IR generation to avoid redundant jump/label patterns, OR make LoadImmediate emit code when deferred labels exist.
+**Next Steps (Three Options)**:
+- **Option A**: Fix IR generation to avoid creating redundant jump/label patterns
+- **Option B**: Make LoadImmediate emit store instructions when deferred labels exist
+- **Option C**: Fix stack management to handle the revealed code paths correctly
 
 **Tests**: All 174 tests passing.
 
