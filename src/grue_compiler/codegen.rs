@@ -6,6 +6,7 @@
 use crate::grue_compiler::codegen_utils::CodeGenUtils;
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
+use crate::grue_compiler::opcodes::*;
 use crate::grue_compiler::ZMachineVersion;
 use indexmap::{IndexMap, IndexSet};
 use log::debug;
@@ -2254,8 +2255,8 @@ impl ZMachineCodeGen {
         // For now, use simple variable assignment (can be improved with proper mapping)
         let var_operand = Operand::SmallConstant(1); // Default to variable 1
 
-        let layout = self.emit_instruction(
-            0x8F, // load opcode (1OP:143)
+        let layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::Load), // load opcode (1OP:142)
             &[var_operand],
             Some(1), // Store result in variable 1
             None,
@@ -2338,8 +2339,8 @@ impl ZMachineCodeGen {
             // Print string literal using print_paddr
             // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
             let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
-            let _layout = self.emit_instruction(
-                0x82,                                          // print_paddr opcode (1OP:141)
+            let _layout = self.emit_instruction_typed(
+                Opcode::Op1(Op1::PrintPaddr),                  // print_paddr opcode (1OP:141)
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder for string address
                 None,
                 None,
@@ -2360,8 +2361,8 @@ impl ZMachineCodeGen {
             // Print variable/computed value using print_num
             let operand = Operand::SmallConstant(1); // Use variable 1 for now
 
-            self.emit_instruction(
-                0x86, // print_num opcode (1OP:134)
+            self.emit_instruction_typed(
+                Opcode::OpVar(OpVar::PrintNum), // print_num opcode (VAR:230)
                 &[operand],
                 None,
                 None,
@@ -2379,16 +2380,16 @@ impl ZMachineCodeGen {
             // Return with value (for now, just return 1)
             let operand = Operand::SmallConstant(1); // Return 1 (true)
 
-            self.emit_instruction(
-                0x80, // ret opcode (1OP:128)
+            self.emit_instruction_typed(
+                Opcode::Op1(Op1::Ret), // ret opcode (1OP:139)
                 &[operand],
                 None,
                 None,
             )?;
         } else {
             // Return true (rtrue)
-            self.emit_instruction(
-                0xB0, // rtrue opcode (0OP:0)
+            self.emit_instruction_typed(
+                Opcode::Op0(Op0::Rtrue), // rtrue opcode (0OP:176)
                 &[],
                 None,
                 None,
@@ -2460,8 +2461,8 @@ impl ZMachineCodeGen {
         }
 
         // Use emit_instruction which properly tracks component locations
-        let layout = self.emit_instruction(
-            0x0C,                                          // jump opcode (1OP:12)
+        let layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::Jump),                        // jump opcode (1OP:140)
             &[Operand::LargeConstant(placeholder_word())], // Placeholder for jump offset
             None,
             None,
@@ -2638,8 +2639,8 @@ impl ZMachineCodeGen {
             // Generate call instruction
             // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
             let operand_location = self.final_code_base + self.code_space.len() + 2; // +2 for opcode and operand types bytes
-            let _layout = self.emit_instruction(
-                0x00, // call_vs raw opcode (emit_instruction expects 0x00-0x1F, not encoded 0xE0)
+            let _layout = self.emit_instruction_typed(
+                Opcode::OpVar(OpVar::CallVs), // call_vs raw opcode (VAR:224)
                 &operands, store_var, None,
             )?;
 
@@ -2724,8 +2725,8 @@ impl ZMachineCodeGen {
                     // Generate call instruction
                     // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
                     let operand_location = self.final_code_base + self.code_space.len() + 2; // +2 for opcode and operand types bytes
-                    let _layout = self.emit_instruction(
-                        0x00, // call_vs raw opcode (emit_instruction expects 0x00-0x1F, not encoded 0xE0)
+                    let _layout = self.emit_instruction_typed(
+                        Opcode::OpVar(OpVar::CallVs), // call_vs raw opcode (VAR:224)
                         &operands, store_var, None,
                     )?;
 
@@ -2816,8 +2817,8 @@ impl ZMachineCodeGen {
 
                     // Generate call instruction
                     let operand_location = self.final_code_base + self.code_space.len() + 2; // +2 for opcode and operand types bytes
-                    let _layout = self.emit_instruction(
-                        0x61, // call_1s opcode for 1 operand, call_vs (0xE0) for multiple
+                    let _layout = self.emit_instruction_typed(
+                        Opcode::Op1(Op1::Call1s), // call_1s opcode for 1 operand (1OP:136)
                         &operands, store_var, None,
                     )?;
 
@@ -2884,8 +2885,8 @@ impl ZMachineCodeGen {
 
             // Generate print_ret instruction (0OP:179, opcode 0x83)
             // print_ret prints string, adds newline, and returns true
-            let layout = self.emit_instruction(
-                0x83,                                          // print_ret opcode - 0OP:179
+            let layout = self.emit_instruction_typed(
+                Opcode::Op0(Op0::PrintRet),                    // print_ret opcode - 0OP:179
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
                 None, // No store (returns true automatically)
                 None, // No branch
@@ -2915,24 +2916,24 @@ impl ZMachineCodeGen {
             let operand = self.resolve_ir_id_to_operand(arg_id)?;
 
             // print_num
-            let layout1 = self.emit_instruction(
-                0xE6, // print_num opcode (VAR:230)
+            let layout1 = self.emit_instruction_typed(
+                Opcode::OpVar(OpVar::PrintNum), // print_num opcode (VAR:230)
                 &[operand],
                 None,
                 None,
             )?;
 
             // new_line
-            let layout2 = self.emit_instruction(
-                0x8B, // new_line opcode (0OP:187)
+            let layout2 = self.emit_instruction_typed(
+                Opcode::Op0(Op0::NewLine), // new_line opcode (0OP:187)
                 &[],
                 None,
                 None,
             )?;
 
             // rtrue (return 1)
-            let layout3 = self.emit_instruction(
-                0x88, // rtrue opcode (0OP:184)
+            let layout3 = self.emit_instruction_typed(
+                Opcode::Op0(Op0::Rtrue), // rtrue opcode (0OP:176)
                 &[],
                 None,
                 None,
@@ -2961,8 +2962,8 @@ impl ZMachineCodeGen {
         log::debug!(" NEW_LINE: Generating new_line instruction (0OP:187)");
 
         // Generate new_line instruction (0OP:187, opcode 0x8B)
-        let layout = self.emit_instruction(
-            0x8B, // new_line opcode (0OP:187)
+        let layout = self.emit_instruction_typed(
+            Opcode::Op0(Op0::NewLine), // new_line opcode (0OP:187)
             &[],  // No operands
             None, // No store
             None, // No branch
@@ -2996,7 +2997,7 @@ impl ZMachineCodeGen {
         let dest_operand = self.resolve_ir_id_to_operand(args[1])?;
 
         // Generate insert_obj instruction (2OP:14)
-        let layout = self.emit_instruction(0x0E, &[obj_operand, dest_operand], None, None)?;
+        let layout = self.emit_instruction_typed(Opcode::Op2(Op2::InsertObj), &[obj_operand, dest_operand], None, None)?;
 
         // emit_instruction already pushed bytes to code_space
 
@@ -3029,7 +3030,7 @@ impl ZMachineCodeGen {
 
         // Generate get_parent instruction (1OP:3)
         // FIXED: Use stack for get_location builtin result (temporary value)
-        let layout = self.emit_instruction(0x03, &[obj_operand], Some(0), None)?;
+        let layout = self.emit_instruction_typed(Opcode::Op1(Op1::GetParent), &[obj_operand], Some(0), None)?;
 
         // emit_instruction already pushed bytes to code_space
 
@@ -3071,7 +3072,7 @@ impl ZMachineCodeGen {
         // Generate get_child instruction (1OP:130, opcode 2)
         // CRITICAL FIX: get_child REQUIRES a branch target per Z-Machine spec
         // We'll branch to the next instruction (fall through behavior) with offset +2
-        let layout = self.emit_instruction(0x02, &[obj_operand], Some(0), Some(2))?;
+        let layout = self.emit_instruction_typed(Opcode::Op1(Op1::GetChild), &[obj_operand], Some(0), Some(2))?;
 
         // emit_instruction already pushed bytes to code_space
 
@@ -3110,7 +3111,7 @@ impl ZMachineCodeGen {
         // Generate get_sibling instruction (1OP:129, opcode 0x81)
         // CRITICAL FIX: get_sibling REQUIRES a branch target per Z-Machine spec
         // We'll branch to the next instruction (fall through behavior) with offset +2
-        let layout = self.emit_instruction(0x81, &[obj_operand], Some(0), Some(2))?;
+        let layout = self.emit_instruction_typed(Opcode::Op1(Op1::GetSibling), &[obj_operand], Some(0), Some(2))?;
 
         // emit_instruction already pushed bytes to code_space
 
@@ -3143,7 +3144,7 @@ impl ZMachineCodeGen {
         let prop_operand = self.resolve_ir_id_to_operand(args[1])?;
 
         // Generate get_prop instruction (2OP:17) - gets property value
-        let layout = self.emit_instruction(0x11, &[obj_operand, prop_operand], Some(0), None)?;
+        let layout = self.emit_instruction_typed(Opcode::Op2(Op2::GetProp), &[obj_operand, prop_operand], Some(0), None)?;
 
         // emit_instruction already pushed bytes to code_space
 
@@ -3186,8 +3187,8 @@ impl ZMachineCodeGen {
  obj_id
  );
                 // Return false (0) for invalid object IDs
-                self.emit_instruction(
-                    0x14,
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::Add),
                     &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
                     Some(0),
                     None,
@@ -3201,8 +3202,8 @@ impl ZMachineCodeGen {
  obj_id
  );
                 // Return false (0) for invalid object IDs
-                self.emit_instruction(
-                    0x14,
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::Add),
                     &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
                     Some(0),
                     None,
@@ -3213,7 +3214,7 @@ impl ZMachineCodeGen {
         // For Variable operands, we can't check at compile time, so we let the runtime handle it
 
         // Generate test_attr instruction (2OP:10)
-        let layout = self.emit_instruction(0x0A, &[obj_operand, attr_operand], Some(0), None)?;
+        let layout = self.emit_instruction_typed(Opcode::Op2(Op2::TestAttr), &[obj_operand, attr_operand], Some(0), None)?;
 
         // emit_instruction already pushed bytes to code_space
 
@@ -3269,7 +3270,7 @@ impl ZMachineCodeGen {
         // For Variable operands, we can't check at compile time, so we let the runtime handle it
 
         // Generate set_attr instruction (2OP:11)
-        let layout = self.emit_instruction(0x0B, &[obj_operand, attr_operand], None, None)?;
+        let layout = self.emit_instruction_typed(Opcode::Op2(Op2::SetAttr), &[obj_operand, attr_operand], None, None)?;
 
         // emit_instruction already pushed bytes to code_space
 
@@ -3325,7 +3326,7 @@ impl ZMachineCodeGen {
         // For Variable operands, we can't check at compile time, so we let the runtime handle it
 
         // Generate clear_attr instruction (2OP:12)
-        let layout = self.emit_instruction(0x0C, &[obj_operand, attr_operand], None, None)?;
+        let layout = self.emit_instruction_typed(Opcode::Op2(Op2::ClearAttr), &[obj_operand, attr_operand], None, None)?;
 
         // emit_instruction already pushed bytes to code_space
 
@@ -3357,7 +3358,7 @@ impl ZMachineCodeGen {
 
         // Generate random instruction (1OP:135 - VAR form 0x07)
         // FIXED: Use stack for random builtin result (temporary value)
-        let layout = self.emit_instruction(0x07, &[range_operand], Some(0), None)?;
+        let layout = self.emit_instruction_typed(Opcode::OpVar(OpVar::Random), &[range_operand], Some(0), None)?;
 
         // Update code_space for IR tracking system
         // emit_instruction already pushed bytes to code_space
@@ -3395,8 +3396,8 @@ impl ZMachineCodeGen {
         let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
 
         // Generate simplified test (test if object is visible - placeholder)
-        let layout = self.emit_instruction(
-            0x0A,
+        let layout = self.emit_instruction_typed(
+            Opcode::Op2(Op2::TestAttr),
             &[obj_operand, Operand::SmallConstant(1)],
             Some(0),
             None,
@@ -3429,8 +3430,8 @@ impl ZMachineCodeGen {
 
         // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
         let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
-        let layout = self.emit_instruction(
-            0x8D,
+        let layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::PrintPaddr),
             &[Operand::LargeConstant(placeholder_word())],
             None,
             None,
@@ -3475,8 +3476,8 @@ impl ZMachineCodeGen {
 
         // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
         let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
-        let layout = self.emit_instruction(
-            0x8D,
+        let layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::PrintPaddr),
             &[Operand::LargeConstant(placeholder_word())],
             None,
             None,
@@ -3519,7 +3520,7 @@ impl ZMachineCodeGen {
 
         // Generate get_child instruction to get first child
         // FIXED: Use stack for get_object_contents builtin result (temporary value)
-        let layout = self.emit_instruction(0x11, &[obj_operand], Some(0), None)?;
+        let layout = self.emit_instruction_typed(Opcode::Op1(Op1::GetChild), &[obj_operand], Some(0), None)?;
 
         // emit_instruction already pushed bytes to code_space
 
@@ -3554,7 +3555,7 @@ impl ZMachineCodeGen {
 
         // Check if object has children (get_child, compare with 0)
         // FIXED: Use stack for object_is_empty builtin result (temporary value)
-        let layout = self.emit_instruction(0x11, &[obj_operand], Some(0), None)?;
+        let layout = self.emit_instruction_typed(Opcode::Op1(Op1::GetChild), &[obj_operand], Some(0), None)?;
 
         // emit_instruction already pushed bytes to code_space
 
@@ -3587,8 +3588,8 @@ impl ZMachineCodeGen {
         let value_operand = self.resolve_ir_id_to_operand(args[0])?;
 
         // Compare with 0 (null value in Z-Machine)
-        let layout = self.emit_instruction(
-            0x01,
+        let layout = self.emit_instruction_typed(
+            Opcode::Op2(Op2::Je),
             &[value_operand, Operand::SmallConstant(0)],
             Some(0),
             None,
@@ -3628,8 +3629,8 @@ impl ZMachineCodeGen {
         let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
 
         // Get object property for size/capacity (property 3 - capacity)
-        let layout = self.emit_instruction(
-            0x12,
+        let layout = self.emit_instruction_typed(
+            Opcode::Op2(Op2::GetPropAddr),
             &[obj_operand, Operand::SmallConstant(3)],
             Some(0),
             None,
@@ -3734,23 +3735,23 @@ impl ZMachineCodeGen {
         // NOTE: Comparison operations (Equal, Less, etc.) will not use these opcodes
         // as they are handled through the branch instruction mechanism
         let opcode = match op {
-            IrBinaryOp::Add => 0x14,      // add (2OP:20)
-            IrBinaryOp::Subtract => 0x15, // sub (2OP:21)
-            IrBinaryOp::Multiply => 0x16, // mul (2OP:22)
-            IrBinaryOp::Divide => 0x17,   // div (2OP:23)
-            IrBinaryOp::Modulo => 0x18,   // mod (2OP:24)
-            IrBinaryOp::And => 0x09,      // and (2OP:9) - Bitwise AND
-            IrBinaryOp::Or => 0x08,       // or (2OP:8) - Bitwise OR
+            IrBinaryOp::Add => Opcode::Op2(Op2::Add),           // add (2OP:20)
+            IrBinaryOp::Subtract => Opcode::Op2(Op2::Sub),      // sub (2OP:21)
+            IrBinaryOp::Multiply => Opcode::Op2(Op2::Mul),      // mul (2OP:22)
+            IrBinaryOp::Divide => Opcode::Op2(Op2::Div),        // div (2OP:23)
+            IrBinaryOp::Modulo => Opcode::Op2(Op2::Mod),        // mod (2OP:24)
+            IrBinaryOp::And => Opcode::Op2(Op2::And),           // and (2OP:9) - Bitwise AND
+            IrBinaryOp::Or => Opcode::Op2(Op2::Or),             // or (2OP:8) - Bitwise OR
             // Comparison operations - opcodes listed for reference but not used as direct instructions
-            IrBinaryOp::Equal => 0x01, // je (2OP:1) - handled by emit_comparison_branch
-            IrBinaryOp::NotEqual => 0x01, // je (2OP:1) - handled by emit_comparison_branch
-            IrBinaryOp::Less => 0x02,  // jl (2OP:2) - handled by emit_comparison_branch
-            IrBinaryOp::LessEqual => 0x03, // jg (2OP:3) - handled by emit_comparison_branch
-            IrBinaryOp::Greater => 0x03, // jg (2OP:3) - handled by emit_comparison_branch
-            IrBinaryOp::GreaterEqual => 0x02, // jl (2OP:2) - handled by emit_comparison_branch
+            IrBinaryOp::Equal => Opcode::Op2(Op2::Je),          // je (2OP:1) - handled by emit_comparison_branch
+            IrBinaryOp::NotEqual => Opcode::Op2(Op2::Je),       // je (2OP:1) - handled by emit_comparison_branch
+            IrBinaryOp::Less => Opcode::Op2(Op2::Jl),           // jl (2OP:2) - handled by emit_comparison_branch
+            IrBinaryOp::LessEqual => Opcode::Op2(Op2::Jg),      // jg (2OP:3) - handled by emit_comparison_branch
+            IrBinaryOp::Greater => Opcode::Op2(Op2::Jg),        // jg (2OP:3) - handled by emit_comparison_branch
+            IrBinaryOp::GreaterEqual => Opcode::Op2(Op2::Jl),   // jl (2OP:2) - handled by emit_comparison_branch
         };
 
-        debug!("Opcode mapped: op={:?} -> opcode=0x{:02x}", op, opcode);
+        debug!("Opcode mapped: op={:?} -> opcode={:?}", op, opcode);
 
         // CRITICAL FIX: Comparison operations should NOT be handled as direct binary operations.
         // They should only be generated through the branch instruction mechanism in emit_conditional_branch_instruction.
@@ -3821,7 +3822,7 @@ impl ZMachineCodeGen {
             }
             // Arithmetic operations store their results normally
             _ => {
-                let _layout = self.emit_instruction(
+                let _layout = self.emit_instruction_typed(
                     opcode,
                     &[left_operand, right_operand],
                     Some(0), // Store to stack for immediate consumption
@@ -3859,8 +3860,8 @@ impl ZMachineCodeGen {
             IrUnaryOp::Not => {
                 // Logical NOT - use Z-Machine 'not' instruction (1OP:143, hex 0x8F)
                 // FIXED: Use stack for unary operation results (temporary values)
-                let layout = self.emit_instruction(
-                    0x8F, // not opcode (1OP:143)
+                let layout = self.emit_instruction_typed(
+                    Opcode::OpVar(OpVar::Not), // not opcode (VAR:248)
                     &[operand_val],
                     Some(0), // Store result on stack
                     None,    // No branch
@@ -3878,8 +3879,8 @@ impl ZMachineCodeGen {
             IrUnaryOp::Minus => {
                 // Arithmetic negation - multiply by -1 using Z-Machine 'mul' instruction
                 // FIXED: Use stack for unary operation results (temporary values)
-                let layout = self.emit_instruction(
-                    0x16,                                           // mul opcode (2OP:22)
+                let layout = self.emit_instruction_typed(
+                    Opcode::Op2(Op2::Mul),                          // mul opcode (2OP:22)
                     &[operand_val, Operand::LargeConstant(0xFFFF)], // multiply by -1 (0xFFFF = -1 in 16-bit signed)
                     Some(0),                                        // Store result on stack
                     None,                                           // No branch
@@ -6548,7 +6549,7 @@ impl ZMachineCodeGen {
             IrUnaryOp::Minus => {
                 // Z-Machine arithmetic negation - subtract operand from 0
                 let operands = vec![Operand::Constant(0), operand];
-                self.emit_instruction(0x04, &operands, Some(0), None)?; // sub instruction
+                self.emit_instruction_typed(Opcode::Op2(Op2::Sub), &operands, Some(0), None)?; // sub instruction
                 self.use_stack_for_result(target);
             }
         }
@@ -6570,19 +6571,19 @@ impl ZMachineCodeGen {
             right_operand
         );
         let opcode = match op {
-            IrBinaryOp::Add => 0x14,          // add (2OP:20)
-            IrBinaryOp::Subtract => 0x15,     // sub (2OP:21)
-            IrBinaryOp::Multiply => 0x16,     // mul (2OP:22)
-            IrBinaryOp::Divide => 0x17,       // div (2OP:23)
-            IrBinaryOp::Modulo => 0x18,       // mod (2OP:24)
-            IrBinaryOp::Equal => 0x01,        // je (2OP:1) - jump if equal
-            IrBinaryOp::NotEqual => 0x01,     // je (2OP:1) - jump if equal, then negate
-            IrBinaryOp::Less => 0x02,         // jl (2OP:2) - jump if less
-            IrBinaryOp::LessEqual => 0x02,    // Use jl for now (placeholder)
-            IrBinaryOp::Greater => 0x03,      // jg (2OP:3) - jump if greater
-            IrBinaryOp::GreaterEqual => 0x03, // Use jg for now (placeholder)
-            IrBinaryOp::And => 0x09,          // and (2OP:9)
-            IrBinaryOp::Or => 0x08,           // or (2OP:8)
+            IrBinaryOp::Add => Opcode::Op2(Op2::Add),           // add (2OP:20)
+            IrBinaryOp::Subtract => Opcode::Op2(Op2::Sub),      // sub (2OP:21)
+            IrBinaryOp::Multiply => Opcode::Op2(Op2::Mul),      // mul (2OP:22)
+            IrBinaryOp::Divide => Opcode::Op2(Op2::Div),        // div (2OP:23)
+            IrBinaryOp::Modulo => Opcode::Op2(Op2::Mod),        // mod (2OP:24)
+            IrBinaryOp::Equal => Opcode::Op2(Op2::Je),          // je (2OP:1) - jump if equal
+            IrBinaryOp::NotEqual => Opcode::Op2(Op2::Je),       // je (2OP:1) - jump if equal, then negate
+            IrBinaryOp::Less => Opcode::Op2(Op2::Jl),           // jl (2OP:2) - jump if less
+            IrBinaryOp::LessEqual => Opcode::Op2(Op2::Jl),      // Use jl for now (placeholder)
+            IrBinaryOp::Greater => Opcode::Op2(Op2::Jg),        // jg (2OP:3) - jump if greater
+            IrBinaryOp::GreaterEqual => Opcode::Op2(Op2::Jg),   // Use jg for now (placeholder)
+            IrBinaryOp::And => Opcode::Op2(Op2::And),           // and (2OP:9)
+            IrBinaryOp::Or => Opcode::Op2(Op2::Or),             // or (2OP:8)
         };
 
         let operands = vec![left_operand, right_operand];
@@ -6614,7 +6615,7 @@ impl ZMachineCodeGen {
             }
             _ => {
                 // Arithmetic operations store result normally
-                self.emit_instruction(opcode, &operands, store_var, None)?;
+                self.emit_instruction_typed(opcode, &operands, store_var, None)?;
             }
         }
 
@@ -6630,14 +6631,14 @@ impl ZMachineCodeGen {
         args: &[Operand],
         store_var: Option<u8>,
     ) -> Result<(), CompilerError> {
-        // NOTE: This function used 0xE0 (encoded byte) instead of 0x00 (raw opcode)
-        // This was architecturally incorrect - emit_instruction expects raw opcodes 0x00-0x1F
-        let opcode = 0x00; // call_vs raw opcode (FIXED from incorrect 0xE0)
+        // NOTE: This function used 0xE0 (encoded byte) instead of typed Opcode
+        // This was architecturally incorrect - emit_instruction_typed expects Opcode enum
+        let opcode = Opcode::OpVar(OpVar::CallVs); // call_vs opcode (VAR:224)
 
         let mut operands = vec![function_addr];
         operands.extend_from_slice(args);
 
-        self.emit_instruction(opcode, &operands, store_var, None)?;
+        self.emit_instruction_typed(opcode, &operands, store_var, None)?;
         Ok(())
     }
 
@@ -6713,9 +6714,9 @@ impl ZMachineCodeGen {
             }
         }
 
-        // Use call_vs (raw opcode 0x00) for all cases - it handles 0+ arguments
-        // emit_instruction expects raw opcodes 0x00-0x1F, not encoded bytes like 0xE0 or 0x20
-        let opcode = 0x00; // call_vs raw opcode - works with any number of arguments
+        // Use call_vs (VAR:224) for all cases - it handles 0+ arguments
+        // emit_instruction_typed expects Opcode enum values
+        let opcode = Opcode::OpVar(OpVar::CallVs); // call_vs opcode - works with any number of arguments
 
         // Determine store variable for return value
         // CRITICAL V3 FIX: ALL function calls must store result, even if discarded
@@ -6723,7 +6724,7 @@ impl ZMachineCodeGen {
         let store_var = Some(0x00); // Always store to stack (Variable 0)
 
         // Generate the call instruction with placeholder address
-        let layout = self.emit_instruction(opcode, &operands, store_var, None)?;
+        let layout = self.emit_instruction_typed(opcode, &operands, store_var, None)?;
 
         // Add unresolved reference for function address using correct operand location
         let operand_location = layout
