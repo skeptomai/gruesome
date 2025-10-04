@@ -8,6 +8,7 @@ use crate::grue_compiler::codegen::{
 };
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
+use crate::grue_compiler::opcodes::*;
 
 impl ZMachineCodeGen {
     /// Generate print builtin function
@@ -49,8 +50,8 @@ impl ZMachineCodeGen {
             // Generate print_paddr instruction with unresolved string reference
             // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
             let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
-            let _layout = self.emit_instruction(
-                0x8D,                                          // print_paddr opcode (1OP:141)
+            let _layout = self.emit_instruction_typed(
+                PRINTPADDR,
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
                 None,                                          // No store
                 None,                                          // No branch
@@ -69,8 +70,8 @@ impl ZMachineCodeGen {
             self.reference_context.unresolved_refs.push(reference);
 
             // Emit new_line instruction after print_paddr for proper line breaks
-            self.emit_instruction(
-                0xBB, // new_line opcode (0OP:11)
+            self.emit_instruction_typed(
+                NEWLINE,
                 &[],  // No operands
                 None, // No store
                 None, // No branch
@@ -93,8 +94,8 @@ impl ZMachineCodeGen {
                         operand
                     );
 
-                    self.emit_instruction(
-                        0x06,       // print_num opcode - now correctly uses VAR form
+                    self.emit_instruction_typed(
+                        Opcode::OpVar(OpVar::PrintNum),
                         &[operand], // The resolved operand (Variable(0) is now valid)
                         None,       // No store
                         None,       // No branch
@@ -116,8 +117,8 @@ impl ZMachineCodeGen {
                         placeholder_string
                     );
 
-                    let layout = self.emit_instruction(
-                        0x8D,                                          // print_paddr opcode - 1OP:141
+                    let layout = self.emit_instruction_typed(
+                        PRINTPADDR,
                         &[Operand::LargeConstant(placeholder_word())], // Placeholder address
                         None,                                          // No store
                         None,                                          // No branch
@@ -193,16 +194,16 @@ impl ZMachineCodeGen {
             }
 
             // Generate print_paddr instruction (same as working print implementation)
-            let layout1 = self.emit_instruction(
-                0x8D,                                          // print_paddr opcode - 1OP:141
+            let layout1 = self.emit_instruction_typed(
+                PRINTPADDR,
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
                 None,                                          // No store
                 None,                                          // No branch
             )?;
 
             // Add new_line instruction
-            let layout2 = self.emit_instruction(
-                0x8B, // new_line opcode (0OP:187)
+            let layout2 = self.emit_instruction_typed(
+                NEWLINE,
                 &[],
                 None,
                 None,
@@ -232,16 +233,16 @@ impl ZMachineCodeGen {
             let operand = self.resolve_ir_id_to_operand(arg_id)?;
 
             // print_num
-            let layout1 = self.emit_instruction(
-                0xE6, // print_num opcode (VAR:230)
+            let layout1 = self.emit_instruction_typed(
+                Opcode::OpVar(OpVar::PrintNum),
                 &[operand],
                 None,
                 None,
             )?;
 
             // new_line
-            let layout2 = self.emit_instruction(
-                0x8B, // new_line opcode (0OP:187)
+            let layout2 = self.emit_instruction_typed(
+                NEWLINE,
                 &[],
                 None,
                 None,
@@ -267,8 +268,8 @@ impl ZMachineCodeGen {
         }
 
         // Generate new_line instruction (0OP:187, opcode 0x8B)
-        let layout = self.emit_instruction(
-            0x8B, // new_line opcode (0OP:187)
+        let layout = self.emit_instruction_typed(
+            NEWLINE,
             &[],
             None,
             None,
@@ -349,8 +350,8 @@ impl ZMachineCodeGen {
         // Generate Z-Machine insert_obj instruction (2OP:14, opcode 0x0E)
         // This moves object to become the first child of the destination
         // Use proper 2OP instruction encoding
-        self.emit_instruction(
-            0x0E, // insert_obj opcode (2OP:14)
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::InsertObj),
             &[safe_object_operand, safe_destination_operand],
             None, // No store
             None, // No branch
@@ -381,7 +382,7 @@ impl ZMachineCodeGen {
             self.resolve_ir_id_to_operand(object_id)?, // Object
             self.resolve_ir_id_to_operand(attr_num)?,  // Attribute number
         ];
-        self.emit_instruction(0x0A, &operands, Some(0), None)?; // Store result in stack
+        self.emit_instruction_typed(Opcode::Op2(Op2::TestAttr), &operands, Some(0), None)?; // Store result in stack
 
         Ok(())
     }
@@ -403,7 +404,7 @@ impl ZMachineCodeGen {
             self.resolve_ir_id_to_operand(object_id)?, // Object
             self.resolve_ir_id_to_operand(attr_num)?,  // Attribute number
         ];
-        self.emit_instruction(0x0B, &operands, None, None)?; // No return value
+        self.emit_instruction_typed(Opcode::Op2(Op2::SetAttr), &operands, None, None)?; // No return value
 
         Ok(())
     }
@@ -425,7 +426,7 @@ impl ZMachineCodeGen {
             self.resolve_ir_id_to_operand(object_id)?, // Object
             self.resolve_ir_id_to_operand(attr_num)?,  // Attribute number
         ];
-        self.emit_instruction(0x0C, &operands, None, None)?; // No return value
+        self.emit_instruction_typed(Opcode::Op2(Op2::ClearAttr), &operands, None, None)?; // No return value
 
         Ok(())
     }
@@ -448,7 +449,7 @@ impl ZMachineCodeGen {
             self.resolve_ir_id_to_operand(prop_num)?,  // Property number
         ];
         // Use local variable 4 for get_child results
-        self.emit_instruction(0x11, &operands, Some(4), None)?; // Store result in local var 4
+        self.emit_instruction_typed(Opcode::Op2(Op2::GetProp), &operands, Some(4), None)?; // Store result in local var 4
 
         Ok(())
     }
@@ -468,8 +469,8 @@ impl ZMachineCodeGen {
         let object_operand = self.resolve_ir_id_to_operand(object_ir_id)?;
 
         // Generate Z-Machine get_child instruction (1OP:3, opcode 0x03)
-        self.emit_instruction(
-            0x03, // get_child opcode
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::GetChild),
             &[object_operand],
             Some(0), // Store result on stack
             None,    // No branch
@@ -495,8 +496,8 @@ impl ZMachineCodeGen {
         let object_operand = self.resolve_ir_id_to_operand(object_ir_id)?;
 
         // Generate Z-Machine get_sibling instruction (1OP:2, opcode 0x02)
-        self.emit_instruction(
-            0x02, // get_sibling opcode
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::GetSibling),
             &[object_operand],
             Some(0), // Store result on stack
             None,    // No branch
@@ -519,8 +520,8 @@ impl ZMachineCodeGen {
         // TODO: Implement full visibility logic - complex algorithm
         // For now, return true (visible) as a placeholder
         // Use 2OP "or" with value and 0 to push value onto stack
-        self.emit_instruction(
-            0x08, // or (2OP:8) - returns first operand when OR'd with 0
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Or),
             &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
             Some(0), // Store result on stack
             None,
@@ -543,8 +544,8 @@ impl ZMachineCodeGen {
         let placeholder_str = "[OBJECT_LIST]";
         let string_id = self.find_or_create_string_id(placeholder_str)?;
 
-        let layout = self.emit_instruction(
-            0x8D,                                          // print_paddr
+        let layout = self.emit_instruction_typed(
+            PRINTPADDR,
             &[Operand::LargeConstant(placeholder_word())], // Placeholder address
             None,
             None,
@@ -580,8 +581,8 @@ impl ZMachineCodeGen {
         let placeholder_str = "[CONTENTS_LIST]";
         let string_id = self.find_or_create_string_id(placeholder_str)?;
 
-        let layout = self.emit_instruction(
-            0x8D,                                          // print_paddr
+        let layout = self.emit_instruction_typed(
+            PRINTPADDR,
             &[Operand::LargeConstant(placeholder_word())], // Placeholder address
             None,
             None,
@@ -652,8 +653,8 @@ impl ZMachineCodeGen {
         let range_operand = Operand::SmallConstant(6); // Placeholder for now
         let store_var = Some(0); // Store result on stack
 
-        self.emit_instruction(
-            0xE7,             // RANDOM opcode (VAR:231 = opcode 7, so 0xE7)
+        self.emit_instruction_typed(
+            Opcode::OpVar(OpVar::Random),
             &[range_operand], // Range operand
             store_var,        // Store result in variable 0 (stack)
             None,             // No branch
@@ -732,8 +733,8 @@ impl ZMachineCodeGen {
                 if let Some(store_var) = target {
                     // Store a placeholder value (non-zero = success, represents empty array)
                     // Use store instruction: 1OP:33 (0x21)
-                    self.emit_instruction(
-                        0x08, // or (2OP:8) - load constant by OR'ing with 0
+                    self.emit_instruction_typed(
+                        Opcode::Op2(Op2::Or),
                         &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
                         Some(store_var as u8),
                         None, // No branch
@@ -757,8 +758,8 @@ impl ZMachineCodeGen {
                 );
                 if let Some(store_var) = target {
                     // Store a placeholder value for non-constant operands
-                    self.emit_instruction(
-                        0x08, // or (2OP:8) - load constant by OR'ing with 0
+                    self.emit_instruction_typed(
+                        Opcode::Op2(Op2::Or),
                         &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
                         Some(store_var as u8),
                         None, // No branch
@@ -785,8 +786,8 @@ impl ZMachineCodeGen {
 
         // For now, always return false (object is not empty) as a safe placeholder
         if let Some(store_var) = target {
-            self.emit_instruction(
-                0x08, // or (2OP:8) - load constant by OR'ing with 0
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Or),
                 &[Operand::LargeConstant(0), Operand::SmallConstant(0)], // 0 | 0 = 0 (false)
                 Some(store_var as u8),
                 None,
@@ -811,8 +812,8 @@ impl ZMachineCodeGen {
 
         // For now, always return false (value is not none) as a safe placeholder
         if let Some(store_var) = target {
-            self.emit_instruction(
-                0x08, // or (2OP:8) - load constant by OR'ing with 0
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Or),
                 &[Operand::LargeConstant(0), Operand::SmallConstant(0)], // 0 | 0 = 0 (false)
                 Some(store_var as u8),
                 None,
@@ -837,8 +838,8 @@ impl ZMachineCodeGen {
 
         // For now, always return size 1 as a safe placeholder
         if let Some(store_var) = target {
-            self.emit_instruction(
-                0x08, // or (2OP:8) - load constant by OR'ing with 0
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Or),
                 &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
                 Some(store_var as u8),
                 None,
