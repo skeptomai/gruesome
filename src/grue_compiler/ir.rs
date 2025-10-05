@@ -2075,11 +2075,18 @@ impl IrGenerator {
 
                 // Loop body: load current element into loop variable
                 block.add_instruction(IrInstruction::Label { id: loop_body });
+                // CRITICAL: Reload index since index_temp was consumed by Less comparison
+                // This prevents SSA violation (reusing consumed stack value)
+                let index_for_get = self.next_id();
+                block.add_instruction(IrInstruction::LoadVar {
+                    target: index_for_get,
+                    var_id: index_var,
+                });
                 let element_temp = self.next_id();
                 block.add_instruction(IrInstruction::GetArrayElement {
                     target: element_temp,
                     array: iterable_temp,
-                    index: index_temp,
+                    index: index_for_get,
                 });
                 block.add_instruction(IrInstruction::StoreVar {
                     var_id: loop_var_id,
@@ -2090,6 +2097,13 @@ impl IrGenerator {
                 self.generate_statement(*for_stmt.body, block)?;
 
                 // Increment index
+                // CRITICAL: Reload index_var since index_temp was consumed by GetArrayElement
+                // This prevents SSA violation (reusing consumed stack value)
+                let index_for_increment = self.next_id();
+                block.add_instruction(IrInstruction::LoadVar {
+                    target: index_for_increment,
+                    var_id: index_var,
+                });
                 let one_temp = self.next_id();
                 block.add_instruction(IrInstruction::LoadImmediate {
                     target: one_temp,
@@ -2099,7 +2113,7 @@ impl IrGenerator {
                 block.add_instruction(IrInstruction::BinaryOp {
                     target: new_index,
                     op: IrBinaryOp::Add,
-                    left: index_temp,
+                    left: index_for_increment,
                     right: one_temp,
                 });
                 block.add_instruction(IrInstruction::StoreVar {
