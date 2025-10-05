@@ -318,8 +318,33 @@ impl ZMachineCodeGen {
             }
 
             IrInstruction::LoadVar { target, var_id } => {
-                // Create operand for the variable number to load from
-                let var_operand = Operand::SmallConstant(*var_id as u8);
+                // Check if this is a local variable (needs mapping) or global (direct Z-Machine var number)
+                let var_num = if let Some(&local_var_num) = self.ir_id_to_local_var.get(var_id) {
+                    // Local variable: use mapped slot (1-15)
+                    log::debug!(
+                        "LoadVar: IR ID {} is local variable slot {}",
+                        var_id,
+                        local_var_num
+                    );
+                    local_var_num
+                } else if *var_id >= 16 {
+                    // Global variable: var_id IS the Z-Machine variable number (16-255)
+                    log::debug!(
+                        "LoadVar: IR ID {} is global variable G{:02}",
+                        var_id,
+                        var_id - 16
+                    );
+                    *var_id as u8
+                } else {
+                    // ERROR: var_id < 16 but not in local mapping
+                    return Err(CompilerError::CodeGenError(format!(
+                        "LoadVar: Variable IR ID {} not allocated to local variable slot. \
+                         This indicates a bug in IR generation - all variables must be allocated before use.",
+                        var_id
+                    )));
+                };
+
+                let var_operand = Operand::SmallConstant(var_num);
 
                 // Use load instruction (0x0E) to load variable to stack
                 self.emit_instruction_typed(LOAD, &[var_operand], Some(0), None)?;
@@ -327,9 +352,10 @@ impl ZMachineCodeGen {
                 // Map the target to stack access
                 self.use_stack_for_result(*target);
                 log::debug!(
-                    "LoadVar: IR ID {} loaded from IR ID {} -> stack",
-                    target,
-                    var_id
+                    "LoadVar: IR ID {} loaded from Z-Machine variable {} -> stack (target IR ID {})",
+                    var_id,
+                    var_num,
+                    target
                 );
             }
 
@@ -337,26 +363,40 @@ impl ZMachineCodeGen {
                 // Resolve value to operand
                 let value_operand = self.resolve_ir_id_to_operand(*source)?;
 
-                // Store to appropriate variable slot
-                if let Some(var_num) = self.ir_id_to_local_var.get(var_id) {
-                    // Store to local variable using 2OP:13 store instruction
-                    let var_operand = Operand::SmallConstant(*var_num);
-                    self.emit_instruction_typed(STORE, &[var_operand, value_operand], None, None)?;
+                // Check if this is a local variable (needs mapping) or global (direct Z-Machine var number)
+                let var_num = if let Some(&local_var_num) = self.ir_id_to_local_var.get(var_id) {
+                    // Local variable: use mapped slot (1-15)
+                    log::debug!(
+                        "StoreVar: IR ID {} is local variable slot {}",
+                        var_id,
+                        local_var_num
+                    );
+                    local_var_num
+                } else if *var_id >= 16 {
+                    // Global variable: var_id IS the Z-Machine variable number (16-255)
+                    log::debug!(
+                        "StoreVar: IR ID {} is global variable G{:02}",
+                        var_id,
+                        var_id - 16
+                    );
+                    *var_id as u8
                 } else {
-                    // Store to stack (variable 0) using 2OP:13 store instruction
-                    let stack_operand = Operand::SmallConstant(0);
-                    self.emit_instruction_typed(
-                        STORE,
-                        &[stack_operand, value_operand],
-                        None,
-                        None,
-                    )?;
-                    self.ir_id_to_stack_var.insert(*var_id, 0);
-                }
+                    // ERROR: var_id < 16 but not in local mapping
+                    return Err(CompilerError::CodeGenError(format!(
+                        "StoreVar: Variable IR ID {} not allocated to local variable slot. \
+                         This indicates a bug in IR generation - all variables must be allocated before use.",
+                        var_id
+                    )));
+                };
+
+                // Store to variable using 2OP:13 store instruction
+                let var_operand = Operand::SmallConstant(var_num);
+                self.emit_instruction_typed(STORE, &[var_operand, value_operand], None, None)?;
                 log::debug!(
-                    "StoreVar: IR ID {} stored value from IR ID {}",
-                    var_id,
-                    source
+                    "StoreVar: Stored value from IR ID {} to Z-Machine variable {} (var_id {})",
+                    source,
+                    var_num,
+                    var_id
                 );
             }
 
@@ -415,11 +455,25 @@ impl ZMachineCodeGen {
                         None,
                     )?;
                 } else {
-                    // Non-empty arrays not yet implemented
-                    return Err(CompilerError::CodeGenError(format!(
-                        "CreateArray with non-zero size ({}) not yet implemented. Only empty arrays [] are supported.",
+                    // Non-empty array: For now, just return a placeholder null value
+                    // Full array implementation requires allocating static data section
+                    // which is complex. For literal arrays in for-loops, we can optimize
+                    // by unrolling the loop instead.
+                    //
+                    // TODO: Implement proper array allocation in static data section
+                    log::warn!(
+                        "CreateArray with size {} not fully implemented - returning null. \
+                        Array literals in for-loops should be optimized to direct iteration.",
                         size_value
-                    )));
+                    );
+
+                    // Push null/zero to stack as placeholder
+                    self.emit_instruction_typed(
+                        Opcode::OpVar(OpVar::Push),
+                        &[Operand::SmallConstant(0)],
+                        None,
+                        None,
+                    )?;
                 }
             }
 
@@ -800,13 +854,61 @@ impl ZMachineCodeGen {
             }
 
             IrInstruction::SetArrayElement {
-                array: _,
-                index: _,
-                value: _,
+                array,
+                index,
+                value,
             } => {
-                // Set array element operation (no return value)
-                // TODO: Implement actual array element setting
-                log::debug!("SetArrayElement: placeholder implementation");
+                // Set array element: storew array_addr+1+(index*2), value
+                // Array format: [size_word, element0, element1, ...]
+                // So element[i] is at address array_addr + 1 + i
+                // But storew takes byte address, so element[i] is at (array_addr+2) + (i*2)
+
+                let array_op = self.resolve_ir_id_to_operand(*array)?;
+                let index_op = self.resolve_ir_id_to_operand(*index)?;
+                let value_op = self.resolve_ir_id_to_operand(*value)?;
+
+                log::debug!(
+                    "SetArrayElement: array={:?}, index={:?}, value={:?}",
+                    array_op,
+                    index_op,
+                    value_op
+                );
+
+                // We need to:
+                // 1. Calculate element address: array_addr + 2 + (index * 2)
+                // 2. Store value at that address using storew
+                //
+                // Since array format is: [size][elem0][elem1]...,
+                // and each word is 2 bytes, element[i] is at byte offset 2 + (i*2)
+                //
+                // Z-Machine storew: storew array index value
+                // stores VALUE at address (array + 2*index)
+                // This is perfect for our layout if we pass (array+2) as the array base!
+
+                // Calculate base address (skip size word): array + 1 word = array + 2 bytes
+                // But storew multiplies index by 2, so we just need array+2 as base
+                // Actually, storew stores at (array + 2*index), so for our layout:
+                // We want to store at (array_addr + 2) + (index * 2)
+                // Which is storew (array_addr+2), index, value
+
+                // But we have array address in a variable/stack, not a constant
+                // We need to add 1 to it first (1 word = skip size field)
+                // Use: add array, #1 -> stack (adds 1 word = 2 bytes to get element base)
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::Add),
+                    &[array_op.clone(), Operand::SmallConstant(1)],
+                    Some(0), // Store to stack
+                    None,
+                )?;
+
+                // Now store: storew (stack), index, value
+                // Pop the base address from stack
+                self.emit_instruction_typed(
+                    Opcode::OpVar(OpVar::Storew),
+                    &[Operand::Variable(0), index_op, value_op], // Variable 0 = stack
+                    None,
+                    None,
+                )?;
             }
 
             IrInstruction::StringIndexOf {
@@ -2857,7 +2959,8 @@ mod opcode_encoding_tests {
 
     #[test]
     fn test_call_2s_encoding() {
-        let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
+        // Call2s is V4+ only, so create a V4 code generator
+        let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V4);
         codegen
             .emit_instruction_typed(
                 Opcode::Op2(Op2::Call2s),

@@ -1,0 +1,13 @@
+world {
+    room test "Test" {
+        desc: "Test"
+        on_enter: {
+            var x = 1;  // LoadImmediate
+            print("done");
+        }
+    }
+}
+
+init {
+    player.location = test;
+}

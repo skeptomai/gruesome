@@ -1035,6 +1035,19 @@ impl ZMachineCodeGen {
                 code_size,
                 code_base
             );
+
+            // DEBUG: Check test() function header after copy
+            let test_func_offset = 0x0014; // From FINALIZE_DEBUG log
+            if test_func_offset < code_size {
+                let test_func_addr = code_base + test_func_offset;
+                log::debug!(
+                    " CODE_COPY_VERIFY: test() function at code_space[0x{:04x}] = 0x{:02x}, final_data[0x{:04x}] = 0x{:02x}",
+                    test_func_offset,
+                    self.code_space[test_func_offset],
+                    test_func_addr,
+                    self.final_data[test_func_addr]
+                );
+            }
             log::debug!(
                 " CODE_COPY_VERIFY: Final data at code_base first 10 bytes: {:?}",
                 &self.final_data[code_base..code_base + std::cmp::min(10, code_size)]
@@ -2012,8 +2025,9 @@ impl ZMachineCodeGen {
                 actual_func_addr
             );
 
-            // CRITICAL: Set up parameter mappings BEFORE translating instructions
-            self.setup_function_parameter_mappings(function);
+            // CRITICAL: Set up all local variable mappings BEFORE translating instructions
+            // This includes parameters AND local variables (loop counters, let bindings)
+            self.setup_function_local_mappings(function);
 
             // CRITICAL: Register function IR ID to address mapping for proper resolution BEFORE instruction generation
             self.reference_context
@@ -2028,21 +2042,14 @@ impl ZMachineCodeGen {
             );
             self.generate_function_header(function, ir)?;
 
-            // CRITICAL FIX: Update function address to point to first instruction, not header
-            // Z-Machine functions should be called at their first instruction address, not header address
-            let first_instruction_addr = self.code_space.len();
+            // CRITICAL: Function address must point to header, not first instruction!
+            // The Z-Machine interpreter needs to read the header to allocate local variables.
+            // The actual_func_addr (code_space.len() before generate_function_header) already
+            // points to the header start, which is correct.
             log::debug!(
- " FUNCTION_ADDRESS_FIX: Updating '{}' address from header 0x{:04x} to first instruction 0x{:04x}",
- function.name, actual_func_addr, first_instruction_addr
- );
-
-            // Update all address mappings to point to first instruction
-            self.function_addresses
-                .insert(function.id, first_instruction_addr);
-            self.reference_context
-                .ir_id_to_address
-                .insert(function.id, first_instruction_addr);
-            self.record_code_space_offset(function.id, first_instruction_addr);
+                " FUNCTION_ADDRESS: '{}' address 0x{:04x} points to header (correct for Z-Machine calls)",
+                function.name, actual_func_addr
+            );
 
             // Track each instruction translation
             for (instr_i, instruction) in function.body.instructions.iter().enumerate() {
@@ -6337,19 +6344,56 @@ impl ZMachineCodeGen {
         }
     }
 
+    /// Set up all local variable IR ID mappings for a function
+    /// This maps both parameters and local variables (loop counters, let bindings)
+    fn setup_function_local_mappings(&mut self, function: &IrFunction) {
+        // First, set up parameters
+        self.setup_function_parameter_mappings(function);
+
+        // Then, set up all other local variables (loop counters, let bindings)
+        log::debug!(
+            " LOCAL_VAR_SETUP: Function '{}' has {} local variables",
+            function.name,
+            function.local_vars.len()
+        );
+
+        for local in &function.local_vars {
+            // Only add if not already mapped (parameters already done)
+            if !self.ir_id_to_local_var.contains_key(&local.ir_id) {
+                self.ir_id_to_local_var.insert(local.ir_id, local.slot);
+                log::debug!(
+                    " Local variable mapping: '{}' (IR ID {}) -> local slot {} for function '{}'",
+                    local.name,
+                    local.ir_id,
+                    local.slot,
+                    function.name
+                );
+            }
+        }
+
+        // Set current_function_locals so finalize_function_header knows the actual count
+        // This prevents the header from being patched back to 0
+        self.current_function_locals = function.local_vars.len() as u8;
+        log::debug!(
+            " LOCAL_VAR_SETUP: Set current_function_locals = {} for function '{}'",
+            self.current_function_locals,
+            function.name
+        );
+    }
+
     /// Generate function header with local variable declarations
     fn generate_function_header(
         &mut self,
         function: &IrFunction,
         _ir: &IrProgram,
     ) -> Result<(), CompilerError> {
-        // CRITICAL FIX: Reset local variable counter for each function
-        // This ensures each function allocates variables 1, 2, 3, ... independently
-        self.current_function_locals = 0;
+        // NOTE: current_function_locals is already set by setup_function_local_mappings()
+        // which is called before this function. We don't reset it here.
         self.current_function_name = Some(function.name.clone());
         log::debug!(
-            " FUNCTION_START: Reset local variable counter for function '{}'",
-            function.name
+            " FUNCTION_START: Generating header for function '{}' with {} locals",
+            function.name,
+            self.current_function_locals
         );
 
         // CRITICAL FIX: Pre-allocate space for locals that will be dynamically allocated
@@ -6460,6 +6504,14 @@ impl ZMachineCodeGen {
  reserved_count,
  actual_locals
  );
+
+                log::debug!(
+                    " FINALIZE_DEBUG: code_space[0x{:04x}] = 0x{:02x} (should be {}) for function '{}'",
+                    header_location,
+                    self.code_space[header_location],
+                    reserved_count,
+                    function_name
+                );
 
                 // Keep the reserved count - don't patch the header
                 // The extra unused locals will remain initialized to 0x0000 which is correct
@@ -7803,8 +7855,24 @@ impl ZMachineCodeGen {
             init_routine_address
         );
 
-        // Set up function context for init block (no local variables)
-        self.current_function_locals = 0;
+        // Set up function context for init block
+        // Map local variables declared in init block (e.g., let statements)
+        log::debug!(
+            " LOCAL_VAR_SETUP: Init block has {} local variables",
+            _ir.init_block_locals.len()
+        );
+
+        for local in &_ir.init_block_locals {
+            self.ir_id_to_local_var.insert(local.ir_id, local.slot);
+            log::debug!(
+                " Local variable mapping: '{}' (IR ID {}) -> local slot {} for init block",
+                local.name,
+                local.ir_id,
+                local.slot
+            );
+        }
+
+        self.current_function_locals = _ir.init_block_locals.len() as u8;
         self.current_function_name = Some("main".to_string());
 
         // ARCHITECTURAL FIX: Generate proper V3 function header with correct local variable allocation
@@ -7815,10 +7883,10 @@ impl ZMachineCodeGen {
             self.code_address
         );
 
-        // Generate V3 function header: Local count (will be calculated based on actual usage)
-        // Placeholder for local count - will be patched later with actual needed locals
+        // Generate V3 function header: Local count
+        // Now that we know the actual local count from init_block_locals, emit it directly
         let header_location = self.code_address;
-        self.emit_byte(0x00)?; // Placeholder - will be patched with actual local count
+        self.emit_byte(self.current_function_locals)?; // Emit actual local count
 
         log::debug!(
             "🏁 MAIN_ROUTINE: Header complete at 0x{:04x}, instructions follow",

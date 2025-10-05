@@ -21,6 +21,7 @@ mod codegen_tests {
                 id: 1,
                 instructions: vec![IrInstruction::Return { value: None }],
             }),
+            init_block_locals: Vec::new(),
             string_table: indexmap::IndexMap::new(),
             property_defaults: IrPropertyDefaults {
                 defaults: std::collections::HashMap::new(),
@@ -381,12 +382,14 @@ mod codegen_tests {
             },
             local_vars: vec![
                 IrLocal {
+                    ir_id: 50,
                     name: "temp1".to_string(),
                     var_type: Some(Type::Int),
                     slot: 1,
                     mutable: true,
                 },
                 IrLocal {
+                    ir_id: 51,
                     name: "temp2".to_string(),
                     var_type: Some(Type::Int),
                     slot: 2,

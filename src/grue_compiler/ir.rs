@@ -64,9 +64,10 @@ pub struct IrProgram {
     pub objects: Vec<IrObject>,
     pub grammar: Vec<IrGrammar>,
     pub init_block: Option<IrBlock>,
+    pub init_block_locals: Vec<IrLocal>, // Local variables declared in init block
     pub string_table: IndexMap<String, IrId>, // String literal -> ID mapping
     pub property_defaults: IrPropertyDefaults, // Z-Machine property defaults table
-    pub program_mode: ProgramMode,            // Program execution mode
+    pub program_mode: ProgramMode,       // Program execution mode
     /// Mapping from symbol names to IR IDs (for identifier resolution)
     pub symbol_ids: IndexMap<String, IrId>,
     /// Mapping from object names to Z-Machine object numbers
@@ -148,6 +149,7 @@ pub struct IrParameter {
 /// Local variable in IR
 #[derive(Debug, Clone)]
 pub struct IrLocal {
+    pub ir_id: IrId, // IR ID for codegen mapping
     pub name: String,
     pub var_type: Option<Type>,
     pub slot: u8, // Local variable slot
@@ -853,6 +855,7 @@ impl IrProgram {
             objects: Vec::new(),
             grammar: Vec::new(),
             init_block: None,
+            init_block_locals: Vec::new(),
             string_table: IndexMap::new(),
             property_defaults: IrPropertyDefaults::new(),
             program_mode: ProgramMode::Script, // Default mode, will be overridden
@@ -1170,6 +1173,12 @@ impl IrGenerator {
             Item::Init(init) => {
                 let ir_block = self.generate_block(init.body)?;
                 ir_program.init_block = Some(ir_block);
+
+                // Save local variables declared in init block (e.g., let statements)
+                // These need to be tracked separately since init blocks are IrBlock not IrFunction
+                ir_program.init_block_locals = self.current_locals.clone();
+                self.current_locals.clear(); // Clear for next function/block
+                self.next_local_slot = 1; // Reset slot counter
             }
             Item::Mode(_mode) => {
                 // Mode declarations are handled during program mode detection in generate()
@@ -1237,6 +1246,7 @@ impl IrGenerator {
 
             // Add parameter as local variable
             let local_param = IrLocal {
+                ir_id: param_id,
                 name: param.name.clone(),
                 var_type: param.param_type.clone(),
                 slot: self.next_local_slot,
@@ -1814,6 +1824,7 @@ impl IrGenerator {
 
                 // Add to local variables
                 let local_var = IrLocal {
+                    ir_id: var_id,
                     name: var_decl.name.clone(),
                     var_type: var_decl.var_type,
                     slot: self.next_local_slot,
@@ -1990,6 +2001,7 @@ impl IrGenerator {
                 // Create a loop variable
                 let loop_var_id = self.next_id();
                 let local_var = IrLocal {
+                    ir_id: loop_var_id,
                     name: for_stmt.variable.clone(),
                     var_type: Some(Type::Any), // Type inferred from array elements
                     slot: self.next_local_slot,
@@ -1999,8 +2011,19 @@ impl IrGenerator {
                 self.symbol_ids.insert(for_stmt.variable, loop_var_id);
                 self.next_local_slot += 1;
 
-                // Create index variable for array iteration
+                // Create index variable for array iteration (allocate as local)
                 let index_var = self.next_id();
+                let index_local = IrLocal {
+                    ir_id: index_var,
+                    name: format!("__loop_index_{}", index_var),
+                    var_type: Some(Type::Int),
+                    slot: self.next_local_slot,
+                    mutable: true, // Index is incremented
+                };
+                self.current_locals.push(index_local);
+                self.next_local_slot += 1;
+
+                // Initialize index to 0
                 let zero_temp = self.next_id();
                 block.add_instruction(IrInstruction::LoadImmediate {
                     target: zero_temp,
@@ -2615,23 +2638,38 @@ impl IrGenerator {
             }
 
             Expr::Array(elements) => {
-                // Array literal - for now, we'll create a series of load instructions
-                // In a full implementation, this would create an array object
+                // Array literal - create array and populate with elements
                 let array_size = elements.len() as i16; // Save size before elements is moved
-                let mut _temp_ids = Vec::new();
+
+                // Generate expression for each element
+                let mut element_temps = Vec::new();
                 for element in elements {
                     let element_temp = self.generate_expression(element, block)?;
-                    _temp_ids.push(element_temp);
-                    // TODO: Store in array structure
+                    element_temps.push(element_temp);
                 }
 
                 // Create the array with the determined size
-                let temp_id = self.next_id();
+                let array_temp = self.next_id();
                 block.add_instruction(IrInstruction::CreateArray {
-                    target: temp_id,
+                    target: array_temp,
                     size: IrValue::Integer(array_size),
                 });
-                Ok(temp_id)
+
+                // Populate array with elements
+                for (index, element_id) in element_temps.iter().enumerate() {
+                    let index_temp = self.next_id();
+                    block.add_instruction(IrInstruction::LoadImmediate {
+                        target: index_temp,
+                        value: IrValue::Integer(index as i16),
+                    });
+                    block.add_instruction(IrInstruction::SetArrayElement {
+                        array: array_temp,
+                        index: index_temp,
+                        value: *element_id,
+                    });
+                }
+
+                Ok(array_temp)
             }
             Expr::Ternary {
                 condition,

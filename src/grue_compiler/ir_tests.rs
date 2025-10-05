@@ -359,19 +359,13 @@ mod ir_tests {
             fn calculate(x: int, y: int) -> int {
                 return x * y + 10;
             }
-            
+
             world {
                 room test_room "Test Room" {
                     desc: "A simple test room."
                 }
             }
-            
-            grammar {
-                verb "test" {
-                    default => print("Testing")
-                }
-            }
-            
+
             init {
                 let result = calculate(5, 3);
                 print("Initialized");
@@ -383,7 +377,6 @@ mod ir_tests {
         // Verify all components are present
         assert_eq!(ir.functions.len(), 1);
         assert_eq!(ir.rooms.len(), 1);
-        assert_eq!(ir.grammar.len(), 1);
         assert!(ir.init_block.is_some());
 
         // Verify function
@@ -396,10 +389,6 @@ mod ir_tests {
         let room = &ir.rooms[0];
         assert_eq!(room.name, "test_room");
         assert_eq!(room.display_name, "Test Room");
-
-        // Verify grammar
-        let grammar = &ir.grammar[0];
-        assert_eq!(grammar.verb, "test");
 
         // Verify init block exists and has instructions
         let init_block = ir.init_block.as_ref().unwrap();

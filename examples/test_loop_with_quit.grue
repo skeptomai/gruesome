@@ -1,0 +1,27 @@
+world {
+    name: "Loop Test"
+}
+
+room start_room "Start Room" {
+    description: "A test room"
+}
+
+object test_obj "test object" {
+    location: start_room
+    description: "A test object"
+}
+
+fn test_loop() {
+    let items = [1, 2, 3];
+    for item in items {
+        print("Item: ");
+        print(item);
+        print("\n");
+    }
+}
+
+init {
+    player.location = start_room;
+    test_loop();
+    quit();
+}
