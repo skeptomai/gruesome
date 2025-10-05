@@ -1,36 +1,44 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 4, 2025) - IR OPTIMIZED, INVESTIGATING STACK UNDERFLOW ✅🔍
+## CURRENT STATUS (October 5, 2025) - SSA VIOLATIONS FIXED, PLACEHOLDER ARRAY ISSUE 🔍
 
-**PROGRESS**: Fixed three bugs, reduced redundant jumps 66%, investigating stack management.
+**PROGRESS**: Fixed five bugs, mini_zork now progresses past for-loops.
 
 ### Bug 1: Opcode Form Selection ✅ FIXED
 - **Issue**: Raw opcode 0x08 emitted as 2OP:OR (0xC8) instead of VAR:push (0xE8)
 - **Fix**: `emit_instruction_typed()` respects Opcode enum variant
 - **Details**: See `OPCODE_FORM_BUG_ANALYSIS.md`
 
-### Bug 2: Infinite Loop (Jump Offset 2) ✅ PARTIALLY FIXED
+### Bug 2: Infinite Loop (Jump Offset 2) ✅ FIXED
 - **Issue**: 32 jumps with offset=2 created infinite loops (jump to self)
 - **Root Cause**: LoadImmediate doesn't emit code → labels defer to next instruction
-- **Fix 1**: Convert offset-2 jumps to NOP during resolution (`codegen.rs:1496-1511`)
-- **Fix 2**: Eliminate redundant jumps in if-statements without else (`ir.rs:1931-1936`)
-- **Result**: Reduced from 32 to 11 offset-2 jumps (66% improvement)
+- **Fix**: Eliminate redundant jumps in if-statements without else (`ir.rs:1940-1953`)
+- **Result**: No offset-2 jumps from if-statements (Option A implemented)
 
-### Bug 2b: Remaining 11 Offset-2 Jumps 📋 DOCUMENTED
-- **Pattern**: Complex expression control flow (MethodCall, PropertyAccess)
-- **Locations**:
-  - `ir.rs:2433` - MethodCall with LoadImmediate fallback
-  - `ir.rs:2554` - PropertyAccess null-check with LoadImmediate
-- **Analysis**: Both branches end with LoadImmediate (no Z-code emitted)
-- **Status**: Converted to NOPs (harmless), requires sophisticated control-flow analysis to eliminate
-- **Details**: See `docs/ARCHITECTURE.md` - "Complex Expression Control Flow Patterns"
+### Bug 3: Function Address Bug ✅ FIXED
+- **Issue**: Functions called at wrong address (first instruction instead of header)
+- **Root Cause**: Code was "updating" function addresses after header generation
+- **Fix**: Functions now correctly point to headers (`codegen.rs:2045-2052`)
+- **Impact**: Interpreter reads local count from header, allocates locals correctly
 
-### Bug 3: Stack Underflow 🔍 INVESTIGATING
-- **Issue**: Stack underflow at PC 0x13a7 when running compiled mini_zork
-- **Previous PC**: 0x13DE (before IR optimization)
-- **Analysis**: The offset-2 jumps were masking the real issue - stack management problem
-- **Hypothesis**: NOPs reveal code paths where stack operations are unbalanced
-- **Next Step**: Investigate stack push/pull patterns in compiled code
+### Bug 4: For-Loop SSA Violations ✅ FIXED
+- **Issue**: Stack underflow at PC 0x13e3, 0x13ec - loop counter reused without reload
+- **Root Cause**: IR violated SSA semantics by reusing consumed stack values
+  - `index_temp` consumed by Less comparison, then reused by GetArrayElement
+  - `index_temp` consumed by GetArrayElement, then reused by Add operation
+- **Fix**: Reload `index_var` before each use (`ir.rs:2078-2090, 2095-2111`)
+- **Impact**: Proper SSA semantics, stack underflow eliminated
+
+### Bug 5: Object Tree Iteration - Variable Source Tracking ⚠️ INCOMPLETE
+- **Current Error**: "Invalid object number: 1000" at PC 0x140c
+- **Root Cause**: For-loops cannot detect when variable holds `contents()` result
+- **Issue**: Detection only works for direct `for item in obj.contents()`, not `let items = obj.contents(); for item in items`
+- **Impact**: Mini_zork inventory command fails, any indirect iteration over `contents()` fails
+- **Partial Solution**: Added GetObjectChild/GetObjectSibling IR instructions and codegen
+- **Missing**: Variable source tracking (HashMap<IrId, VariableSource>)
+- **Technical Debt**: ⚠️ Current implementation incomplete, will fail on real code
+- **Required**: Implement Option A from ARCHITECTURE.md before production use
+- **Details**: See `docs/ARCHITECTURE.md` - "Object Tree Iteration Implementation"
 
 **Tests**: All 174 tests passing.
 

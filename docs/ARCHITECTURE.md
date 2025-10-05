@@ -1510,3 +1510,215 @@ RUST_LOG=debug cargo run --bin grue-compiler -- examples/mini_zork.grue -o /tmp/
 - **File**: `src/grue_compiler/ir.rs` (IR generation)
 - **File**: `src/grue_compiler/codegen.rs:1496-1511` (NOP conversion)
 - **CLAUDE.md**: Bug 2b documentation
+
+## Object Tree Iteration Implementation (October 5, 2025)
+
+### The Problem: For-Loop Collection Type Detection
+
+**Issue**: The compiler cannot distinguish between array iteration and object tree iteration at compile time when the collection is stored in a variable.
+
+**Example**:
+```grue
+// Direct method call - DETECTABLE
+for item in player.contents() { ... }
+
+// Variable indirection - NOT DETECTABLE
+let items = player.contents();
+for item in items { ... }
+```
+
+**Root Cause**: IR generation processes expressions before statements. By the time the for-loop is generated, `items` is just a variable - the compiler has lost the information that it came from `contents()`.
+
+### Current (Incomplete) Implementation
+
+**What Works**:
+- Direct `for item in obj.contents()` syntax (lines 2119-2128 in `ir.rs`)
+- GetObjectChild and GetObjectSibling IR instructions (lines 641-651)
+- Z-Machine opcode generation for object tree traversal (codegen_instructions.rs:914-944)
+
+**What Doesn't Work**:
+- Indirect iteration via variable: `let items = obj.contents(); for item in items`
+- Detection relies on AST pattern matching, which fails with variable indirection
+
+### Technical Details
+
+**IR Instructions Added**:
+```rust
+GetObjectChild { target, object }  // get_child opcode
+GetObjectSibling { target, object } // get_sibling opcode
+```
+
+**Codegen Implementation** (codegen_instructions.rs:914-944):
+- Uses Z-Machine `get_child` (Op1::GetChild) and `get_sibling` (Op1::GetSibling)
+- Results stored to stack (proper SSA semantics)
+- Both opcodes have branch conditions (true if child/sibling exists)
+
+**Object Tree Iteration Pattern** (ir.rs:1821-1929):
+```rust
+// Get first child
+GetObjectChild { target, object: container }
+StoreVar { var_id: current_obj, source: target }
+
+// Loop while current != 0
+Label { loop_start }
+LoadVar { target, var_id: current_obj }
+Branch { condition: target, true_label: body, false_label: end }
+
+// Loop body
+Label { body }
+LoadVar { target, var_id: current_obj }
+StoreVar { var_id: loop_var, source: target }
+[execute loop body statements]
+
+// Get next sibling
+LoadVar { target, var_id: current_obj }
+GetObjectSibling { target, object: current_obj }
+StoreVar { var_id: current_obj, source: target }
+Jump { loop_start }
+
+Label { end }
+```
+
+### Why This Is Inadequate
+
+**Problem 1: Variable Type Tracking**
+- IR doesn't track "this variable holds object tree results"
+- No distinction between arrays, object lists, and scalar values
+- Type information lost after expression generation
+
+**Problem 2: Runtime Type Ambiguity**
+- At runtime, `contents()` returns first child object ID (e.g., 5)
+- Arrays also contain object IDs as elements
+- No way to distinguish "object ID for iteration" vs "array address"
+
+**Problem 3: Multiple Collection Types**
+- `contents()` - object tree (should use get_sibling iteration)
+- Array literals `[1, 2, 3]` - array (should use GetArrayElement iteration)
+- No unified collection interface
+
+### Proper Solutions (Not Yet Implemented)
+
+**Option A: Variable Source Tracking** ⭐ RECOMMENDED
+- Track in IR: "variable X assigned from builtin Y"
+- HashMap: `var_id → VariableSource` enum
+- VariableSource::ObjectTreeRoot, VariableSource::Array, VariableSource::Scalar
+- For-loop checks source, selects iteration strategy
+
+**Implementation**:
+```rust
+enum VariableSource {
+    ObjectTreeRoot(IrId),  // From contents() call
+    Array(IrId),           // From array literal or CreateArray
+    Scalar(IrId),          // From other expressions
+}
+
+// In IR generator
+struct IrGenerator {
+    variable_sources: HashMap<IrId, VariableSource>,
+    // ...
+}
+
+// When generating contents() call
+let result_temp = self.next_id();
+self.generate_contents_call(result_temp, object);
+self.variable_sources.insert(result_temp, VariableSource::ObjectTreeRoot(object));
+
+// In for-loop generation
+match self.variable_sources.get(&iterable_id) {
+    Some(VariableSource::ObjectTreeRoot(_)) => self.generate_object_tree_iteration(...),
+    Some(VariableSource::Array(_)) => self.generate_array_iteration(...),
+    _ => return Err("Cannot iterate over scalar value"),
+}
+```
+
+**Benefits**:
+- Handles variable indirection correctly
+- Type-safe iteration strategy selection
+- Clear error messages for non-iterable types
+
+**Complexity**: Medium - requires threading variable_sources through IR generation
+
+**Option B: Runtime Type Tagging** ⚠️ NOT RECOMMENDED
+- Tag values at runtime: high bit = "object tree root"
+- Check tag in for-loop prologue, branch to appropriate iteration code
+- Emit both iteration strategies, select at runtime
+
+**Problems**:
+- Wastes Z-Machine's limited 16-bit value space
+- Complex runtime branching
+- Doesn't help with compile-time validation
+
+**Option C: Explicit Iteration Methods** 🔮 FUTURE
+- Add language syntax: `for item in obj.children() { ... }`
+- Separate `contents()` → array vs `children()` → iterator
+- Requires language design changes
+
+### Current Workaround Impact
+
+**What Fails**:
+- Mini_zork inventory command (`for item in player.contents()`)
+- Any for-loop over `contents()` stored in variable
+- Results in: "Invalid object number: 1000" (GetArrayElement on object ID)
+
+**Why It Fails**:
+1. `contents()` returns object ID (e.g., 5) via GetChild
+2. For-loop uses array iteration (GetArrayElement)
+3. GetArrayElement tries to read memory at address 5 + offset
+4. Returns garbage value (1000 = 0x03E8)
+5. Code tries to use 1000 as object number → validation error
+
+**Error Location**: PC 0x140c, trying to call `get_prop` on object 1000
+
+### Files Modified
+
+**Added**:
+- `ir.rs:641-651` - GetObjectChild/GetObjectSibling IR instructions
+- `ir.rs:1821-1929` - generate_object_tree_iteration() method
+- `ir.rs:2119-2128` - Direct contents() call detection
+- `codegen_instructions.rs:914-944` - Object tree opcode generation
+
+**Limitations**:
+- Detection only works for direct `for item in obj.contents()`
+- Does not work with variable indirection
+- Requires Option A implementation for production use
+
+### Next Steps (REQUIRED FOR PRODUCTION)
+
+**Phase 1: Implement Variable Source Tracking**
+1. Add `VariableSource` enum to IR module
+2. Add `variable_sources: HashMap<IrId, VariableSource>` to IrGenerator
+3. Track sources during expression generation
+4. Use sources in for-loop generation
+
+**Phase 2: Comprehensive Testing**
+1. Test direct `for item in obj.contents()`
+2. Test indirect `let items = obj.contents(); for item in items`
+3. Test array literals `for item in [1, 2, 3]`
+4. Test error cases (iterating over scalars)
+
+**Phase 3: Error Handling**
+1. Clear error messages for non-iterable types
+2. Helpful suggestions ("Did you mean .contents()?")
+3. Compile-time validation where possible
+
+**Phase 4: Documentation**
+1. Update language reference with iteration semantics
+2. Document collection type system
+3. Add examples to tutorial
+
+### References
+
+- **Issue Discovery**: October 5, 2025
+- **Partial Implementation**: Commits 081637d (SSA fixes), current session
+- **Mini_zork Test Case**: `examples/mini_zork.grue` lines 292-298 (show_inventory)
+- **Error Manifestation**: "Invalid object number: 1000" at PC 0x140c
+- **Related**: CLAUDE.md Bug 5 (Placeholder Array Issue)
+
+### Lessons Learned
+
+1. **Early Type Information Is Critical**: Expression evaluation loses type context
+2. **Variable Indirection Breaks Pattern Matching**: AST patterns insufficient for complex analysis
+3. **Pragmatic Workarounds Have Limits**: Partial solutions create maintenance burden
+4. **Need Proper Type System**: Collection types, iteration protocols require formal design
+
+⚠️ **TECHNICAL DEBT**: Current implementation is incomplete and will fail on most real-world code. Option A (Variable Source Tracking) must be implemented before compiler is production-ready.

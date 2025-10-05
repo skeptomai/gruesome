@@ -638,6 +638,18 @@ pub enum IrInstruction {
         value: IrId,
     },
 
+    /// Get first child of object (for object tree traversal)
+    GetObjectChild {
+        target: IrId,
+        object: IrId,
+    },
+
+    /// Get next sibling of object (for object tree traversal)
+    GetObjectSibling {
+        target: IrId,
+        object: IrId,
+    },
+
     /// Array operations
     ArrayAdd {
         array: IrId,
@@ -1806,12 +1818,124 @@ impl IrGenerator {
         Ok(ir_block)
     }
 
+    fn generate_object_tree_iteration(
+        &mut self,
+        for_stmt: Box<crate::grue_compiler::ast::ForStmt>,
+        block: &mut IrBlock,
+    ) -> Result<(), CompilerError> {
+        use crate::grue_compiler::ast::Expr;
+
+        // Extract the object from the contents() method call
+        let container_object = if let Expr::MethodCall { object, .. } = for_stmt.iterable {
+            self.generate_expression(*object, block)?
+        } else {
+            return Err(CompilerError::CodeGenError(
+                "Expected MethodCall for object tree iteration".to_string(),
+            ));
+        };
+
+        // Create loop variable for current object
+        let loop_var_id = self.next_id();
+        let local_var = IrLocal {
+            ir_id: loop_var_id,
+            name: for_stmt.variable.clone(),
+            var_type: Some(Type::Any),
+            slot: self.next_local_slot,
+            mutable: false,
+        };
+        self.current_locals.push(local_var);
+        self.symbol_ids.insert(for_stmt.variable, loop_var_id);
+        self.next_local_slot += 1;
+
+        // Create current_object variable to track iteration
+        let current_obj_var = self.next_id();
+        let current_obj_local = IrLocal {
+            ir_id: current_obj_var,
+            name: format!("__current_obj_{}", current_obj_var),
+            var_type: Some(Type::Int),
+            slot: self.next_local_slot,
+            mutable: true,
+        };
+        self.current_locals.push(current_obj_local);
+        self.next_local_slot += 1;
+
+        // Get first child: current = get_child(container)
+        let first_child_temp = self.next_id();
+        block.add_instruction(IrInstruction::GetObjectChild {
+            target: first_child_temp,
+            object: container_object,
+        });
+        block.add_instruction(IrInstruction::StoreVar {
+            var_id: current_obj_var,
+            source: first_child_temp,
+        });
+
+        // Create labels
+        let loop_start = self.next_id();
+        let loop_body = self.next_id();
+        let loop_end = self.next_id();
+
+        // Loop start: check if current != 0
+        block.add_instruction(IrInstruction::Label { id: loop_start });
+        let current_temp = self.next_id();
+        block.add_instruction(IrInstruction::LoadVar {
+            target: current_temp,
+            var_id: current_obj_var,
+        });
+
+        // Branch: if current == 0, exit loop
+        block.add_instruction(IrInstruction::Branch {
+            condition: current_temp,
+            true_label: loop_body,
+            false_label: loop_end,
+        });
+
+        // Loop body: set loop variable = current object
+        block.add_instruction(IrInstruction::Label { id: loop_body });
+        let current_for_body = self.next_id();
+        block.add_instruction(IrInstruction::LoadVar {
+            target: current_for_body,
+            var_id: current_obj_var,
+        });
+        block.add_instruction(IrInstruction::StoreVar {
+            var_id: loop_var_id,
+            source: current_for_body,
+        });
+
+        // Execute loop body
+        self.generate_statement(*for_stmt.body, block)?;
+
+        // Get next sibling: current = get_sibling(current)
+        let current_for_sibling = self.next_id();
+        block.add_instruction(IrInstruction::LoadVar {
+            target: current_for_sibling,
+            var_id: current_obj_var,
+        });
+        let next_sibling_temp = self.next_id();
+        block.add_instruction(IrInstruction::GetObjectSibling {
+            target: next_sibling_temp,
+            object: current_for_sibling,
+        });
+        block.add_instruction(IrInstruction::StoreVar {
+            var_id: current_obj_var,
+            source: next_sibling_temp,
+        });
+
+        // Jump back to start
+        block.add_instruction(IrInstruction::Jump { label: loop_start });
+
+        // Loop end
+        block.add_instruction(IrInstruction::Label { id: loop_end });
+
+        Ok(())
+    }
+
     fn generate_statement(
         &mut self,
         stmt: crate::grue_compiler::ast::Stmt,
         block: &mut IrBlock,
     ) -> Result<(), CompilerError> {
-        use crate::grue_compiler::ast::Stmt;
+        use crate::grue_compiler::ast::{Expr, Stmt};
 
         match stmt {
             Stmt::Expression(expr) => {
@@ -1993,9 +2117,18 @@ impl IrGenerator {
             }
             Stmt::For(for_stmt) => {
                 // For loops in Grue iterate over collections
-                // This is a simplified implementation that assumes array iteration
+                // Detect if we're iterating over contents() method call for object tree traversal
+                let is_contents_call = matches!(
+                    &for_stmt.iterable,
+                    Expr::MethodCall { method, .. } if method == "contents"
+                );
 
-                // Generate the iterable expression
+                if is_contents_call {
+                    // Generate object tree iteration using get_child/get_sibling
+                    return self.generate_object_tree_iteration(Box::new(for_stmt), block);
+                }
+
+                // Generate the iterable expression (for array iteration)
                 let iterable_temp = self.generate_expression(for_stmt.iterable, block)?;
 
                 // Create a loop variable

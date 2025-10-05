@@ -911,6 +911,38 @@ impl ZMachineCodeGen {
                 )?;
             }
 
+            IrInstruction::GetObjectChild { target, object } => {
+                // Z-Machine get_child opcode: returns first child object
+                // Also sets a branch condition (true if child exists)
+                let obj_operand = self.resolve_ir_id_to_operand(*object)?;
+
+                self.emit_instruction_typed(
+                    Opcode::Op1(Op1::GetChild),
+                    &[obj_operand],
+                    Some(0), // Store result to stack
+                    None,
+                )?;
+
+                // Register target as using stack result
+                self.use_stack_for_result(*target);
+            }
+
+            IrInstruction::GetObjectSibling { target, object } => {
+                // Z-Machine get_sibling opcode: returns next sibling object
+                // Also sets a branch condition (true if sibling exists)
+                let obj_operand = self.resolve_ir_id_to_operand(*object)?;
+
+                self.emit_instruction_typed(
+                    Opcode::Op1(Op1::GetSibling),
+                    &[obj_operand],
+                    Some(0), // Store result to stack
+                    None,
+                )?;
+
+                // Register target as using stack result
+                self.use_stack_for_result(*target);
+            }
+
             IrInstruction::StringIndexOf {
                 target,
                 string,
