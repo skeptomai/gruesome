@@ -828,6 +828,23 @@ pub enum IrValue {
     Null,
 }
 
+/// Variable source tracking - tracks where a variable's value originated
+/// This is critical for selecting correct iteration strategy in for-loops
+#[derive(Debug, Clone, PartialEq)]
+pub enum VariableSource {
+    /// Variable holds result of obj.contents() call (object tree root)
+    /// Contains the container object ID
+    ObjectTreeRoot(IrId),
+
+    /// Variable holds array (from literal or CreateArray)
+    /// Contains the array IR ID
+    Array(IrId),
+
+    /// Variable holds scalar value (numbers, booleans, strings, objects)
+    /// Not iterable
+    Scalar(IrId),
+}
+
 /// Binary operations in IR
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrBinaryOp {
@@ -954,6 +971,7 @@ pub struct IrGenerator {
     object_counter: u16,                // Next available object number (starts at 2, player is 1)
     property_manager: PropertyManager,  // Manages property numbering and inheritance
     id_registry: IrIdRegistry,          // NEW: Track all IR IDs for debugging and mapping
+    variable_sources: IndexMap<IrId, VariableSource>, // Track variable origins for iteration strategy
 }
 
 impl Default for IrGenerator {
@@ -978,6 +996,7 @@ impl IrGenerator {
             object_counter: 2, // Start at 2, player is object #1
             property_manager: PropertyManager::new(),
             id_registry: IrIdRegistry::new(), // NEW: Initialize ID registry
+            variable_sources: IndexMap::new(), // NEW: Initialize variable source tracking
         }
     }
 
@@ -1834,17 +1853,32 @@ impl IrGenerator {
             ));
         };
 
+        self.generate_object_tree_iteration_with_container(
+            for_stmt.variable,
+            *for_stmt.body,
+            container_object,
+            block,
+        )
+    }
+
+    fn generate_object_tree_iteration_with_container(
+        &mut self,
+        variable: String,
+        body: crate::grue_compiler::ast::Stmt,
+        container_object: IrId,
+        block: &mut IrBlock,
+    ) -> Result<(), CompilerError> {
         // Create loop variable for current object
         let loop_var_id = self.next_id();
         let local_var = IrLocal {
             ir_id: loop_var_id,
-            name: for_stmt.variable.clone(),
+            name: variable.clone(),
             var_type: Some(Type::Any),
             slot: self.next_local_slot,
             mutable: false,
         };
         self.current_locals.push(local_var);
-        self.symbol_ids.insert(for_stmt.variable, loop_var_id);
+        self.symbol_ids.insert(variable, loop_var_id);
         self.next_local_slot += 1;
 
         // Create current_object variable to track iteration
@@ -1903,7 +1937,7 @@ impl IrGenerator {
         });
 
         // Execute loop body
-        self.generate_statement(*for_stmt.body, block)?;
+        self.generate_statement(body, block)?;
 
         // Get next sibling: current = get_sibling(current)
         let current_for_sibling = self.next_id();
@@ -1965,6 +1999,11 @@ impl IrGenerator {
                         var_id,
                         source: init_temp,
                     });
+
+                    // Propagate variable source tracking from initializer to variable
+                    if let Some(source) = self.variable_sources.get(&init_temp).cloned() {
+                        self.variable_sources.insert(var_id, source);
+                    }
                 }
             }
             Stmt::Assignment(assign) => {
@@ -2117,19 +2156,33 @@ impl IrGenerator {
             }
             Stmt::For(for_stmt) => {
                 // For loops in Grue iterate over collections
-                // Detect if we're iterating over contents() method call for object tree traversal
-                let is_contents_call = matches!(
-                    &for_stmt.iterable,
-                    Expr::MethodCall { method, .. } if method == "contents"
-                );
+                // Generate the iterable expression first
+                let iterable_temp = self.generate_expression(for_stmt.iterable, block)?;
 
-                if is_contents_call {
-                    // Generate object tree iteration using get_child/get_sibling
-                    return self.generate_object_tree_iteration(Box::new(for_stmt), block);
+                // Use variable source tracking to determine iteration strategy
+                // This handles variable indirection (e.g., let items = obj.contents(); for item in items)
+                let container_object =
+                    self.variable_sources
+                        .get(&iterable_temp)
+                        .and_then(|source| {
+                            if let VariableSource::ObjectTreeRoot(container_id) = source {
+                                Some(*container_id)
+                            } else {
+                                None
+                            }
+                        });
+
+                if let Some(container_id) = container_object {
+                    // Generate object tree iteration using get_child/get_sibling opcodes
+                    return self.generate_object_tree_iteration_with_container(
+                        for_stmt.variable,
+                        *for_stmt.body,
+                        container_id,
+                        block,
+                    );
                 }
 
-                // Generate the iterable expression (for array iteration)
-                let iterable_temp = self.generate_expression(for_stmt.iterable, block)?;
+                // Otherwise, generate array iteration using get_array_element
 
                 // Create a loop variable
                 let loop_var_id = self.next_id();
@@ -2503,6 +2556,10 @@ impl IrGenerator {
                             function: builtin_id,
                             args: call_args,
                         });
+
+                        // Track that this result came from an object tree traversal
+                        self.variable_sources
+                            .insert(result_temp, VariableSource::ObjectTreeRoot(object_temp));
                     }
                     "empty" => {
                         // empty() method: return true if object has no contents
@@ -2801,6 +2858,10 @@ impl IrGenerator {
                     target: array_temp,
                     size: IrValue::Integer(array_size),
                 });
+
+                // Track that this is an array literal
+                self.variable_sources
+                    .insert(array_temp, VariableSource::Array(array_temp));
 
                 // Populate array with elements
                 for (index, element_id) in element_temps.iter().enumerate() {
