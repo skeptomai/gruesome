@@ -20,15 +20,41 @@ impl V3Input {
 
     /// Read a line of input for V3 games (sread instruction)
     ///
-    /// V3 games only use line input, no character input complications
+    /// V3 games only use line input, no character input complications.
+    ///
+    /// # EOF Handling (Critical Fix - October 6, 2025)
+    ///
+    /// When stdin reaches EOF (e.g., pipe exhausted or stdin closed), `read_line()`
+    /// returns `Ok(0)` with an empty buffer. Without EOF detection, SREAD would return
+    /// immediately with empty input in a tight loop, causing thousands of "I don't
+    /// understand that" messages per second.
+    ///
+    /// The fix: Check if `bytes_read == 0` and return an error, causing the interpreter
+    /// to exit gracefully instead of looping infinitely.
+    ///
+    /// This fix is essential for:
+    /// - Piped input: `echo "look" | ./gruesome game.z3`
+    /// - Redirected input: `./gruesome game.z3 < commands.txt`
+    /// - Automated testing with finite input
+    ///
+    /// If this needs to be reverted, search for "EOF Handling (Critical Fix" to find
+    /// this location.
     pub fn read_line(&mut self) -> Result<String, String> {
         debug!("V3 input: reading line");
 
         // Simple line reading - works reliably for V3 games
         self.buffer.clear();
-        io::stdin()
+        let bytes_read = io::stdin()
             .read_line(&mut self.buffer)
             .map_err(|e| format!("Failed to read line: {e}"))?;
+
+        // CRITICAL: Check for EOF (stdin closed or pipe exhausted)
+        // Without this check, SREAD loops infinitely on empty input.
+        // See doc comment above for details.
+        if bytes_read == 0 {
+            debug!("V3 input: EOF detected (stdin closed)");
+            return Err("EOF: stdin closed or no more input available".to_string());
+        }
 
         // Remove trailing newline
         if self.buffer.ends_with('\n') {
