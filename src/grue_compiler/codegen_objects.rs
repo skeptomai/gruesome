@@ -394,44 +394,48 @@ impl ZMachineCodeGen {
             room_properties.set_byte(on_look_prop, 0); // No special on_look handler by default
 
             // Generate exit properties for room navigation
-            // Exit system stores exit data in a compact encoded format using 3 properties:
-            // - exit_table: Packed table containing all exit information
-            //   Format: [count][dir1_len][dir1_chars...][type1][data1_hi][data1_lo]...
-            //   where type: 0=room, 1=blocked; data: room_id or string_addr
-            // This uses only 1 property regardless of exit count, conserving property numbers.
-            if !room.exits.is_empty() {
-                let exit_table_prop = *self.property_numbers.get("exit_table").unwrap_or(&20);
+            // Following Inform 6 pattern: individual properties per direction
+            // - exit_north, exit_south, exit_east, exit_west, etc.
+            // - Property value is room ID for normal exits, string for blocked exits
+            // - Simple property reads at runtime, no complex parsing needed
+            for (direction, exit_target) in &room.exits {
+                // Map direction string to property name
+                let prop_name = match direction.as_str() {
+                    "north" => "exit_north",
+                    "south" => "exit_south",
+                    "east" => "exit_east",
+                    "west" => "exit_west",
+                    "northeast" => "exit_northeast",
+                    "northwest" => "exit_northwest",
+                    "southeast" => "exit_southeast",
+                    "southwest" => "exit_southwest",
+                    "up" => "exit_up",
+                    "down" => "exit_down",
+                    "in" => "exit_in",
+                    "out" => "exit_out",
+                    _ => {
+                        log::warn!(
+                            "Unknown direction '{}' in room '{}', skipping exit",
+                            direction,
+                            room.name
+                        );
+                        continue;
+                    }
+                };
 
-                let mut table_bytes = Vec::new();
-                // First byte: exit count
-                table_bytes.push(room.exits.len() as u8);
+                let prop_num = *self.property_numbers.get(prop_name).unwrap_or(&20);
 
-                for (direction, exit_target) in &room.exits {
-                    // Encode direction string: [length][chars...]
-                    let dir_bytes = direction.as_bytes();
-                    table_bytes.push(dir_bytes.len() as u8);
-                    table_bytes.extend_from_slice(dir_bytes);
-
-                    // Encode exit type and data
-                    match exit_target {
-                        crate::grue_compiler::ir::IrExitTarget::Room(room_id) => {
-                            table_bytes.push(0); // Type 0 = room destination
-                            table_bytes.push((*room_id >> 8) as u8); // Room ID high byte
-                            table_bytes.push((*room_id & 0xFF) as u8); // Room ID low byte
-                        }
-                        crate::grue_compiler::ir::IrExitTarget::Blocked(message) => {
-                            table_bytes.push(1); // Type 1 = blocked exit
-                                                 // For blocked exits, store the message string inline
-                                                 // Format: [msg_len][msg_chars...]
-                            let msg_bytes = message.as_bytes();
-                            table_bytes.push((msg_bytes.len() >> 8) as u8); // Length high byte
-                            table_bytes.push((msg_bytes.len() & 0xFF) as u8); // Length low byte
-                            table_bytes.extend_from_slice(msg_bytes);
-                        }
+                match exit_target {
+                    crate::grue_compiler::ir::IrExitTarget::Room(room_id) => {
+                        // Store room ID as word property
+                        room_properties.set_word(prop_num, *room_id as u16);
+                    }
+                    crate::grue_compiler::ir::IrExitTarget::Blocked(message) => {
+                        // Store blocked message as string property
+                        // At runtime, presence of string indicates blocked exit
+                        room_properties.set_string(prop_num, message.clone());
                     }
                 }
-
-                room_properties.set_bytes(exit_table_prop, table_bytes);
             }
 
             all_objects.push(ObjectData {

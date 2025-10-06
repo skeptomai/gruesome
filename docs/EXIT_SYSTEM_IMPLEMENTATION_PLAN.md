@@ -259,18 +259,155 @@ These are simpler and can be done independently:
 
 ---
 
+## Research Findings (October 6, 2025)
+
+### Inform 6 Exit System ✅
+
+**Research Source**: IFWiki - Properties in Inform 6
+
+**Finding**: Inform 6 (the industry-standard Z-Machine compiler) uses **individual properties per direction**:
+
+- `n_to` - north exit
+- `s_to` - south exit
+- `e_to` - east exit
+- `w_to` - west exit
+- `ne_to`, `nw_to`, `se_to`, `sw_to` - diagonals
+- `u_to` - up
+- `d_to` - down
+- `in_to`, `out_to` - special directions
+
+**Property Values**:
+Each direction property can hold:
+1. **Room object ID** - normal exit
+2. **Door object ID** - door that must be opened
+3. **Routine address** - custom logic (for blocked exits, conditional passages)
+
+**How It Works**:
+```inform6
+Room Kitchen
+  with n_to Hallway,      // Simple room exit
+       s_to locked_door,  // Door object
+       e_to [;           // Routine for blocked exit
+         print "The door is locked.";
+         rtrue;
+       ];
+```
+
+At runtime: `room.n_to` is just a property read - returns room ID, door ID, or routine address.
+
+**Key Insights**:
+- ✅ **Uses fixed property numbers** (n_to, s_to, etc. are pre-defined properties 1-48)
+- ✅ **No runtime string comparison** - direction parsed in command parser, mapped to property
+- ✅ **Simple property reads** - `get_prop` instruction, that's it
+- ✅ **Proven pattern** - thousands of games use this successfully
+
+**Implications for Grue**:
+This validates **Option C** completely. We should:
+1. Define fixed properties: `exit_north`, `exit_south`, `exit_east`, etc.
+2. Store exit data directly in these properties
+3. Map direction strings to property names at compile time (or in builtin)
+4. Use simple `get_prop` at runtime
+
+**Advantages**:
+- Matches proven industry standard
+- Simple runtime implementation
+- Fast (single property read)
+- No complex table parsing
+- Easy to debug
+
+**Property Number Concerns - RESOLVED**:
+- Z-Machine v3 supports 63 properties
+- We only need ~12 direction properties (n/s/e/w/ne/nw/se/sw/u/d/in/out)
+- Plenty of room for other game properties
+- This is why Inform pre-defines them in slots 1-48
+
+---
+
+## Revised Implementation Plan
+
+### NEW Approach: Follow Inform 6 Pattern
+
+#### Phase 2B-Revised: Implement Inform-Style Direction Properties
+
+**Implementation Steps**:
+
+1. **Define direction properties** in PropertyManager:
+   ```rust
+   - exit_north (property 20)
+   - exit_south (property 21)
+   - exit_east (property 22)
+   - exit_west (property 23)
+   - exit_northeast (property 24)
+   - exit_northwest (property 25)
+   - exit_southeast (property 26)
+   - exit_southwest (property 27)
+   - exit_up (property 28)
+   - exit_down (property 29)
+   - exit_in (property 30)
+   - exit_out (property 31)
+   ```
+
+2. **Update room property generation** (codegen_objects.rs):
+   ```rust
+   for (direction, exit_target) in &room.exits {
+       let prop_name = match direction.as_str() {
+           "north" => "exit_north",
+           "south" => "exit_south",
+           // ... etc
+       };
+       let prop_num = self.property_numbers.get(prop_name);
+
+       match exit_target {
+           IrExitTarget::Room(id) => {
+               room_properties.set_word(prop_num, *id as u16);
+           }
+           IrExitTarget::Blocked(msg) => {
+               // Store string address (or special marker + message property)
+               room_properties.set_string(prop_num, msg.clone());
+           }
+       }
+   }
+   ```
+
+3. **Implement get_exit builtin** (codegen_builtins.rs):
+   ```rust
+   // Map direction string to property number
+   let prop_num = match direction {
+       "north" => 20,
+       "south" => 21,
+       // ... etc
+   };
+
+   // Single get_prop instruction
+   emit_get_prop(room_object, prop_num, target_var);
+
+   // Return value is:
+   // - Room ID for normal exits
+   // - String address for blocked exits (type identified by high bit or range)
+   // - 0 if property doesn't exist (no exit)
+   ```
+
+**Complexity**: LOW - Just property reads and direction mapping
+
+**Code Size**: ~10-20 Z-Machine instructions (property lookup + direction mapping)
+
+**Estimated Time**: 1-2 hours
+
+---
+
 ## Next Actions
 
-**Before coding**:
-1. Review Z-Machine disassembly of Zork I exit handling
-2. Research how Inform compiler handles room exits
-3. Prototype Option B (per-room dispatch functions)
-4. Make architectural decision based on evidence
+**Immediate**:
+1. ✅ Research complete - Inform 6 pattern identified
+2. Remove old exit_table property generation
+3. Implement direction property generation
+4. Update get_exit builtin to use property reads
+5. Test with mini_zork
 
-**Then**:
-- Implement chosen approach
-- Add tests for each component
-- Validate with mini_zork gameplay
+**Future Enhancements**:
+- Support door objects (like Inform 6)
+- Support routine addresses for conditional exits
+- Add more directions if needed
 
 ---
 
