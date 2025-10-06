@@ -1722,3 +1722,161 @@ match self.variable_sources.get(&iterable_id) {
 4. **Need Proper Type System**: Collection types, iteration protocols require formal design
 
 ⚠️ **TECHNICAL DEBT**: Current implementation is incomplete and will fail on most real-world code. Option A (Variable Source Tracking) must be implemented before compiler is production-ready.
+
+---
+
+## Exit System Architecture (Room Navigation)
+
+### Overview
+
+The exit system enables runtime lookup of room exits by direction string (e.g., "north", "south") while storing all exit data at compile time in Z-Machine property tables. This architecture respects Z-Machine constraints (no dynamic allocation, no hash maps) while providing flexible navigation including blocked exits with custom messages.
+
+### Design Constraints
+
+1. **Z-Machine Limitations**:
+   - No dynamic memory allocation
+   - No hash maps or associative arrays
+   - Properties limited to byte/word/byte-array values
+   - Must work with standard Z-Machine property system
+
+2. **Language Requirements**:
+   - Support `player.location.get_exit(direction)` where direction is runtime string
+   - Return value must support `.none()`, `.blocked`, `.destination` accessors
+   - Handle both room destinations and blocked exits with messages
+
+### Storage Architecture
+
+For each room object, store three parallel-array properties:
+
+#### Property: `exit_directions` (Bytes)
+Packed array of dictionary word addresses (2 bytes each) for direction strings.
+
+**Example**: For room with north/south exits:
+```
+[north_word_hi, north_word_lo, south_word_hi, south_word_lo]
+```
+
+#### Property: `exit_types` (Bytes)
+Array of type codes (1 byte each):
+- `0` = Room destination (normal exit)
+- `1` = Blocked exit (with message)
+
+**Example**: For north=room, south=blocked:
+```
+[0, 1]
+```
+
+#### Property: `exit_data` (Bytes)
+Packed array of data values (2 bytes each):
+- For type=0: Room object ID
+- For type=1: String address of block message
+
+**Example**: For north→room_5, south→blocked("locked door"):
+```
+[0x00, 0x05, msg_hi, msg_lo]
+```
+
+### Runtime Lookup Algorithm
+
+`get_exit(direction)` implementation:
+
+1. **Encode Direction**: Convert direction string to dictionary word address
+2. **Search Directions**: Linear search through `exit_directions` property for match
+3. **Extract Exit Data**: Read corresponding entries from `exit_types` and `exit_data`
+4. **Pack Result**: Return encoded value: `(type << 14) | data`
+
+**Return Value Encoding**:
+- `0x0000` = No exit found (`.none()` returns true)
+- `0x0000-0x3FFF` = Room destination (type=0, data=room_id)
+- `0x4000-0x7FFF` = Blocked exit (type=1, data=message_addr)
+
+### Accessor Methods
+
+The returned packed integer supports method calls:
+
+- **`.none()`**: Returns `result == 0`
+- **`.blocked`**: Returns `(result >> 14) == 1`
+- **`.destination`**: Returns `result & 0x3FFF` (room ID)
+- **`.message`**: Returns string at address `result & 0x3FFF`
+
+### Implementation Phases
+
+#### Phase 1: Property Generation (codegen_objects.rs)
+For each room during object table generation:
+1. Allocate property numbers for exit properties
+2. Build parallel arrays from `room.exits` data
+3. Encode direction strings to dictionary words
+4. Write properties to room object
+
+#### Phase 2: Builtin Implementation (codegen_builtins.rs)
+Implement `generate_get_exit_builtin()`:
+1. Extract room and direction arguments
+2. Encode direction string to dictionary word
+3. Load `exit_directions` property from room
+4. Loop through array searching for match
+5. On match: load type/data and pack result
+6. On no match: return 0
+
+#### Phase 3: Accessor Methods (ir.rs)
+Add method handlers for exit result values:
+1. `.none()` → test if value == 0
+2. `.blocked` → extract type field
+3. `.destination` → extract data field as room ID
+4. `.message` → load string at data field address
+
+### Example Compilation
+
+**Grue Source**:
+```grue
+room west_of_house {
+    exits: {
+        north: north_of_house,
+        east: blocked("The door is boarded")
+    }
+}
+```
+
+**Generated Properties**:
+```
+exit_directions: [dict_word("north"), dict_word("east")]
+exit_types: [0, 1]
+exit_data: [north_of_house_obj_id, string_addr("The door is boarded")]
+```
+
+**Runtime Behavior**:
+```grue
+let exit = west_of_house.get_exit("north");
+// Returns: 0x0000 | north_of_house_obj_id (e.g., 0x0002)
+
+let exit = west_of_house.get_exit("east");
+// Returns: 0x4000 | string_address (e.g., 0x4567)
+
+let exit = west_of_house.get_exit("south");
+// Returns: 0x0000 (no exit)
+```
+
+### Memory Efficiency
+
+For a typical room with 3-4 exits:
+- exit_directions: 6-8 bytes (3-4 words)
+- exit_types: 3-4 bytes
+- exit_data: 6-8 bytes (3-4 words)
+- **Total**: ~15-20 bytes per room
+
+For a 50-room game: ~750-1000 bytes total, well within Z-Machine limits.
+
+### Future Enhancements
+
+1. **Conditional Exits**: Support exits that appear/disappear based on game state
+2. **Exit Descriptions**: Add optional "look direction" text
+3. **One-Way Connections**: Support exits that don't have reverse connections
+4. **Door Objects**: Link exits to door objects for open/close state
+
+### References
+
+- **Design Date**: October 6, 2025
+- **Implementation Files**:
+  - `src/grue_compiler/codegen_objects.rs` - Property generation
+  - `src/grue_compiler/codegen_builtins.rs` - get_exit() builtin
+  - `src/grue_compiler/ir.rs` - Accessor method handlers
+- **Test Case**: `examples/mini_zork.grue` - handle_go() function

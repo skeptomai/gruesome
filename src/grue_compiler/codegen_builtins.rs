@@ -809,6 +809,19 @@ impl ZMachineCodeGen {
     }
 
     /// Generate get_exit builtin - looks up exit by direction string
+    ///
+    /// Reads the exit_table property from the room object and searches for matching direction.
+    /// Table format: [count][dir1_len][dir1_chars...][type1][data_hi][data_lo]...
+    /// Returns: (type << 14) | data where type: 0=room, 1=blocked
+    ///
+    /// TODO: Full implementation requires:
+    /// 1. get_prop to read exit_table property from room object
+    /// 2. Loop through table parsing [len][chars] entries
+    /// 3. Byte-by-byte string comparison with input direction
+    /// 4. On match: extract type/data bytes and pack result
+    /// 5. On no match: return 0
+    ///
+    /// For now: Returns 0 (no exit) to allow compilation
     pub fn generate_get_exit_builtin(
         &mut self,
         args: &[IrId],
@@ -821,8 +834,8 @@ impl ZMachineCodeGen {
             )));
         }
 
-        // TODO: Implement actual exit lookup from room.exits IndexMap
-        // For now, return null (0) as placeholder
+        // Placeholder implementation: always return 0 (no exit found)
+        // This allows games to compile and run, though movement won't work
         if let Some(store_var) = target {
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
