@@ -911,33 +911,79 @@ impl ZMachineCodeGen {
                 )?;
             }
 
-            IrInstruction::GetObjectChild { target, object } => {
+            IrInstruction::GetObjectChild {
+                target,
+                object,
+                branch_if_no_child,
+            } => {
                 // Z-Machine get_child opcode: returns first child object
-                // Also sets a branch condition (true if child exists)
+                // Branches when child does NOT exist (returns 0)
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
 
-                self.emit_instruction_typed(
-                    Opcode::Op1(Op1::GetChild),
+                // Emit with placeholder branch offset (branch on FALSE, when no child)
+                let placeholder = 0x7FFF_u16 as i16; // bit 15=0 for branch-on-FALSE
+                let layout = self.emit_instruction(
+                    0x01, // get_child opcode (1OP:1)
                     &[obj_operand],
-                    Some(0), // Store result to stack
-                    None,
+                    Some(0),           // Store result to stack
+                    Some(placeholder), // Placeholder encodes branch polarity
                 )?;
+
+                // Create unresolved reference for branch target
+                if let Some(branch_location) = layout.branch_location {
+                    use crate::grue_compiler::codegen::{
+                        LegacyReferenceType, MemorySpace, UnresolvedReference,
+                    };
+                    self.reference_context
+                        .unresolved_refs
+                        .push(UnresolvedReference {
+                            reference_type: LegacyReferenceType::Branch,
+                            location: branch_location,
+                            target_id: *branch_if_no_child,
+                            is_packed_address: false,
+                            offset_size: 2,
+                            location_space: MemorySpace::Code,
+                        });
+                }
 
                 // Register target as using stack result
                 self.use_stack_for_result(*target);
             }
 
-            IrInstruction::GetObjectSibling { target, object } => {
+            IrInstruction::GetObjectSibling {
+                target,
+                object,
+                branch_if_no_sibling,
+            } => {
                 // Z-Machine get_sibling opcode: returns next sibling object
-                // Also sets a branch condition (true if sibling exists)
+                // Branches when sibling does NOT exist (returns 0)
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
 
-                self.emit_instruction_typed(
-                    Opcode::Op1(Op1::GetSibling),
+                // Emit with placeholder branch offset (branch on FALSE, when no sibling)
+                let placeholder = 0x7FFF_u16 as i16; // bit 15=0 for branch-on-FALSE
+                let layout = self.emit_instruction(
+                    0x02, // get_sibling opcode (1OP:2)
                     &[obj_operand],
-                    Some(0), // Store result to stack
-                    None,
+                    Some(0),           // Store result to stack
+                    Some(placeholder), // Placeholder encodes branch polarity
                 )?;
+
+                // Create unresolved reference for branch target
+                if let Some(branch_location) = layout.branch_location {
+                    use crate::grue_compiler::codegen::{
+                        LegacyReferenceType, MemorySpace, UnresolvedReference,
+                    };
+                    self.reference_context
+                        .unresolved_refs
+                        .push(UnresolvedReference {
+                            reference_type: LegacyReferenceType::Branch,
+                            location: branch_location,
+                            target_id: *branch_if_no_sibling,
+                            is_packed_address: false,
+                            offset_size: 2,
+                            location_space: MemorySpace::Code,
+                        });
+                }
 
                 // Register target as using stack result
                 self.use_stack_for_result(*target);

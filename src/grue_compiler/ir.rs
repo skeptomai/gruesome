@@ -639,15 +639,19 @@ pub enum IrInstruction {
     },
 
     /// Get first child of object (for object tree traversal)
+    /// Branch is taken when object has NO child (returns 0)
     GetObjectChild {
         target: IrId,
         object: IrId,
+        branch_if_no_child: IrId, // Label to branch to when no child exists
     },
 
     /// Get next sibling of object (for object tree traversal)
+    /// Branch is taken when object has NO sibling (returns 0)
     GetObjectSibling {
         target: IrId,
         object: IrId,
+        branch_if_no_sibling: IrId, // Label to branch to when no sibling exists
     },
 
     /// Array operations
@@ -1893,36 +1897,26 @@ impl IrGenerator {
         self.current_locals.push(current_obj_local);
         self.next_local_slot += 1;
 
+        // Create labels
+        let loop_start = self.next_id();
+        let loop_body = self.next_id();
+        let loop_end = self.next_id();
+
         // Get first child: current = get_child(container)
+        // Z-Machine GET_CHILD branches when there's NO child (returns 0)
         let first_child_temp = self.next_id();
         block.add_instruction(IrInstruction::GetObjectChild {
             target: first_child_temp,
             object: container_object,
+            branch_if_no_child: loop_end, // Skip loop if container has no children
         });
         block.add_instruction(IrInstruction::StoreVar {
             var_id: current_obj_var,
             source: first_child_temp,
         });
 
-        // Create labels
-        let loop_start = self.next_id();
-        let loop_body = self.next_id();
-        let loop_end = self.next_id();
-
-        // Loop start: check if current != 0
+        // Loop start label (we continue here after processing each child)
         block.add_instruction(IrInstruction::Label { id: loop_start });
-        let current_temp = self.next_id();
-        block.add_instruction(IrInstruction::LoadVar {
-            target: current_temp,
-            var_id: current_obj_var,
-        });
-
-        // Branch: if current == 0, exit loop
-        block.add_instruction(IrInstruction::Branch {
-            condition: current_temp,
-            true_label: loop_body,
-            false_label: loop_end,
-        });
 
         // Loop body: set loop variable = current object
         block.add_instruction(IrInstruction::Label { id: loop_body });
@@ -1940,6 +1934,7 @@ impl IrGenerator {
         self.generate_statement(body, block)?;
 
         // Get next sibling: current = get_sibling(current)
+        // Z-Machine GET_SIBLING branches when there's NO sibling (returns 0)
         let current_for_sibling = self.next_id();
         block.add_instruction(IrInstruction::LoadVar {
             target: current_for_sibling,
@@ -1949,13 +1944,14 @@ impl IrGenerator {
         block.add_instruction(IrInstruction::GetObjectSibling {
             target: next_sibling_temp,
             object: current_for_sibling,
+            branch_if_no_sibling: loop_end, // Exit loop when no more siblings
         });
         block.add_instruction(IrInstruction::StoreVar {
             var_id: current_obj_var,
             source: next_sibling_temp,
         });
 
-        // Jump back to start
+        // Jump back to start to process next sibling
         block.add_instruction(IrInstruction::Jump { label: loop_start });
 
         // Loop end
@@ -1969,7 +1965,7 @@ impl IrGenerator {
         stmt: crate::grue_compiler::ast::Stmt,
         block: &mut IrBlock,
     ) -> Result<(), CompilerError> {
-        use crate::grue_compiler::ast::{Expr, Stmt};
+        use crate::grue_compiler::ast::Stmt;
 
         match stmt {
             Stmt::Expression(expr) => {

@@ -6772,7 +6772,7 @@ impl ZMachineCodeGen {
         &mut self,
         function_id: IrId,
         args: &[IrId],
-        target: Option<IrId>,
+        _target: Option<IrId>,
     ) -> Result<(), CompilerError> {
         // Generate a proper function call with placeholder address that will be resolved later
         // This is the correct approach - not rtrue hacks or compile errors
