@@ -226,6 +226,8 @@ pub struct ZMachineCodeGen {
     builtin_function_names: IndexMap<IrId, String>,
     /// Mapping from IR IDs to array metadata (for dynamic lists)
     ir_id_to_array_info: IndexMap<IrId, ArrayInfo>,
+    /// Set of IR IDs that come from GetProperty instructions (for print() type detection)
+    pub ir_id_from_property: IndexSet<IrId>,
     /// Mapping from object names to object numbers (from IR generator)
     object_numbers: IndexMap<String, u16>,
     /// Global property registry: property name -> property number
@@ -343,6 +345,7 @@ impl ZMachineCodeGen {
             ir_id_to_binary_op: IndexMap::new(),
             builtin_function_names: IndexMap::new(),
             ir_id_to_array_info: IndexMap::new(),
+            ir_id_from_property: IndexSet::new(),
             object_numbers: IndexMap::new(),
             property_numbers: IndexMap::new(),
             object_properties: IndexMap::new(),
@@ -7507,11 +7510,13 @@ impl ZMachineCodeGen {
         // FIXED: Emit jz instruction WITH placeholder branch offset
         // The emit_instruction function handles placeholder emission properly
         // jz is opcode 0 in the 1OP group, so it should be encoded as 0x80 (1OP form + opcode 0)
+        // Bit 15 of placeholder = 1 means "branch on true" (when value IS zero, branch to false_label)
+        // Using -1 (0xFFFF) sets bit 15, making branch_on_true = true
         let layout = self.emit_instruction(
             0x80, // jz (1OP:0) - jump if zero - correct Z-Machine encoding 0x80 + 0x00
             &[condition_operand],
-            None,       // No store
-            Some(0xFF), // Placeholder branch offset - will be replaced during resolution
+            None,     // No store
+            Some(-1), // Negative value sets bit 15 = branch on true (jump when zero)
         )?;
 
         // Use the branch_location from layout (calculated correctly by emit_instruction)

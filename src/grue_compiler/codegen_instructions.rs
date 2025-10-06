@@ -502,6 +502,9 @@ impl ZMachineCodeGen {
                 // CRITICAL: Register target for property result
                 self.use_stack_for_result(*target);
 
+                // Track that this IR ID comes from a property access (for print() type detection)
+                self.ir_id_from_property.insert(*target);
+
                 // PROPERTY ACCESS CORRECTION (Sept 28, 2025): Fixed branch out of bounds bug
                 //
                 // BUG DISCOVERY: The "property fix" commit 604f7b4 incorrectly changed get_prop
@@ -554,6 +557,9 @@ impl ZMachineCodeGen {
 
                 // CRITICAL: Register target for property result
                 self.use_stack_for_result(*target);
+
+                // Track that this IR ID comes from a property access (for print() type detection)
+                self.ir_id_from_property.insert(*target);
 
                 // PROPERTY ACCESS CORRECTION (Sept 28, 2025): Fixed branch out of bounds bug
                 // Same fix as GetProperty above - reverted from 0x01 (je) back to 0x11 (get_prop).

@@ -87,19 +87,35 @@ impl ZMachineCodeGen {
             // Try to resolve it as a simple operand (variable, constant, etc.)
             match self.resolve_ir_id_to_operand(arg_id) {
                 Ok(operand) => {
-                    // We can resolve it - generate print_num for numeric values
-                    log::debug!(
-                        "IR ID {} resolved to operand {:?} - generating print_num",
-                        arg_id,
-                        operand
-                    );
+                    // Check if this value comes from a property access
+                    // Property values for strings are addresses that need PRINT_PADDR
+                    if self.ir_id_from_property.contains(&arg_id) {
+                        log::debug!(
+                            "IR ID {} is from GetProperty - generating print_paddr for string property",
+                            arg_id
+                        );
 
-                    self.emit_instruction_typed(
-                        Opcode::OpVar(OpVar::PrintNum),
-                        &[operand], // The resolved operand (Variable(0) is now valid)
-                        None,       // No store
-                        None,       // No branch
-                    )?;
+                        self.emit_instruction_typed(
+                            Opcode::Op1(Op1::PrintPaddr),
+                            &[operand], // The property address (from get_prop)
+                            None,       // No store
+                            None,       // No branch
+                        )?;
+                    } else {
+                        // Not from property access - generate print_num for numeric values
+                        log::debug!(
+                            "IR ID {} resolved to operand {:?} - generating print_num",
+                            arg_id,
+                            operand
+                        );
+
+                        self.emit_instruction_typed(
+                            Opcode::OpVar(OpVar::PrintNum),
+                            &[operand], // The resolved operand (Variable(0) is now valid)
+                            None,       // No store
+                            None,       // No branch
+                        )?;
+                    }
                 }
                 Err(_) => {
                     // Cannot resolve to simple operand - this is a complex expression
