@@ -332,49 +332,31 @@ impl ZMachineCodeGen {
         debug!("Object entries start at offset {}", objects_start);
 
         // Collect all objects (rooms and objects) from IR
+        // Player object is now created in IR (see ir.rs add_player_object())
+        // IMPORTANT: Player MUST be object #1 per Z-Machine convention
         let mut all_objects = Vec::new();
 
-        // CRITICAL FIX: Create player object as object #1
-        // This resolves the "get_prop called with object 0" Frotz compatibility issue
-        debug!("Creating player object as object #1 for Frotz compatibility");
-        let mut player_properties = IrProperties::new();
-        // Get property numbers from PropertyManager to ensure consistency
-        let location_prop = ir
-            .property_manager
-            .get_property_number_by_name("location")
-            .unwrap_or_else(|| panic!("Property 'location' not found in PropertyManager"));
-        let desc_prop = ir
-            .property_manager
-            .get_property_number_by_name("description")
-            .or_else(|| ir.property_manager.get_property_number_by_name("desc"))
-            .unwrap_or_else(|| {
-                panic!("Property 'description' or 'desc' not found in PropertyManager")
+        // Add player FIRST (must be object #1)
+        // Player is always first in ir.objects (inserted at index 0 by add_player_object)
+        if !ir.objects.is_empty() {
+            let player = &ir.objects[0];
+            all_objects.push(ObjectData {
+                id: player.id,
+                name: player.name.clone(),
+                short_name: player.short_name.clone(),
+                attributes: player.attributes.clone(),
+                properties: player.properties.clone(),
+                parent: player.parent,
+                sibling: player.sibling,
+                child: player.child,
             });
-        // Set initial player location to first room (will be room object #2)
-        let initial_location = if !ir.rooms.is_empty() { 2 } else { 0 };
-        debug!(
-            "PROPERTY DEBUG: Setting player location property {} to value {} (0x{:04x})",
-            location_prop, initial_location, initial_location
-        );
-        player_properties.set_word(location_prop, initial_location);
-        player_properties.set_string(desc_prop, "yourself".to_string());
-
-        all_objects.push(ObjectData {
-            id: 9999u32, // Use high ID to avoid conflicts with actual IR objects
-            name: "player".to_string(),
-            short_name: "yourself".to_string(),
-            attributes: IrAttributes::new(), // Player has default attributes
-            properties: player_properties,
-            parent: None, // Player parent will be set to location during gameplay
-            sibling: None,
-            child: None, // Player can contain objects (inventory)
-        });
-        log::info!(
-            "Object #1: PLAYER - location property {} = {}, desc property {} = 'yourself'",
-            location_prop,
-            initial_location,
-            desc_prop
-        );
+            log::info!(
+                "Object #1: PLAYER '{}' (ID: {}, short: '{}')",
+                player.name,
+                player.id,
+                player.short_name
+            );
+        }
 
         // Add rooms as objects (rooms are just objects with specific properties)
         for room in &ir.rooms {
@@ -458,8 +440,8 @@ impl ZMachineCodeGen {
             );
         }
 
-        // Add regular objects
-        for object in &ir.objects {
+        // Add regular objects (skip player - already added as object #1)
+        for object in ir.objects.iter().skip(1) {
             let mut object_properties = object.properties.clone();
 
             // Ensure all objects have essential properties that games commonly access

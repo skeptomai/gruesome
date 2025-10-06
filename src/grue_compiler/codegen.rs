@@ -156,13 +156,14 @@ pub struct UnresolvedReference {
 /// Legacy reference types for the old unified memory system
 #[derive(Debug, Clone, PartialEq)]
 pub enum LegacyReferenceType {
-    Jump,                           // Unconditional jump to label
-    Branch,                         // Conditional branch to label
-    Label(IrId),                    // Reference to label
-    FunctionCall,                   // Call to function address
-    StringRef,                      // Reference to string address
-    DictionaryRef { word: String }, // Reference to dictionary entry address
-    GlobalsBase,                    // Reference to global variables base address from header
+    Jump,                                    // Unconditional jump to label
+    Branch,                                  // Conditional branch to label
+    Label(IrId),                             // Reference to label
+    FunctionCall,                            // Call to function address
+    StringRef,                               // Reference to string address
+    StringPackedAddress { string_id: IrId }, // Reference to packed string address for properties
+    DictionaryRef { word: String },          // Reference to dictionary entry address
+    GlobalsBase, // Reference to global variables base address from header
 }
 
 /// Reference context for tracking what needs resolution
@@ -988,11 +989,47 @@ impl ZMachineCodeGen {
 
         // Copy string space
         if !self.string_space.is_empty() {
-            self.final_data[string_base..code_base].copy_from_slice(&self.string_space);
+            let allocated_size = code_base - string_base;
+            let actual_size = self.string_space.len();
+
+            if actual_size != allocated_size {
+                log::warn!(
+                    "⚠️  STRING SPACE SIZE MISMATCH: allocated={} bytes, actual={} bytes",
+                    allocated_size,
+                    actual_size
+                );
+            }
+
+            // CRITICAL: Verify slice bounds match string_space size
+            if actual_size > allocated_size {
+                return Err(CompilerError::CodeGenError(format!(
+                    "String space overflow: {} bytes needed but only {} allocated",
+                    actual_size, allocated_size
+                )));
+            }
+
+            // DEBUG: Check what's in string_space before copying
             log::debug!(
-                " String space copied: {} bytes at 0x{:04x}",
-                self.string_space.len(),
-                string_base
+                " STRING_SPACE_DEBUG: First 16 bytes of string_space: {:02x?}",
+                &self.string_space[0..16.min(actual_size)]
+            );
+
+            // Copy only actual_size bytes, not the full allocated slice
+            self.final_data[string_base..string_base + actual_size]
+                .copy_from_slice(&self.string_space);
+
+            // DEBUG: Verify what got copied
+            log::debug!(
+                " STRING_SPACE_DEBUG: First 16 bytes at final_data[0x{:04x}]: {:02x?}",
+                string_base,
+                &self.final_data[string_base..string_base + 16.min(actual_size)]
+            );
+
+            log::debug!(
+                " String space copied: {} bytes at 0x{:04x} (allocated: {} bytes)",
+                actual_size,
+                string_base,
+                allocated_size
             );
         }
 
@@ -1093,7 +1130,7 @@ impl ZMachineCodeGen {
         log::debug!(" Step 3e.6: Consolidating ALL IR ID mappings (functions, strings, labels)");
         self.consolidate_all_ir_mappings();
 
-        // Phase 3f: Resolve all address references
+        // Phase 3f: Resolve all address references (including string properties)
         log::debug!(" Step 3f: Resolving all address references and fixups");
         self.resolve_all_addresses()?;
 
@@ -1301,6 +1338,28 @@ impl ZMachineCodeGen {
                     return Err(CompilerError::CodeGenError(format!(
                         "String ID {} not found in string_offsets",
                         reference.target_id
+                    )));
+                }
+            }
+
+            LegacyReferenceType::StringPackedAddress { string_id } => {
+                // Find the string and calculate its PACKED address for property storage
+                if let Some(&string_offset) = self.string_offsets.get(string_id) {
+                    let final_addr = self.final_string_base + string_offset;
+                    // Pack the address according to Z-Machine version
+                    let packed_addr = match self.version {
+                        ZMachineVersion::V3 => final_addr / 2,
+                        ZMachineVersion::V4 | ZMachineVersion::V5 => final_addr / 4,
+                    };
+                    log::debug!(
+                        "STRING_PACKED_RESOLVE: String ID {} offset=0x{:04x} + base=0x{:04x} = final=0x{:04x} → packed=0x{:04x}",
+                        string_id, string_offset, self.final_string_base, final_addr, packed_addr
+                    );
+                    packed_addr
+                } else {
+                    return Err(CompilerError::CodeGenError(format!(
+                        "String ID {} not found in string_offsets for packed address",
+                        string_id
                     )));
                 }
             }
@@ -4802,12 +4861,23 @@ impl ZMachineCodeGen {
 
         for (&prop_num, prop_value) in properties {
             // Write property size/number byte
-            let (size_byte, prop_data) = self.encode_property_value(prop_num, prop_value);
+            let (size_byte, prop_data, string_id_opt) =
+                self.encode_property_value(prop_num, prop_value);
+
+            let data_display = if prop_data.len() == 2 {
+                format!(
+                    "0x{:02x}{:02x} ({})",
+                    prop_data[0],
+                    prop_data[1],
+                    (prop_data[0] as u16) << 8 | prop_data[1] as u16
+                )
+            } else {
+                format!("{:02x?}", prop_data)
+            };
+
             debug!(
-                "Writing property {}: size_byte=0x{:02x}, data_len={}",
-                prop_num,
-                size_byte,
-                prop_data.len()
+                "Writing property {} for object '{}': size_byte=0x{:02x}, data={}, string_id={:?}",
+                prop_num, object.short_name, size_byte, data_display, string_id_opt
             );
 
             // Ensure capacity for property header + data + terminator
@@ -4825,6 +4895,26 @@ impl ZMachineCodeGen {
             for (i, &byte) in prop_data.iter().enumerate() {
                 let data_offset = addr - self.object_table_addr;
                 self.write_to_object_space(data_offset, byte)?;
+
+                // If this is a string property, create UnresolvedReference for packed address
+                if i == 0 && string_id_opt.is_some() {
+                    let string_id = string_id_opt.unwrap();
+                    // Create reference that will be resolved to packed string address
+                    self.reference_context
+                        .unresolved_refs
+                        .push(UnresolvedReference {
+                            reference_type: LegacyReferenceType::StringPackedAddress { string_id },
+                            location: data_offset, // Location in object_space
+                            target_id: string_id,
+                            is_packed_address: true,
+                            offset_size: 2, // 2-byte word
+                            location_space: MemorySpace::Objects,
+                        });
+                    log::debug!(
+                        "Created UnresolvedReference for string property {} at object_space offset 0x{:04x}, string ID {}",
+                        prop_num, data_offset, string_id
+                    );
+                }
                 debug!(
                     "PROP TABLE DEBUG: Writing prop data byte {}=0x{:02x} at addr=0x{:04x}",
                     i, byte, addr
@@ -9417,6 +9507,87 @@ impl ZMachineCodeGen {
                 unresolved_count
             );
         }
+    }
+
+    /// Patch string property placeholders with final packed addresses
+    /// During Phase 2, string properties stored string IDs as placeholders
+    /// Now that final_string_base is known, convert them to packed addresses
+    fn patch_string_properties(&mut self) -> Result<(), CompilerError> {
+        log::info!("🔄 PATCHING STRING PROPERTIES: Converting string IDs to packed addresses");
+
+        // Calculate packed address for each string
+        let mut string_packed_addresses = IndexMap::new();
+        for (&string_id, &offset) in &self.string_offsets {
+            let absolute_address = self.final_string_base + offset;
+            let packed_address = match self.version {
+                ZMachineVersion::V3 => absolute_address / 2,
+                ZMachineVersion::V4 | ZMachineVersion::V5 => absolute_address / 4,
+            };
+            string_packed_addresses.insert(string_id, packed_address);
+            log::debug!(
+                "STRING_PACKING: ID {} at offset {} → address 0x{:04x} → packed 0x{:04x}",
+                string_id,
+                offset,
+                absolute_address,
+                packed_address
+            );
+        }
+
+        // Scan final_data at object_base for string ID placeholders and replace with packed addresses
+        // Properties are stored as: [size_byte][data...]
+        // String properties have size_byte indicating 2-byte Word property
+        let object_start = self.final_object_base;
+        let object_end = object_start + self.object_space.len();
+        let mut i = object_start;
+
+        log::debug!(
+            "Scanning object space in final_data from 0x{:04x} to 0x{:04x}",
+            object_start,
+            object_end
+        );
+
+        while i < object_end {
+            // Check if this looks like a property size byte
+            if i + 2 < object_end && i + 2 < self.final_data.len() {
+                let size_byte = self.final_data[i];
+
+                // Extract property number and size from size_byte
+                // Format: [size-1 in bits 5-7][property number in bits 0-4]
+                let prop_num = size_byte & 0x1F;
+                let prop_size = ((size_byte >> 5) & 0x07) + 1;
+
+                // Only patch 2-byte (Word) properties
+                if prop_size == 2 {
+                    // Read the 2-byte value
+                    let high_byte = self.final_data[i + 1];
+                    let low_byte = self.final_data[i + 2];
+                    let value = ((high_byte as u16) << 8) | (low_byte as u16);
+
+                    // Check if this value is a string ID (1000+)
+                    if value >= 1000 && value < 10000 {
+                        if let Some(&packed_addr) = string_packed_addresses.get(&(value as u32)) {
+                            // Replace with packed address in final_data
+                            self.final_data[i + 1] = (packed_addr >> 8) as u8;
+                            self.final_data[i + 2] = (packed_addr & 0xFF) as u8;
+                            log::debug!(
+                                "PATCHED: Property {} at absolute address 0x{:04x}: string ID {} → packed address 0x{:04x}",
+                                prop_num,
+                                i,
+                                value,
+                                packed_addr
+                            );
+                        }
+                    }
+                }
+
+                // Move to next property (skip size byte + property data)
+                i += 1 + prop_size as usize;
+            } else {
+                i += 1;
+            }
+        }
+
+        Ok(())
     }
 
     // Utility methods for code emission

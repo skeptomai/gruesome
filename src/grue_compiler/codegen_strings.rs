@@ -64,6 +64,19 @@ impl ZMachineCodeGen {
             if let Some(on_look) = &room.on_look {
                 self.collect_strings_from_block(on_look)?;
             }
+
+            // Collect strings from blocked exit messages
+            for (direction, exit_target) in &room.exits {
+                if let IrExitTarget::Blocked(message) = exit_target {
+                    if !message.is_empty() {
+                        let string_id = self.find_or_create_string_id(message)?;
+                        debug!(
+                            "🚪 Collected blocked exit message for direction '{}': '{}' -> ID {}",
+                            direction, message, string_id
+                        );
+                    }
+                }
+            }
         }
 
         // Collect strings from objects
@@ -154,6 +167,17 @@ impl ZMachineCodeGen {
         );
         for (id, string) in &self.strings {
             let encoded = self.encode_string(string)?;
+            debug!(
+                "STRING_ENCODE_DEBUG: ID {} = '{}' → {} bytes: {:02x?}",
+                id,
+                if string.len() > 40 {
+                    format!("{}...", &string[..40])
+                } else {
+                    string.clone()
+                },
+                encoded.len(),
+                &encoded[..16.min(encoded.len())]
+            );
             self.encoded_strings.insert(*id, encoded);
         }
         Ok(())
@@ -731,31 +755,53 @@ impl ZMachineCodeGen {
     }
 
     /// Encode property value with proper size calculation
+    /// Returns: (size_byte, data, optional_string_id_for_unresolved_ref)
     pub fn encode_property_value(
-        &self,
+        &mut self,
         prop_num: u8,
         prop_value: &IrPropertyValue,
-    ) -> (u8, Vec<u8>) {
-        let data = match prop_value {
+    ) -> (u8, Vec<u8>, Option<IrId>) {
+        let (data, string_id_opt) = match prop_value {
             IrPropertyValue::String(s) => {
-                // Encode string using Z-Machine encoding
-                if let Ok(encoded) = self.encode_string(s) {
-                    encoded
-                } else {
-                    Vec::new()
-                }
+                // String properties: Store as packed address to string in high memory
+                // This matches Infocom's approach and avoids V3's 8-byte property limit
+
+                // Find string ID for this string (should already be collected in Phase 1)
+                let string_id = self.strings
+                    .iter()
+                    .find(|(_, text)| text == s)
+                    .map(|(id, _)| *id)
+                    .expect(&format!(
+                        "Property string '{}' for property {} not found in collected strings! \
+                        This indicates a bug in collect_strings() - all property strings should be collected in Phase 1.",
+                        s, prop_num
+                    ));
+
+                log::debug!(
+                    "STRING_PROPERTY: Property {} string='{}' -> ID {}",
+                    prop_num,
+                    if s.len() > 40 {
+                        format!("{}...", &s[..40])
+                    } else {
+                        s.clone()
+                    },
+                    string_id
+                );
+
+                // Return placeholder 0xFFFF - will be resolved via UnresolvedReference
+                (vec![0xFF, 0xFF], Some(string_id))
             }
             IrPropertyValue::Byte(b) => {
                 // Single byte property
-                vec![*b]
+                (vec![*b], None)
             }
             IrPropertyValue::Word(w) => {
                 // Two-byte property (big-endian)
-                vec![(w >> 8) as u8, (*w & 0xFF) as u8]
+                (vec![(w >> 8) as u8, (*w & 0xFF) as u8], None)
             }
             IrPropertyValue::Bytes(bytes) => {
                 // Multi-byte property
-                bytes.clone()
+                (bytes.clone(), None)
             }
         };
 
@@ -766,10 +812,10 @@ impl ZMachineCodeGen {
         if size == 0 {
             // Empty property - use 1 byte minimum
             let size_byte = 32 * (1 - 1) + prop_num; // 0 * 32 + prop_num = prop_num
-            return (size_byte, vec![0]);
+            return (size_byte, vec![0], None);
         }
         let size_byte = 32 * (size - 1) + prop_num;
 
-        (size_byte, data)
+        (size_byte, data, string_id_opt)
     }
 }

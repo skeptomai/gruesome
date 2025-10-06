@@ -101,6 +101,14 @@ impl ZMachineCodeGen {
                             None,       // No store
                             None,       // No branch
                         )?;
+
+                        // Emit new_line instruction after print_paddr for proper line breaks
+                        self.emit_instruction_typed(
+                            NEWLINE,
+                            &[],  // No operands
+                            None, // No store
+                            None, // No branch
+                        )?;
                     } else {
                         // Not from property access - generate print_num for numeric values
                         log::debug!(

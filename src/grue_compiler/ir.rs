@@ -1082,6 +1082,10 @@ impl IrGenerator {
             self.generate_item(item.clone(), &mut ir_program)?;
         }
 
+        // Add synthetic player object to IR
+        // The player is object #1 and needs to be in the IR like all other objects
+        self.add_player_object(&mut ir_program)?;
+
         // Copy symbol mappings from generator to IR program for use in codegen
         ir_program.symbol_ids = self.symbol_ids.clone();
         ir_program.object_numbers = self.object_numbers.clone();
@@ -1630,6 +1634,62 @@ impl IrGenerator {
         for nested_obj in &obj.contains {
             self.register_object_and_nested(nested_obj)?;
         }
+
+        Ok(())
+    }
+
+    /// Add synthetic player object to IR program
+    /// The player is always object #1 and has standard properties
+    fn add_player_object(&mut self, ir_program: &mut IrProgram) -> Result<(), CompilerError> {
+        // Create player object with ID 9999 (high ID to avoid conflicts)
+        let player_id = 9999u32;
+
+        // Register player in symbol table
+        self.symbol_ids.insert("player".to_string(), player_id);
+
+        // Player is always object #1 in Z-Machine
+        // (Object numbers were incremented for rooms/objects, but player is inserted first during codegen)
+
+        // Create player properties
+        let mut player_properties = IrProperties::new();
+
+        // Get property numbers from property manager
+        let location_prop = self.property_manager.get_property_number("location");
+        let desc_prop = self
+            .property_manager
+            .get_property_number_by_name("description")
+            .or_else(|| self.property_manager.get_property_number_by_name("desc"))
+            .unwrap_or(7); // Default to property 7 if not found
+
+        // Set initial player location to first room (will be room object #2 during codegen)
+        let initial_location = if !ir_program.rooms.is_empty() { 2 } else { 0 };
+        player_properties.set_word(location_prop, initial_location);
+
+        // Set player description
+        player_properties.set_string(desc_prop, "yourself".to_string());
+
+        // Create player object
+        let player_object = IrObject {
+            id: player_id,
+            name: "player".to_string(),
+            short_name: "yourself".to_string(),
+            description: String::new(), // Description is in properties
+            names: vec!["yourself".to_string()],
+            attributes: IrAttributes::new(),
+            properties: player_properties,
+            parent: None,
+            sibling: None,
+            child: None, // Player can contain objects (inventory)
+            comprehensive_object: None,
+        };
+
+        // Add player as first object (it will become object #1 during codegen)
+        ir_program.objects.insert(0, player_object);
+
+        log::debug!(
+            "Added synthetic player object with ID {} (will be object #1)",
+            player_id
+        );
 
         Ok(())
     }
