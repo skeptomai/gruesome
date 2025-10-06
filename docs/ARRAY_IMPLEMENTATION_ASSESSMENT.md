@@ -1,4 +1,261 @@
-# Runtime Array Implementation Assessment
+# Array Implementation Assessment - REVISED
+
+## CRITICAL Z-MACHINE SPECIFICATION FINDINGS ⚠️
+
+### Dynamic Memory Allocation is Impossible in Z-Machine
+
+From the **Z-Machine Standards Document** (Preface):
+> "The design's cardinal principle is that any game is 100% portable to different computers: that is, any legal program exactly determines its behaviour. This portability is largely made possible by a willingness to constrain maximum as well as minimum levels of performance (for instance, **dynamic memory allocation is impossible**)."
+
+From **Section 15.2**:
+> "The Z-machine has the same concept of 'table' (as an internal data structure) as Inform. Specifically, **a table is an array of words (in dynamic or static memory) of which the initial entry is the number of subsequent words in the table**. For example, a table with three entries occupies 8 bytes, arranged as the words 3, x, y, z."
+
+### What This Means:
+1. **NO runtime malloc/free** - Z-Machine has no memory allocator by design
+2. **All arrays must be compile-time allocated** - Fixed addresses determined during compilation
+3. **Table format**: `[count_word][element1][element2]...` - First word stores current element count
+4. **Access via loadw/storew**:
+   - `loadw array index -> result` reads `array[index]`
+   - `storew array index value` writes `array[index] = value`
+   - Address arithmetic: `array + 2*index` (words are 2 bytes)
+
+### Grue Language Analysis:
+
+Examining `mini_zork.grue` for all array usage:
+
+```grue
+// 1. String arrays in object properties - COMPILE-TIME
+names: ["mailbox", "box"]
+
+// 2. Array property access - NO CREATION
+let exit = player.location.exits[direction];
+
+// 3. Empty array literal - SINGLE RUNTIME ARRAY
+let visible_objects = [];
+visible_objects.add(obj);
+for item in visible_objects { ... }
+```
+
+**Finding**: Only ONE dynamic array exists (`visible_objects` in `list_objects()` function). All other arrays are:
+- Compile-time constants (property name arrays)
+- Property accesses (no allocation)
+- Iteration (by reference, no copying)
+
+**Conclusion**: We can allocate ALL arrays statically at compile time. No runtime allocation needed!
+
+---
+
+## CORRECT IMPLEMENTATION: Static Pre-Allocation
+
+### Approach:
+
+**Compile-Time Analysis**:
+1. During IR generation, collect all CreateArray instructions
+2. Assign each array a unique ID and fixed address
+3. Reserve space in dynamic memory section during header generation
+
+**Runtime Behavior**:
+1. `CreateArray` → Returns pre-allocated address (not 0/1000 placeholder!)
+2. `ArrayAdd` → `storew` to increment count and add element
+3. `GetArrayElement` → `loadw` from array address + offset
+4. `ArrayLength` → `loadw` from array address (first word)
+
+### Z-Machine Table Format:
+```
+Address  Content
+-------  -------
+0x0500:  0x0000    # Initial count = 0
+0x0502:  0x0000    # Element 0 (initially zero)
+0x0504:  0x0000    # Element 1
+0x0506:  0x0000    # Element 2
+...
+0x0500 + 2 + 2*N  # Last element
+```
+
+### Implementation Plan:
+
+#### Phase 1: Collect Arrays at IR Generation
+```rust
+// In IrGenerator
+struct IrGenerator {
+    arrays: IndexMap<IrId, ArrayInfo>,  // Track all arrays
+}
+
+struct ArrayInfo {
+    ir_id: IrId,
+    max_size: usize,  // From CreateArray size parameter
+    address: Option<u16>,  // Filled during codegen
+}
+
+// When generating CreateArray IR:
+self.arrays.insert(array_id, ArrayInfo {
+    ir_id: array_id,
+    max_size: size,
+    address: None,
+});
+```
+
+#### Phase 2: Allocate in Dynamic Memory (codegen_headers.rs)
+```rust
+// After globals, before objects:
+let mut array_address = globals_end;
+for (id, info) in &mut ir_generator.arrays {
+    info.address = Some(array_address);
+    // Reserve: count word + max_size elements (2 bytes each)
+    let array_size = 2 + (info.max_size * 2);
+
+    // Initialize to zeros
+    for i in 0..array_size {
+        self.memory[array_address + i] = 0;
+    }
+
+    array_address += array_size;
+}
+```
+
+#### Phase 3: Implement CreateArray (codegen_instructions.rs)
+```rust
+IrInstruction::CreateArray { target, size } => {
+    // Look up pre-allocated address
+    let array_info = self.array_allocations.get(target)?;
+    let array_addr = array_info.address;
+
+    // Push array address to stack
+    self.emit_instruction_typed(
+        Opcode::OpVar(OpVar::Push),
+        &[Operand::LargeConstant(array_addr)],
+        None,
+        None,
+    )?;
+
+    self.use_stack_for_result(*target);
+}
+```
+
+#### Phase 4: Implement ArrayAdd
+```rust
+IrInstruction::ArrayAdd { array, value } => {
+    let array_op = self.resolve_ir_id_to_operand(*array)?;
+    let value_op = self.resolve_ir_id_to_operand(*value)?;
+
+    // Load current count from array[0]
+    // loadw array 0 -> -(SP)
+    self.emit_instruction_typed(
+        Opcode::Op2(Op2::Loadw),
+        &[array_op.clone(), Operand::SmallConstant(0)],
+        Some(0),  // Store to stack
+        None,
+    )?;
+
+    // Store value at array[count]
+    // storew array (SP)+ value
+    self.emit_instruction_typed(
+        Opcode::OpVar(OpVar::Storew),
+        &[array_op.clone(), Operand::Variable(0), value_op],
+        None,
+        None,
+    )?;
+
+    // Increment count
+    // loadw array 0 -> -(SP)
+    // add (SP)+ 1 -> -(SP)
+    // storew array 0 (SP)+
+    ...
+}
+```
+
+#### Phase 5: Implement GetArrayElement
+```rust
+IrInstruction::GetArrayElement { target, array, index } => {
+    let array_op = self.resolve_ir_id_to_operand(*array)?;
+    let index_op = self.resolve_ir_id_to_operand(*index)?;
+
+    // Add 1 to index (skip count word)
+    // add index 1 -> -(SP)
+    self.emit_instruction_typed(
+        Opcode::Op2(Op2::Add),
+        &[index_op, Operand::SmallConstant(1)],
+        Some(0),
+        None,
+    )?;
+
+    // loadw array (SP)+ -> -(SP)
+    self.emit_instruction_typed(
+        Opcode::Op2(Op2::Loadw),
+        &[array_op, Operand::Variable(0)],
+        Some(0),
+        None,
+    )?;
+
+    self.use_stack_for_result(*target);
+}
+```
+
+#### Phase 6: Implement ArrayLength
+```rust
+IrInstruction::ArrayLength { target, array } => {
+    let array_op = self.resolve_ir_id_to_operand(*array)?;
+
+    // loadw array 0 -> -(SP)
+    self.emit_instruction_typed(
+        Opcode::Op2(Op2::Loadw),
+        &[array_op, Operand::SmallConstant(0)],
+        Some(0),
+        None,
+    )?;
+
+    self.use_stack_for_result(*target);
+}
+```
+
+### Memory Layout Example:
+
+```
+Dynamic Memory:
+0x0040: [Globals - 480 bytes]
+0x0220: [Array Table Start]
+0x0220:   [visible_objects array]
+0x0220:     0x0000  (count = 0)
+0x0222:     0x0000  (element[0])
+0x0224:     0x0000  (element[1])
+...
+0x0234:     0x0000  (element[9] - max 10 elements)
+0x0236: [Object Table Start]
+...
+```
+
+### Constraints:
+- Maximum 100 arrays per game
+- Maximum 256 elements per array
+- Total array space: ~5KB (reasonable for V3)
+- Arrays are function-scoped (no explicit free needed)
+
+### Advantages:
+1. **Spec-compliant** - Uses only static allocation as Z-Machine requires
+2. **Simple** - No runtime allocator needed
+3. **Fast** - Direct memory access, no overhead
+4. **Deterministic** - All addresses known at compile time
+
+### Testing Strategy:
+1. Test CreateArray returns correct address
+2. Test ArrayAdd increments count and stores elements
+3. Test GetArrayElement reads correct values
+4. Test ArrayLength returns count
+5. Test mini_zork list_objects function
+
+### Estimated Effort:
+- Phase 1-2 (Allocation): 2-3 hours
+- Phase 3-6 (Operations): 3-4 hours
+- Testing: 2 hours
+- **Total**: 1 day
+
+---
+
+## Original Assessment (OBSOLETE - Left for Reference)
+
+The original assessment proposed runtime dynamic allocation (Options A-D below). This is **architecturally impossible** in Z-Machine. The correct approach is static pre-allocation only.
+
+[Original content follows for historical reference...]
 
 ## Current State
 
@@ -16,247 +273,3 @@ When executing `let visible_objects = []; visible_objects.add(obj); for item in 
 - ArrayAdd does nothing
 - For-loop iteration calls GetArrayElement with placeholder, reads garbage memory
 - Result: "Invalid object number: 1000" error
-
-## Z-Machine Memory Model
-
-### Memory Regions:
-- **Dynamic Memory** (0x0000-0x??): Writable, includes globals, object tree, property tables
-- **Static Memory** (0x??-0x7FFF): Read-only, includes dictionary, strings
-- **High Memory** (0x8000+): Code (read-only)
-
-**Constraint**: Arrays must be in **dynamic memory** to support write operations.
-
-## Implementation Options
-
-### Option A: Static Pre-allocated Array Table (Simplest)
-
-**Approach**:
-- Reserve a fixed region in dynamic memory for array storage
-- Pre-allocate N array slots of fixed size at compile time
-- Each CreateArray gets assigned to next available slot
-- Track usage via compile-time slot allocator
-
-**Memory Layout**:
-```
-[Array_Table_Base]
-  [Array0: length_word][element0][element1]...[elementN-1]
-  [Array1: length_word][element0][element1]...[elementN-1]
-  ...
-  [ArrayM: length_word][element0][element1]...[elementN-1]
-```
-
-**Pros**:
-- Very simple implementation
-- Predictable memory usage
-- No runtime allocation logic needed
-- Fast access (direct addressing)
-
-**Cons**:
-- Wastes memory (pre-allocates all slots)
-- Hard limits on array count (e.g., max 50 arrays)
-- Hard limits on array size (e.g., max 100 elements each)
-- Cannot adjust to actual usage patterns
-
-**Complexity**: Low (200 lines of code)
-
-### Option B: Runtime Dynamic Allocation (Complex)
-
-**Approach**:
-- Implement a heap allocator in Z-Machine bytecode
-- CreateArray calls allocator to request memory block
-- Free memory when array goes out of scope
-- Requires garbage collection or reference counting
-
-**Memory Layout**:
-```
-[Heap_Base]
-  [Block1_Header: size][data...]
-  [Block2_Header: size][data...]
-  [Free_Block_Header: size][unused...]
-  ...
-```
-
-**Pros**:
-- Efficient memory use (allocate only what's needed)
-- Unlimited array count (within memory limits)
-- Variable array sizes
-- Production-grade solution
-
-**Cons**:
-- Very complex (500+ lines for allocator + GC)
-- Performance overhead (allocation/deallocation)
-- Fragmentation issues without compaction
-- Debugging difficulty
-
-**Complexity**: Very High (would require 2-3 days of work)
-
-### Option C: Hybrid - Limited Dynamic Pool (Recommended)
-
-**Approach**:
-- Reserve a dynamic memory pool for arrays (e.g., 2KB)
-- Simple bump allocator: tracks next free address
-- Arrays stored as: [length_word][element1][element2]...
-- No freeing - rely on limited scope (function-local arrays die when function returns)
-- Arrays are effectively "leased" for the duration of execution
-
-**Memory Layout**:
-```
-[Array_Pool_Base] (stored in global variable or header)
-[Array_Pool_Current] (stored in global variable, advances with each allocation)
-[Array_Pool_End] (fixed at Array_Pool_Base + 2KB)
-
-Pool Contents:
-  [Array0: length_word=3][elem0][elem1][elem2]
-  [Array1: length_word=5][elem0][elem1][elem2][elem3][elem4]
-  [Array_Pool_Current] <- points here
-  [unused space...]
-  [Array_Pool_End]
-```
-
-**Implementation**:
-```pseudo
-CreateArray(size):
-  current = load_global(ARRAY_POOL_CURRENT)
-  needed = 2 + (size * 2)  // length word + elements (2 bytes each)
-  if current + needed > ARRAY_POOL_END:
-    error("Out of array memory")
-  store_word(current, 0)  // initial length = 0
-  for i in 0..size:
-    store_word(current + 2 + i*2, 0)  // zero-initialize elements
-  store_global(ARRAY_POOL_CURRENT, current + needed)
-  return current  // array handle is its base address
-
-ArrayAdd(array_base, value):
-  length = load_word(array_base)
-  store_word(array_base + 2 + length*2, value)
-  store_word(array_base, length + 1)
-
-GetArrayElement(array_base, index):
-  return load_word(array_base + 2 + index*2)
-
-ArrayLength(array_base):
-  return load_word(array_base)
-```
-
-**Pros**:
-- Reasonable memory efficiency
-- Manageable complexity (300-400 lines)
-- Good performance (simple pointer arithmetic)
-- Handles most practical use cases
-
-**Cons**:
-- Can run out of space in long-running games
-- No memory reclamation (leak until game restart)
-- Limited total array capacity
-- Need to decide pool size at compile time
-
-**Complexity**: Medium (1-2 days of focused work)
-
-### Option D: Optimization - Eliminate Arrays (Fastest to Implement)
-
-**Approach**:
-- Detect specific pattern: `let arr = []; for x in collection { if condition { arr.add(x) } }; for y in arr { ... }`
-- Transform to: `for x in collection { if condition { ... } }`
-- Inline the filter logic directly into iteration
-
-**Pros**:
-- No implementation needed (optimization only)
-- Optimal performance (no array overhead)
-- Solves immediate problem
-
-**Cons**:
-- Doesn't help general array use cases
-- Complex pattern matching/transformation logic
-- Brittle (minor code changes break optimization)
-- Not scalable to other array uses
-
-**Complexity**: Medium (pattern matching + AST transformation)
-
-## Recommendation
-
-**Implement Option C: Hybrid Limited Dynamic Pool**
-
-### Constraints:
-- Fixed 2KB array pool in dynamic memory
-- Maximum 100 arrays simultaneously (average 20 bytes each)
-- Maximum 256 elements per array (512 bytes + 2 byte header)
-- Function-scoped allocation model (no explicit free)
-
-### Rationale:
-1. **Solves the immediate problem**: Arrays will work for mini_zork use cases
-2. **Manageable scope**: Can be implemented and tested in 1-2 days
-3. **Good performance**: Direct memory access, no GC overhead
-4. **Upgrade path**: Can later add freeing/GC if needed
-5. **Practical limits**: 2KB is enough for typical game logic arrays
-
-### Required Changes:
-
-#### 1. Header Setup (codegen_headers.rs):
-- Reserve 2KB region after globals, before objects
-- Add ARRAY_POOL_BASE global variable (points to pool start)
-- Add ARRAY_POOL_CURRENT global variable (points to next free address)
-- Initialize ARRAY_POOL_CURRENT = ARRAY_POOL_BASE in init routine
-
-#### 2. CreateArray (codegen_instructions.rs):
-- Load ARRAY_POOL_CURRENT
-- Check bounds: current + needed < ARRAY_POOL_BASE + 2048
-- Store size at [current]
-- Zero-initialize elements
-- Store current + needed → ARRAY_POOL_CURRENT
-- Push current to stack (array handle)
-
-#### 3. ArrayAdd (codegen_instructions.rs):
-- Resolve array_base and value operands
-- Load length from [array_base]
-- Store value at [array_base + 2 + length*2]
-- Store length+1 at [array_base]
-
-#### 4. GetArrayElement (codegen_instructions.rs):
-- Resolve array_base and index operands
-- Load value from [array_base + 2 + index*2]
-- Push to stack
-
-#### 5. ArrayLength (codegen_instructions.rs):
-- Resolve array_base operand
-- Load value from [array_base]
-- Push to stack
-
-#### 6. ArrayEmpty (codegen_instructions.rs):
-- Resolve array_base operand
-- Load length from [array_base]
-- Push (length == 0) to stack
-
-### Testing Strategy:
-1. Unit tests for each array operation
-2. Integration test: create array, add elements, iterate, check length
-3. Bounds test: verify out-of-memory error when pool exhausted
-4. mini_zork test: list_objects function should work correctly
-
-### Risk Assessment:
-- **Memory layout changes**: Medium risk - must update header addresses carefully
-- **Global variable allocation**: Low risk - well-understood pattern
-- **Z-Machine instruction correctness**: Medium risk - need careful testing of loadw/storew
-- **Performance impact**: Low - array operations are simple memory access
-
-### Estimated Effort:
-- Implementation: 4-6 hours
-- Testing: 2-3 hours
-- Debugging: 2-4 hours
-- **Total**: 1-2 days
-
-## Future Enhancements (Post-MVP)
-
-### Phase 2: Add Basic Freeing
-- Track array reference counts
-- Free when count reaches zero
-- Simple mark-and-sweep at function return
-
-### Phase 3: Full Dynamic Allocator
-- Replace bump allocator with free list
-- Support arbitrary allocation/deallocation
-- Defragmentation/compaction
-
-### Phase 4: Optimization
-- Compile-time array analysis
-- Inline small arrays into local variables
-- Eliminate unnecessary allocations
