@@ -296,13 +296,13 @@ fn show_inventory() {
 }
 
 fn handle_go(direction) {
-    let exit = player.location.exits[direction];
-    
+    let exit = player.location.get_exit(direction);
+
     if exit.none() {
         print("You can't go that way.");
         return;
     }
-    
+
     if exit.blocked {
         print(exit.message);
         return;
@@ -363,16 +363,9 @@ fn player_can_see(obj) -> bool {
 
 fn list_objects(location) {
     let objects = location.contents();
-    let visible_objects = [];
-    
+
     for obj in objects {
-        if obj != player {  // Don't list the player object
-            visible_objects.add(obj);
-        }
-    }
-    
-    if !visible_objects.empty() {
-        for obj in visible_objects {
+        if obj != player {
             print("There is " + obj.name + " here.");
         }
     }

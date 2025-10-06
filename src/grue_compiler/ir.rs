@@ -2529,33 +2529,36 @@ impl IrGenerator {
                 // Special handling for known built-in methods
                 match method.as_str() {
                     "contents" => {
-                        // contents() method: return array of objects contained in this object
-                        // This is a built-in method that traverses the Z-Machine object tree
-                        // Create array to hold the contents
-                        let array_temp = self.next_id();
-                        block.add_instruction(IrInstruction::CreateArray {
-                            target: array_temp,
-                            size: IrValue::Integer(10), // Initial capacity
+                        // contents() method: returns the object ID to enable direct object tree iteration
+                        // The caller will use for-loops which generate GetObjectChild/GetObjectSibling
+                        // instructions to traverse the Z-Machine object tree directly
+
+                        // Simply return the object ID - the for-loop will iterate its children
+                        block.add_instruction(IrInstruction::StoreVar {
+                            var_id: result_temp,
+                            source: object_temp,
                         });
 
-                        // Use a built-in function call to populate the array with object contents
-                        // The Z-Machine runtime will handle the object tree traversal
+                        // Track that this result came from an object tree root
+                        // This signals to for-loop generation to use GetObjectChild/GetObjectSibling
+                        self.variable_sources
+                            .insert(result_temp, VariableSource::ObjectTreeRoot(object_temp));
+                    }
+                    "get_exit" => {
+                        // get_exit(direction) method: lookup exit by direction string
+                        // This is a builtin that will be implemented in codegen_builtins.rs
                         let builtin_id = self.next_id();
                         self.builtin_functions
-                            .insert(builtin_id, "get_object_contents".to_string());
+                            .insert(builtin_id, "get_exit".to_string());
 
-                        let mut call_args = vec![object_temp]; // Object to get contents of
-                        call_args.extend(arg_temps); // Any additional arguments
+                        let mut call_args = vec![object_temp];
+                        call_args.extend(arg_temps);
 
                         block.add_instruction(IrInstruction::Call {
                             target: Some(result_temp),
                             function: builtin_id,
                             args: call_args,
                         });
-
-                        // Track that this result came from an object tree traversal
-                        self.variable_sources
-                            .insert(result_temp, VariableSource::ObjectTreeRoot(object_temp));
                     }
                     "empty" => {
                         // empty() method: return true if object has no contents

@@ -808,6 +808,33 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
+    /// Generate get_exit builtin - looks up exit by direction string
+    pub fn generate_get_exit_builtin(
+        &mut self,
+        args: &[IrId],
+        target: Option<u32>,
+    ) -> Result<(), CompilerError> {
+        if args.len() != 2 {
+            return Err(CompilerError::CodeGenError(format!(
+                "get_exit expects 2 arguments (room, direction), got {}",
+                args.len()
+            )));
+        }
+
+        // TODO: Implement actual exit lookup from room.exits IndexMap
+        // For now, return null (0) as placeholder
+        if let Some(store_var) = target {
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Or),
+                &[Operand::LargeConstant(0), Operand::SmallConstant(0)],
+                Some(store_var as u8),
+                None,
+            )?;
+        }
+
+        Ok(())
+    }
+
     /// Generate get_object_size builtin - returns the size of an object
     pub fn generate_get_object_size_builtin(
         &mut self,

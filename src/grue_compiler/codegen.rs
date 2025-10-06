@@ -8992,6 +8992,7 @@ impl ZMachineCodeGen {
             "get_object_contents" => self.generate_get_object_contents_builtin(args, target),
             "object_is_empty" => self.generate_object_is_empty_builtin(args, target),
             "value_is_none" => self.generate_value_is_none_builtin(args, target),
+            "get_exit" => self.generate_get_exit_builtin(args, target),
             "get_object_size" => self.generate_get_object_size_builtin(args, target),
             "array_add_item" => self.generate_array_add_item_builtin(args, target),
             // String functions
