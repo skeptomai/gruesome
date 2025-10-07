@@ -6,7 +6,7 @@
 world {
     room west_of_house "West of House" {
         desc: "You are standing in an open field west of a white house, with a boarded front door."
-        
+
         object mailbox {
             names: ["small mailbox", "mailbox", "box"]
             desc: "The small mailbox is " + (mailbox.open ? "open" : "closed") + "."
@@ -189,12 +189,34 @@ grammar {
     verb "read" {
         noun => handle_read($noun)
     }
+
+    verb "quit" {
+        default => handle_quit()
+    }
+
+    // Add yes/y/no/n to dictionary (used for quit confirmation)
+    verb "yes" {
+        default => handle_yes()
+    }
+
+    verb "y" {
+        default => handle_yes()
+    }
+
+    verb "no" {
+        default => handle_no()
+    }
+
+    verb "n" {
+        default => handle_no()
+    }
 }
 
 fn look_around() {
+    clear_quit_state();
     print(player.location.desc);
     list_objects(player.location);
-    
+
     // Call location-specific look handler if it exists
     if player.location.on_look {
         player.location.on_look();
@@ -202,6 +224,7 @@ fn look_around() {
 }
 
 fn examine(obj) {
+    clear_quit_state();
     if obj.location == player.location || obj.location == player {
         print(obj.desc);
     } else {
@@ -253,11 +276,12 @@ fn handle_close(obj) {
 }
 
 fn handle_take(obj) {
+    clear_quit_state();
     if obj.location == player {
         print("You already have that.");
         return;
     }
-    
+
     if !player_can_see(obj) {
         print("You can't see any such thing.");
         return;
@@ -296,6 +320,7 @@ fn show_inventory() {
 }
 
 fn handle_go(direction) {
+    clear_quit_state();
     let exit = player.location.get_exit(direction);
 
     if exit.none() {
@@ -337,12 +362,39 @@ fn handle_read(obj) {
         print("You can't see any such thing.");
         return;
     }
-    
+
     if obj == leaflet {
         print(leaflet.desc);
     } else {
         print("There's nothing to read on that.");
     }
+}
+
+fn handle_quit() {
+    print("Are you sure you want to quit? (y/n)");
+    player.quit_pending = true;
+}
+
+fn handle_yes() {
+    if player.quit_pending {
+        player.quit_pending = false;
+        quit();
+    } else {
+        print("Yes to what?");
+    }
+}
+
+fn handle_no() {
+    if player.quit_pending {
+        player.quit_pending = false;
+        print("OK, continuing game.");
+    } else {
+        print("No to what?");
+    }
+}
+
+fn clear_quit_state() {
+    player.quit_pending = false;
 }
 
 fn player_can_see(obj) -> bool {

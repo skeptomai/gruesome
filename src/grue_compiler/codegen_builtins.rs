@@ -1204,4 +1204,26 @@ impl ZMachineCodeGen {
 
         Ok(())
     }
+
+    /// Generate quit builtin function - exits the game
+    pub fn generate_quit_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+        if !args.is_empty() {
+            return Err(CompilerError::CodeGenError(format!(
+                "quit expects 0 arguments, got {}",
+                args.len()
+            )));
+        }
+
+        log::debug!("Generating QUIT opcode to exit game");
+
+        // Emit QUIT opcode (0x0A = 0OP:quit)
+        self.emit_instruction_typed(
+            Opcode::Op0(Op0::Quit),
+            &[],  // No operands
+            None, // No store
+            None, // No branch
+        )?;
+
+        Ok(())
+    }
 }

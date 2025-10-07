@@ -2420,7 +2420,7 @@ impl ZMachineCodeGen {
         if self.ir_id_to_string.contains_key(&value) {
             // Print string literal using print_paddr
             // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
-            let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
+            let operand_location = self.code_space.len() + 1; // +1 for opcode byte (offset, will be translated to final address)
             let _layout = self.emit_instruction_typed(
                 Opcode::Op1(Op1::PrintPaddr), // print_paddr opcode (1OP:141)
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder for string address
@@ -2618,6 +2618,7 @@ impl ZMachineCodeGen {
                         "print" => return self.generate_print_builtin(args),
                         "print_ret" => self.translate_print_ret_builtin_inline(args)?,
                         "new_line" => self.translate_new_line_builtin_inline(args)?,
+                        "quit" => return self.generate_quit_builtin(args),
                         "move" => self.translate_move_builtin_inline(args)?,
                         "get_location" => {
                             self.translate_get_location_builtin_inline(args, target)?
@@ -2727,7 +2728,7 @@ impl ZMachineCodeGen {
 
             // Generate call instruction
             // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
-            let operand_location = self.final_code_base + self.code_space.len() + 2; // +2 for opcode and operand types bytes
+            let operand_location = self.code_space.len() + 2; // +2 for opcode and operand types bytes (offset, will be translated to final address)
             let _layout = self.emit_instruction_typed(
                 Opcode::OpVar(OpVar::CallVs), // call_vs raw opcode (VAR:224)
                 &operands,
@@ -2815,7 +2816,7 @@ impl ZMachineCodeGen {
 
                     // Generate call instruction
                     // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
-                    let operand_location = self.final_code_base + self.code_space.len() + 2; // +2 for opcode and operand types bytes
+                    let operand_location = self.code_space.len() + 2; // +2 for opcode and operand types bytes (offset, will be translated to final address)
                     let _layout = self.emit_instruction_typed(
                         Opcode::OpVar(OpVar::CallVs), // call_vs raw opcode (VAR:224)
                         &operands,
@@ -2909,7 +2910,7 @@ impl ZMachineCodeGen {
                     };
 
                     // Generate call instruction
-                    let operand_location = self.final_code_base + self.code_space.len() + 2; // +2 for opcode and operand types bytes
+                    let operand_location = self.code_space.len() + 2; // +2 for opcode and operand types bytes (offset, will be translated to final address)
                     let _layout = self.emit_instruction_typed(
                         Opcode::Op1(Op1::Call1s), // call_1s opcode for 1 operand (1OP:136)
                         &operands,
@@ -3569,7 +3570,7 @@ impl ZMachineCodeGen {
             .insert(string_id, "[OBJECT_LIST]".to_string());
 
         // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
-        let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
+        let operand_location = self.code_space.len() + 1; // +1 for opcode byte (offset, will be translated to final address)
         let layout = self.emit_instruction_typed(
             Opcode::Op1(Op1::PrintPaddr),
             &[Operand::LargeConstant(placeholder_word())],
@@ -3615,7 +3616,7 @@ impl ZMachineCodeGen {
             .insert(string_id, "[CONTAINER_CONTENTS]".to_string());
 
         // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
-        let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
+        let operand_location = self.code_space.len() + 1; // +1 for opcode byte (offset, will be translated to final address)
         let layout = self.emit_instruction_typed(
             Opcode::Op1(Op1::PrintPaddr),
             &[Operand::LargeConstant(placeholder_word())],
@@ -4975,6 +4976,17 @@ impl ZMachineCodeGen {
     }
 
     /// CRITICAL FIX: Patch property table addresses in object entries from object space relative to absolute addresses
+    ///
+    /// After object_space is copied to final_data, property table pointers in object headers
+    /// need to be updated from space-relative offsets to absolute memory addresses.
+    ///
+    /// CRITICAL: We calculate max_objects from total space size, which includes property tables.
+    /// This means we'll loop past actual objects into property table data. We detect the boundary
+    /// by checking if property table pointers are valid (must point >= defaults_size).
+    /// When we hit invalid pointers, we BREAK (not continue) - we've reached the boundary.
+    ///
+    /// Bug History: Previously looped through 126 "objects" when only 14 existed, treating
+    /// property table bytes as object headers and corrupting property data. See CLAUDE.md Bug 6.
     fn patch_property_table_addresses(&mut self, object_base: usize) -> Result<(), CompilerError> {
         log::debug!(" PATCH: Starting property table address patching");
 
@@ -4995,6 +5007,8 @@ impl ZMachineCodeGen {
         let objects_start = defaults_size; // Objects start after defaults
 
         // Calculate maximum possible objects from remaining space
+        // WARNING: This OVERESTIMATES because remaining_space includes property tables!
+        // We use validation below to detect when we've gone past actual objects.
         let remaining_space = self.object_space.len() - objects_start;
         let max_objects = remaining_space / obj_entry_size;
 
@@ -5012,6 +5026,12 @@ impl ZMachineCodeGen {
             max_objects,
             obj_entry_size
         );
+
+        // Calculate minimum valid property table address
+        // Property tables must be AFTER all object headers
+        // We don't know exact object count, but we can detect when we've gone too far
+        // by checking if property table pointer points backwards into defaults/headers
+        let min_valid_prop_addr = objects_start; // At minimum, must be after defaults
 
         // Patch property table addresses for each object
         let mut objects_patched = 0;
@@ -5066,14 +5086,22 @@ impl ZMachineCodeGen {
                 space_relative_addr
             );
 
-            // Check if this looks like a valid property table address (non-zero, within reasonable bounds)
-            if space_relative_addr == 0 || space_relative_addr > self.object_space.len() as u16 {
+            // Check if this looks like a valid property table address
+            // Valid property table pointers must:
+            // 1. Be non-zero
+            // 2. Point after the defaults table (>= min_valid_prop_addr)
+            // 3. Be within object_space bounds
+            if space_relative_addr == 0
+                || space_relative_addr < min_valid_prop_addr as u16
+                || space_relative_addr > self.object_space.len() as u16
+            {
                 log::debug!(
-                    " PATCH: Object {} has invalid prop table addr 0x{:04x}, skipping",
+                    " PATCH: Object {} has invalid prop table addr 0x{:04x} (expected >= 0x{:04x}), stopping iteration",
                     obj_index + 1,
-                    space_relative_addr
+                    space_relative_addr,
+                    min_valid_prop_addr
                 );
-                continue; // Skip invalid or empty addresses
+                break; // Stop iteration - we've gone past actual objects into property table data
             }
 
             // Calculate absolute final memory address
@@ -7426,8 +7454,8 @@ impl ZMachineCodeGen {
     fn is_next_instruction(&self, label: IrId) -> bool {
         // First check pre-calculated label addresses (most reliable)
         if let Some(&target_addr) = self.label_addresses.get(&label) {
-            // FIXED: Calculate next instruction address using consistent final code space
-            let next_addr_after_jump = self.final_code_base + self.code_space.len() + 3;
+            // FIXED: Compare code space offsets (label_addresses contains offsets, not final addresses)
+            let next_addr_after_jump = self.code_space.len() + 3;
             let is_next = target_addr == next_addr_after_jump;
 
             log::debug!(
@@ -7440,8 +7468,8 @@ impl ZMachineCodeGen {
 
         // Fallback: Check if label is already resolved and points to next instruction
         if let Some(&target_addr) = self.reference_context.ir_id_to_address.get(&label) {
-            // FIXED: Use consistent final code space address calculation
-            let next_addr_after_jump = self.final_code_base + self.code_space.len() + 3;
+            // FIXED: ir_id_to_address may contain final addresses (after conversion), compare appropriately
+            let next_addr_after_jump = self.code_space.len() + 3;
             return target_addr == next_addr_after_jump;
         }
 
@@ -9068,6 +9096,7 @@ impl ZMachineCodeGen {
             "print" => self.generate_print_builtin(args),
             "print_ret" => self.generate_print_ret_builtin(args),
             "new_line" => self.generate_new_line_builtin(args),
+            "quit" => self.generate_quit_builtin(args),
             "move" => self.generate_move_builtin(args),
             "get_location" => self.translate_get_location_builtin_inline(args, target),
             "to_string" => self.generate_to_string_builtin(args, target),

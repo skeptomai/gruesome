@@ -1047,6 +1047,8 @@ impl IrGenerator {
                 | "is_array"
                 | "is_object"
                 | "typeof"
+                // Game control
+                | "quit"
         )
     }
 
@@ -1667,6 +1669,10 @@ impl IrGenerator {
 
         // Set player description
         player_properties.set_string(desc_prop, "yourself".to_string());
+
+        // Add quit_pending property for quit confirmation flow
+        let quit_pending_prop = self.property_manager.get_property_number("quit_pending");
+        player_properties.set_word(quit_pending_prop, 0); // Initially false
 
         // Create player object
         let player_object = IrObject {

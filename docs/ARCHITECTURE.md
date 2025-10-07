@@ -1880,3 +1880,122 @@ For a 50-room game: ~750-1000 bytes total, well within Z-Machine limits.
   - `src/grue_compiler/codegen_builtins.rs` - get_exit() builtin
   - `src/grue_compiler/ir.rs` - Accessor method handlers
 - **Test Case**: `examples/mini_zork.grue` - handle_go() function
+
+---
+
+## CRITICAL: Property Table Patching Loop Bounds (October 6, 2025)
+
+### The Problem
+
+**NEVER calculate object count from object_space size** - The space includes both object headers AND property table data. Calculating `max_objects = (object_space.len() - defaults_size) / obj_entry_size` will overrun into property tables, causing memory corruption.
+
+### Historical Bug
+
+**Symptom**: "Property 14 has size 8 (>2), cannot use put_prop" when setting `player.location.visited = true`
+
+**Root Cause**:
+1. `patch_property_table_addresses()` calculated max_objects = 126 from space size
+2. Only 14 actual objects existed (1 player + 8 rooms + 5 named objects)
+3. Loop iterated through objects 1-126, treating property table bytes as object headers
+4. Object 17 (fake) at offset 0x00ce had "property table pointer" at 0x03b5-0x03b6
+5. This overlapped with West of House's (object 2) property 14 size byte at 0x03b6
+6. Patching wrote 0x02ee, changing size byte from 0x0e to 0xee (size 1 → size 8)
+7. Runtime error: "Property 14 has size 8 (>2)"
+
+**Memory Layout**:
+```
+Object Space (1197 bytes total):
+  0x0000-0x003d: Property defaults (62 bytes)
+  0x003e-0x00bb: Object headers (14 × 9 = 126 bytes)
+  0x00bc-0x04ac: Property tables (1009 bytes)
+
+Incorrect calculation:
+  max_objects = (1197 - 62) / 9 = 126 objects
+
+Actual objects: 14
+
+Loop overran by 112 iterations, corrupting property data!
+```
+
+### The Fix (codegen.rs:5035-5109)
+
+**Implementation**:
+```rust
+// Calculate minimum valid property table address
+// Property tables must be AFTER all object headers
+let min_valid_prop_addr = objects_start; // At minimum, must be after defaults
+
+// Patch property table addresses for each object
+for obj_index in 0..max_objects {
+    // ... read property table pointer from object header ...
+
+    // Check if this looks like a valid property table address
+    // Valid property table pointers must:
+    // 1. Be non-zero
+    // 2. Point after the defaults table (>= min_valid_prop_addr)
+    // 3. Be within object_space bounds
+    if space_relative_addr == 0
+        || space_relative_addr < min_valid_prop_addr as u16
+        || space_relative_addr > self.object_space.len() as u16 {
+        log::debug!(
+            " PATCH: Object {} has invalid prop table addr 0x{:04x} (expected >= 0x{:04x}), stopping iteration",
+            obj_index + 1,
+            space_relative_addr,
+            min_valid_prop_addr
+        );
+        break; // Stop iteration - we've gone past actual objects into property table data
+    }
+
+    // ... patch valid property table pointer ...
+}
+```
+
+**Key Points**:
+1. **Use `break` not `continue`**: Invalid pointer means we've reached the boundary
+2. **Validate pointer direction**: Property tables must point AFTER object headers (>= 0x3e for V3)
+3. **Stop iteration immediately**: Don't try to continue searching
+
+### Detection
+
+**Compile-time**: No warning - invalid calculation produces valid-looking but wrong max_objects
+
+**Runtime**: Property errors during put_prop/get_prop operations:
+- "Property N has size X (>2)" for word properties
+- "Invalid property number"
+- Corrupted property data
+
+**Debug logging**:
+```bash
+# Check how many objects get patched
+RUST_LOG=debug cargo run --bin grue-compiler -- game.grue -o test.z3 2>&1 | grep "PATCH: Object"
+
+# Should see exactly N objects (e.g., 14), then "stopping iteration"
+# If you see 50+ objects, the loop is overrunning
+```
+
+### Prevention Rules
+
+**DO**:
+- ✅ Track actual object count during object table generation
+- ✅ Validate property table pointers point forward (>= defaults_end)
+- ✅ Use `break` when invalid pointer detected (reached boundary)
+- ✅ Store `num_objects` in CodeGen struct if available
+
+**DON'T**:
+- ❌ Calculate max_objects from object_space.len() - includes property data
+- ❌ Use `continue` on invalid pointer - means we're past the boundary
+- ❌ Assume all entries in object_space are object headers
+- ❌ Skip validation "because it should work"
+
+### Related Bugs
+
+This is similar to the double-offset bug (commit history) where address calculations didn't account for memory layout boundaries. Both bugs share the pattern: **assuming uniform memory structure when layout has distinct regions**.
+
+**Lesson**: Z-Machine memory has clearly defined regions (defaults → headers → properties). Iteration must respect these boundaries, not just calculate from total size.
+
+### References
+
+- **Bug Discovery**: October 6, 2025
+- **File**: `src/grue_compiler/codegen.rs` lines 5035-5109
+- **Related**: Double-offset bug (address boundary violations)
+- **CLAUDE.md**: Bug 6 documentation

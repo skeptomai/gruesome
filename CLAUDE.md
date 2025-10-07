@@ -1,8 +1,8 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 5, 2025) - SSA VIOLATIONS FIXED, PLACEHOLDER ARRAY ISSUE 🔍
+## CURRENT STATUS (October 6, 2025) - PROPERTY TABLE PATCHING BUG FIXED ✅
 
-**PROGRESS**: Fixed five bugs, mini_zork now progresses past for-loops.
+**PROGRESS**: Fixed property table corruption bug that caused "Property 14 has size 8 (>2)" error.
 
 ### Bug 1: Opcode Form Selection ✅ FIXED
 - **Issue**: Raw opcode 0x08 emitted as 2OP:OR (0xC8) instead of VAR:push (0xE8)
@@ -39,6 +39,23 @@
 - **Technical Debt**: ⚠️ Current implementation incomplete, will fail on real code
 - **Required**: Implement Option A from ARCHITECTURE.md before production use
 - **Details**: See `docs/ARCHITECTURE.md` - "Object Tree Iteration Implementation"
+
+### Bug 6: Property Table Patching Loop Overrun ✅ FIXED
+- **Issue**: "Property 14 has size 8 (>2), cannot use put_prop" when setting `player.location.visited = true`
+- **Root Cause**: `patch_property_table_addresses()` looped through 126 objects when only 14 existed
+  - Calculated max_objects from `(object_space.len() - defaults_size) / obj_entry_size`
+  - This includes property table data, not just object headers
+  - Loop treated property table bytes as object headers, corrupting property data
+- **Symptom**: Object 17 (fake) at offset 0x00ce had property table pointer at 0x03b5-0x03b6
+  - This overlapped with West of House's property 14 size byte at 0x03b6
+  - Writing Object 17's corrected address (0x02ee) overwrote size byte: 0x0e → 0xee
+- **Fix**: Added validation to stop loop when property table pointer is invalid (`codegen.rs:5094-5109`)
+  - Property table pointers must be >= defaults_size (0x3e for V3)
+  - Changed `continue` to `break` - stop iteration entirely when invalid pointer detected
+  - Loop now patches exactly 14 objects, stops at boundary between headers and property tables
+- **Impact**: Compiled games no longer corrupt object property data
+- **File**: `src/grue_compiler/codegen.rs` lines 5035-5109
+- **Prevention**: NEVER calculate object count from remaining space - it includes non-object data
 
 **Tests**: All 174 tests passing.
 
