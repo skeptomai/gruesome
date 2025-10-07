@@ -375,48 +375,99 @@ impl ZMachineCodeGen {
             room_properties.set_word(location_prop, 0); // Rooms don't have a location
             room_properties.set_byte(on_look_prop, 0); // No special on_look handler by default
 
-            // Generate exit properties for room navigation
-            // Following Inform 6 pattern: individual properties per direction
-            // - exit_north, exit_south, exit_east, exit_west, etc.
-            // - Property value is room ID for normal exits, string for blocked exits
-            // - Simple property reads at runtime, no complex parsing needed
-            for (direction, exit_target) in &room.exits {
-                // Map direction string to property name
-                let prop_name = match direction.as_str() {
-                    "north" => "exit_north",
-                    "south" => "exit_south",
-                    "east" => "exit_east",
-                    "west" => "exit_west",
-                    "northeast" => "exit_northeast",
-                    "northwest" => "exit_northwest",
-                    "southeast" => "exit_southeast",
-                    "southwest" => "exit_southwest",
-                    "up" => "exit_up",
-                    "down" => "exit_down",
-                    "in" => "exit_in",
-                    "out" => "exit_out",
-                    _ => {
-                        log::warn!(
-                            "Unknown direction '{}' in room '{}', skipping exit",
-                            direction,
-                            room.name
-                        );
-                        continue;
-                    }
-                };
+            // Generate exit properties for room navigation using parallel arrays
+            // Architecture: Three parallel-array properties enable runtime direction lookup
+            // - exit_directions: Packed array of dictionary word addresses (2 bytes each)
+            // - exit_types: Array of type codes (1 byte each): 0=room, 1=blocked
+            // - exit_data: Packed array of data values (2 bytes each): room_id or message_addr
+            // Return encoding: (type << 14) | data
+            // See docs/ARCHITECTURE.md "Exit System Architecture" for full specification
+            if !room.exits.is_empty() {
+                let exit_directions_prop =
+                    *self.property_numbers.get("exit_directions").unwrap_or(&20);
+                let exit_types_prop = *self.property_numbers.get("exit_types").unwrap_or(&21);
+                let exit_data_prop = *self.property_numbers.get("exit_data").unwrap_or(&22);
 
-                let prop_num = *self.property_numbers.get(prop_name).unwrap_or(&20);
+                let mut direction_addrs: Vec<u8> = Vec::new();
+                let mut exit_types: Vec<u8> = Vec::new();
+                let mut exit_data: Vec<u8> = Vec::new();
 
-                match exit_target {
-                    crate::grue_compiler::ir::IrExitTarget::Room(room_id) => {
-                        // Store room ID as word property
-                        room_properties.set_word(prop_num, *room_id as u16);
+                for (direction, exit_target) in &room.exits {
+                    // Lookup dictionary word address for direction
+                    // Dictionary has been generated in Step 2b, before object generation (Step 2c)
+                    let dict_addr = match self.lookup_word_in_dictionary(direction) {
+                        Ok(addr) => addr,
+                        Err(e) => {
+                            log::warn!(
+                                "Failed to lookup direction '{}' in dictionary for room '{}': {:?}",
+                                direction,
+                                room.name,
+                                e
+                            );
+                            continue;
+                        }
+                    };
+
+                    // Add to exit_directions (2 bytes per direction word address)
+                    direction_addrs.push((dict_addr >> 8) as u8);
+                    direction_addrs.push((dict_addr & 0xFF) as u8);
+
+                    // Add to exit_types and exit_data based on target type
+                    match exit_target {
+                        crate::grue_compiler::ir::IrExitTarget::Room(room_id) => {
+                            // Type 0 = normal room exit
+                            exit_types.push(0);
+                            // Data = room object ID (2 bytes)
+                            exit_data.push((*room_id >> 8) as u8);
+                            exit_data.push((*room_id & 0xFF) as u8);
+                        }
+                        crate::grue_compiler::ir::IrExitTarget::Blocked(message) => {
+                            // Type 1 = blocked exit with message
+                            exit_types.push(1);
+
+                            // Get string ID for the blocked message
+                            // The message was already collected during string collection phase
+                            let string_id = match self.find_or_create_string_id(message) {
+                                Ok(id) => id,
+                                Err(e) => {
+                                    log::error!(
+                                        "Failed to get string ID for blocked exit message in room '{}': {:?}",
+                                        room.name,
+                                        e
+                                    );
+                                    continue;
+                                }
+                            };
+
+                            // Resolve string ID to final address
+                            // Note: String addresses are resolved during layout phase
+                            // For now, we store the string_id and will patch it during resolution
+                            // We'll use a placeholder and add an unresolved reference
+                            exit_data.push((string_id >> 8) as u8);
+                            exit_data.push((string_id & 0xFF) as u8);
+
+                            log::debug!(
+                                "Exit system: Room '{}' direction '{}' blocked with message '{}' (string_id={})",
+                                room.name,
+                                direction,
+                                message,
+                                string_id
+                            );
+                        }
                     }
-                    crate::grue_compiler::ir::IrExitTarget::Blocked(message) => {
-                        // Store blocked message as string property
-                        // At runtime, presence of string indicates blocked exit
-                        room_properties.set_string(prop_num, message.clone());
-                    }
+                }
+
+                // Write parallel array properties to room object
+                if !direction_addrs.is_empty() {
+                    room_properties.set_bytes(exit_directions_prop, direction_addrs);
+                    room_properties.set_bytes(exit_types_prop, exit_types);
+                    room_properties.set_bytes(exit_data_prop, exit_data);
+
+                    log::debug!(
+                        "Exit system: Generated parallel arrays for room '{}' with {} exits",
+                        room.name,
+                        room.exits.len()
+                    );
                 }
             }
 

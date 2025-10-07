@@ -605,8 +605,18 @@ impl ZMachineCodeGen {
             self.string_space.len()
         );
 
-        // Phase 2b: Generate objects/properties to object_space
-        log::debug!("🏠 Step 2b: Generating object space");
+        // Phase 2b: Generate dictionary to dictionary_space (BEFORE objects for exit system)
+        // CRITICAL: Dictionary must be generated before objects because room exit properties
+        // need to look up direction words (north, south, etc.) in the dictionary
+        log::debug!("📖 Step 2b: Generating dictionary space");
+        self.generate_dictionary_space(ir)?;
+        log::info!(
+            " Step 2b complete: Dictionary space populated ({} bytes)",
+            self.dictionary_space.len()
+        );
+
+        // Phase 2c: Generate objects/properties to object_space
+        log::debug!("🏠 Step 2c: Generating object space");
         if ir.has_objects() {
             log::debug!("Generating full object table for Interactive program");
             self.setup_object_table_generation();
@@ -616,16 +626,8 @@ impl ZMachineCodeGen {
             self.generate_objects_to_space(ir)?;
         }
         log::info!(
-            " Step 2b complete: Object space populated ({} bytes)",
+            " Step 2c complete: Object space populated ({} bytes)",
             self.object_space.len()
-        );
-
-        // Phase 2c: Generate dictionary to dictionary_space
-        log::debug!("📖 Step 2c: Generating dictionary space");
-        self.generate_dictionary_space(ir)?;
-        log::info!(
-            " Step 2c complete: Dictionary space populated ({} bytes)",
-            self.dictionary_space.len()
         );
 
         // Phase 2d: Generate global variables to globals_space
@@ -6089,7 +6091,7 @@ impl ZMachineCodeGen {
 
     /// Lookup a word in the generated dictionary and return its address
     /// This calculates the dictionary address based on alphabetical position
-    fn lookup_word_in_dictionary(&self, word: &str) -> Result<u16, CompilerError> {
+    pub(crate) fn lookup_word_in_dictionary(&self, word: &str) -> Result<u16, CompilerError> {
         // Dictionary layout:
         // [0] = separator count (0)
         // [1] = entry length (6)

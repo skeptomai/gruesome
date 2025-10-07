@@ -882,16 +882,115 @@ impl ZMachineCodeGen {
         }
 
         // Runtime path: Direction is a variable (e.g., from user input or parameter)
-        // TODO: Implement runtime dictionary-based direction mapping
-        // For now, return 0 (no exit found) to allow compilation
-        //
-        // Future implementation:
-        // 1. Tokenize direction string -> dictionary address
-        // 2. Compare against known direction words (north, south, etc.)
-        // 3. Branch to get_prop call with appropriate property number
+        // Implementation: Compare direction against each known direction string
+        // and call get_prop with the appropriate exit property number
 
-        log::warn!("get_exit with runtime direction variable not yet implemented, returning 0");
+        log::debug!("get_exit: Runtime direction lookup (variable direction)");
 
+        // List of supported directions and their properties
+        let directions = [
+            ("north", "exit_north"),
+            ("south", "exit_south"),
+            ("east", "exit_east"),
+            ("west", "exit_west"),
+            ("northeast", "exit_northeast"),
+            ("northwest", "exit_northwest"),
+            ("southeast", "exit_southeast"),
+            ("southwest", "exit_southwest"),
+            ("up", "exit_up"),
+            ("down", "exit_down"),
+            ("in", "exit_in"),
+            ("out", "exit_out"),
+        ];
+
+        let room_operand = self.resolve_ir_id_to_operand(room_id)?;
+        let direction_operand = self.resolve_ir_id_to_operand(direction_id)?;
+
+        // Allocate labels for control flow
+        let end_label = self.next_string_id;
+        self.next_string_id += 1;
+
+        // For each direction, compare and branch
+        for (direction_str, prop_name) in &directions {
+            // Look up property number
+            let prop_name_string = prop_name.to_string();
+            if let Some(&prop_num) = self.property_numbers.get(&prop_name_string) {
+                // Allocate label for next comparison
+                let next_label = self.next_string_id;
+                self.next_string_id += 1;
+
+                // Look up dictionary address for this direction
+                let dict_addr = self.lookup_word_in_dictionary(direction_str)?;
+
+                // Compare direction variable with this direction's dictionary address
+                // je direction_var, dict_addr → match_label
+                let layout = self.emit_instruction(
+                    0x01, // je (jump if equal)
+                    &[
+                        direction_operand.clone(),
+                        Operand::LargeConstant(dict_addr as u16),
+                    ],
+                    None,
+                    Some(0x7FFF), // Branch placeholder
+                )?;
+
+                // On match, emit get_prop and jump to end
+                let match_label = self.next_string_id;
+                self.next_string_id += 1;
+
+                self.reference_context
+                    .unresolved_refs
+                    .push(UnresolvedReference {
+                        reference_type: LegacyReferenceType::Branch,
+                        location: layout.branch_location.expect("je needs branch location"),
+                        target_id: match_label,
+                        is_packed_address: false,
+                        offset_size: 2,
+                        location_space: MemorySpace::Code,
+                    });
+
+                // Register match label
+                self.label_addresses.insert(match_label, self.code_address);
+                self.record_final_address(match_label, self.code_address);
+
+                // Emit get_prop for this direction's exit property
+                if let Some(store_var) = target {
+                    self.emit_instruction_typed(
+                        Opcode::Op2(Op2::GetProp),
+                        &[room_operand.clone(), Operand::SmallConstant(prop_num)],
+                        Some(store_var as u8),
+                        None,
+                    )?;
+                }
+
+                // Jump to end
+                let jump_layout = self.emit_instruction(
+                    0x0C, // jump
+                    &[Operand::LargeConstant(placeholder_word())],
+                    None,
+                    None,
+                )?;
+
+                self.reference_context
+                    .unresolved_refs
+                    .push(UnresolvedReference {
+                        reference_type: LegacyReferenceType::Jump,
+                        location: jump_layout
+                            .operand_location
+                            .expect("jump needs operand location"),
+                        target_id: end_label,
+                        is_packed_address: false,
+                        offset_size: 2,
+                        location_space: MemorySpace::Code,
+                    });
+
+                // Register next label for next iteration
+                self.label_addresses.insert(next_label, self.code_address);
+                self.record_final_address(next_label, self.code_address);
+            }
+        }
+
+        // No match found - return 0
         if let Some(store_var) = target {
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
@@ -900,6 +999,10 @@ impl ZMachineCodeGen {
                 None,
             )?;
         }
+
+        // Register end label
+        self.label_addresses.insert(end_label, self.code_address);
+        self.record_final_address(end_label, self.code_address);
 
         Ok(())
     }
