@@ -231,6 +231,14 @@ pub struct ZMachineCodeGen {
     pub ir_id_from_property: IndexSet<IrId>,
     /// Mapping from object names to object numbers (from IR generator)
     object_numbers: IndexMap<String, u16>,
+    /// Mapping from room IR IDs to Z-Machine object numbers
+    pub room_to_object_id: IndexMap<IrId, u16>,
+    /// Exit directions for each room: room_name -> Vec<direction_name>
+    /// Used to create DictionaryRef UnresolvedReferences when writing exit_directions property
+    pub room_exit_directions: IndexMap<String, Vec<String>>,
+    /// Track blocked exit message string IDs for UnresolvedReference creation
+    /// Maps room name -> Vec of (exit_index, string_id) for blocked exits
+    pub room_exit_messages: IndexMap<String, Vec<(usize, u32)>>,
     /// Global property registry: property name -> property number
     pub property_numbers: IndexMap<String, u8>,
     /// Properties used by each object: object_name -> set of property names
@@ -324,6 +332,14 @@ pub struct ZMachineCodeGen {
 
 impl ZMachineCodeGen {
     pub fn new(version: ZMachineVersion) -> Self {
+        // Initialize property numbers for standard properties
+        let mut property_numbers = IndexMap::new();
+
+        // Exit system properties (parallel arrays for runtime direction lookup)
+        property_numbers.insert("exit_directions".to_string(), 20);
+        property_numbers.insert("exit_types".to_string(), 21);
+        property_numbers.insert("exit_data".to_string(), 22);
+
         ZMachineCodeGen {
             version,
             story_data: vec![0; HEADER_SIZE],
@@ -348,7 +364,10 @@ impl ZMachineCodeGen {
             ir_id_to_array_info: IndexMap::new(),
             ir_id_from_property: IndexSet::new(),
             object_numbers: IndexMap::new(),
-            property_numbers: IndexMap::new(),
+            room_to_object_id: IndexMap::new(),
+            room_exit_directions: IndexMap::new(),
+            room_exit_messages: IndexMap::new(),
+            property_numbers,
             object_properties: IndexMap::new(),
             object_table_addr: 0,
             property_table_addr: 0,
@@ -615,6 +634,14 @@ impl ZMachineCodeGen {
             self.dictionary_space.len()
         );
 
+        // Phase 2c: Setup room-to-object ID mapping (needed for exit data generation)
+        log::debug!("🗺️  Step 2c-pre: Setting up room-to-object ID mapping");
+        self.setup_room_to_object_mapping(ir)?;
+        log::info!(
+            " Step 2c-pre complete: Mapped {} rooms to object IDs",
+            self.room_to_object_id.len()
+        );
+
         // Phase 2c: Generate objects/properties to object_space
         log::debug!("🏠 Step 2c: Generating object space");
         if ir.has_objects() {
@@ -625,6 +652,25 @@ impl ZMachineCodeGen {
             log::debug!("Generating minimal object table for Script program");
             self.generate_objects_to_space(ir)?;
         }
+        // Check if property table was written correctly
+        let obj2_offset = 0x0047;
+        let obj2_prop_ptr_offset = obj2_offset + 7;
+        if obj2_prop_ptr_offset + 1 < self.object_space.len() {
+            let prop_addr = ((self.object_space[obj2_prop_ptr_offset] as u16) << 8)
+                | (self.object_space[obj2_prop_ptr_offset + 1] as u16);
+            log::warn!(
+                "🔍 OBJ_SPACE_CHECK: After object generation, object 2 prop pointer = 0x{:04x}",
+                prop_addr
+            );
+            if (prop_addr as usize) + 20 <= self.object_space.len() {
+                log::warn!(
+                    "🔍   Property table at offset 0x{:04x}: {:02x?}",
+                    prop_addr,
+                    &self.object_space[prop_addr as usize..(prop_addr as usize + 20)]
+                );
+            }
+        }
+
         log::info!(
             " Step 2c complete: Object space populated ({} bytes)",
             self.object_space.len()
@@ -966,7 +1012,66 @@ impl ZMachineCodeGen {
 
         // Copy object space
         if !self.object_space.is_empty() {
+            log::warn!("🔧 OBJECT_COPY: About to copy object_space to final_data");
+            log::warn!(
+                "   object_base=0x{:04x}, dictionary_base=0x{:04x}, object_size={}",
+                object_base,
+                dictionary_base,
+                object_size
+            );
+            log::warn!(
+                "   object_space.len()={}, slice size={}",
+                self.object_space.len(),
+                dictionary_base - object_base
+            );
+
+            // Show West of House property table BEFORE copy (object 2 at offset 0x0047)
+            let obj2_offset = 0x0047;
+            let obj2_prop_ptr_offset = obj2_offset + 7;
+            if obj2_prop_ptr_offset + 1 < self.object_space.len() {
+                let prop_addr = ((self.object_space[obj2_prop_ptr_offset] as u16) << 8)
+                    | (self.object_space[obj2_prop_ptr_offset + 1] as u16);
+                log::warn!(
+                    "   BEFORE: Object 2 prop pointer at offset 0x{:04x} = 0x{:04x}",
+                    obj2_prop_ptr_offset,
+                    prop_addr
+                );
+                if (prop_addr as usize) < self.object_space.len() {
+                    let prop_offset = prop_addr as usize;
+                    log::warn!(
+                        "   BEFORE: Property table at offset 0x{:04x}: {:02x?}",
+                        prop_offset,
+                        &self.object_space[prop_offset
+                            ..prop_offset
+                                .min(self.object_space.len())
+                                .min(prop_offset + 20)]
+                    );
+                }
+            }
+
             self.final_data[object_base..dictionary_base].copy_from_slice(&self.object_space);
+
+            // Show West of House property table AFTER copy
+            let final_obj2_offset = object_base + obj2_offset;
+            let final_prop_ptr_offset = final_obj2_offset + 7;
+            if final_prop_ptr_offset + 1 < self.final_data.len() {
+                let prop_addr = ((self.final_data[final_prop_ptr_offset] as u16) << 8)
+                    | (self.final_data[final_prop_ptr_offset + 1] as u16);
+                log::warn!(
+                    "   AFTER: Object 2 prop pointer at 0x{:04x} = 0x{:04x}",
+                    final_prop_ptr_offset,
+                    prop_addr
+                );
+                if (prop_addr as usize) < self.final_data.len() {
+                    log::warn!(
+                        "   AFTER: Property table at 0x{:04x}: {:02x?}",
+                        prop_addr,
+                        &self.final_data[prop_addr as usize
+                            ..(prop_addr as usize + 20).min(self.final_data.len())]
+                    );
+                }
+            }
+
             log::debug!(
                 " Object space copied: {} bytes at 0x{:04x}",
                 object_size,
@@ -2013,15 +2118,14 @@ impl ZMachineCodeGen {
                 }
             }
 
-            // Pre-register this function's address
+            // Pre-register this function's address in function_addresses only
+            // DO NOT insert into ir_id_to_address yet - that will happen during actual code generation
+            // Otherwise the corruption prevention in record_code_offset will reject the real address
             self.function_addresses
-                .insert(function.id, simulated_address);
-            self.reference_context
-                .ir_id_to_address
                 .insert(function.id, simulated_address);
 
             log::debug!(
-                " PRE-REGISTERED: Function '{}' (IR ID {}) at projected address 0x{:04x}",
+                " PRE-REGISTERED: Function '{}' (IR ID {}) at projected address 0x{:04x} (estimate only)",
                 function.name,
                 function.id,
                 simulated_address
@@ -2409,7 +2513,7 @@ impl ZMachineCodeGen {
     }
 
     /// Allocate a new local variable slot for the current function
-    fn allocate_local_variable_slot(&mut self) -> u8 {
+    pub(crate) fn allocate_local_variable_slot(&mut self) -> u8 {
         self.current_function_locals += 1;
         self.current_function_locals
     }
@@ -4697,14 +4801,15 @@ impl ZMachineCodeGen {
         let written_high = self.object_space[obj_offset + 7];
         let written_low = self.object_space[obj_offset + 8];
         let written_addr = ((written_high as u16) << 8) | (written_low as u16);
-        debug!(
-            " - Verification: Read back from object_space = 0x{:04x} (high=0x{:02x}, low=0x{:02x})",
-            written_addr, written_high, written_low
+        log::warn!(
+            "🔗 OBJ_PTR_WRITE: obj_num={} name='{}' obj_offset=0x{:04x} prop_table_addr=0x{:04x} written=0x{:04x}",
+            obj_num, object.short_name, obj_offset, prop_table_addr, written_addr
         );
 
         if written_addr != prop_table_addr as u16 {
-            log::debug!(
-                " ADDRESS MISMATCH: Expected 0x{:04x} but wrote 0x{:04x}!",
+            log::error!(
+                "❌ OBJ_PTR_MISMATCH: obj_num={} Expected 0x{:04x} but wrote 0x{:04x}!",
+                obj_num,
                 prop_table_addr,
                 written_addr
             );
@@ -4862,9 +4967,16 @@ impl ZMachineCodeGen {
         let mut properties: Vec<_> = object.properties.properties.iter().collect();
         properties.sort_by(|a, b| b.0.cmp(a.0)); // Sort by property number, descending
 
+        log::warn!(
+            "🔍 PROP_ENCODE: Object '{}' has {} properties to encode: {:?}",
+            object.short_name,
+            properties.len(),
+            properties.iter().map(|(n, _)| **n).collect::<Vec<_>>()
+        );
+
         for (&prop_num, prop_value) in properties {
             // Write property size/number byte
-            let (size_byte, prop_data, string_id_opt) =
+            let (size_byte, prop_data, string_id_opt, two_byte_size) =
                 self.encode_property_value(prop_num, prop_value);
 
             let data_display = if prop_data.len() == 2 {
@@ -4879,13 +4991,16 @@ impl ZMachineCodeGen {
             };
 
             debug!(
-                "Writing property {} for object '{}': size_byte=0x{:02x}, data={}, string_id={:?}",
-                prop_num, object.short_name, size_byte, data_display, string_id_opt
+                "Writing property {} for object '{}': size_byte=0x{:02x}, data={}, string_id={:?}, two_byte_format={}",
+                prop_num, object.short_name, size_byte, data_display, string_id_opt, two_byte_size.is_some()
             );
 
             // Ensure capacity for property header + data + terminator
-            self.ensure_capacity(addr + 1 + prop_data.len() + 1);
+            // Header is 1 byte for single-byte format, 2 bytes for two-byte format
+            let header_size = if two_byte_size.is_some() { 2 } else { 1 };
+            self.ensure_capacity(addr + header_size + prop_data.len() + 1);
 
+            // Write first size byte
             let size_offset = addr - self.object_table_addr;
             self.write_to_object_space(size_offset, size_byte)?;
             debug!(
@@ -4893,6 +5008,17 @@ impl ZMachineCodeGen {
                 size_byte, addr
             );
             addr += 1;
+
+            // Write second size byte if two-byte format
+            if let Some(size_value) = two_byte_size {
+                let size2_offset = addr - self.object_table_addr;
+                self.write_to_object_space(size2_offset, size_value)?;
+                debug!(
+                    "PROP TABLE DEBUG: Writing second size byte=0x{:02x} at addr=0x{:04x}",
+                    size_value, addr
+                );
+                addr += 1;
+            }
 
             // Write property data
             for (i, &byte) in prop_data.iter().enumerate() {
@@ -4918,6 +5044,78 @@ impl ZMachineCodeGen {
                         prop_num, data_offset, string_id
                     );
                 }
+
+                // If this is exit_directions property (property 20), create DictionaryRef for each 2-byte dictionary address
+                let exit_directions_prop =
+                    *self.property_numbers.get("exit_directions").unwrap_or(&20);
+                if prop_num == exit_directions_prop && i % 2 == 0 && i < prop_data.len() - 1 {
+                    // This is the start of a 2-byte dictionary address
+                    let direction_index = i / 2; // Which direction this is (0, 1, 2, ...)
+
+                    // Look up which direction string this corresponds to
+                    if let Some(directions) = self.room_exit_directions.get(&object.name) {
+                        if let Some(direction) = directions.get(direction_index) {
+                            // Find position of this word in dictionary
+                            let position = self
+                                .dictionary_words
+                                .iter()
+                                .position(|w| w == &direction.to_lowercase())
+                                .unwrap_or(0) as u32;
+
+                            // Create UnresolvedReference for dictionary address
+                            self.reference_context
+                                .unresolved_refs
+                                .push(UnresolvedReference {
+                                    reference_type: LegacyReferenceType::DictionaryRef {
+                                        word: direction.clone(),
+                                    },
+                                    location: data_offset, // Location in object_space (will be adjusted with object_base)
+                                    target_id: position,
+                                    is_packed_address: false,
+                                    offset_size: 2,
+                                    location_space: MemorySpace::Objects,
+                                });
+
+                            log::debug!(
+                                "Created DictionaryRef UnresolvedReference for exit_directions property: room='{}', direction='{}', position={}, object_space offset=0x{:04x}",
+                                object.name, direction, position, data_offset
+                            );
+                        }
+                    }
+                }
+
+                // If this is exit_data property (property 22), create StringRef for blocked exit messages
+                let exit_data_prop = *self.property_numbers.get("exit_data").unwrap_or(&22);
+                if prop_num == exit_data_prop && i % 2 == 0 && i < prop_data.len() - 1 {
+                    // This is the start of a 2-byte word
+                    let exit_index = i / 2; // Which exit this is (0, 1, 2, ...)
+
+                    // Check if this exit has a blocked message
+                    if let Some(blocked_msgs) = self.room_exit_messages.get(&object.name) {
+                        // Find if this exit_index has a message
+                        for (idx, string_id) in blocked_msgs {
+                            if *idx == exit_index {
+                                // Create UnresolvedReference for string address (packed)
+                                self.reference_context
+                                    .unresolved_refs
+                                    .push(UnresolvedReference {
+                                        reference_type: LegacyReferenceType::StringRef,
+                                        location: data_offset, // Location in object_space
+                                        target_id: *string_id,
+                                        is_packed_address: true, // String addresses must be packed
+                                        offset_size: 2,
+                                        location_space: MemorySpace::Objects,
+                                    });
+
+                                log::debug!(
+                                    "Created StringRef UnresolvedReference for exit_data property: room='{}', exit_index={}, string_id={}, object_space offset=0x{:04x}",
+                                    object.name, exit_index, string_id, data_offset
+                                );
+                                break;
+                            }
+                        }
+                    }
+                }
                 debug!(
                     "PROP TABLE DEBUG: Writing prop data byte {}=0x{:02x} at addr=0x{:04x}",
                     i, byte, addr
@@ -4935,12 +5133,20 @@ impl ZMachineCodeGen {
         );
         addr += 1;
 
-        debug!(
-            "PROP TABLE DEBUG: Property table for '{}' complete: 0x{:04x}-0x{:04x} ({} bytes)",
+        // Debug: Dump first 10 bytes of property table from object_space
+        let dump_end = (prop_table_addr - self.object_table_addr + 10).min(self.object_space.len());
+        let dump_bytes: Vec<u8> =
+            self.object_space[prop_table_addr - self.object_table_addr..dump_end].to_vec();
+
+        log::warn!(
+            "🏠 PROP_TABLE_COMPLETE: object='{}' obj_num={} prop_table_addr=0x{:04x} range=0x{:04x}-0x{:04x} size={} bytes first_bytes={:02x?}",
             object.short_name,
+            obj_num,
+            prop_table_addr,
             prop_table_addr,
             addr - 1,
-            addr - prop_table_addr
+            addr - prop_table_addr,
+            dump_bytes
         );
 
         // Update current property allocation pointer for next property table
@@ -5132,18 +5338,16 @@ impl ZMachineCodeGen {
             );
 
             objects_patched += 1;
-            log::debug!(
-                " PATCH: Object {} property table address: 0x{:04x} → 0x{:04x} (corrected)",
+            log::warn!(
+                "🔧 PATCH_OBJ: obj_num={} space_relative=0x{:04x} → absolute=0x{:04x} final_offset=0x{:04x}",
                 obj_index + 1,
                 space_relative_addr,
-                absolute_addr
+                absolute_addr,
+                final_addr_offset
             );
         }
 
-        log::debug!(
-            " PATCH: Property table address patching complete: {} objects patched",
-            objects_patched
-        );
+        log::warn!("🔧 PATCH_COMPLETE: {} objects patched", objects_patched);
         Ok(())
     }
 
@@ -5543,13 +5747,17 @@ impl ZMachineCodeGen {
         main_loop_jump_id: u32,
     ) -> Result<(), CompilerError> {
         debug!(
-            "Generating grammar pattern matching for {} verbs",
-            grammar_rules.len()
+            "Generating grammar pattern matching for {} verbs at code_address=0x{:04x}",
+            grammar_rules.len(),
+            self.code_address
         );
 
         // For each grammar verb, generate pattern matching logic
         for grammar in grammar_rules {
-            debug!("Processing grammar verb: '{}'", grammar.verb);
+            debug!(
+                "Processing grammar verb: '{}' at code_address=0x{:04x}",
+                grammar.verb, self.code_address
+            );
 
             // Generate verb matching: check if first token matches this verb
             self.generate_verb_matching(&grammar.verb, &grammar.patterns, main_loop_jump_id)?;
@@ -5719,6 +5927,10 @@ impl ZMachineCodeGen {
 
         // Compare word 1 dict addr with this verb's dict addr (now in Global G01/Variable 17)
         // If they DON'T match, skip this verb handler
+        debug!(
+            "Emitting je at code_address=0x{:04x}: Variable(2) vs Variable(17)",
+            self.code_address
+        );
         let layout = self.emit_instruction(
             0x01, // je: jump if equal
             &[
@@ -5728,12 +5940,21 @@ impl ZMachineCodeGen {
             None,
             Some(0xBFFF_u16 as i16), // Placeholder - will branch if EQUAL (branch-on-true, 2-byte format)
         )?;
+        debug!(
+            "je emitted, now at code_address=0x{:04x}",
+            self.code_address
+        );
 
         // Register branch: if equal, continue to handler (skip the next jump)
         let continue_label = self.next_string_id;
         self.next_string_id += 1;
+        debug!("je will branch to label {} if equal", continue_label);
 
         if let Some(branch_location) = layout.branch_location {
+            debug!(
+                "Registering je branch UnresolvedReference at location=0x{:04x} to target_id={}",
+                branch_location, continue_label
+            );
             self.reference_context
                 .unresolved_refs
                 .push(UnresolvedReference {
@@ -5778,6 +5999,7 @@ impl ZMachineCodeGen {
         );
 
         // Step 2: Now check word count for pattern selection (noun vs default)
+        for (i, pattern) in patterns.iter().enumerate() {}
 
         // Step 2: Check if we have at least 2 words (verb + noun)
         // If word_count >= 2, extract noun and call handler with object parameter
@@ -5952,34 +6174,134 @@ impl ZMachineCodeGen {
 
         if let Some(pattern) = default_pattern {
             // Handle default pattern (verb-only)
-            if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, _args) =
+            if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, args) =
                 &pattern.handler
             {
                 debug!(
-                    "Generating default pattern call to function ID {} for verb '{}'",
-                    func_id, verb
+                    "Generating default pattern call to function ID {} for verb '{}' with {} arguments",
+                    func_id, verb, args.len()
                 );
 
+                // Build operands: function address + arguments
+                let mut operands = vec![Operand::LargeConstant(placeholder_word())]; // Function address placeholder
+
+                // Track which arguments need dictionary fixup (position in operands vec -> word string)
+                let mut dictionary_fixups: Vec<(usize, String)> = Vec::new();
+
+                // Convert IrValue arguments to operands
+                for (i, arg_value) in args.iter().enumerate() {
+                    let arg_operand = match arg_value {
+                        crate::grue_compiler::ir::IrValue::String(s) => {
+                            // CRITICAL FIX: Use placeholder for dictionary addresses, will be patched in Phase 3
+                            // Find word position for later resolution
+                            let word_lower = s.to_lowercase();
+                            let position = self
+                                .dictionary_words
+                                .iter()
+                                .position(|w| w == &word_lower)
+                                .ok_or_else(|| {
+                                    CompilerError::CodeGenError(format!(
+                                        "Word '{}' not found in dictionary",
+                                        s
+                                    ))
+                                })?;
+
+                            debug!("  Argument {}: String '{}' -> position {} (will create DictionaryRef)", i, s, position);
+
+                            // Mark this operand position for dictionary fixup
+                            dictionary_fixups.push((operands.len(), s.clone()));
+
+                            // Use placeholder that will be patched in Phase 3
+                            Operand::LargeConstant(placeholder_word())
+                        }
+                        crate::grue_compiler::ir::IrValue::Integer(i) => {
+                            if *i >= 0 && *i <= 255 {
+                                Operand::SmallConstant(*i as u8)
+                            } else {
+                                Operand::LargeConstant(*i as u16)
+                            }
+                        }
+                        crate::grue_compiler::ir::IrValue::Boolean(b) => {
+                            Operand::SmallConstant(if *b { 1 } else { 0 })
+                        }
+                        crate::grue_compiler::ir::IrValue::Null => Operand::SmallConstant(0),
+                        crate::grue_compiler::ir::IrValue::StringRef(_) => {
+                            return Err(CompilerError::CodeGenError(format!(
+                                "Grammar handler arguments cannot use StringRef - use String instead"
+                            )));
+                        }
+                    };
+                    operands.push(arg_operand);
+                }
+
                 let layout = self.emit_instruction(
-                    0x00, // call_vs: call routine with 0 arguments, returns value (VAR:0)
-                    &[Operand::LargeConstant(placeholder_word())], // Function address placeholder
+                    0x00, // call_vs: call routine with arguments, returns value (VAR:0)
+                    &operands,
                     Some(0), // Store result on stack
-                    None, // No branch
+                    None,    // No branch
                 )?;
 
                 // FIXED: Use layout.operand_location instead of hardcoded offset calculation
                 // This was previously using self.code_address - 2 which caused placeholder resolution failures
-                if let Some(operand_location) = layout.operand_location {
+                if let Some(mut current_location) = layout.operand_location {
+                    // Create UnresolvedReference for function address (first operand)
                     self.reference_context
                         .unresolved_refs
                         .push(UnresolvedReference {
                             reference_type: LegacyReferenceType::FunctionCall,
-                            location: operand_location, // Correct operand location from emit_instruction
+                            location: current_location, // Correct operand location from emit_instruction
                             target_id: *func_id,
                             is_packed_address: true,
                             offset_size: 2,
                             location_space: MemorySpace::Code,
                         });
+
+                    // Function address is always LargeConstant (2 bytes)
+                    current_location += 2;
+
+                    // Create UnresolvedReferences for dictionary fixups
+                    for (operand_index, word) in dictionary_fixups {
+                        // Calculate location of this operand
+                        // Skip operands before this one
+                        for i in 1..operand_index {
+                            match &operands[i] {
+                                Operand::SmallConstant(_) => current_location += 1,
+                                Operand::LargeConstant(_) => current_location += 2,
+                                Operand::Variable(_) => current_location += 1,
+                                Operand::Constant(_) => current_location += 2, // Constants are 2 bytes
+                            }
+                        }
+
+                        // Find word position in dictionary
+                        let word_lower = word.to_lowercase();
+                        let position = self
+                            .dictionary_words
+                            .iter()
+                            .position(|w| w == &word_lower)
+                            .unwrap() as u32; // Safe because we already validated above
+
+                        debug!(
+                            "Creating DictionaryRef for grammar argument '{}' at location 0x{:04x} (position {})",
+                            word, current_location, position
+                        );
+
+                        // Create UnresolvedReference for this dictionary word
+                        self.reference_context
+                            .unresolved_refs
+                            .push(UnresolvedReference {
+                                reference_type: LegacyReferenceType::DictionaryRef {
+                                    word: word.clone(),
+                                },
+                                location: current_location,
+                                target_id: position,
+                                is_packed_address: false,
+                                offset_size: 2,
+                                location_space: MemorySpace::Code,
+                            });
+
+                        // This operand is LargeConstant (2 bytes)
+                        current_location += 2;
+                    }
                 } else {
                     panic!("BUG: emit_instruction didn't return operand_location for placeholder");
                 }
@@ -7343,6 +7665,28 @@ impl ZMachineCodeGen {
             "Object mapping setup complete: {} IR ID -> object number mappings created",
             self.ir_id_to_object_number.len()
         );
+    }
+
+    /// Set up room-to-object ID mapping for exit system
+    /// Assigns sequential object numbers to rooms (starting from 1, 0 is invalid)
+    fn setup_room_to_object_mapping(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
+        for (index, room) in ir.rooms.iter().enumerate() {
+            // Object numbers start at 1 (0 is invalid in Z-Machine)
+            let object_number = (index + 1) as u16;
+            self.room_to_object_id.insert(room.id, object_number);
+            log::debug!(
+                "Mapped room '{}' (IR ID {}) to object #{}",
+                room.name,
+                room.id,
+                object_number
+            );
+        }
+        log::info!(
+            "Room-to-object mapping complete: {} rooms mapped to object IDs 1-{}",
+            self.room_to_object_id.len(),
+            self.room_to_object_id.len()
+        );
+        Ok(())
     }
 
     /// Generate return instruction
@@ -9070,7 +9414,7 @@ impl ZMachineCodeGen {
     }
 
     /// Get the name of a builtin function by its ID
-    fn get_builtin_function_name(&self, function_id: IrId) -> Option<&String> {
+    pub fn get_builtin_function_name(&self, function_id: IrId) -> Option<&String> {
         self.builtin_function_names.get(&function_id)
     }
 
@@ -9119,6 +9463,9 @@ impl ZMachineCodeGen {
             "object_is_empty" => self.generate_object_is_empty_builtin(args, target),
             "value_is_none" => self.generate_value_is_none_builtin(args, target),
             "get_exit" => self.generate_get_exit_builtin(args, target),
+            "exit_is_blocked" => self.generate_exit_is_blocked_builtin(args, target),
+            "exit_get_destination" => self.generate_exit_get_data_builtin(args, target),
+            "exit_get_message" => self.generate_exit_get_message_builtin(args, target),
             "get_object_size" => self.generate_get_object_size_builtin(args, target),
             "array_add_item" => self.generate_array_add_item_builtin(args, target),
             // String functions

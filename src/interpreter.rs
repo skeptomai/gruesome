@@ -847,6 +847,12 @@ impl Interpreter {
                     let var_num = operand as u8;
                     if var_num == 0 {
                         // Variable 0 means pop from stack when used as operand
+                        log::debug!(
+                            "Operand {} at PC 0x{:04x}: popping from stack (depth={})",
+                            i,
+                            self.vm.pc,
+                            self.vm.stack.len()
+                        );
                         self.vm.pop()?
                     } else {
                         self.vm.read_variable(var_num)?
@@ -1196,6 +1202,12 @@ impl Interpreter {
                     });
                 let condition = op1 == op2;
                 debug!("JE: condition={} (equal={})", condition, op1 == op2);
+                // Log comparisons involving likely exit-related addresses (0x03b0-0x03d0)
+                if (op1 >= 0x03b0 && op1 <= 0x03d0) || (op2 >= 0x03b0 && op2 <= 0x03d0) || op2 == 0
+                {
+                    log::warn!("🔍 JE at PC=0x{:04x}: op1=0x{:04x} vs op2=0x{:04x}, condition={}, branch={:?}",
+                        pc, op1, op2, condition, inst.branch);
+                }
                 self.do_branch(inst, condition)
             }
             0x02 => {
@@ -1506,6 +1518,16 @@ impl Interpreter {
                 // Jump if a is equal to any of the subsequent operands (b, c, or d)
                 let pc = self.vm.pc - inst.size as u32;
 
+                // Debug output for verb matching area (grammar pattern matching)
+                if pc >= 0x15de && pc <= 0x19ff {
+                    eprintln!(
+                        "🔍 JE at PC=0x{:04x}: comparing {:04x} against {:?}",
+                        pc,
+                        operands[0],
+                        &operands[1..]
+                    );
+                }
+
                 // Debug output for the problematic JE at 13fd7
                 if pc == 0x13fd7 {
                     debug!(
@@ -1523,6 +1545,18 @@ impl Interpreter {
                         condition = true;
                         break;
                     }
+                }
+
+                // Debug output for verb matching area
+                if pc >= 0x15de && pc <= 0x19ff {
+                    eprintln!(
+                        "🔍 JE result: condition={}, will_branch={}",
+                        condition,
+                        inst.branch
+                            .as_ref()
+                            .map(|b| b.on_true == condition)
+                            .unwrap_or(false)
+                    );
                 }
 
                 if pc == 0x13fd7 {
@@ -2163,6 +2197,12 @@ impl Interpreter {
             }
             _ => {
                 let pc = self.vm.pc - inst.size as u32;
+                // CRITICAL DEBUG: Show what byte was actually decoded
+                let opcode_byte = self.vm.game.memory[pc as usize];
+                log::error!(
+                    "❌ UNIMPLEMENTED VAR:0x{:02x} at PC=0x{:04x} opcode_byte=0x{:02x} binary={:08b} form={:?} operand_types={:?}",
+                    inst.opcode, pc, opcode_byte, opcode_byte, inst.operand_count, inst.operand_types
+                );
                 debug!(
                     "Unimplemented VAR instruction: {:02x} at PC {:05x}",
                     inst.opcode, pc

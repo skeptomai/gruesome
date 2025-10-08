@@ -806,7 +806,8 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Generate value_is_none builtin - checks if a value is None/null
+    /// Generate value_is_none builtin - checks if a value is None/null (value == 0)
+    /// Used by .none() method on exit values and other optional values
     pub fn generate_value_is_none_builtin(
         &mut self,
         args: &[IrId],
@@ -819,14 +820,238 @@ impl ZMachineCodeGen {
             )));
         }
 
-        // For now, always return false (value is not none) as a safe placeholder
+        let value_id = args[0];
+        let value_operand = self.resolve_ir_id_to_operand(value_id)?;
+
         if let Some(store_var) = target {
+            // Use je (opcode 0x01) to test if value == 0
+            // Branch to label if true (value is 0), fall through if false (value is non-zero)
+            let true_label = self.next_string_id;
+            self.next_string_id += 1;
+            let end_label = self.next_string_id;
+            self.next_string_id += 1;
+
+            // Test: value == 0?
+            let branch_layout = self.emit_instruction(
+                0x01, // je
+                &[value_operand, Operand::SmallConstant(0)],
+                None,
+                Some(0x7FFF), // Placeholder for forward branch (true path)
+            )?;
+
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: branch_layout
+                        .branch_location
+                        .expect("je needs branch location"),
+                    target_id: true_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+
+            // False path: store 0 (false) and jump to end
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
-                &[Operand::LargeConstant(0), Operand::SmallConstant(0)], // 0 | 0 = 0 (false)
+                &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
                 Some(store_var as u8),
                 None,
             )?;
+
+            let jump_layout = self.emit_instruction(
+                0x0C, // jump
+                &[],
+                None,
+                Some(0x7FFF), // Placeholder for forward jump
+            )?;
+
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: jump_layout
+                        .branch_location
+                        .expect("jump needs branch location"),
+                    target_id: end_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+
+            // True path: store 1 (true)
+            self.label_addresses.insert(true_label, self.code_address);
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Or),
+                &[Operand::SmallConstant(1), Operand::SmallConstant(0)],
+                Some(store_var as u8),
+                None,
+            )?;
+
+            // End label
+            self.label_addresses.insert(end_label, self.code_address);
+        }
+
+        Ok(())
+    }
+
+    /// Generate exit_is_blocked builtin - checks if exit value has blocked bit set (bit 14)
+    /// Exit values are encoded as: (type << 14) | data
+    /// Returns true if value >= 0x4000 (bit 14 is set, indicating blocked exit)
+    pub fn generate_exit_is_blocked_builtin(
+        &mut self,
+        args: &[IrId],
+        target: Option<u32>,
+    ) -> Result<(), CompilerError> {
+        if args.len() != 1 {
+            return Err(CompilerError::CodeGenError(format!(
+                "exit_is_blocked expects 1 argument, got {}",
+                args.len()
+            )));
+        }
+
+        let exit_value_id = args[0];
+        let exit_value_operand = self.resolve_ir_id_to_operand(exit_value_id)?;
+
+        if let Some(store_var) = target {
+            // Use jge (opcode 0x05) to test if value >= 0x4000
+            let true_label = self.next_string_id;
+            self.next_string_id += 1;
+            let end_label = self.next_string_id;
+            self.next_string_id += 1;
+
+            // Test: value >= 0x4000?
+            let branch_layout = self.emit_instruction(
+                0x05, // jge
+                &[exit_value_operand, Operand::LargeConstant(0x4000)],
+                None,
+                Some(0x7FFF), // Placeholder for forward branch (true path)
+            )?;
+
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: branch_layout
+                        .branch_location
+                        .expect("je needs branch location"),
+                    target_id: true_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+
+            // False path: store 0 (false) and jump to end
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Or),
+                &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
+                Some(store_var as u8),
+                None,
+            )?;
+
+            let jump_layout = self.emit_instruction(
+                0x0C, // jump
+                &[],
+                None,
+                Some(0x7FFF), // Placeholder for forward jump
+            )?;
+
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: jump_layout
+                        .branch_location
+                        .expect("jump needs branch location"),
+                    target_id: end_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+
+            // True path: store 1 (true)
+            self.label_addresses.insert(true_label, self.code_address);
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Or),
+                &[Operand::SmallConstant(1), Operand::SmallConstant(0)],
+                Some(store_var as u8),
+                None,
+            )?;
+
+            // End label
+            self.label_addresses.insert(end_label, self.code_address);
+        }
+
+        Ok(())
+    }
+
+    /// Generate exit_get_data builtin - extracts lower 14 bits from exit value (for .destination)
+    /// Exit values are encoded as: (type << 14) | data
+    /// Returns data portion (value & 0x3FFF) which is a room ID
+    pub fn generate_exit_get_data_builtin(
+        &mut self,
+        args: &[IrId],
+        target: Option<u32>,
+    ) -> Result<(), CompilerError> {
+        if args.len() != 1 {
+            return Err(CompilerError::CodeGenError(format!(
+                "exit_get_data expects 1 argument, got {}",
+                args.len()
+            )));
+        }
+
+        let exit_value_id = args[0];
+        let exit_value_operand = self.resolve_ir_id_to_operand(exit_value_id)?;
+
+        if let Some(store_var) = target {
+            // Use and (opcode 0x09) to mask lower 14 bits: value & 0x3FFF
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::And),
+                &[exit_value_operand, Operand::LargeConstant(0x3FFF)],
+                Some(store_var as u8),
+                None,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Generate exit_get_message builtin - extracts lower 14 bits from exit value (for .message)
+    /// Exit values are encoded as: (type << 14) | data
+    /// Returns data portion (value & 0x3FFF) which is a string address
+    /// CRITICAL: Marks the result IR ID in ir_id_from_property so print() uses print_paddr
+    pub fn generate_exit_get_message_builtin(
+        &mut self,
+        args: &[IrId],
+        target: Option<u32>,
+    ) -> Result<(), CompilerError> {
+        if args.len() != 1 {
+            return Err(CompilerError::CodeGenError(format!(
+                "exit_get_message expects 1 argument, got {}",
+                args.len()
+            )));
+        }
+
+        let exit_value_id = args[0];
+        let exit_value_operand = self.resolve_ir_id_to_operand(exit_value_id)?;
+
+        if let Some(store_var) = target {
+            // Use and (opcode 0x09) to mask lower 14 bits: value & 0x3FFF
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::And),
+                &[exit_value_operand, Operand::LargeConstant(0x3FFF)],
+                Some(store_var as u8),
+                None,
+            )?;
+
+            // CRITICAL: Mark this IR ID as coming from a property access
+            // This tells print() to use print_paddr (for string addresses) instead of print_num
+            self.ir_id_from_property.insert(store_var);
+            log::debug!(
+                "🚪 EXIT: Marked IR ID {} as string address (from exit.message)",
+                store_var
+            );
         }
 
         Ok(())
@@ -855,152 +1080,318 @@ impl ZMachineCodeGen {
         let room_id = args[0];
         let direction_id = args[1];
 
-        // Check if direction is a compile-time string constant
-        if let Some(direction_str) = self.ir_id_to_string.get(&direction_id) {
-            // Compile-time optimization: Direct property lookup
-            let prop_name = self.direction_to_property_name(direction_str)?;
-            if let Some(&prop_num) = self.property_numbers.get(prop_name) {
-                // Emit get_prop instruction
-                let room_operand = self.resolve_ir_id_to_operand(room_id)?;
-                let prop_operand = Operand::SmallConstant(prop_num);
+        // ALWAYS use runtime path with parallel arrays (exit_directions, exit_types, exit_data)
+        // The compile-time optimization path using exit_north/exit_south properties
+        // was never implemented - we use the parallel-array system instead
+        // Runtime path: Direction lookup using parallel arrays
+        // Implementation: Search parallel arrays using globals for persistent storage
+        // Algorithm per ARCHITECTURE.md "Exit System Architecture"
+        //
+        // CRITICAL ARCHITECTURAL DECISION: Use globals instead of locals
+        // Reason: Inlined builtins share caller's local variable space. Allocating
+        // locals would require updating function header, which is already written.
+        // Globals (variables 16+) are distinct from function locals (1-15).
 
-                if let Some(store_var) = target {
-                    self.emit_instruction_typed(
-                        Opcode::Op2(Op2::GetProp),
-                        &[room_operand, prop_operand],
-                        Some(store_var as u8),
-                        None,
-                    )?;
-                }
-                return Ok(());
-            } else {
-                return Err(CompilerError::CodeGenError(format!(
-                    "Exit property '{}' not found in property registry",
-                    prop_name
-                )));
-            }
-        }
-
-        // Runtime path: Direction is a variable (e.g., from user input or parameter)
-        // Implementation: Compare direction against each known direction string
-        // and call get_prop with the appropriate exit property number
-
-        log::debug!("get_exit: Runtime direction lookup (variable direction)");
-
-        // List of supported directions and their properties
-        let directions = [
-            ("north", "exit_north"),
-            ("south", "exit_south"),
-            ("east", "exit_east"),
-            ("west", "exit_west"),
-            ("northeast", "exit_northeast"),
-            ("northwest", "exit_northwest"),
-            ("southeast", "exit_southeast"),
-            ("southwest", "exit_southwest"),
-            ("up", "exit_up"),
-            ("down", "exit_down"),
-            ("in", "exit_in"),
-            ("out", "exit_out"),
-        ];
+        log::warn!("🔍 GET_EXIT: Runtime direction lookup using parallel arrays + globals");
+        log::warn!(
+            "🔍 GET_EXIT: room_id={}, direction_id={}, target={:?}",
+            room_id,
+            direction_id,
+            target
+        );
 
         let room_operand = self.resolve_ir_id_to_operand(room_id)?;
+        log::warn!("🔍 GET_EXIT: room_operand={:?}", room_operand);
         let direction_operand = self.resolve_ir_id_to_operand(direction_id)?;
+        log::warn!("🔍 GET_EXIT: direction_operand={:?}", direction_operand);
+
+        // Get property numbers for parallel arrays
+        let exit_directions_prop = *self.property_numbers.get("exit_directions").unwrap_or(&20);
+        let exit_types_prop = *self.property_numbers.get("exit_types").unwrap_or(&21);
+        let exit_data_prop = *self.property_numbers.get("exit_data").unwrap_or(&22);
+
+        log::warn!(
+            "🔍 get_exit: Using property numbers: directions={}, types={}, data={}",
+            exit_directions_prop,
+            exit_types_prop,
+            exit_data_prop
+        );
+
+        // CRITICAL: Use high global variables (235-239) for temporaries
+        // These are unlikely to conflict with user globals
+        let directions_addr_var = 235u8; // Global variable for directions address
+        let types_addr_var = 236u8; // Global variable for types address
+        let data_addr_var = 237u8; // Global variable for data address
+        let num_exits_var = 238u8; // Global variable for exit count
+        let index_var = 239u8; // Global variable for loop index
 
         // Allocate labels for control flow
+        let not_found_label = self.next_string_id;
+        self.next_string_id += 1;
+        let found_label = self.next_string_id;
+        self.next_string_id += 1;
+        let loop_start_label = self.next_string_id;
+        self.next_string_id += 1;
         let end_label = self.next_string_id;
         self.next_string_id += 1;
 
-        // For each direction, compare and branch
-        for (direction_str, prop_name) in &directions {
-            // Look up property number
-            let prop_name_string = prop_name.to_string();
-            if let Some(&prop_num) = self.property_numbers.get(&prop_name_string) {
-                // Allocate label for next comparison
-                let next_label = self.next_string_id;
-                self.next_string_id += 1;
+        // Step 1: Get address of exit_directions property -> directions_addr
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::GetPropAddr),
+            &[
+                room_operand.clone(),
+                Operand::SmallConstant(exit_directions_prop),
+            ],
+            Some(directions_addr_var),
+            None,
+        )?;
 
-                // Look up dictionary address for this direction
-                let dict_addr = self.lookup_word_in_dictionary(direction_str)?;
+        // Step 2: Check if property exists (addr == 0 means no exits)
+        // CRITICAL: Use negative placeholder (-1) to encode "branch on true"
+        // Bit 15 of placeholder encodes branch sense: 1=true, 0=false
+        // 0x7FFF has bit 15=0 (branch on false), -1 (0xFFFF) has bit 15=1 (branch on true)
+        let branch_layout = self.emit_instruction(
+            0x01, // je - branch if addr == 0
+            &[
+                Operand::Variable(directions_addr_var),
+                Operand::SmallConstant(0),
+            ],
+            None,
+            Some(-1), // Negative = branch on true
+        )?;
 
-                // Compare direction variable with this direction's dictionary address
-                // je direction_var, dict_addr → match_label
-                let layout = self.emit_instruction(
-                    0x01, // je (jump if equal)
-                    &[
-                        direction_operand.clone(),
-                        Operand::LargeConstant(dict_addr as u16),
-                    ],
-                    None,
-                    Some(0x7FFF), // Branch placeholder
-                )?;
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::Branch,
+                location: branch_layout
+                    .branch_location
+                    .expect("je needs branch location"),
+                target_id: not_found_label,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
 
-                // On match, emit get_prop and jump to end
-                let match_label = self.next_string_id;
-                self.next_string_id += 1;
+        // Step 3: Get addresses of exit_types and exit_data properties
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::GetPropAddr),
+            &[
+                room_operand.clone(),
+                Operand::SmallConstant(exit_types_prop),
+            ],
+            Some(types_addr_var),
+            None,
+        )?;
 
-                self.reference_context
-                    .unresolved_refs
-                    .push(UnresolvedReference {
-                        reference_type: LegacyReferenceType::Branch,
-                        location: layout.branch_location.expect("je needs branch location"),
-                        target_id: match_label,
-                        is_packed_address: false,
-                        offset_size: 2,
-                        location_space: MemorySpace::Code,
-                    });
+        log::warn!("🔍 GET_EXIT: Getting exit_data property address from room_operand={:?}, storing in var {}", room_operand, data_addr_var);
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::GetPropAddr),
+            &[room_operand.clone(), Operand::SmallConstant(exit_data_prop)],
+            Some(data_addr_var),
+            None,
+        )?;
+        log::warn!("🔍 GET_EXIT: Successfully emitted get_prop_addr for exit_data");
 
-                // Register match label
-                self.label_addresses.insert(match_label, self.code_address);
-                self.record_final_address(match_label, self.code_address);
+        // Step 4: Get length of exit_directions array and calculate num_exits
+        // GetPropLen returns the length in BYTES, we need to divide by 2 to get word count
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::GetPropLen),
+            &[Operand::Variable(directions_addr_var)],
+            Some(num_exits_var), // Store result directly
+            None,
+        )?;
 
-                // Emit get_prop for this direction's exit property
-                if let Some(store_var) = target {
-                    self.emit_instruction_typed(
-                        Opcode::Op2(Op2::GetProp),
-                        &[room_operand.clone(), Operand::SmallConstant(prop_num)],
-                        Some(store_var as u8),
-                        None,
-                    )?;
-                }
+        // Divide by 2 to get num_exits (property length is in bytes, each word is 2 bytes)
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Div),
+            &[Operand::Variable(num_exits_var), Operand::SmallConstant(2)],
+            Some(num_exits_var), // Store quotient
+            None,
+        )?;
 
-                // Jump to end
-                let jump_layout = self.emit_instruction(
-                    0x0C, // jump
-                    &[Operand::LargeConstant(placeholder_word())],
-                    None,
-                    None,
-                )?;
+        // Step 5: Initialize loop counter (index = 0)
+        self.emit_instruction(
+            0x0D, // store
+            &[Operand::SmallConstant(0)],
+            Some(index_var),
+            None,
+        )?;
 
-                self.reference_context
-                    .unresolved_refs
-                    .push(UnresolvedReference {
-                        reference_type: LegacyReferenceType::Jump,
-                        location: jump_layout
-                            .operand_location
-                            .expect("jump needs operand location"),
-                        target_id: end_label,
-                        is_packed_address: false,
-                        offset_size: 2,
-                        location_space: MemorySpace::Code,
-                    });
+        // Step 6: Loop start
+        self.label_addresses
+            .insert(loop_start_label, self.code_address);
+        self.record_final_address(loop_start_label, self.code_address);
 
-                // Register next label for next iteration
-                self.label_addresses.insert(next_label, self.code_address);
-                self.record_final_address(next_label, self.code_address);
-            }
-        }
+        // Check if index >= num_exits -> not_found_label
+        let loop_check_layout = self.emit_instruction(
+            0x05, // jge - branch if index >= num_exits
+            &[
+                Operand::Variable(index_var),
+                Operand::Variable(num_exits_var),
+            ],
+            None,
+            Some(-1), // Negative = branch on true
+        )?;
 
-        // No match found - return 0
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::Branch,
+                location: loop_check_layout
+                    .branch_location
+                    .expect("jge needs branch location"),
+                target_id: not_found_label,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
+
+        // Step 7: Load current direction word from array -> stack
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Loadw),
+            &[
+                Operand::Variable(directions_addr_var),
+                Operand::Variable(index_var),
+            ],
+            Some(0), // Temp on stack
+            None,
+        )?;
+
+        // Step 8: Compare current direction with parameter -> found_label
+        let compare_layout = self.emit_instruction_typed(
+            Opcode::Op2(Op2::Je),
+            &[
+                Operand::Variable(0), // Current dir on stack
+                direction_operand.clone(),
+            ],
+            None,
+            Some(-1), // Negative = branch on true (branch if equal)
+        )?;
+
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::Branch,
+                location: compare_layout
+                    .branch_location
+                    .expect("je needs branch location"),
+                target_id: found_label,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
+
+        // Step 9: Increment index and loop
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Add),
+            &[Operand::Variable(index_var), Operand::SmallConstant(1)],
+            Some(index_var), // Store back to index_var
+            None,
+        )?;
+
+        // Jump back to loop start
+        let loop_jump_layout = self.emit_instruction(
+            0x0C, // jump
+            &[Operand::LargeConstant(placeholder_word())],
+            None,
+            None,
+        )?;
+
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::Jump,
+                location: loop_jump_layout
+                    .operand_location
+                    .expect("jump needs operand location"),
+                target_id: loop_start_label,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
+
+        // Step 10: Found label - extract type and data, pack result
+        self.label_addresses.insert(found_label, self.code_address);
+        self.record_final_address(found_label, self.code_address);
+
+        // loadb types_addr, index -> stack (type byte)
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Loadb),
+            &[
+                Operand::Variable(types_addr_var),
+                Operand::Variable(index_var),
+            ],
+            Some(0), // Temp on stack
+            None,
+        )?;
+
+        // mul type, 16384 -> stack (type_shifted, 16384 = 2^14)
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Mul),
+            &[Operand::Variable(0), Operand::LargeConstant(16384)],
+            Some(0), // Keep on stack
+            None,
+        )?;
+
+        // loadw data_addr, index -> result var (data word)
+        // Store directly to result to save stack manipulation
         if let Some(store_var) = target {
             self.emit_instruction_typed(
+                Opcode::Op2(Op2::Loadw),
+                &[
+                    Operand::Variable(data_addr_var),
+                    Operand::Variable(index_var),
+                ],
+                Some(store_var as u8),
+                None,
+            )?;
+
+            // or type_shifted (stack), data (result_var) -> result
+            self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
-                &[Operand::LargeConstant(0), Operand::SmallConstant(0)],
+                &[Operand::Variable(0), Operand::Variable(store_var as u8)],
                 Some(store_var as u8),
                 None,
             )?;
         }
 
-        // Register end label
+        // Jump to end
+        let found_jump_layout = self.emit_instruction(
+            0x0C,
+            &[Operand::LargeConstant(placeholder_word())],
+            None,
+            None,
+        )?;
+
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::Jump,
+                location: found_jump_layout
+                    .operand_location
+                    .expect("jump needs operand location"),
+                target_id: end_label,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
+
+        // Step 11: Not found label - return 0
+        self.label_addresses
+            .insert(not_found_label, self.code_address);
+        self.record_final_address(not_found_label, self.code_address);
+
+        if let Some(store_var) = target {
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Or),
+                &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
+                Some(store_var as u8),
+                None,
+            )?;
+        }
+
+        // Step 12: End label
         self.label_addresses.insert(end_label, self.code_address);
         self.record_final_address(end_label, self.code_address);
 

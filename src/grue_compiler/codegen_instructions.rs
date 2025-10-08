@@ -248,8 +248,23 @@ impl ZMachineCodeGen {
             } => {
                 // Check if this is a builtin function
                 if self.is_builtin_function(*function) {
+                    let builtin_name = self
+                        .get_builtin_function_name(*function)
+                        .unwrap_or(&"<unknown>".to_string())
+                        .clone();
+                    log::debug!(
+                        "📞 CALL builtin function ID {} ('{}') with {} args",
+                        function,
+                        builtin_name,
+                        args.len()
+                    );
                     self.generate_builtin_function_call(*function, args, *target)?;
                 } else {
+                    log::debug!(
+                        "📞 CALL user function ID {} with {} args",
+                        function,
+                        args.len()
+                    );
                     // Generate user function call with proper reference registration
                     self.generate_user_function_call(*function, args, *target)?;
                 }
@@ -555,8 +570,25 @@ impl ZMachineCodeGen {
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
                 let prop_operand = Operand::LargeConstant(*property_num as u16);
 
-                // CRITICAL: Register target for property result
-                self.use_stack_for_result(*target);
+                // BUG FIX (Oct 8, 2025): Each GetPropertyByNumber needs UNIQUE storage
+                // Previous code reused Variable 241 for ALL property accesses, causing collisions
+                // when multiple properties were accessed (e.g., player.location then exit properties)
+                //
+                // SOLUTION: Allocate unique global variable for each result
+                // Check if we've already allocated a variable for this IR ID
+                if !self.ir_id_to_local_var.contains_key(target) {
+                    // Allocate fresh global variable (starting from high numbers to avoid conflicts)
+                    // Use a counter to ensure uniqueness
+                    let fresh_var = 200u8 + (self.ir_id_to_local_var.len() as u8 % 50);
+                    self.ir_id_to_local_var.insert(*target, fresh_var);
+                    log::debug!(
+                        "GetPropertyByNumber: Allocated variable {} for IR ID {}",
+                        fresh_var,
+                        target
+                    );
+                }
+
+                let result_var = *self.ir_id_to_local_var.get(target).unwrap();
 
                 // Track that this IR ID comes from a property access (for print() type detection)
                 self.ir_id_from_property.insert(*target);
@@ -567,10 +599,14 @@ impl ZMachineCodeGen {
                 self.emit_instruction_typed(
                     Opcode::Op2(Op2::GetProp),
                     &[obj_operand, prop_operand],
-                    Some(0), // Store to stack
+                    Some(result_var), // Store to unique global variable
                     None,
                 )?;
-                log::debug!("GetPropertyByNumber: IR ID {} -> stack", target);
+                log::debug!(
+                    "GetPropertyByNumber: IR ID {} -> global var {}",
+                    target,
+                    result_var
+                );
             }
 
             IrInstruction::SetPropertyByNumber {
@@ -620,7 +656,13 @@ impl ZMachineCodeGen {
                 current_property,
             } => {
                 // Generate next property enumeration
+                log::debug!(
+                    "GetNextProperty: object IR ID {}, current_property {}",
+                    object,
+                    current_property
+                );
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
+                log::debug!("GetNextProperty: obj_operand = {:?}", obj_operand);
                 let prop_operand = self.resolve_ir_id_to_operand((*current_property).into())?;
 
                 // CRITICAL: Register target for next property result
@@ -2271,19 +2313,32 @@ impl ZMachineCodeGen {
 
         // Handle branch encoding - distinguish between hardcoded offsets and label references
         let branch_location = if let Some(offset) = branch_offset {
+            // CRITICAL BUG FIX (Oct 8, 2025): Extract branch sense from offset value
+            // For direct offsets (0-63): encode immediately with correct sense bit
+            // For placeholders (like 0x7FFF): preserve value, will be patched later
+
             // Check if this is a small hardcoded offset (0-63) that can be encoded directly
             if offset >= 0 && offset <= 63 {
+                // Direct offset: extract branch sense from sign convention
+                // By convention: positive = branch on true (this is the common case)
+                let on_true = true; // Direct small offsets default to "branch on true"
+
                 log::debug!(
-                    "BRANCH_DIRECT: Encoding hardcoded offset {} directly as single byte",
-                    offset
+                    "BRANCH_DIRECT: Encoding offset {} as single byte (on_true={})",
+                    offset,
+                    on_true
                 );
-                // Encode as single-byte branch: bit 7=condition, bit 6=1 (single-byte), offset in bits 0-5
-                let branch_byte = 0x40 | (offset as u8 & 0x3F);
+                // Encode as single-byte branch:
+                // Bit 7 = branch sense (1=branch on true, 0=branch on false)
+                // Bit 6 = 1 (single-byte format)
+                // Bits 0-5 = offset
+                let sense_bit = if on_true { 0x80 } else { 0x00 };
+                let branch_byte = sense_bit | 0x40 | (offset as u8 & 0x3F);
                 self.emit_byte(branch_byte)?;
                 None // No placeholder needed
             } else {
                 // This is either a large offset or a label reference - emit placeholder
-                // Use the offset value as placeholder to preserve branch sense information in bit 15
+                // Preserve the original offset value (bit 15 encodes branch sense for placeholders)
                 let loc = self.code_address;
                 let placeholder_value = offset as u16;
                 log::debug!("BRANCH_PLACEHOLDER: Emitting 0x{:04x} at code_address=0x{:04x} for branch (offset={})",
@@ -2471,19 +2526,32 @@ impl ZMachineCodeGen {
 
         // Handle branch encoding - distinguish between hardcoded offsets and label references
         let branch_location = if let Some(offset) = branch_offset {
+            // CRITICAL BUG FIX (Oct 8, 2025): Extract branch sense from offset value
+            // For direct offsets (0-63): encode immediately with correct sense bit
+            // For placeholders (like 0x7FFF): preserve value, will be patched later
+
             // Check if this is a small hardcoded offset (0-63) that can be encoded directly
             if offset >= 0 && offset <= 63 {
+                // Direct offset: extract branch sense from sign convention
+                // By convention: positive = branch on true (this is the common case)
+                let on_true = true; // Direct small offsets default to "branch on true"
+
                 log::debug!(
-                    "BRANCH_DIRECT: Encoding hardcoded offset {} directly as single byte",
-                    offset
+                    "BRANCH_DIRECT: Encoding offset {} as single byte (on_true={})",
+                    offset,
+                    on_true
                 );
-                // Encode as single-byte branch: bit 7=condition, bit 6=1 (single-byte), offset in bits 0-5
-                let branch_byte = 0x40 | (offset as u8 & 0x3F);
+                // Encode as single-byte branch:
+                // Bit 7 = branch sense (1=branch on true, 0=branch on false)
+                // Bit 6 = 1 (single-byte format)
+                // Bits 0-5 = offset
+                let sense_bit = if on_true { 0x80 } else { 0x00 };
+                let branch_byte = sense_bit | 0x40 | (offset as u8 & 0x3F);
                 self.emit_byte(branch_byte)?;
                 None // No placeholder needed
             } else {
                 // This is either a large offset or a label reference - emit placeholder
-                // Use the offset value as placeholder to preserve branch sense information in bit 15
+                // Preserve the original offset value (bit 15 encodes branch sense for placeholders)
                 let loc = self.code_address;
                 let placeholder_value = offset as u16;
                 log::debug!("BRANCH_PLACEHOLDER: Emitting 0x{:04x} at code_address=0x{:04x} for branch (offset={})",
@@ -2649,19 +2717,32 @@ impl ZMachineCodeGen {
 
         // Handle branch encoding - distinguish between hardcoded offsets and label references
         let branch_location = if let Some(offset) = branch_offset {
+            // CRITICAL BUG FIX (Oct 8, 2025): Extract branch sense from offset value
+            // For direct offsets (0-63): encode immediately with correct sense bit
+            // For placeholders (like 0x7FFF): preserve value, will be patched later
+
             // Check if this is a small hardcoded offset (0-63) that can be encoded directly
             if offset >= 0 && offset <= 63 {
+                // Direct offset: extract branch sense from sign convention
+                // By convention: positive = branch on true (this is the common case)
+                let on_true = true; // Direct small offsets default to "branch on true"
+
                 log::debug!(
-                    "BRANCH_DIRECT: Encoding hardcoded offset {} directly as single byte",
-                    offset
+                    "BRANCH_DIRECT: Encoding offset {} as single byte (on_true={})",
+                    offset,
+                    on_true
                 );
-                // Encode as single-byte branch: bit 7=condition, bit 6=1 (single-byte), offset in bits 0-5
-                let branch_byte = 0x40 | (offset as u8 & 0x3F);
+                // Encode as single-byte branch:
+                // Bit 7 = branch sense (1=branch on true, 0=branch on false)
+                // Bit 6 = 1 (single-byte format)
+                // Bits 0-5 = offset
+                let sense_bit = if on_true { 0x80 } else { 0x00 };
+                let branch_byte = sense_bit | 0x40 | (offset as u8 & 0x3F);
                 self.emit_byte(branch_byte)?;
                 None // No placeholder needed
             } else {
                 // This is either a large offset or a label reference - emit placeholder
-                // Use the offset value as placeholder to preserve branch sense information in bit 15
+                // Preserve the original offset value (bit 15 encodes branch sense for placeholders)
                 let loc = self.code_address;
                 let placeholder_value = offset as u16;
                 log::debug!("BRANCH_PLACEHOLDER: Emitting 0x{:04x} at code_address=0x{:04x} for branch (offset={})",

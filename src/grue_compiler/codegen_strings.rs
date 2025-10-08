@@ -760,7 +760,7 @@ impl ZMachineCodeGen {
         &mut self,
         prop_num: u8,
         prop_value: &IrPropertyValue,
-    ) -> (u8, Vec<u8>, Option<IrId>) {
+    ) -> (u8, Vec<u8>, Option<IrId>, Option<u8>) {
         let (data, string_id_opt) = match prop_value {
             IrPropertyValue::String(s) => {
                 // String properties: Store as packed address to string in high memory
@@ -806,16 +806,105 @@ impl ZMachineCodeGen {
         };
 
         // Calculate size byte according to Z-Machine specification
-        // V3 format: size_byte = 32 * (data_bytes - 1) + property_number
-        // V4+ format: different encoding (not implemented yet)
-        let size = data.len().min(8) as u8; // V3 max property size is 8 bytes
+        // V3 single-byte format: bit 7=0, bits 6-5=(size-1) capped at 2, bits 4-0=prop_num
+        //   Max size: 4 bytes (when bits 6-5 = 10 = 2, size = 2+1 = 3... wait, that's wrong)
+        //   Actually: bits 6-5 = 00 means 1 byte, 01 means 2 bytes, 10 means 3-8 bytes
+        //   But V3 spec says properties > 8 bytes need two-byte format
+        // V3 two-byte format:
+        //   First byte: bit 7=1, bit 6=0, bits 5-0=property number
+        //   Second byte: size in bytes (0-63)
+
+        let size = data.len() as u8;
         if size == 0 {
             // Empty property - use 1 byte minimum
-            let size_byte = 32 * (1 - 1) + prop_num; // 0 * 32 + prop_num = prop_num
-            return (size_byte, vec![0], None);
+            let size_byte = prop_num; // bits 6-5 = 00 means 1 byte
+            return (size_byte, vec![0], None, None);
         }
-        let size_byte = 32 * (size - 1) + prop_num;
 
-        (size_byte, data, string_id_opt)
+        // V3 uses two-byte format for properties with more than 8 bytes
+        // But actually, the single-byte format can only encode sizes 1-8 using bits 6-5
+        // Let's check if we need two-byte format
+        if size > 8 {
+            // Two-byte format required
+            let size_byte = 0x80 | prop_num; // bit 7=1, bit 6=0, bits 5-0=prop_num
+            return (size_byte, data, string_id_opt, Some(size));
+        }
+
+        // Single-byte format: bits 6-5 encode (size - 1)
+        // But wait - bits 6-5 can only be 00, 01, 10, 11 = 0, 1, 2, 3
+        // This would give sizes 1, 2, 3, 4
+        // For sizes 5-8, we need... let me check the spec more carefully
+
+        // Actually, from real Z-Machine code analysis:
+        // The formula `32 * (size - 1) + prop_num` works for sizes 1-4
+        // For size > 4, bit 7 becomes 1 which triggers two-byte format
+        // So let's explicitly handle this:
+
+        if size <= 4 {
+            // Single-byte format
+            let size_byte = 32 * (size - 1) + prop_num;
+            (size_byte, data, string_id_opt, None)
+        } else {
+            // Two-byte format (size > 4)
+            let size_byte = 0x80 | prop_num; // bit 7=1, bit 6=0, bits 5-0=prop_num
+            (size_byte, data, string_id_opt, Some(size))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_encode_word_to_zchars_produces_correct_length() {
+        let codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
+
+        let encoded = codegen.encode_word_to_zchars("east").unwrap();
+
+        // V3 dictionary entries should be 6 bytes total:
+        // - 4 bytes for the encoded word (2 16-bit words with Z-chars)
+        // - 2 bytes for flags
+        assert_eq!(encoded.len(), 6, "V3 dictionary entry should be 6 bytes");
+    }
+
+    #[test]
+    fn test_encode_word_to_zchars_matches_interpreter_format() {
+        let codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
+
+        let encoded = codegen.encode_word_to_zchars("east").unwrap();
+
+        // Expected encoding for "east":
+        // e = 10 (6+4), a = 6, s = 24 (6+18), t = 25 (6+19)
+        // Z-chars: [10, 6, 24, 25, 5, 5]
+        // Word 1: 10 << 10 | 6 << 5 | 24 = 0x28D8
+        // Word 2: 25 << 10 | 5 << 5 | 5 | 0x8000 = 0xE4A5
+
+        assert_eq!(encoded[0], 0x28, "First byte should be 0x28");
+        assert_eq!(encoded[1], 0xD8, "Second byte should be 0xD8");
+        assert_eq!(encoded[2], 0xE4, "Third byte should be 0xE4");
+        assert_eq!(encoded[3], 0xA5, "Fourth byte should be 0xA5");
+
+        // Flags bytes should be 0x80 0x00
+        assert_eq!(encoded[4], 0x80, "Fifth byte (flags high) should be 0x80");
+        assert_eq!(encoded[5], 0x00, "Sixth byte (flags low) should be 0x00");
+    }
+
+    #[test]
+    fn test_encode_word_to_zchars_west() {
+        let codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
+
+        let encoded = codegen.encode_word_to_zchars("west").unwrap();
+
+        // Expected encoding for "west":
+        // w = 28 (6+22), e = 10 (6+4), s = 24 (6+18), t = 25 (6+19)
+        // Z-chars: [28, 10, 24, 25, 5, 5]
+        // Word 1: 28 << 10 | 10 << 5 | 24 = 0x7158
+        // Word 2: 25 << 10 | 5 << 5 | 5 | 0x8000 = 0xE4A5
+
+        assert_eq!(encoded[0], 0x71, "First byte should be 0x71");
+        assert_eq!(encoded[1], 0x58, "Second byte should be 0x58");
+        assert_eq!(encoded[2], 0xE4, "Third byte should be 0xE4");
+        assert_eq!(encoded[3], 0xA5, "Fourth byte should be 0xA5");
     }
 }

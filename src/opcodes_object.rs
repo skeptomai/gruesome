@@ -245,6 +245,10 @@ impl Interpreter {
                 let obj_num = operands[0];
                 let prop_num = operands[1] as u8;
                 let addr = self.vm.get_property_addr(obj_num, prop_num)? as u16;
+                if prop_num >= 20 && prop_num <= 22 {
+                    log::warn!("🔍 GET_PROP_ADDR: obj={}, prop={}, returning addr=0x{:04x}, storing to var={:?}",
+                        obj_num, prop_num, addr, inst.store_var);
+                }
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, addr)?;
                 }

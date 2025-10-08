@@ -1,421 +1,350 @@
-# Exit System Implementation Plan
+# Exit System Implementation Plan - ACTUAL STATUS
 
-## Current Status (October 6, 2025)
+## Current Status (October 8, 2025)
 
-### ✅ Completed (Phase 1)
-- **Documentation**: Complete architecture in `docs/ARCHITECTURE.md`
-- **Property Generation**: Exit tables encoded in room properties
-  - Format: `[count][dir1_len][dir1_chars...][type1][data_hi][data_lo]...`
-  - Single property per room (conserves property numbers)
-  - Type 0 = room destination, Type 1 = blocked with inline message
-- **Tests**: 6 comprehensive unit tests in `src/grue_compiler/codegen_tests.rs`
-- **Placeholder Builtin**: `get_exit()` returns 0 (allows compilation)
+### ✅ FIXED - Compiler Bugs Blocking Exit System
 
-### 🚧 Pending Implementation
+#### Bug 7: GetPropertyByNumber Variable Collision (Oct 8, 2025)
+**Status**: FIXED ✅
 
-#### Phase 2B: Full get_exit Builtin Logic
-**Status**: Not started (currently returns placeholder 0)
+**Problem**: All `GetPropertyByNumber` instructions hardcoded Variable 241, causing collisions when multiple properties accessed sequentially. This made get_exit() return 0.
 
-**Complexity**: HIGH - Requires generating complex Z-Machine assembly
+**Fix**: `codegen_instructions.rs:552-590` - Allocate unique global variable per IR ID
 
-**What It Needs to Do**:
+**Impact**: get_exit() now successfully executes and returns packed values
+
+#### Bug 8: Branch Encoding Placeholder Bit 15 (Oct 8, 2025)
+**Status**: FIXED ✅
+
+**Problem**: Branch placeholder 0x7FFF has bit 15=0 (branch on FALSE), causing get_exit to exit early even when properties exist.
+
+**Fix**: `codegen_builtins.rs:1126, 1197, 1232` - Use -1 (0xFFFF) for "branch on TRUE"
+
+**Impact**: get_exit now continues past initial checks, executes loop correctly
+
+#### Bug 9: exit_data String IDs vs Packed Addresses (Oct 8, 2025)
+**Status**: FIXED ✅
+
+**Problem**: exit_data stored raw string IDs (1002) instead of packed addresses, causing garbage/errors at runtime.
+
+**Fix**:
+- `codegen_objects.rs:593-634` - Write placeholders, track messages in room_exit_messages
+- `codegen.rs:4985-5016` - Create StringRef UnresolvedReferences during property serialization
+
+**Verification**: String ID 1002 correctly resolved to packed address 0x0568 at location 0x03b4
+
+**Impact**: Blocked exit messages now have correct packed string addresses in exit_data
+
+#### Bug 10: V3 Property Two-Byte Format - Compiler Writing (Oct 8, 2025)
+**Status**: FIXED ✅
+
+**Problem**: Compiler generated two-byte property format for properties > 4 bytes but only wrote ONE byte instead of two, causing property tables to appear corrupted.
+
+**Cause**: Formula `32 * (size - 1) + prop_num` correctly set bit 7=1 for sizes > 4, triggering two-byte format, but code didn't recognize this and write second size byte.
+
+**Fix**:
+- `codegen_strings.rs:759-852` - Explicit two-byte format detection (size > 4)
+- Returns 4-tuple with optional second size byte
+- `codegen.rs:4892-4936` - Write second byte when `two_byte_size.is_some()`
+
+**Impact**: Property 22 (exit_data) with 6 bytes now correctly written as:
 ```
-get_exit(room_object, direction_string) -> packed_result
-  where packed_result = (type << 14) | data
-  - type=0, data=room_id for normal exits
-  - type=1, data=message_addr for blocked exits
-  - result=0 for no exit found
+[0x96, 0x06, data...]  // header1, header2, data
+```
+Instead of broken:
+```
+[0xB6, 0x00, data...]  // header1, wrong-size, data
 ```
 
-**Implementation Requirements**:
-1. **Get exit_table property from room**
-   - Use Z-Machine `get_prop` instruction
-   - Property number: 20 (exit_table)
-   - Returns address of property data
+**See**: ARCHITECTURE.md section "CRITICAL: V3 Property Size Encoding - Two-Byte Format"
 
-2. **Parse table format**
-   ```
-   [count: 1 byte]
-   [dir1_len: 1 byte][dir1_chars: N bytes][type1: 1 byte][data1_hi: 1 byte][data1_lo: 1 byte]
-   [dir2_len: 1 byte][dir2_chars: N bytes][type2: 1 byte][data2_hi: 1 byte][data2_lo: 1 byte]
-   ...
-   ```
+#### Bug 11: V3 Property Two-Byte Format - Interpreter Reading (Oct 8, 2025)
+**Status**: FIXED ✅
 
-3. **Loop through exits**
-   - Read count from first byte
-   - For each exit (0 to count-1):
-     - Read direction length
-     - Compare direction bytes with input string
-     - If match: extract type and data, pack result, return
-     - If no match: advance to next exit entry
+**Problem**: After fixing compiler to write two-byte properties, interpreter still couldn't READ them. The `get_property_info()` function for V3 never checked bit 7 to detect two-byte format.
 
-4. **String comparison**
-   - Byte-by-byte comparison
-   - Handle variable-length strings
-   - Case-insensitive? (TBD)
-
-5. **Pack and return result**
-   - Shift type left 14 bits: `type << 14`
-   - OR with data: `(type << 14) | data`
-   - Return packed 16-bit value
-
-**Z-Machine Instructions Needed**:
-- `get_prop` - Read exit_table property
-- `loadb` - Read bytes from property data
-- `je` - Compare bytes (equality test)
-- `add` - Advance pointer through table
-- `jump` - Loop control
-- `or` / `shift` - Pack result
-- `store` / `load` - Variable management
-- `call` - Possibly helper routines
-
-**Estimated Code Size**: 50-100 Z-Machine instructions
-
-**Challenges**:
-- Variable-length data parsing in Z-Machine
-- String comparison without built-in string ops
-- Pointer arithmetic through byte arrays
-- Maintaining loop state across iterations
-- Handling edge cases (empty strings, no exits, etc.)
-
-#### Phase 3: Accessor Methods
-**Status**: Not started
-
-**Complexity**: MEDIUM - Depends on Phase 2B result format
-
-**Required Methods**:
-1. **`.none()`** - Test if exit is null
-   ```
-   value.none() -> bool
-   Returns: value == 0
-   ```
-
-2. **`.blocked`** - Test if exit is blocked
-   ```
-   value.blocked -> bool
-   Returns: (value >> 14) == 1
-   ```
-
-3. **`.destination`** - Get room ID from exit
-   ```
-   value.destination -> room_id
-   Returns: value & 0x3FFF
-   ```
-
-4. **`.message`** - Get blocked message
-   ```
-   value.message -> string
-   Returns: string at address (value & 0x3FFF)
-   ```
-
-**Implementation Location**: `src/grue_compiler/ir.rs` method handlers
-
-**Depends On**: Phase 2B must be complete to test these properly
-
----
-
-## Alternative Approaches
-
-### Option A: Keep Current Complex Design
-**Pros**:
-- Maximum flexibility
-- Handles arbitrary number of exits
-- Compact memory usage
-
-**Cons**:
-- Very complex Z-Machine code generation
-- Hard to debug
-- Performance concerns (string search on every movement)
-
-### Option B: Pre-compile Exit Dispatch Functions
-Instead of runtime table parsing, generate a specialized function for each room:
-
+**Cause**: V3 code assumed single-byte format only (lines 436-440 in vm.rs):
 ```rust
-// For west_of_house with exits {north: room2, east: blocked("door")}
-fn west_of_house_get_exit(direction) {
-    if (direction == "north") return room2;
-    if (direction == "east") return blocked_exit_marker;
-    return 0;
+// WRONG: Always reads size from bits 7-5, never checks bit 7
+let prop_size = ((size_byte >> 5) & 0x07) + 1;
+Ok((prop_num, prop_size as usize, 1))  // Always returns size_bytes=1!
+```
+
+**Fix**: `src/vm.rs:436-450` - Check bit 7 for two-byte format:
+```rust
+if size_byte & 0x80 != 0 {
+    // Two-byte header: next byte contains size
+    let size_byte_2 = self.game.memory[prop_addr + 1];
+    let prop_size = if size_byte_2 == 0 { 64 } else { size_byte_2 as usize };
+    Ok((prop_num, prop_size, 2))
+} else {
+    // Single-byte format
+    let prop_size = ((size_byte >> 5) & 0x07) + 1;
+    Ok((prop_num, prop_size as usize, 1))
 }
 ```
 
-**Pros**:
-- Much simpler codegen (just if-statements)
-- Faster at runtime (direct comparisons, no parsing)
-- Easier to debug (readable Z-Machine code)
+**Impact**:
+- Property 22 (exit_data) now correctly recognized with 6-byte size
+- "Property 14 not found" error eliminated
+- All exit properties (20, 21, 22) now accessible at runtime
 
-**Cons**:
-- More code space (one function per room)
-- Still need string comparison logic
-- More complex IR structure
+**Regression**: All tests pass ✅, commercial Infocom games still work ✅
 
-### Option C: Use Room Properties Directly
-Store each exit as a separate property:
+**See**: ARCHITECTURE.md section "CRITICAL: V3 Property Interpreter Bug - Two-Byte Format Support"
 
+### ✅ IMPLEMENTED Components
+
+#### 1. Exit Property Generation (codegen_objects.rs:508-620)
+**Status**: COMPLETE and WORKING
+
+The compiler generates three parallel array properties for each room with exits:
+- `exit_directions` (property 20): Array of dictionary word addresses (2 bytes each)
+- `exit_types` (property 21): Array of type bytes (0=room, 1=blocked)
+- `exit_data` (property 22): Array of room IDs or message addresses (2 bytes each)
+
+Example for west_of_house:
 ```
-room.exit_north = room_id or blocked_marker
-room.exit_south = room_id or blocked_marker
-```
-
-Then `get_exit(direction)` becomes:
-```
-property_name = "exit_" + direction
-return room.get_property(property_name)
-```
-
-**Pros**:
-- Simplest runtime logic
-- Uses standard property system
-- Fast property lookup
-
-**Cons**:
-- Limited property numbers (max 63 in v3)
-- Can't concatenate strings at runtime in Z-Machine
-- Would need fixed direction names only
-
-### Option D: Dictionary-Based Lookup
-Store direction strings in dictionary, use dictionary addresses as keys:
-
-```
-For each exit:
-  dict_word = encode_to_dictionary(direction)
-  room.exits_table[dict_word] = exit_data
+exit_directions: [dict_addr("north"), dict_addr("east"), dict_addr("south")]
+exit_types: [0, 1, 0]  // north=normal, east=blocked, south=normal
+exit_data: [2, 1002, 3]  // north=room#2, east=string#1002, south=room#3
 ```
 
-**Pros**:
-- Dictionary encoding is already implemented
-- Fast word-based lookup instead of string comparison
-- Leverages existing Z-Machine infrastructure
+#### 2. get_exit() Builtin (codegen_builtins.rs:1012-1320)
+**Status**: COMPLETE and WORKING
 
-**Cons**:
-- Still need table lookup logic
-- Dictionary space constraints
-- Complex address-based indexing
+Implements runtime lookup algorithm:
+1. Get address of `exit_directions` property
+2. Loop through directions comparing with input
+3. When match found at index N:
+   - Load `exit_types[N]` as type (0 or 1)
+   - Load `exit_data[N]` as data (room ID or string address)
+4. Pack result: `(type << 14) | data`
+5. Return 0 if no match found
 
----
+Returns:
+- `0x0000 | room_id` for normal exits (bit 14 clear)
+- `0x4000 | string_addr` for blocked exits (bit 14 set)
+- `0` if direction not found
 
-## Recommended Path Forward
+#### 3. IR Generation (ir.rs:2624-2638)
+**Status**: COMPLETE and WORKING
 
-### Step 1: Reconsider Architecture
-The current "parse byte table at runtime" approach is very complex. Before implementing, we should:
-
-1. **Prototype simpler approaches**
-   - Try Option B (per-room dispatch functions)
-   - Measure code size impact
-   - Compare complexity
-
-2. **Benchmark existing games**
-   - How do real Infocom games handle exits?
-   - Look at Zork I disassembly
-   - Learn from proven patterns
-
-3. **Simplify requirements**
-   - Do we need arbitrary direction strings?
-   - Can we limit to: n/s/e/w/ne/nw/se/sw/u/d/in/out?
-   - Fixed set enables simpler encoding
-
-### Step 2: If Keeping Current Design
-1. **Write detailed pseudocode** for table parsing
-2. **Implement helper functions** for:
-   - String comparison
-   - Table iteration
-   - Result packing
-3. **Test incrementally** with simple cases
-4. **Add extensive logging** for debugging
-
-### Step 3: Accessor Methods
-These are simpler and can be done independently:
-- Implement `.none()` first (trivial: test == 0)
-- Implement `.blocked` and `.destination` (bit manipulation)
-- Defer `.message` until string handling is clear
-
----
-
-## Decision Points
-
-**Key Questions to Answer**:
-
-1. **Is runtime table parsing worth the complexity?**
-   - Could we pre-compile dispatch functions instead?
-   - What's the code size tradeoff?
-
-2. **Can we simplify the direction string handling?**
-   - Fixed direction set vs arbitrary strings?
-   - Dictionary encoding for directions?
-
-3. **What do real Z-Machine games do?**
-   - Research existing exit system patterns
-   - Learn from Inform or other compilers
-
-4. **Should we implement Phase 3 first?**
-   - Get accessor methods working with placeholder data
-   - Defer complex lookup logic
-   - Make incremental progress
-
-5. **Is there a hybrid approach?**
-   - Simple dispatch for common directions (n/s/e/w)
-   - Fall back to table parsing for unusual directions
-   - Best of both worlds?
-
----
-
-## Research Findings (October 6, 2025)
-
-### Inform 6 Exit System ✅
-
-**Research Source**: IFWiki - Properties in Inform 6
-
-**Finding**: Inform 6 (the industry-standard Z-Machine compiler) uses **individual properties per direction**:
-
-- `n_to` - north exit
-- `s_to` - south exit
-- `e_to` - east exit
-- `w_to` - west exit
-- `ne_to`, `nw_to`, `se_to`, `sw_to` - diagonals
-- `u_to` - up
-- `d_to` - down
-- `in_to`, `out_to` - special directions
-
-**Property Values**:
-Each direction property can hold:
-1. **Room object ID** - normal exit
-2. **Door object ID** - door that must be opened
-3. **Routine address** - custom logic (for blocked exits, conditional passages)
-
-**How It Works**:
-```inform6
-Room Kitchen
-  with n_to Hallway,      // Simple room exit
-       s_to locked_door,  // Door object
-       e_to [;           // Routine for blocked exit
-         print "The door is locked.";
-         rtrue;
-       ];
+The `get_exit` method call is recognized and translated to builtin call:
+```rust
+"get_exit" => {
+    let builtin_id = self.next_id();
+    self.builtin_functions.insert(builtin_id, "get_exit".to_string());
+    let mut call_args = vec![object_temp];  // room object
+    call_args.extend(arg_temps);  // direction string
+    block.add_instruction(IrInstruction::Call {
+        target: Some(result_temp),
+        function: builtin_id,
+        args: call_args,
+    });
+}
 ```
 
-At runtime: `room.n_to` is just a property read - returns room ID, door ID, or routine address.
+### ❌ MISSING Components - THE BUG
 
-**Key Insights**:
-- ✅ **Uses fixed property numbers** (n_to, s_to, etc. are pre-defined properties 1-48)
-- ✅ **No runtime string comparison** - direction parsed in command parser, mapped to property
-- ✅ **Simple property reads** - `get_prop` instruction, that's it
-- ✅ **Proven pattern** - thousands of games use this successfully
+#### exit.blocked, exit.destination, exit.message Accessors
+**Status**: NOT IMPLEMENTED
 
-**Implications for Grue**:
-This validates **Option C** completely. We should:
-1. Define fixed properties: `exit_north`, `exit_south`, `exit_east`, etc.
-2. Store exit data directly in these properties
-3. Map direction strings to property names at compile time (or in builtin)
-4. Use simple `get_prop` at runtime
+These pseudo-properties are supposed to extract data from the packed exit value:
 
-**Advantages**:
-- Matches proven industry standard
-- Simple runtime implementation
-- Fast (single property read)
-- No complex table parsing
-- Easy to debug
+**Expected behavior:**
+```grue
+let exit = player.location.get_exit("east");  // Returns 0x43EA (17386)
+if exit.blocked {  // Should check: (exit >> 14) & 1 == 1
+    print(exit.message);  // Should extract: exit & 0x3FFF = 1002
+    return;
+}
+move(player, exit.destination);  // Should extract: exit & 0x3FFF
+```
 
-**Property Number Concerns - RESOLVED**:
-- Z-Machine v3 supports 63 properties
-- We only need ~12 direction properties (n/s/e/w/ne/nw/se/sw/u/d/in/out)
-- Plenty of room for other game properties
-- This is why Inform pre-defines them in slots 1-48
+**Current behavior (Oct 8, 2025):**
+- get_exit() now executes successfully and returns packed values
+- Compiler bugs (variable collision, branch encoding, string address resolution) are FIXED
+- Packed addresses verified correct in .z3 file (e.g., 0x0568 at location 0x03b4)
+- **REMAINING ISSUE**: exit.blocked/destination/message pseudo-properties not implemented
+- Current error: runtime tries to treat exit value as object number, fails validation
 
----
+**Why it's broken:**
+Property access `exit.blocked` generates:
+```z-machine
+get_prop object=<exit_value>, property="blocked"
+```
 
-## Revised Implementation Plan
+But `exit` is a 16-bit packed integer (17386), not an object number!
 
-### NEW Approach: Follow Inform 6 Pattern
+## The Fix Required
 
-#### Phase 2B-Revised: Implement Inform-Style Direction Properties
+### Option A: Implement Pseudo-Property Accessors
 
-**Implementation Steps**:
+Add special handling in IR generation for these specific property names when accessed on exit values:
 
-1. **Define direction properties** in PropertyManager:
-   ```rust
-   - exit_north (property 20)
-   - exit_south (property 21)
-   - exit_east (property 22)
-   - exit_west (property 23)
-   - exit_northeast (property 24)
-   - exit_northwest (property 25)
-   - exit_southeast (property 26)
-   - exit_southwest (property 27)
-   - exit_up (property 28)
-   - exit_down (property 29)
-   - exit_in (property 30)
-   - exit_out (property 31)
-   ```
+**Location**: `src/grue_compiler/ir.rs` - property access handling
 
-2. **Update room property generation** (codegen_objects.rs):
-   ```rust
-   for (direction, exit_target) in &room.exits {
-       let prop_name = match direction.as_str() {
-           "north" => "exit_north",
-           "south" => "exit_south",
-           // ... etc
-       };
-       let prop_num = self.property_numbers.get(prop_name);
+**Implementation**:
+```rust
+match property_name {
+    "blocked" => {
+        // Generate: (value >> 14) & 1
+        let shift_temp = self.next_id();
+        block.add_instruction(IrInstruction::ShiftRight {
+            target: shift_temp,
+            value: object_temp,  // Actually the exit value
+            amount: 14,
+        });
+        block.add_instruction(IrInstruction::And {
+            target: result_temp,
+            left: shift_temp,
+            right: 1,
+        });
+    }
+    "destination" | "message" => {
+        // Generate: value & 0x3FFF
+        block.add_instruction(IrInstruction::And {
+            target: result_temp,
+            left: object_temp,  // Actually the exit value
+            amount: 0x3FFF,
+        });
+    }
+    "none" => {
+        // Generate: value == 0
+        block.add_instruction(IrInstruction::Equal {
+            target: result_temp,
+            left: object_temp,
+            right: 0,
+        });
+    }
+    _ => {
+        // Normal property access
+    }
+}
+```
 
-       match exit_target {
-           IrExitTarget::Room(id) => {
-               room_properties.set_word(prop_num, *id as u16);
-           }
-           IrExitTarget::Blocked(msg) => {
-               // Store string address (or special marker + message property)
-               room_properties.set_string(prop_num, msg.clone());
-           }
-       }
-   }
-   ```
+**Problem**: How do we know if the value is an exit vs a real object?
 
-3. **Implement get_exit builtin** (codegen_builtins.rs):
-   ```rust
-   // Map direction string to property number
-   let prop_num = match direction {
-       "north" => 20,
-       "south" => 21,
-       // ... etc
-   };
+### Option B: Type Tracking
 
-   // Single get_prop instruction
-   emit_get_prop(room_object, prop_num, target_var);
+Track that the result of `get_exit()` has type "ExitValue" and only allow these pseudo-properties on ExitValue types.
 
-   // Return value is:
-   // - Room ID for normal exits
-   // - String address for blocked exits (type identified by high bit or range)
-   // - 0 if property doesn't exist (no exit)
-   ```
+**Requires**:
+- Type system in IR
+- Type inference/propagation
+- Type checking on property access
 
-**Complexity**: LOW - Just property reads and direction mapping
+**Complexity**: HIGH - adds type system to compiler
 
-**Code Size**: ~10-20 Z-Machine instructions (property lookup + direction mapping)
+### Option C: Magic Property Numbers
 
-**Estimated Time**: 1-2 hours
+Register "blocked", "destination", "message" as actual properties (like 60, 61, 62) and handle them specially in codegen.
 
----
+**Problem**: Still need to distinguish exit values from objects at runtime.
 
-## Next Actions
+### Option D: Use Methods Instead of Properties
 
-**Immediate**:
-1. ✅ Research complete - Inform 6 pattern identified
-2. Remove old exit_table property generation
-3. Implement direction property generation
-4. Update get_exit builtin to use property reads
-5. Test with mini_zork
+Change syntax from `exit.blocked` to `exit.is_blocked()` and implement as builtin method calls:
 
-**Future Enhancements**:
-- Support door objects (like Inform 6)
-- Support routine addresses for conditional exits
-- Add more directions if needed
+```grue
+if exit.is_blocked() {
+    print(exit.get_message());
+    return;
+}
+move(player, exit.get_destination());
+```
 
----
+**Requires**:
+- Parser changes to support method calls on non-objects
+- Three new builtins: `is_blocked`, `get_destination`, `get_message`
+
+**Advantage**: Clear that these are operations, not property lookups
+
+### Option E: Return Struct from get_exit
+
+Instead of packed integer, return a synthetic "Exit" object with real properties.
+
+**Problem**: Z-Machine doesn't support dynamic object creation. Would need to pre-allocate exit objects.
+
+## Recommended Solution
+
+**Option A with Runtime Check**: Implement pseudo-properties with defensive runtime behavior.
+
+**Strategy**:
+1. For `exit.blocked`, `exit.destination`, `exit.message`, `exit.none()`:
+2. Generate bit-manipulation code (shift, and, compare)
+3. Don't try to validate object number
+4. Rely on type discipline in source code
+
+**Why this works**:
+- Exit values are always in specific range (0-16383 for destinations, 16384-32767 for blocked)
+- Real object numbers are 1-255 (V3) or 1-65535 (V5+)
+- No ambiguity if programmer uses correctly
+- Fast - just bit operations
+
+**Implementation in ir.rs**:
+```rust
+// In property access generation
+if let Some(exit_pseudo_prop) = is_exit_pseudo_property(&property) {
+    return self.generate_exit_pseudo_property_access(
+        object_temp,  // Actually exit value
+        exit_pseudo_prop,
+        block
+    );
+}
+```
+
+Helper:
+```rust
+fn is_exit_pseudo_property(name: &str) -> Option<ExitPseudoProperty> {
+    match name {
+        "blocked" => Some(ExitPseudoProperty::Blocked),
+        "destination" => Some(ExitPseudoProperty::Destination),
+        "message" => Some(ExitPseudoProperty::Message),
+        _ => None,
+    }
+}
+```
+
+## Next Steps
+
+1. ✅ Document actual implementation status (this file)
+2. Add `is_exit_pseudo_property()` helper to ir.rs
+3. Implement `generate_exit_pseudo_property_access()` in ir.rs
+4. Add IR instructions for bit operations if missing
+5. Add codegen for bit operations in codegen.rs
+6. Test with mini_zork navigation
+7. Handle `.none()` method on exit values
+
+## Test Case
+
+**Input**: `east` from West of House
+**Expected**:
+```
+get_exit returns: 0x43EA (17386)
+  type = (17386 >> 14) = 1 (blocked)
+  data = (17386 & 0x3FFF) = 1002 (message address)
+exit.blocked = true
+print(exit.message) = "The door is boarded and you can't remove the boards."
+```
+
+**Current (Oct 8, 2025)**:
+```
+get_exit: WORKING ✅ - returns packed values correctly
+Compiler bugs FIXED:
+  - Variable collision: each property gets unique variable
+  - Branch encoding: uses -1 for "branch on true"
+  - String addresses: StringRef resolves to packed addresses
+
+REMAINING: exit.blocked/.destination/.message pseudo-properties not implemented
+  - These try to call get_prop on the exit value (integer)
+  - Need bit-manipulation code generation instead
+```
 
 ## References
 
-- **Architecture Doc**: `docs/ARCHITECTURE.md` (lines 1728-1882)
-- **Current Implementation**:
-  - Property generation: `src/grue_compiler/codegen_objects.rs:396-435`
-  - Placeholder builtin: `src/grue_compiler/codegen_builtins.rs:811-849`
-- **Tests**: `src/grue_compiler/codegen_tests.rs:989-1196`
-- **Example Game**: `examples/mini_zork.grue` (handle_go function)
+- Exit property generation: `src/grue_compiler/codegen_objects.rs:508-620`
+- get_exit builtin: `src/grue_compiler/codegen_builtins.rs:1012-1320`
+- IR method handling: `src/grue_compiler/ir.rs:2624-2638`
+- Example usage: `examples/mini_zork.grue` handle_go function

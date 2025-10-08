@@ -84,7 +84,16 @@ impl GrueCompiler {
         let mut code_generator = codegen::ZMachineCodeGen::new(version);
 
         // Transfer builtin function information from IR generator to code generator
+        log::debug!(
+            "🔄 Transferring {} builtin functions from IR to codegen",
+            ir_generator.get_builtin_functions().len()
+        );
         for (function_id, function_name) in ir_generator.get_builtin_functions() {
+            log::debug!(
+                "🔄 Registering builtin: ID {} -> '{}'",
+                function_id,
+                function_name
+            );
             code_generator.register_builtin_function(*function_id, function_name.clone());
         }
 

@@ -1704,8 +1704,13 @@ impl IrGenerator {
         &mut self,
         room: crate::grue_compiler::ast::RoomDecl,
     ) -> Result<IrRoom, CompilerError> {
-        let room_id = self.next_id();
-        self.symbol_ids.insert(room.identifier.clone(), room_id);
+        // Room ID should already be pre-registered during first pass
+        let room_id = *self.symbol_ids.get(&room.identifier).unwrap_or_else(|| {
+            panic!(
+                "Room '{}' should have been pre-registered in first pass",
+                room.identifier
+            )
+        });
 
         // Object numbers should already be assigned during registration pass
         // Don't reassign if already exists (avoids duplicate assignment bug)
@@ -1729,11 +1734,24 @@ impl IrGenerator {
         }
 
         let mut exits = IndexMap::new();
+        log::debug!(
+            "IR generate_room: Processing {} exits for room '{}'",
+            room.exits.len(),
+            room.identifier
+        );
         for (direction, target) in room.exits {
+            log::debug!("IR generate_room: Exit '{}' -> {:?}", direction, target);
             let ir_target = match target {
-                crate::grue_compiler::ast::ExitTarget::Room(_room_name) => {
-                    // We'll resolve room IDs in a later pass
-                    IrExitTarget::Room(0) // Placeholder
+                crate::grue_compiler::ast::ExitTarget::Room(room_name) => {
+                    // Look up target room IR ID from symbol table
+                    let target_room_id = *self.symbol_ids.get(&room_name).unwrap_or(&0);
+                    if target_room_id == 0 {
+                        return Err(CompilerError::CodeGenError(format!(
+                            "Exit from room '{}' references undefined room '{}'",
+                            room.identifier, room_name
+                        )));
+                    }
+                    IrExitTarget::Room(target_room_id)
                 }
                 crate::grue_compiler::ast::ExitTarget::Blocked(message) => {
                     IrExitTarget::Blocked(message)
@@ -2747,6 +2765,98 @@ impl IrGenerator {
                 let is_array = self.is_array_type(&object);
                 let object_temp = self.generate_expression(*object, block)?;
                 let temp_id = self.next_id();
+
+                log::debug!(
+                    "🔍 PropertyAccess: property='{}', object_temp={}",
+                    property,
+                    object_temp
+                );
+
+                // Check if this is an exit value property access (bit manipulation)
+                // Exit values are encoded as: (type << 14) | data
+                // where type=0 for normal exits, type=1 for blocked exits
+                match property.as_str() {
+                    "blocked" => {
+                        log::debug!(
+                            "🚪 EXIT: Creating exit_is_blocked builtin for property access"
+                        );
+
+                        // Check if bit 14 is set (value >= 0x4000)
+                        let builtin_id = self.next_id();
+                        self.builtin_functions
+                            .insert(builtin_id, "exit_is_blocked".to_string());
+
+                        log::debug!(
+                            "🚪 EXIT: Adding Call instruction: target={}, function={}, args=[{}]",
+                            temp_id,
+                            builtin_id,
+                            object_temp
+                        );
+                        block.add_instruction(IrInstruction::Call {
+                            target: Some(temp_id),
+                            function: builtin_id,
+                            args: vec![object_temp],
+                        });
+                        log::debug!(
+                            "🚪 EXIT: Call instruction added, returning temp_id={}",
+                            temp_id
+                        );
+                        return Ok(temp_id);
+                    }
+                    "destination" => {
+                        // Extract lower 14 bits (value & 0x3FFF) -> room ID
+                        log::debug!("🚪 EXIT: Creating exit_get_destination builtin");
+
+                        let builtin_id = self.next_id();
+                        self.builtin_functions
+                            .insert(builtin_id, "exit_get_destination".to_string());
+
+                        log::debug!(
+                            "🚪 EXIT: Adding Call instruction: target={}, function={}, args=[{}]",
+                            temp_id,
+                            builtin_id,
+                            object_temp
+                        );
+                        block.add_instruction(IrInstruction::Call {
+                            target: Some(temp_id),
+                            function: builtin_id,
+                            args: vec![object_temp],
+                        });
+
+                        log::debug!(
+                            "🚪 EXIT: Call instruction added, returning temp_id={}",
+                            temp_id
+                        );
+                        return Ok(temp_id);
+                    }
+                    "message" => {
+                        // Extract lower 14 bits (value & 0x3FFF) -> string address
+                        log::debug!("🚪 EXIT: Creating exit_get_message builtin");
+
+                        let builtin_id = self.next_id();
+                        self.builtin_functions
+                            .insert(builtin_id, "exit_get_message".to_string());
+
+                        log::debug!(
+                            "🚪 EXIT: Adding Call instruction: target={}, function={}, args=[{}]",
+                            temp_id,
+                            builtin_id,
+                            object_temp
+                        );
+                        block.add_instruction(IrInstruction::Call {
+                            target: Some(temp_id),
+                            function: builtin_id,
+                            args: vec![object_temp],
+                        });
+
+                        log::debug!(
+                            "🚪 EXIT: Call instruction added, returning temp_id={}",
+                            temp_id
+                        );
+                        return Ok(temp_id);
+                    }
+                    _ => {} // Fall through to normal property access
+                }
 
                 // Check if this is an array property access
                 if is_array {

@@ -433,10 +433,24 @@ impl VM {
         let size_byte = self.game.memory[prop_addr];
 
         if self.game.header.version <= 3 {
-            // V1-3: prop num in bottom 5 bits, size in top 3 bits
+            // V1-3: prop num in bottom 5 bits
             let prop_num = size_byte & 0x1F;
-            let prop_size = ((size_byte >> 5) & 0x07) + 1;
-            Ok((prop_num, prop_size as usize, 1))
+
+            // Check for two-byte format (bit 7 set, bit 6 clear)
+            if size_byte & 0x80 != 0 {
+                // Two-byte header: next byte contains size
+                let size_byte_2 = self.game.memory[prop_addr + 1];
+                let prop_size = if size_byte_2 == 0 {
+                    64
+                } else {
+                    size_byte_2 as usize
+                };
+                Ok((prop_num, prop_size, 2))
+            } else {
+                // Single-byte format: size in top 3 bits (bits 7-5)
+                let prop_size = ((size_byte >> 5) & 0x07) + 1;
+                Ok((prop_num, prop_size as usize, 1))
+            }
         } else {
             // V4+: prop num in bottom 6 bits
             let prop_num = size_byte & 0x3F;

@@ -1999,3 +1999,366 @@ This is similar to the double-offset bug (commit history) where address calculat
 - **File**: `src/grue_compiler/codegen.rs` lines 5035-5109
 - **Related**: Double-offset bug (address boundary violations)
 - **CLAUDE.md**: Bug 6 documentation
+
+---
+
+## CRITICAL: V3 Property Size Encoding - Two-Byte Format (October 8, 2025)
+
+### The Problem
+
+**The Z-Machine specification is incomplete about V3 two-byte property format** - The spec describes the format but doesn't clearly state when to use it or how to encode the size value. The formula `32 * (size - 1) + prop_num` accidentally triggers two-byte format for sizes > 4, but then only writes ONE byte instead of two.
+
+### V3 Property Size Format
+
+**Single-Byte Format** (for properties 1-4 bytes):
+```
+Bit 7: 0 (indicates single-byte format)
+Bits 6-5: (size - 1) encoded as:
+  00 = 1 byte
+  01 = 2 bytes
+  10 = 3-4 bytes (actual size determined differently)
+Bits 4-0: property number (0-31)
+```
+
+**Two-Byte Format** (for properties > 4 bytes):
+```
+First byte:
+  Bit 7: 1 (indicates two-byte format)
+  Bit 6: 0
+  Bits 5-0: property number (0-63)
+
+Second byte:
+  Size in bytes (0-63)
+```
+
+### The Bug (codegen_strings.rs:808-819)
+
+**Original Code**:
+```rust
+// Calculate size byte according to Z-Machine specification
+// V3 format: size_byte = 32 * (data_bytes - 1) + property_number
+let size = data.len().min(8) as u8;
+let size_byte = 32 * (size - 1) + prop_num;
+
+(size_byte, data, string_id_opt)
+```
+
+**Problem**: For property 22 with 6 bytes:
+```
+size_byte = 32 * (6 - 1) + 22 = 182 = 0xB6
+Binary: 10110110
+  Bit 7 = 1 → Two-byte format triggered!
+  Bits 5-0 = 010110 = 22 (property number)
+
+But only ONE byte written to property table!
+Second byte should be 0x06 (size), but was 0x00 (uninitialized memory)
+```
+
+**Impact**: Property table appeared to have zero-size property, causing runtime to treat it as terminator byte. All properties after the first were invisible.
+
+### The Fix
+
+**Updated encode_property_value()** (codegen_strings.rs:759-852):
+```rust
+let size = data.len() as u8;
+
+if size <= 4 {
+    // Single-byte format
+    let size_byte = 32 * (size - 1) + prop_num;
+    (size_byte, data, string_id_opt, None)
+} else {
+    // Two-byte format (size > 4)
+    let size_byte = 0x80 | prop_num; // bit 7=1, bit 6=0, bits 5-0=prop_num
+    (size_byte, data, string_id_opt, Some(size))
+}
+```
+
+**Updated property writing** (codegen.rs:4892-4936):
+```rust
+let (size_byte, prop_data, string_id_opt, two_byte_size) =
+    self.encode_property_value(prop_num, prop_value);
+
+// Write first size byte
+self.write_to_object_space(size_offset, size_byte)?;
+addr += 1;
+
+// Write second size byte if two-byte format
+if let Some(size_value) = two_byte_size {
+    self.write_to_object_space(size2_offset, size_value)?;
+    addr += 1;
+}
+```
+
+### Before and After
+
+**Before Fix** (West of House property table):
+```
+Bytes: [00, b6, 00, 03, ff, ff, ...]
+       [name_len, prop22_size, prop22_data_byte1, ...]
+
+0xB6 = 10110110:
+  Two-byte format, property 22
+  But second byte is 0x00 (wrong!)
+  Property appears to have size 0 → treated as terminator
+```
+
+**After Fix**:
+```
+Bytes: [00, 96, 06, 00, 03, ff, ff, ...]
+       [name_len, prop22_hdr1, prop22_hdr2, prop22_data...]
+
+0x96 = 10010110:
+  Bit 7=1, bit 6=0, bits 5-0=22 ✅
+0x06 = size 6 bytes ✅
+Property correctly recognized with 6-byte data
+```
+
+### Why This Happened
+
+**Misleading Formula**: The traditional formula `32 * (size - 1) + prop_num` works for single-byte format (sizes 1-4) but becomes ambiguous for larger sizes:
+
+```python
+# Size 1-4: Works correctly (bit 7 = 0)
+size=1: 32*0 + prop = 0-31 (bit 7=0) ✅
+size=2: 32*1 + prop = 32-63 (bit 7=0) ✅
+size=3: 32*2 + prop = 64-95 (bit 7=0) ✅
+size=4: 32*3 + prop = 96-127 (bit 7=0) ✅
+
+# Size 5+: Accidentally triggers two-byte format (bit 7=1)
+size=5: 32*4 + prop = 128-159 (bit 7=1) ⚠️
+size=6: 32*5 + prop = 160-191 (bit 7=1) ⚠️
+```
+
+The formula doesn't fail - it correctly sets bit 7 - but the code failed to recognize that bit 7=1 means "write second byte with size".
+
+### Specification Ambiguity
+
+The Z-Machine Standards Document (v1.1) describes the two-byte format but doesn't explicitly state:
+1. When to use two-byte format vs single-byte format
+2. That the second byte contains the actual size value
+3. The threshold (4 bytes) for switching formats
+
+This is discoverable from the bit layout, but not stated clearly. Real Infocom games likely avoided properties > 4 bytes, or the Inform compiler had this knowledge encoded implicitly.
+
+### Detection
+
+**Symptoms**:
+- Properties appear to exist but have zero size
+- Property lookup fails to find properties that should exist
+- Property table appears to terminate early
+- Debug shows property with two-byte format but size=0
+
+**Debug Command**:
+```bash
+RUST_LOG=warn cargo run --bin grue-compiler -- game.grue -o test.z3 2>&1 | grep "PROP_TABLE_COMPLETE"
+# Check first_bytes=[...] - should show proper size byte after header
+```
+
+**Verification**:
+```rust
+// In property table debug output
+first_bytes=[00, 96, 06, ...]  // ✅ Correct: 0x96 header, 0x06 size
+first_bytes=[00, b6, 00, ...]  // ❌ Wrong: 0xb6 header, 0x00 size
+```
+
+### Prevention Rules
+
+**DO**:
+- ✅ Explicitly handle two-byte format when size > 4
+- ✅ Write BOTH bytes when two-byte format is used
+- ✅ Track header size (1 or 2 bytes) for capacity calculations
+- ✅ Add debug logging showing two_byte_format flag
+
+**DON'T**:
+- ❌ Rely on formula alone without checking bit 7
+- ❌ Assume size_byte encodes complete information
+- ❌ Skip second byte "because it should work"
+- ❌ Trust incomplete specifications without verification
+
+### Files Modified
+
+**Phase 1: Encode Logic**:
+- `src/grue_compiler/codegen_strings.rs:759-852` - Returns 4-tuple with optional second size byte
+
+**Phase 2: Write Logic**:
+- `src/grue_compiler/codegen.rs:4892-4936` - Writes second byte when two_byte_size.is_some()
+
+**Phase 3: Capacity Calculation**:
+- `src/grue_compiler/codegen.rs:4915` - Header size is 1 or 2 bytes depending on format
+
+### References
+
+- **Bug Discovery**: October 8, 2025 (Compiler)
+- **Root Cause**: Single-byte vs two-byte format threshold not clearly documented
+- **Impact**: Exit system properties (6+ bytes) invisible to runtime
+- **Fix**: Explicit two-byte format handling with second size byte
+- **Related**: Property table structure (object system architecture section above)
+
+## CRITICAL: V3 Property Interpreter Bug - Two-Byte Format Support (October 8, 2025)
+
+### The Problem
+
+**The interpreter's `get_property_info()` function didn't support two-byte property format for V3**. After fixing the compiler to correctly generate two-byte properties (see section above), the interpreter still failed to read them, causing "Property 14 not found" errors.
+
+### V3 Property Reading Logic
+
+**Original Code** (`src/vm.rs:436-440`):
+```rust
+if self.game.header.version <= 3 {
+    // V1-3: prop num in bottom 5 bits, size in top 3 bits
+    let prop_num = size_byte & 0x1F;
+    let prop_size = ((size_byte >> 5) & 0x07) + 1;
+    Ok((prop_num, prop_size as usize, 1))  // Always returns size_bytes=1!
+}
+```
+
+**Problem**: This code:
+1. Extracts property number from bits 0-4 ✅
+2. Extracts size from bits 5-7 (wrong for two-byte format!)
+3. **Never checks bit 7 to detect two-byte format**
+4. **Always returns `size_bytes=1`, never reads second byte**
+
+**Impact**: When encountering property 22 with size_byte=0x96:
+- Interpreter treats bits 7-5 (100) as size encoding
+- Calculates size as 4 + 1 = 5 (wrong!)
+- Never reads the second byte (0x06) containing actual size
+- Next byte (0x06) treated as new property header
+- Next byte after data (0x00) treated as terminator
+- **All properties after the first property appear to not exist**
+
+### The Fix
+
+**Updated Code** (`src/vm.rs:436-450`):
+```rust
+if self.game.header.version <= 3 {
+    // V1-3: prop num in bottom 5 bits
+    let prop_num = size_byte & 0x1F;
+
+    // Check for two-byte format (bit 7 set, bit 6 clear)
+    if size_byte & 0x80 != 0 {
+        // Two-byte header: next byte contains size
+        let size_byte_2 = self.game.memory[prop_addr + 1];
+        let prop_size = if size_byte_2 == 0 { 64 } else { size_byte_2 as usize };
+        Ok((prop_num, prop_size, 2))
+    } else {
+        // Single-byte format: size in top 3 bits (bits 7-5)
+        let prop_size = ((size_byte >> 5) & 0x07) + 1;
+        Ok((prop_num, prop_size as usize, 1))
+    }
+}
+```
+
+**Changes**:
+1. Check bit 7 to detect two-byte format
+2. If bit 7 set, read second byte for actual size
+3. Return `size_bytes=2` so caller skips both header bytes
+4. Handle size=0 as 64 bytes (per Z-Machine spec)
+5. Otherwise use single-byte format logic
+
+### Why This Happened
+
+**Incomplete Implementation**: The V4+ code (lines 445-450) correctly handled two-byte format:
+```rust
+// V4+: prop num in bottom 6 bits
+let prop_num = size_byte & 0x3F;
+
+if size_byte & 0x80 != 0 {
+    // Two-byte header
+    let size_byte_2 = self.game.memory[prop_addr + 1];
+    let size_val = size_byte_2 & 0x3F;
+    let prop_size = if size_val == 0 { 64 } else { size_val as usize };
+    Ok((prop_num, prop_size, 2))
+}
+```
+
+But the V3 code (lines 436-440) was written assuming single-byte format only, likely because:
+1. Real Infocom V3 games rarely used properties > 4 bytes
+2. Spec doesn't clearly state V3 supports two-byte format
+3. Developer assumed V3 was simpler than V4+
+
+**The Reality**: V3 and V4+ use the **same two-byte property format**. The only difference is property number size (5 bits vs 6 bits). Both support properties > 4 bytes using the same two-byte header mechanism.
+
+### Detection
+
+**Symptoms**:
+- "Property X not found" errors despite property existing in compiled file
+- Property lookup fails after first property in object
+- Binary inspection shows correct two-byte header (0x96, 0x06, ...) but runtime can't read it
+- Debug shows property table terminating early
+
+**Before Fix** (mini_zork property 22 lookup):
+```
+Property table at 0x03b0: [00, 96, 06, 00, 16, 00, 17, 03, ea]
+                           [name, hdr1, hdr2, data: 6 bytes    ]
+
+Runtime reads:
+  0x96 & 0x1F = 22 (property number) ✅
+  (0x96 >> 5) & 0x07 = 4, size = 4+1 = 5 ❌ WRONG!
+  Never reads second byte 0x06
+  Treats 0x06 as next property header
+  Error: "Property 14 not found"
+```
+
+**After Fix**:
+```
+Runtime reads:
+  0x96 & 0x1F = 22 (property number) ✅
+  0x96 & 0x80 = 0x80 → two-byte format detected ✅
+  Reads second byte: 0x06 = size 6 ✅
+  Returns (prop_num=22, size=6, header_bytes=2) ✅
+  Property 22 correctly recognized
+```
+
+### Testing
+
+**Verification**:
+```bash
+# Compile game with two-byte properties
+RUST_LOG=warn cargo run --bin grue-compiler -- examples/mini_zork.grue -o tests/mini_zork.z3
+
+# Test with navigation (uses property 22 - exit_data)
+./target/debug/gruesome tests/mini_zork.z3
+> north
+# Should navigate successfully, not error on "Property 14 not found"
+```
+
+**Regression Testing**:
+- All existing tests pass (174 tests) ✅
+- Commercial Infocom V3 games (Zork I, Seastalker, The Lurking Horror) still work ✅
+- V4+ games still work (AMFV, Bureaucracy, Border Zone) ✅
+
+### Prevention Rules
+
+**DO**:
+- ✅ Check bit 7 to detect two-byte format in **ALL Z-Machine versions**
+- ✅ Read second byte when two-byte format detected
+- ✅ Return correct header_bytes count (1 or 2)
+- ✅ Verify interpreter changes with both compiled games AND commercial games
+
+**DON'T**:
+- ❌ Assume V3 is "simpler" and doesn't support two-byte properties
+- ❌ Trust spec ambiguities - verify against real game behavior
+- ❌ Skip two-byte format checks for older versions
+- ❌ Modify interpreter without comprehensive regression testing
+
+### Files Modified
+
+**Interpreter Property Reading**:
+- `src/vm.rs:433-459` - `get_property_info()` now supports two-byte format for V3
+
+### Related Bugs
+
+1. **Compiler Bug** (October 8, 2025, morning) - Compiler generated two-byte format but only wrote one byte
+2. **Interpreter Bug** (October 8, 2025, afternoon) - Interpreter couldn't read two-byte format in V3
+
+Both bugs needed fixing for exit system to work. The bugs were discovered sequentially:
+1. First: Compiler not writing second byte → Fixed in codegen_strings.rs
+2. Second: Interpreter not reading second byte → Fixed in vm.rs
+
+### References
+
+- **Bug Discovery**: October 8, 2025 (Interpreter)
+- **Root Cause**: V3 property reading assumed single-byte format only
+- **Impact**: Compiler-generated two-byte properties were unreadable
+- **Fix**: Mirror V4+ two-byte format logic for V3
+- **Related**: V3 Property Size Encoding section above (compiler side)

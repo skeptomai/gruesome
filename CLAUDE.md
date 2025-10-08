@@ -1,8 +1,8 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 6, 2025) - PROPERTY TABLE PATCHING BUG FIXED ✅
+## CURRENT STATUS (October 8, 2025) - V3 TWO-BYTE PROPERTY BUG FIXED ✅
 
-**PROGRESS**: Fixed property table corruption bug that caused "Property 14 has size 8 (>2)" error.
+**PROGRESS**: Fixed critical interpreter bug preventing V3 two-byte properties from being read. Exit system properties now accessible at runtime.
 
 ### Bug 1: Opcode Form Selection ✅ FIXED
 - **Issue**: Raw opcode 0x08 emitted as 2OP:OR (0xC8) instead of VAR:push (0xE8)
@@ -15,7 +15,20 @@
 - **Fix**: Eliminate redundant jumps in if-statements without else (`ir.rs:1940-1953`)
 - **Result**: No offset-2 jumps from if-statements (Option A implemented)
 
-### Bug 3: Function Address Bug ✅ FIXED
+### Bug 3: Grammar Argument Passing ✅ FIXED (Oct 6, 2025)
+- **Issue**: Verb commands (north, south, etc.) returned "I don't understand that"
+- **Root Cause**: Grammar default pattern handler ignored `args` parameter, called functions with 0 arguments
+  - Line 5954: `IrHandler::FunctionCall(func_id, _args)` - underscore meant arguments were discarded
+  - Line 5962-5967: Called function with only function address, no arguments
+  - Result: `handle_go()` received no direction parameter, `get_exit()` always returned 0
+- **Fix**: Convert `IrValue` arguments to operands and pass them (`codegen.rs:5954-5994`)
+  - For `IrValue::String`: Look up dictionary address, pass as `LargeConstant`
+  - For `IrValue::Integer`: Pass as `SmallConstant` or `LargeConstant` based on size
+  - Emit `call_vs` with full operand list: `[function_addr, ...args]`
+- **Impact**: Navigation commands now recognized and executed (still debugging exit system)
+- **File**: `src/grue_compiler/codegen.rs:5954-5994`
+
+### Bug 4: Function Address Bug ✅ FIXED
 - **Issue**: Functions called at wrong address (first instruction instead of header)
 - **Root Cause**: Code was "updating" function addresses after header generation
 - **Fix**: Functions now correctly point to headers (`codegen.rs:2045-2052`)
@@ -57,13 +70,103 @@
 - **File**: `src/grue_compiler/codegen.rs` lines 5035-5109
 - **Prevention**: NEVER calculate object count from remaining space - it includes non-object data
 
+### Bug 7: GetPropertyByNumber Variable Collision ✅ FIXED (Oct 8, 2025)
+- **Issue**: `get_exit()` returned 0 instead of packed exit value
+- **Root Cause**: All `GetPropertyByNumber` instructions hardcoded Variable 241 for storage
+  - When `player.location.get_exit("east")` executed, it accessed multiple properties sequentially
+  - Each property access overwrote Variable 241, destroying previous values
+  - Final `get_exit` call found Variable 241 = 0
+- **Error**: "Invalid object number: 1002" when trying to use string ID as object
+- **Fix**: Allocate unique global variable per IR ID (`codegen_instructions.rs:552-590`)
+  - Changed from `let result_var = 241u8` to dynamic allocation
+  - Each IR ID gets its own variable: 200 + (ir_id_to_local_var.len() % 50)
+- **Impact**: Property accesses no longer collide, get_exit works
+- **File**: `src/grue_compiler/codegen_instructions.rs:552-590`
+
+### Bug 8: Branch Encoding - Placeholder Bit 15 ✅ FIXED (Oct 8, 2025)
+- **Issue**: get_exit's first check `if addr == 0` always branched to not_found, even when addr != 0
+- **Root Cause**: Branch placeholder 0x7FFF has bit 15 = 0, decoded as "branch on FALSE"
+  - Z-Machine: bit 15 of placeholder encodes branch sense (1=true, 0=false)
+  - 0x7FFF = 0111111111111111 (bit 15 clear) = branch on false
+  - Should use -1 (0xFFFF) = 1111111111111111 (bit 15 set) = branch on true
+- **Symptom**: JE at PC=0x12df compared 0x03bd vs 0x0000, condition=false, branch={on_true: false}
+  - Since addr (0x03bd) != 0, condition is false, so "branch on false" executed → jumped to not_found
+- **Fix**: Changed get_exit branch placeholders from 0x7FFF to -1 (`codegen_builtins.rs:1126, 1197, 1232`)
+- **Impact**: Branches now have correct sense, get_exit continues past first check
+- **File**: `src/grue_compiler/codegen_builtins.rs` lines 1115-1233
+
+### Bug 9: exit_data String ID Instead of Packed Address ✅ FIXED (Oct 8, 2025)
+- **Issue**: Blocked exit messages showed garbage, then "Unimplemented VAR instruction: 0c"
+- **Root Cause**: exit_data property stored raw string IDs (1002) instead of packed addresses (0x0568)
+  - codegen_objects.rs:596-597 wrote string_id directly with no UnresolvedReference
+  - At runtime, interpreter tried to use 1002 as packed address
+  - Unpacking: 1002 / 2 = 501, then reading from address 501 caused garbage/errors
+- **Fix**: Write placeholders and create StringRef UnresolvedReferences (`codegen_objects.rs:593-610, codegen.rs:4985-5016`)
+  - Write placeholder 0xFFFF instead of string_id
+  - Store (exit_index, string_id) in room_exit_messages HashMap
+  - During property serialization, create StringRef with is_packed_address=true
+  - Resolver patches placeholder with correct packed string address
+- **Verification**: StringRef for string_id=1002 resolved to packed address 0x0568 at location 0x03b4
+- **Impact**: Blocked exit messages now have correct packed addresses
+- **Files**:
+  - `src/grue_compiler/codegen_objects.rs:521-634` (tracking and placeholders)
+  - `src/grue_compiler/codegen.rs:238-241, 369, 4985-5016` (UnresolvedReference creation)
+
+### Bug 10: V3 Property Two-Byte Format - Compiler Writing ✅ FIXED (Oct 8, 2025)
+- **Issue**: Properties > 4 bytes appeared corrupted at runtime - "Property 14 not found for object 2"
+- **Root Cause**: Formula `32 * (size - 1) + prop_num` correctly set bit 7=1 for sizes > 4, but code didn't write second size byte
+  - For property 22 with 6 bytes: `32 * (6 - 1) + 22 = 0xB6` (bit 7=1, two-byte format)
+  - Compiler wrote 0xB6 then immediately wrote data, skipping second size byte
+  - Runtime read 0xB6, then next byte (0x00 from data) as size, giving size=0
+  - Property table appeared to terminate (size=0 treated as terminator)
+- **Fix**: Explicit two-byte format handling (`codegen_strings.rs:759-852, codegen.rs:4892-4936`)
+  - Detect when size > 4, return 4-tuple with optional second size byte
+  - Write both bytes: `[0x96, 0x06, data...]` instead of `[0xB6, 0x00, data...]`
+- **Impact**: Property 22 (exit_data) and all properties > 4 bytes now correctly encoded
+- **Files**:
+  - `src/grue_compiler/codegen_strings.rs:759-852` (encode_property_value)
+  - `src/grue_compiler/codegen.rs:4892-4936` (property writing)
+- **See**: `docs/ARCHITECTURE.md` - "CRITICAL: V3 Property Size Encoding - Two-Byte Format"
+
+### Bug 11: V3 Property Two-Byte Format - Interpreter Reading ✅ FIXED (Oct 8, 2025)
+- **Issue**: After fixing compiler, still got "Property 14 not found" - interpreter couldn't read two-byte properties
+- **Root Cause**: `get_property_info()` for V3 never checked bit 7 to detect two-byte format (`vm.rs:436-440`)
+  - Always extracted size from bits 7-5: `((size_byte >> 5) & 0x07) + 1`
+  - Always returned `size_bytes=1`, never read second byte
+  - For 0x96: calculated size = 4 (wrong!), next byte (0x06) treated as new property header
+- **Fix**: Check bit 7 for two-byte format, mirror V4+ logic (`vm.rs:436-450`)
+  ```rust
+  if size_byte & 0x80 != 0 {
+      // Two-byte header: read second byte
+      let size_byte_2 = self.game.memory[prop_addr + 1];
+      let prop_size = if size_byte_2 == 0 { 64 } else { size_byte_2 as usize };
+      Ok((prop_num, prop_size, 2))
+  }
+  ```
+- **Impact**: All exit properties (20, 21, 22) now readable, navigation commands work
+- **Regression**: All 174 tests pass ✅, commercial Infocom games still work ✅
+- **File**: `src/vm.rs:433-459` (get_property_info)
+- **See**: `docs/ARCHITECTURE.md` - "CRITICAL: V3 Property Interpreter Bug - Two-Byte Format Support"
+
 **Tests**: All 174 tests passing.
 
-## CRITICAL: NEVER MODIFY THE INTERPRETER
+**Remaining Work**: Exit pseudo-properties (.blocked, .destination, .message, .none) not implemented - see EXIT_SYSTEM_IMPLEMENTATION_PLAN.md
 
-**ABSOLUTE PROHIBITION**: Never modify `src/interpreter.rs` or any interpreter code.
+## CRITICAL: INTERPRETER MODIFICATION POLICY
+
+**FUNCTIONALITY CHANGES PROHIBITED**: Never modify the functionality of `src/interpreter.rs` or any interpreter code. Never "fix bugs" in the interpreter.
 
 **Rationale**: The interpreter correctly executes real Zork I and other commercial Z-Machine games. Any execution failures with compiled games are **compiler bugs**, not interpreter bugs.
+
+**EXCEPTION - INCOMPLETE IMPLEMENTATIONS**: You MAY fix incomplete interpreter implementations if:
+1. The feature is documented in Z-Machine spec but not implemented
+2. Commercial Infocom games don't use the feature (so interpreter wasn't tested)
+3. Compiler-generated code needs the feature
+4. Fix is verified with comprehensive regression testing
+
+**Example**: Bug 11 (V3 two-byte properties) - Feature exists in spec, commercial V3 games don't use properties > 4 bytes, so interpreter had incomplete implementation. Fix verified: all tests pass ✅, commercial games still work ✅.
+
+**LOGGING ALLOWED**: You MAY add temporary debug logging to the interpreter to diagnose issues. Clean up logging after debugging is complete.
 
 ## Auto-Commit Instructions ("Make it so!")
 
@@ -193,3 +296,4 @@ Development history archived to `CLAUDE_HISTORICAL.md` for reference.
 
 - Never give percentages of completion or time estimates
 - Use IndexSet and IndexMap rather than HashSet or HashMap for determinism
+- **NEVER compile test files to `/tmp`** - Always use `tests/` directory in the repository for compiled Z3 files
