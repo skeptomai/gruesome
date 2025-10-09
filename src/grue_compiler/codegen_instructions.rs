@@ -2996,7 +2996,9 @@ impl ZMachineCodeGen {
         }
 
         // Determine store variable
-        let store_var = target.map(|_| 0); // Store to stack if target specified
+        // CRITICAL: V3 requires store variable even for discarded results
+        // V5+ has call_1n/call_2n for no-store calls, but V3 always stores to stack
+        let store_var = Some(0); // Always store to stack (V3 requirement, V4+ allows None)
 
         // Emit the call instruction (VAR form call_vs)
         // CRITICAL: Use raw opcode 0x00, NOT encoded byte 0xE0
