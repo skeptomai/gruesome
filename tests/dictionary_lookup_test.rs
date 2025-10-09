@@ -19,7 +19,7 @@ fn test_dictionary_word_positions() {
     "#;
 
     let compiler = GrueCompiler::new();
-    let story_data = compiler
+    let (story_data, _codegen) = compiler
         .compile(source, ZMachineVersion::V3)
         .expect("Compilation should succeed");
 

@@ -34,7 +34,7 @@ fn test_parser_finds_words_in_dictionary() {
 
     // Compile to Z-Machine bytecode
     let compiler = GrueCompiler::new();
-    let story_data = compiler
+    let (story_data, _codegen) = compiler
         .compile(source, ZMachineVersion::V3)
         .expect("Compilation should succeed");
 

@@ -164,16 +164,27 @@
 - **Fix**: Reload `index_var` before each use (`ir.rs:2078-2090, 2095-2111`)
 - **Impact**: Proper SSA semantics, stack underflow eliminated
 
-### Bug 5: Object Tree Iteration - Variable Source Tracking ⚠️ INCOMPLETE
-- **Current Error**: "Invalid object number: 1000" at PC 0x140c
-- **Root Cause**: For-loops cannot detect when variable holds `contents()` result
-- **Issue**: Detection only works for direct `for item in obj.contents()`, not `let items = obj.contents(); for item in items`
-- **Impact**: Mini_zork inventory command fails, any indirect iteration over `contents()` fails
-- **Partial Solution**: Added GetObjectChild/GetObjectSibling IR instructions and codegen
-- **Missing**: Variable source tracking (HashMap<IrId, VariableSource>)
-- **Technical Debt**: ⚠️ Current implementation incomplete, will fail on real code
-- **Required**: Implement Option A from ARCHITECTURE.md before production use
-- **Details**: See `docs/ARCHITECTURE.md` - "Object Tree Iteration Implementation"
+### Bug 5: Object Tree Iteration - Variable Source Tracking ✅ FIXED (Oct 9, 2025)
+- **Issue**: "Invalid object number: 1000" when iterating over `contents()` results
+- **Root Cause**: For-loops couldn't detect when variable holds `contents()` result
+  - Direct `for item in obj.contents()` worked (inlined method call)
+  - Indirect `let items = obj.contents(); for item in items` failed (variable indirection)
+  - Without tracking, for-loop defaulted to array iteration using GetArrayElement
+  - GetArrayElement read garbage memory at "array index", interpreted as object number
+- **Fix**: Track `contents()` results in `variable_sources` IndexMap (`ir.rs:2704-2705, 2817-2824`)
+  ```rust
+  // Before method gets consumed
+  let is_contents_method = method.as_str() == "contents";
+
+  // After method execution
+  if is_contents_method {
+      self.variable_sources.insert(result_temp, VariableSource::ObjectTreeRoot(object_temp));
+  }
+  ```
+- **Impact**: Both direct and indirect object tree iteration now work correctly
+- **Infrastructure**: Complete (GetObjectChild/GetObjectSibling opcodes, variable_sources tracking)
+- **Files**: `src/grue_compiler/ir.rs:2704-2705, 2817-2824`
+- **Details**: See `docs/BUG_5_OBJECT_TREE_ITERATION_FIX.md`
 
 ### Bug 6: Property Table Patching Loop Overrun ✅ FIXED
 - **Issue**: "Property 14 has size 8 (>2), cannot use put_prop" when setting `player.location.visited = true`

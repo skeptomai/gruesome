@@ -20,7 +20,7 @@ fn test_buffer_addresses_stored_in_globals() {
     "#;
 
     let compiler = GrueCompiler::new();
-    let story_data = compiler
+    let (story_data, _codegen) = compiler
         .compile(source, ZMachineVersion::V3)
         .expect("Compilation should succeed");
 

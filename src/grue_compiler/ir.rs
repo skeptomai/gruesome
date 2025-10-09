@@ -2700,6 +2700,10 @@ impl IrGenerator {
                 }
 
                 // For regular property-based methods, generate property lookup and conditional call
+
+                // Check if this is contents() for object tree iteration tracking
+                let is_contents_method = method.as_str() == "contents";
+
                 // Generate property access to get the method function
                 let property_temp = self.next_id();
                 let prop_num = self.property_manager.get_property_number(&method);
@@ -2809,6 +2813,13 @@ impl IrGenerator {
 
                 // End label
                 block.add_instruction(IrInstruction::Label { id: end_label });
+
+                // Track contents() results as object tree roots for iteration
+                // This enables for-loops to detect object tree iteration even with variable indirection
+                if is_contents_method {
+                    self.variable_sources
+                        .insert(result_temp, VariableSource::ObjectTreeRoot(object_temp));
+                }
 
                 Ok(result_temp)
             }

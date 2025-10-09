@@ -44,7 +44,7 @@ fn test_go_handler_dispatch() {
     let result = compiler.compile(source, ZMachineVersion::V3);
 
     match result {
-        Ok(story_data) => {
+        Ok((story_data, _codegen)) => {
             println!("Compilation succeeded, {} bytes", story_data.len());
 
             // Write to tests directory
@@ -145,7 +145,7 @@ fn test_get_exit_builtin_runtime_path() {
     let result = compiler.compile(source, ZMachineVersion::V3);
 
     match result {
-        Ok(story_data) => {
+        Ok((story_data, _codegen)) => {
             println!("get_exit test compiled: {} bytes", story_data.len());
 
             // The key test: does it compile without the "property not found" error?

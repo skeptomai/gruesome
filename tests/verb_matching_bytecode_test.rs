@@ -21,7 +21,7 @@ fn test_verb_matching_generates_correct_je() {
     "#;
 
     let compiler = GrueCompiler::new();
-    let story_data = compiler
+    let (story_data, _codegen) = compiler
         .compile(source, ZMachineVersion::V3)
         .expect("Compilation should succeed");
 
