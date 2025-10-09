@@ -189,6 +189,16 @@ pub enum ConstantValue {
     String(String),
 }
 
+/// Parts of a string concatenation with runtime values
+/// Used to track strings that need multi-part printing at runtime
+#[derive(Debug, Clone)]
+pub enum StringPart {
+    /// A literal string constant (stored in string table)
+    Literal(usize), // string_id
+    /// A runtime value that needs to be evaluated and printed
+    RuntimeValue(IrId), // IR ID of the runtime value
+}
+
 /// Code generation context
 pub struct ZMachineCodeGen {
     pub version: ZMachineVersion,
@@ -213,6 +223,10 @@ pub struct ZMachineCodeGen {
     init_routine_locals_count: u8, // Track local variables used by init routine for PC calculation
     /// Mapping from IR IDs to string values (for LoadImmediate results)
     pub ir_id_to_string: IndexMap<IrId, String>,
+    /// Mapping from IR IDs to runtime string concatenation parts
+    /// Used when string concatenation includes runtime values (e.g., "There is " + obj.name + " here.")
+    /// Maps the concatenation result IR ID to a sequence of literal strings and runtime values
+    pub runtime_concat_parts: IndexMap<IrId, Vec<StringPart>>,
     /// Mapping from IR IDs to integer values (for LoadImmediate results)
     pub ir_id_to_integer: IndexMap<IrId, i16>,
     /// Mapping from IR IDs to stack variables (for instruction results on stack)
@@ -358,6 +372,7 @@ impl ZMachineCodeGen {
             current_function_name: None,
             init_routine_locals_count: 0,
             ir_id_to_string: IndexMap::new(),
+            runtime_concat_parts: IndexMap::new(),
             ir_id_to_integer: IndexMap::new(),
             ir_id_to_stack_var: IndexMap::new(),
             ir_id_to_object_number: IndexMap::new(),

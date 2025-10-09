@@ -1,33 +1,38 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 9, 2025) - STRING CONCATENATION BUG IDENTIFIED 🔍
+## CURRENT STATUS (October 9, 2025) - STRING CONCATENATION FIXED ✅
 
-**PROGRESS**: Identified root cause of "Invalid object number: 1000" error in list_objects function.
+**PROGRESS**: Fixed string concatenation with runtime values. Compiler now emits multi-part print instructions.
 
-### Bug 13: String Concatenation with Runtime Values ⚠️ IN PROGRESS (Oct 9, 2025)
-- **Issue**: Expressions like `print("There is " + obj.name + " here.")` fail with "Invalid object number: 1000"
-- **Root Cause**: String concatenation generates compile-time placeholder strings for runtime values
+### Bug 13: String Concatenation with Runtime Values ✅ FIXED (Oct 9, 2025)
+- **Issue**: Expressions like `print("There is " + obj.name + " here.")` printed placeholder strings like `[RUNTIME_LOCAL_470]`
+- **Root Cause**: String concatenation generated compile-time placeholder strings for runtime values
   - IR: `t470 = obj.prop#1` (get name property) → runtime value in local variable
-  - IR: `t471 = "There is " + t470` → codegen creates placeholder `"There is [RUNTIME_LOCAL_470]"`
-  - IR: `t473 = t471 + " here."` → codegen creates `"There is [RUNTIME_LOCAL_470] here."`
-  - IR: `t474 = print(t473)` → codegen sees t473 in `ir_id_to_string`, emits PRINTPADDR with **literal placeholder string**
-  - Runtime: Prints placeholder string literally instead of actual runtime value
-  - Error occurs because placeholder string gets string ID 1000, which is treated as object number
-- **Location**: PC 0x14f0 in `list_objects` function, `Call { target: Some(474), function: 44, args: [473] }`
-- **Diagnosis Tools**:
-  - Added --dump-mapping flag to show PC→IR mappings with final assembly addresses
-  - Added comprehensive PC tracking to all IR instructions during codegen
-  - PC mapping correctly identified failing instruction at runtime address 0x14f0
-- **Fix Required**:
-  1. Detect when string concatenation involves runtime values (in `ir_id_to_stack_var` or `ir_id_to_local_var`)
-  2. Mark target as "runtime string concatenation" instead of storing placeholder string
-  3. In `generate_print_builtin()`, detect runtime concatenations and generate code to print each part separately
-  4. Alternative: Generate runtime string buffer and concatenation routine
-- **Impact**: Any string concatenation with runtime values (property access, variables) fails
+  - IR: `t471 = "There is " + t470` → codegen created placeholder `"There is [RUNTIME_LOCAL_470]"`
+  - IR: `t473 = t471 + " here."` → codegen created `"There is [RUNTIME_LOCAL_470] here."`
+  - IR: `t474 = print(t473)` → codegen saw t473 in `ir_id_to_string`, emitted PRINTPADDR with **literal placeholder string**
+  - Runtime: Printed placeholder string literally instead of actual runtime value
+- **Fix**: Detect runtime concatenations and emit multi-part print sequences (`codegen.rs:192-200, codegen_strings.rs:701-778, codegen_builtins.rs:15-111`)
+  1. Added `StringPart` enum: `Literal(usize)` for string IDs, `RuntimeValue(IrId)` for runtime values
+  2. Added `runtime_concat_parts: IndexMap<IrId, Vec<StringPart>>` to track multi-part concatenations
+  3. Modified `translate_string_concatenation()` to:
+     - Detect when left/right operands are runtime values (in stack/local variables or nested concatenations)
+     - Build `Vec<StringPart>` flattening nested concatenations
+     - Reuse existing string IDs instead of creating duplicates
+  4. Modified `generate_print_builtin()` to:
+     - Check for runtime concatenations before string literal check
+     - Emit separate print instructions for each part (print_paddr for literals and properties, print_num for integers)
+     - Emit single new_line after all parts
+- **Technical Details**:
+  - Nested concatenation handling: `("a" + b) + "c"` flattens to `["a", b, "c"]`
+  - String ID reuse: Check `encoded_strings.contains_key(ir_id)` before creating new string ID
+  - Property detection: Use `ir_id_from_property` set to determine if runtime value is a property string
+- **Impact**: String concatenation with runtime values now works correctly in compiler
+- **Limitation**: Exit pseudo-properties (.message, .blocked, .destination) not yet implemented, so some game features still fail
 - **Files**:
-  - `src/grue_compiler/codegen_strings.rs:701-725` (translate_string_concatenation)
-  - `src/grue_compiler/codegen_builtins.rs:15-165` (generate_print_builtin)
-- **See**: `docs/ARCHITECTURE.md` - "String Concatenation with Runtime Values"
+  - `src/grue_compiler/codegen.rs:192-200, 226-229, 375` (StringPart enum and infrastructure)
+  - `src/grue_compiler/codegen_strings.rs:701-778` (runtime concatenation detection and flattening)
+  - `src/grue_compiler/codegen_builtins.rs:15-111` (multi-part print emission)
 
 ---
 

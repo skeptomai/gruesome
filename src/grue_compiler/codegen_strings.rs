@@ -704,7 +704,82 @@ impl ZMachineCodeGen {
         right: IrId,
         target: IrId,
     ) -> Result<(), CompilerError> {
-        // Get the string values for left and right operands
+        use crate::grue_compiler::codegen::StringPart;
+
+        // Check if either operand is a runtime value (not a compile-time constant)
+        let left_is_runtime = self.ir_id_to_stack_var.contains_key(&left)
+            || self.ir_id_to_local_var.contains_key(&left)
+            || self.runtime_concat_parts.contains_key(&left);
+        let right_is_runtime = self.ir_id_to_stack_var.contains_key(&right)
+            || self.ir_id_to_local_var.contains_key(&right)
+            || self.runtime_concat_parts.contains_key(&right);
+
+        // If either operand is runtime, track as multi-part concatenation
+        if left_is_runtime || right_is_runtime {
+            let mut parts = Vec::new();
+
+            // Add left part - check if it's itself a runtime concat (nested)
+            if let Some(left_parts) = self.runtime_concat_parts.get(&left).cloned() {
+                // Left is a nested runtime concatenation, flatten it
+                parts.extend(left_parts);
+            } else if left_is_runtime {
+                parts.push(StringPart::RuntimeValue(left));
+            } else {
+                // Left is a literal string - check if it already has a string ID
+                // For LoadImmediate(String), the IR ID itself IS the string ID
+                let string_id = if self.encoded_strings.contains_key(&left) {
+                    // Already encoded, reuse the IR ID as string ID
+                    left as usize
+                } else {
+                    // Need to encode it - get the string value
+                    let left_str = self.get_string_value(left)?;
+                    let sid = self.next_string_id;
+                    self.next_string_id += 1;
+                    self.strings.push((sid, left_str.clone()));
+                    let encoded = self.encode_string(&left_str)?;
+                    self.encoded_strings.insert(sid, encoded);
+                    sid as usize
+                };
+                parts.push(StringPart::Literal(string_id));
+            }
+
+            // Add right part - check if it's itself a runtime concat (nested)
+            if let Some(right_parts) = self.runtime_concat_parts.get(&right).cloned() {
+                // Right is a nested runtime concatenation, flatten it
+                parts.extend(right_parts);
+            } else if right_is_runtime {
+                parts.push(StringPart::RuntimeValue(right));
+            } else {
+                // Right is a literal string - check if it already has a string ID
+                // For LoadImmediate(String), the IR ID itself IS the string ID
+                let string_id = if self.encoded_strings.contains_key(&right) {
+                    // Already encoded, reuse the IR ID as string ID
+                    right as usize
+                } else {
+                    // Need to encode it - get the string value
+                    let right_str = self.get_string_value(right)?;
+                    let sid = self.next_string_id;
+                    self.next_string_id += 1;
+                    self.strings.push((sid, right_str.clone()));
+                    let encoded = self.encode_string(&right_str)?;
+                    self.encoded_strings.insert(sid, encoded);
+                    sid as usize
+                };
+                parts.push(StringPart::Literal(string_id));
+            }
+
+            // Store the multi-part concatenation
+            self.runtime_concat_parts.insert(target, parts);
+
+            debug!(
+                "🔤 Runtime string concatenation: IR ID {} (left={}, right={}, left_runtime={}, right_runtime={})",
+                target, left, right, left_is_runtime, right_is_runtime
+            );
+
+            return Ok(());
+        }
+
+        // Both operands are compile-time constants, do normal concatenation
         let left_str = self.get_string_value(left)?;
         let right_str = self.get_string_value(right)?;
 
