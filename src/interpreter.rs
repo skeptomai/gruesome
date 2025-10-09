@@ -783,7 +783,7 @@ impl Interpreter {
                 // Log Variable form routing
                 let current_pc = self.vm.pc - inst.size as u32;
                 if current_pc >= 0x1870 && current_pc <= 0x1895 {
-                    log::error!(
+                    log::debug!(
                         "🟡 VARIABLE_FORM at PC 0x{:04x}: operand_count={:?}, opcode=0x{:02x}",
                         current_pc,
                         inst.operand_count,
@@ -1172,7 +1172,7 @@ impl Interpreter {
                 {
                     if packed_addr == 0xFFFE {
                         // Intentional breakpoint - dump call stack with function names
-                        log::error!(
+                        log::debug!(
                             "🔴 DEBUG BREAKPOINT HIT at PC 0x{:04x}",
                             self.vm.pc - inst.size as u32
                         );
@@ -1428,7 +1428,7 @@ impl Interpreter {
                 let pc = self.vm.pc - inst.size as u32;
 
                 // Debug logging for function calls
-                log::error!(
+                log::debug!(
                     "🔍 CALL_2S at PC=0x{:04x}: routine_addr=0x{:04x}, arg=0x{:04x}",
                     pc,
                     routine_addr,
@@ -1628,7 +1628,7 @@ impl Interpreter {
     ) -> Result<ExecutionResult, String> {
         // Log VAR instruction execution
         if self.vm.pc >= 0x1870 && self.vm.pc <= 0x1895 {
-            log::error!(
+            log::debug!(
                 "🔶 EXECUTE_VAR at PC 0x{:04x}: opcode=0x{:02x}, operands={:?}",
                 self.vm.pc - inst.size as u32,
                 inst.opcode,
@@ -1646,7 +1646,7 @@ impl Interpreter {
                 let routine_addr = operands[0];
 
                 // Log all calls to trace function invocations
-                log::error!(
+                log::debug!(
                     "🔵 CALL_VS at PC 0x{:04x}: packed_addr=0x{:04x}, args={:?}",
                     self.vm.pc - inst.size as u32,
                     routine_addr,
@@ -2684,7 +2684,7 @@ impl Interpreter {
 
             // Log get_exit return value
             if frame.return_pc == 0x12db {
-                log::error!(
+                log::debug!(
                     "🟡 GET_EXIT RETURNED: value=0x{:04x} ({}), storing to var={}",
                     value,
                     value,
@@ -2706,7 +2706,7 @@ impl Interpreter {
 
     /// Unpack a routine address based on version
     fn unpack_routine_address(&self, packed: u16) -> usize {
-        match self.vm.game.header.version {
+        let unpacked = match self.vm.game.header.version {
             1..=3 => (packed as usize) * 2,
             4..=5 => (packed as usize) * 4,
             6..=7 => {
@@ -2715,7 +2715,9 @@ impl Interpreter {
             }
             8 => (packed as usize) * 8,
             _ => (packed as usize) * 2,
-        }
+        };
+
+        unpacked
     }
 
     /// Enable output stream 3 (text redirection to table)
@@ -2844,17 +2846,17 @@ impl Interpreter {
     /// Shows all active function calls with their return addresses and local variables
     #[cfg(debug_assertions)]
     fn dump_call_stack(&self) {
-        log::error!("📚 CALL STACK DUMP:");
-        log::error!("  Current PC: 0x{:04x}", self.vm.pc);
-        log::error!("  Call depth: {}", self.vm.call_stack.len());
+        log::debug!("📚 CALL STACK DUMP:");
+        log::debug!("  Current PC: 0x{:04x}", self.vm.pc);
+        log::debug!("  Call depth: {}", self.vm.call_stack.len());
 
         if self.vm.call_stack.is_empty() {
-            log::error!("  (empty stack - main program)");
+            log::debug!("  (empty stack - main program)");
             return;
         }
 
         for (depth, frame) in self.vm.call_stack.iter().enumerate() {
-            log::error!(
+            log::debug!(
                 "  Frame {}: return_pc=0x{:04x}, num_locals={}",
                 depth,
                 frame.return_pc,
@@ -2863,9 +2865,9 @@ impl Interpreter {
 
             // Display local variables if any
             if !frame.locals.is_empty() {
-                log::error!("    Locals:");
+                log::debug!("    Locals:");
                 for (i, value) in frame.locals.iter().enumerate() {
-                    log::error!("      L{:02} = 0x{:04x} ({})", i + 1, value, value);
+                    log::debug!("      L{:02} = 0x{:04x} ({})", i + 1, value, value);
                 }
             }
         }

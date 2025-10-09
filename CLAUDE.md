@@ -1,8 +1,30 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 9, 2025) - EXIT SYSTEM FIXES ✅
+## CURRENT STATUS (October 9, 2025) - IR ID TRACKING BUG FIXED ✅
 
-**PROGRESS**: Fixed exit_data packed addresses (Bug #9) and get_prop_len two-byte format support (Bug #14). Exit system infrastructure now correct.
+**PROGRESS**: Fixed critical compiler bug where ir_id_from_property marking propagated incorrectly through function returns, causing print_paddr with address 0 and garbled output (Bug #15).
+
+### Bug 15: ir_id_from_property Marking Propagation ✅ FIXED (Oct 9, 2025)
+- **Issue**: Garbled output when typing "east" - print_paddr executed with address 0
+- **Symptoms**: After get_exit calculations succeeded (num_exits=3), garbled text appeared followed by "Unimplemented VAR:0x0c" error
+- **Root Cause**: `ir_id_from_property` set used to track which IR IDs contain string addresses (for print_paddr vs print_num)
+  - `exit_get_message` builtin marked its return value (IR ID 290) in ir_id_from_property (codegen_builtins.rs:1183)
+  - This flag is global/persistent - affects ALL uses of that IR ID throughout compilation
+  - When IR ID 290 was later used as a function return value containing 0 (no blocked message)
+  - Any code trying to print IR ID 290 would emit print_paddr instead of print_num
+  - At runtime: print_paddr with operand Variable(0) (stack) containing 0 → tried to print from address 0 → garbled output
+- **Discovery Process**:
+  1. Added interpreter instrumentation: logged PC=0x10e4, opcode=0x0d (print_paddr), operands=[0]
+  2. Added compiler instrumentation: found print_paddr emission at offset 0x0311 with Variable(0), arg_id=290
+  3. Traced IR: t290 = call func#291(...) - return value from function call
+  4. Found that exit_get_message was marking its return value, causing downstream print() to use print_paddr
+- **Fix**: Removed ir_id_from_property marking from exit_get_message (`codegen_builtins.rs:1181-1194`)
+  - The flag is too broad - affects all uses of the IR ID, including when value is 0
+  - Caller must check != 0 before printing exit messages
+  - exit.message property should only print when non-zero (blocked exit present)
+- **Impact**: No more print_paddr with address 0, garbled output eliminated
+- **Files**: `src/grue_compiler/codegen_builtins.rs:1181-1194`
+- **Lesson**: IR ID tracking flags must be scoped carefully - they affect ALL uses of an IR ID, not just immediate context
 
 ### Bug 14: get_prop_len V3 Two-Byte Format Support ✅ FIXED (Oct 9, 2025)
 - **Issue**: get_exit returned num_exits=1 instead of 3, loop failed to iterate through all exits
