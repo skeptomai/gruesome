@@ -1,6 +1,36 @@
 # Exit System Implementation Plan - ACTUAL STATUS
 
-## Current Status (October 8, 2025)
+## Current Status (October 9, 2025)
+
+### ✅ FIXED - IR Generation Bug (Oct 9, 2025)
+
+#### Bug 12: Builtin Pseudo-Method Property Checks
+**Status**: FIXED ✅
+
+**Problem**: Method calls like `player.location.get_exit(direction)` wrapped in conditional property checks that always failed for builtins, causing method calls to be skipped entirely.
+
+**Root Cause**: IR generator created property lookup + conditional branch for ALL method calls:
+```
+1. get_property(location, "get_exit") → returns 0 (not a real property)
+2. Branch: if property != 0 then call_method else return_0
+3. Branch always takes else path, skips call entirely
+```
+
+**Fix**: `ir.rs:2645-2717` - Detect builtin pseudo-methods and generate direct calls
+```rust
+let is_builtin_pseudo_method = matches!(method.as_str(), "get_exit" | "empty" | "none");
+if is_builtin_pseudo_method {
+    // Generate direct Call without property check
+}
+```
+
+**Impact**: `get_exit()` now executes correctly with full arguments. This was the missing link preventing navigation from working.
+
+**See**: `docs/ARCHITECTURE.md` - "IR Generation for Builtin Pseudo-Methods"
+
+---
+
+## Previous Status (October 8, 2025)
 
 ### ✅ FIXED - Compiler Bugs Blocking Exit System
 

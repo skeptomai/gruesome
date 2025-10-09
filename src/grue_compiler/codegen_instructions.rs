@@ -17,6 +17,33 @@ impl ZMachineCodeGen {
     ) -> Result<(), CompilerError> {
         debug!("Generate instruction called: {:?}", instruction);
 
+        // Track PC→IR mapping for ALL instructions
+        let func_name = self
+            .current_function_name
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
+        let pc = self.code_address;
+        let instr_desc = format!("{:?}", instruction);
+        let instr_short = if instr_desc.len() > 60 {
+            format!("{}...", &instr_desc[..57])
+        } else {
+            instr_desc
+        };
+
+        // Extract relevant IR ID for tracking
+        let ir_id = match instruction {
+            IrInstruction::LoadImmediate { target, .. } => *target,
+            IrInstruction::BinaryOp { target, .. } => *target,
+            IrInstruction::Call { target, .. } => target.unwrap_or(0),
+            IrInstruction::GetProperty { target, .. } => *target,
+            IrInstruction::GetPropertyByNumber { target, .. } => *target,
+            IrInstruction::UnaryOp { target, .. } => *target,
+            _ => 0,
+        };
+
+        self.pc_to_ir_map
+            .insert(pc, (func_name, ir_id, instr_short));
+
         // CRITICAL DEBUG: Track all branch and jump instructions
         match instruction {
             IrInstruction::Branch { .. } | IrInstruction::Jump { .. } => {
@@ -258,6 +285,7 @@ impl ZMachineCodeGen {
                         builtin_name,
                         args.len()
                     );
+
                     self.generate_builtin_function_call(*function, args, *target)?;
                 } else {
                     log::debug!(
@@ -265,6 +293,7 @@ impl ZMachineCodeGen {
                         function,
                         args.len()
                     );
+
                     // Generate user function call with proper reference registration
                     self.generate_user_function_call(*function, args, *target)?;
                 }
@@ -1383,6 +1412,13 @@ impl ZMachineCodeGen {
                             .insert(*target, ConstantValue::Integer(0));
                     }
                 }
+            }
+
+            // Debug breakpoint (debug builds only)
+            #[cfg(debug_assertions)]
+            IrInstruction::DebugBreak { label } => {
+                log::debug!("Generating debug breakpoint: {}", label);
+                self.generate_debug_break_builtin(label)?;
             }
 
             _ => {

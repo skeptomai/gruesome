@@ -327,6 +327,14 @@ impl VM {
         };
 
         // Debug logging for critical variable reads
+        if var == 1 {
+            log::error!(
+                "🔍 READ_VAR: var={}, value={:04x?}, PC=0x{:04x}",
+                var,
+                result,
+                self.pc
+            );
+        }
         if var == 0x10 {
             debug!(
                 "read_variable(0x{:02x}) [Variable(16)/G00] at PC {:05x} returning value: {:?}",
@@ -345,6 +353,15 @@ impl VM {
 
     /// Write a variable (0x00 = stack, 0x01-0x0F = local, 0x10-0xFF = global)
     pub fn write_variable(&mut self, var: u8, value: u16) -> Result<(), String> {
+        // Log writes to variables 235-244 (used by get_exit builtin) and Variable(1) (direction parameter)
+        if (var >= 235 && var <= 244) || var == 1 {
+            log::error!(
+                "🔍 WRITE_VAR: var={}, value=0x{:04x}, PC=0x{:04x}",
+                var,
+                value,
+                self.pc
+            );
+        }
         match var {
             0x00 => {
                 // Writing to variable 0 means push onto stack

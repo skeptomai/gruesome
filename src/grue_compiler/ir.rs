@@ -664,6 +664,12 @@ pub enum IrInstruction {
         array: IrId,
         index: IrId,
     },
+
+    /// Debug breakpoint (conditional compilation - debug builds only)
+    #[cfg(debug_assertions)]
+    DebugBreak {
+        label: String,
+    },
     ArrayLength {
         target: IrId,
         array: IrId,
@@ -1006,50 +1012,102 @@ impl IrGenerator {
 
     /// Check if a function name is a known builtin function
     fn is_builtin_function(&self, name: &str) -> bool {
-        matches!(
-            name,
-            "print"
-                | "print_ret"
-                | "new_line"
-                | "move"
-                | "get_location"
-                | "get_child"
-                | "get_sibling"
-                | "get_prop"
-                | "test_attr"
-                | "set_attr"
-                | "clear_attr"
-                | "to_string"
-                | "random"
-                // String utility functions
-                | "indexOf"
-                | "slice"
-                | "substring"
-                | "toLowerCase"
-                | "toUpperCase"
-                | "trim"
-                | "charAt"
-                | "split"
-                | "replace"
-                | "startsWith"
-                | "endsWith"
-                // Math utility functions
-                | "abs"
-                | "min"
-                | "max"
-                | "round"
-                | "floor"
-                | "ceil"
-                // Type checking functions
-                | "is_string"
-                | "is_int"
-                | "is_bool"
-                | "is_array"
-                | "is_object"
-                | "typeof"
-                // Game control
-                | "quit"
-        )
+        #[cfg(debug_assertions)]
+        {
+            matches!(
+                name,
+                "print"
+                    | "print_ret"
+                    | "new_line"
+                    | "move"
+                    | "get_location"
+                    | "get_child"
+                    | "get_sibling"
+                    | "get_prop"
+                    | "test_attr"
+                    | "set_attr"
+                    | "clear_attr"
+                    | "to_string"
+                    | "random"
+                    // String utility functions
+                    | "indexOf"
+                    | "slice"
+                    | "substring"
+                    | "toLowerCase"
+                    | "toUpperCase"
+                    | "trim"
+                    | "charAt"
+                    | "split"
+                    | "replace"
+                    | "startsWith"
+                    | "endsWith"
+                    // Math utility functions
+                    | "abs"
+                    | "min"
+                    | "max"
+                    | "round"
+                    | "floor"
+                    | "ceil"
+                    // Type checking functions
+                    | "is_string"
+                    | "is_int"
+                    | "is_bool"
+                    | "is_array"
+                    | "is_object"
+                    | "typeof"
+                    // Game control
+                    | "quit"
+                    // Debug breakpoints (debug builds only)
+                    | "debug_break"
+            )
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            matches!(
+                name,
+                "print"
+                    | "print_ret"
+                    | "new_line"
+                    | "move"
+                    | "get_location"
+                    | "get_child"
+                    | "get_sibling"
+                    | "get_prop"
+                    | "test_attr"
+                    | "set_attr"
+                    | "clear_attr"
+                    | "to_string"
+                    | "random"
+                    // String utility functions
+                    | "indexOf"
+                    | "slice"
+                    | "substring"
+                    | "toLowerCase"
+                    | "toUpperCase"
+                    | "trim"
+                    | "charAt"
+                    | "split"
+                    | "replace"
+                    | "startsWith"
+                    | "endsWith"
+                    // Math utility functions
+                    | "abs"
+                    | "min"
+                    | "max"
+                    | "round"
+                    | "floor"
+                    | "ceil"
+                    // Type checking functions
+                    | "is_string"
+                    | "is_int"
+                    | "is_bool"
+                    | "is_array"
+                    | "is_object"
+                    | "typeof"
+                    // Game control
+                    | "quit"
+            )
+        }
     }
 
     pub fn generate(&mut self, ast: Program) -> Result<IrProgram, CompilerError> {
@@ -2576,7 +2634,6 @@ impl IrGenerator {
                 }
 
                 // Method call: object.method(args)
-                // This should be handled as: get property from object, if callable then call it
 
                 // Generate arguments first
                 let mut arg_temps = Vec::new();
@@ -2585,6 +2642,64 @@ impl IrGenerator {
                     arg_temps.push(arg_temp);
                 }
 
+                // Check if this is a known built-in pseudo-method that doesn't require property lookup
+                let is_builtin_pseudo_method =
+                    matches!(method.as_str(), "get_exit" | "empty" | "none");
+
+                if is_builtin_pseudo_method {
+                    // For built-in pseudo-methods, generate direct call without property check
+                    let result_temp = self.next_id();
+
+                    match method.as_str() {
+                        "get_exit" => {
+                            let builtin_id = self.next_id();
+                            self.builtin_functions
+                                .insert(builtin_id, "get_exit".to_string());
+
+                            let mut call_args = vec![object_temp];
+                            call_args.extend(arg_temps);
+
+                            block.add_instruction(IrInstruction::Call {
+                                target: Some(result_temp),
+                                function: builtin_id,
+                                args: call_args,
+                            });
+                        }
+                        "empty" => {
+                            let builtin_id = self.next_id();
+                            self.builtin_functions
+                                .insert(builtin_id, "object_is_empty".to_string());
+
+                            let mut call_args = vec![object_temp];
+                            call_args.extend(arg_temps);
+
+                            block.add_instruction(IrInstruction::Call {
+                                target: Some(result_temp),
+                                function: builtin_id,
+                                args: call_args,
+                            });
+                        }
+                        "none" => {
+                            let builtin_id = self.next_id();
+                            self.builtin_functions
+                                .insert(builtin_id, "value_is_none".to_string());
+
+                            let mut call_args = vec![object_temp];
+                            call_args.extend(arg_temps);
+
+                            block.add_instruction(IrInstruction::Call {
+                                target: Some(result_temp),
+                                function: builtin_id,
+                                args: call_args,
+                            });
+                        }
+                        _ => unreachable!(),
+                    }
+
+                    return Ok(result_temp);
+                }
+
+                // For regular property-based methods, generate property lookup and conditional call
                 // Generate property access to get the method function
                 let property_temp = self.next_id();
                 let prop_num = self.property_manager.get_property_number(&method);
@@ -2610,71 +2725,8 @@ impl IrGenerator {
                 // Then branch: call the function stored in the property
                 block.add_instruction(IrInstruction::Label { id: then_label });
 
-                // Special handling for known built-in methods
+                // Special handling for property-based methods that have fallback behavior
                 match method.as_str() {
-                    "contents" => {
-                        // contents() method: returns the object ID to enable direct object tree iteration
-                        // The caller will use for-loops which generate GetObjectChild/GetObjectSibling
-                        // instructions to traverse the Z-Machine object tree directly
-
-                        // Simply return the object ID - the for-loop will iterate its children
-                        block.add_instruction(IrInstruction::StoreVar {
-                            var_id: result_temp,
-                            source: object_temp,
-                        });
-
-                        // Track that this result came from an object tree root
-                        // This signals to for-loop generation to use GetObjectChild/GetObjectSibling
-                        self.variable_sources
-                            .insert(result_temp, VariableSource::ObjectTreeRoot(object_temp));
-                    }
-                    "get_exit" => {
-                        // get_exit(direction) method: lookup exit by direction string
-                        // This is a builtin that will be implemented in codegen_builtins.rs
-                        let builtin_id = self.next_id();
-                        self.builtin_functions
-                            .insert(builtin_id, "get_exit".to_string());
-
-                        let mut call_args = vec![object_temp];
-                        call_args.extend(arg_temps);
-
-                        block.add_instruction(IrInstruction::Call {
-                            target: Some(result_temp),
-                            function: builtin_id,
-                            args: call_args,
-                        });
-                    }
-                    "empty" => {
-                        // empty() method: return true if object has no contents
-                        let builtin_id = self.next_id();
-                        self.builtin_functions
-                            .insert(builtin_id, "object_is_empty".to_string());
-
-                        let mut call_args = vec![object_temp];
-                        call_args.extend(arg_temps);
-
-                        block.add_instruction(IrInstruction::Call {
-                            target: Some(result_temp),
-                            function: builtin_id,
-                            args: call_args,
-                        });
-                    }
-                    "none" => {
-                        // none() method: return true if this value is null/undefined/empty
-                        // This is commonly used for checking if optional values exist
-                        let builtin_id = self.next_id();
-                        self.builtin_functions
-                            .insert(builtin_id, "value_is_none".to_string());
-
-                        let mut call_args = vec![object_temp];
-                        call_args.extend(arg_temps);
-
-                        block.add_instruction(IrInstruction::Call {
-                            target: Some(result_temp),
-                            function: builtin_id,
-                            args: call_args,
-                        });
-                    }
                     "size" | "length" => {
                         // size() or length() method: return count of elements/contents
                         let builtin_id = self.next_id();
@@ -2777,10 +2829,6 @@ impl IrGenerator {
                 // where type=0 for normal exits, type=1 for blocked exits
                 match property.as_str() {
                     "blocked" => {
-                        log::debug!(
-                            "🚪 EXIT: Creating exit_is_blocked builtin for property access"
-                        );
-
                         // Check if bit 14 is set (value >= 0x4000)
                         let builtin_id = self.next_id();
                         self.builtin_functions
@@ -3700,6 +3748,26 @@ impl IrGenerator {
                 block.add_instruction(IrInstruction::TypeOf {
                     target: temp_id,
                     value: arg_temps[0],
+                });
+            }
+            // Debug breakpoint (debug builds only)
+            #[cfg(debug_assertions)]
+            "debug_break" => {
+                if arg_temps.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "debug_break expects 1 argument (label string)".to_string(),
+                    ));
+                }
+                // Extract label from the LoadImmediate instruction
+                // We need to look back at the IR to find the string value
+                // For now, use a placeholder - we'll need to track this properly
+                block.add_instruction(IrInstruction::DebugBreak {
+                    label: format!("breakpoint_{}", temp_id),
+                });
+                // Return a dummy value (0) since debug_break doesn't produce a useful result
+                block.add_instruction(IrInstruction::LoadImmediate {
+                    target: temp_id,
+                    value: IrValue::Integer(0),
                 });
             }
             // For other builtin functions, use standard call mechanism

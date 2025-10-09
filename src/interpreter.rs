@@ -652,10 +652,8 @@ impl Interpreter {
 
     /// Execute a single instruction
     pub fn execute_instruction(&mut self, inst: &Instruction) -> Result<ExecutionResult, String> {
-        // Add comprehensive debugging for critical instruction ranges
-        let current_pc = self.vm.pc - inst.size as u32;
-
         // Debug suspicious instruction ranges and print_obj instructions specifically
+        let current_pc = self.vm.pc - inst.size as u32;
         if (0x0a70..=0x0a90).contains(&current_pc)
             || (0x00f80..=0x00f90).contains(&current_pc)
             || (inst.opcode == 0x0A
@@ -782,6 +780,17 @@ impl Interpreter {
                 }
             }
             crate::instruction::InstructionForm::Variable => {
+                // Log Variable form routing
+                let current_pc = self.vm.pc - inst.size as u32;
+                if current_pc >= 0x1870 && current_pc <= 0x1895 {
+                    log::error!(
+                        "🟡 VARIABLE_FORM at PC 0x{:04x}: operand_count={:?}, opcode=0x{:02x}",
+                        current_pc,
+                        inst.operand_count,
+                        inst.opcode
+                    );
+                }
+
                 match inst.operand_count {
                     crate::instruction::OperandCount::OP2 => {
                         // IMPORTANT: Variable form 2OP instructions
@@ -1157,6 +1166,32 @@ impl Interpreter {
             0x0D => {
                 // print_paddr - print string at packed address
                 let packed_addr = operand;
+
+                // Check for debug breakpoint markers (debug builds only)
+                #[cfg(debug_assertions)]
+                {
+                    if packed_addr == 0xFFFE {
+                        // Intentional breakpoint - dump call stack with function names
+                        log::error!(
+                            "🔴 DEBUG BREAKPOINT HIT at PC 0x{:04x}",
+                            self.vm.pc - inst.size as u32
+                        );
+                        self.dump_call_stack();
+                        return Ok(ExecutionResult::Continue);
+                    } else if packed_addr == 0xFFFF {
+                        // Unresolved reference bug - this should NEVER happen in correct code
+                        log::error!(
+                            "🐛 BUG DETECTED: Unresolved reference at PC 0x{:04x} - compiler failed to patch address",
+                            self.vm.pc - inst.size as u32
+                        );
+                        self.dump_call_stack();
+                        return Err(format!(
+                            "Unresolved reference 0xFFFF at PC 0x{:04x}",
+                            self.vm.pc - inst.size as u32
+                        ));
+                    }
+                }
+
                 let addr = self.unpack_routine_address(packed_addr); // Same unpacking as routines
                 let (text, _) = crate::text::decode_string(
                     &self.vm.game.memory,
@@ -1392,10 +1427,18 @@ impl Interpreter {
                 let arg = op2;
                 let pc = self.vm.pc - inst.size as u32;
 
+                // Debug logging for function calls
+                log::error!(
+                    "🔍 CALL_2S at PC=0x{:04x}: routine_addr=0x{:04x}, arg=0x{:04x}",
+                    pc,
+                    routine_addr,
+                    arg
+                );
+
                 // Debug logging for spacing routine calls
                 if pc == 0xcc6e || pc == 0xcc84 || pc == 0xcca4 {
                     let unpacked = (routine_addr as u32).wrapping_mul(4);
-                    debug!("*** SPACING ROUTINE CALL at PC {:05x}: calling packed addr {:04x} (unpacked: {:05x}) with arg {}", 
+                    debug!("*** SPACING ROUTINE CALL at PC {:05x}: calling packed addr {:04x} (unpacked: {:05x}) with arg {}",
  pc, routine_addr, unpacked, arg);
                 }
 
@@ -1583,6 +1626,16 @@ impl Interpreter {
         inst: &Instruction,
         operands: &[u16],
     ) -> Result<ExecutionResult, String> {
+        // Log VAR instruction execution
+        if self.vm.pc >= 0x1870 && self.vm.pc <= 0x1895 {
+            log::error!(
+                "🔶 EXECUTE_VAR at PC 0x{:04x}: opcode=0x{:02x}, operands={:?}",
+                self.vm.pc - inst.size as u32,
+                inst.opcode,
+                operands
+            );
+        }
+
         match inst.opcode {
             0x00 => {
                 // call_vs - Call routine with variable number of arguments
@@ -1591,6 +1644,15 @@ impl Interpreter {
                 }
 
                 let routine_addr = operands[0];
+
+                // Log all calls to trace function invocations
+                log::error!(
+                    "🔵 CALL_VS at PC 0x{:04x}: packed_addr=0x{:04x}, args={:?}",
+                    self.vm.pc - inst.size as u32,
+                    routine_addr,
+                    &operands[1..]
+                );
+
                 debug!(
                     "VAR call_vs: routine_addr=0x{:04x}, args={:?}",
                     routine_addr,
@@ -2619,6 +2681,17 @@ impl Interpreter {
         // Store return value if needed
         if let Some(var) = frame.return_store {
             debug!("Storing return value {} to variable {}", value, var);
+
+            // Log get_exit return value
+            if frame.return_pc == 0x12db {
+                log::error!(
+                    "🟡 GET_EXIT RETURNED: value=0x{:04x} ({}), storing to var={}",
+                    value,
+                    value,
+                    var
+                );
+            }
+
             self.vm.write_variable(var, value)?;
             debug!("Stack len after store: {}", self.vm.stack.len());
         }
@@ -2765,6 +2838,37 @@ impl Interpreter {
         }
 
         debug!("Interpreter: Terminal cleanup completed");
+    }
+
+    /// Dump the current call stack (debug builds only)
+    /// Shows all active function calls with their return addresses and local variables
+    #[cfg(debug_assertions)]
+    fn dump_call_stack(&self) {
+        log::error!("📚 CALL STACK DUMP:");
+        log::error!("  Current PC: 0x{:04x}", self.vm.pc);
+        log::error!("  Call depth: {}", self.vm.call_stack.len());
+
+        if self.vm.call_stack.is_empty() {
+            log::error!("  (empty stack - main program)");
+            return;
+        }
+
+        for (depth, frame) in self.vm.call_stack.iter().enumerate() {
+            log::error!(
+                "  Frame {}: return_pc=0x{:04x}, num_locals={}",
+                depth,
+                frame.return_pc,
+                frame.num_locals
+            );
+
+            // Display local variables if any
+            if !frame.locals.is_empty() {
+                log::error!("    Locals:");
+                for (i, value) in frame.locals.iter().enumerate() {
+                    log::error!("      L{:02} = 0x{:04x} ({})", i + 1, value, value);
+                }
+            }
+        }
     }
 }
 

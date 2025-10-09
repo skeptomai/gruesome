@@ -1123,6 +1123,150 @@ Main Loop (ID 9000)
 
 This modular architecture provides a robust, maintainable foundation for a complete Z-Machine interpreter with excellent game compatibility, clean code organization, and clear separation of concerns across functional domains.
 
+## IR Generation for Builtin Pseudo-Methods (October 9, 2025)
+
+### The Problem
+
+**Method calls with property checks created incorrect IR when methods were builtins** - The IR generator created a conditional branch to check if a method property exists on an object. For builtin pseudo-methods like `get_exit()`, `empty()`, and `none()`, this property check always failed (property = 0), causing the actual method call to be skipped.
+
+### Example Bug Pattern
+
+**Grue Source**:
+```grue
+let exit = player.location.get_exit(direction);
+```
+
+**Incorrect IR Generation** (lines 2662-2666, 2689-2703 in ir.rs):
+```
+1. Generate property lookup: get_property(location, "get_exit")
+2. Branch: if property != 0 then valid_method else else_label
+3. Label: valid_method
+4.   Call: get_exit(location, direction)  ← NEVER EXECUTED!
+5. Label: else_label
+6.   LoadImmediate: result = 0
+```
+
+**Why it failed**:
+- Property lookup for "get_exit" always returned 0 (not a real property)
+- Branch took `else` path, skipped the Call instruction
+- Function called with NO arguments instead of correct arguments
+
+### The Fix
+
+**Detection**: Check if method name is a known builtin pseudo-method before generating property check
+
+**Implementation** (ir.rs:2645-2717):
+```rust
+// Check if this is a known built-in pseudo-method that doesn't require property lookup
+let is_builtin_pseudo_method = matches!(
+    method.as_str(),
+    "get_exit" | "empty" | "none"
+);
+
+if is_builtin_pseudo_method {
+    // For built-in pseudo-methods, generate direct call without property check
+    let result_temp = self.next_id();
+
+    match method.as_str() {
+        "get_exit" => {
+            let builtin_id = self.next_id();
+            self.builtin_functions.insert(builtin_id, "get_exit".to_string());
+
+            let mut call_args = vec![object_temp];
+            call_args.extend(arg_temps);
+
+            block.add_instruction(IrInstruction::Call {
+                target: Some(result_temp),
+                function: builtin_id,
+                args: call_args,
+            });
+        }
+        // Similar for "empty" and "none"
+    }
+
+    return Ok(result_temp);
+}
+
+// For regular property-based methods, use conditional branch pattern
+```
+
+**Correct IR Generation**:
+```
+1. Detect "get_exit" is builtin
+2. Call: get_exit(location, direction)  ← EXECUTES IMMEDIATELY
+3. Return result_temp
+```
+
+### Why This Pattern Exists
+
+**Property-Based Methods**: Infocom games can attach action routines to objects as properties. Example:
+```
+object door {
+    property "open" = routine_address  // Custom open behavior
+}
+```
+
+The conditional branch pattern checks if the object has a custom implementation before calling the default handler.
+
+**Builtin Pseudo-Methods**: These are compiler-provided functions that don't exist as properties:
+- `get_exit()` - Runtime exit lookup in room property tables
+- `empty()` - Check if object has no children
+- `none()` - Check if value is zero
+
+These should generate direct calls, not property lookups.
+
+### Detection Strategy
+
+**AST Pattern Matching Limitation**: Using `is_builtin_pseudo_method` matches on method name strings. This works but requires maintaining the list of builtin methods.
+
+**Alternative**: Track builtin methods in semantic analysis, annotate method calls with type information. Higher complexity but more robust.
+
+### Impact
+
+**Before Fix**: Navigation commands failed with "I don't understand that" because `get_exit()` was never called (property check failed, fell through to else branch with no arguments).
+
+**After Fix**: Navigation commands work correctly, `get_exit()` receives both room and direction arguments as expected.
+
+### Related Bugs
+
+This bug pattern contributed to Bug 3 (Grammar Argument Passing). The root cause was twofold:
+1. Grammar handler discarded arguments (underscore pattern)
+2. IR generator skipped method call due to property check
+
+Both issues needed fixing for navigation to work.
+
+### Files Modified
+
+- `src/grue_compiler/ir.rs:2645-2717` - Builtin pseudo-method detection and direct call generation
+- `src/grue_compiler/ir.rs:2764-2822` - Removed duplicate conditional branch handling
+
+### Prevention Rules
+
+**DO**:
+- ✅ Check for builtin methods before generating property lookups
+- ✅ Generate direct calls for compiler-provided functions
+- ✅ Test method calls with arguments to verify they execute
+
+**DON'T**:
+- ❌ Assume all method calls go through property lookup
+- ❌ Use property checks for methods that don't exist as properties
+- ❌ Discard function arguments with underscore patterns
+
+### Debugging Lesson
+
+**Key Insight**: When debugging execution failures, instrument the actual execution path FIRST, not reverse engineering with binary dumps (xxd).
+
+**What worked**:
+1. Add logging to instruction decode (what instructions are decoded)
+2. Add logging to instruction execute (what instructions actually run)
+3. Compare decoded vs executed to find missing execution
+4. Trace control flow to find skipped code path
+
+**What didn't work**:
+- Examining binary with xxd and guessing at intent
+- Assuming interpreter bugs when compiler is at fault
+- Trying to fix symptoms without understanding root cause
+
 ## CRITICAL: Z-Machine Opcode Form Instability
 
 ### The Problem

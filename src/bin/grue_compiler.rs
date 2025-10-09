@@ -23,6 +23,8 @@ fn main() {
     let mut output_file = String::new();
     let mut version = ZMachineVersion::V3;
     let mut verbose = false;
+    let mut print_ir = false;
+    let mut dump_mapping = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -95,6 +97,14 @@ fn main() {
                 verbose = true;
                 i += 1;
             }
+            "--print-ir" => {
+                print_ir = true;
+                i += 1;
+            }
+            "--dump-mapping" => {
+                dump_mapping = true;
+                i += 1;
+            }
             "-h" | "--help" => {
                 print_usage(&args[0]);
                 process::exit(0);
@@ -157,14 +167,34 @@ fn main() {
 
     // Compile
     let compiler = GrueCompiler::new();
+
+    if print_ir {
+        // Generate IR and print it
+        match compiler.compile_to_ir(&source) {
+            Ok(ir_program) => {
+                println!("=== INTERMEDIATE REPRESENTATION ===\n");
+                gruesome::grue_compiler::print_ir(&ir_program);
+                process::exit(0);
+            }
+            Err(err) => {
+                eprintln!("Compilation error: {}", err);
+                process::exit(1);
+            }
+        }
+    }
+
     match compiler.compile(&source, version) {
-        Ok(story_data) => {
+        Ok((story_data, code_generator)) => {
             let data_size = story_data.len();
 
             // Write output file
             if let Err(err) = fs::write(&output_file, story_data) {
                 eprintln!("Error writing '{}': {}", output_file, err);
                 process::exit(1);
+            }
+
+            if dump_mapping {
+                code_generator.dump_pc_mapping();
             }
 
             if verbose {
@@ -188,6 +218,8 @@ fn print_usage(program_name: &str) {
     println!("  -o, --output <file>    Output filename (default: input.z3)");
     println!("  --version <v3|v4|v5>   Z-Machine version (default: v3)");
     println!("  -v, --verbose          Verbose output");
+    println!("  --print-ir             Print intermediate representation and exit");
+    println!("  --dump-mapping         Dump PC→IR mapping after compilation");
     println!("  -h, --help             Show this help message");
     println!();
     println!("Z-Machine Version Support:");

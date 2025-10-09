@@ -1,5 +1,6 @@
 // Abstract Syntax Tree definitions for Grue language
 
+use indexmap::IndexMap;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -87,7 +88,7 @@ pub struct RoomDecl {
     pub display_name: String,
     pub description: String,
     pub objects: Vec<ObjectDecl>,
-    pub exits: HashMap<String, ExitTarget>,
+    pub exits: IndexMap<String, ExitTarget>,
     pub on_enter: Option<BlockStmt>,
     pub on_exit: Option<BlockStmt>,
     pub on_look: Option<BlockStmt>,

@@ -836,7 +836,7 @@ impl ZMachineCodeGen {
                 0x01, // je
                 &[value_operand, Operand::SmallConstant(0)],
                 None,
-                Some(0x7FFF), // Placeholder for forward branch (true path)
+                Some(-1), // Placeholder for forward branch (true path) - bit 15=1 means "branch on true"
             )?;
 
             self.reference_context
@@ -864,7 +864,7 @@ impl ZMachineCodeGen {
                 0x0C, // jump
                 &[],
                 None,
-                Some(0x7FFF), // Placeholder for forward jump
+                Some(-1), // Placeholder for forward jump - bit 15=1 means "branch on true"
             )?;
 
             self.reference_context
@@ -904,6 +904,17 @@ impl ZMachineCodeGen {
         args: &[IrId],
         target: Option<u32>,
     ) -> Result<(), CompilerError> {
+        log::error!("🔥 EXIT_IS_BLOCKED: Starting codegen for exit_is_blocked builtin");
+        log::error!("🔥 EXIT_IS_BLOCKED: args={:?}, target={:?}", args, target);
+        log::error!(
+            "🔥 EXIT_IS_BLOCKED: current function={:?}",
+            self.current_function_name
+        );
+        log::error!(
+            "🔥 EXIT_IS_BLOCKED: PC before generation=0x{:04x}",
+            self.code_address
+        );
+
         if args.len() != 1 {
             return Err(CompilerError::CodeGenError(format!(
                 "exit_is_blocked expects 1 argument, got {}",
@@ -912,22 +923,69 @@ impl ZMachineCodeGen {
         }
 
         let exit_value_id = args[0];
+        log::error!("🔥 EXIT_IS_BLOCKED: exit_value_id={}", exit_value_id);
+        log::error!(
+            "🔥 EXIT_IS_BLOCKED: Resolving IR ID {} to operand...",
+            exit_value_id
+        );
         let exit_value_operand = self.resolve_ir_id_to_operand(exit_value_id)?;
+        log::error!(
+            "🔥 EXIT_IS_BLOCKED: Resolved to operand={:?}",
+            exit_value_operand
+        );
+
+        // Track PC mapping for this builtin call
+        let func_name = self
+            .current_function_name
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
+        let start_pc = self.code_address;
+        self.pc_to_ir_map.insert(
+            start_pc,
+            (
+                func_name.clone(),
+                exit_value_id,
+                format!("exit_is_blocked(t{})", exit_value_id),
+            ),
+        );
 
         if let Some(store_var) = target {
+            log::error!(
+                "🔥 EXIT_IS_BLOCKED: Storing result in variable {}",
+                store_var
+            );
+
             // Use jge (opcode 0x05) to test if value >= 0x4000
             let true_label = self.next_string_id;
             self.next_string_id += 1;
             let end_label = self.next_string_id;
             self.next_string_id += 1;
 
+            log::error!(
+                "🔥 EXIT_IS_BLOCKED: Emitting jge instruction at PC=0x{:04x}",
+                self.code_address
+            );
+            log::error!(
+                "🔥 EXIT_IS_BLOCKED: Operands: {:?} >= 0x4000",
+                exit_value_operand
+            );
+
             // Test: value >= 0x4000?
             let branch_layout = self.emit_instruction(
                 0x05, // jge
                 &[exit_value_operand, Operand::LargeConstant(0x4000)],
                 None,
-                Some(0x7FFF), // Placeholder for forward branch (true path)
+                Some(-1), // Placeholder for forward branch (true path) - bit 15=1 means "branch on true"
             )?;
+
+            log::error!(
+                "🔥 EXIT_IS_BLOCKED: jge emitted, layout={:?}",
+                branch_layout
+            );
+            log::error!(
+                "🔥 EXIT_IS_BLOCKED: PC after jge=0x{:04x}",
+                self.code_address
+            );
 
             self.reference_context
                 .unresolved_refs
@@ -954,7 +1012,7 @@ impl ZMachineCodeGen {
                 0x0C, // jump
                 &[],
                 None,
-                Some(0x7FFF), // Placeholder for forward jump
+                Some(-1), // Placeholder for forward jump - bit 15=1 means "branch on true"
             )?;
 
             self.reference_context
@@ -1717,6 +1775,33 @@ impl ZMachineCodeGen {
             None, // No store
             None, // No branch
         )?;
+
+        Ok(())
+    }
+
+    /// Generate debug_break builtin function - triggers breakpoint with call stack dump
+    /// Debug builds only - emits print_paddr with magic marker 0xFFFE
+    #[cfg(debug_assertions)]
+    pub fn generate_debug_break_builtin(&mut self, label: &str) -> Result<(), CompilerError> {
+        log::debug!("Generating DEBUG_BREAK with label '{}'", label);
+
+        // Store the current code position for the magic marker
+        let marker_location = self.code_address;
+
+        // Emit print_paddr opcode (0x8D = 1OP:print_paddr)
+        // Using magic marker 0xFFFE to signal intentional breakpoint
+        self.emit_instruction_typed(
+            Opcode::Op1(crate::grue_compiler::opcodes::Op1::PrintPaddr),
+            &[Operand::LargeConstant(0xFFFE)], // Magic marker for breakpoint
+            None,                              // No store
+            None,                              // No branch
+        )?;
+
+        log::debug!(
+            "Debug breakpoint '{}' emitted at PC 0x{:04x} with marker 0xFFFE",
+            label,
+            marker_location
+        );
 
         Ok(())
     }

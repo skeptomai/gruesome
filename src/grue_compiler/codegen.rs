@@ -209,7 +209,7 @@ pub struct ZMachineCodeGen {
     function_locals_count: IndexMap<IrId, usize>, // IR function ID -> locals count (for header size calculation)
     function_header_locations: IndexMap<IrId, usize>, // IR function ID -> header byte location for patching
     current_function_locals: u8, // Track local variables allocated in current function (0-15)
-    current_function_name: Option<String>, // Track current function being processed for debugging
+    pub current_function_name: Option<String>, // Track current function being processed for debugging
     init_routine_locals_count: u8, // Track local variables used by init routine for PC calculation
     /// Mapping from IR IDs to string values (for LoadImmediate results)
     pub ir_id_to_string: IndexMap<IrId, String>,
@@ -270,6 +270,9 @@ pub struct ZMachineCodeGen {
 
     // Address resolution
     pub reference_context: ReferenceContext,
+
+    // Debug mapping: PC → IR instruction for runtime debugging
+    pub pc_to_ir_map: IndexMap<usize, (String, IrId, String)>, // PC → (function_name, ir_id, instruction_description)
 
     // Control flow analysis - NEW ARCHITECTURE
     /// Track constant values resolved during generation
@@ -387,6 +390,7 @@ impl ZMachineCodeGen {
                 ir_id_to_address: IndexMap::new(),
                 unresolved_refs: Vec::new(),
             },
+            pc_to_ir_map: IndexMap::new(),
             constant_values: IndexMap::new(),
             labels_at_current_address: Vec::new(),
 
@@ -1489,9 +1493,9 @@ impl ZMachineCodeGen {
                 // Calculate final address: base + header + (position * entry_size)
                 let final_addr = dict_base + header_size + (position * entry_size);
 
-                log::debug!(
-                    "📖 DICT_RESOLVE: Word '{}' position {} -> dict_base=0x{:04x} + {} + ({} * {}) = 0x{:04x}",
-                    word, position, dict_base, header_size, position, entry_size, final_addr
+                log::error!(
+                    "📖 DICT_RESOLVE: Word '{}' position {} -> dict_base=0x{:04x} + {} + ({} * {}) = 0x{:04x}, will patch location=0x{:04x}",
+                    word, position, dict_base, header_size, position, entry_size, final_addr, reference.location
                 );
 
                 final_addr
@@ -2439,6 +2443,11 @@ impl ZMachineCodeGen {
     /// Implementation: LoadVar - Load variable value
     fn translate_load_var(&mut self, target: IrId, var_id: IrId) -> Result<(), CompilerError> {
         log::debug!("LOAD_VAR: target={}, var_id={}", target, var_id);
+
+        log::error!(
+            "📝 VAR1_WRITE: LoadVar at 0x{:04x} - HARDCODED storing to Variable(1) (BUG?)",
+            self.code_address
+        );
 
         // For now, use simple variable assignment (can be improved with proper mapping)
         let var_operand = Operand::SmallConstant(1); // Default to variable 1
@@ -5781,6 +5790,8 @@ impl ZMachineCodeGen {
  self.code_address
  );
 
+        let verb_start_address = self.code_address;
+
         // Create end-of-function label for jump target resolution
         // Generate unique label based on verb name to avoid conflicts
         use std::collections::hash_map::DefaultHasher;
@@ -5806,6 +5817,12 @@ impl ZMachineCodeGen {
         // First, check if we have at least 1 word (word count >= 1)
         debug!(
             " CHECK_WORD_COUNT: Check if we have at least 1 word at 0x{:04x}",
+            self.code_address
+        );
+
+        log::error!(
+            "📝 VAR1_WRITE: '{}' at 0x{:04x} - storing word count to Variable(1)",
+            verb,
             self.code_address
         );
 
@@ -6086,6 +6103,12 @@ impl ZMachineCodeGen {
  func_id, verb, self.code_address
  );
 
+                log::error!(
+                    "📍 PATTERN_HANDLER: '{}' noun pattern at 0x{:04x}",
+                    verb,
+                    self.code_address
+                );
+
                 // We have a noun: Extract second word dictionary address
                 self.emit_instruction(
                     0x0F, // loadw: load word from array (2OP:15)
@@ -6180,6 +6203,13 @@ impl ZMachineCodeGen {
                 debug!(
                     "Generating default pattern call to function ID {} for verb '{}' with {} arguments",
                     func_id, verb, args.len()
+                );
+
+                log::error!(
+                    "📍 PATTERN_HANDLER: '{}' default pattern at 0x{:04x} (args={})",
+                    verb,
+                    self.code_address,
+                    args.len()
                 );
 
                 // Build operands: function address + arguments
@@ -6408,6 +6438,13 @@ impl ZMachineCodeGen {
         // End of verb matching function - register the label for jump resolution
         self.record_final_address(end_function_label, self.code_address);
 
+        log::error!(
+            "📍 VERB_HANDLER: '{}' code range 0x{:04x}-0x{:04x}",
+            verb,
+            verb_start_address,
+            self.code_address
+        );
+
         Ok(())
     }
 
@@ -6502,6 +6539,17 @@ impl ZMachineCodeGen {
     /// Input: Variable 2 contains the noun dictionary address from parse buffer
     /// Output: Variable 3 contains the matching object ID (or 0 if not found)
     fn generate_object_lookup_from_noun(&mut self) -> Result<(), CompilerError> {
+        let lookup_start_address = self.code_address;
+        log::error!(
+            "🔍 OBJECT_LOOKUP_START: Starting at 0x{:04x}",
+            lookup_start_address
+        );
+        log::error!("🔍 OBJECT_LOOKUP: Variable usage plan:");
+        log::error!("    - Variable(2) = noun dictionary address (INPUT)");
+        log::error!("    - Variable(3) = result object ID (OUTPUT)");
+        log::error!("    - Variable(4) = loop counter");
+        log::error!("    - Variable(5) = property value during comparison");
+
         debug!(" OBJECT_LOOKUP_START: Generating dynamic object lookup from noun dictionary address at 0x{:04x}", self.code_address);
 
         // ARCHITECTURAL FIX IMPLEMENTED (Sept 30, 2025):
@@ -6513,6 +6561,10 @@ impl ZMachineCodeGen {
         // PROPER FLOW: noun lookup → dictionary→object mapping → Variable(3)=objectID → clear_attr(objectID, 1)
 
         // Initialize result variable to 0 (not found)
+        log::error!(
+            "🔍 OBJECT_LOOKUP: Initializing Variable(3)=0 at 0x{:04x}",
+            self.code_address
+        );
         self.emit_instruction(
             0x0D, // store
             &[
@@ -6525,6 +6577,10 @@ impl ZMachineCodeGen {
 
         // Dynamic object lookup loop - check all objects for name match
         // Initialize loop counter (Variable 4) to 1 (first object)
+        log::error!(
+            "🔍 OBJECT_LOOKUP: Initializing Variable(4)=1 (loop counter) at 0x{:04x}",
+            self.code_address
+        );
         self.emit_instruction(
             0x0D, // store
             &[
@@ -6549,11 +6605,19 @@ impl ZMachineCodeGen {
         );
 
         // Mark loop start at current address
+        log::error!(
+            "🔍 OBJECT_LOOKUP: Loop start at 0x{:04x}",
+            self.code_address
+        );
         self.label_addresses
             .insert(loop_start_label, self.code_address);
         self.record_final_address(loop_start_label, self.code_address);
 
         // Check if current object number exceeds maximum (68 for mini_zork actual count)
+        log::error!(
+            "🔍 OBJECT_LOOKUP: Checking Variable(4) > 68 at 0x{:04x}",
+            self.code_address
+        );
         let layout = self.emit_instruction(
             0x03, // jg: jump if greater
             &[
@@ -6580,6 +6644,10 @@ impl ZMachineCodeGen {
         }
 
         // Get property 7 (names) for current object
+        log::error!(
+            "🔍 OBJECT_LOOKUP: Getting property 7 (names) from Variable(4) → Variable(5) at 0x{:04x}",
+            self.code_address
+        );
         self.emit_instruction(
             0x11, // get_prop: get property value
             &[
@@ -6591,6 +6659,10 @@ impl ZMachineCodeGen {
         )?;
 
         // Compare property value with noun dictionary address
+        log::error!(
+            "🔍 OBJECT_LOOKUP: Comparing Variable(5) == Variable(2) at 0x{:04x}",
+            self.code_address
+        );
         let layout = self.emit_instruction(
             0x01, // je: jump if equal
             &[
@@ -6617,6 +6689,10 @@ impl ZMachineCodeGen {
         }
 
         // Increment loop counter
+        log::error!(
+            "🔍 OBJECT_LOOKUP: Incrementing Variable(4) at 0x{:04x}",
+            self.code_address
+        );
         self.emit_instruction(
             0x05,                    // inc
             &[Operand::Variable(4)], // Increment object counter
@@ -6625,6 +6701,10 @@ impl ZMachineCodeGen {
         )?;
 
         // Jump back to loop start
+        log::error!(
+            "🔍 OBJECT_LOOKUP: Jump back to loop start at 0x{:04x}",
+            self.code_address
+        );
         let layout = self.emit_instruction(
             0x0C,                                          // jump
             &[Operand::LargeConstant(placeholder_word())], // Placeholder for loop start
@@ -6648,9 +6728,17 @@ impl ZMachineCodeGen {
         }
 
         // Found match - store current object number as result
+        log::error!(
+            "🔍 OBJECT_LOOKUP: Found match label at 0x{:04x}",
+            self.code_address
+        );
         self.label_addresses
             .insert(found_match_label, self.code_address);
         self.record_final_address(found_match_label, self.code_address);
+        log::error!(
+            "🔍 OBJECT_LOOKUP: Storing Variable(4) → Variable(3) at 0x{:04x}",
+            self.code_address
+        );
         self.emit_instruction(
             0x0D, // store
             &[
@@ -6662,9 +6750,15 @@ impl ZMachineCodeGen {
         )?;
 
         // End of function
+        log::error!("🔍 OBJECT_LOOKUP: End label at 0x{:04x}", self.code_address);
         self.label_addresses.insert(end_label, self.code_address);
         self.record_final_address(end_label, self.code_address);
 
+        log::error!(
+            "🔍 OBJECT_LOOKUP_END: Complete at 0x{:04x} (size={} bytes)",
+            self.code_address,
+            self.code_address - lookup_start_address
+        );
         debug!(" Dynamic object lookup generation complete - result in variable 3, supports all {} objects", 255);
         Ok(())
     }
@@ -6839,6 +6933,12 @@ impl ZMachineCodeGen {
             " FUNCTION_START: Generating header for function '{}' with {} locals",
             function.name,
             self.current_function_locals
+        );
+
+        log::error!(
+            "🎯 USER_FUNCTION: '{}' starts at 0x{:04x}",
+            function.name,
+            self.code_address
         );
 
         // CRITICAL FIX: Pre-allocate space for locals that will be dynamically allocated
@@ -10563,6 +10663,34 @@ impl ZMachineCodeGen {
         if self.story_data.len() < required {
             self.story_data.resize(required, 0);
         }
+    }
+
+    /// Dump PC→IR mapping for debugging
+    pub fn dump_pc_mapping(&self) {
+        if self.pc_to_ir_map.is_empty() {
+            eprintln!("=== PC → IR MAPPING (empty) ===");
+            return;
+        }
+
+        eprintln!(
+            "\n=== PC → IR MAPPING ({} entries) ===",
+            self.pc_to_ir_map.len()
+        );
+        eprintln!("Code base offset: 0x{:04x}", self.final_code_base);
+        eprintln!(
+            "{:<8} {:<20} {:<10} {}",
+            "PC", "Function", "IR ID", "Instruction"
+        );
+        eprintln!("{}", "-".repeat(80));
+
+        for (pc, (func_name, ir_id, desc)) in &self.pc_to_ir_map {
+            let final_pc = pc + self.final_code_base; // Add offset to show final assembled address
+            eprintln!(
+                "0x{:04x}   {:<20} t{:<8} {}",
+                final_pc, func_name, ir_id, desc
+            );
+        }
+        eprintln!();
     }
 
     // Z-Machine instruction encoding methods now moved to codegen_instructions.rs

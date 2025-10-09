@@ -188,7 +188,9 @@ impl Instruction {
                 } else {
                     OperandCount::VAR
                 };
-                (opcode_byte & 0x1F, None, op_count)
+                let opcode = opcode_byte & 0x1F;
+
+                (opcode, None, op_count)
             }
             InstructionForm::Extended => {
                 // Extended form: next byte is the actual opcode

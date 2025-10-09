@@ -3,6 +3,7 @@
 use crate::grue_compiler::ast::*;
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::lexer::{Token, TokenKind};
+use indexmap::IndexMap;
 use std::collections::HashMap;
 
 pub struct Parser {
@@ -80,7 +81,7 @@ impl Parser {
 
         let mut description = String::new();
         let mut objects = Vec::new();
-        let mut exits = HashMap::new();
+        let mut exits = IndexMap::new();
         let mut on_enter = None;
         let mut on_exit = None;
         let mut on_look = None;
@@ -221,12 +222,12 @@ impl Parser {
         })
     }
 
-    fn parse_exits(&mut self) -> Result<HashMap<String, ExitTarget>, CompilerError> {
+    fn parse_exits(&mut self) -> Result<IndexMap<String, ExitTarget>, CompilerError> {
         self.consume(TokenKind::Exits, "Expected 'exits'")?;
         self.consume(TokenKind::Colon, "Expected ':' after 'exits'")?;
         self.consume(TokenKind::LeftBrace, "Expected '{' after 'exits:'")?;
 
-        let mut exits = HashMap::new();
+        let mut exits = IndexMap::new();
 
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
             // Skip newlines and commas

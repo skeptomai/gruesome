@@ -1,6 +1,128 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 8, 2025) - V3 TWO-BYTE PROPERTY BUG FIXED ✅
+## CURRENT STATUS (October 9, 2025) - STRING CONCATENATION BUG IDENTIFIED 🔍
+
+**PROGRESS**: Identified root cause of "Invalid object number: 1000" error in list_objects function.
+
+### Bug 13: String Concatenation with Runtime Values ⚠️ IN PROGRESS (Oct 9, 2025)
+- **Issue**: Expressions like `print("There is " + obj.name + " here.")` fail with "Invalid object number: 1000"
+- **Root Cause**: String concatenation generates compile-time placeholder strings for runtime values
+  - IR: `t470 = obj.prop#1` (get name property) → runtime value in local variable
+  - IR: `t471 = "There is " + t470` → codegen creates placeholder `"There is [RUNTIME_LOCAL_470]"`
+  - IR: `t473 = t471 + " here."` → codegen creates `"There is [RUNTIME_LOCAL_470] here."`
+  - IR: `t474 = print(t473)` → codegen sees t473 in `ir_id_to_string`, emits PRINTPADDR with **literal placeholder string**
+  - Runtime: Prints placeholder string literally instead of actual runtime value
+  - Error occurs because placeholder string gets string ID 1000, which is treated as object number
+- **Location**: PC 0x14f0 in `list_objects` function, `Call { target: Some(474), function: 44, args: [473] }`
+- **Diagnosis Tools**:
+  - Added --dump-mapping flag to show PC→IR mappings with final assembly addresses
+  - Added comprehensive PC tracking to all IR instructions during codegen
+  - PC mapping correctly identified failing instruction at runtime address 0x14f0
+- **Fix Required**:
+  1. Detect when string concatenation involves runtime values (in `ir_id_to_stack_var` or `ir_id_to_local_var`)
+  2. Mark target as "runtime string concatenation" instead of storing placeholder string
+  3. In `generate_print_builtin()`, detect runtime concatenations and generate code to print each part separately
+  4. Alternative: Generate runtime string buffer and concatenation routine
+- **Impact**: Any string concatenation with runtime values (property access, variables) fails
+- **Files**:
+  - `src/grue_compiler/codegen_strings.rs:701-725` (translate_string_concatenation)
+  - `src/grue_compiler/codegen_builtins.rs:15-165` (generate_print_builtin)
+- **See**: `docs/ARCHITECTURE.md` - "String Concatenation with Runtime Values"
+
+---
+
+## PREVIOUS FIXES (October 9, 2025)
+
+### Bug 12: IR Generation for Builtin Pseudo-Methods ✅ FIXED (Oct 9, 2025)
+- **Issue**: Method calls like `player.location.get_exit(direction)` generated conditional property checks
+- **Root Cause**: IR generator wrapped ALL method calls in "if property exists" branches
+  - For builtin pseudo-methods (`get_exit`, `empty`, `none`), property check always returned 0
+  - Branch took `else` path, skipped the actual method call
+  - Function called with NO arguments instead of correct arguments
+- **Fix**: Detect builtin pseudo-methods and generate direct calls without property checks (`ir.rs:2645-2717`)
+  ```rust
+  let is_builtin_pseudo_method = matches!(method.as_str(), "get_exit" | "empty" | "none");
+  if is_builtin_pseudo_method {
+      // Generate direct Call instruction without property check
+  }
+  ```
+- **Impact**: Navigation commands now work correctly, `get_exit()` receives both room and direction arguments
+- **File**: `src/grue_compiler/ir.rs:2645-2717`
+- **See**: `docs/ARCHITECTURE.md` - "IR Generation for Builtin Pseudo-Methods"
+
+---
+
+## PREVIOUS ACTIVE INVESTIGATION (October 8-9, 2025)
+
+### Navigation Bug Investigation (October 9, 2025) - RESOLVED
+
+**Problem**: When user types "north", the message "You can't go that way." is printed, but `handle_go()` is never called.
+
+**Investigation Summary**:
+
+1. **Variable(1) Mystery SOLVED** ✅:
+   - Variable(1) writes at runtime PC 0x15f0-0x1864 are from grammar verb handlers initializing word count
+   - Formula: `Runtime PC = Code Offset + 0x1050 (base address)`
+   - Example: PC 0x15f0 = code offset 0x05a0 (in 'look' verb handler at 0x059c)
+   - This is CORRECT behavior - not related to navigation bug
+
+2. **Navigation Bug IDENTIFIED** ⚠️:
+   - Debug breakpoint added at `handle_go()` entry (mini_zork.grue:323) using `debug_break("handle_go entry")`
+   - Breakpoint compiles to address 0x12D0 with magic marker 0xFFFE
+   - When user types "north":
+     - Execution reaches 'north' verb handler at PC 0x1881 (code offset 0x0831)
+     - Variable(1) written at PC 0x1810 (in 'go' handler) and 0x1864 (in 'north' handler)
+     - Message "You can't go that way." is printed
+     - Debug breakpoint NEVER triggers (handle_go never called!)
+   - "You can't go that way." only exists in handle_go(), yet handle_go() wasn't called
+   - Conclusion: Grammar dispatch for 'north' verb is NOT calling `handle_go("north")`
+
+3. **Code Generation Verified** ✅:
+   - Verb handler mapping complete:
+     - 'go' handler: 0x07bc-0x0810 (noun pattern at 0x07dd)
+     - 'north' handler: 0x0810-0x083b (default pattern at 0x0831 with args=1)
+   - Default pattern codegen inspected (codegen.rs:6194-6338):
+     - Correctly builds operands: function address + arguments
+     - Emits call_vs instruction
+     - Creates UnresolvedReferences for function call and dictionary words
+   - Object lookup instrumentation added (codegen.rs:6537-6760):
+     - Tracks Variables 2-5 (not Variable 1!)
+     - Generates 29-byte lookup code per verb
+
+4. **Debug Instrumentation Added**:
+   - Debug breakpoint system implemented (`debug_break()` builtin)
+   - Conditional compilation (cfg(debug_assertions))
+   - Magic markers: 0xFFFE (intentional breakpoint), 0xFFFF (unresolved reference bug)
+   - Call stack dump functionality
+   - Comprehensive logging for:
+     - Verb handler code ranges
+     - Pattern handler locations
+     - Object lookup code generation
+     - Variable(1) writes during compilation
+
+**Next Steps**:
+- Investigate why grammar default pattern handler for 'north' is not calling `handle_go("north")`
+- Possible causes:
+  - Function address not resolved correctly during reference patching
+  - Dictionary word "north" not resolved to correct address
+  - Wrong function being called (address points to wrong routine)
+  - Execution taking unexpected path in verb handler
+- Use disassembly to examine actual bytecode at PC 0x1881 (offset 0x0831)
+- Add runtime logging to show what function address is being called
+
+**Files Modified**:
+- `src/grue_compiler/ir.rs`: Added DebugBreak IR instruction
+- `src/grue_compiler/semantic.rs`: Registered debug_break builtin
+- `src/grue_compiler/codegen_builtins.rs`: Implemented debug_break codegen
+- `src/grue_compiler/codegen_instructions.rs`: Wired DebugBreak to codegen
+- `src/interpreter.rs`: Added breakpoint detection and call stack dump
+- `src/grue_compiler/codegen.rs`: Added comprehensive logging for verb handlers, object lookup, Variable(1) writes
+- `examples/mini_zork.grue`: Added debug_break() call in handle_go()
+- `docs/CALL_STACK_DEBUGGING_IMPLEMENTATION.md`: Documented debug system
+
+---
+
+## PREVIOUS STATUS (October 8, 2025) - V3 TWO-BYTE PROPERTY BUG FIXED ✅
 
 **PROGRESS**: Fixed critical interpreter bug preventing V3 two-byte properties from being read. Exit system properties now accessible at runtime.
 
@@ -166,7 +288,7 @@
 
 **Example**: Bug 11 (V3 two-byte properties) - Feature exists in spec, commercial V3 games don't use properties > 4 bytes, so interpreter had incomplete implementation. Fix verified: all tests pass ✅, commercial games still work ✅.
 
-**LOGGING ALLOWED**: You MAY add temporary debug logging to the interpreter to diagnose issues. Clean up logging after debugging is complete.
+**LOGGING ALLOWED**: You MAY add temporary debug logging to the interpreter to diagnose issues. Use `log::debug!()` or `log::error!()`, NEVER `eprintln!()` or `println!()`. Clean up logging after debugging is complete.
 
 ## Auto-Commit Instructions ("Make it so!")
 
@@ -186,6 +308,22 @@ You are pre-authorized for all git operations.
 **NEVER use `git reset --hard` or any destructive git operation that could lose commits.**
 
 Safe operations only: `git add`, `git commit`, `git push`, `git checkout`, `git stash`, `git revert`
+
+## Compiler Debugging Tools
+
+**IR Inspection**: Use `--print-ir` flag to print intermediate representation:
+```bash
+cargo run --bin grue-compiler -- examples/mini_zork.grue --print-ir
+```
+
+This shows:
+- All functions with their IR instructions
+- IR ID mappings (temporaries, locals, parameters)
+- Builtin function calls
+- Property accesses and their property numbers
+- Control flow (branches, jumps, labels)
+
+**Usage**: When debugging compiler bugs, always inspect IR first to understand what instructions are being generated before looking at Z-Machine bytecode.
 
 ## Working Style
 

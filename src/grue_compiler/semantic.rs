@@ -164,21 +164,25 @@ impl SemanticAnalyzer {
             ("is_array", vec![Type::Any], Some(Type::Bool)),
             ("is_object", vec![Type::Any], Some(Type::Bool)),
             ("typeof", vec![Type::Any], Some(Type::String)),
-            // Remove test-specific functions that might conflict
-            // ("handle_take", vec![Type::String], None),
-            // ("handle_look", vec![], None),
-            // ("announce_entry", vec![], None),
-            // ("print_location", vec![Type::String], None),
-            // ("setup_game", vec![], None),
         ];
 
-        for (name, params, return_type) in builtins {
+        // Add debug_break builtin (debug builds only)
+        #[cfg(debug_assertions)]
+        let debug_builtins = [("debug_break", vec![Type::String], None)];
+
+        #[cfg(not(debug_assertions))]
+        let debug_builtins: [(&str, Vec<Type>, Option<Type>); 0] = [];
+
+        // Combine builtins
+        let all_builtins = builtins.iter().chain(debug_builtins.iter());
+
+        for (name, params, return_type) in all_builtins {
             log::debug!("SEMANTIC: Registering builtin function: {}", name);
             let symbol = Symbol {
                 name: name.to_string(),
                 symbol_type: SymbolType::Function {
-                    params,
-                    return_type,
+                    params: params.clone(),
+                    return_type: return_type.clone(),
                 },
                 line: 0,
             };

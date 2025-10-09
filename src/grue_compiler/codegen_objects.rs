@@ -391,26 +391,16 @@ impl ZMachineCodeGen {
                 let mut direction_addrs: Vec<u8> = Vec::new();
                 let mut exit_types: Vec<u8> = Vec::new();
                 let mut exit_data: Vec<u8> = Vec::new();
+                let mut direction_names: Vec<String> = Vec::new();
 
                 for (direction, exit_target) in &room.exits {
-                    // Lookup dictionary word address for direction
-                    // Dictionary has been generated in Step 2b, before object generation (Step 2c)
-                    let dict_addr = match self.lookup_word_in_dictionary(direction) {
-                        Ok(addr) => addr,
-                        Err(e) => {
-                            log::warn!(
-                                "Failed to lookup direction '{}' in dictionary for room '{}': {:?}",
-                                direction,
-                                room.name,
-                                e
-                            );
-                            continue;
-                        }
-                    };
+                    // Store direction name for later DictionaryRef UnresolvedReference creation
+                    direction_names.push(direction.clone());
 
-                    // Add to exit_directions (2 bytes per direction word address)
-                    direction_addrs.push((dict_addr >> 8) as u8);
-                    direction_addrs.push((dict_addr & 0xFF) as u8);
+                    // Write placeholder for dictionary address (will be resolved during property serialization)
+                    // This matches Bug 9 fix pattern for exit_data string addresses
+                    direction_addrs.push(0xFF);
+                    direction_addrs.push(0xFF);
 
                     // Add to exit_types and exit_data based on target type
                     match exit_target {
@@ -462,6 +452,10 @@ impl ZMachineCodeGen {
                     room_properties.set_bytes(exit_directions_prop, direction_addrs);
                     room_properties.set_bytes(exit_types_prop, exit_types);
                     room_properties.set_bytes(exit_data_prop, exit_data);
+
+                    // Store direction names for DictionaryRef UnresolvedReference creation during serialization
+                    self.room_exit_directions
+                        .insert(room.name.clone(), direction_names);
 
                     log::debug!(
                         "Exit system: Generated parallel arrays for room '{}' with {} exits",

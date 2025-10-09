@@ -244,9 +244,20 @@ impl Interpreter {
                 // get_prop_addr
                 let obj_num = operands[0];
                 let prop_num = operands[1] as u8;
+                log::error!(
+                    "🔍 GET_PROP_ADDR CALLED: obj={}, prop={}, PC=0x{:04x}",
+                    obj_num,
+                    prop_num,
+                    self.vm.pc - inst.size as u32
+                );
                 let addr = self.vm.get_property_addr(obj_num, prop_num)? as u16;
+                log::error!(
+                    "🔍 GET_PROP_ADDR RESULT: addr=0x{:04x}, storing to var={:?}",
+                    addr,
+                    inst.store_var
+                );
                 if prop_num >= 20 && prop_num <= 22 {
-                    log::warn!("🔍 GET_PROP_ADDR: obj={}, prop={}, returning addr=0x{:04x}, storing to var={:?}",
+                    log::error!("🔍 GET_PROP_ADDR EXIT: obj={}, prop={}, returning addr=0x{:04x}, storing to var={:?}",
                         obj_num, prop_num, addr, inst.store_var);
                 }
                 if let Some(store_var) = inst.store_var {
