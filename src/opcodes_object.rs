@@ -70,15 +70,65 @@ impl Interpreter {
                 let prop_len = if operands[0] == 0 {
                     0
                 } else {
-                    // In Z-Machine v3, the size byte is immediately before the property data
-                    // The size byte encodes: top 3 bits = size-1, bottom 5 bits = property number
-                    let size_byte_addr = (operands[0] as u32).saturating_sub(1);
-                    let size_byte = self.vm.read_byte(size_byte_addr);
-                    let size = ((size_byte >> 5) & 0x07) + 1;
-                    debug!(
-                        " Size byte at {:04x}: {:02x}, property size: {}",
-                        size_byte_addr, size_byte, size
-                    );
+                    // get_prop_len is given the property DATA address
+                    // The size byte(s) are immediately BEFORE the data
+                    // V3 two-byte format: byte-2=0x80|prop_num, byte-1=size, byte0=data
+                    // V3 single-byte format: byte-1=size_encoding, byte0=data
+                    let data_addr = operands[0] as u32;
+
+                    let size = if self.vm.game.header.version <= 3 {
+                        // V3: Check if we have two-byte format by looking at byte BEFORE the immediate predecessor
+                        // If data is at address N, size byte could be at N-1 (single-byte) or N-2 (two-byte)
+                        if data_addr >= 2 {
+                            let potential_first_size_byte = self.vm.read_byte(data_addr - 2);
+                            if potential_first_size_byte & 0x80 != 0 {
+                                // Two-byte format: byte at data_addr-2 is first size byte, byte at data_addr-1 is actual size
+                                let size_byte = self.vm.read_byte(data_addr - 1);
+                                if size_byte == 0 {
+                                    64
+                                } else {
+                                    size_byte as usize
+                                }
+                            } else {
+                                // Single-byte format: byte at data_addr-1 encodes size in bits 7-5
+                                let size_byte = self.vm.read_byte(data_addr - 1);
+                                ((size_byte >> 5) & 0x07) as usize + 1
+                            }
+                        } else {
+                            // Edge case: data_addr < 2, treat as single-byte
+                            let size_byte = self.vm.read_byte(data_addr.saturating_sub(1));
+                            ((size_byte >> 5) & 0x07) as usize + 1
+                        }
+                    } else {
+                        // V4+: Similar logic but different size encoding
+                        if data_addr >= 2 {
+                            let potential_first_size_byte = self.vm.read_byte(data_addr - 2);
+                            if potential_first_size_byte & 0x80 != 0 {
+                                let size_byte = self.vm.read_byte(data_addr - 1);
+                                if size_byte == 0 {
+                                    64
+                                } else {
+                                    (size_byte & 0x3F) as usize
+                                }
+                            } else {
+                                let size_byte = self.vm.read_byte(data_addr - 1);
+                                if size_byte & 0x40 != 0 {
+                                    2
+                                } else {
+                                    1
+                                }
+                            }
+                        } else {
+                            let size_byte = self.vm.read_byte(data_addr.saturating_sub(1));
+                            if size_byte & 0x40 != 0 {
+                                2
+                            } else {
+                                1
+                            }
+                        }
+                    };
+
+                    debug!(" get_prop_len: data_addr={:04x}, size={}", data_addr, size);
                     size as u16
                 };
 

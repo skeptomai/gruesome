@@ -1,8 +1,42 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 9, 2025) - STRING CONCATENATION FIXED ✅
+## CURRENT STATUS (October 9, 2025) - EXIT SYSTEM FIXES ✅
 
-**PROGRESS**: Fixed string concatenation with runtime values. Compiler now emits multi-part print instructions.
+**PROGRESS**: Fixed exit_data packed addresses (Bug #9) and get_prop_len two-byte format support (Bug #14). Exit system infrastructure now correct.
+
+### Bug 14: get_prop_len V3 Two-Byte Format Support ✅ FIXED (Oct 9, 2025)
+- **Issue**: get_exit returned num_exits=1 instead of 3, loop failed to iterate through all exits
+- **Root Cause**: `get_prop_len` opcode didn't support V3 two-byte property format (`opcodes_object.rs:70-115`)
+  - Given property DATA address, must check byte at address-2 to detect two-byte format
+  - For two-byte: byte-2=0x80|prop_num, byte-1=size, byte0=data
+  - Old code only checked byte-1, misread second size byte as single-byte format
+  - Example: exit_directions at 0x03bf, size bytes at 0x03bd-0x03be (0x94, 0x06)
+    - get_prop_len(0x03bf) read 0x03be = 0x06, extracted size = 1 (wrong!)
+    - Should check 0x03bd first, see 0x94 (bit 7 set), then read size from 0x03be = 6
+- **Fix**: Check byte at data_addr-2 for bit 7 to detect two-byte format (`opcodes_object.rs:70-136`)
+  - If bit 7 set at data_addr-2, read actual size from data_addr-1
+  - Otherwise, extract size from bits 7-5 of data_addr-1
+  - Handles both V3 and V4+ formats correctly
+- **Impact**: get_prop_len now correctly returns 6 bytes for exit_directions, num_exits=3 ✅
+- **Note**: Similar to Bug 11 (get_property_info), but for different opcode with different addressing
+- **File**: `src/opcodes_object.rs:61-139`
+
+### Bug 9: exit_data String ID Instead of Packed Address ✅ FIXED (Oct 9, 2025)
+- **Issue**: Blocked exit messages showed garbage, then "Unimplemented VAR instruction: 0c"
+- **Root Cause**: exit_data property stored raw string IDs (1002) instead of packed addresses (0x0568)
+  - codegen_objects.rs:596-597 wrote string_id directly with no UnresolvedReference
+  - At runtime, interpreter tried to use 1002 as packed address
+  - Unpacking: 1002 / 2 = 501, then reading from address 501 caused garbage/errors
+- **Fix**: Write placeholders and create StringRef UnresolvedReferences (`codegen_objects.rs:393-610, codegen.rs:4985-5016`)
+  - Write placeholder 0xFFFF instead of string_id
+  - Store (exit_index, string_id) in room_exit_messages HashMap
+  - During property serialization, create StringRef with is_packed_address=true
+  - Resolver patches placeholder with correct packed string address
+- **Verification**: StringRef for string_id=1002 resolved to packed address 0x0568 at location 0x03b4
+- **Impact**: Blocked exit messages now have correct packed addresses
+- **Files**:
+  - `src/grue_compiler/codegen_objects.rs:521-634` (tracking and placeholders)
+  - `src/grue_compiler/codegen.rs:238-241, 369, 4985-5016` (UnresolvedReference creation)
 
 ### Bug 13: String Concatenation with Runtime Values ✅ FIXED (Oct 9, 2025)
 - **Issue**: Expressions like `print("There is " + obj.name + " here.")` printed placeholder strings like `[RUNTIME_LOCAL_470]`

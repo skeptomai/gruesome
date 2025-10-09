@@ -392,8 +392,10 @@ impl ZMachineCodeGen {
                 let mut exit_types: Vec<u8> = Vec::new();
                 let mut exit_data: Vec<u8> = Vec::new();
                 let mut direction_names: Vec<String> = Vec::new();
+                // Track blocked exit messages for UnresolvedReference creation during property serialization
+                let mut blocked_messages: Vec<(usize, u32)> = Vec::new();
 
-                for (direction, exit_target) in &room.exits {
+                for (exit_index, (direction, exit_target)) in room.exits.iter().enumerate() {
                     // Store direction name for later DictionaryRef UnresolvedReference creation
                     direction_names.push(direction.clone());
 
@@ -429,16 +431,18 @@ impl ZMachineCodeGen {
                                 }
                             };
 
-                            // Resolve string ID to final address
-                            // Note: String addresses are resolved during layout phase
-                            // For now, we store the string_id and will patch it during resolution
-                            // We'll use a placeholder and add an unresolved reference
-                            exit_data.push((string_id >> 8) as u8);
-                            exit_data.push((string_id & 0xFF) as u8);
+                            // Write placeholder - will be patched with packed string address during property serialization
+                            // This matches Bug 9 fix pattern for exit_data string addresses
+                            exit_data.push(0xFF);
+                            exit_data.push(0xFF);
+
+                            // Track this blocked exit for UnresolvedReference creation
+                            blocked_messages.push((exit_index, string_id));
 
                             log::debug!(
-                                "Exit system: Room '{}' direction '{}' blocked with message '{}' (string_id={})",
+                                "Exit system: Room '{}' exit {} direction '{}' blocked with message '{}' (string_id={})",
                                 room.name,
+                                exit_index,
                                 direction,
                                 message,
                                 string_id
@@ -456,6 +460,12 @@ impl ZMachineCodeGen {
                     // Store direction names for DictionaryRef UnresolvedReference creation during serialization
                     self.room_exit_directions
                         .insert(room.name.clone(), direction_names);
+
+                    // Store blocked exit messages for StringRef UnresolvedReference creation during serialization
+                    if !blocked_messages.is_empty() {
+                        self.room_exit_messages
+                            .insert(room.name.clone(), blocked_messages);
+                    }
 
                     log::debug!(
                         "Exit system: Generated parallel arrays for room '{}' with {} exits",
