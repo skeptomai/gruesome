@@ -328,7 +328,7 @@ impl VM {
 
         // Debug logging for critical variable reads
         if var == 1 {
-            log::error!(
+            log::debug!(
                 "🔍 READ_VAR: var={}, value={:04x?}, PC=0x{:04x}",
                 var,
                 result,
@@ -355,7 +355,7 @@ impl VM {
     pub fn write_variable(&mut self, var: u8, value: u16) -> Result<(), String> {
         // Log writes to variables 235-244 (used by get_exit builtin) and Variable(1) (direction parameter)
         if (var >= 235 && var <= 244) || var == 1 {
-            log::error!(
+            log::debug!(
                 "🔍 WRITE_VAR: var={}, value=0x{:04x}, PC=0x{:04x}",
                 var,
                 value,

@@ -1317,10 +1317,35 @@ match operands.len() {
 - Solution: Load large constant into variable first, then use `je` with variable reference
 - Date: September 30, 2025
 
-**Current Discovery (October 3, 2025)**:
+**Second Discovery (October 3, 2025)**:
 - Problem: `store` instruction with `LargeConstant > 255` became `output_stream` (VAR:0x0D)
 - Issue: Cannot use "load first" workaround because `store` itself is the loading mechanism
 - Location: `src/grue_compiler/codegen.rs` lines 5406-5414 (grammar verb matching)
+
+**Third Discovery (October 10, 2025) - Bug #16**: ✅ FIXED
+- Problem: `store` instruction with 1 operand + store_var became SHORT form (1OP:13 = PrintPaddr) instead of LONG form (2OP:13 = Store)
+- Root Cause: Form determination logic counted operands only, didn't recognize Store needs 2 operands (variable + value)
+  - get_exit builtin called: `emit_instruction(0x0D, [SmallConstant(0)], Some(239), None)`
+  - Passed 1 operand (value) + store_var field (destination)
+  - Form logic: 1 operand → SHORT form (1OP)
+  - SHORT form 0x0D = PrintPaddr (1OP:13), NOT Store (2OP:13)!
+- Impact: Emitted wrong instruction, caused PC corruption in navigation system
+- Fix Part 1: Added explicit handling for opcode 0x0D in form determination (`codegen_instructions.rs:2084-2090`)
+  ```rust
+  (0x0D, 1 | 2) => Ok(InstructionForm::Long),  // store is 2OP
+  (0x0D, _) => Ok(InstructionForm::Variable),  // output_stream (3+ operands)
+  ```
+- Fix Part 2: Changed Store calls to pass 2 operands correctly (`codegen_builtins.rs:1347-1355`)
+  ```rust
+  self.emit_instruction_typed(
+      Opcode::Op2(Op2::Store),
+      &[Operand::Variable(index_var), Operand::SmallConstant(0)],
+      None,  // Store does NOT use store_var field
+      None,
+  )
+  ```
+- Location: `src/grue_compiler/codegen_builtins.rs` line 1348 (get_exit loop initialization)
+- Date: October 10, 2025
 
 **The Circular Dependency**:
 ```rust

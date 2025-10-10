@@ -1345,10 +1345,12 @@ impl ZMachineCodeGen {
         )?;
 
         // Step 5: Initialize loop counter (index = 0)
-        self.emit_instruction(
-            0x0D, // store
-            &[Operand::SmallConstant(0)],
-            Some(index_var),
+        // CRITICAL: Store (2OP:13) takes 2 operands: (variable, value)
+        // It does NOT use store_var field!
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Store),
+            &[Operand::Variable(index_var), Operand::SmallConstant(0)],
+            None, // Store does NOT use store_var
             None,
         )?;
 
@@ -1425,8 +1427,8 @@ impl ZMachineCodeGen {
         )?;
 
         // Jump back to loop start
-        let loop_jump_layout = self.emit_instruction(
-            0x0C, // jump
+        let loop_jump_layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::Jump),
             &[Operand::LargeConstant(placeholder_word())],
             None,
             None,
@@ -1491,8 +1493,8 @@ impl ZMachineCodeGen {
         }
 
         // Jump to end
-        let found_jump_layout = self.emit_instruction(
-            0x0C,
+        let found_jump_layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::Jump),
             &[Operand::LargeConstant(placeholder_word())],
             None,
             None,

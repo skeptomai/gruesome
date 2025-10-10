@@ -2077,6 +2077,14 @@ impl ZMachineCodeGen {
             }
             (0x03, 3) => Ok(InstructionForm::Variable), // put_prop is always VAR
 
+            // Opcode 0x0D: Context-dependent!
+            // - 1-2 operands: store (2OP form) - MUST use Long form
+            // - 3+ operands: output_stream (VAR form)
+            // CRITICAL: Store has 1 operand (value) + store_var (destination),
+            // so operands.len() == 1 but it's actually a 2OP instruction!
+            (0x0D, 1 | 2) => Ok(InstructionForm::Long), // store is 2OP, needs Long form
+            (0x0D, _) => Ok(InstructionForm::Variable), // output_stream (3+ operands)
+
             // Always VAR form opcodes (regardless of operand count)
             // CRITICAL: call_vs (opcode 0x00) MUST use VAR form even with 1 operand
             // This is required for init → main loop calls to work correctly.

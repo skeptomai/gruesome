@@ -652,36 +652,6 @@ impl Interpreter {
 
     /// Execute a single instruction
     pub fn execute_instruction(&mut self, inst: &Instruction) -> Result<ExecutionResult, String> {
-        // Debug suspicious instruction ranges and print_obj instructions specifically
-        let current_pc = self.vm.pc - inst.size as u32;
-        if (0x0a70..=0x0a90).contains(&current_pc)
-            || (0x00f80..=0x00f90).contains(&current_pc)
-            || (inst.opcode == 0x0A
-                && matches!(inst.operand_count, crate::instruction::OperandCount::OP1))
-        {
-            log::debug!(
-                " Executing instruction at PC 0x{:04x}: {}",
-                current_pc,
-                inst
-            );
-            log::debug!(
-                " Stack depth: {}, Call stack depth: {}",
-                self.vm.stack.len(),
-                self.vm.call_stack.len()
-            );
-
-            // Operand debugging removed - these are normal Z-Machine operand types, not errors
-        }
-
-        // COMPREHENSIVE INSTRUCTION EXECUTION LOG
-        log::debug!(
-            "EXEC_INSTR: PC=0x{:04x} opcode=0x{:02x} operand_types={:?} store_var={:?}",
-            self.vm.pc,
-            inst.opcode,
-            inst.operand_types,
-            inst.store_var
-        );
-
         // Get operand values
         let operands = self.resolve_operands(inst)?;
 
@@ -690,47 +660,7 @@ impl Interpreter {
             return self.execute_stack_op(inst, &operands);
         }
 
-        // Debug problematic variables
-        if let Some(store_var) = inst.store_var {
-            if (0x01..=0x0F).contains(&store_var) {
-                let frame = self
-                    .vm
-                    .call_stack
-                    .last()
-                    .ok_or("No active routine for local variable access")?;
-                if store_var as usize > frame.num_locals as usize {
-                    let pc = self.vm.pc - inst.size as u32;
-                    debug!("Instruction at {:05x}: {} trying to store to V{:02x} but routine only has {} locals", 
- pc, inst, store_var, frame.num_locals);
-                    debug!(
-                        "Call stack depth: {}, routine started at PC {:05x}",
-                        self.vm.call_stack.len(),
-                        frame.return_pc
-                    );
-                }
-            }
-        }
-
-        // Check operands that read from local variables
-        for (i, &operand) in inst.operands.iter().enumerate() {
-            if inst.operand_types[i] == crate::instruction::OperandType::Variable {
-                let var_num = operand as u8;
-                if (0x01..=0x0F).contains(&var_num) {
-                    let frame = self
-                        .vm
-                        .call_stack
-                        .last()
-                        .ok_or("No active routine for local variable access")?;
-                    if var_num as usize > frame.num_locals as usize {
-                        let pc = self.vm.pc - inst.size as u32;
-                        debug!("Instruction at {:05x}: {} trying to read from V{:02x} but routine only has {} locals", 
- pc, inst, var_num, frame.num_locals);
-                    }
-                }
-            }
-        }
-
-        match inst.form {
+        let result = match inst.form {
             crate::instruction::InstructionForm::Short => match inst.operand_count {
                 crate::instruction::OperandCount::OP0 => {
                     // Check if this is a display operation and route to display module
@@ -780,17 +710,6 @@ impl Interpreter {
                 }
             }
             crate::instruction::InstructionForm::Variable => {
-                // Log Variable form routing
-                let current_pc = self.vm.pc - inst.size as u32;
-                if current_pc >= 0x1870 && current_pc <= 0x1895 {
-                    log::debug!(
-                        "🟡 VARIABLE_FORM at PC 0x{:04x}: operand_count={:?}, opcode=0x{:02x}",
-                        current_pc,
-                        inst.operand_count,
-                        inst.opcode
-                    );
-                }
-
                 match inst.operand_count {
                     crate::instruction::OperandCount::OP2 => {
                         // IMPORTANT: Variable form 2OP instructions
@@ -842,7 +761,9 @@ impl Interpreter {
                 }
             }
             crate::instruction::InstructionForm::Extended => self.execute_ext(inst, &operands),
-        }
+        };
+
+        result
     }
 
     /// Resolve operand values (handle variables vs constants)
@@ -856,12 +777,6 @@ impl Interpreter {
                     let var_num = operand as u8;
                     if var_num == 0 {
                         // Variable 0 means pop from stack when used as operand
-                        log::debug!(
-                            "Operand {} at PC 0x{:04x}: popping from stack (depth={})",
-                            i,
-                            self.vm.pc,
-                            self.vm.stack.len()
-                        );
                         self.vm.pop()?
                     } else {
                         self.vm.read_variable(var_num)?

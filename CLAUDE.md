@@ -1,28 +1,57 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 10, 2025) - INVESTIGATING PC CORRUPTION BUG
+## CURRENT STATUS (October 10, 2025) - BUG #16 FIXED ✅
 
-**PROGRESS**: Fixed Bug #15 (ir_id_from_property marking). Now investigating Bug #16: PC corruption causing interpreter to misread variable operands as instructions.
+**PROGRESS**: Fixed Bug #16 (Store instruction form selection). Navigation system now working! Next bug is erase_line V4+ instruction in V3 game.
 
-### Bug 16: PC Corruption - Variable Operand Misread as Instruction ⚠️ IN PROGRESS (Oct 10, 2025)
+### Bug 16: Store Instruction Form Selection ✅ FIXED (Oct 10, 2025)
 - **Issue**: "Unimplemented VAR:0x0c" error at PC=0x10fe when typing "east"
-- **Symptom**: Interpreter tries to decode 0xEC as VAR opcode 0x0C (call_vs2, V4+ only)
-- **Root Cause Discovery**: 0xEC is NOT an opcode - it's Variable 236, an operand to loadb instruction
-  - Instruction at 0x10fa: `loadb Variable(236), Variable(239) -> stack`
-  - Compiled bytes: `0x70 0xEC 0xEF 0x00` (loadb + two variable operands + store to stack)
-  - Interpreter PC at 0x10fe is reading 0xEC (operand data) as instruction byte
-- **PC Jump Analysis**: PC advances incorrectly from 0x10eb to 0x10fc (skips 17 bytes)
-  - Expected: 0x10eb → process instruction → advance by instruction size → next instruction
-  - Actual: 0x10eb (je instruction) → PC jumps to 0x10fc → tries to decode operand as instruction
-- **Likely Cause**: Instruction size calculation error for instruction at or near 0x10eb
-  - Bytes at 0x10eb: `0x80 0x27 0x6F 0xEB 0xEF 0x00 0x61...` (je with branch)
-  - Instruction may be missing operand types byte or branch bytes in size calculation
-- **Status**: Need to add interpreter PC tracing to see exact instruction sizes and PC advances
-- **Next Steps**:
-  1. Add PC logging before/after each instruction execution
-  2. Identify which instruction has incorrect size
-  3. Fix size calculation in instruction.rs or interpreter.rs
-- **File**: Investigation in progress, likely `src/instruction.rs` (size calculation)
+- **Root Cause**: Store instruction (2OP:13, opcode 0x0D) with 1 operand incorrectly classified as SHORT form
+  - get_exit builtin called: `emit_instruction(0x0D, [SmallConstant(0)], Some(239), None)`
+  - Passed 1 operand (value) + store_var (destination variable)
+  - Form determination saw 1 operand → chose SHORT form (1OP)
+  - SHORT form opcode 0x0D = PrintPaddr (1OP:13), NOT Store (2OP:13)!
+  - Emitted bytes: `0x9D 0x00 0xEF` = PrintPaddr(0) → Variable(239)
+  - This is wrong instruction with wrong size (3 bytes instead of expected Store)
+- **PC Corruption Mechanism**:
+  - Store should be LONG form 2OP: `0x4D 0xEF 0x00` (3 bytes)
+  - Instead emitted SHORT form 1OP PrintPaddr: `0x9D 0x00 0xEF` (3 bytes)
+  - Same size, but wrong instruction! Loop initialization set var=0 didn't execute
+  - Later instructions calculated sizes based on what they thought was emitted
+  - Cumulative misalignment caused PC to land at operand bytes (0xEC at 0x10fe)
+- **Discovery Process**:
+  1. Added comprehensive bytecode emission logging (emit_instruction_typed)
+  2. Found emission gap: 0x02a4 (Div) → 0x02b1 (Loadw), missing Store at 0x02a4-0x02a7
+  3. Searched for Store to Variable 239, found NONE in emission trace
+  4. Located raw `emit_instruction(0x0D, ...)` call in get_exit builtin (line 1348)
+  5. Traced form determination: 1 operand → SHORT form → wrong opcode!
+- **Fix Part 1**: Force LONG form for Store with 1-2 operands (`codegen_instructions.rs:2084-2090`)
+  ```rust
+  // Opcode 0x0D: Context-dependent!
+  // - 1-2 operands: store (2OP form) - MUST use Long form
+  // - 3+ operands: output_stream (VAR form)
+  (0x0D, 1 | 2) => Ok(InstructionForm::Long),
+  (0x0D, _) => Ok(InstructionForm::Variable),
+  ```
+- **Fix Part 2**: Pass Store operands correctly (`codegen_builtins.rs:1347-1355`)
+  ```rust
+  // Store (2OP:13) takes 2 operands: (variable, value)
+  // It does NOT use store_var field!
+  self.emit_instruction_typed(
+      Opcode::Op2(Op2::Store),
+      &[Operand::Variable(index_var), Operand::SmallConstant(0)],
+      None,  // Store does NOT use store_var
+      None,
+  )
+  ```
+- **Verification**: Bytes at 0x10E4 now: `0x4D 0xEF 0x00` = LONG form 2OP Store ✅
+  - Binary 01001101: bits[7-6]=01 (LONG), bits[5-4]=00 (Variable), bits[3-2]=11 (SmallConstant), bits[1-0]=01 (opcode 13)
+  - All PC advances now correct, no corruption!
+- **Impact**: Bug #16 COMPLETELY FIXED, navigation system works until hitting erase_line bug (Bug #17)
+- **Files**:
+  - `src/grue_compiler/codegen_instructions.rs:2084-2090` (form determination fix)
+  - `src/grue_compiler/codegen_builtins.rs:1347-1355` (Store call fix)
+- **Lesson**: Z-Machine opcode semantics depend on form; same opcode number = different instructions in different forms
 
 ### Bug 15: ir_id_from_property Marking Propagation ✅ FIXED (Oct 9, 2025)
 - **Issue**: Garbled output when typing "east" - print_paddr executed with address 0

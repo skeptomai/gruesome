@@ -407,38 +407,6 @@ impl Instruction {
             debug!("  Next PC should be: 0x{:05x}", addr + size);
         }
 
-        // Debug size calculation for Trinity PC offset bug
-        if addr == 0x125c7 {
-            debug!("🚨 TRINITY PC OFFSET DEBUG at 125c7:");
-            debug!("  Start addr: 0x{:05x}", addr);
-            debug!("  Final offset: 0x{:05x}", offset);
-            debug!("  Calculated size: {} bytes", size);
-            debug!(
-                "  Opcode: 0x{:02x} ({})",
-                opcode_byte,
-                if opcode_byte == 0x4f {
-                    "LOADW"
-                } else {
-                    "OTHER"
-                }
-            );
-            debug!("  Form: {:?}", form);
-            debug!("  Operand count: {:?}", operand_count);
-            debug!("  Operand types: {:?}", operand_types);
-            debug!("  Store var: {:?}", store_var);
-            debug!("  Branch: {:?}", branch);
-            debug!("  Text: {}", if text.is_some() { "YES" } else { "NO" });
-            debug!(
-                "  Expected next PC should be: 0x{:05x} (125c7 + 4)",
-                addr + 4
-            );
-            debug!(
-                "  But interpreter will use: 0x{:05x} (125c7 + {})",
-                addr + size,
-                size
-            );
-        }
-
         // Truncate operand_types to match the actual operands read
         let mut actual_operand_types = operand_types;
         actual_operand_types.truncate(operands.len());

@@ -1,6 +1,48 @@
 # Exit System Implementation Plan - ACTUAL STATUS
 
-## Current Status (October 9, 2025)
+## Current Status (October 10, 2025)
+
+### ✅ FIXED - Store Instruction Form Selection (Oct 10, 2025)
+
+#### Bug 16: Store Instruction Emitted as Wrong Form
+**Status**: FIXED ✅
+
+**Problem**: Store instruction for loop counter initialization emitted as SHORT form (PrintPaddr) instead of LONG form (Store), causing PC corruption in get_exit builtin.
+
+**Root Cause**: Form determination logic counted operands, saw 1 operand → chose SHORT form:
+```rust
+// get_exit builtin line 1348:
+emit_instruction(0x0D, [SmallConstant(0)], Some(239), None)
+// 1 operand (value) + store_var (destination)
+// Form logic: 1 operand → SHORT form (1OP)
+// SHORT form 0x0D = PrintPaddr (1OP:13), NOT Store (2OP:13)!
+```
+
+**Impact**: Wrong instruction emitted, PC corruption, "Unimplemented VAR:0x0c" error
+
+**Fix Part 1**: `codegen_instructions.rs:2084-2090` - Force LONG form for Store
+```rust
+(0x0D, 1 | 2) => Ok(InstructionForm::Long),  // store is 2OP
+(0x0D, _) => Ok(InstructionForm::Variable),  // output_stream
+```
+
+**Fix Part 2**: `codegen_builtins.rs:1347-1355` - Pass Store operands correctly
+```rust
+self.emit_instruction_typed(
+    Opcode::Op2(Op2::Store),
+    &[Operand::Variable(index_var), Operand::SmallConstant(0)],
+    None,  // Store does NOT use store_var
+    None,
+)
+```
+
+**Result**: Navigation system now works! PC corruption eliminated, all advances correct.
+
+**See**: `docs/ARCHITECTURE.md` - "CRITICAL: Z-Machine Opcode Form Instability"
+
+---
+
+## Previous Status (October 9, 2025)
 
 ### ✅ FIXED - IR Generation Bug (Oct 9, 2025)
 
