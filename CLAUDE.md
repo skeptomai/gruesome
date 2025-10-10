@@ -1,8 +1,38 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 10, 2025) - BUG #16 FIXED ✅
+## CURRENT STATUS (October 10, 2025) - BUG #18 FIXED ✅
 
-**PROGRESS**: Fixed Bug #16 (Store instruction form selection). Navigation system now working! Next bug is erase_line V4+ instruction in V3 game.
+**PROGRESS**: Fixed Bug #18 (Jump instruction emission). Jump now correctly emitted as 1OP with offset operand, not as 0OP rtrue with branch parameter. Navigation commands work correctly.
+
+### Bug 18: Jump Instruction Emission - 0OP rtrue Instead of 1OP Jump ✅ FIXED (Oct 10, 2025)
+- **Issue**: "Invalid Long form opcode 0x00 at address 1231" when typing "east" in mini_zork
+- **Symptoms**: PC jumped from 0x1122 to 0x1225 (off by 1), landed at 0x1231 in middle of instruction
+- **Root Cause**: Jump (1OP:12, opcode 0x0C) emitted with no operands and branch parameter
+  - `emit_instruction(0x0C, &[], None, Some(-1))` in value_is_none() and exit_is_blocked() builtins
+  - With zero operands, form determination chose SHORT form → 0OP, not 1OP
+  - 0OP:12 = rtrue (return true), NOT jump!
+  - rtrue with branch parameter emitted, but rtrue NEVER branches in Z-Machine
+  - Interpreter correctly executed rtrue without reading branch bytes
+  - PC advanced to branch bytes location where 0x80 (patched branch byte) was interpreted as jz opcode
+- **The Cascade**:
+  1. Compiler emitted rtrue at 0x1121 with branch placeholder 0xFFFF at 0x1122-0x1123
+  2. Branch resolver patched 0x1122-0x1123 with offset bytes 0x80 0x06
+  3. Runtime: rtrue executed, returned true, didn't read branch bytes
+  4. PC advanced to 0x1122 (where branch bytes are)
+  5. Interpreter decoded 0x80 as jz opcode, executed wrong instruction
+  6. Eventually PC landed at 0x1231 in middle of instruction → crash
+- **Fix**: Replaced `emit_instruction(0x0C, &[], None, Some(-1))` with `translate_jump(end_label)`
+  - Fixed in both `value_is_none()` (line 932-950) and `exit_is_blocked()` (line 1044-1062)
+  - `translate_jump()` correctly emits Jump as 1OP with signed offset as operand
+- **Prevention**: Added CRITICAL section to CLAUDE.md documenting Jump vs Branch distinction
+  - Jump takes offset as OPERAND, not as branch parameter
+  - ALWAYS use translate_jump() helper for forward jumps
+  - NEVER pass branch parameter to Jump instruction
+- **Verification**: All 183 tests pass, "east" command now prints "You can't go that way." correctly
+- **Files**:
+  - `src/grue_compiler/codegen_builtins.rs:932-950, 1044-1062` (fix)
+  - `CLAUDE.md:523-545` (prevention documentation)
+- **Lesson**: Instructions that look like they should branch (Jump) often don't - Jump uses operand encoding, only conditional instructions use branch encoding
 
 ### Bug 16: Store Instruction Form Selection ✅ FIXED (Oct 10, 2025)
 - **Issue**: "Unimplemented VAR:0x0c" error at PC=0x10fe when typing "east"
@@ -486,6 +516,27 @@ Key files:
 - ✅ ALWAYS use stack for function returns and intermediate expressions
 - ✅ ALWAYS follow Z-Machine specification exactly
 
+## CRITICAL: Placeholder Value Recognition
+
+**CORRECT placeholder value: 0xFFFF** (defined as `placeholder_word()` in codegen.rs)
+
+Common errors to avoid:
+- ❌ Thinking 0x0100 is a placeholder (it's not!)
+- ❌ Thinking 0x0000 is a placeholder (it's not!)
+- ❌ Thinking -1 as i16 (0xFFFF) is "offset -1" (it's the PLACEHOLDER, not an offset!)
+- ✅ ONLY 0xFFFF (two 0xFF bytes) is a placeholder
+
+**How to verify if bytes are a placeholder:**
+```
+if high_byte == 0xFF && low_byte == 0xFF {
+    // This IS a placeholder
+} else {
+    // This is NOT a placeholder - it's actual data
+}
+```
+
+When debugging branch issues, ALWAYS check what the actual bytes are before assuming they're placeholders!
+
 ## CRITICAL: PRINT NEWLINE ARCHITECTURE
 
 **Z-Machine Print Architecture**:
@@ -498,6 +549,60 @@ Key files:
 - ALWAYS emit new_line (0xBB) after print_paddr for line breaks
 - NEVER modify string content to add embedded newlines for line breaks
 - TEST banner formatting immediately after any print builtin changes
+
+## CRITICAL: Jump vs Branch Instructions
+
+**Jump (1OP:12, opcode 0x0C) is NOT a branch instruction!**
+
+Common errors when emitting Jump:
+- ❌ NEVER call `emit_instruction(0x0C, &[], None, Some(-1))` - creates 0OP form (rtrue) not Jump!
+- ❌ NEVER pass branch parameter to Jump - it takes offset as OPERAND, not as branch
+- ❌ NEVER create UnresolvedReference with Branch type for Jump - use translate_jump()
+- ✅ ALWAYS use `translate_jump(label)` helper for forward jumps
+- ✅ ALWAYS use `emit_instruction_typed(Opcode::Op1(Op1::Jump), &[offset_operand], None, None)`
+
+**What happens when you emit Jump incorrectly:**
+1. `emit_instruction(0x0C, &[], None, Some(-1))` has zero operands
+2. Form determination chooses SHORT form (0OP) instead of 1OP
+3. 0OP:12 = rtrue (return true), NOT jump!
+4. rtrue with branch parameter emitted, but rtrue NEVER branches in Z-Machine
+5. Interpreter executes rtrue, doesn't read branch bytes, PC advances to branch bytes
+6. Patched branch byte (0x80) interpreted as instruction opcode (jz)
+7. Crash with "Invalid opcode" or wrong execution path
+
+**Affected bugs:** Bug #18 (value_is_none, exit_is_blocked), likely others in builtin functions
+
+**Prevention:** Search codebase for `emit_instruction(0x0C` and verify operands are present
+
+## Code Quality: emit_instruction vs emit_instruction_typed
+
+**Current state (post-Bug #18 analysis):**
+- 133 uses of `emit_instruction_typed` (type-safe, preferred) ✅
+- 54 uses of raw `emit_instruction` (raw opcodes, error-prone)
+
+**Legitimate uses of raw emit_instruction:**
+1. **Placeholder + UnresolvedReference pattern** (27 uses)
+   - Instructions with placeholders that need layout.operand_location tracking
+   - Examples: call_vs with function address placeholder, print_paddr with string address placeholder
+   - Pattern: `let layout = emit_instruction(...placeholder_word()...); unresolved_refs.push(UnresolvedReference { location: layout.operand_location })`
+   - **Cannot use emit_instruction_typed** - need InstructionLayout for operand location
+   - These are LEGITIMATE and should stay as-is ✅
+
+2. **UNIMPLEMENTED_OPCODE markers** (3 uses)
+   - Deliberate compile-time error markers for unimplemented features
+   - Not real instructions, just placeholders that should fail
+   - These are LEGITIMATE and should stay as-is ✅
+
+3. **Simple instructions without placeholders** (18 uses)
+   - Could be migrated to emit_instruction_typed for type safety
+   - Examples: rtrue, sread with concrete operands, simple branches
+   - **Refactoring opportunity**: Migrate these to emit_instruction_typed for better safety
+   - Not causing bugs currently, so LOW priority
+
+**Migration recommendation:**
+- Keep emit_instruction for placeholder patterns (needs layout tracking)
+- Migrate simple cases to emit_instruction_typed for better type safety
+- Priority: LOW (not causing bugs, but would improve code quality)
 
 ## CRITICAL FIX: VAR Opcode 0x13 Disambiguation
 
@@ -556,3 +661,4 @@ Development history archived to `CLAUDE_HISTORICAL.md` for reference.
 - Never give percentages of completion or time estimates
 - Use IndexSet and IndexMap rather than HashSet or HashMap for determinism
 - **NEVER compile test files to `/tmp`** - Always use `tests/` directory in the repository for compiled Z3 files
+- Call me Sparky and you are referred to as Pancho from now on

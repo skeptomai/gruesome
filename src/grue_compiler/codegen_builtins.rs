@@ -929,25 +929,10 @@ impl ZMachineCodeGen {
                 None,
             )?;
 
-            let jump_layout = self.emit_instruction(
-                0x0C, // jump
-                &[],
-                None,
-                Some(-1), // Placeholder for forward jump - bit 15=1 means "branch on true"
-            )?;
-
-            self.reference_context
-                .unresolved_refs
-                .push(UnresolvedReference {
-                    reference_type: LegacyReferenceType::Branch,
-                    location: jump_layout
-                        .branch_location
-                        .expect("jump needs branch location"),
-                    target_id: end_label,
-                    is_packed_address: false,
-                    offset_size: 2,
-                    location_space: MemorySpace::Code,
-                });
+            // Jump to end_label (skipping the true path)
+            // BUG #18 FIX: Use translate_jump instead of emit_instruction
+            // Jump is 1OP:12, not 0OP, and takes offset as operand, not as branch
+            self.translate_jump(end_label)?;
 
             // True path: store 1 (true)
             self.label_addresses.insert(true_label, self.code_address);
@@ -1041,25 +1026,10 @@ impl ZMachineCodeGen {
                 None,
             )?;
 
-            let jump_layout = self.emit_instruction(
-                0x0C, // jump
-                &[],
-                None,
-                Some(-1), // Placeholder for forward jump - bit 15=1 means "branch on true"
-            )?;
-
-            self.reference_context
-                .unresolved_refs
-                .push(UnresolvedReference {
-                    reference_type: LegacyReferenceType::Branch,
-                    location: jump_layout
-                        .branch_location
-                        .expect("jump needs branch location"),
-                    target_id: end_label,
-                    is_packed_address: false,
-                    offset_size: 2,
-                    location_space: MemorySpace::Code,
-                });
+            // Jump to end_label (skipping the true path)
+            // BUG #18 FIX: Use translate_jump instead of emit_instruction
+            // Jump is 1OP:12, not 0OP, and takes offset as operand, not as branch
+            self.translate_jump(end_label)?;
 
             // True path: store 1 (true)
             self.label_addresses.insert(true_label, self.code_address);
