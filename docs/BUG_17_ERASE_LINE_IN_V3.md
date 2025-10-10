@@ -137,46 +137,77 @@ fn list_contents(container) {
 
 ## Next Steps
 
+### Debugging Philosophy
+
+**DO NOT reverse engineer the binary .z3 file with xxd/hexdump.**
+
+Instead, use our proper debugging infrastructure:
+1. **Compiler debug output** - Shows what's being emitted and where
+2. **Disassembler** - Provides instruction-level view with addresses
+3. **Interpreter instrumentation** - Shows exactly what executes at runtime
+
+If we can't debug with these tools, that's a failure of our debugging process, not a reason to resort to binary analysis.
+
 ### Immediate Actions
 
-1. **Locate Exact Byte Position**
-   - Find precise address of 0xEE byte in mini_zork.z3
-   - Examine 20 bytes before and after
-   - Determine if it's really erase_line or misinterpreted data
+1. **Use Compiler Debug Output**
+   - Compile with `RUST_LOG=debug` to see instruction emission
+   - Look for PRINT_CHAR emission followed by unexpected bytes
+   - Track exactly what opcodes/operands are being emitted during object tree iteration
+   - Check code address tracking and PC advancement
 
-2. **Analyze Instruction Before 0xEE**
-   - PRINT_CHAR (0xE5) is immediately before
-   - Validate PRINT_CHAR encoding is correct
-   - Check if operand count/types are valid
+2. **Instrument Interpreter Execution**
+   - Add logging before opcode dispatch to show PC and instruction bytes
+   - Log when erase_line is encountered (PC, prior instructions, call stack)
+   - Trace execution from "east" command through to error
+   - Identify what code path leads to the problematic instruction
 
-3. **Review Operand Encoding**
-   - VAR form instructions use operand type bytes
-   - Verify type byte encoding for PRINT_CHAR and surrounding instructions
-   - Check for off-by-one errors in operand count
+3. **Use Disassembler Correctly**
+   - Identify Routine R0011's source function (which Grue function?)
+   - Cross-reference with compiler's USER_FUNCTION output
+   - Understand code flow leading to ERASE_LINE
+   - Look for patterns in surrounding instructions
 
-4. **Test Isolation**
-   - Create minimal test case: function that prints in loop
-   - Compile to V3 and check for 0xEE byte
-   - Narrow down which code pattern triggers the issue
+4. **Create Minimal Reproduction**
+   - Simplify mini_zork.grue to just the failing code path
+   - Strip down to: object with contents, loop to print them
+   - Compile and test if error reproduces
+   - Narrow down exact IR/codegen pattern that causes issue
 
 ### Investigation Commands
 
 ```bash
-# Find exact address of 0xEE byte
-$ cargo run --bin gruedasm-txd tests/mini_zork.z3 2>&1 | grep -B20 "ERASE_LINE" | grep "^[0-9a-f]"
+# Step 1: See what compiler emits during object iteration
+$ RUST_LOG=debug cargo run --bin grue-compiler -- examples/mini_zork.grue -o /tmp/test.z3 2>&1 | grep -A10 "list_contents\|PRINT_CHAR"
 
-# Examine raw bytes around that address
-$ xxd tests/mini_zork.z3 | grep -E "<address_from_above>"
+# Step 2: Identify which function has the bug
+$ RUST_LOG=error cargo run --bin grue-compiler -- examples/mini_zork.grue -o /tmp/test.z3 2>&1 | grep USER_FUNCTION
+# Then correlate with disassembler's Routine numbers
 
-# Compile minimal test
-$ cat > tests/test_print_loop.grue <<EOF
+# Step 3: Trace interpreter execution to error point
+$ echo "east" | RUST_LOG=debug cargo run --bin gruesome tests/mini_zork.z3 2>&1 | grep -B20 "erase_line"
+
+# Step 4: Create minimal test case
+$ cat > /tmp/test_minimal.grue <<EOF
+world {
+    room start "Start" {
+        object box {
+            names: ["box"]
+            container: true
+            contains {
+                object item { names: ["item"] }
+            }
+        }
+    }
+}
 fn test() {
-    print("a");
-    print("b");
+    for thing in box.contents() {
+        print(thing.name);
+    }
 }
 EOF
-$ cargo run --bin grue-compiler -- tests/test_print_loop.grue -o tests/test_print_loop.z3
-$ xxd tests/test_print_loop.z3 | grep ee
+$ cargo run --bin grue-compiler -- /tmp/test_minimal.grue -o /tmp/test_minimal.z3
+$ echo "test" | cargo run --bin gruesome /tmp/test_minimal.z3
 ```
 
 ### Code Areas to Examine
@@ -235,33 +266,33 @@ Bug is fixed when:
 - `examples/mini_zork.grue:427-432` - list_contents function
 - `docs/EXIT_SYSTEM_IMPLEMENTATION_PLAN.md` - Original mention of this issue
 
-## Appendix: Instruction Encoding Reference
+## Debugging Tools Reference
 
-### VAR Form Encoding (Z-Machine Spec)
+### Compiler Debug Output
+```bash
+RUST_LOG=debug cargo run --bin grue-compiler -- file.grue -o out.z3
 ```
-Byte 1: 0xE0 + opcode_number (e.g., 0xEE = VAR:14 = erase_line)
-Byte 2+: Operand type bytes (2 bits per operand, up to 4 operands per byte)
-Byte N+: Operand values
-```
+Shows:
+- Instruction emission with opcodes and operands
+- Code addresses as instructions are generated
+- IR translation decisions
+- Function boundaries and labels
 
-### PRINT_CHAR Expected Encoding
-```
-0xE5          - VAR:5 (print_char)
-<type_byte>   - Operand types (should be 1 operand)
-<char_value>  - Character to print
-```
-
-### What We're Seeing
-```
-0xE5          - PRINT_CHAR
-<unknown>     - Should be type byte + operand
-0xEE          - Interpreted as ERASE_LINE (but shouldn't be here!)
+### Interpreter Instrumentation
+Add to `src/interpreter.rs` before instruction execution:
+```rust
+log::debug!("PC={:04x} opcode={:02x} form={:?}",
+    self.vm.pc, inst.opcode, inst.form);
 ```
 
-The 0xEE byte is either:
-- Part of PRINT_CHAR's operand (encoding error)
-- A separate malformed instruction
-- Start of next instruction (wrong PC advancement)
+### Disassembler Usage
+```bash
+cargo run --bin gruedasm-txd file.z3 | grep -A10 "Routine R00XX"
+```
+Cross-reference routine numbers with compiler's USER_FUNCTION output.
+
+### Key Principle
+**If these tools can't find the bug, improve the tools - don't bypass them with binary analysis.**
 
 ---
 
