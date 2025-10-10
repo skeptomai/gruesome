@@ -1,0 +1,29 @@
+world {
+    room start "Start" {
+        desc: "A test room."
+
+        object box {
+            names: ["box"]
+            desc: "A box."
+            container: true
+            contains {
+                object item {
+                    names: ["item"]
+                    desc: "An item."
+                }
+            }
+        }
+    }
+}
+
+fn test() {
+    for thing in box.contents() {
+        print("  " + thing.name);
+    }
+}
+
+grammar {
+    verb "test" {
+        default => test()
+    }
+}

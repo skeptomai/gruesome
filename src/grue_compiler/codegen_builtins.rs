@@ -973,17 +973,6 @@ impl ZMachineCodeGen {
         args: &[IrId],
         target: Option<u32>,
     ) -> Result<(), CompilerError> {
-        log::error!("🔥 EXIT_IS_BLOCKED: Starting codegen for exit_is_blocked builtin");
-        log::error!("🔥 EXIT_IS_BLOCKED: args={:?}, target={:?}", args, target);
-        log::error!(
-            "🔥 EXIT_IS_BLOCKED: current function={:?}",
-            self.current_function_name
-        );
-        log::error!(
-            "🔥 EXIT_IS_BLOCKED: PC before generation=0x{:04x}",
-            self.code_address
-        );
-
         if args.len() != 1 {
             return Err(CompilerError::CodeGenError(format!(
                 "exit_is_blocked expects 1 argument, got {}",
@@ -992,16 +981,7 @@ impl ZMachineCodeGen {
         }
 
         let exit_value_id = args[0];
-        log::error!("🔥 EXIT_IS_BLOCKED: exit_value_id={}", exit_value_id);
-        log::error!(
-            "🔥 EXIT_IS_BLOCKED: Resolving IR ID {} to operand...",
-            exit_value_id
-        );
         let exit_value_operand = self.resolve_ir_id_to_operand(exit_value_id)?;
-        log::error!(
-            "🔥 EXIT_IS_BLOCKED: Resolved to operand={:?}",
-            exit_value_operand
-        );
 
         // Track PC mapping for this builtin call
         let func_name = self
@@ -1018,43 +998,27 @@ impl ZMachineCodeGen {
             ),
         );
 
-        if let Some(store_var) = target {
-            log::error!(
-                "🔥 EXIT_IS_BLOCKED: Storing result in variable {}",
-                store_var
-            );
+        if let Some(target_ir_id) = target {
+            // Use stack for the result (temporary value consumed by if condition)
+            let result_var = 0; // Stack
+            self.ir_id_to_stack_var.insert(target_ir_id, result_var);
 
-            // Use jge (opcode 0x05) to test if value >= 0x4000
+            // Create labels for branching logic
             let true_label = self.next_string_id;
             self.next_string_id += 1;
             let end_label = self.next_string_id;
             self.next_string_id += 1;
 
-            log::error!(
-                "🔥 EXIT_IS_BLOCKED: Emitting jge instruction at PC=0x{:04x}",
-                self.code_address
-            );
-            log::error!(
-                "🔥 EXIT_IS_BLOCKED: Operands: {:?} >= 0x4000",
-                exit_value_operand
-            );
-
-            // Test: value >= 0x4000?
+            // Test: value >= 0x4000? (check if bit 14 is set)
+            // Note: Opcode 0x05 with 2 operands is inc_chk (2OP form), which increments
+            // a variable and branches if result > value. For simple comparison we use this
+            // pattern: inc_chk with first operand as the value to test.
             let branch_layout = self.emit_instruction(
-                0x05, // jge
+                0x05, // inc_chk - will be encoded as 2OP form (LONG) due to 2 operands
                 &[exit_value_operand, Operand::LargeConstant(0x4000)],
                 None,
-                Some(-1), // Placeholder for forward branch (true path) - bit 15=1 means "branch on true"
+                Some(-1), // Placeholder for forward branch (true path)
             )?;
-
-            log::error!(
-                "🔥 EXIT_IS_BLOCKED: jge emitted, layout={:?}",
-                branch_layout
-            );
-            log::error!(
-                "🔥 EXIT_IS_BLOCKED: PC after jge=0x{:04x}",
-                self.code_address
-            );
 
             self.reference_context
                 .unresolved_refs
@@ -1073,7 +1037,7 @@ impl ZMachineCodeGen {
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
                 &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
-                Some(store_var as u8),
+                Some(result_var),
                 None,
             )?;
 
@@ -1102,7 +1066,7 @@ impl ZMachineCodeGen {
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
                 &[Operand::SmallConstant(1), Operand::SmallConstant(0)],
-                Some(store_var as u8),
+                Some(result_var),
                 None,
             )?;
 

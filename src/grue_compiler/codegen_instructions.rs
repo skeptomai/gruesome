@@ -2085,13 +2085,21 @@ impl ZMachineCodeGen {
             (0x0D, 1 | 2) => Ok(InstructionForm::Long), // store is 2OP, needs Long form
             (0x0D, _) => Ok(InstructionForm::Variable), // output_stream (3+ operands)
 
+            // Opcode 0x05: Context-dependent! (Bug #17 fix)
+            // - 2 operands: inc_chk (2OP:5) - increment variable and branch if > value
+            // - 1 operand: print_char (VAR:5) - print single character
+            // Without this check, 2-operand inc_chk was incorrectly encoded as VAR form,
+            // causing it to be misinterpreted as print_char at runtime, which shifted
+            // all subsequent instruction decoding and triggered "erase_line in V3" errors.
+            (0x05, 2) => Ok(InstructionForm::Long), // inc_chk is 2OP, needs Long form
+            (0x05, _) => Ok(InstructionForm::Variable), // print_char (1 operand)
+
             // Always VAR form opcodes (regardless of operand count)
             // CRITICAL: call_vs (opcode 0x00) MUST use VAR form even with 1 operand
             // This is required for init → main loop calls to work correctly.
             // Without this, opcode 0x00 with 1 operand would use SHORT form (incorrect).
             (0x00, _) => Ok(InstructionForm::Variable), // call_vs (VAR:224) is always VAR
             (0x04, _) => Ok(InstructionForm::Variable), // sread is always VAR
-            (0x05, _) => Ok(InstructionForm::Variable), // print_char is always VAR
             (0x06, _) => Ok(InstructionForm::Variable), // print_num is always VAR
             (0x07, _) => Ok(InstructionForm::Variable), // random is always VAR
             (0x08, _) => Ok(InstructionForm::Variable), // push (VAR:0x08) is always VAR - conflicts with 1OP:call_1s
