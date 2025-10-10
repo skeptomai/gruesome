@@ -4247,123 +4247,14 @@ impl ZMachineCodeGen {
     // The main instruction translation at line ~6804 now correctly uses stack (variable 0)
     // for get_prop results per Z-Machine specification, eliminating the architecture violation
 
-    fn translate_set_property(
-        &mut self,
-        object: IrId,
-        property: &str,
-        value: IrId,
-    ) -> Result<(), CompilerError> {
-        log::debug!(
-            "SET_PROPERTY: object={}, property={}, value={}",
-            object,
-            property,
-            value
-        );
-
-        // Resolve operands
-        let obj_operand = self.resolve_ir_id_to_operand(object)?;
-        let value_operand = self.resolve_ir_id_to_operand(value)?;
-
-        // Map property name to property number - must match object table generation!
-        let prop_num = *self.property_numbers.get(property).ok_or_else(|| {
-            CompilerError::CodeGenError(format!(
-                "Unknown property '{}' in SetProperty (not found in registry)",
-                property
-            ))
-        })?;
-
-        // Generate put_prop instruction (VAR:227)
-        let layout = self.emit_instruction(
-            0xE3,
-            &[obj_operand, Operand::SmallConstant(prop_num), value_operand],
-            None,
-            None,
-        )?;
-
-        // emit_instruction already pushed bytes to code_space
-
-        log::debug!(
-            " SET_PROPERTY: Generated {} bytes for property '{}' (#{}) assignment",
-            layout.total_size,
-            property,
-            prop_num
-        );
-        Ok(())
-    }
-
-    fn translate_get_property_by_number(
-        &mut self,
-        target: IrId,
-        object: IrId,
-        property_num: u8,
-    ) -> Result<(), CompilerError> {
-        log::debug!(
-            "GET_PROPERTY_BY_NUMBER: target={}, object={}, property_num={}",
-            target,
-            object,
-            property_num
-        );
-
-        // Resolve object operand
-        let obj_operand = self.resolve_ir_id_to_operand(object)?;
-
-        // Generate get_prop instruction (2OP:1, hex 0x01) - gets property VALUE
-        // FIXED: Use correct opcode for property value access (not address)
-        let layout = self.emit_instruction(
-            0x01, // get_prop opcode (2OP:1) - returns property value
-            &[obj_operand, Operand::SmallConstant(property_num)],
-            Some(0), // Store result on stack
-            None,    // No branch
-        )?;
-
-        // Map target IR ID to stack for later resolution
-        self.use_stack_for_result(target);
-
-        log::debug!(
-            " GET_PROPERTY_BY_NUMBER: Generated {} bytes for property #{} access, result on stack",
-            layout.total_size,
-            property_num
-        );
-
-        Ok(())
-    }
-
-    fn translate_set_property_by_number(
-        &mut self,
-        object: IrId,
-        property_num: u8,
-        value: IrId,
-    ) -> Result<(), CompilerError> {
-        log::debug!(
-            "SET_PROPERTY_BY_NUMBER: object={}, property_num={}, value={}",
-            object,
-            property_num,
-            value
-        );
-
-        // Resolve operands
-        let obj_operand = self.resolve_ir_id_to_operand(object)?;
-        let value_operand = self.resolve_ir_id_to_operand(value)?;
-
-        // Generate put_prop instruction (VAR:227, opcode 0xE3)
-        let layout = self.emit_instruction(
-            0xE3,
-            &[
-                obj_operand,
-                Operand::SmallConstant(property_num),
-                value_operand,
-            ],
-            None,
-            None,
-        )?;
-
-        log::debug!(
-            " SET_PROPERTY_BY_NUMBER: Generated {} bytes for property #{} assignment",
-            layout.total_size,
-            property_num
-        );
-        Ok(())
-    }
+    // REMOVED: Dead code property functions (Oct 10, 2025)
+    // These functions were never called - superseded by implementations in codegen_instructions.rs
+    //
+    // - translate_set_property() → codegen_instructions.rs:524-591 (SetProperty case)
+    // - translate_get_property_by_number() → codegen_instructions.rs:593-639 (GetPropertyByNumber case)
+    //   Had CRITICAL BUG: Used opcode 0x01 (je/jump-if-equal) instead of 0x11 (get_prop)
+    //   Current implementation correctly uses: Opcode::Op2(Op2::GetProp)
+    // - translate_set_property_by_number() → codegen_instructions.rs:524-591 (handles both named and numbered)
 
     /// Implementation: CreateArray - Initialize dynamic array/list
     fn translate_create_array(&mut self, target: IrId, size: i32) -> Result<(), CompilerError> {
