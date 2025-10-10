@@ -3937,11 +3937,12 @@ impl ZMachineCodeGen {
         log::debug!(" PHASE3_ARRAY_ADD_ITEM: Translating array_add_item builtin inline");
 
         if let Some(target_id) = target {
-            // Store success value (1) to indicate add operation worked
-            let layout = self.emit_instruction(
-                0x05, // store instruction
+            // Push success value (1) to stack to indicate add operation worked
+            // VAR:0x08 = push (takes 1 operand: value to push)
+            let layout = self.emit_instruction_typed(
+                Opcode::OpVar(OpVar::Push),
                 &[Operand::SmallConstant(1)],
-                Some(0), // Store to stack (variable 0)
+                None, // Push doesn't use store_var (implicitly stores to stack)
                 None,
             )?;
 
