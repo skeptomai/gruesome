@@ -1,8 +1,28 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 9, 2025) - IR ID TRACKING BUG FIXED ✅
+## CURRENT STATUS (October 10, 2025) - INVESTIGATING PC CORRUPTION BUG
 
-**PROGRESS**: Fixed critical compiler bug where ir_id_from_property marking propagated incorrectly through function returns, causing print_paddr with address 0 and garbled output (Bug #15).
+**PROGRESS**: Fixed Bug #15 (ir_id_from_property marking). Now investigating Bug #16: PC corruption causing interpreter to misread variable operands as instructions.
+
+### Bug 16: PC Corruption - Variable Operand Misread as Instruction ⚠️ IN PROGRESS (Oct 10, 2025)
+- **Issue**: "Unimplemented VAR:0x0c" error at PC=0x10fe when typing "east"
+- **Symptom**: Interpreter tries to decode 0xEC as VAR opcode 0x0C (call_vs2, V4+ only)
+- **Root Cause Discovery**: 0xEC is NOT an opcode - it's Variable 236, an operand to loadb instruction
+  - Instruction at 0x10fa: `loadb Variable(236), Variable(239) -> stack`
+  - Compiled bytes: `0x70 0xEC 0xEF 0x00` (loadb + two variable operands + store to stack)
+  - Interpreter PC at 0x10fe is reading 0xEC (operand data) as instruction byte
+- **PC Jump Analysis**: PC advances incorrectly from 0x10eb to 0x10fc (skips 17 bytes)
+  - Expected: 0x10eb → process instruction → advance by instruction size → next instruction
+  - Actual: 0x10eb (je instruction) → PC jumps to 0x10fc → tries to decode operand as instruction
+- **Likely Cause**: Instruction size calculation error for instruction at or near 0x10eb
+  - Bytes at 0x10eb: `0x80 0x27 0x6F 0xEB 0xEF 0x00 0x61...` (je with branch)
+  - Instruction may be missing operand types byte or branch bytes in size calculation
+- **Status**: Need to add interpreter PC tracing to see exact instruction sizes and PC advances
+- **Next Steps**:
+  1. Add PC logging before/after each instruction execution
+  2. Identify which instruction has incorrect size
+  3. Fix size calculation in instruction.rs or interpreter.rs
+- **File**: Investigation in progress, likely `src/instruction.rs` (size calculation)
 
 ### Bug 15: ir_id_from_property Marking Propagation ✅ FIXED (Oct 9, 2025)
 - **Issue**: Garbled output when typing "east" - print_paddr executed with address 0
