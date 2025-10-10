@@ -1769,7 +1769,7 @@ impl ZMachineCodeGen {
 
             LegacyReferenceType::Branch => {
                 log::debug!(
-                    "RESOLVING BRANCH: target_id={}, location=0x{:04x}",
+                    "🟡 RESOLVING_BRANCH: target_id={}, location=0x{:04x}",
                     reference.target_id,
                     reference.location
                 );
@@ -1797,6 +1797,11 @@ impl ZMachineCodeGen {
                     .ir_id_to_address
                     .get(&reference.target_id)
                 {
+                    log::debug!(
+                        "🟢 BRANCH_TARGET_FOUND: target_id={} maps to code_offset=0x{:04x}",
+                        reference.target_id,
+                        code_offset
+                    );
                     log::debug!(" Found target address: 0x{:04x}", code_offset);
                     // ARCHITECTURE FIX: Check if address is already absolute or relative
                     let resolved_address = if code_offset >= self.final_code_base {
@@ -1839,10 +1844,11 @@ impl ZMachineCodeGen {
                     );
                     return result;
                 } else {
-                    log::debug!(
- " MISSING_BRANCH_TARGET: Branch target ID {} not found in ir_id_to_address table!",
- reference.target_id
- );
+                    log::error!("🔴 MISSING_BRANCH_TARGET: Branch at location 0x{:04x} → target_id {} NOT FOUND in ir_id_to_address table!",
+                        reference.location, reference.target_id);
+                    log::error!(
+                        "🔴 This branch placeholder was NEVER PATCHED - will cause runtime crash!"
+                    );
                     log::debug!(
                         " Available IDs: {:?}",
                         self.reference_context
@@ -5756,6 +5762,11 @@ impl ZMachineCodeGen {
 
         // Register branch to end_function_label (skip this verb if no words)
         if let Some(branch_location) = layout.branch_location {
+            log::debug!(
+                "🟢 BRANCH_REF_CREATED: location=0x{:04x} → target_ir_id={} (end_function_label)",
+                branch_location,
+                end_function_label
+            );
             self.reference_context
                 .unresolved_refs
                 .push(UnresolvedReference {
@@ -9252,10 +9263,8 @@ impl ZMachineCodeGen {
         self.write_byte_at(location, first_byte)?;
         self.write_byte_at(location + 1, second_byte)?;
         log::debug!(
-            "patch_branch_offset: 2-byte format, wrote 0x{:02x} 0x{:02x} at location 0x{:04x}",
-            first_byte,
-            second_byte,
-            location
+            "🟢 BRANCH_PATCHED: location=0x{:04x} ← [0x{:02x} 0x{:02x}] (offset={}, target=0x{:04x})",
+            location, first_byte, second_byte, offset_2byte, target_address
         );
 
         Ok(())

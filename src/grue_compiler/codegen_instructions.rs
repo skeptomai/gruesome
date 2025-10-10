@@ -2393,7 +2393,7 @@ impl ZMachineCodeGen {
                 // Preserve the original offset value (bit 15 encodes branch sense for placeholders)
                 let loc = self.code_address;
                 let placeholder_value = offset as u16;
-                log::debug!("BRANCH_PLACEHOLDER: Emitting 0x{:04x} at code_address=0x{:04x} for branch (offset={})",
+                log::debug!("🔵 BRANCH_PLACEHOLDER: Emitting 0x{:04x} at code_address=0x{:04x} for branch (offset={}) [INSTRUCTION WILL NEED PATCHING]",
                     placeholder_value, loc, offset);
                 self.emit_word(placeholder_value)?; // Will be replaced during branch resolution
                 Some(loc)
@@ -2606,7 +2606,7 @@ impl ZMachineCodeGen {
                 // Preserve the original offset value (bit 15 encodes branch sense for placeholders)
                 let loc = self.code_address;
                 let placeholder_value = offset as u16;
-                log::debug!("BRANCH_PLACEHOLDER: Emitting 0x{:04x} at code_address=0x{:04x} for branch (offset={})",
+                log::debug!("🔵 BRANCH_PLACEHOLDER: Emitting 0x{:04x} at code_address=0x{:04x} for branch (offset={}) [INSTRUCTION WILL NEED PATCHING]",
                     placeholder_value, loc, offset);
                 self.emit_word(placeholder_value)?; // Will be replaced during branch resolution
                 Some(loc)
@@ -2797,7 +2797,7 @@ impl ZMachineCodeGen {
                 // Preserve the original offset value (bit 15 encodes branch sense for placeholders)
                 let loc = self.code_address;
                 let placeholder_value = offset as u16;
-                log::debug!("BRANCH_PLACEHOLDER: Emitting 0x{:04x} at code_address=0x{:04x} for branch (offset={})",
+                log::debug!("🔵 BRANCH_PLACEHOLDER: Emitting 0x{:04x} at code_address=0x{:04x} for branch (offset={}) [INSTRUCTION WILL NEED PATCHING]",
                     placeholder_value, loc, offset);
                 self.emit_word(placeholder_value)?; // Will be replaced during branch resolution
                 Some(loc)
