@@ -892,7 +892,13 @@ impl ZMachineCodeGen {
         let value_id = args[0];
         let value_operand = self.resolve_ir_id_to_operand(value_id)?;
 
-        if let Some(store_var) = target {
+        if let Some(target_ir_id) = target {
+            // BUG FIX (Oct 11, 2025): Allocate proper Z-Machine variable for target IR ID
+            // Cannot use IR ID directly as variable number - causes header corruption
+            // CRITICAL: Don't reuse existing mappings - always allocate fresh variable for builtins
+            let result_var = self.allocate_global_for_ir_id(target_ir_id);
+            self.ir_id_to_stack_var.insert(target_ir_id, result_var);
+
             // Use je (opcode 0x01) to test if value == 0
             // Branch to label if true (value is 0), fall through if false (value is non-zero)
             let true_label = self.next_string_id;
@@ -925,7 +931,7 @@ impl ZMachineCodeGen {
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
                 &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
-                Some(store_var as u8),
+                Some(result_var),
                 None,
             )?;
 
@@ -939,7 +945,7 @@ impl ZMachineCodeGen {
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
                 &[Operand::SmallConstant(1), Operand::SmallConstant(0)],
-                Some(store_var as u8),
+                Some(result_var),
                 None,
             )?;
 
@@ -984,8 +990,10 @@ impl ZMachineCodeGen {
         );
 
         if let Some(target_ir_id) = target {
-            // Use stack for the result (temporary value consumed by if condition)
-            let result_var = 0; // Stack
+            // BUG FIX (Oct 11, 2025): Use unique global variable to avoid stack/header corruption
+            // CRITICAL: Don't reuse existing mappings - always allocate fresh variable for builtins
+            // because existing mapping might be from property access or other context
+            let result_var = self.allocate_global_for_ir_id(target_ir_id);
             self.ir_id_to_stack_var.insert(target_ir_id, result_var);
 
             // Create labels for branching logic
@@ -1065,12 +1073,18 @@ impl ZMachineCodeGen {
         let exit_value_id = args[0];
         let exit_value_operand = self.resolve_ir_id_to_operand(exit_value_id)?;
 
-        if let Some(store_var) = target {
+        if let Some(target_ir_id) = target {
+            // BUG FIX (Oct 11, 2025): Use unique global variable to avoid stack/header corruption
+            // CRITICAL: Don't reuse existing mappings - always allocate fresh variable for builtins
+            // because existing mapping might be from property access or other context
+            let result_var = self.allocate_global_for_ir_id(target_ir_id);
+            self.ir_id_to_stack_var.insert(target_ir_id, result_var);
+
             // Use and (opcode 0x09) to mask lower 14 bits: value & 0x3FFF
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::And),
                 &[exit_value_operand, Operand::LargeConstant(0x3FFF)],
-                Some(store_var as u8),
+                Some(result_var),
                 None,
             )?;
         }
@@ -1409,22 +1423,35 @@ impl ZMachineCodeGen {
 
         // loadw data_addr, index -> result var (data word)
         // Store directly to result to save stack manipulation
-        if let Some(store_var) = target {
+        // BUG FIX (Oct 11, 2025): Allocate proper Z-Machine variable for target IR ID
+        // Cannot use IR ID directly as variable number - causes header corruption when
+        // IR ID 274 becomes var 18 (0x12) which overwrites score/moves in header
+        // IMPORTANT: Only insert mapping ONCE at the top, use in both branches
+        // CRITICAL: Don't reuse existing mappings - always allocate fresh for builtins
+        let result_var = if let Some(target_ir_id) = target {
+            let var = self.allocate_global_for_ir_id(target_ir_id);
+            self.ir_id_to_stack_var.insert(target_ir_id, var);
+            Some(var)
+        } else {
+            None
+        };
+
+        if result_var.is_some() {
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Loadw),
                 &[
                     Operand::Variable(data_addr_var),
                     Operand::Variable(index_var),
                 ],
-                Some(store_var as u8),
+                Some(result_var.unwrap()),
                 None,
             )?;
 
             // or type_shifted (stack), data (result_var) -> result
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
-                &[Operand::Variable(0), Operand::Variable(store_var as u8)],
-                Some(store_var as u8),
+                &[Operand::Variable(0), Operand::Variable(result_var.unwrap())],
+                Some(result_var.unwrap()),
                 None,
             )?;
         }
@@ -1455,11 +1482,11 @@ impl ZMachineCodeGen {
             .insert(not_found_label, self.code_address);
         self.record_final_address(not_found_label, self.code_address);
 
-        if let Some(store_var) = target {
+        if let Some(var) = result_var {
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
                 &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
-                Some(store_var as u8),
+                Some(var),
                 None,
             )?;
         }

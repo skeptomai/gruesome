@@ -453,9 +453,38 @@ impl ZMachineCodeGen {
 
                 // Write parallel array properties to room object
                 if !direction_addrs.is_empty() {
+                    log::debug!(
+                        "🔍 EXIT_PROPS: Room '{}' BEFORE set_bytes - exit_data length={}, contents={:02x?}",
+                        room.name,
+                        exit_data.len(),
+                        exit_data
+                    );
+                    log::debug!(
+                        "🔍 EXIT_PROPS: Room '{}' - exit_types length={}, contents={:02x?}",
+                        room.name,
+                        exit_types.len(),
+                        exit_types
+                    );
+
                     room_properties.set_bytes(exit_directions_prop, direction_addrs);
-                    room_properties.set_bytes(exit_types_prop, exit_types);
-                    room_properties.set_bytes(exit_data_prop, exit_data);
+                    room_properties.set_bytes(exit_types_prop, exit_types.clone());
+                    room_properties.set_bytes(exit_data_prop, exit_data.clone());
+
+                    // Verify properties were stored
+                    if let Some(stored_data) = room_properties.properties.get(&exit_data_prop) {
+                        log::debug!(
+                            "🔍 EXIT_PROPS: Room '{}' AFTER set_bytes - Property {} stored successfully: {:?}",
+                            room.name,
+                            exit_data_prop,
+                            stored_data
+                        );
+                    } else {
+                        log::error!(
+                            "❌ EXIT_PROPS: Room '{}' - Property {} NOT FOUND after set_bytes!",
+                            room.name,
+                            exit_data_prop
+                        );
+                    }
 
                     // Store direction names for DictionaryRef UnresolvedReference creation during serialization
                     self.room_exit_directions
@@ -473,6 +502,16 @@ impl ZMachineCodeGen {
                         room.exits.len()
                     );
                 }
+            }
+
+            // Log all properties for this room
+            log::debug!(
+                "🔍 ROOM_PROPS: Room '{}' has {} properties:",
+                room.name,
+                room_properties.properties.len()
+            );
+            for (prop_num, prop_value) in &room_properties.properties {
+                log::debug!("🔍   Property {}: {:?}", prop_num, prop_value);
             }
 
             all_objects.push(ObjectData {

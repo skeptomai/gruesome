@@ -66,16 +66,7 @@ impl Interpreter {
                 // loadw
                 let addr = operands[0] as u32 + (operands[1] as u32 * 2);
                 let value = self.vm.read_word(addr);
-                // Log if reading from exit_directions range (around 0x03bd)
-                if addr >= 0x03b0 && addr <= 0x03d0 {
-                    log::error!(
-                        "🔍 LOADW: addr=0x{:04x} (base=0x{:04x}, index={}), value=0x{:04x}",
-                        addr,
-                        operands[0],
-                        operands[1],
-                        value
-                    );
-                }
+                // Debug logging removed - no longer needed
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, value)?;
                 }

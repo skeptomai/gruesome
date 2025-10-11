@@ -661,4 +661,3 @@ Development history archived to `CLAUDE_HISTORICAL.md` for reference.
 - Never give percentages of completion or time estimates
 - Use IndexSet and IndexMap rather than HashSet or HashMap for determinism
 - **NEVER compile test files to `/tmp`** - Always use `tests/` directory in the repository for compiled Z3 files
-- Call me Sparky and you are referred to as Pancho from now on

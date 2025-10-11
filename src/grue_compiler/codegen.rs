@@ -231,6 +231,8 @@ pub struct ZMachineCodeGen {
     pub ir_id_to_integer: IndexMap<IrId, i16>,
     /// Mapping from IR IDs to stack variables (for instruction results on stack)
     pub ir_id_to_stack_var: IndexMap<IrId, u8>,
+    /// Counter for unique global variable allocation (for builtins)
+    allocated_globals_count: usize,
     /// Mapping from IR IDs to Z-Machine object numbers (for object references)
     ir_id_to_object_number: IndexMap<IrId, u16>,
     /// Mapping from IR IDs to Z-Machine local variable slots (for function parameters)
@@ -375,6 +377,7 @@ impl ZMachineCodeGen {
             runtime_concat_parts: IndexMap::new(),
             ir_id_to_integer: IndexMap::new(),
             ir_id_to_stack_var: IndexMap::new(),
+            allocated_globals_count: 0,
             ir_id_to_object_number: IndexMap::new(),
             ir_id_to_local_var: IndexMap::new(),
             ir_id_to_binary_op: IndexMap::new(),
@@ -434,6 +437,15 @@ impl ZMachineCodeGen {
             final_object_base: 0,
             dictionary_words: Vec::new(),
         }
+    }
+
+    /// Allocate a unique global variable for an IR ID
+    /// Uses the same allocation scheme as GetPropertyByNumber: 200 + (count % 50)
+    /// Count based on how many globals we've allocated
+    pub fn allocate_global_for_ir_id(&mut self, _ir_id: u32) -> u8 {
+        let var = 200u8 + (self.allocated_globals_count as u8 % 50);
+        self.allocated_globals_count += 1;
+        var
     }
 
     // === SEPARATED MEMORY SPACES CORE METHODS ===
@@ -8197,6 +8209,17 @@ impl ZMachineCodeGen {
 
     /// Map IR ID to stack storage (Variable 0) for temporary results
     pub fn use_stack_for_result(&mut self, target_id: IrId) {
+        // BUG FIX (Oct 11, 2025): Don't overwrite existing mappings from builtins
+        // Builtins allocate unique global variables - don't replace with stack
+        if self.ir_id_to_stack_var.contains_key(&target_id) {
+            log::debug!(
+                "use_stack_for_result: IR ID {} already mapped to var {}, keeping existing mapping",
+                target_id,
+                self.ir_id_to_stack_var[&target_id]
+            );
+            return;
+        }
+
         // Z-Machine stack is always accessed through Variable(0)
         // All temporary/intermediate results should use stack, not local variables
         self.ir_id_to_stack_var.insert(target_id, 0);
