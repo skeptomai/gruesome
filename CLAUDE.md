@@ -1,8 +1,10 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 10, 2025) - BUG #18 FIXED ✅
+## CURRENT STATUS (October 11, 2025) - BUG #12 FIXED ✅
 
-**PROGRESS**: Fixed Bug #18 (Jump instruction emission). Jump now correctly emitted as 1OP with offset operand, not as 0OP rtrue with branch parameter. Navigation commands work correctly.
+**PROGRESS**: Fixed Bug #12 (Score corruption). Grammar pattern matching was using Global G01 (score) as temporary storage for dictionary addresses. Changed to use G200 instead. Score no longer corrupted.
+
+**See**: `docs/GLOBAL_VARIABLES_ALLOCATION.md` for comprehensive global variable allocation map to prevent future collisions.
 
 ### Bug 18: Jump Instruction Emission - 0OP rtrue Instead of 1OP Jump ✅ FIXED (Oct 10, 2025)
 - **Issue**: "Invalid Long form opcode 0x00 at address 1231" when typing "east" in mini_zork
@@ -289,6 +291,33 @@
   - Emit `call_vs` with full operand list: `[function_addr, ...args]`
 - **Impact**: Navigation commands now recognized and executed (still debugging exit system)
 - **File**: `src/grue_compiler/codegen.rs:5954-5994`
+
+### Bug 12: Score Corruption - Grammar Using G01 for Temp Storage ✅ FIXED (Oct 11, 2025)
+- **Issue**: Score display showing dictionary addresses (1973, 2027, etc.) instead of actual game score
+- **Symptoms**: Status line corrupted during grammar pattern matching for verbs
+- **Root Cause**: Grammar handler was using Global G01 (Variable 17 = SCORE) for temporary dictionary address storage
+  - Line 5838: `storew` instruction with offset=1 wrote to G01 (globals_addr + 2 = score)
+  - Line 5891: `je` comparison used Variable(17) to compare dictionary addresses
+  - G01 is displayed in status line as score, so temp values appeared as score
+  - Dictionary addresses: "east" = 0x07b5 (1973), "quit" = 0x07eb (2027)
+- **The Fix**: Changed grammar handler to use Global G200 (Variable 216) instead of G01
+  - Line 5844: Changed `Operand::SmallConstant(1)` to `Operand::SmallConstant(200)`
+  - Line 5891: Changed `Operand::Variable(17)` to `Operand::Variable(216)`
+  - G200 is safe temp storage range (G200-G249), far from game state globals
+  - Added comprehensive comments explaining why G01-G02 must NEVER be used for temps
+- **Instrumentation**: Added logging to `vm.rs write_word()` to track writes to 0x0042 (score address)
+  - Found multiple writes from PCs 0x13c0, 0x1413, 0x1467 all from grammar handler
+  - Call stack showed return_pc 0x0e6f with locals [1, 1973, 0, 0, 0, 0, 0]
+- **Prevention**: Created `docs/GLOBAL_VARIABLES_ALLOCATION.md` with comprehensive allocation map
+  - Reserved globals: G00=player, G01=score, G02=moves (NEVER use for temps!)
+  - Safe temp ranges: G200-G239 for compiler-generated temporary storage
+  - Prevention checklist and quick reference table
+- **Verification**: All 183 tests pass ✅, score stays at 0 during gameplay
+- **Files**:
+  - `src/grue_compiler/codegen.rs:5828-5831, 5844, 5891` (fix)
+  - `src/vm.rs:248-267` (instrumentation, can be removed)
+  - `docs/GLOBAL_VARIABLES_ALLOCATION.md` (prevention documentation)
+- **Lesson**: NEVER use G01-G02 for temporary storage - they are displayed in status line!
 
 ### Bug 4: Function Address Bug ✅ FIXED
 - **Issue**: Functions called at wrong address (first instruction instead of header)

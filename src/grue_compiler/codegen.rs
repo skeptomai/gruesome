@@ -5812,7 +5812,7 @@ impl ZMachineCodeGen {
         // Dictionary addresses are typically > 255, causing je to be encoded as
         // VAR form (0xC1 = call_vs) which is a completely different instruction!
         //
-        // Solution: Load the large constant into Global G01 (Variable 17) using store instruction,
+        // Solution: Load the large constant into Global G200 (Variable 216) using store instruction,
         // then use je with two Variable operands (Long form encoding).
         // Note: store opcode (0x0d/2OP:13) operands are: (variable, value)
         //
@@ -5823,19 +5823,25 @@ impl ZMachineCodeGen {
         // Solution: Write directly to global variable memory using VAR:storew
         // VAR:storew (0x01) takes: base_address, word_offset, value
         // Global variables start at globals_addr (from header)
-        // Variable 17 (Global G01) = globals_addr + (17-16)*2 = globals_addr + 2
+        // Variable 216 (Global G200) = globals_addr + (216-16)*2 = globals_addr + 400
+        //
+        // BUG FIX (Oct 11, 2025): NEVER use G01 (Variable 17) - that's SCORE!
+        // G01/Variable 17 = globals_addr + 2 = score display in status line
+        // G02/Variable 18 = globals_addr + 4 = moves display in status line
+        // Safe to use: G200+ (Variable 216+) for temporary storage
         //
         // This is safe because:
         // 1. storew requires 3 operands, so it's ALWAYS VAR form (no form conflict)
         // 2. Opcode 0x01 in VAR form is storew (correct instruction)
         // 3. We're writing to the exact same memory location the variable system uses
+        // 4. G200 is far from score/moves and other game state globals
         //
         // Note: globals_addr is a placeholder that gets resolved during layout
         let storew_layout = self.emit_instruction(
             0x01, // VAR:storew (always VAR with 3 operands - no conflict!)
             &[
                 Operand::LargeConstant(placeholder_word()), // base = globals_addr (resolved later)
-                Operand::SmallConstant(1), // offset = 1 word (for variable 17 = global G01)
+                Operand::SmallConstant(200), // offset = 200 words (for variable 216 = global G200)
                 Operand::LargeConstant(placeholder_word()), // value = dict addr (resolved later)
             ],
             None,
@@ -5872,17 +5878,17 @@ impl ZMachineCodeGen {
             verb, verb_dict_addr, dict_addr_location
         );
 
-        // Compare word 1 dict addr with this verb's dict addr (now in Global G01/Variable 17)
+        // Compare word 1 dict addr with this verb's dict addr (now in Global G200/Variable 216)
         // If they DON'T match, skip this verb handler
         debug!(
-            "Emitting je at code_address=0x{:04x}: Variable(2) vs Variable(17)",
+            "Emitting je at code_address=0x{:04x}: Variable(2) vs Variable(216)",
             self.code_address
         );
         let layout = self.emit_instruction(
             0x01, // je: jump if equal
             &[
-                Operand::Variable(2),  // Word 1 dict addr (from parse buffer)
-                Operand::Variable(17), // This verb's dict addr (from Global G01)
+                Operand::Variable(2),   // Word 1 dict addr (from parse buffer)
+                Operand::Variable(216), // This verb's dict addr (from Global G200)
             ],
             None,
             Some(0xBFFF_u16 as i16), // Placeholder - will branch if EQUAL (branch-on-true, 2-byte format)

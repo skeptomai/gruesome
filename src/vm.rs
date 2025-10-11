@@ -244,6 +244,27 @@ impl VM {
 
     /// Write a word to memory (only in dynamic memory)
     pub fn write_word(&mut self, addr: u32, value: u16) -> Result<(), String> {
+        // Track writes to score/moves globals at 0x42 (score) and 0x44 (moves)
+        if addr == 0x42 {
+            log::error!(
+                "🚨 SCORE CORRUPTION: Writing 0x{:04x} ({}) to addr 0x{:04x} at PC=0x{:04x}",
+                value,
+                value,
+                addr,
+                self.pc
+            );
+            log::error!("   Stack depth: {}, top 5 values: {:?}",
+                self.stack.len(),
+                self.stack.iter().rev().take(5).collect::<Vec<_>>()
+            );
+            log::error!("   Call stack depth: {}", self.call_stack.len());
+            if let Some(frame) = self.call_stack.last() {
+                log::error!("   Current function: PC start=0x{:04x}, locals: {:?}",
+                    frame.return_pc,
+                    &frame.locals[0..frame.num_locals as usize]
+                );
+            }
+        }
         self.write_byte(addr, (value >> 8) as u8)?;
         self.write_byte(addr + 1, (value & 0xFF) as u8)?;
         Ok(())
@@ -286,6 +307,18 @@ impl VM {
         let addr = self.globals_addr as u32 + offset;
 
         // Debug logging for critical globals
+        // Track writes to score (global 17 = var 0x11) and moves (global 18 = var 0x12)
+        if var == 0x11 || var == 0x12 {
+            log::error!(
+                "🚨 SCORE/MOVES WRITE_GLOBAL: var=0x{:02x} (G{:02}), addr=0x{:04x}, value=0x{:04x} ({}), PC=0x{:04x}",
+                var,
+                var - 0x10,
+                addr,
+                value,
+                value,
+                self.pc
+            );
+        }
         if var == 0x52 {
             // LIT variable
             let old_value = self.read_word(addr);
@@ -353,6 +386,16 @@ impl VM {
 
     /// Write a variable (0x00 = stack, 0x01-0x0F = local, 0x10-0xFF = global)
     pub fn write_variable(&mut self, var: u8, value: u16) -> Result<(), String> {
+        // Track writes to score (variable 17 = 0x11 = global G01)
+        if var == 0x11 {
+            log::error!(
+                "🚨 SCORE WRITE: var=0x{:02x} (G01/score), value=0x{:04x} ({}), PC=0x{:04x}",
+                var,
+                value,
+                value,
+                self.pc
+            );
+        }
         // Log writes to variables 235-244 (used by get_exit builtin) and Variable(1) (direction parameter)
         if (var >= 235 && var <= 244) || var == 1 {
             log::debug!(
