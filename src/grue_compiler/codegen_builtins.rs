@@ -1252,14 +1252,12 @@ impl ZMachineCodeGen {
             None,
         )?;
 
-        log::warn!("🔍 GET_EXIT: Getting exit_data property address from room_operand={:?}, storing in var {}", room_operand, data_addr_var);
         self.emit_instruction_typed(
             Opcode::Op2(Op2::GetPropAddr),
             &[room_operand.clone(), Operand::SmallConstant(exit_data_prop)],
             Some(data_addr_var),
             None,
         )?;
-        log::warn!("🔍 GET_EXIT: Successfully emitted get_prop_addr for exit_data");
 
         // Step 4: Get length of exit_directions array and calculate num_exits
         // GetPropLen returns the length in BYTES, we need to divide by 2 to get word count
@@ -1294,14 +1292,19 @@ impl ZMachineCodeGen {
         self.record_final_address(loop_start_label, self.code_address);
 
         // Check if index >= num_exits -> not_found_label
+        // BUG FIX: Was using 0x05 (inc_chk) which increments BEFORE checking!
+        // Use 0x02 (jl - jump if less):
+        // "jl index, num_exits" returns TRUE when index < num_exits
+        // With branch_on_false (0x7FFF), we branch when condition is FALSE (index >= num_exits)
+        // So: index >= num_exits → branch to not_found_label (exit loop)
         let loop_check_layout = self.emit_instruction(
-            0x05, // jge - branch if index >= num_exits
+            0x02, // jl - jump if index < num_exits
             &[
                 Operand::Variable(index_var),
                 Operand::Variable(num_exits_var),
             ],
             None,
-            Some(-1), // Negative = branch on true
+            Some(0x7FFF), // 0x7FFF = branch on FALSE (when index >= num_exits)
         )?;
 
         self.reference_context
@@ -1310,8 +1313,8 @@ impl ZMachineCodeGen {
                 reference_type: LegacyReferenceType::Branch,
                 location: loop_check_layout
                     .branch_location
-                    .expect("jge needs branch location"),
-                target_id: not_found_label,
+                    .expect("jl needs branch location"),
+                target_id: not_found_label, // Branch to not_found when index >= num_exits
                 is_packed_address: false,
                 offset_size: 2,
                 location_space: MemorySpace::Code,
