@@ -1187,18 +1187,13 @@ impl ZMachineCodeGen {
                 None,
             )?;
 
-            // BUG FIX (Oct 9, 2025): DO NOT mark exit_get_message result as property
-            // The ir_id_from_property flag is too broad - it affects ALL uses of this IR ID,
-            // including when the value is 0 (no message). When print(0) happens with the flag set,
-            // it emits print_paddr with address 0, causing garbled output.
-            //
-            // The correct solution is for the CALLER to check != 0 before printing.
-            // If we need to print the message, the caller should do:
-            //   if (message != 0) { print(message); }
-            //
-            // REMOVED: self.ir_id_from_property.insert(store_var);
+            // BUG FIX (Oct 12, 2025): MARK result as property string address
+            // This tells print() to use print_paddr instead of print_num
+            // SAFE because handle_go checks `if exit.blocked` before printing message,
+            // guaranteeing the value is never 0 when print() is called
+            self.ir_id_from_property.insert(target_ir_id);
             log::debug!(
-                "🚪 EXIT: exit_get_message result stored to IR ID {} (NOT marked as property to avoid print_paddr with 0)",
+                "🚪 EXIT: exit_get_message result stored to IR ID {} (marked as property for print_paddr)",
                 target_ir_id
             );
 

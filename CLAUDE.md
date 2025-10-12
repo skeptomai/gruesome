@@ -1,8 +1,39 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 12, 2025) - EXIT BUILTINS AS REAL FUNCTIONS ✅
+## CURRENT STATUS (October 12, 2025) - EXIT SYSTEM COMPLETE ✅
 
-**COMPLETED**: Exit system builtins converted from inline code to real Z-Machine functions.
+**COMPLETED**: Exit system builtins converted to real Z-Machine functions and all post-conversion issues resolved.
+
+### Bug 19: exit_get_message Property Marking Missing ✅ FIXED (Oct 12, 2025)
+- **Issue**: Blocked exit messages printed as number "1384" instead of text
+- **Symptoms**: After exit builtin conversion, "east" command printed raw string address 1384 (0x0568 packed) instead of message text
+- **Root Cause**: `call_builtin_function()` didn't mark exit_get_message results as properties
+  - Old INLINE code (codegen_builtins.rs) had explicit `ir_id_from_property.insert()` for exit_get_message
+  - NEW real function code (codegen.rs) called exit_get_message via call_vs but didn't mark result
+  - Without property marking, print() used print_num instead of print_paddr
+- **Discovery**: Also found ERROR level logging in vm.rs for property lookups (lines 738-743, 715-732)
+- **Fix Part 1**: Remove ERROR logging from vm.rs (`vm.rs:715-743`)
+  - Removed log::error! calls for property 20-22 lookups
+  - Removed debug logging for property searches
+- **Fix Part 2**: Mark exit_get_message results as properties in call_builtin_function (`codegen.rs:9595-9604`)
+  ```rust
+  // BUG FIX (Oct 12, 2025): Mark exit_get_message results as properties
+  // exit_get_message returns a string address that should be printed with print_paddr
+  // This tells print() to use print_paddr instead of print_num
+  if name == "exit_get_message" {
+      self.ir_id_from_property.insert(target_ir_id);
+      log::debug!(
+          "🚪 EXIT: Marked exit_get_message result IR ID {} as property for print_paddr",
+          target_ir_id
+      );
+  }
+  ```
+- **Verification**: "east" command now prints "The door is boarded and you can't remove the boards." correctly ✅
+- **Impact**: Blocked exit messages display correctly, navigation system fully functional
+- **Files**:
+  - `src/vm.rs:715-743` (logging cleanup)
+  - `src/grue_compiler/codegen.rs:9595-9604` (property marking fix)
+- **Lesson**: When converting inline builtins to real functions, must preserve semantic flags like property marking
 
 **What Changed**:
 - ✅ Phase 1: Infrastructure (`builtin_functions` map, `generate_builtin_functions()`)
@@ -13,15 +44,17 @@
   - `exit_get_message(exit_value) -> u16` (8 bytes)
   - `get_exit(room, direction) -> u16` (~220 bytes with loop logic)
 - ✅ Phase 3: Call sites updated to use `call_builtin_function()`
+- ✅ Phase 4: Post-conversion bug fixes (property marking, logging cleanup)
+- ✅ Phase 5: Navigation commands tested and working ("east", "north", "south", "west")
 
 **Benefits**:
 - **Code size**: ~53% reduction for call sites (400 bytes saved in mini_zork)
 - **Clarity**: Proper Z-Machine calling conventions (args in locals, return via `ret`)
 - **Correctness**: No more stack/variable confusion at call sites
+- **Functionality**: All navigation commands work correctly with blocked/unblocked exits
 
 **Remaining**:
-- Phase 4: Delete old inline methods in codegen_builtins.rs (cleanup)
-- Phase 5: Test navigation commands ("east", "north", etc.)
+- Phase 6: Delete old inline methods in codegen_builtins.rs (cleanup)
 
 **See**: `docs/BUILTIN_FUNCTION_CONVERSION_PLAN.md` for detailed plan.
 

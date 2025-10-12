@@ -715,34 +715,14 @@ impl VM {
         loop {
             let size_byte = self.game.memory[prop_addr];
             if size_byte == 0 {
-                // Log when we hit terminator while searching for properties 20-22
-                if prop_num >= 20 && prop_num <= 22 {
-                    log::debug!("🔍 get_property_addr: obj={}, prop={} -> NOT FOUND (hit terminator at addr=0x{:04x})",
-                        obj_num, prop_num, prop_addr);
-                }
                 return Ok(0); // Property not found
             }
 
             let (prop_id, prop_size, size_bytes) = self.get_property_info(prop_addr)?;
 
-            // Log each property we encounter when searching for properties 20-22
-            if prop_num >= 20 && prop_num <= 22 {
-                log::debug!("🔍 PROP_SEARCH: obj={}, looking_for={}, found_prop={} at addr=0x{:04x}, size_byte=0x{:02x}, prop_size={}, size_bytes={}",
-                    obj_num, prop_num, prop_id, prop_addr, size_byte, prop_size, size_bytes);
-            }
-
             if prop_id == prop_num {
                 // Found the property - return address of data
                 let data_addr = prop_addr + size_bytes;
-                if prop_num >= 20 && prop_num <= 22 {
-                    log::error!(
-                        "🔍 get_property_addr: obj={}, prop={} -> addr=0x{:04x}, size={}",
-                        obj_num,
-                        prop_num,
-                        data_addr,
-                        prop_size
-                    );
-                }
                 return Ok(data_addr);
             }
 

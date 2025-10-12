@@ -9592,6 +9592,17 @@ impl ZMachineCodeGen {
             let result_var = self.allocate_global_for_ir_id(target_ir_id);
             self.ir_id_to_stack_var.insert(target_ir_id, result_var);
 
+            // BUG FIX (Oct 12, 2025): Mark exit_get_message results as properties
+            // exit_get_message returns a string address that should be printed with print_paddr
+            // This tells print() to use print_paddr instead of print_num
+            if name == "exit_get_message" {
+                self.ir_id_from_property.insert(target_ir_id);
+                log::debug!(
+                    "🚪 EXIT: Marked exit_get_message result IR ID {} as property for print_paddr",
+                    target_ir_id
+                );
+            }
+
             // Pop from stack: load from variable 0 (stack), store to result_var
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
