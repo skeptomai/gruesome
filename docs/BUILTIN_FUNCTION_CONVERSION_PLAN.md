@@ -317,17 +317,15 @@ IrHandler::BuiltinCall(name, args, target) => {
 
 ## Implementation Order
 
-1. Phase 1: Infrastructure (30 minutes)
-2. Phase 2.3: exit_get_data (easiest, 10 minutes)
-3. Phase 2.4: exit_get_message (identical, 5 minutes)
-4. Phase 2.1: value_is_none (simple boolean, 15 minutes)
-5. Phase 2.2: exit_is_blocked (simple boolean, 15 minutes)
-6. Phase 2.5: get_exit (complex, 45 minutes)
-7. Phase 3: Update call sites (30 minutes)
-8. Phase 4: Delete old code (5 minutes)
-9. Phase 5: Testing (30 minutes)
-
-**Total Estimated Time**: 3 hours
+1. Phase 1: Infrastructure
+2. Phase 2.3: exit_get_data (easiest - single AND instruction)
+3. Phase 2.4: exit_get_message (identical to exit_get_data)
+4. Phase 2.1: value_is_none (simple boolean with branch)
+5. Phase 2.2: exit_is_blocked (simple boolean with comparison)
+6. Phase 2.5: get_exit (most complex - loop with multiple properties)
+7. Phase 3: Update call sites
+8. Phase 4: Delete old code
+9. Phase 5: Testing
 
 ## Open Questions
 
