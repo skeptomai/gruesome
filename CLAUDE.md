@@ -53,8 +53,7 @@
 - **Correctness**: No more stack/variable confusion at call sites
 - **Functionality**: All navigation commands work correctly with blocked/unblocked exits
 
-**Remaining**:
-- Phase 6: Delete old inline methods in codegen_builtins.rs (cleanup)
+**Phase 6 Complete**: Old inline methods deleted (~811 lines removed from codegen_builtins.rs)
 
 **See**: `docs/BUILTIN_FUNCTION_CONVERSION_PLAN.md` for detailed plan.
 
@@ -217,7 +216,6 @@
   - String ID reuse: Check `encoded_strings.contains_key(ir_id)` before creating new string ID
   - Property detection: Use `ir_id_from_property` set to determine if runtime value is a property string
 - **Impact**: String concatenation with runtime values now works correctly in compiler
-- **Limitation**: Exit pseudo-properties (.message, .blocked, .destination) not yet implemented, so some game features still fail
 - **Files**:
   - `src/grue_compiler/codegen.rs:192-200, 226-229, 375` (StringPart enum and infrastructure)
   - `src/grue_compiler/codegen_strings.rs:701-778` (runtime concatenation detection and flattening)
@@ -501,10 +499,6 @@
 - **Regression**: All 174 tests pass ✅, commercial Infocom games still work ✅
 - **File**: `src/vm.rs:433-459` (get_property_info)
 - **See**: `docs/ARCHITECTURE.md` - "CRITICAL: V3 Property Interpreter Bug - Two-Byte Format Support"
-
-**Tests**: All 174 tests passing.
-
-**Remaining Work**: Exit pseudo-properties (.blocked, .destination, .message, .none) not implemented - see EXIT_SYSTEM_IMPLEMENTATION_PLAN.md
 
 ## CRITICAL: INTERPRETER MODIFICATION POLICY
 
