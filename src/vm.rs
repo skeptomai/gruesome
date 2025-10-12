@@ -64,6 +64,8 @@ pub struct VM {
     pub call_stack: Vec<CallFrame>,
     /// Global variables (stored in memory, but cached here for speed)
     globals_addr: u16,
+    /// Current instruction PC (for debugging - set by interpreter before execution)
+    pub current_instruction_pc: Option<u32>,
 }
 
 impl VM {
@@ -80,6 +82,7 @@ impl VM {
             stack: Vec::with_capacity(STACK_SIZE),
             call_stack: Vec::new(),
             globals_addr,
+            current_instruction_pc: None,
         };
 
         // Set up initial call frame for V1-5 (V6+ uses main routine)
@@ -104,19 +107,55 @@ impl VM {
         self.call_stack.clear();
     }
 
+    /// Decode an instruction at a specific PC (for debugging)
+    pub fn decode_instruction_at(
+        &self,
+        pc: u32,
+    ) -> Result<crate::instruction::Instruction, String> {
+        use crate::instruction::Instruction;
+        let version = self.game.header.version;
+        Instruction::decode(&self.game.memory, pc as usize, version)
+            .map_err(|e| format!("Decode error at PC 0x{:04x}: {}", pc, e))
+    }
+
+    /// Format an instruction at a specific PC as a human-readable string
+    pub fn format_instruction_at(&self, pc: u32) -> String {
+        match self.decode_instruction_at(pc) {
+            Ok(inst) => format!("{:?}", inst),
+            Err(e) => format!("DECODE_ERROR({})", e),
+        }
+    }
+
     /// Push a value onto the evaluation stack
     pub fn push(&mut self, value: u16) -> Result<(), String> {
         if self.stack.len() >= STACK_SIZE {
             return Err("Stack overflow".to_string());
         }
-        if value == 0x00b4 || self.pc >= 0x06f00 && self.pc <= 0x07000 {
-            debug!(
-                "push({:04x}) at PC {:05x}, stack depth: {}",
+
+        // Optional stack tracing (enable with TRACE_STACK=1)
+        if std::env::var("TRACE_STACK").is_ok() {
+            log::error!(
+                "📥 PUSH: value=0x{:04x} ({}), PC=0x{:04x}, depth={}",
+                value,
                 value,
                 self.pc,
                 self.stack.len()
             );
         }
+
+        // Also log specific interesting values (including 3 which becomes 0xC000)
+        if value == 0xC000 || value == 0x0300 || value == 0xC300 || value == 3 {
+            let executing_inst = if let Some(pc) = self.current_instruction_pc {
+                self.format_instruction_at(pc)
+            } else {
+                "unknown".to_string()
+            };
+            log::error!(
+                "📥 PUSH_INTERESTING: value=0x{:04x} ({}), executing_inst_pc=0x{:04x}, depth={}, inst: {}",
+                value, value, self.current_instruction_pc.unwrap_or(self.pc), self.stack.len(), executing_inst
+            );
+        }
+
         self.stack.push(value);
         Ok(())
     }
@@ -173,12 +212,29 @@ impl VM {
         }
 
         let value = self.stack.pop().unwrap();
-        log::debug!(
-            "Stack pop: value={} (0x{:04x}), depth now: {}",
-            value,
-            value,
-            self.stack.len()
-        );
+
+        // Optional stack tracing (enable with TRACE_STACK=1)
+        if std::env::var("TRACE_STACK").is_ok() {
+            log::error!(
+                "📤 POP: value=0x{:04x} ({}), PC=0x{:04x}, depth={}",
+                value,
+                value,
+                self.pc,
+                self.stack.len()
+            );
+        }
+
+        // Also log specific interesting values (including 3 which becomes 0xC000)
+        if value == 0xC000 || value == 0x0300 || value == 0xC300 || value == 3 {
+            log::error!(
+                "📤 POP_INTERESTING: value=0x{:04x} ({}), PC=0x{:04x}, depth={}",
+                value,
+                value,
+                self.pc,
+                self.stack.len()
+            );
+        }
+
         Ok(value)
     }
 
@@ -253,13 +309,15 @@ impl VM {
                 addr,
                 self.pc
             );
-            log::error!("   Stack depth: {}, top 5 values: {:?}",
+            log::error!(
+                "   Stack depth: {}, top 5 values: {:?}",
                 self.stack.len(),
                 self.stack.iter().rev().take(5).collect::<Vec<_>>()
             );
             log::error!("   Call stack depth: {}", self.call_stack.len());
             if let Some(frame) = self.call_stack.last() {
-                log::error!("   Current function: PC start=0x{:04x}, locals: {:?}",
+                log::error!(
+                    "   Current function: PC start=0x{:04x}, locals: {:?}",
                     frame.return_pc,
                     &frame.locals[0..frame.num_locals as usize]
                 );
@@ -368,6 +426,18 @@ impl VM {
                 self.pc
             );
         }
+        // Log reads of variables used in exit corruption chain
+        if var == 236 || var == 237 || var == 239 {
+            if let Ok(val) = result {
+                log::error!(
+                    "🔍 READ_VAR_{}: value=0x{:04x} ({}), PC=0x{:04x}",
+                    var,
+                    val,
+                    val,
+                    self.current_instruction_pc.unwrap_or(self.pc)
+                );
+            }
+        }
         if var == 0x10 {
             debug!(
                 "read_variable(0x{:02x}) [Variable(16)/G00] at PC {:05x} returning value: {:?}",
@@ -394,6 +464,74 @@ impl VM {
                 value,
                 value,
                 self.pc
+            );
+        }
+        // Log writes to Variable 2 (exit local variable)
+        if var == 2 {
+            // Get current instruction bytes for debugging
+            let inst_bytes = if self.pc < self.game.memory.len() as u32 {
+                let pc = self.pc as usize;
+                let end = (pc + 8).min(self.game.memory.len());
+                &self.game.memory[pc..end]
+            } else {
+                &[]
+            };
+            // Show call stack depth to distinguish frames
+            let stack_depth = self.call_stack.len();
+            log::error!(
+                "🔍 WRITE_VAR_2: value=0x{:04x} ({}), PC=0x{:04x}, frame_depth={}, inst_bytes={:02x?}",
+                value,
+                value,
+                self.pc,
+                stack_depth,
+                inst_bytes
+            );
+
+            // Dump entire call stack with return addresses to "weave together" execution flow
+            log::error!("🔍 CALL_STACK (depth={}):", self.call_stack.len());
+            for (i, frame) in self.call_stack.iter().enumerate() {
+                log::error!(
+                    "  Frame[{}]: return_pc=0x{:04x}, num_locals={}, stack_base={}, return_store={:?}",
+                    i,
+                    frame.return_pc,
+                    frame.num_locals,
+                    frame.stack_base,
+                    frame.return_store
+                );
+            }
+
+            // Also show memory around current PC to understand context
+            if self.pc >= 10 && (self.pc as usize) < self.game.memory.len() {
+                let start = (self.pc as usize) - 10;
+                let end = ((self.pc as usize) + 10).min(self.game.memory.len());
+                log::error!(
+                    "🔍 MEMORY_CONTEXT (PC-10 to PC+10): {:02x?}",
+                    &self.game.memory[start..end]
+                );
+            }
+        }
+        // Log writes to Variable 216 (0xD8) - source of corruption
+        if var == 216 {
+            // Decode the instruction at current PC
+            let inst_str = self.format_instruction_at(self.pc);
+
+            log::error!(
+                "🔍 WRITE_VAR_216: value=0x{:04x} ({}), PC=0x{:04x}, frame_depth={}, next_inst: {}",
+                value,
+                value,
+                self.pc,
+                self.call_stack.len(),
+                inst_str
+            );
+        }
+        // Log writes to Variables 236 and 239 (used in loadb that reads value 3 from address 0)
+        if var == 236 || var == 239 {
+            log::error!(
+                "🔍 WRITE_VAR_{}: value=0x{:04x} ({}), PC=0x{:04x}",
+                var,
+                value,
+                value,
+                self.current_instruction_pc.unwrap_or(self.pc)
             );
         }
         // Log writes to variables 235-244 (used by get_exit builtin) and Variable(1) (direction parameter)
@@ -551,8 +689,6 @@ impl VM {
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
-        debug!("get_property_addr: obj={}, prop={}", obj_num, prop_num);
-
         // Get object table base
         let obj_table_addr = self.game.header.object_table_addr;
         let property_defaults = obj_table_addr;
@@ -579,14 +715,35 @@ impl VM {
         loop {
             let size_byte = self.game.memory[prop_addr];
             if size_byte == 0 {
+                // Log when we hit terminator while searching for properties 20-22
+                if prop_num >= 20 && prop_num <= 22 {
+                    log::error!("🔍 get_property_addr: obj={}, prop={} -> NOT FOUND (hit terminator at addr=0x{:04x})",
+                        obj_num, prop_num, prop_addr);
+                }
                 return Ok(0); // Property not found
             }
 
             let (prop_id, prop_size, size_bytes) = self.get_property_info(prop_addr)?;
 
+            // Log each property we encounter when searching for properties 20-22
+            if prop_num >= 20 && prop_num <= 22 {
+                log::error!("🔍 PROP_SEARCH: obj={}, looking_for={}, found_prop={} at addr=0x{:04x}, size_byte=0x{:02x}, prop_size={}, size_bytes={}",
+                    obj_num, prop_num, prop_id, prop_addr, size_byte, prop_size, size_bytes);
+            }
+
             if prop_id == prop_num {
                 // Found the property - return address of data
-                return Ok(prop_addr + size_bytes);
+                let data_addr = prop_addr + size_bytes;
+                if prop_num >= 20 && prop_num <= 22 {
+                    log::error!(
+                        "🔍 get_property_addr: obj={}, prop={} -> addr=0x{:04x}, size={}",
+                        obj_num,
+                        prop_num,
+                        data_addr,
+                        prop_size
+                    );
+                }
+                return Ok(data_addr);
             }
 
             // Move to next property

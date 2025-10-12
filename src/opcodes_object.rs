@@ -307,7 +307,7 @@ impl Interpreter {
                     inst.store_var
                 );
                 if prop_num >= 20 && prop_num <= 22 {
-                    log::debug!("🔍 GET_PROP_ADDR EXIT: obj={}, prop={}, returning addr=0x{:04x}, storing to var={:?}",
+                    log::error!("🔍 GET_PROP_ADDR EXIT: obj={}, prop={}, returning addr=0x{:04x}, storing to var={:?}",
                         obj_num, prop_num, addr, inst.store_var);
                 }
                 if let Some(store_var) = inst.store_var {

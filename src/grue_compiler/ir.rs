@@ -654,6 +654,13 @@ pub enum IrInstruction {
         branch_if_no_sibling: IrId, // Label to branch to when no sibling exists
     },
 
+    /// Get parent of object (Z-Machine get_parent instruction)
+    /// Returns the parent object number (0 if no parent)
+    GetObjectParent {
+        target: IrId,
+        object: IrId,
+    },
+
     /// Array operations
     ArrayAdd {
         array: IrId,
@@ -1733,6 +1740,17 @@ impl IrGenerator {
         player_properties.set_word(quit_pending_prop, 0); // Initially false
 
         // Create player object
+        // BUG FIX (Oct 11, 2025): Set player's initial parent to match location property
+        // Since player.location now reads from object tree (get_parent), not property,
+        // we must initialize the tree parent to match the location property value
+        let initial_parent = if !ir_program.rooms.is_empty() {
+            // Player starts in first room, which will be object #2 (player is #1)
+            // Store IR ID of first room as parent
+            Some(ir_program.rooms[0].id)
+        } else {
+            None
+        };
+
         let player_object = IrObject {
             id: player_id,
             name: "player".to_string(),
@@ -1741,7 +1759,7 @@ impl IrGenerator {
             names: vec!["yourself".to_string()],
             attributes: IrAttributes::new(),
             properties: player_properties,
-            parent: None,
+            parent: initial_parent, // Start as child of first room
             sibling: None,
             child: None, // Player can contain objects (inventory)
             comprehensive_object: None,
@@ -2936,8 +2954,19 @@ impl IrGenerator {
                     }
                 }
 
-                // Check if this is a standard property that should use numbered access
-                if let Some(standard_prop) = self.get_standard_property(&property) {
+                // Special handling for .location - use get_parent instead of property access
+                // BUG FIX (Oct 11, 2025): player.location must read parent from object tree,
+                // not from a property, because move() uses insert_obj which updates the tree
+                if property == "location" {
+                    log::debug!(
+                        "🏃 LOCATION_FIX: Using GetObjectParent for .location property access"
+                    );
+                    block.add_instruction(IrInstruction::GetObjectParent {
+                        target: temp_id,
+                        object: object_temp,
+                    });
+                } else if let Some(standard_prop) = self.get_standard_property(&property) {
+                    // Check if this is a standard property that should use numbered access
                     if let Some(prop_num) = self
                         .property_manager
                         .get_standard_property_number(standard_prop)

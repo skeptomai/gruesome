@@ -406,12 +406,40 @@ impl ZMachineCodeGen {
 
                     // Add to exit_types and exit_data based on target type
                     match exit_target {
-                        crate::grue_compiler::ir::IrExitTarget::Room(room_id) => {
+                        crate::grue_compiler::ir::IrExitTarget::Room(room_ir_id) => {
                             // Type 0 = normal room exit
                             exit_types.push(0);
+
+                            // BUG FIX (Oct 11, 2025): Translate IR ID to Z-Machine object number
+                            // The room_ir_id is from semantic analysis (e.g., 20-30)
+                            // We need the actual Z-Machine object number (e.g., 1-14)
+                            // Use room_to_object_id map which was set up in setup_room_to_object_mapping()
+                            let room_obj_num = self
+                                .room_to_object_id
+                                .get(room_ir_id)
+                                .copied()
+                                .unwrap_or_else(|| {
+                                    log::error!(
+                                        "Exit system: Room '{}' exit direction '{}' references IR ID {} which has no object number mapping, using 0",
+                                        room.name,
+                                        direction,
+                                        room_ir_id
+                                    );
+                                    0
+                                });
+
                             // Data = room object ID (2 bytes)
-                            exit_data.push((*room_id >> 8) as u8);
-                            exit_data.push((*room_id & 0xFF) as u8);
+                            exit_data.push((room_obj_num >> 8) as u8);
+                            exit_data.push((room_obj_num & 0xFF) as u8);
+
+                            log::debug!(
+                                "Exit system: Room '{}' exit {} direction '{}' -> room IR ID {} = object {}",
+                                room.name,
+                                exit_index,
+                                direction,
+                                room_ir_id,
+                                room_obj_num
+                            );
                         }
                         crate::grue_compiler::ir::IrExitTarget::Blocked(message) => {
                             // Type 1 = blocked exit with message

@@ -2531,3 +2531,471 @@ Both bugs needed fixing for exit system to work. The bugs were discovered sequen
 - **Impact**: Compiler-generated two-byte properties were unreadable
 - **Fix**: Mirror V4+ two-byte format logic for V3
 - **Related**: V3 Property Size Encoding section above (compiler side)
+---
+
+## Navigation System Architecture (October 11, 2025)
+
+### Overview
+
+The navigation system in compiled Grue games implements a sophisticated exit mechanism using Z-Machine object properties and pseudo-properties. This section documents the complete architecture to answer the critical questions:
+
+1. **Are exit pseudo-properties implemented?** YES - All 4 are fully implemented
+2. **How are exits bit-encoded?** `(type << 14) | data` - bits 15-14 = type, bits 13-0 = data
+3. **How does the overall navigation system work?** Parallel array properties + pseudo-property builtins
+
+### Exit Bit Encoding
+
+Exits are encoded as **16-bit packed values** with the following structure:
+
+```
+Bits 15-14: Exit Type
+  00 = Normal room exit (data = Z-Machine object number)
+  01 = Blocked exit (data = packed string address for message)
+  10 = Reserved
+  11 = Reserved
+
+Bits 13-0: Exit Data (14-bit value)
+  For type 00 (room): Z-Machine object number (1-14)
+  For type 01 (blocked): Packed string address for block message
+  
+Special Value: 0x0000 = No exit found
+```
+
+**Examples**:
+- `0x0002` = Normal exit to room object #2 (type=00, data=2)
+- `0x4568` = Blocked exit with message at packed address 0x0568 (type=01, data=0x0568)
+- `0x0000` = No exit in this direction
+
+**Encoding Formula**: `value = (type << 14) | data`
+
+**Decoding**:
+- Type: `(value >> 14) & 0x03`
+- Data: `value & 0x3FFF`
+- Blocked: `(value & 0x4000) != 0` (bit 14 set)
+
+### Three Parallel Array Properties
+
+The exit system uses **three numbered properties** storing parallel arrays:
+
+| Property Number | Name | Content | Entry Size |
+|----------------|------|---------|------------|
+| 20 | exit_directions | Dictionary word addresses | 2 bytes |
+| 21 | exit_types | Exit type codes (0=room, 1=blocked) | 1 byte |
+| 22 | exit_data | Exit data (object numbers or string addresses) | 2 bytes |
+
+**CRITICAL**: Property 22 (exit_data) stores **Z-Machine object numbers**, NOT IR semantic IDs. Must translate via `room_to_object_id` map during compilation.
+
+**Example** (West of House with 3 exits):
+```
+Property 20 (exit_directions): [0x1234, 0x1456, 0x1678]  // "north", "south", "east" dictionary addresses
+Property 21 (exit_types):       [0x00, 0x00, 0x01]       // normal, normal, blocked
+Property 22 (exit_data):        [0x0002, 0x0003, 0x0568] // object 2, object 3, message address
+```
+
+### The get_exit() Builtin
+
+Location: `src/grue_compiler/codegen_builtins.rs` lines 1145-1467
+
+**Algorithm**:
+1. Load direction parameter (dictionary word address)
+2. Get property 20 address, read length → `num_exits`
+3. Loop from 0 to `num_exits - 1`:
+   - Load `exit_directions[i]` (2-byte loadw)
+   - Compare with direction parameter (je instruction)
+   - If match:
+     - Load `exit_types[i]` (1-byte loadb)
+     - Load `exit_data[i]` (2-byte loadw)
+     - Pack: `result = (type << 14) | data`
+     - Return result
+4. If no match found, return 0
+
+**Z-Machine Code Pattern**:
+```z-machine
+get_property_addr room, 20          ; exit_directions array
+store array_addr
+get_prop_len array_addr             ; total bytes
+div length, 2                       ; num_exits (2 bytes per entry)
+store num_exits
+
+loop_start:
+  loadw exit_directions, index      ; Get direction word at index
+  je direction_param, word, found   ; Compare with parameter
+  
+  inc index
+  je index, num_exits, not_found    ; Loop check
+  jump loop_start
+  
+found:
+  loadb exit_types, index           ; Get type byte
+  store type
+  loadw exit_data, index            ; Get data word
+  store data
+  
+  mul type, 16384                   ; type << 14 (shift left 14 bits)
+  or type, data                     ; Pack into single value
+  ret type                          ; Return packed value
+  
+not_found:
+  ret 0                             ; No exit found
+```
+
+### Exit Pseudo-Properties Implementation
+
+All 4 exit pseudo-properties are **FULLY IMPLEMENTED** in both IR generation and codegen:
+
+#### 1. exit.none() - Check if exit is valid
+
+**IR Generation**: `src/grue_compiler/ir.rs` lines 2685-2700
+```rust
+"none" => {
+    let builtin_id = self.next_id();
+    self.builtin_functions.insert(builtin_id, "value_is_none".to_string());
+    block.add_instruction(IrInstruction::Call {
+        target: Some(result_temp),
+        function: builtin_id,
+        args: vec![object_temp], // The packed exit value
+    });
+}
+```
+
+**Codegen**: `src/grue_compiler/codegen_builtins.rs` lines 841-922
+- Compares exit value against 0
+- Returns TRUE (1) if value == 0, FALSE (0) otherwise
+- Used: `if exit.none() { print("You can't go that way."); return; }`
+
+#### 2. exit.blocked - Check if exit is blocked
+
+**IR Generation**: `src/grue_compiler/ir.rs` lines 2846-2870
+```rust
+"blocked" => {
+    let builtin_id = self.next_id();
+    self.builtin_functions.insert(builtin_id, "exit_is_blocked".to_string());
+    block.add_instruction(IrInstruction::Call {
+        target: Some(temp_id),
+        function: builtin_id,
+        args: vec![object_temp], // The packed exit value
+    });
+}
+```
+
+**Codegen**: `src/grue_compiler/codegen_builtins.rs` lines 924-1022
+- Tests bit 14: `(value & 0x4000) != 0`
+- Returns TRUE if blocked, FALSE if normal room exit
+- Used: `if exit.blocked { print(exit.message); return; }`
+
+**Z-Machine Implementation**:
+```z-machine
+; Check if value >= 0x4000 (bit 14 set)
+loadw stack_base, exit_offset
+store temp_value
+je temp_value, 0x4000, is_blocked_or_greater  ; >= 0x4000
+ret 0                                          ; Not blocked
+
+is_blocked_or_greater:
+  ret 1                                        ; Is blocked
+```
+
+#### 3. exit.destination - Get target room object
+
+**IR Generation**: `src/grue_compiler/ir.rs` lines 2871-2895
+```rust
+"destination" => {
+    let builtin_id = self.next_id();
+    self.builtin_functions.insert(builtin_id, "exit_get_destination".to_string());
+    block.add_instruction(IrInstruction::Call {
+        target: Some(temp_id),
+        function: builtin_id,
+        args: vec![object_temp], // The packed exit value
+    });
+}
+```
+
+**Codegen**: `src/grue_compiler/codegen_builtins.rs` lines 1024-1061
+- Masks lower 14 bits: `value & 0x3FFF`
+- Returns Z-Machine object number (1-14 for rooms)
+- Used: `move(player, exit.destination);`
+
+**Z-Machine Implementation**:
+```z-machine
+; Extract lower 14 bits (value & 0x3FFF)
+loadw stack_base, exit_offset
+store temp_value
+and temp_value, 0x3FFF        ; Mask to get data portion
+ret temp_value                 ; Return room object number
+```
+
+#### 4. exit.message - Get blocked message string
+
+**IR Generation**: `src/grue_compiler/ir.rs` lines 2897-2917
+```rust
+"message" => {
+    let builtin_id = self.next_id();
+    self.builtin_functions.insert(builtin_id, "exit_get_message".to_string());
+    block.add_instruction(IrInstruction::Call {
+        target: Some(temp_id),
+        function: builtin_id,
+        args: vec![object_temp], // The packed exit value
+    });
+}
+```
+
+**Codegen**: `src/grue_compiler/codegen_builtins.rs` lines 1063-1102
+- Masks lower 14 bits: `value & 0x3FFF`
+- Returns packed string address (for blocked exits only)
+- Used: `print(exit.message);`
+
+**Implementation Note**: Same as .destination (both mask lower 14 bits), but semantic meaning differs - for blocked exits, data is a string address instead of room number.
+
+### Critical: player.location Property Access
+
+**ARCHITECTURAL DECISION (October 11, 2025)**: The `.location` property is **SPECIAL** and uses object tree parent, not a numbered property.
+
+**Why**: The `move()` builtin calls Z-Machine `insert_obj` which updates the **object tree structure** (parent/child/sibling relationships), NOT properties. Reading from a static property would always return the compile-time initial location.
+
+**Implementation**: `src/grue_compiler/ir.rs` lines 2939-2976
+
+```rust
+// Special handling for .location - use get_parent instead of property access
+if property == "location" {
+    log::debug!("🏃 LOCATION_FIX: Using GetObjectParent for .location property access");
+    block.add_instruction(IrInstruction::GetObjectParent {
+        target: temp_id,
+        object: object_temp,
+    });
+    return Ok(temp_id);
+}
+```
+
+**GetObjectParent IR Instruction**: `src/grue_compiler/ir.rs` lines 657-662
+```rust
+/// Get parent of object (Z-Machine get_parent instruction)
+/// Returns the parent object number (0 if no parent)
+GetObjectParent {
+    target: IrId,
+    object: IrId,
+},
+```
+
+**GetObjectParent Codegen**: `src/grue_compiler/codegen_instructions.rs` lines 1069-1085
+```rust
+IrInstruction::GetObjectParent { target, object } => {
+    let obj_operand = self.resolve_ir_id_to_operand(*object)?;
+    
+    // Emit get_parent instruction (1OP:3)
+    self.emit_instruction_typed(
+        Opcode::Op1(Op1::GetParent),
+        &[obj_operand],
+        Some(0), // Store result to stack
+        None,    // No branch
+    )?;
+    
+    self.use_stack_for_result(*target);
+}
+```
+
+**Player Initial Parent**: `src/grue_compiler/ir.rs` lines 1743-1752
+
+The player object must start with its parent set to the initial room in the object tree:
+
+```rust
+let initial_parent = if !ir_program.rooms.is_empty() {
+    Some(ir_program.rooms[0].id)  // Player starts in first room
+} else {
+    None
+};
+
+let player_object = IrObject {
+    // ... other fields
+    parent: initial_parent,  // Object tree parent, NOT property
+    // ...
+};
+```
+
+**Why This Matters**: Without correct initial parent, `player.location` would return 0 at game start, causing `get_exit()` to be called on object 0 (invalid).
+
+### Navigation Handler Pattern
+
+Standard navigation handler from `examples/mini_zork.grue` lines 322-350:
+
+```grue
+fn handle_go(direction) {
+    clear_quit_state();
+    let exit = player.location.get_exit(direction);  // Calls get_exit builtin
+    
+    if exit.none() {                                 // Pseudo-property: value == 0?
+        print("You can't go that way.");
+        return;
+    }
+    
+    if exit.blocked {                                // Pseudo-property: bit 14 set?
+        print(exit.message);                         // Pseudo-property: data portion
+        return;
+    }
+    
+    // Call location-specific exit handler
+    if player.location.on_exit {
+        player.location.on_exit();
+    }
+    
+    move(player, exit.destination);                  // Pseudo-property: data portion
+    player.location.visited = true;                  // Mark room as visited
+    
+    // Call location-specific enter handler
+    if player.location.on_enter {
+        player.location.on_enter();
+    }
+    
+    look_around();                                   // Show new location
+}
+```
+
+### IR ID to Object Number Translation (CRITICAL)
+
+**THE BUG (Fixed October 11, 2025)**: Original code stored IR semantic IDs directly in exit_data property.
+
+**THE PROBLEM**: IR IDs are semantic analysis identifiers (19-30 for rooms), Z-Machine object numbers are runtime identifiers (1-14 for objects). These are **COMPLETELY DIFFERENT**.
+
+**Example**:
+- West of House: IR ID = 21, Object Number = 1
+- North of House: IR ID = 22, Object Number = 2
+- South of House: IR ID = 23, Object Number = 3
+
+**WRONG CODE** (`codegen_objects.rs` before fix):
+```rust
+crate::grue_compiler::ir::IrExitTarget::Room(room_id) => {
+    exit_types.push(0);
+    // BUG: Using IR ID directly (22) instead of object number (2)
+    exit_data.push((*room_id >> 8) as u8);
+    exit_data.push((*room_id & 0xFF) as u8);
+}
+```
+
+**CORRECT CODE** (`codegen_objects.rs` lines 409-442, fixed):
+```rust
+crate::grue_compiler::ir::IrExitTarget::Room(room_ir_id) => {
+    exit_types.push(0);
+    
+    // BUG FIX: Translate IR ID to Z-Machine object number
+    let room_obj_num = self
+        .room_to_object_id
+        .get(room_ir_id)
+        .copied()
+        .unwrap_or_else(|| {
+            log::error!(
+                "Exit system: Room '{}' exit direction '{}' references IR ID {} which has no object number mapping, using 0",
+                room.name, direction, room_ir_id
+            );
+            0
+        });
+    
+    // Store object number (NOT IR ID)
+    exit_data.push((room_obj_num >> 8) as u8);
+    exit_data.push((room_obj_num & 0xFF) as u8);
+    
+    log::debug!(
+        "Exit system: Room '{}' exit {} direction '{}' -> room IR ID {} = object {}",
+        room.name, exit_index, direction, room_ir_id, room_obj_num
+    );
+}
+```
+
+**room_to_object_id Mapping**: `src/grue_compiler/codegen.rs` lines 7708-7726
+
+```rust
+fn setup_room_to_object_mapping(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
+    for (index, room) in ir.rooms.iter().enumerate() {
+        // Object numbers start at 1 (0 is invalid in Z-Machine)
+        let object_number = (index + 1) as u16;
+        self.room_to_object_id.insert(room.id, object_number);
+        log::debug!(
+            "Mapped room '{}' (IR ID {}) to object #{}",
+            room.name, room.id, object_number
+        );
+    }
+    Ok(())
+}
+```
+
+**WHEN MAPPING IS CREATED**: During `setup_phase()` in codegen.rs, **BEFORE** property generation. This ensures room_to_object_id is populated when exit_data is written.
+
+### Complete Data Flow
+
+**Compilation Time**:
+1. Parser creates room definitions with exit blocks
+2. IR generator creates IrExitTarget::Room(ir_id) and IrExitTarget::Blocked(string_id)
+3. Codegen calls `setup_room_to_object_mapping()` → creates ir_id → object_num map
+4. Codegen generates object property tables:
+   - Property 20: Dictionary word addresses for directions
+   - Property 21: Type codes (0=room, 1=blocked)
+   - Property 22: **Object numbers** (after translation) or string addresses
+5. Builtin dispatch registered: "get_exit" → `generate_get_exit_builtin()`
+
+**Runtime Execution**:
+1. Player types "north"
+2. Parser recognizes as verb, grammar calls `handle_go("north")`
+3. `player.location` → GetObjectParent IR → get_parent opcode → returns room object number
+4. `.get_exit("north")` → get_exit builtin:
+   - Loads property 20 (exit_directions)
+   - Loops comparing "north" dictionary word
+   - When found, loads property 21[index] → type
+   - Loads property 22[index] → data (object number)
+   - Packs: `(type << 14) | data`
+   - Returns packed value
+5. `exit.none()` → value_is_none builtin → compares against 0
+6. `exit.blocked` → exit_is_blocked builtin → tests bit 14
+7. `exit.destination` → exit_get_destination builtin → masks lower 14 bits → returns object number
+8. `move(player, object_number)` → insert_obj opcode → updates object tree
+9. Next `player.location` read → get_parent returns new room
+
+### Known Issues and Debugging
+
+**CURRENT STATUS (October 11, 2025)**:
+
+✅ **WORKING**:
+- All 4 exit pseudo-properties implemented
+- get_exit() returns correct packed values
+- player.location reads from object tree
+- exit_data stores correct object numbers
+- exit.none() works correctly
+- exit.blocked works correctly
+
+❌ **BUG (In Progress)**:
+- exit.destination returns wrong value (768 instead of 2)
+- Symptom: "Invalid object number: 768" when calling move()
+- Likely cause: Variable allocation/mapping bug
+- When multiple property accesses on same exit value (.none(), .blocked, .destination), the variable mapping may be incorrect
+
+**Debugging Pattern**:
+```bash
+# Compile with correct object numbers
+RUST_LOG=warn cargo run --bin grue-compiler -- examples/mini_zork.grue -o tests/mini_zork.z3
+
+# Run with navigation test
+RUST_LOG=error timeout 3 ./target/debug/gruesome tests/mini_zork.z3 < /tmp/nav_test.txt
+
+# Expected: Player moves to new room
+# Actual: "Invalid object number: 768"
+```
+
+**Investigation Needed**:
+1. Verify variable allocation for exit IR ID
+2. Check if .destination reads from correct variable
+3. Verify stack vs local variable usage for exit value
+4. Check ir_id_to_stack_var mapping in codegen
+
+### References
+
+**Exit System Implementation Files**:
+- `src/grue_compiler/ir.rs` - Pseudo-property IR generation (lines 2645-2917, 2939-2976)
+- `src/grue_compiler/codegen_builtins.rs` - get_exit and pseudo-property codegen (lines 841-1467)
+- `src/grue_compiler/codegen_objects.rs` - Property table generation (lines 409-442)
+- `src/grue_compiler/codegen_instructions.rs` - GetObjectParent codegen (lines 1069-1085)
+- `src/grue_compiler/codegen.rs` - room_to_object_id mapping (lines 7708-7726)
+
+**Related Architecture Sections**:
+- UnresolvedReference Location Patterns (this document)
+- Z-Machine Branch Encoding Patterns (this document)
+- V3 Property Size Encoding - Two-Byte Format (this document)
+
+**Date**: October 11, 2025
+**Status**: Core architecture complete, variable mapping bug in progress

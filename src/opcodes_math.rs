@@ -51,6 +51,11 @@ impl Interpreter {
             // 2OP:0x09 - and (bitwise AND)
             (0x09, crate::instruction::OperandCount::OP2) => {
                 debug!("and {} {}", operands[0], operands[1]);
+                // Temporary debug for exit.destination (masks with 0x3FFF)
+                if operands[1] == 0x3FFF {
+                    log::error!("🔍 AND for exit.destination: operands[0]=0x{:04x} ({}) & 0x3FFF = 0x{:04x} ({}), store_var={:?}",
+                        operands[0], operands[0], operands[0] & 0x3FFF, operands[0] & 0x3FFF, inst.store_var);
+                }
                 if let Some(store_var) = inst.store_var {
                     self.vm
                         .write_variable(store_var, operands[0] & operands[1])?;

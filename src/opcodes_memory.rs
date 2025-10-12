@@ -66,7 +66,11 @@ impl Interpreter {
                 // loadw
                 let addr = operands[0] as u32 + (operands[1] as u32 * 2);
                 let value = self.vm.read_word(addr);
-                // Debug logging removed - no longer needed
+                // Temporary debug logging for get_exit debugging (property table addresses)
+                if operands[0] >= 0x03b0 && operands[0] <= 0x03c0 {
+                    log::error!("🔍 loadw: base_addr=0x{:04x}, index={}, addr=0x{:04x}, value=0x{:04x} ({})",
+                        operands[0], operands[1], addr, value, value);
+                }
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, value)?;
                 }

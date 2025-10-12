@@ -234,7 +234,7 @@ pub struct ZMachineCodeGen {
     /// Counter for unique global variable allocation (for builtins)
     allocated_globals_count: usize,
     /// Mapping from IR IDs to Z-Machine object numbers (for object references)
-    ir_id_to_object_number: IndexMap<IrId, u16>,
+    pub ir_id_to_object_number: IndexMap<IrId, u16>,
     /// Mapping from IR IDs to Z-Machine local variable slots (for function parameters)
     pub ir_id_to_local_var: IndexMap<IrId, u8>,
     /// Mapping from IR IDs to binary operations (for conditional branch optimization)
@@ -4924,8 +4924,8 @@ impl ZMachineCodeGen {
                 format!("{:02x?}", prop_data)
             };
 
-            debug!(
-                "Writing property {} for object '{}': size_byte=0x{:02x}, data={}, string_id={:?}, two_byte_format={}",
+            log::warn!(
+                "🔍 PROP_WRITE: Writing property {} for object '{}': size_byte=0x{:02x}, data={}, string_id={:?}, two_byte_format={}",
                 prop_num, object.short_name, size_byte, data_display, string_id_opt, two_byte_size.is_some()
             );
 
@@ -6843,6 +6843,15 @@ impl ZMachineCodeGen {
                     local.slot,
                     function.name
                 );
+
+                // CRITICAL DEBUG: Track slot 2 allocations for handle_go
+                if function.name == "handle_go" && local.slot == 2 {
+                    log::error!(
+                        "🔍 SLOT_2_ALLOC: Function 'handle_go' allocated slot 2 to '{}' (IR ID {})",
+                        local.name,
+                        local.ir_id
+                    );
+                }
             }
         }
 

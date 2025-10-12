@@ -599,25 +599,25 @@ impl ZMachineCodeGen {
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
                 let prop_operand = Operand::LargeConstant(*property_num as u16);
 
-                // BUG FIX (Oct 8, 2025): Each GetPropertyByNumber needs UNIQUE storage
-                // Previous code reused Variable 241 for ALL property accesses, causing collisions
-                // when multiple properties were accessed (e.g., player.location then exit properties)
+                // BUG FIX (Oct 11, 2025): Use ir_id_to_stack_var (for globals) instead of ir_id_to_local_var
+                // CRITICAL: ir_id_to_local_var is for LOCAL variables (slots 1-15) used by functions
+                // GetPropertyByNumber results should use GLOBAL variables (200+) and go in ir_id_to_stack_var
+                // Mixing them causes architectural confusion and potential bugs
                 //
-                // SOLUTION: Allocate unique global variable for each result
+                // SOLUTION: Allocate unique global variable for each result, store in ir_id_to_stack_var
                 // Check if we've already allocated a variable for this IR ID
-                if !self.ir_id_to_local_var.contains_key(target) {
-                    // Allocate fresh global variable (starting from high numbers to avoid conflicts)
-                    // Use a counter to ensure uniqueness
-                    let fresh_var = 200u8 + (self.ir_id_to_local_var.len() as u8 % 50);
-                    self.ir_id_to_local_var.insert(*target, fresh_var);
+                if !self.ir_id_to_stack_var.contains_key(target) {
+                    // Use the proper global allocation function (same as builtins)
+                    let fresh_var = self.allocate_global_for_ir_id(*target);
+                    self.ir_id_to_stack_var.insert(*target, fresh_var);
                     log::debug!(
-                        "GetPropertyByNumber: Allocated variable {} for IR ID {}",
+                        "GetPropertyByNumber: Allocated global variable {} for IR ID {}",
                         fresh_var,
                         target
                     );
                 }
 
-                let result_var = *self.ir_id_to_local_var.get(target).unwrap();
+                let result_var = *self.ir_id_to_stack_var.get(target).unwrap();
 
                 // Track that this IR ID comes from a property access (for print() type detection)
                 self.ir_id_from_property.insert(*target);
@@ -1061,6 +1061,24 @@ impl ZMachineCodeGen {
                             location_space: MemorySpace::Code,
                         });
                 }
+
+                // Register target as using stack result
+                self.use_stack_for_result(*target);
+            }
+
+            IrInstruction::GetObjectParent { target, object } => {
+                // Z-Machine get_parent opcode: returns parent object number (0 if no parent)
+                // BUG FIX (Oct 11, 2025): player.location must read parent from object tree
+                // because move() uses insert_obj which updates the tree, not properties
+                let obj_operand = self.resolve_ir_id_to_operand(*object)?;
+
+                // Emit get_parent instruction (1OP:3)
+                self.emit_instruction_typed(
+                    Opcode::Op1(Op1::GetParent),
+                    &[obj_operand],
+                    Some(0), // Store result to stack
+                    None,    // No branch
+                )?;
 
                 // Register target as using stack result
                 self.use_stack_for_result(*target);
@@ -1988,8 +2006,11 @@ impl ZMachineCodeGen {
             0x06 => true, // print_num (raw opcode 6)
             0x07 => true, // random (raw opcode 7)
             0x08 => true, // push (raw opcode 8) - MUST be VAR form (0xE8), NOT 2OP:or (0x08/0xC8)
-            0x09 => true, // pull (raw opcode 9) - MUST be VAR form (0xE9), NOT 2OP:and (0x09/0xC9)
-
+            // NOTE: Opcode 0x09 is BOTH 2OP:AND and VAR:pull
+            // - For 2OP:AND in VAR form, bit 5 should be 0 (0xC9)
+            // - For VAR:pull, bit 5 should be 1 (0xE9)
+            // We distinguish based on context: emit_instruction_typed() for 2OP:AND won't call is_true_var_opcode
+            // The Opcode enum variant (Op2(And) vs Var(Pull)) determines which form to use
             _ => false,
         }
     }

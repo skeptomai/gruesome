@@ -385,52 +385,13 @@ impl ZMachineCodeGen {
             destination_operand
         );
 
-        // CRITICAL FIX: Prevent "Cannot insert object 0" error by using only safe constant operands
-        // Variables can contain 0 at runtime even if they're not variable 0, so we use constants
-        let safe_object_operand = match object_operand {
-            Operand::LargeConstant(0) => {
-                log::warn!("move builtin: object operand resolved to constant 0, using player object (1) instead");
-                Operand::LargeConstant(1) // Use player object as safe fallback
-            }
-            Operand::LargeConstant(val) if val > 0 => {
-                log::debug!("move builtin: using safe constant object {}", val);
-                object_operand // Use the safe constant as-is
-            }
-            Operand::Variable(var_num) => {
-                log::warn!("move builtin: object operand is variable {} which could contain 0 at runtime, using player object (1) instead", var_num);
-                Operand::LargeConstant(1) // Use player object as safe fallback for ANY variable
-            }
-            _ => {
-                log::warn!("move builtin: object operand {:?} is unpredictable, using player object (1) instead", object_operand);
-                Operand::LargeConstant(1) // Use player object as safe fallback
-            }
-        };
-
-        let safe_destination_operand = match destination_operand {
-            Operand::LargeConstant(0) => {
-                log::warn!("move builtin: destination operand resolved to constant 0, using player object (1) instead");
-                Operand::LargeConstant(1) // Use player object as safe fallback
-            }
-            Operand::LargeConstant(val) if val > 0 => {
-                log::debug!("move builtin: using safe constant destination {}", val);
-                destination_operand // Use the safe constant as-is
-            }
-            Operand::Variable(var_num) => {
-                log::warn!("move builtin: destination operand is variable {} which could contain 0 at runtime, using player object (1) instead", var_num);
-                Operand::LargeConstant(1) // Use player object as safe fallback for ANY variable
-            }
-            _ => {
-                log::warn!("move builtin: destination operand {:?} is unpredictable, using player object (1) instead", destination_operand);
-                Operand::LargeConstant(1) // Use player object as safe fallback
-            }
-        };
-
         // Generate Z-Machine insert_obj instruction (2OP:14, opcode 0x0E)
         // This moves object to become the first child of the destination
-        // Use proper 2OP instruction encoding
+        // Note: Variables are allowed - the Z-Machine can handle variable operands
+        // Runtime validation will catch if a variable contains 0
         self.emit_instruction_typed(
             Opcode::Op2(Op2::InsertObj),
-            &[safe_object_operand, safe_destination_operand],
+            &[object_operand, destination_operand],
             None, // No store
             None, // No branch
         )?;
@@ -882,6 +843,10 @@ impl ZMachineCodeGen {
         args: &[IrId],
         target: Option<u32>,
     ) -> Result<(), CompilerError> {
+        log::error!(
+            "🚪 VALUE_IS_NONE: Generating at PC 0x{:04x}",
+            self.code_address
+        );
         if args.len() != 1 {
             return Err(CompilerError::CodeGenError(format!(
                 "value_is_none expects 1 argument, got {}",
@@ -964,6 +929,10 @@ impl ZMachineCodeGen {
         args: &[IrId],
         target: Option<u32>,
     ) -> Result<(), CompilerError> {
+        log::error!(
+            "🚪 EXIT_IS_BLOCKED: Generating at PC 0x{:04x}",
+            self.code_address
+        );
         if args.len() != 1 {
             return Err(CompilerError::CodeGenError(format!(
                 "exit_is_blocked expects 1 argument, got {}",
@@ -1063,6 +1032,10 @@ impl ZMachineCodeGen {
         args: &[IrId],
         target: Option<u32>,
     ) -> Result<(), CompilerError> {
+        log::error!(
+            "🚪 EXIT_GET_DATA: Generating at PC 0x{:04x}",
+            self.code_address
+        );
         if args.len() != 1 {
             return Err(CompilerError::CodeGenError(format!(
                 "exit_get_data expects 1 argument, got {}",
@@ -1073,12 +1046,24 @@ impl ZMachineCodeGen {
         let exit_value_id = args[0];
         let exit_value_operand = self.resolve_ir_id_to_operand(exit_value_id)?;
 
+        log::error!(
+            "🚪 EXIT_GET_DATA: exit_value_id={}, operand={:?}",
+            exit_value_id,
+            exit_value_operand
+        );
+
         if let Some(target_ir_id) = target {
             // BUG FIX (Oct 11, 2025): Use unique global variable to avoid stack/header corruption
             // CRITICAL: Don't reuse existing mappings - always allocate fresh variable for builtins
             // because existing mapping might be from property access or other context
             let result_var = self.allocate_global_for_ir_id(target_ir_id);
             self.ir_id_to_stack_var.insert(target_ir_id, result_var);
+
+            log::error!(
+                "🚪 EXIT_GET_DATA: target_ir_id={}, result_var={}",
+                target_ir_id,
+                result_var
+            );
 
             // Use and (opcode 0x09) to mask lower 14 bits: value & 0x3FFF
             self.emit_instruction_typed(
@@ -1192,11 +1177,15 @@ impl ZMachineCodeGen {
         let exit_types_prop = *self.property_numbers.get("exit_types").unwrap_or(&21);
         let exit_data_prop = *self.property_numbers.get("exit_data").unwrap_or(&22);
 
-        log::warn!(
+        log::error!(
             "🔍 get_exit: Using property numbers: directions={}, types={}, data={}",
             exit_directions_prop,
             exit_types_prop,
             exit_data_prop
+        );
+        log::error!(
+            "🔍 GET_EXIT: About to generate get_property_addr for directions at PC 0x{:04x}",
+            self.code_address
         );
 
         // CRITICAL: Use high global variables (235-239) for temporaries
@@ -1227,11 +1216,19 @@ impl ZMachineCodeGen {
             Some(directions_addr_var),
             None,
         )?;
+        log::error!(
+            "🔍 GET_EXIT: Generated get_property_addr, now at PC 0x{:04x}",
+            self.code_address
+        );
 
         // Step 2: Check if property exists (addr == 0 means no exits)
         // CRITICAL: Use negative placeholder (-1) to encode "branch on true"
         // Bit 15 of placeholder encodes branch sense: 1=true, 0=false
         // 0x7FFF has bit 15=0 (branch on false), -1 (0xFFFF) has bit 15=1 (branch on true)
+        log::error!(
+            "🔍 GET_EXIT: About to emit je branch at PC 0x{:04x}",
+            self.code_address
+        );
         let branch_layout = self.emit_instruction(
             0x01, // je - branch if addr == 0
             &[
@@ -1241,6 +1238,10 @@ impl ZMachineCodeGen {
             None,
             Some(-1), // Negative = branch on true
         )?;
+        log::error!(
+            "🔍 GET_EXIT: Emitted je branch, now at PC 0x{:04x}",
+            self.code_address
+        );
 
         self.reference_context
             .unresolved_refs
@@ -1254,6 +1255,10 @@ impl ZMachineCodeGen {
                 offset_size: 2,
                 location_space: MemorySpace::Code,
             });
+        log::error!(
+            "🔍 GET_EXIT: About to emit get_property_addr for types at PC 0x{:04x}",
+            self.code_address
+        );
 
         // Step 3: Get addresses of exit_types and exit_data properties
         self.emit_instruction_typed(
@@ -1543,6 +1548,10 @@ impl ZMachineCodeGen {
             )?;
         }
 
+        log::error!(
+            "🔍 GET_EXIT: Function completed successfully, final PC 0x{:04x}",
+            self.code_address
+        );
         Ok(())
     }
 

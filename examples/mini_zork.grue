@@ -332,20 +332,20 @@ fn handle_go(direction) {
         print(exit.message);
         return;
     }
-    
+
     // Call location on_exit handler if it exists
     if player.location.on_exit {
         player.location.on_exit();
     }
-    
+
     move(player, exit.destination);
     player.location.visited = true;
-    
-    // Call location on_enter handler if it exists  
+
+    // Call location on_enter handler if it exists
     if player.location.on_enter {
         player.location.on_enter();
     }
-    
+
     look_around();
 }
 
