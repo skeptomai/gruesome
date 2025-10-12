@@ -769,13 +769,14 @@ impl ZMachineCodeGen {
             Operand::LargeConstant(obj_num) => {
                 // For now, just return a simple integer representing "non-empty container"
                 // This prevents the object 0 error while we implement proper array support
-                if let Some(store_var) = target {
+                if target.is_some() {
                     // Store a placeholder value (non-zero = success, represents empty array)
                     // Use store instruction: 1OP:33 (0x21)
+                    // NOTE: Result already mapped to stack (variable 0) at line 761
                     self.emit_instruction_typed(
                         Opcode::Op2(Op2::Or),
                         &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
-                        Some(store_var as u8),
+                        Some(0), // Store to stack (variable 0)
                         None, // No branch
                     )?;
 
@@ -795,12 +796,13 @@ impl ZMachineCodeGen {
                     "get_object_contents: object resolved to {:?}, using placeholder",
                     container_operand
                 );
-                if let Some(store_var) = target {
+                if target.is_some() {
                     // Store a placeholder value for non-constant operands
+                    // NOTE: Result already mapped to stack (variable 0) at line 761
                     self.emit_instruction_typed(
                         Opcode::Op2(Op2::Or),
                         &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
-                        Some(store_var as u8),
+                        Some(0), // Store to stack (variable 0)
                         None, // No branch
                     )?;
                 }
@@ -824,11 +826,15 @@ impl ZMachineCodeGen {
         }
 
         // For now, always return false (object is not empty) as a safe placeholder
-        if let Some(store_var) = target {
+        if let Some(target_ir_id) = target {
+            // Allocate proper Z-Machine variable for target IR ID
+            let result_var = self.allocate_global_for_ir_id(target_ir_id);
+            self.ir_id_to_stack_var.insert(target_ir_id, result_var);
+
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
                 &[Operand::LargeConstant(0), Operand::SmallConstant(0)], // 0 | 0 = 0 (false)
-                Some(store_var as u8),
+                Some(result_var),
                 None,
             )?;
         }
@@ -838,6 +844,12 @@ impl ZMachineCodeGen {
 
     /// Generate value_is_none builtin - checks if a value is None/null (value == 0)
     /// Used by .none() method on exit values and other optional values
+    ///
+    /// FIXME (Oct 12, 2025): This builtin is INLINED at each call site, causing:
+    /// 1. Stack/variable confusion (must push to stack AND store in variable)
+    /// 2. Code bloat (full builtin code duplicated at every call)
+    /// 3. Complex error-prone logic for value persistence
+    /// TODO: Convert to real Z-Machine function with proper calling convention
     pub fn generate_value_is_none_builtin(
         &mut self,
         args: &[IrId],
@@ -862,6 +874,8 @@ impl ZMachineCodeGen {
             // Cannot use IR ID directly as variable number - causes header corruption
             // CRITICAL: Don't reuse existing mappings - always allocate fresh variable for builtins
             let result_var = self.allocate_global_for_ir_id(target_ir_id);
+            // BUG FIX (Oct 12, 2025): Map to result_var so subsequent uses read from there
+            // We push to stack for immediate caller, but map IR ID to result_var for persistence
             self.ir_id_to_stack_var.insert(target_ir_id, result_var);
 
             // Use je (opcode 0x01) to test if value == 0
@@ -916,6 +930,16 @@ impl ZMachineCodeGen {
 
             // End label
             self.label_addresses.insert(end_label, self.code_address);
+
+            // BUG FIX (Oct 12, 2025): Push result to stack for immediate caller
+            // The result is ALSO stored in result_var for persistence (multiple reads)
+            // Stack value is for immediate consumption, result_var is for later reads
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Or),
+                &[Operand::Variable(result_var), Operand::SmallConstant(0)],
+                Some(0), // Push to stack
+                None,
+            )?;
         }
 
         Ok(())
@@ -924,14 +948,21 @@ impl ZMachineCodeGen {
     /// Generate exit_is_blocked builtin - checks if exit value has blocked bit set (bit 14)
     /// Exit values are encoded as: (type << 14) | data
     /// Returns true if value >= 0x4000 (bit 14 is set, indicating blocked exit)
+    ///
+    /// FIXME (Oct 12, 2025): This builtin is INLINED at each call site, causing:
+    /// 1. Stack/variable confusion (must push to stack AND store in variable)
+    /// 2. Code bloat (full builtin code duplicated at every call)
+    /// 3. Complex error-prone logic for value persistence
+    /// TODO: Convert to real Z-Machine function with proper calling convention
     pub fn generate_exit_is_blocked_builtin(
         &mut self,
         args: &[IrId],
         target: Option<u32>,
     ) -> Result<(), CompilerError> {
         log::error!(
-            "🚪 EXIT_IS_BLOCKED: Generating at PC 0x{:04x}",
-            self.code_address
+            "🚪 EXIT_IS_BLOCKED: Generating at PC 0x{:04x}, target={:?}",
+            self.code_address,
+            target
         );
         if args.len() != 1 {
             return Err(CompilerError::CodeGenError(format!(
@@ -963,7 +994,15 @@ impl ZMachineCodeGen {
             // CRITICAL: Don't reuse existing mappings - always allocate fresh variable for builtins
             // because existing mapping might be from property access or other context
             let result_var = self.allocate_global_for_ir_id(target_ir_id);
+            // BUG FIX (Oct 12, 2025): Map to result_var so subsequent uses read from there
+            // We push to stack for immediate caller, but map IR ID to result_var for persistence
             self.ir_id_to_stack_var.insert(target_ir_id, result_var);
+
+            log::error!(
+                "🚪 EXIT_IS_BLOCKED: target_ir_id={}, result_var={}",
+                target_ir_id,
+                result_var
+            );
 
             // Create labels for branching logic
             let true_label = self.next_string_id;
@@ -972,14 +1011,15 @@ impl ZMachineCodeGen {
             self.next_string_id += 1;
 
             // Test: value >= 0x4000? (check if bit 14 is set)
-            // Note: Opcode 0x05 with 2 operands is inc_chk (2OP form), which increments
-            // a variable and branches if result > value. For simple comparison we use this
-            // pattern: inc_chk with first operand as the value to test.
+            // Use jl (2OP:2) with branch_on_false to test value >= 0x4000
+            // jl returns TRUE when value < 0x4000
+            // branch_on_false (0x7FFF) branches when condition is FALSE
+            // So we branch when NOT(value < 0x4000), i.e., when value >= 0x4000
             let branch_layout = self.emit_instruction(
-                0x05, // inc_chk - will be encoded as 2OP form (LONG) due to 2 operands
+                0x02, // jl (2OP:2) - jump if less
                 &[exit_value_operand, Operand::LargeConstant(0x4000)],
                 None,
-                Some(-1), // Placeholder for forward branch (true path)
+                Some(0x7FFF), // Branch on FALSE (when value >= 0x4000)
             )?;
 
             self.reference_context
@@ -1019,6 +1059,18 @@ impl ZMachineCodeGen {
 
             // End label
             self.label_addresses.insert(end_label, self.code_address);
+
+            // BUG FIX (Oct 12, 2025): Push result to stack for immediate caller
+            // The result is ALSO stored in result_var for persistence (multiple reads)
+            // Stack value is for immediate consumption, result_var is for later reads
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Or),
+                &[Operand::Variable(result_var), Operand::SmallConstant(0)],
+                Some(0), // Push to stack
+                None,
+            )?;
+
+            log::error!("🚪 EXIT_IS_BLOCKED: End at PC 0x{:04x}", self.code_address);
         }
 
         Ok(())
@@ -1027,6 +1079,12 @@ impl ZMachineCodeGen {
     /// Generate exit_get_data builtin - extracts lower 14 bits from exit value (for .destination)
     /// Exit values are encoded as: (type << 14) | data
     /// Returns data portion (value & 0x3FFF) which is a room ID
+    ///
+    /// FIXME (Oct 12, 2025): This builtin is INLINED at each call site, causing:
+    /// 1. Stack/variable confusion (must push to stack AND store in variable)
+    /// 2. Code bloat (full builtin code duplicated at every call)
+    /// 3. Complex error-prone logic for value persistence
+    /// TODO: Convert to real Z-Machine function with proper calling convention
     pub fn generate_exit_get_data_builtin(
         &mut self,
         args: &[IrId],
@@ -1057,6 +1115,8 @@ impl ZMachineCodeGen {
             // CRITICAL: Don't reuse existing mappings - always allocate fresh variable for builtins
             // because existing mapping might be from property access or other context
             let result_var = self.allocate_global_for_ir_id(target_ir_id);
+            // BUG FIX (Oct 12, 2025): Map to result_var so subsequent uses read from there
+            // We push to stack for immediate caller, but map IR ID to result_var for persistence
             self.ir_id_to_stack_var.insert(target_ir_id, result_var);
 
             log::error!(
@@ -1072,6 +1132,16 @@ impl ZMachineCodeGen {
                 Some(result_var),
                 None,
             )?;
+
+            // BUG FIX (Oct 12, 2025): Push result to stack for immediate caller
+            // The result is ALSO stored in result_var for persistence (multiple reads)
+            // Stack value is for immediate consumption, result_var is for later reads
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Or),
+                &[Operand::Variable(result_var), Operand::SmallConstant(0)],
+                Some(0), // Push to stack
+                None,
+            )?;
         }
 
         Ok(())
@@ -1081,6 +1151,12 @@ impl ZMachineCodeGen {
     /// Exit values are encoded as: (type << 14) | data
     /// Returns data portion (value & 0x3FFF) which is a string address
     /// CRITICAL: Marks the result IR ID in ir_id_from_property so print() uses print_paddr
+    ///
+    /// FIXME (Oct 12, 2025): This builtin is INLINED at each call site, causing:
+    /// 1. Stack/variable confusion (must push to stack AND store in variable)
+    /// 2. Code bloat (full builtin code duplicated at every call)
+    /// 3. Complex error-prone logic for value persistence
+    /// TODO: Convert to real Z-Machine function with proper calling convention
     pub fn generate_exit_get_message_builtin(
         &mut self,
         args: &[IrId],
@@ -1096,12 +1172,18 @@ impl ZMachineCodeGen {
         let exit_value_id = args[0];
         let exit_value_operand = self.resolve_ir_id_to_operand(exit_value_id)?;
 
-        if let Some(store_var) = target {
+        if let Some(target_ir_id) = target {
+            // Allocate proper Z-Machine variable for target IR ID
+            let result_var = self.allocate_global_for_ir_id(target_ir_id);
+            // BUG FIX (Oct 12, 2025): Map to result_var so subsequent uses read from there
+            // We push to stack for immediate caller, but map IR ID to result_var for persistence
+            self.ir_id_to_stack_var.insert(target_ir_id, result_var);
+
             // Use and (opcode 0x09) to mask lower 14 bits: value & 0x3FFF
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::And),
                 &[exit_value_operand, Operand::LargeConstant(0x3FFF)],
-                Some(store_var as u8),
+                Some(result_var),
                 None,
             )?;
 
@@ -1117,8 +1199,18 @@ impl ZMachineCodeGen {
             // REMOVED: self.ir_id_from_property.insert(store_var);
             log::debug!(
                 "🚪 EXIT: exit_get_message result stored to IR ID {} (NOT marked as property to avoid print_paddr with 0)",
-                store_var
+                target_ir_id
             );
+
+            // BUG FIX (Oct 12, 2025): Push result to stack for immediate caller
+            // The result is ALSO stored in result_var for persistence (multiple reads)
+            // Stack value is for immediate consumption, result_var is for later reads
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Or),
+                &[Operand::Variable(result_var), Operand::SmallConstant(0)],
+                Some(0), // Push to stack
+                None,
+            )?;
         }
 
         Ok(())
@@ -1132,6 +1224,12 @@ impl ZMachineCodeGen {
     ///
     /// Maps direction string to property (exit_north, exit_south, etc.)
     /// Returns: room ID for normal exits, string address for blocked exits, 0 if no exit
+    ///
+    /// FIXME (Oct 12, 2025): This builtin is INLINED at each call site, causing:
+    /// 1. Stack/variable confusion (must push to stack AND store in variable)
+    /// 2. Code bloat (full builtin code duplicated at every call - this is ~100+ bytes!)
+    /// 3. Complex error-prone logic for value persistence
+    /// TODO: Convert to real Z-Machine function with proper calling convention
     pub fn generate_get_exit_builtin(
         &mut self,
         args: &[IrId],
@@ -1406,8 +1504,10 @@ impl ZMachineCodeGen {
         // Step 10: Found label - extract type and data, pack result
         self.label_addresses.insert(found_label, self.code_address);
         self.record_final_address(found_label, self.code_address);
+        log::error!("🔍 GET_EXIT: Found label at PC 0x{:04x}", self.code_address);
 
         // loadb types_addr, index -> stack (type byte)
+        log::error!("🔍 GET_EXIT: About to emit loadb (type byte) at PC 0x{:04x}", self.code_address);
         self.emit_instruction_typed(
             Opcode::Op2(Op2::Loadb),
             &[
@@ -1417,14 +1517,17 @@ impl ZMachineCodeGen {
             Some(0), // Temp on stack
             None,
         )?;
+        log::error!("🔍 GET_EXIT: After loadb, now at PC 0x{:04x}", self.code_address);
 
         // mul type, 16384 -> stack (type_shifted, 16384 = 2^14)
+        log::error!("🔍 GET_EXIT: About to emit mul at PC 0x{:04x}", self.code_address);
         self.emit_instruction_typed(
             Opcode::Op2(Op2::Mul),
             &[Operand::Variable(0), Operand::LargeConstant(16384)],
             Some(0), // Keep on stack
             None,
         )?;
+        log::error!("🔍 GET_EXIT: After mul, now at PC 0x{:04x}", self.code_address);
 
         // loadw data_addr, index -> result var (data word)
         // Store directly to result to save stack manipulation
@@ -1442,6 +1545,7 @@ impl ZMachineCodeGen {
         };
 
         if result_var.is_some() {
+            log::error!("🔍 GET_EXIT: result_var exists, emitting loadw+or at PC 0x{:04x}", self.code_address);
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Loadw),
                 &[
@@ -1459,6 +1563,19 @@ impl ZMachineCodeGen {
                 Some(result_var.unwrap()),
                 None,
             )?;
+            log::error!("🔍 GET_EXIT: After loadw+or at PC 0x{:04x}", self.code_address);
+        } else {
+            log::error!("🔍 GET_EXIT: result_var is None, emitting pop at PC 0x{:04x}", self.code_address);
+            // BUG FIX: If no target, we still have type_shifted on stack from mul instruction
+            // We must pop it to avoid stack underflow in caller code
+            // Use pop (0OP:9) to discard the value
+            self.emit_instruction_typed(
+                Opcode::Op0(Op0::Pop),
+                &[],
+                None,
+                None,
+            )?;
+            log::error!("🔍 GET_EXIT: After pop at PC 0x{:04x}", self.code_address);
         }
 
         // Jump to end
@@ -1499,6 +1616,7 @@ impl ZMachineCodeGen {
         // Step 12: End label
         self.label_addresses.insert(end_label, self.code_address);
         self.record_final_address(end_label, self.code_address);
+        log::error!("🔍 GET_EXIT: End label at PC 0x{:04x}", self.code_address);
 
         Ok(())
     }
@@ -1539,11 +1657,15 @@ impl ZMachineCodeGen {
         }
 
         // For now, always return size 1 as a safe placeholder
-        if let Some(store_var) = target {
+        if let Some(target_ir_id) = target {
+            // Allocate proper Z-Machine variable for target IR ID
+            let result_var = self.allocate_global_for_ir_id(target_ir_id);
+            self.ir_id_to_stack_var.insert(target_ir_id, result_var);
+
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
                 &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
-                Some(store_var as u8),
+                Some(result_var),
                 None,
             )?;
         }

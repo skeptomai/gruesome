@@ -287,6 +287,9 @@ impl ZMachineCodeGen {
                     );
 
                     self.generate_builtin_function_call(*function, args, *target)?;
+                    // NOTE: Builtin functions handle their own result storage
+                    // They allocate variables and store results directly
+                    // Do NOT call use_stack_for_result here
                 } else {
                     log::debug!(
                         "📞 CALL user function ID {} with {} args",
@@ -296,13 +299,14 @@ impl ZMachineCodeGen {
 
                     // Generate user function call with proper reference registration
                     self.generate_user_function_call(*function, args, *target)?;
-                }
 
-                // CRITICAL: Register call result target for proper LoadVar resolution
-                // Use stack for call results (per Z-Machine specification)
-                if let Some(target_id) = target {
-                    self.use_stack_for_result(*target_id);
-                    log::debug!("Call result: IR ID {} -> stack", target_id);
+                    // CRITICAL: Register call result target for proper LoadVar resolution
+                    // Use stack for call results (per Z-Machine specification)
+                    // This is ONLY for user function calls, not builtins
+                    if let Some(target_id) = target {
+                        self.use_stack_for_result(*target_id);
+                        log::debug!("Call result: IR ID {} -> stack", target_id);
+                    }
                 }
             }
 

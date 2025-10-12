@@ -1,10 +1,25 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 11, 2025) - BUG #12 FIXED ✅
+## CURRENT STATUS (October 12, 2025) - EXIT SYSTEM STACK/VARIABLE CONFUSION 🔧
 
-**PROGRESS**: Fixed Bug #12 (Score corruption). Grammar pattern matching was using Global G01 (score) as temporary storage for dictionary addresses. Changed to use G200 instead. Score no longer corrupted.
+**PROGRESS**: Identified fundamental architecture issue with exit system builtins.
 
-**See**: `docs/GLOBAL_VARIABLES_ALLOCATION.md` for comprehensive global variable allocation map to prevent future collisions.
+**PROBLEM**: Exit builtins (exit_is_blocked, exit_get_data, exit_get_message, value_is_none, get_exit) are currently INLINED at each call site, causing:
+1. **Stack/Variable Confusion**: Inlined code must handle both immediate consumption (stack) and persistence (variables), leading to complex and error-prone logic
+2. **Code Bloat**: Each call site gets full builtin code inlined, violating Z-Machine size optimization principles
+3. **Multiple Bugs**: Stack underflow at PC 0x114f, "Invalid object number 7936" errors due to improper value flow
+
+**ROOT CAUSE**: Builtins were implemented as inline code generation, not as real functions with proper calling conventions.
+
+**SOLUTION**: Convert all exit builtins to real Z-Machine functions with:
+- Proper function headers and local variables
+- Clear calling conventions (arguments in, return via `ret`)
+- Call sites use `call_vs` instead of inline generation
+- Each builtin generated once, called many times
+
+**STATUS**: Ready to implement conversion. All 5 builtins need conversion: exit_is_blocked, exit_get_data, exit_get_message, value_is_none, get_exit.
+
+**See**: Implementation plan below.
 
 ### Bug 18: Jump Instruction Emission - 0OP rtrue Instead of 1OP Jump ✅ FIXED (Oct 10, 2025)
 - **Issue**: "Invalid Long form opcode 0x00 at address 1231" when typing "east" in mini_zork

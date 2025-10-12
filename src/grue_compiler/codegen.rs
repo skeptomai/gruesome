@@ -216,6 +216,7 @@ pub struct ZMachineCodeGen {
     pub label_addresses: IndexMap<IrId, usize>, // IR label ID -> byte address
     string_addresses: IndexMap<IrId, usize>,    // IR string ID -> byte address
     function_addresses: IndexMap<IrId, usize>,  // IR function ID -> function header byte address
+    function_names: IndexMap<IrId, String>,  // IR function ID -> function name (for debugging)
     function_locals_count: IndexMap<IrId, usize>, // IR function ID -> locals count (for header size calculation)
     function_header_locations: IndexMap<IrId, usize>, // IR function ID -> header byte location for patching
     current_function_locals: u8, // Track local variables allocated in current function (0-15)
@@ -368,6 +369,7 @@ impl ZMachineCodeGen {
             label_addresses: IndexMap::new(),
             string_addresses: IndexMap::new(),
             function_addresses: IndexMap::new(),
+            function_names: IndexMap::new(),
             function_locals_count: IndexMap::new(),
             function_header_locations: IndexMap::new(),
             current_function_locals: 0,
@@ -906,12 +908,18 @@ impl ZMachineCodeGen {
         let mut updated_mappings = Vec::new();
         for (func_id, relative_addr) in self.function_addresses.iter_mut() {
             let absolute_addr = self.final_code_base + *relative_addr;
+            let func_name = self.function_names.get(func_id).map(|s| s.as_str()).unwrap_or("?");
             log::debug!(
                 " PHASE3_FIX: Function ID {} address 0x{:04x} → 0x{:04x} (relative + 0x{:04x})",
                 func_id,
                 *relative_addr,
                 absolute_addr,
                 self.final_code_base
+            );
+            log::error!(
+                "🎯 USER_FUNCTION_FINAL: '{}' at runtime address 0x{:04x}",
+                func_name,
+                absolute_addr
             );
             *relative_addr = absolute_addr;
             updated_mappings.push((*func_id, absolute_addr));
@@ -6878,6 +6886,10 @@ impl ZMachineCodeGen {
         // NOTE: current_function_locals is already set by setup_function_local_mappings()
         // which is called before this function. We don't reset it here.
         self.current_function_name = Some(function.name.clone());
+
+        // Store function name for later logging with final addresses
+        self.function_names.insert(function.id, function.name.clone());
+
         log::debug!(
             " FUNCTION_START: Generating header for function '{}' with {} locals",
             function.name,
@@ -6885,7 +6897,7 @@ impl ZMachineCodeGen {
         );
 
         log::error!(
-            "🎯 USER_FUNCTION: '{}' starts at 0x{:04x}",
+            "🎯 USER_FUNCTION: '{}' starts at 0x{:04x} (code space, will be adjusted)",
             function.name,
             self.code_address
         );
