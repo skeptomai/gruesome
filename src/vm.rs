@@ -478,7 +478,7 @@ impl VM {
             };
             // Show call stack depth to distinguish frames
             let stack_depth = self.call_stack.len();
-            log::error!(
+            log::debug!(
                 "🔍 WRITE_VAR_2: value=0x{:04x} ({}), PC=0x{:04x}, frame_depth={}, inst_bytes={:02x?}",
                 value,
                 value,
@@ -488,9 +488,9 @@ impl VM {
             );
 
             // Dump entire call stack with return addresses to "weave together" execution flow
-            log::error!("🔍 CALL_STACK (depth={}):", self.call_stack.len());
+            log::debug!("🔍 CALL_STACK (depth={}):", self.call_stack.len());
             for (i, frame) in self.call_stack.iter().enumerate() {
-                log::error!(
+                log::debug!(
                     "  Frame[{}]: return_pc=0x{:04x}, num_locals={}, stack_base={}, return_store={:?}",
                     i,
                     frame.return_pc,
@@ -504,7 +504,7 @@ impl VM {
             if self.pc >= 10 && (self.pc as usize) < self.game.memory.len() {
                 let start = (self.pc as usize) - 10;
                 let end = ((self.pc as usize) + 10).min(self.game.memory.len());
-                log::error!(
+                log::debug!(
                     "🔍 MEMORY_CONTEXT (PC-10 to PC+10): {:02x?}",
                     &self.game.memory[start..end]
                 );
@@ -515,7 +515,7 @@ impl VM {
             // Decode the instruction at current PC
             let inst_str = self.format_instruction_at(self.pc);
 
-            log::error!(
+            log::debug!(
                 "🔍 WRITE_VAR_216: value=0x{:04x} ({}), PC=0x{:04x}, frame_depth={}, next_inst: {}",
                 value,
                 value,
@@ -526,7 +526,7 @@ impl VM {
         }
         // Log writes to Variables 236 and 239 (used in loadb that reads value 3 from address 0)
         if var == 236 || var == 239 {
-            log::error!(
+            log::debug!(
                 "🔍 WRITE_VAR_{}: value=0x{:04x} ({}), PC=0x{:04x}",
                 var,
                 value,
@@ -717,7 +717,7 @@ impl VM {
             if size_byte == 0 {
                 // Log when we hit terminator while searching for properties 20-22
                 if prop_num >= 20 && prop_num <= 22 {
-                    log::error!("🔍 get_property_addr: obj={}, prop={} -> NOT FOUND (hit terminator at addr=0x{:04x})",
+                    log::debug!("🔍 get_property_addr: obj={}, prop={} -> NOT FOUND (hit terminator at addr=0x{:04x})",
                         obj_num, prop_num, prop_addr);
                 }
                 return Ok(0); // Property not found
@@ -727,7 +727,7 @@ impl VM {
 
             // Log each property we encounter when searching for properties 20-22
             if prop_num >= 20 && prop_num <= 22 {
-                log::error!("🔍 PROP_SEARCH: obj={}, looking_for={}, found_prop={} at addr=0x{:04x}, size_byte=0x{:02x}, prop_size={}, size_bytes={}",
+                log::debug!("🔍 PROP_SEARCH: obj={}, looking_for={}, found_prop={} at addr=0x{:04x}, size_byte=0x{:02x}, prop_size={}, size_bytes={}",
                     obj_num, prop_num, prop_id, prop_addr, size_byte, prop_size, size_bytes);
             }
 

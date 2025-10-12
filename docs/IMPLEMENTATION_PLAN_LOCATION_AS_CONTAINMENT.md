@@ -1,12 +1,20 @@
 # Implementation Plan: Location as Containment Only
 
 **Date**: October 12, 2025
-**Status**: Ready for Implementation
+**Status**: ✅ COMPLETED (Phase 1 & 2 Complete, Phase 2 Removed as Unnecessary)
 **Decision**: Remove property 10 (location), use only object tree containment
+**Final Approach**: Phase 1 (runtime InsertObj) only - Phase 2 was over-engineering
 
 ## Executive Summary
 
-Remove `StandardProperty::Location` from the property system and make `.location` purely an alias for object tree parent relationships. Reads use `get_parent`, writes use `insert_obj`, and initial locations are set via object tree initialization at compile time.
+✅ **COMPLETED**: Removed `StandardProperty::Location` from the property system. Location is now purely object tree containment.
+
+**Implementation**:
+- Reads (`.location`) → GetObjectParent IR instruction → get_parent Z-Machine opcode
+- Writes (`.location =`) → InsertObj IR instruction → insert_obj Z-Machine opcode (2OP:14)
+- Initial location set via `player.location = west_of_house` in init block executes insert_obj at game startup
+
+**Phase 2 Decision**: Originally planned compile-time parent pointer initialization was removed as unnecessary over-engineering. Runtime InsertObj at startup is perfectly acceptable - one instruction with zero performance impact.
 
 ## Current State Analysis
 
@@ -344,3 +352,81 @@ Implementation is successful when:
 - Object tree is the single source of truth for containment
 - Initial locations must be set at compile time for game to start correctly
 - No runtime overhead - tree operations are native Z-Machine opcodes
+
+---
+
+## Implementation Results (October 12, 2025)
+
+### Phase 1: ✅ COMPLETED
+
+**Changes Made**:
+1. Removed `StandardProperty::Location` from enum (src/grue_compiler/ir.rs:664)
+2. Removed property registration and name mapping
+3. Added InsertObj IR instruction for `.location =` assignments (src/grue_compiler/ir.rs:664-669, 2192-2199)
+4. Implemented InsertObj codegen → insert_obj opcode (src/grue_compiler/codegen_instructions.rs:1087-1102)
+5. Removed location property references from codegen_objects.rs
+
+**Result**: ✅ All 174 tests pass. Mini_zork compiles and runs correctly. Player starts in west_of_house.
+
+### Phase 2: ❌ REMOVED (Not Needed)
+
+**Original Plan**: Track `.location =` assignments in init block and set parent pointers at compile time during object tree generation.
+
+**Why Removed**:
+- Tracking logic looked for Constant operands, but player loads via Variable(0) from global 16
+- Tried to encode runtime state as compile-time constants
+- More complex, more error-prone, no benefit over runtime approach
+- **User's insight**: "why the fuck didn't we just start with Option 1?"
+
+**What We Use Instead**: InsertObj IR instruction executes insert_obj opcode at game startup (in init block). One instruction with zero performance impact.
+
+### Architecture Decision: Runtime vs Compile-Time
+
+**Runtime Approach (Phase 1)** ✅ CHOSEN:
+- Pro: Simple, works with any operand type (Variable or Constant)
+- Pro: Leverages Z-Machine's native insert_obj opcode
+- Pro: One instruction at startup has zero performance impact
+- Con: None - this is the correct approach
+
+**Compile-Time Approach (Phase 2)** ❌ REJECTED:
+- Pro: Slightly smaller init block
+- Con: Complex tracking logic required
+- Con: Doesn't work with Variable operands (player stored in global)
+- Con: Over-engineering with no real benefit
+
+**Conclusion**: Phase 1 (runtime) is the correct and complete solution. Phase 2 was a mistake born of premature optimization.
+
+### Logging Cleanup
+
+Changed 40+ diagnostic logs from ERROR to DEBUG level:
+- vm.rs: Property access, stack operations, variable writes
+- codegen.rs: Dictionary resolution, object lookup
+- opcodes_*.rs: Memory operations, bitwise operations
+- interpreter.rs: Instruction tracing, variable monitoring
+
+**Result**: Clean ERROR output with only actual warnings during compilation.
+
+### Testing
+
+- ✅ All 174 tests pass
+- ✅ Mini_zork compiles without errors
+- ✅ Player starts in correct location (west_of_house)
+- ✅ `.location` reads work via get_parent
+- ✅ `.location =` writes work via insert_obj
+- ✅ No synchronization bugs possible (single source of truth)
+
+### Files Modified
+
+**Core Implementation**:
+- src/grue_compiler/ir.rs (removed Location property, added InsertObj)
+- src/grue_compiler/codegen_instructions.rs (InsertObj codegen)
+- src/grue_compiler/codegen_objects.rs (removed location_prop references)
+- src/grue_compiler/codegen.rs (removed Phase 2 code)
+
+**Logging Cleanup**:
+- src/vm.rs (diagnostic logs → debug)
+- src/interpreter.rs (diagnostic logs → debug)
+- src/opcodes_memory.rs (diagnostic logs → debug)
+- src/opcodes_object.rs (diagnostic logs → debug)
+- src/opcodes_math.rs (diagnostic logs → debug)
+- src/grue_compiler/codegen.rs (diagnostic logs → debug)

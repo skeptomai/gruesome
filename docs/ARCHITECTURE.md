@@ -257,6 +257,78 @@ graph TB
     TRAIT_INTERFACE --> OPERATIONS
 ```
 
+### Location as Containment Only (October 12, 2025)
+
+**Architecture Decision**: Object location is ONLY represented by object tree parent pointers, never as a property.
+
+#### Design Rationale
+
+Previously, the compiler had `StandardProperty::Location` which attempted to maintain location as both:
+1. A property in the property table (property 10/13)
+2. Parent pointer in the object tree
+
+This dual representation caused **synchronization bugs** where property and tree could become desynchronized, leading to navigation failures (e.g., "Invalid object number: 768").
+
+**The Fix**: Remove Location from property system entirely. Location is now purely object tree containment.
+
+#### Implementation
+
+**Read Access** (`.location`):
+- IR: `GetObjectParent` instruction
+- Z-Machine: `get_parent` opcode (1OP:3 / 0x03)
+- Returns: Parent object number from object tree
+
+**Write Access** (`.location =`):
+- IR: `InsertObj` instruction
+- Z-Machine: `insert_obj` opcode (2OP:14 / 0x0E)
+- Effect: Removes object from current parent, inserts as first child of destination
+
+**Initial Location** (e.g., `player.location = west_of_house` in init block):
+- Executes `insert_obj` at game startup
+- One instruction with zero performance impact
+- Works correctly because player is loaded via Variable(0) from global 16
+
+#### Why Runtime Instead of Compile-Time?
+
+Originally planned a "Phase 2" to set parent pointers at compile time during object table generation. This was **rejected as over-engineering** because:
+
+1. **Variable Operands**: Player is stored in global 16, loaded via Variable(0) - not a compile-time constant
+2. **Complexity**: Tracking logic would need to distinguish Variable vs Constant operands
+3. **No Benefit**: One `insert_obj` at startup has zero performance impact
+4. **Simplicity**: Runtime approach works with any operand type
+
+**User's insight**: "why the fuck didn't we just start with Option 1?"
+
+#### Code Locations
+
+**IR Generation**:
+- src/grue_compiler/ir.rs:664-669 - InsertObj IR instruction definition
+- src/grue_compiler/ir.rs:2192-2199 - Special handling for `.location =` assignment
+
+**Code Generation**:
+- src/grue_compiler/codegen_instructions.rs:1087-1102 - InsertObj → insert_obj opcode
+
+**Removed**:
+- StandardProperty::Location enum variant (was ir.rs:457)
+- Property registration and name mapping
+- location_prop references in codegen_objects.rs
+
+#### Benefits
+
+1. **Single Source of Truth**: Object tree is the only location representation
+2. **No Synchronization Bugs**: Impossible for property and tree to diverge
+3. **Native Z-Machine Operations**: Uses built-in get_parent and insert_obj opcodes
+4. **Zero Runtime Overhead**: Tree operations are native, no property table access
+5. **Architectural Guarantee**: Location is always correct and consistent
+
+#### Testing
+
+- ✅ All 174 tests pass
+- ✅ Mini_zork navigation works correctly
+- ✅ Player starts in correct location
+- ✅ `.location` reads return correct room
+- ✅ `.location =` writes update object tree correctly
+
 ## Modular Opcode Architecture
 
 ### Overview

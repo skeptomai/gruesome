@@ -1520,7 +1520,7 @@ impl ZMachineCodeGen {
                 // Calculate final address: base + header + (position * entry_size)
                 let final_addr = dict_base + header_size + (position * entry_size);
 
-                log::error!(
+                log::debug!(
                     "📖 DICT_RESOLVE: Word '{}' position {} -> dict_base=0x{:04x} + {} + ({} * {}) = 0x{:04x}, will patch location=0x{:04x}",
                     word, position, dict_base, header_size, position, entry_size, final_addr, reference.location
                 );
@@ -6484,7 +6484,7 @@ impl ZMachineCodeGen {
             "🔍 OBJECT_LOOKUP_START: Starting at 0x{:04x}",
             lookup_start_address
         );
-        log::error!("🔍 OBJECT_LOOKUP: Variable usage plan:");
+        log::debug!("🔍 OBJECT_LOOKUP: Variable usage plan:");
         log::error!("    - Variable(2) = noun dictionary address (INPUT)");
         log::error!("    - Variable(3) = result object ID (OUTPUT)");
         log::error!("    - Variable(4) = loop counter");
@@ -6690,7 +6690,7 @@ impl ZMachineCodeGen {
         )?;
 
         // End of function
-        log::error!("🔍 OBJECT_LOOKUP: End label at 0x{:04x}", self.code_address);
+        log::debug!("🔍 OBJECT_LOOKUP: End label at 0x{:04x}", self.code_address);
         self.label_addresses.insert(end_label, self.code_address);
         self.record_final_address(end_label, self.code_address);
 
