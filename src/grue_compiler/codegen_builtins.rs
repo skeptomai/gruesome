@@ -777,7 +777,7 @@ impl ZMachineCodeGen {
                         Opcode::Op2(Op2::Or),
                         &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
                         Some(0), // Store to stack (variable 0)
-                        None, // No branch
+                        None,    // No branch
                     )?;
 
                     log::debug!(
@@ -803,7 +803,7 @@ impl ZMachineCodeGen {
                         Opcode::Op2(Op2::Or),
                         &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
                         Some(0), // Store to stack (variable 0)
-                        None, // No branch
+                        None,    // No branch
                     )?;
                 }
             }
@@ -1507,7 +1507,10 @@ impl ZMachineCodeGen {
         log::error!("🔍 GET_EXIT: Found label at PC 0x{:04x}", self.code_address);
 
         // loadb types_addr, index -> stack (type byte)
-        log::error!("🔍 GET_EXIT: About to emit loadb (type byte) at PC 0x{:04x}", self.code_address);
+        log::error!(
+            "🔍 GET_EXIT: About to emit loadb (type byte) at PC 0x{:04x}",
+            self.code_address
+        );
         self.emit_instruction_typed(
             Opcode::Op2(Op2::Loadb),
             &[
@@ -1517,17 +1520,26 @@ impl ZMachineCodeGen {
             Some(0), // Temp on stack
             None,
         )?;
-        log::error!("🔍 GET_EXIT: After loadb, now at PC 0x{:04x}", self.code_address);
+        log::error!(
+            "🔍 GET_EXIT: After loadb, now at PC 0x{:04x}",
+            self.code_address
+        );
 
         // mul type, 16384 -> stack (type_shifted, 16384 = 2^14)
-        log::error!("🔍 GET_EXIT: About to emit mul at PC 0x{:04x}", self.code_address);
+        log::error!(
+            "🔍 GET_EXIT: About to emit mul at PC 0x{:04x}",
+            self.code_address
+        );
         self.emit_instruction_typed(
             Opcode::Op2(Op2::Mul),
             &[Operand::Variable(0), Operand::LargeConstant(16384)],
             Some(0), // Keep on stack
             None,
         )?;
-        log::error!("🔍 GET_EXIT: After mul, now at PC 0x{:04x}", self.code_address);
+        log::error!(
+            "🔍 GET_EXIT: After mul, now at PC 0x{:04x}",
+            self.code_address
+        );
 
         // loadw data_addr, index -> result var (data word)
         // Store directly to result to save stack manipulation
@@ -1545,7 +1557,10 @@ impl ZMachineCodeGen {
         };
 
         if result_var.is_some() {
-            log::error!("🔍 GET_EXIT: result_var exists, emitting loadw+or at PC 0x{:04x}", self.code_address);
+            log::error!(
+                "🔍 GET_EXIT: result_var exists, emitting loadw+or at PC 0x{:04x}",
+                self.code_address
+            );
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Loadw),
                 &[
@@ -1563,18 +1578,19 @@ impl ZMachineCodeGen {
                 Some(result_var.unwrap()),
                 None,
             )?;
-            log::error!("🔍 GET_EXIT: After loadw+or at PC 0x{:04x}", self.code_address);
+            log::error!(
+                "🔍 GET_EXIT: After loadw+or at PC 0x{:04x}",
+                self.code_address
+            );
         } else {
-            log::error!("🔍 GET_EXIT: result_var is None, emitting pop at PC 0x{:04x}", self.code_address);
+            log::error!(
+                "🔍 GET_EXIT: result_var is None, emitting pop at PC 0x{:04x}",
+                self.code_address
+            );
             // BUG FIX: If no target, we still have type_shifted on stack from mul instruction
             // We must pop it to avoid stack underflow in caller code
             // Use pop (0OP:9) to discard the value
-            self.emit_instruction_typed(
-                Opcode::Op0(Op0::Pop),
-                &[],
-                None,
-                None,
-            )?;
+            self.emit_instruction_typed(Opcode::Op0(Op0::Pop), &[], None, None)?;
             log::error!("🔍 GET_EXIT: After pop at PC 0x{:04x}", self.code_address);
         }
 

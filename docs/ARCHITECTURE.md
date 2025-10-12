@@ -2043,27 +2043,43 @@ The returned packed integer supports method calls:
 ### Implementation Phases
 
 #### Phase 1: Property Generation (codegen_objects.rs)
+**STATUS**: ✅ COMPLETE
+
 For each room during object table generation:
-1. Allocate property numbers for exit properties
+1. Allocate property numbers for exit properties (20, 21, 22)
 2. Build parallel arrays from `room.exits` data
 3. Encode direction strings to dictionary words
 4. Write properties to room object
 
-#### Phase 2: Builtin Implementation (codegen_builtins.rs)
-Implement `generate_get_exit_builtin()`:
-1. Extract room and direction arguments
-2. Encode direction string to dictionary word
-3. Load `exit_directions` property from room
-4. Loop through array searching for match
-5. On match: load type/data and pack result
-6. On no match: return 0
+**Implementation**: `src/grue_compiler/codegen_objects.rs:508-634`
 
-#### Phase 3: Accessor Methods (ir.rs)
-Add method handlers for exit result values:
-1. `.none()` → test if value == 0
-2. `.blocked` → extract type field
-3. `.destination` → extract data field as room ID
-4. `.message` → load string at data field address
+#### Phase 2: Builtin Implementation (codegen.rs)
+**STATUS**: ✅ COMPLETE (October 12, 2025)
+
+Implemented `create_builtin_get_exit()` as a real Z-Machine function:
+1. Function with 9 local variables (arguments in locals 1-2)
+2. Property address lookups for exit_directions, exit_types, exit_data
+3. Loop-based linear search through directions array
+4. On match: load type/data from parallel arrays and pack result
+5. On no match: return 0
+6. Return via `ret` instruction with proper Z-Machine calling conventions
+
+**Implementation**: `src/grue_compiler/codegen.rs:11100-11347` (get_exit function)
+
+**Calling**: `src/grue_compiler/codegen.rs:10979-11040` (call_builtin_function)
+
+**Size**: ~220 bytes (generated once, called via call_vs at each call site)
+
+#### Phase 3: Accessor Methods (codegen.rs)
+**STATUS**: ✅ COMPLETE
+
+Method handlers for exit result values implemented as real Z-Machine functions:
+1. `.none()` → implemented as builtin `value_is_none()` (codegen.rs:10769-10827)
+2. `.blocked` → implemented as builtin `exit_is_blocked()` (codegen.rs:10829-10897)
+3. `.destination` → implemented as builtin `exit_get_data()` (codegen.rs:10899-10935)
+4. `.message` → implemented as builtin `exit_get_message()` (codegen.rs:10937-10973)
+
+All four accessor builtins are real Z-Machine functions with proper calling conventions.
 
 ### Example Compilation
 
@@ -2116,11 +2132,13 @@ For a 50-room game: ~750-1000 bytes total, well within Z-Machine limits.
 ### References
 
 - **Design Date**: October 6, 2025
+- **Completion Date**: October 12, 2025
 - **Implementation Files**:
-  - `src/grue_compiler/codegen_objects.rs` - Property generation
-  - `src/grue_compiler/codegen_builtins.rs` - get_exit() builtin
-  - `src/grue_compiler/ir.rs` - Accessor method handlers
+  - `src/grue_compiler/codegen_objects.rs:508-634` - Property generation
+  - `src/grue_compiler/codegen.rs:10769-11347` - All exit system builtins (real Z-Machine functions)
+  - `src/grue_compiler/codegen.rs:10979-11040` - Builtin function calling infrastructure
 - **Test Case**: `examples/mini_zork.grue` - handle_go() function
+- **Documentation**: `docs/BUILTIN_FUNCTION_CONVERSION_PLAN.md` - Implementation plan and status
 
 ---
 

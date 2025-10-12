@@ -216,8 +216,9 @@ pub struct ZMachineCodeGen {
     pub label_addresses: IndexMap<IrId, usize>, // IR label ID -> byte address
     string_addresses: IndexMap<IrId, usize>,    // IR string ID -> byte address
     function_addresses: IndexMap<IrId, usize>,  // IR function ID -> function header byte address
-    function_names: IndexMap<IrId, String>,  // IR function ID -> function name (for debugging)
+    function_names: IndexMap<IrId, String>,     // IR function ID -> function name (for debugging)
     function_locals_count: IndexMap<IrId, usize>, // IR function ID -> locals count (for header size calculation)
+    builtin_functions: IndexMap<String, IrId>, // Builtin name -> pseudo function ID for address lookup
     function_header_locations: IndexMap<IrId, usize>, // IR function ID -> header byte location for patching
     current_function_locals: u8, // Track local variables allocated in current function (0-15)
     pub current_function_name: Option<String>, // Track current function being processed for debugging
@@ -371,6 +372,7 @@ impl ZMachineCodeGen {
             function_addresses: IndexMap::new(),
             function_names: IndexMap::new(),
             function_locals_count: IndexMap::new(),
+            builtin_functions: IndexMap::new(),
             function_header_locations: IndexMap::new(),
             current_function_locals: 0,
             current_function_name: None,
@@ -908,7 +910,11 @@ impl ZMachineCodeGen {
         let mut updated_mappings = Vec::new();
         for (func_id, relative_addr) in self.function_addresses.iter_mut() {
             let absolute_addr = self.final_code_base + *relative_addr;
-            let func_name = self.function_names.get(func_id).map(|s| s.as_str()).unwrap_or("?");
+            let func_name = self
+                .function_names
+                .get(func_id)
+                .map(|s| s.as_str())
+                .unwrap_or("?");
             log::debug!(
                 " PHASE3_FIX: Function ID {} address 0x{:04x} → 0x{:04x} (relative + 0x{:04x})",
                 func_id,
@@ -2148,6 +2154,15 @@ impl ZMachineCodeGen {
         } else {
             log::debug!("No init block found");
         }
+
+        // Phase 2.0.6: Generate builtin functions before user code
+        // This ensures builtins are available when user functions need to call them
+        log::info!(" GENERATING: Builtin functions (exit system)");
+        self.generate_builtin_functions()?;
+        log::info!(
+            " Builtin functions generated, code_address now at 0x{:04x}",
+            self.code_address
+        );
 
         let initial_code_size = self.code_space.len();
 
@@ -6888,7 +6903,8 @@ impl ZMachineCodeGen {
         self.current_function_name = Some(function.name.clone());
 
         // Store function name for later logging with final addresses
-        self.function_names.insert(function.id, function.name.clone());
+        self.function_names
+            .insert(function.id, function.name.clone());
 
         log::debug!(
             " FUNCTION_START: Generating header for function '{}' with {} locals",
@@ -9478,6 +9494,130 @@ impl ZMachineCodeGen {
         self.object_numbers = object_numbers;
     }
 
+    /// Generate all builtin functions as real Z-Machine functions
+    /// Called during code generation initialization to create function implementations
+    /// that can be called via call_vs instead of being inlined
+    pub fn generate_builtin_functions(&mut self) -> Result<(), CompilerError> {
+        log::debug!("Generating builtin functions");
+
+        // Generate each builtin function - start with easiest first
+        self.create_builtin_exit_get_data()?;
+        self.create_builtin_exit_get_message()?;
+        self.create_builtin_value_is_none()?;
+        self.create_builtin_exit_is_blocked()?;
+        self.create_builtin_get_exit()?;
+
+        log::debug!(
+            "Generated {} builtin functions",
+            self.builtin_functions.len()
+        );
+        Ok(())
+    }
+
+    /// Call a builtin function using call_vs
+    /// This replaces the old inline code generation with proper function calls
+    fn call_builtin_function(
+        &mut self,
+        name: &str,
+        args: &[IrId],
+        target: Option<IrId>,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "Calling builtin function '{}' with {} args at PC 0x{:04x}",
+            name,
+            args.len(),
+            self.code_address
+        );
+
+        // Look up builtin function address
+        let func_id = *self
+            .builtin_functions
+            .get(name)
+            .ok_or_else(|| CompilerError::CodeGenError(format!("Unknown builtin: {}", name)))?;
+
+        let func_addr = *self.function_addresses.get(&func_id).ok_or_else(|| {
+            CompilerError::CodeGenError(format!("Builtin not generated: {}", name))
+        })?;
+
+        // Convert arguments to operands
+        let mut operands = Vec::new();
+
+        // First operand is a placeholder for the packed function address
+        // This will be resolved later when final_code_base is known
+        operands.push(Operand::LargeConstant(placeholder_word()));
+
+        // Add function arguments
+        for &arg_id in args {
+            let arg_operand = self.resolve_ir_id_to_operand(arg_id)?;
+            operands.push(arg_operand);
+        }
+
+        // Emit call_vs instruction with placeholder
+        // If target exists, result goes to stack (variable 0)
+        // If no target, still need to call but discard result
+        let layout = self.emit_instruction_typed(
+            Opcode::OpVar(OpVar::CallVs),
+            &operands,
+            if target.is_some() { Some(0) } else { None }, // Store to stack if target exists
+            None,
+        )?;
+
+        // Create UnresolvedReference for the builtin function address
+        if let Some(operand_location) = layout.operand_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::FunctionCall,
+                    location: operand_location,
+                    target_id: func_id,
+                    is_packed_address: true,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+            log::debug!(
+                "Builtin '{}': Created UnresolvedReference at location 0x{:04x} for func_id {}",
+                name,
+                operand_location,
+                func_id
+            );
+        } else {
+            return Err(CompilerError::CodeGenError(format!(
+                "emit_instruction_typed didn't return operand_location for builtin '{}'",
+                name
+            )));
+        }
+
+        // If target exists, pop result from stack and store in target variable
+        if let Some(target_ir_id) = target {
+            let result_var = self.allocate_global_for_ir_id(target_ir_id);
+            self.ir_id_to_stack_var.insert(target_ir_id, result_var);
+
+            // Pop from stack: load from variable 0 (stack), store to result_var
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Or),
+                &[Operand::Variable(0), Operand::SmallConstant(0)], // Read from stack, OR with 0
+                Some(result_var),                                   // Store to result_var
+                None,
+            )?;
+
+            // Also push back to stack for immediate consumption
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Or),
+                &[Operand::Variable(result_var), Operand::SmallConstant(0)],
+                Some(0), // Push to stack
+                None,
+            )?;
+        }
+
+        log::debug!(
+            "Called builtin function '{}', result stored, PC now 0x{:04x}",
+            name,
+            self.code_address
+        );
+
+        Ok(())
+    }
+
     /// Check if a function ID corresponds to a builtin function
     pub fn is_builtin_function(&self, function_id: IrId) -> bool {
         self.builtin_function_names.contains_key(&function_id)
@@ -9531,11 +9671,11 @@ impl ZMachineCodeGen {
             "list_contents" => self.generate_list_contents_builtin(args),
             "get_object_contents" => self.generate_get_object_contents_builtin(args, target),
             "object_is_empty" => self.generate_object_is_empty_builtin(args, target),
-            "value_is_none" => self.generate_value_is_none_builtin(args, target),
-            "get_exit" => self.generate_get_exit_builtin(args, target),
-            "exit_is_blocked" => self.generate_exit_is_blocked_builtin(args, target),
-            "exit_get_destination" => self.generate_exit_get_data_builtin(args, target),
-            "exit_get_message" => self.generate_exit_get_message_builtin(args, target),
+            "value_is_none" => self.call_builtin_function("value_is_none", args, target),
+            "get_exit" => self.call_builtin_function("get_exit", args, target),
+            "exit_is_blocked" => self.call_builtin_function("exit_is_blocked", args, target),
+            "exit_get_destination" => self.call_builtin_function("exit_get_data", args, target),
+            "exit_get_message" => self.call_builtin_function("exit_get_message", args, target),
             "get_object_size" => self.generate_get_object_size_builtin(args, target),
             "array_add_item" => self.generate_array_add_item_builtin(args, target),
             // String functions
@@ -10667,6 +10807,606 @@ impl ZMachineCodeGen {
 
     // PLACEHOLDER: Instruction emission functions moved to codegen_instructions.rs module
     // This comment preserves the section organization while the functions are now extracted
+
+    // ============================================================================
+    // BUILTIN FUNCTION GENERATION
+    // ============================================================================
+    // These methods create real Z-Machine functions for exit system builtins
+    // instead of inlining the code at each call site. This provides:
+    // - Clear calling conventions (no stack/variable confusion)
+    // - Code size reduction (generate once, call many times)
+    // - Proper function frames with local variables
+
+    /// Create exit_get_data builtin function
+    /// Signature: exit_get_data(exit_value) -> u16
+    /// Returns the data portion of an exit value (bits 0-13)
+    fn create_builtin_exit_get_data(&mut self) -> Result<(), CompilerError> {
+        log::debug!("Creating builtin function: exit_get_data");
+
+        // Allocate function ID
+        // Use high IR IDs (starting at 1000000) to avoid conflicts with user code
+        let func_id: IrId = 1000000 + self.builtin_functions.len() as u32;
+
+        // V3 functions must be at even addresses
+        if self.code_address % 2 != 0 {
+            self.emit_byte(0xB4)?; // padding (NOP: print_ret "")
+        }
+
+        // Capture function address AFTER alignment check
+        let func_addr = self.code_address;
+
+        // Emit function header: V3 = local count + (count * 2 bytes default values)
+        let num_locals = 2; // local 1 = exit_value (arg), local 2 = result (temp)
+        self.emit_byte(num_locals)?;
+        for _ in 0..num_locals {
+            self.emit_word(0)?; // Default value = 0
+        }
+
+        // Function body:
+        // 1. and local_1, 0x3FFF -> local_2
+        // 2. ret local_2
+
+        // AND operation: local_1 & 0x3FFF -> local_2
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::And),
+            &[
+                Operand::Variable(1),           // local_1 (exit_value argument)
+                Operand::LargeConstant(0x3FFF), // mask for bits 0-13
+            ],
+            Some(2), // store result in local_2
+            None,
+        )?;
+
+        // Return local_2
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::Ret),
+            &[Operand::Variable(2)], // return value from local_2
+            None,
+            None,
+        )?;
+
+        // Register the function
+        self.builtin_functions
+            .insert("exit_get_data".to_string(), func_id);
+        self.function_addresses.insert(func_id, func_addr);
+        self.record_final_address(func_id, func_addr);
+
+        log::debug!(
+            "Created exit_get_data at address 0x{:04x} (packed: 0x{:04x})",
+            func_addr,
+            func_addr / 2
+        );
+
+        Ok(())
+    }
+
+    /// Create exit_get_message builtin function
+    /// Signature: exit_get_message(exit_value) -> u16
+    /// Returns the message portion of an exit value (bits 0-13)
+    /// Identical to exit_get_data but kept separate for semantic clarity
+    fn create_builtin_exit_get_message(&mut self) -> Result<(), CompilerError> {
+        log::debug!("Creating builtin function: exit_get_message");
+
+        let func_id: IrId = 1000000 + self.builtin_functions.len() as u32;
+
+        if self.code_address % 2 != 0 {
+            self.emit_byte(0xB4)?;
+        }
+
+        let func_addr = self.code_address;
+
+        let num_locals = 2;
+        self.emit_byte(num_locals)?;
+        for _ in 0..num_locals {
+            self.emit_word(0)?;
+        }
+
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::And),
+            &[Operand::Variable(1), Operand::LargeConstant(0x3FFF)],
+            Some(2),
+            None,
+        )?;
+
+        self.emit_instruction_typed(Opcode::Op1(Op1::Ret), &[Operand::Variable(2)], None, None)?;
+
+        self.builtin_functions
+            .insert("exit_get_message".to_string(), func_id);
+        self.function_addresses.insert(func_id, func_addr);
+        self.record_final_address(func_id, func_addr);
+
+        log::debug!(
+            "Created exit_get_message at address 0x{:04x} (packed: 0x{:04x})",
+            func_addr,
+            func_addr / 2
+        );
+
+        Ok(())
+    }
+
+    /// Create value_is_none builtin function
+    /// Signature: value_is_none(value) -> bool
+    /// Returns 1 if value == 0, else 0
+    fn create_builtin_value_is_none(&mut self) -> Result<(), CompilerError> {
+        log::debug!(
+            "Creating builtin function: value_is_none at code_address 0x{:04x}",
+            self.code_address
+        );
+
+        let func_id: IrId = 1000000 + self.builtin_functions.len() as u32;
+
+        if self.code_address % 2 != 0 {
+            log::debug!(
+                "value_is_none: Emitting padding byte at 0x{:04x}",
+                self.code_address
+            );
+            self.emit_byte(0xB4)?;
+        }
+
+        let func_addr = self.code_address;
+
+        let num_locals = 2;
+        log::debug!(
+            "value_is_none: Emitting function header (num_locals={}) at 0x{:04x}",
+            num_locals,
+            self.code_address
+        );
+        self.emit_byte(num_locals)?;
+        for _ in 0..num_locals {
+            self.emit_word(0)?;
+        }
+        log::debug!(
+            "value_is_none: Function header complete, code_address now at 0x{:04x}",
+            self.code_address
+        );
+
+        // Simple implementation: je local_1, 0 ?return_1
+        // If value == 0, branch to return 1, else fall through to return 0
+
+        // JE local_1, 0 with placeholder branch
+        let je_layout = self.emit_instruction_typed(
+            Opcode::Op2(Op2::Je),
+            &[Operand::Variable(1), Operand::SmallConstant(0)],
+            None,
+            None, // No branch - we'll manually patch it
+        )?;
+
+        // Manually emit branch bytes: we need to skip the next "ret 0" (2 bytes: opcode + operand)
+        // Branch format: bit 15=1 (branch on true), bit 14=0 (2-byte form), bits 13-0 = offset
+        // Offset = 2 (skip ret 0 instruction which is 2 bytes)
+        // 0x8002 = 1000000000000010 = branch on true, 2-byte form, offset 2
+        self.emit_byte(0x80)?; // High byte: branch on true, 2-byte form
+        self.emit_byte(0x02)?; // Low byte: offset 2
+
+        // Fall through: value != 0, return 0
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::Ret),
+            &[Operand::SmallConstant(0)],
+            None,
+            None,
+        )?;
+
+        // Branch target: value == 0, return 1
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::Ret),
+            &[Operand::SmallConstant(1)],
+            None,
+            None,
+        )?;
+
+        self.builtin_functions
+            .insert("value_is_none".to_string(), func_id);
+        self.function_addresses.insert(func_id, func_addr);
+        self.record_final_address(func_id, func_addr);
+
+        log::debug!(
+            "Created value_is_none at address 0x{:04x} (packed: 0x{:04x})",
+            func_addr,
+            func_addr / 2
+        );
+
+        Ok(())
+    }
+
+    /// Create exit_is_blocked builtin function
+    /// Signature: exit_is_blocked(exit_value) -> bool
+    /// Returns 1 if bit 14 is set (blocked), else 0
+    fn create_builtin_exit_is_blocked(&mut self) -> Result<(), CompilerError> {
+        log::debug!("Creating builtin function: exit_is_blocked");
+
+        let func_id: IrId = 1000000 + self.builtin_functions.len() as u32;
+
+        if self.code_address % 2 != 0 {
+            self.emit_byte(0xB4)?;
+        }
+
+        let func_addr = self.code_address;
+
+        let num_locals = 2;
+        self.emit_byte(num_locals)?;
+        for _ in 0..num_locals {
+            self.emit_word(0)?;
+        }
+
+        // jl local_1, 0x4000: if value < 0x4000, not blocked (return 0), else blocked (return 1)
+        // Branch on true (value < 0x4000) to skip "ret 1" and fall through to "ret 0"
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Jl),
+            &[Operand::Variable(1), Operand::LargeConstant(0x4000)],
+            None,
+            None, // No branch - we'll manually emit it
+        )?;
+
+        // Manually emit branch bytes: skip "ret 1" instruction (2 bytes)
+        // Branch format: bit 15=1 (branch on true), bit 14=0 (2-byte form), bits 13-0 = offset
+        // Offset = 2 (skip ret 1 instruction which is 2 bytes)
+        self.emit_byte(0x80)?; // High byte: branch on true, 2-byte form
+        self.emit_byte(0x02)?; // Low byte: offset 2
+
+        // Fall through: value >= 0x4000, blocked, return 1
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::Ret),
+            &[Operand::SmallConstant(1)],
+            None,
+            None,
+        )?;
+
+        // Branch target: value < 0x4000, not blocked, return 0
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::Ret),
+            &[Operand::SmallConstant(0)],
+            None,
+            None,
+        )?;
+
+        self.builtin_functions
+            .insert("exit_is_blocked".to_string(), func_id);
+        self.function_addresses.insert(func_id, func_addr);
+        self.record_final_address(func_id, func_addr);
+
+        log::debug!(
+            "Created exit_is_blocked at address 0x{:04x} (packed: 0x{:04x})",
+            func_addr,
+            func_addr / 2
+        );
+
+        Ok(())
+    }
+
+    /// Create get_exit builtin function as a real Z-Machine function
+    ///
+    /// Signature: get_exit(room, direction) -> u16
+    ///
+    /// Algorithm:
+    /// 1. Get addresses of three parallel array properties: exit_directions, exit_types, exit_data
+    /// 2. Calculate num_exits from exit_directions property length (bytes / 2)
+    /// 3. Loop through exit_directions array comparing each direction with input parameter
+    /// 4. When match found at index N:
+    ///    - Load type byte from exit_types[N] (0=normal, 1=blocked)
+    ///    - Load data word from exit_data[N] (room_id or message_addr)
+    ///    - Pack result as: (type << 14) | data
+    /// 5. Return 0 if no match found
+    ///
+    /// Return value encoding:
+    /// - 0x0000: No exit found
+    /// - 0x0000-0x3FFF: Normal exit (type=0, data=room_id)
+    /// - 0x4000-0x7FFF: Blocked exit (type=1, data=message_addr)
+    ///
+    /// Local variables:
+    /// - 1: room (argument), 2: direction (argument)
+    /// - 3: directions_addr, 4: types_addr, 5: data_addr
+    /// - 6: index (loop counter), 7: num_exits, 8: type_byte/temp, 9: result
+    fn create_builtin_get_exit(&mut self) -> Result<(), CompilerError> {
+        log::debug!(
+            "Creating builtin function: get_exit at code_address 0x{:04x}",
+            self.code_address
+        );
+
+        let func_id: IrId = 1000000 + self.builtin_functions.len() as u32;
+
+        if self.code_address % 2 != 0 {
+            log::debug!(
+                "get_exit: Emitting padding byte at 0x{:04x}",
+                self.code_address
+            );
+            self.emit_byte(0xB4)?;
+        }
+
+        let func_addr = self.code_address;
+
+        // Need 9 locals for the complex loop logic
+        let num_locals = 9;
+        log::debug!(
+            "get_exit: Emitting function header (num_locals={}) at 0x{:04x}",
+            num_locals,
+            self.code_address
+        );
+        self.emit_byte(num_locals)?;
+        log::debug!(
+            "get_exit: Emitted num_locals byte, now at 0x{:04x}",
+            self.code_address
+        );
+        for i in 0..num_locals {
+            log::debug!(
+                "get_exit: Emitting default value {} at 0x{:04x}",
+                i,
+                self.code_address
+            );
+            self.emit_word(0)?;
+        }
+        log::debug!(
+            "get_exit: Function header complete, code_address now at 0x{:04x}",
+            self.code_address
+        );
+
+        // Local variables:
+        // 1: room (arg), 2: direction (arg)
+        // 3: directions_addr, 4: types_addr, 5: data_addr
+        // 6: index, 7: num_exits, 8: type_byte, 9: result
+
+        // Get property numbers for parallel arrays
+        let exit_directions_prop = *self.property_numbers.get("exit_directions").unwrap_or(&20);
+        let exit_types_prop = *self.property_numbers.get("exit_types").unwrap_or(&21);
+        let exit_data_prop = *self.property_numbers.get("exit_data").unwrap_or(&22);
+
+        // Allocate labels for control flow
+        let not_found_label = self.next_string_id;
+        self.next_string_id += 1;
+        let found_label = self.next_string_id;
+        self.next_string_id += 1;
+        let loop_start_label = self.next_string_id;
+        self.next_string_id += 1;
+        let end_label = self.next_string_id;
+        self.next_string_id += 1;
+
+        // Step 1: Get address of exit_directions property -> local_3 (directions_addr)
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::GetPropAddr),
+            &[
+                Operand::Variable(1), // local_1 = room (argument)
+                Operand::SmallConstant(exit_directions_prop),
+            ],
+            Some(3), // store in local_3 (directions_addr)
+            None,
+        )?;
+
+        // Step 2: Check if property exists (addr == 0 means no exits)
+        let branch_layout = self.emit_instruction(
+            0x01, // je - branch if addr == 0
+            &[
+                Operand::Variable(3), // local_3 (directions_addr)
+                Operand::SmallConstant(0),
+            ],
+            None,
+            Some(-1), // Branch on true (if addr == 0, goto not_found)
+        )?;
+
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::Branch,
+                location: branch_layout
+                    .branch_location
+                    .expect("je needs branch location"),
+                target_id: not_found_label,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
+
+        // Step 3: Get addresses of exit_types and exit_data properties
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::GetPropAddr),
+            &[
+                Operand::Variable(1), // local_1 = room
+                Operand::SmallConstant(exit_types_prop),
+            ],
+            Some(4), // store in local_4 (types_addr)
+            None,
+        )?;
+
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::GetPropAddr),
+            &[
+                Operand::Variable(1), // local_1 = room
+                Operand::SmallConstant(exit_data_prop),
+            ],
+            Some(5), // store in local_5 (data_addr)
+            None,
+        )?;
+
+        // Step 4: Get length of exit_directions array and calculate num_exits
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::GetPropLen),
+            &[Operand::Variable(3)], // local_3 (directions_addr)
+            Some(7),                 // store in local_7 (num_exits)
+            None,
+        )?;
+
+        // Divide by 2 to get num_exits (property length is in bytes, each word is 2 bytes)
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Div),
+            &[Operand::Variable(7), Operand::SmallConstant(2)],
+            Some(7), // store quotient in local_7 (num_exits)
+            None,
+        )?;
+
+        // Step 5: Initialize loop counter (index = 0)
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Store),
+            &[Operand::Variable(6), Operand::SmallConstant(0)], // local_6 (index) = 0
+            None,                                               // Store does NOT use store_var
+            None,
+        )?;
+
+        // Step 6: Loop start
+        self.label_addresses
+            .insert(loop_start_label, self.code_address);
+        self.record_final_address(loop_start_label, self.code_address);
+
+        // Check if index >= num_exits -> not_found_label
+        let loop_check_layout = self.emit_instruction(
+            0x02, // jl - jump if index < num_exits
+            &[
+                Operand::Variable(6), // local_6 (index)
+                Operand::Variable(7), // local_7 (num_exits)
+            ],
+            None,
+            Some(0x7FFF), // Branch on false (when index >= num_exits)
+        )?;
+
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::Branch,
+                location: loop_check_layout
+                    .branch_location
+                    .expect("jl needs branch location"),
+                target_id: not_found_label,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
+
+        // Step 7: Load current direction word from array -> local_8 (temp)
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Loadw),
+            &[
+                Operand::Variable(3), // local_3 (directions_addr)
+                Operand::Variable(6), // local_6 (index)
+            ],
+            Some(8), // store in local_8 (temp)
+            None,
+        )?;
+
+        // Step 8: Compare current direction with parameter -> found_label
+        let compare_layout = self.emit_instruction_typed(
+            Opcode::Op2(Op2::Je),
+            &[
+                Operand::Variable(8), // local_8 (current dir)
+                Operand::Variable(2), // local_2 (direction arg)
+            ],
+            None,
+            Some(-1), // Branch on true (if equal, goto found)
+        )?;
+
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::Branch,
+                location: compare_layout
+                    .branch_location
+                    .expect("je needs branch location"),
+                target_id: found_label,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
+
+        // Step 9: Increment index and loop
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Add),
+            &[Operand::Variable(6), Operand::SmallConstant(1)],
+            Some(6), // store back to local_6 (index)
+            None,
+        )?;
+
+        // Jump back to loop start
+        let loop_jump_layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::Jump),
+            &[Operand::LargeConstant(placeholder_word())],
+            None,
+            None,
+        )?;
+
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::Jump,
+                location: loop_jump_layout
+                    .operand_location
+                    .expect("jump needs operand location"),
+                target_id: loop_start_label,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
+
+        // Step 10: Found label - extract type and data, pack result
+        self.label_addresses.insert(found_label, self.code_address);
+        self.record_final_address(found_label, self.code_address);
+
+        // loadb types_addr, index -> local_8 (type byte)
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Loadb),
+            &[
+                Operand::Variable(4), // local_4 (types_addr)
+                Operand::Variable(6), // local_6 (index)
+            ],
+            Some(8), // store in local_8 (type_byte)
+            None,
+        )?;
+
+        // mul type, 16384 -> local_8 (type_shifted, 16384 = 2^14)
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Mul),
+            &[Operand::Variable(8), Operand::LargeConstant(16384)],
+            Some(8), // store in local_8 (type_shifted)
+            None,
+        )?;
+
+        // loadw data_addr, index -> local_9 (data word)
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Loadw),
+            &[
+                Operand::Variable(5), // local_5 (data_addr)
+                Operand::Variable(6), // local_6 (index)
+            ],
+            Some(9), // store in local_9 (result)
+            None,
+        )?;
+
+        // or type_shifted, data -> local_9 (result)
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Or),
+            &[Operand::Variable(8), Operand::Variable(9)],
+            Some(9), // store in local_9 (result)
+            None,
+        )?;
+
+        // Return result
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::Ret),
+            &[Operand::Variable(9)], // return local_9 (result)
+            None,
+            None,
+        )?;
+
+        // Step 11: Not found label - return 0
+        self.label_addresses
+            .insert(not_found_label, self.code_address);
+        self.record_final_address(not_found_label, self.code_address);
+
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::Ret),
+            &[Operand::SmallConstant(0)], // return 0 (not found)
+            None,
+            None,
+        )?;
+
+        self.builtin_functions
+            .insert("get_exit".to_string(), func_id);
+        self.function_addresses.insert(func_id, func_addr);
+        self.record_final_address(func_id, func_addr);
+
+        log::debug!(
+            "Created get_exit at address 0x{:04x} (packed: 0x{:04x})",
+            func_addr,
+            func_addr / 2
+        );
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
