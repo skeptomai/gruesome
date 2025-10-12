@@ -2817,9 +2817,6 @@ impl ZMachineCodeGen {
                         "object_is_empty" => {
                             self.translate_object_is_empty_builtin_inline(args, target)?
                         }
-                        "value_is_none" => {
-                            self.translate_value_is_none_builtin_inline(args, target)?
-                        }
                         "get_object_size" => {
                             self.translate_get_object_size_builtin_inline(args, target)?
                         }
@@ -3879,47 +3876,6 @@ impl ZMachineCodeGen {
 
         log::debug!(
             " PHASE3_OBJECT_IS_EMPTY: Object_is_empty builtin translated successfully ({} bytes)",
-            layout.total_size
-        );
-        Ok(())
-    }
-
-    /// SINGLE-PATH MIGRATION: Phase 3 - Check if value is none/null (Tier 3)
-    fn translate_value_is_none_builtin_inline(
-        &mut self,
-        args: &[IrId],
-        target: Option<IrId>,
-    ) -> Result<(), CompilerError> {
-        if args.len() != 1 {
-            return Err(CompilerError::CodeGenError(format!(
-                "value_is_none expects 1 argument, got {}",
-                args.len()
-            )));
-        }
-
-        log::debug!(" PHASE3_VALUE_IS_NONE: Translating value_is_none builtin inline");
-
-        let value_operand = self.resolve_ir_id_to_operand(args[0])?;
-
-        // Compare with 0 (null value in Z-Machine)
-        let layout = self.emit_instruction_typed(
-            Opcode::Op2(Op2::Je),
-            &[value_operand, Operand::SmallConstant(0)],
-            Some(0),
-            None,
-        )?;
-
-        // emit_instruction already pushed bytes to code_space
-
-        if let Some(target_id) = target {
-            // Comparison instruction stores to stack (variable 0) - create stack mapping
-            self.ir_id_to_stack_var
-                .insert(target_id, self.stack_depth as u8);
-            self.stack_depth += 1;
-        }
-
-        log::debug!(
-            " PHASE3_VALUE_IS_NONE: Value_is_none builtin translated successfully ({} bytes)",
             layout.total_size
         );
         Ok(())
