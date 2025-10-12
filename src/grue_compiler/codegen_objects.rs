@@ -210,7 +210,7 @@ impl ZMachineCodeGen {
 
         // Step 2: Add essential properties that player object always needs
         all_properties.insert("description".to_string()); // Player description property
-        // location removed - uses object tree parent only (Oct 12, 2025)
+                                                          // location removed - uses object tree parent only (Oct 12, 2025)
 
         // Use property numbers from IR's PropertyManager to ensure consistency
         // This ensures object table generation uses the same property numbers as IR code generation
@@ -372,7 +372,7 @@ impl ZMachineCodeGen {
             // Set default property values for rooms
             room_properties.set_string(desc_prop, room.description.clone());
             room_properties.set_byte(visited_prop, 0); // Initially not visited
-            // location property removed - rooms use object tree containment (Oct 12, 2025)
+                                                       // location property removed - rooms use object tree containment (Oct 12, 2025)
             room_properties.set_byte(on_look_prop, 0); // No special on_look handler by default
 
             // Generate exit properties for room navigation using parallel arrays
