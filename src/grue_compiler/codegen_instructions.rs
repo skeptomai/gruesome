@@ -1084,6 +1084,52 @@ impl ZMachineCodeGen {
                 self.use_stack_for_result(*target);
             }
 
+            IrInstruction::InsertObj { object, destination } => {
+                // Z-Machine insert_obj opcode: sets object's parent, updates tree structure
+                // (Oct 12, 2025): Used for .location = assignment
+                // This removes object from current parent and inserts as first child of destination
+
+                let obj_operand = self.resolve_ir_id_to_operand(*object)?;
+                let dest_operand = self.resolve_ir_id_to_operand(*destination)?;
+
+                // Track initial locations for compile-time object tree initialization
+                // (Phase 2: Oct 12, 2025): When in init block, extract actual object numbers from operands
+                // and store mapping for use during object table generation
+                if self.in_init_block {
+                    // Extract object numbers from resolved operands
+                    let obj_num = match obj_operand {
+                        Operand::SmallConstant(n) => Some(n as u16),
+                        Operand::Constant(n) => Some(n),
+                        Operand::LargeConstant(n) => Some(n),
+                        _ => None,
+                    };
+                    let parent_num = match dest_operand {
+                        Operand::SmallConstant(n) => Some(n as u16),
+                        Operand::Constant(n) => Some(n),
+                        Operand::LargeConstant(n) => Some(n),
+                        _ => None,
+                    };
+
+                    if let (Some(obj), Some(parent)) = (obj_num, parent_num) {
+                        // Store using actual object numbers for lookup during object entry creation
+                        self.initial_locations.insert(*object, *destination); // Keep for reference
+                        self.initial_locations_by_number.insert(obj, parent);
+                        log::warn!(
+                            "🏗️ INITIAL_LOCATION_TRACKED: Object #{} -> Parent #{} (IR {} -> IR {}) at compile time",
+                            obj, parent, object, destination
+                        );
+                    }
+                }
+
+                // Emit insert_obj instruction (2OP:14 = 0x0E)
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::InsertObj),
+                    &[obj_operand, dest_operand],
+                    None,    // No result
+                    None,    // No branch
+                )?;
+            }
+
             IrInstruction::StringIndexOf {
                 target,
                 string,

@@ -252,6 +252,14 @@ pub struct ZMachineCodeGen {
     /// Exit directions for each room: room_name -> Vec<direction_name>
     /// Used to create DictionaryRef UnresolvedReferences when writing exit_directions property
     pub room_exit_directions: IndexMap<String, Vec<String>>,
+    /// Initial parent-child locations set by InsertObj in init block
+    /// (Oct 12, 2025): Maps object IR ID -> parent IR ID for compile-time tree initialization
+    /// These are detected during IR processing when in_init_block=true
+    pub initial_locations: IndexMap<IrId, IrId>,
+    /// Initial parent-child locations using actual Z-Machine object numbers
+    /// (Oct 12, 2025): Maps object number -> parent object number for compile-time tree initialization
+    /// Populated during code generation when operands are resolved
+    pub initial_locations_by_number: IndexMap<u16, u16>,
     /// Track blocked exit message string IDs for UnresolvedReference creation
     /// Maps room name -> Vec of (exit_index, string_id) for blocked exits
     pub room_exit_messages: IndexMap<String, Vec<(usize, u32)>>,
@@ -387,6 +395,8 @@ impl ZMachineCodeGen {
             object_numbers: IndexMap::new(),
             room_to_object_id: IndexMap::new(),
             room_exit_directions: IndexMap::new(),
+            initial_locations: IndexMap::new(),
+            initial_locations_by_number: IndexMap::new(),
             room_exit_messages: IndexMap::new(),
             property_numbers,
             object_properties: IndexMap::new(),
@@ -572,6 +582,9 @@ impl ZMachineCodeGen {
         log::info!("Phase 1: Content analysis and preparation");
         self.layout_memory_structures(&ir)?; // CRITICAL: Plan memory layout before generation
         self.setup_comprehensive_id_mappings(&ir);
+        // Phase 2 (Oct 12, 2025): Setup IR ID to object number mapping BEFORE code generation
+        // This allows InsertObj tracking in init block to resolve object numbers at compile time
+        self.setup_ir_id_to_object_mapping(&ir)?;
         self.analyze_properties(&ir)?;
         self.collect_strings(&ir)?;
         let (prompt_id, unknown_command_id) = self.add_main_loop_strings()?;
@@ -4679,11 +4692,24 @@ impl ZMachineCodeGen {
 
         // Parent/sibling/child relationships (V3 uses 1 byte each)
         // Resolve IR IDs to actual Z-Machine object numbers
-        let parent = object
-            .parent
-            .and_then(|id| object_id_to_number.get(&id))
-            .copied()
-            .unwrap_or(0);
+
+        // PHASE 2 (Oct 12, 2025): Check initial_locations_by_number for compile-time parent setting
+        // If this object had .location = X in init block, use that as parent
+        let parent = if let Some(&parent_num) = self.initial_locations_by_number.get(&(obj_num as u16)) {
+            log::warn!(
+                "🏗️ INITIAL_LOCATION_SET: Object {} ('{}') parent set to {} at compile time",
+                obj_num, object.short_name, parent_num
+            );
+            parent_num as u8
+        } else {
+            // No initial location - use default from IR (typically 0)
+            object
+                .parent
+                .and_then(|id| object_id_to_number.get(&id))
+                .copied()
+                .unwrap_or(0)
+        };
+
         let sibling = object
             .sibling
             .and_then(|id| object_id_to_number.get(&id))
@@ -4698,6 +4724,36 @@ impl ZMachineCodeGen {
         self.write_to_object_space(obj_offset + 4, parent)?;
         self.write_to_object_space(obj_offset + 5, sibling)?;
         self.write_to_object_space(obj_offset + 6, child)?;
+
+        // PHASE 2 (Oct 12, 2025): Update parent's child/sibling chain if initial location was set
+        // When object A has parent B set at compile time, we need to:
+        // 1. Make A the first child of B (or add to sibling chain if B already has children)
+        // This mirrors what insert_obj does at runtime
+        if parent != 0 && self.initial_locations_by_number.contains_key(&(obj_num as u16)) {
+            let parent_offset = defaults_size + ((parent - 1) as usize) * obj_entry_size;
+
+            // Read parent's current child pointer
+            let parent_child = self.object_space[parent_offset + 6];
+
+            if parent_child == 0 {
+                // Parent has no children yet - make this object the first child
+                self.write_to_object_space(parent_offset + 6, obj_num)?;
+                log::warn!(
+                    "🏗️ TREE_UPDATE: Parent {} child pointer set to {} (was 0)",
+                    parent, obj_num
+                );
+            } else {
+                // Parent already has a child - insert this object at the beginning of sibling chain
+                // Update this object's sibling to point to parent's current child
+                self.write_to_object_space(obj_offset + 5, parent_child)?;
+                // Update parent's child to point to this object
+                self.write_to_object_space(parent_offset + 6, obj_num)?;
+                log::warn!(
+                    "🏗️ TREE_UPDATE: Parent {} child pointer changed from {} to {}, {} sibling set to {}",
+                    parent, parent_child, obj_num, obj_num, parent_child
+                );
+            }
+        }
 
         // Create property table for this object with actual IR properties
         let prop_table_addr = self.create_property_table_from_ir(obj_num, object)?;
@@ -7730,6 +7786,50 @@ impl ZMachineCodeGen {
             "Room-to-object mapping complete: {} rooms mapped to object IDs 1-{}",
             self.room_to_object_id.len(),
             self.room_to_object_id.len()
+        );
+        Ok(())
+    }
+
+    /// Setup IR ID to object number mapping for ALL objects (Phase 2: Oct 12, 2025)
+    /// This must be called BEFORE code generation so that InsertObj tracking can resolve object numbers
+    /// Object numbering: Player (#1), Rooms (#2-N), Objects (#N+1-M)
+    fn setup_ir_id_to_object_mapping(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
+        let mut object_num = 1u16;
+
+        // Player is always object #1 (first in ir.objects)
+        if !ir.objects.is_empty() {
+            let player = &ir.objects[0];
+            self.ir_id_to_object_number.insert(player.id, object_num);
+            log::warn!(
+                "🗺️ OBJ_MAPPING: Player '{}' (IR ID {}) -> Object #{}",
+                player.name, player.id, object_num
+            );
+            object_num += 1;
+        }
+
+        // Rooms come next
+        for room in &ir.rooms {
+            self.ir_id_to_object_number.insert(room.id, object_num);
+            log::warn!(
+                "🗺️ OBJ_MAPPING: Room '{}' (IR ID {}) -> Object #{}",
+                room.name, room.id, object_num
+            );
+            object_num += 1;
+        }
+
+        // Regular objects (skip player who was already added)
+        for object in ir.objects.iter().skip(1) {
+            self.ir_id_to_object_number.insert(object.id, object_num);
+            log::warn!(
+                "🗺️ OBJ_MAPPING: Object '{}' (IR ID {}) -> Object #{}",
+                object.name, object.id, object_num
+            );
+            object_num += 1;
+        }
+
+        log::info!(
+            "IR ID to object mapping complete: {} objects mapped",
+            self.ir_id_to_object_number.len()
         );
         Ok(())
     }

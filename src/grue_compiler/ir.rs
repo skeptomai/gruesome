@@ -333,7 +333,7 @@ impl PropertyManager {
         manager.register_standard_property(StandardProperty::Size);
         manager.register_standard_property(StandardProperty::Article);
         manager.register_standard_property(StandardProperty::Adjective);
-        manager.register_standard_property(StandardProperty::Location);
+        // Location registration removed - uses object tree only (Oct 12, 2025)
 
         manager
     }
@@ -355,7 +355,7 @@ impl PropertyManager {
             StandardProperty::Size => "size",
             StandardProperty::Article => "article",
             StandardProperty::Adjective => "adjective",
-            StandardProperty::Location => "location",
+            // Location case removed - uses object tree only (Oct 12, 2025)
         };
 
         self.property_numbers
@@ -454,7 +454,7 @@ pub enum StandardProperty {
     Size = 10,       // Object size
     Article = 11,    // Article to use with object
     Adjective = 12,  // Adjectives for parsing
-    Location = 13,   // Object location (parent)
+    // Location removed - now uses object tree parent only (Oct 12, 2025)
 }
 
 /// Exit target in IR
@@ -659,6 +659,13 @@ pub enum IrInstruction {
     GetObjectParent {
         target: IrId,
         object: IrId,
+    },
+
+    /// Insert object into destination (Z-Machine insert_obj instruction)
+    /// Sets object's parent to destination, updates object tree structure
+    InsertObj {
+        object: IrId,
+        destination: IrId,
     },
 
     /// Array operations
@@ -2187,8 +2194,18 @@ impl IrGenerator {
                         // Property assignment: object.property = value
                         let object_temp = self.generate_expression(*object, block)?;
 
-                        // Check if this is a standard property that should use numbered access
-                        if let Some(standard_prop) = self.get_standard_property(&property) {
+                        // Special handling for .location assignment - use insert_obj instead of property
+                        // (Oct 12, 2025): Location is object tree containment only, not a property
+                        if property == "location" {
+                            log::debug!(
+                                "🏃 LOCATION_WRITE: Using InsertObj for .location assignment"
+                            );
+                            block.add_instruction(IrInstruction::InsertObj {
+                                object: object_temp,
+                                destination: value_temp,
+                            });
+                        } else if let Some(standard_prop) = self.get_standard_property(&property) {
+                            // Check if this is a standard property that should use numbered access
                             if let Some(prop_num) = self
                                 .property_manager
                                 .get_standard_property_number(standard_prop)

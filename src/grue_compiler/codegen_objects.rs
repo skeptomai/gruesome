@@ -210,7 +210,7 @@ impl ZMachineCodeGen {
 
         // Step 2: Add essential properties that player object always needs
         all_properties.insert("description".to_string()); // Player description property
-        all_properties.insert("location".to_string()); // Player location property
+        // location removed - uses object tree parent only (Oct 12, 2025)
 
         // Use property numbers from IR's PropertyManager to ensure consistency
         // This ensures object table generation uses the same property numbers as IR code generation
@@ -366,13 +366,13 @@ impl ZMachineCodeGen {
             // Get property numbers from the global property registry
             let desc_prop = *self.property_numbers.get("description").unwrap_or(&7);
             let visited_prop = *self.property_numbers.get("visited").unwrap_or(&2);
-            let location_prop = *self.property_numbers.get("location").unwrap_or(&8);
+            // location_prop removed - uses object tree parent only (Oct 12, 2025)
             let on_look_prop = *self.property_numbers.get("on_look").unwrap_or(&13);
 
             // Set default property values for rooms
             room_properties.set_string(desc_prop, room.description.clone());
             room_properties.set_byte(visited_prop, 0); // Initially not visited
-            room_properties.set_word(location_prop, 0); // Rooms don't have a location
+            // location property removed - rooms use object tree containment (Oct 12, 2025)
             room_properties.set_byte(on_look_prop, 0); // No special on_look handler by default
 
             // Generate exit properties for room navigation using parallel arrays
@@ -567,13 +567,10 @@ impl ZMachineCodeGen {
             let mut object_properties = object.properties.clone();
 
             // Ensure all objects have essential properties that games commonly access
-            let location_prop = *self.property_numbers.get("location").unwrap_or(&8);
+            // location_prop removed - uses object tree parent only (Oct 12, 2025)
             let desc_prop = *self.property_numbers.get("description").unwrap_or(&7);
 
-            // Add location property if missing (default to 0 = no location)
-            if !object_properties.properties.contains_key(&location_prop) {
-                object_properties.set_word(location_prop, 0);
-            }
+            // location property removed - objects use object tree containment (Oct 12, 2025)
 
             // Add desc property if missing (use short_name as fallback)
             if !object_properties.properties.contains_key(&desc_prop) {
