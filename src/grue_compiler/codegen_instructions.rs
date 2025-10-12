@@ -3040,7 +3040,7 @@ impl ZMachineCodeGen {
         &mut self,
         function_id: crate::grue_compiler::ir::IrId,
         args: &[crate::grue_compiler::ir::IrId],
-        target: Option<crate::grue_compiler::ir::IrId>,
+        _target: Option<crate::grue_compiler::ir::IrId>,
     ) -> Result<(), CompilerError> {
         use crate::grue_compiler::codegen::{
             LegacyReferenceType, MemorySpace, UnresolvedReference,

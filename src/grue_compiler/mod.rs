@@ -129,8 +129,6 @@ impl GrueCompiler {
 
 /// Print IR program in a human-readable format
 pub fn print_ir(ir: &ir::IrProgram) {
-    use ir::IrValue;
-
     println!("Program Mode: {:?}", ir.program_mode);
     println!();
 

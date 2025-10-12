@@ -5934,9 +5934,6 @@ impl ZMachineCodeGen {
             verb, self.code_address
         );
 
-        // Step 2: Now check word count for pattern selection (noun vs default)
-        for (i, pattern) in patterns.iter().enumerate() {}
-
         // Step 2: Check if we have at least 2 words (verb + noun)
         // If word_count >= 2, extract noun and call handler with object parameter
         // If word_count < 2, call handler with no parameters
@@ -9491,7 +9488,8 @@ impl ZMachineCodeGen {
             .get(name)
             .ok_or_else(|| CompilerError::CodeGenError(format!("Unknown builtin: {}", name)))?;
 
-        let func_addr = *self.function_addresses.get(&func_id).ok_or_else(|| {
+        // Verify builtin was generated (address will be resolved via UnresolvedReference)
+        let _func_addr = *self.function_addresses.get(&func_id).ok_or_else(|| {
             CompilerError::CodeGenError(format!("Builtin not generated: {}", name))
         })?;
 
@@ -10930,12 +10928,12 @@ impl ZMachineCodeGen {
         // Simple implementation: je local_1, 0 ?return_1
         // If value == 0, branch to return 1, else fall through to return 0
 
-        // JE local_1, 0 with placeholder branch
-        let je_layout = self.emit_instruction_typed(
+        // JE local_1, 0 with manually emitted branch bytes
+        let _je_layout = self.emit_instruction_typed(
             Opcode::Op2(Op2::Je),
             &[Operand::Variable(1), Operand::SmallConstant(0)],
             None,
-            None, // No branch - we'll manually patch it
+            None, // No branch - we'll manually emit branch bytes below
         )?;
 
         // Manually emit branch bytes: we need to skip the next "ret 0" (2 bytes: opcode + operand)
@@ -11122,8 +11120,6 @@ impl ZMachineCodeGen {
         let found_label = self.next_string_id;
         self.next_string_id += 1;
         let loop_start_label = self.next_string_id;
-        self.next_string_id += 1;
-        let end_label = self.next_string_id;
         self.next_string_id += 1;
 
         // Step 1: Get address of exit_directions property -> local_3 (directions_addr)
