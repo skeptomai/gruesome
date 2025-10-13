@@ -223,6 +223,7 @@ pub struct ZMachineCodeGen {
     current_function_locals: u8, // Track local variables allocated in current function (0-15)
     pub current_function_name: Option<String>, // Track current function being processed for debugging
     init_routine_locals_count: u8, // Track local variables used by init routine for PC calculation
+    init_routine_startup_address: Option<usize>, // Init block start address (for header PC field)
     /// Mapping from IR IDs to string values (for LoadImmediate results)
     pub ir_id_to_string: IndexMap<IrId, String>,
     /// Mapping from IR IDs to runtime string concatenation parts
@@ -377,6 +378,7 @@ impl ZMachineCodeGen {
             current_function_locals: 0,
             current_function_name: None,
             init_routine_locals_count: 0,
+            init_routine_startup_address: None,
             ir_id_to_string: IndexMap::new(),
             runtime_concat_parts: IndexMap::new(),
             ir_id_to_integer: IndexMap::new(),
@@ -1270,7 +1272,20 @@ impl ZMachineCodeGen {
         log::debug!(" Step 3e: Updating header address fields with final memory layout");
         // ARCHITECTURAL FIX: PC calculation for main program with proper routine header
         // PC must point to first instruction AFTER the routine header (header size = 1 byte for local count)
-        let calculated_pc = (self.final_code_base + 1) as u16;
+        // CRITICAL FIX (Oct 13, 2025): Use init block startup address if available
+        // When builtins are generated BEFORE init block, init is no longer at code_base + 1
+        // We must use the actual startup_address returned by generate_init_block()
+        // CRITICAL: PC must point to first INSTRUCTION, not routine header
+        // V3 header size = 1 byte (local count) + (num_locals * 2 bytes) for default values
+        let calculated_pc = if let Some(init_relative_addr) = self.init_routine_startup_address {
+            // Init block exists, calculate first instruction address
+            // Header size for init routine: 1 + (init_routine_locals_count * 2)
+            let init_header_size = 1 + (self.init_routine_locals_count as usize * 2);
+            (self.final_code_base + init_relative_addr + init_header_size) as u16
+        } else {
+            // No init block, PC points to first user function (skip 1-byte header)
+            (self.final_code_base + 1) as u16
+        };
         log::debug!(
  " PC_CALCULATION_DEBUG: final_code_base=0x{:04x}, calculated_pc=0x{:04x} (skips routine header)",
  self.final_code_base, calculated_pc
@@ -2184,6 +2199,7 @@ impl ZMachineCodeGen {
             );
             let (startup_address, init_locals_count) = self.generate_init_block(init_block, ir)?;
             self.init_routine_locals_count = init_locals_count;
+            self.init_routine_startup_address = Some(startup_address); // Store for header PC calculation
             log::info!(
                 " Init block generated as routine at startup address 0x{:04x} with {} locals",
                 startup_address,
@@ -8422,10 +8438,24 @@ impl ZMachineCodeGen {
             self.code_address
         );
 
-        // Generate V3 function header: Local count
+        // Generate V3 function header: Local count + default values
         // Now that we know the actual local count from init_block_locals, emit it directly
         let header_location = self.code_address;
         self.emit_byte(self.current_function_locals)?; // Emit actual local count
+
+        // CRITICAL (Oct 13, 2025): V3 requires default values (2 bytes each) after local count
+        // This was missing, causing PC to land in data instead of first instruction
+        match self.version {
+            ZMachineVersion::V3 => {
+                for i in 0..self.current_function_locals {
+                    self.emit_word(0x0000)?; // Default value 0
+                    log::debug!("Init routine: default value for local {}", i + 1);
+                }
+            }
+            ZMachineVersion::V4 | ZMachineVersion::V5 => {
+                // V4+ doesn't use default values in header
+            }
+        }
 
         log::debug!(
             "🏁 MAIN_ROUTINE: Header complete at 0x{:04x}, instructions follow",
@@ -8556,13 +8586,14 @@ impl ZMachineCodeGen {
         self.in_init_block = false;
 
         log::info!(
-            " INIT_ROUTINE: Complete at 0x{:04x} (PC target: 0x{:04x}, 0 locals)",
+            " INIT_ROUTINE: Complete at 0x{:04x} (PC target: 0x{:04x}, {} locals)",
             self.code_address - 1,
-            init_routine_address
+            init_routine_address,
+            self.current_function_locals
         );
 
-        // Return init routine address and 0 locals (simple init block)
-        Ok((init_routine_address, 0))
+        // Return init routine address and actual local count
+        Ok((init_routine_address, self.current_function_locals))
     }
 
     /// Write the Z-Machine file header with custom entry point
