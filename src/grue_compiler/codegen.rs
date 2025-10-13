@@ -671,9 +671,26 @@ impl ZMachineCodeGen {
 
         // Phase 2c: Setup room-to-object ID mapping (needed for exit data generation)
         log::debug!("🗺️  Step 2c-pre: Setting up room-to-object ID mapping");
-        self.setup_room_to_object_mapping(ir)?;
+        // Use the object numbers already assigned by IR generator (via set_object_numbers)
+        // Do NOT recalculate - IR assigns numbers sequentially as it encounters rooms and objects
+        for room in &ir.rooms {
+            if let Some(&object_number) = self.object_numbers.get(&room.name) {
+                self.room_to_object_id.insert(room.id, object_number);
+                log::debug!(
+                    "Mapped room '{}' (IR ID {}) to object #{} (from IR)",
+                    room.name,
+                    room.id,
+                    object_number
+                );
+            } else {
+                return Err(CompilerError::CodeGenError(format!(
+                    "Room '{}' has no object number from IR",
+                    room.name
+                )));
+            }
+        }
         log::info!(
-            " Step 2c-pre complete: Mapped {} rooms to object IDs",
+            " Step 2c-pre complete: Mapped {} rooms to object IDs from IR",
             self.room_to_object_id.len()
         );
 
@@ -2137,8 +2154,29 @@ impl ZMachineCodeGen {
             " FUNCTION_REGISTRATION: Functions will be registered during actual code generation"
         );
 
-        // Phase 2.0.5: Generate init block using proper routine architecture (single path)
+        // Phase 2.0.5: Generate builtin functions BEFORE init block and user code
+        //
+        // CRITICAL ORDER DEPENDENCY (Oct 13, 2025):
+        // Builtins MUST be generated before init block because:
+        // 1. Init block may call exit pseudo-property builtins (value_is_none, exit_is_blocked, etc.)
+        // 2. Builtin functions must exist in builtin_functions HashMap before being called
+        // 3. Previously generated AFTER init, causing "Unknown builtin: value_is_none" errors
+        //
+        // Exit system builtins that init may call:
+        // - value_is_none: exit.none() method
+        // - exit_is_blocked: exit.blocked property check
+        // - exit_get_data: exit.destination property extraction
+        // - exit_get_message: exit.message property extraction
+        log::info!(" GENERATING: Builtin functions (exit system)");
+        self.generate_builtin_functions()?;
+        log::info!(
+            " Builtin functions generated, code_address now at 0x{:04x}",
+            self.code_address
+        );
+
+        // Phase 2.0.6: Generate init block using proper routine architecture (single path)
         // CRITICAL: This replaces the old inline generation to eliminate competing paths
+        // NOTE: Init block now generated AFTER builtins (see Phase 2.0.5 above)
         if let Some(init_block) = &ir.init_block {
             log::info!(
                 " GENERATING: Init block as proper Z-Machine routine ({} instructions)",
@@ -2154,15 +2192,6 @@ impl ZMachineCodeGen {
         } else {
             log::debug!("No init block found");
         }
-
-        // Phase 2.0.6: Generate builtin functions before user code
-        // This ensures builtins are available when user functions need to call them
-        log::info!(" GENERATING: Builtin functions (exit system)");
-        self.generate_builtin_functions()?;
-        log::info!(
-            " Builtin functions generated, code_address now at 0x{:04x}",
-            self.code_address
-        );
 
         let initial_code_size = self.code_space.len();
 
@@ -7701,8 +7730,8 @@ impl ZMachineCodeGen {
     /// Assigns sequential object numbers to rooms (starting from 1, 0 is invalid)
     fn setup_room_to_object_mapping(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
         for (index, room) in ir.rooms.iter().enumerate() {
-            // Object numbers start at 1 (0 is invalid in Z-Machine)
-            let object_number = (index + 1) as u16;
+            // Object numbers: Player is object #1, rooms start at object #2
+            let object_number = (index + 2) as u16;
             self.room_to_object_id.insert(room.id, object_number);
             log::debug!(
                 "Mapped room '{}' (IR ID {}) to object #{}",
