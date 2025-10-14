@@ -545,9 +545,18 @@ impl ZMachineCodeGen {
         let offset = self.string_address;
         let size = data.len();
 
-        // Ensure capacity
-        if self.string_address + size > self.string_space.len() {
-            self.string_space.resize(self.string_address + size, 0);
+        // CRITICAL: Strings must be 2-byte aligned in V3 (for packed addresses)
+        // Calculate aligned size BEFORE any allocations
+        let aligned_size = if size % 2 != 0 {
+            size + 1 // Add 1 padding byte
+        } else {
+            size
+        };
+
+        // Ensure capacity (for actual data + padding)
+        if self.string_address + aligned_size > self.string_space.len() {
+            self.string_space
+                .resize(self.string_address + aligned_size, 0);
         }
 
         // Copy the data to string space
@@ -555,13 +564,15 @@ impl ZMachineCodeGen {
             self.string_space[self.string_address + i] = byte;
         }
 
+        // If we added padding, the padding byte is already 0 from resize()
+
         // Record the string offset for later reference resolution
         self.string_offsets.insert(string_id, offset);
 
-        self.string_address += size;
+        self.string_address += aligned_size;
         debug!(
-            "🔤 STRING_ALLOCATED: ID={}, offset=0x{:04x}, size={}",
-            string_id, offset, size
+            "🔤 STRING_ALLOCATED: ID={}, offset=0x{:04x}, size={}, aligned_size={}",
+            string_id, offset, size, aligned_size
         );
 
         Ok(offset)
@@ -655,15 +666,23 @@ impl ZMachineCodeGen {
     pub fn allocate_string_address(&mut self, ir_id: IrId, string_length: usize) -> usize {
         let address = self.string_address;
 
+        // CRITICAL: Strings must be 2-byte aligned in V3 (for packed addresses)
+        // Add padding byte if string_length is odd
+        let aligned_length = if string_length % 2 != 0 {
+            string_length + 1
+        } else {
+            string_length
+        };
+
         // Allocate space and update address
-        self.string_address += string_length;
+        self.string_address += aligned_length;
 
         // Record the address for this string ID
         self.string_offsets.insert(ir_id, address);
 
         debug!(
-            "🔤 STRING_ADDRESS: IR ID {} -> address 0x{:04x} (length {})",
-            ir_id, address, string_length
+            "🔤 STRING_ADDRESS: IR ID {} -> address 0x{:04x} (length {}, aligned {})",
+            ir_id, address, string_length, aligned_length
         );
 
         address

@@ -853,11 +853,16 @@ impl ZMachineCodeGen {
         let code_size = self.code_space.len();
 
         // Calculate base addresses for each section (following Z-Machine memory layout)
-        // Dynamic memory layout: Header -> Globals -> Abbreviations -> Objects -> Static boundary
+        // Dynamic memory layout: Header -> Input Buffers -> Globals -> Abbreviations -> Objects -> Static boundary
         // Static memory layout: Dictionary -> Strings -> Code (high memory)
+        // CRITICAL: Match commercial game layout (e.g., Zork I) with buffers before globals
         let mut current_address = header_size;
 
         // Dynamic memory sections
+        // Reserve space for input buffers (text=100 bytes, parse=120 bytes)
+        // These were already allocated in layout_memory_structures() at self.text_buffer_addr and self.parse_buffer_addr
+        current_address += 220; // Skip past buffers
+
         let globals_base = current_address;
         current_address += globals_size;
 
@@ -908,7 +913,89 @@ impl ZMachineCodeGen {
         current_address += code_size;
 
         // Total file size calculation
-        let total_size = current_address;
+        let mut total_size = current_address;
+
+        // CRITICAL: Add padding BEFORE storing addresses so all address calculations are correct
+        // V3 stores file_size/2 in header, so file must be even length
+        // V4/V5 store file_size/4 in header, so file must be divisible by 4
+        let padding_bytes = match self.version {
+            ZMachineVersion::V3 => {
+                if total_size % 2 != 0 {
+                    log::debug!(
+                        "📏 Adding 1 padding byte for V3 (total_size {} is odd)",
+                        total_size
+                    );
+                    1
+                } else {
+                    0
+                }
+            }
+            ZMachineVersion::V4 | ZMachineVersion::V5 => {
+                let remainder = total_size % 4;
+                if remainder != 0 {
+                    let padding = 4 - remainder;
+                    log::debug!(
+                        "📏 Adding {} padding bytes for V4/V5 (total_size {} % 4 = {})",
+                        padding,
+                        total_size,
+                        remainder
+                    );
+                    padding
+                } else {
+                    0
+                }
+            }
+        };
+        total_size += padding_bytes;
+
+        // Log complete memory layout
+        log::error!("📐 MEMORY_LAYOUT:");
+        log::error!("  Header:        0x0000-0x003f (64 bytes)");
+        log::error!(
+            "  Globals:       0x{:04x}-0x{:04x} ({} bytes)",
+            globals_base,
+            globals_base + globals_size,
+            globals_size
+        );
+        log::error!(
+            "  Abbreviations: 0x{:04x}-0x{:04x} ({} bytes)",
+            abbreviations_base,
+            abbreviations_base + abbreviations_size,
+            abbreviations_size
+        );
+        log::error!(
+            "  Objects:       0x{:04x}-0x{:04x} ({} bytes)",
+            object_base,
+            object_base + object_size,
+            object_size
+        );
+        log::error!(
+            "  Dictionary:    0x{:04x}-0x{:04x} ({} bytes)",
+            dictionary_base,
+            dictionary_base + dictionary_size,
+            dictionary_size
+        );
+        log::error!(
+            "  Strings:       0x{:04x}-0x{:04x} ({} bytes)",
+            string_base,
+            string_base + string_size,
+            string_size
+        );
+        log::error!(
+            "  Code:          0x{:04x}-0x{:04x} ({} bytes)",
+            code_base,
+            code_base + code_size,
+            code_size
+        );
+        log::error!(
+            "  Total:         {} bytes{}",
+            total_size,
+            if padding_bytes > 0 {
+                format!(" ({} padding)", padding_bytes)
+            } else {
+                "".to_string()
+            }
+        );
 
         // Store final addresses for header generation
         self.final_code_base = code_base;
@@ -1146,6 +1233,18 @@ impl ZMachineCodeGen {
 
             // CRITICAL FIX: Patch property table addresses from object space relative to absolute addresses
             self.patch_property_table_addresses(object_base)?;
+
+            // DEBUG: Verify object #2 property table pointer IMMEDIATELY after patching
+            let obj2_prop_ptr_addr = 0x040A;
+            if obj2_prop_ptr_addr + 1 < self.final_data.len() {
+                let byte1 = self.final_data[obj2_prop_ptr_addr];
+                let byte2 = self.final_data[obj2_prop_ptr_addr + 1];
+                let prop_ptr = ((byte1 as u16) << 8) | (byte2 as u16);
+                log::error!(
+                    "🔍 VERIFY_AFTER_PATCH: Object #2 prop ptr at 0x{:04x} = 0x{:02x} 0x{:02x} = 0x{:04x}",
+                    obj2_prop_ptr_addr, byte1, byte2, prop_ptr
+                );
+            }
         }
 
         // Copy dictionary space
@@ -1241,7 +1340,24 @@ impl ZMachineCodeGen {
  );
             }
 
-            self.final_data[code_base..total_size].copy_from_slice(&self.code_space);
+            // Copy code_space (which doesn't include padding)
+            let code_end = code_base + code_size;
+            self.final_data[code_base..code_end].copy_from_slice(&self.code_space);
+
+            // Fill any padding bytes with zeros
+            if code_end < total_size {
+                let padding_start = code_end;
+                let padding_count = total_size - code_end;
+                log::debug!(
+                    " Filling {} padding bytes at 0x{:04x}-0x{:04x}",
+                    padding_count,
+                    padding_start,
+                    total_size - 1
+                );
+                for i in padding_start..total_size {
+                    self.final_data[i] = 0;
+                }
+            }
 
             log::debug!(
                 " Code space copied: {} bytes at 0x{:04x}",
@@ -1386,6 +1502,16 @@ impl ZMachineCodeGen {
                 adjusted_reference.reference_type
             );
 
+            // DEBUG: Check if this reference is trying to write to Object #2's property table pointer
+            if adjusted_reference.location == 0x040A || adjusted_reference.location == 0x040B {
+                log::error!(
+                    "⚠️  DETECTED WRITE TO 0x040A: Reference at 0x{:04x} target_id={} type={:?}",
+                    adjusted_reference.location,
+                    adjusted_reference.target_id,
+                    adjusted_reference.reference_type
+                );
+            }
+
             // DEBUG: Track specific addresses that are problematic - EXACT CRASH LOCATION
             if adjusted_reference.location >= 0x1220 && adjusted_reference.location <= 0x1230 {
                 log::debug!(
@@ -1529,19 +1655,17 @@ impl ZMachineCodeGen {
             }
 
             LegacyReferenceType::StringPackedAddress { string_id } => {
-                // Find the string and calculate its PACKED address for property storage
+                // Find the string - return UNPACKED address
+                // Packing will be done later by the code at line 2058
                 if let Some(&string_offset) = self.string_offsets.get(string_id) {
                     let final_addr = self.final_string_base + string_offset;
-                    // Pack the address according to Z-Machine version
-                    let packed_addr = match self.version {
-                        ZMachineVersion::V3 => final_addr / 2,
-                        ZMachineVersion::V4 | ZMachineVersion::V5 => final_addr / 4,
-                    };
                     log::debug!(
-                        "STRING_PACKED_RESOLVE: String ID {} offset=0x{:04x} + base=0x{:04x} = final=0x{:04x} → packed=0x{:04x}",
-                        string_id, string_offset, self.final_string_base, final_addr, packed_addr
+                        "STRING_PACKED_RESOLVE: String ID {} offset=0x{:04x} + base=0x{:04x} = final_addr=0x{:04x} (will be packed later)",
+                        string_id, string_offset, self.final_string_base, final_addr
                     );
-                    packed_addr
+                    // CRITICAL FIX: Return UNPACKED address - let the code at line 2058 do the packing
+                    // This avoids double-packing and alignment errors
+                    final_addr
                 } else {
                     return Err(CompilerError::CodeGenError(format!(
                         "String ID {} not found in string_offsets for packed address",
@@ -1994,9 +2118,14 @@ impl ZMachineCodeGen {
                 debug!("Patch 2-byte: location=0x{:04x} old_value=0x{:02x}{:02x} -> new_value=0x{:04x}", reference.location, old_high, old_low, target_address);
 
                 // CRITICAL FIX: For string references, we need to pack the address
+                // StringPackedAddress is ALWAYS packed (used for object properties)
+                // StringRef with is_packed_address=true is also packed (used for print_paddr operands)
                 let final_value =
-                    if matches!(reference.reference_type, LegacyReferenceType::StringRef)
-                        && reference.is_packed_address
+                    if matches!(
+                        reference.reference_type,
+                        LegacyReferenceType::StringPackedAddress { .. }
+                    ) || (matches!(reference.reference_type, LegacyReferenceType::StringRef)
+                        && reference.is_packed_address)
                     {
                         let packed = self.pack_string_address(target_address)?;
                         log::debug!(
@@ -4464,17 +4593,21 @@ impl ZMachineCodeGen {
         // Start after header
         let mut addr = HEADER_SIZE;
 
+        // CRITICAL: Match commercial Z-Machine memory layout (e.g., Zork I)
+        // Header (64) → Dynamic Memory (input buffers, etc.) → Globals → Abbreviations → Objects...
+        // This prevents input buffers from corrupting the abbreviations table
+
+        // Reserve space for input buffers in DYNAMIC memory (before globals)
+        // Text buffer: 100 bytes (2 header + 98 text) - match Zork I
+        self.text_buffer_addr = addr;
+        addr += 100;
+        // Parse buffer: 120 bytes (2 header + 118 parse data) - match Zork I
+        self.parse_buffer_addr = addr;
+        addr += 120;
+
         // Reserve space for global variables (480 bytes for 240 globals)
         self.global_vars_addr = addr;
         addr += 480;
-
-        // Reserve space for input buffers (for main loop)
-        // Text buffer: 64 bytes (2 header + 62 text)
-        self.text_buffer_addr = addr;
-        addr += 64;
-        // Parse buffer: 34 bytes (2 header + 32 parse data)
-        self.parse_buffer_addr = addr;
-        addr += 34;
 
         debug!(
             "Allocated input buffers at: text=0x{:04x}, parse=0x{:04x}",
@@ -4482,13 +4615,14 @@ impl ZMachineCodeGen {
         );
 
         // Initialize the buffers with proper headers
-        if self.story_data.len() <= self.text_buffer_addr + 64 {
+        // Text buffer: 100 bytes, Parse buffer: 120 bytes
+        if self.story_data.len() <= self.parse_buffer_addr + 120 {
             debug!(
                 "Resizing story_data from {} to {} to accommodate buffers",
                 self.story_data.len(),
-                self.text_buffer_addr + 64 + 34
+                self.parse_buffer_addr + 120
             );
-            self.story_data.resize(self.text_buffer_addr + 64 + 34, 0);
+            self.story_data.resize(self.parse_buffer_addr + 120, 0);
         }
 
         // Write directly to story_data instead of routing through code space
@@ -10593,12 +10727,17 @@ impl ZMachineCodeGen {
     ) -> Result<usize, CompilerError> {
         let final_address = match space {
             MemorySpace::Header => space_offset,
-            MemorySpace::Globals => 64 + space_offset,
-            MemorySpace::Abbreviations => 64 + 480 + space_offset,
-            MemorySpace::Objects => 64 + 480 + 192 + space_offset,
-            MemorySpace::Dictionary => 64 + 480 + 192 + self.object_space.len() + space_offset,
+            // CRITICAL FIX: Account for 220 bytes of input buffer space (text_buffer=100 + parse_buffer=120)
+            // These buffers are reserved at 0x0040-0x013B (before globals), matching commercial Z-Machine layout
+            MemorySpace::Globals => 64 + 220 + space_offset, // 284 + offset = 0x011C + offset
+            MemorySpace::Abbreviations => 64 + 220 + 480 + space_offset, // 764 + offset = 0x02FC + offset
+            MemorySpace::Objects => 64 + 220 + 480 + 192 + space_offset, // 956 + offset = 0x03BC + offset
+            MemorySpace::Dictionary => {
+                64 + 220 + 480 + 192 + self.object_space.len() + space_offset
+            }
             MemorySpace::Strings => {
-                64 + 480
+                64 + 220
+                    + 480
                     + 192
                     + self.object_space.len()
                     + self.dictionary_space.len()

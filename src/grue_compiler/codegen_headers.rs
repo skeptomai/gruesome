@@ -120,11 +120,14 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Finalize header metadata (checksums, high/low water marks)  
+    /// Finalize header metadata (checksums, high/low water marks)
     pub fn finalize_header_metadata(&mut self) -> Result<(), CompilerError> {
         log::debug!("📝 Phase 3: Finalizing header metadata");
 
-        // Calculate values first before borrowing header mutably
+        // NOTE: Padding is now added during layout calculation in assemble_complete_program()
+        // BEFORE addresses are calculated. This ensures all string/function addresses are correct.
+        // We just need to calculate the packed length and checksum here.
+
         let file_length = self.final_data.len();
         let packed_length = match self.version {
             ZMachineVersion::V3 => file_length / 2,
