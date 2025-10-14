@@ -659,6 +659,16 @@ impl VM {
 
     /// Get the address of an object property's data
     pub fn get_property_addr(&self, obj_num: u16, prop_num: u8) -> Result<usize, String> {
+        // Log property 13 accesses specifically
+        if prop_num == 13 {
+            log::error!(
+                "🔍 GET_PROPERTY_ADDR: obj={}, prop={}, PC=0x{:04x}",
+                obj_num,
+                prop_num,
+                self.pc
+            );
+        }
+
         if obj_num == 0 {
             return Ok(0); // Object 0 has no properties
         }
@@ -695,22 +705,37 @@ impl VM {
         let prop_addr_offset = if self.game.header.version <= 3 { 7 } else { 12 };
         let prop_table_addr = self.read_word((obj_addr + prop_addr_offset) as u32) as usize;
 
+        if prop_num == 13 {
+            log::error!("🔍 Property table at 0x{:04x} for object {}", prop_table_addr, obj_num);
+        }
+
         // Skip the description byte length
         let desc_len = self.game.memory[prop_table_addr] as usize;
         let mut prop_addr = prop_table_addr + 1 + desc_len * 2;
 
         // Search for the property
+        let mut props_found = Vec::new();
         loop {
             let size_byte = self.game.memory[prop_addr];
             if size_byte == 0 {
+                if prop_num == 13 {
+                    log::error!("🔍 Object {} properties found: {:?}, property {} NOT FOUND", obj_num, props_found, prop_num);
+                }
                 return Ok(0); // Property not found
             }
 
             let (prop_id, prop_size, size_bytes) = self.get_property_info(prop_addr)?;
 
+            if prop_num == 13 {
+                props_found.push(prop_id);
+            }
+
             if prop_id == prop_num {
                 // Found the property - return address of data
                 let data_addr = prop_addr + size_bytes;
+                if prop_num == 13 {
+                    log::error!("🔍 Found property {} at 0x{:04x}, data at 0x{:04x}", prop_num, prop_addr, data_addr);
+                }
                 return Ok(data_addr);
             }
 
@@ -721,6 +746,17 @@ impl VM {
 
     /// Write a value to an object property
     pub fn put_property(&mut self, obj_num: u16, prop_num: u8, value: u16) -> Result<(), String> {
+        // Log property 13 writes specifically
+        if prop_num == 13 {
+            log::error!(
+                "🔍 PUT_PROPERTY: obj={}, prop={}, value=0x{:04x}, PC=0x{:04x}",
+                obj_num,
+                prop_num,
+                value,
+                self.pc
+            );
+        }
+
         // We need to find the property in the object's property table
 
         let max_objects = if self.game.header.version <= 3 {

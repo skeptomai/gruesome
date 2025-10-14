@@ -337,19 +337,27 @@ impl Interpreter {
             // VAR:0x03 - put_prop
             (0x03, crate::instruction::OperandCount::VAR) => {
                 // put_prop
-                debug!(
-                    "put_prop at PC {:05x}: operands={:?}",
-                    self.vm.pc - inst.size as u32,
-                    operands
-                );
                 if operands.len() < 3 {
                     return Err("put_prop requires 3 operands".to_string());
                 }
                 let obj_num = operands[0];
                 let prop_num = operands[1] as u8;
                 let value = operands[2];
+
+                // Log property 13 writes at opcode level
+                if prop_num == 13 {
+                    log::error!(
+                        "🔍 PUT_PROP OPCODE: obj={}, prop={}, value=0x{:04x}, PC=0x{:04x}",
+                        obj_num,
+                        prop_num,
+                        value,
+                        self.vm.pc - inst.size as u32
+                    );
+                }
+
                 debug!(
-                    "put_prop: obj={}, prop={}, value={}",
+                    "put_prop at PC {:05x}: obj={}, prop={}, value={}",
+                    self.vm.pc - inst.size as u32,
                     obj_num, prop_num, value
                 );
                 self.vm.put_property(obj_num, prop_num, value)?;
