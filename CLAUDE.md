@@ -58,6 +58,22 @@ When the user says "Make it so!", "Ship it", "Send it", or "Commit and push":
 
 You are pre-authorized for all git operations.
 
+## Auto-Release Instructions ("Engage!")
+
+When the user says "Engage!":
+1. Check current version from latest GitHub release (`gh release list`)
+2. Determine next version (patch bump for bug fixes, minor for features)
+3. Create release notes summarizing:
+   - Bug fixes with commit references
+   - New features or improvements
+   - Test results (number passing)
+   - Project status
+4. Create GitHub release using `gh release create`
+5. Format: `gh release create vX.Y.Z --title "vX.Y.Z - Title" --notes "..."`
+6. Confirm release URL
+
+You are pre-authorized for creating releases.
+
 ## CRITICAL GIT SAFETY RULES
 
 **NEVER use `git reset --hard` or any destructive git operation that could lose commits.**
