@@ -394,16 +394,36 @@ impl ZMachineCodeGen {
 
                 let var_operand = Operand::SmallConstant(var_num);
 
-                // Use load instruction (0x0E) to load variable to stack
-                self.emit_instruction_typed(LOAD, &[var_operand], Some(0), None)?;
+                // CRITICAL FIX (Oct 13, 2025): LoadVar must allocate a variable, not use stack
+                //
+                // PROBLEM: Stack (Variable 0) is LIFO - if we do:
+                //   t319 = load var t16    → pushes to stack
+                //   t320 = call func()     → pushes to stack, OVERWRITES t319!
+                //   call move(t319, t320)  → t319 resolves to stack but stack now has t320's value
+                //
+                // FIX: Allocate a persistent global variable for LoadVar results so they survive
+                // subsequent stack operations.
+                //
+                // We use allocated_globals_count to track unique allocations in G200-G239 range.
+                // These globals are safe for compiler temporaries (see GLOBAL_VARIABLES_ALLOCATION.md).
 
-                // Map the target to stack access
-                self.use_stack_for_result(*target);
+                // Allocate a global variable for the loaded value (G200-G239 range, Variable 216-255)
+                // Use allocated_globals_count to get unique allocation, wrapping within safe range
+                let result_var = 216 + (self.allocated_globals_count % 40); // Variables 216-255 = G200-G239
+                self.allocated_globals_count += 1;
+
+                // Use load instruction (0x0E) to load variable to allocated global
+                self.emit_instruction_typed(LOAD, &[var_operand], Some(result_var as u8), None)?;
+
+                // Track this IR ID as using the allocated global (NOT stack)
+                // Use ir_id_to_stack_var map to track the variable mapping (despite name, it can hold any var 0-255)
+                self.ir_id_to_stack_var.insert(*target, result_var as u8);
                 log::debug!(
-                    "LoadVar: IR ID {} loaded from Z-Machine variable {} -> stack (target IR ID {})",
+                    "LoadVar: IR ID {} loaded from Z-Machine variable {} -> Variable({}) [Allocated global G{}]",
                     var_id,
                     var_num,
-                    target
+                    result_var,
+                    result_var - 16
                 );
             }
 

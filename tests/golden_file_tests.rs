@@ -364,6 +364,10 @@ fn compile_grue_file(
         code_generator.register_builtin_function(*function_id, function_name.clone());
     }
 
+    // CRITICAL FIX (Oct 13, 2025): Transfer object numbers from IR generator to code generator
+    // This was missing, causing "Room 'X' has no object number from IR" errors
+    code_generator.set_object_numbers(ir_generator.get_object_numbers().clone());
+
     let story_data = code_generator
         .generate_complete_game_image(ir_program)
         .map_err(|e| format!("Code generation error: {:?}", e))?;

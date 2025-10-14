@@ -1728,16 +1728,12 @@ impl IrGenerator {
         let mut player_properties = IrProperties::new();
 
         // Get property numbers from property manager
-        let location_prop = self.property_manager.get_property_number("location");
+        // REMOVED (Oct 13, 2025): Legacy location property - location is determined by object tree parent only
         let desc_prop = self
             .property_manager
             .get_property_number_by_name("description")
             .or_else(|| self.property_manager.get_property_number_by_name("desc"))
             .unwrap_or(7); // Default to property 7 if not found
-
-        // Set initial player location to first room (will be room object #2 during codegen)
-        let initial_location = if !ir_program.rooms.is_empty() { 2 } else { 0 };
-        player_properties.set_word(location_prop, initial_location);
 
         // Set player description
         player_properties.set_string(desc_prop, "yourself".to_string());

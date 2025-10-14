@@ -321,6 +321,7 @@ fn show_inventory() {
 
 fn handle_go(direction) {
     clear_quit_state();
+
     let exit = player.location.get_exit(direction);
 
     if exit.none() {
@@ -339,6 +340,7 @@ fn handle_go(direction) {
     }
 
     move(player, exit.destination);
+
     player.location.visited = true;
 
     // Call location on_enter handler if it exists

@@ -45,7 +45,7 @@ mod codegen_tests {
     }
 
     // Helper function to add a room with proper object number registration
-    fn add_room_to_ir(ir: &mut IrProgram, room: IrRoom, object_num: u16) {
+    fn add_room_to_ir(ir: &mut IrProgram, room: IrRoom, object_num: usize) {
         ir.object_numbers.insert(room.name.clone(), object_num);
         ir.rooms.push(room);
     }
@@ -1012,20 +1012,16 @@ mod codegen_tests {
             IrExitTarget::Blocked("Door is locked".to_string()),
         );
 
-        add_room_to_ir(
-            &mut ir,
-            IrRoom {
-                id: 1,
-                name: "test_room".to_string(),
-                display_name: "Test Room".to_string(),
-                description: "A test room".to_string(),
-                exits,
-                on_enter: None,
-                on_exit: None,
-                on_look: None,
-            },
-            2,
-        ); // Object #2 (player is #1)
+        add_room_to_ir(&mut ir, IrRoom {
+            id: 1,
+            name: "test_room".to_string(),
+            display_name: "Test Room".to_string(),
+            description: "A test room".to_string(),
+            exits,
+            on_enter: None,
+            on_exit: None,
+            on_look: None,
+        }, 2); // Object #2 (player is #1)
 
         // Generate the game image
         let result = codegen.generate_complete_game_image(ir);
@@ -1052,20 +1048,16 @@ mod codegen_tests {
             IrExitTarget::Blocked("Wall".to_string()),
         ); // Blocked
 
-        add_room_to_ir(
-            &mut ir,
-            IrRoom {
-                id: 2,
-                name: "multi_exit_room".to_string(),
-                display_name: "Multi Exit Room".to_string(),
-                description: "A room with various exits".to_string(),
-                exits,
-                on_enter: None,
-                on_exit: None,
-                on_look: None,
-            },
-            2,
-        ); // Object #2 (player is #1)
+        add_room_to_ir(&mut ir, IrRoom {
+            id: 2,
+            name: "multi_exit_room".to_string(),
+            display_name: "Multi Exit Room".to_string(),
+            description: "A room with various exits".to_string(),
+            exits,
+            on_enter: None,
+            on_exit: None,
+            on_look: None,
+        }, 2); // Object #2 (player is #1)
 
         let result = codegen.generate_complete_game_image(ir);
         assert!(result.is_ok(), "Multi-exit encoding should succeed");
@@ -1080,25 +1072,18 @@ mod codegen_tests {
         let mut ir = create_minimal_ir();
 
         // Create room with no exits
-        add_room_to_ir(
-            &mut ir,
-            IrRoom {
-                id: 5,
-                name: "isolated_room".to_string(),
-                display_name: "Isolated Room".to_string(),
-                description: "A room with no exits".to_string(),
-                exits: indexmap::IndexMap::new(),
-                on_enter: None,
-                on_exit: None,
-                on_look: None,
-            },
-            2,
-        ); // Object #2 (player is #1)
+        ir.rooms.push(IrRoom {
+            id: 5,
+            name: "isolated_room".to_string(),
+            display_name: "Isolated Room".to_string(),
+            description: "A room with no exits".to_string(),
+            exits: indexmap::IndexMap::new(),
+            on_enter: None,
+            on_exit: None,
+            on_look: None,
+        });
 
         let result = codegen.generate_complete_game_image(ir);
-        if result.is_err() {
-            eprintln!("❌ Error: {:?}", result.as_ref().unwrap_err());
-        }
         assert!(result.is_ok(), "Room without exits should compile");
 
         eprintln!("✅ Room without exits test passed");
@@ -1115,20 +1100,16 @@ mod codegen_tests {
         let mut exits = indexmap::IndexMap::new();
         exits.insert("north".to_string(), IrExitTarget::Room(2));
 
-        add_room_to_ir(
-            &mut ir,
-            IrRoom {
-                id: 1,
-                name: "test_room".to_string(),
-                display_name: "Test Room".to_string(),
-                description: "A room for testing get_exit".to_string(),
-                exits,
-                on_enter: None,
-                on_exit: None,
-                on_look: None,
-            },
-            2,
-        ); // Object #2 (player is #1)
+        ir.rooms.push(IrRoom {
+            id: 1,
+            name: "test_room".to_string(),
+            display_name: "Test Room".to_string(),
+            description: "A room for testing get_exit".to_string(),
+            exits,
+            on_enter: None,
+            on_exit: None,
+            on_look: None,
+        });
 
         // Generate game image - get_exit will be called if the game uses it
         let result = codegen.generate_complete_game_image(ir);
@@ -1155,20 +1136,16 @@ mod codegen_tests {
             IrExitTarget::Blocked(long_message.to_string()),
         );
 
-        add_room_to_ir(
-            &mut ir,
-            IrRoom {
-                id: 6,
-                name: "blocked_room".to_string(),
-                display_name: "Blocked Room".to_string(),
-                description: "A room with a blocked exit".to_string(),
-                exits,
-                on_enter: None,
-                on_exit: None,
-                on_look: None,
-            },
-            2,
-        ); // Object #2 (player is #1)
+        ir.rooms.push(IrRoom {
+            id: 6,
+            name: "blocked_room".to_string(),
+            display_name: "Blocked Room".to_string(),
+            description: "A room with a blocked exit".to_string(),
+            exits,
+            on_enter: None,
+            on_exit: None,
+            on_look: None,
+        });
 
         let result = codegen.generate_complete_game_image(ir);
         assert!(
@@ -1189,59 +1166,47 @@ mod codegen_tests {
         let mut exits1 = indexmap::IndexMap::new();
         exits1.insert("north".to_string(), IrExitTarget::Room(2));
 
-        add_room_to_ir(
-            &mut ir,
-            IrRoom {
-                id: 1,
-                name: "room_one".to_string(),
-                display_name: "Room One".to_string(),
-                description: "First room".to_string(),
-                exits: exits1,
-                on_enter: None,
-                on_exit: None,
-                on_look: None,
-            },
-            2,
-        ); // Object #2
+        ir.rooms.push(IrRoom {
+            id: 1,
+            name: "room_one".to_string(),
+            display_name: "Room One".to_string(),
+            description: "First room".to_string(),
+            exits: exits1,
+            on_enter: None,
+            on_exit: None,
+            on_look: None,
+        });
 
         // Room 2: connects south to room 1, east to room 3
         let mut exits2 = indexmap::IndexMap::new();
         exits2.insert("south".to_string(), IrExitTarget::Room(1));
         exits2.insert("east".to_string(), IrExitTarget::Room(3));
 
-        add_room_to_ir(
-            &mut ir,
-            IrRoom {
-                id: 2,
-                name: "room_two".to_string(),
-                display_name: "Room Two".to_string(),
-                description: "Second room".to_string(),
-                exits: exits2,
-                on_enter: None,
-                on_exit: None,
-                on_look: None,
-            },
-            3,
-        ); // Object #3
+        ir.rooms.push(IrRoom {
+            id: 2,
+            name: "room_two".to_string(),
+            display_name: "Room Two".to_string(),
+            description: "Second room".to_string(),
+            exits: exits2,
+            on_enter: None,
+            on_exit: None,
+            on_look: None,
+        });
 
         // Room 3: connects west to room 2
         let mut exits3 = indexmap::IndexMap::new();
         exits3.insert("west".to_string(), IrExitTarget::Room(2));
 
-        add_room_to_ir(
-            &mut ir,
-            IrRoom {
-                id: 3,
-                name: "room_three".to_string(),
-                display_name: "Room Three".to_string(),
-                description: "Third room".to_string(),
-                exits: exits3,
-                on_enter: None,
-                on_exit: None,
-                on_look: None,
-            },
-            4,
-        ); // Object #4
+        ir.rooms.push(IrRoom {
+            id: 3,
+            name: "room_three".to_string(),
+            display_name: "Room Three".to_string(),
+            description: "Third room".to_string(),
+            exits: exits3,
+            on_enter: None,
+            on_exit: None,
+            on_look: None,
+        });
 
         let result = codegen.generate_complete_game_image(ir);
         assert!(result.is_ok(), "Multiple rooms with exits should compile");

@@ -386,9 +386,20 @@ impl ZMachineCodeGen {
         let object_ir_id = args[0];
         let destination_ir_id = args[1];
 
+        log::error!(
+            "🔧 MOVE_BUILTIN_DEBUG: args[0]={}, args[1]={}",
+            object_ir_id,
+            destination_ir_id
+        );
+
         // Resolve IR IDs to proper operands - CRITICAL FIX
         let object_operand = self.resolve_ir_id_to_operand(object_ir_id)?;
+        log::error!("🔧 MOVE_BUILTIN_DEBUG: object_operand={:?}", object_operand);
         let destination_operand = self.resolve_ir_id_to_operand(destination_ir_id)?;
+        log::error!(
+            "🔧 MOVE_BUILTIN_DEBUG: destination_operand={:?}",
+            destination_operand
+        );
 
         log::debug!(
             "generate_move_builtin: object IR {} -> {:?}, destination IR {} -> {:?}",
@@ -700,10 +711,16 @@ impl ZMachineCodeGen {
 
         log::debug!("Generating RANDOM opcode with range argument");
 
-        // For now, use a placeholder operand - in a full implementation,
-        // we need to properly handle the IR argument values
-        let range_operand = Operand::SmallConstant(6); // Placeholder for now
+        // Resolve the range argument to an operand
+        let range_ir_id = args[0];
+        let range_operand = self.resolve_ir_id_to_operand(range_ir_id)?;
         let store_var = Some(0); // Store result on stack
+
+        log::debug!(
+            "random builtin: Resolved range IR ID {} to operand {:?}",
+            range_ir_id,
+            range_operand
+        );
 
         self.emit_instruction_typed(
             Opcode::OpVar(OpVar::Random),
@@ -712,13 +729,15 @@ impl ZMachineCodeGen {
             None,             // No branch
         )?;
 
-        // If we have a target, this will be used for further operations
+        // If we have a target, track it as using stack variable 0 (where RANDOM stores result)
         if let Some(target_id) = target {
-            // Register that this target contains a numeric value
-            // For string concatenation, we'd need to convert this to string
-            let placeholder_str = "[RANDOM_RESULT]";
-            self.ir_id_to_string
-                .insert(target_id, placeholder_str.to_string());
+            // Register that this target contains a numeric value from random()
+            // Result is already on stack (Variable 0) from RANDOM instruction
+            self.ir_id_to_stack_var.insert(target_id, 0);
+            log::debug!(
+                "random builtin: Mapped result IR ID {} to stack variable 0",
+                target_id
+            );
         }
 
         log::debug!("Generated RANDOM instruction successfully");

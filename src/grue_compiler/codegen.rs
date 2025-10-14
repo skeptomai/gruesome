@@ -234,8 +234,8 @@ pub struct ZMachineCodeGen {
     pub ir_id_to_integer: IndexMap<IrId, i16>,
     /// Mapping from IR IDs to stack variables (for instruction results on stack)
     pub ir_id_to_stack_var: IndexMap<IrId, u8>,
-    /// Counter for unique global variable allocation (for builtins)
-    allocated_globals_count: usize,
+    /// Counter for unique global variable allocation (for builtins and LoadVar)
+    pub allocated_globals_count: usize,
     /// Mapping from IR IDs to Z-Machine object numbers (for object references)
     pub ir_id_to_object_number: IndexMap<IrId, u16>,
     /// Mapping from IR IDs to Z-Machine local variable slots (for function parameters)
@@ -578,6 +578,8 @@ impl ZMachineCodeGen {
         log::info!("Phase 1: Content analysis and preparation");
         self.layout_memory_structures(&ir)?; // CRITICAL: Plan memory layout before generation
         self.setup_comprehensive_id_mappings(&ir);
+        // CRITICAL: Transfer object numbers from IR early so they're available when generating object tables
+        self.object_numbers = ir.object_numbers.clone();
         self.analyze_properties(&ir)?;
         self.collect_strings(&ir)?;
         let (prompt_id, unknown_command_id) = self.add_main_loop_strings()?;
@@ -3302,8 +3304,11 @@ impl ZMachineCodeGen {
             ));
         }
 
+        log::error!("🔧 MOVE_DEBUG: args[0]={}, args[1]={}", args[0], args[1]);
         let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
+        log::error!("🔧 MOVE_DEBUG: obj_operand={:?}", obj_operand);
         let dest_operand = self.resolve_ir_id_to_operand(args[1])?;
+        log::error!("🔧 MOVE_DEBUG: dest_operand={:?}", dest_operand);
 
         // Generate insert_obj instruction (2OP:14)
         let layout = self.emit_instruction_typed(
@@ -7465,10 +7470,10 @@ impl ZMachineCodeGen {
         }
 
         // Check if it's a string literal (shouldn't be used in binary ops, but handle gracefully)
-        if self.ir_id_to_string.contains_key(&ir_id) {
+        if let Some(string_content) = self.ir_id_to_string.get(&ir_id) {
             return Err(CompilerError::CodeGenError(format!(
-                "Cannot use string literal (IR ID {}) as operand in binary operation",
-                ir_id
+                "Cannot use string literal (IR ID {}, content: '{}') as operand in binary operation",
+                ir_id, string_content
             )));
         }
 
