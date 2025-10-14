@@ -667,21 +667,6 @@ impl Interpreter {
 
         // Store in VM for push/pop logging to reference
         self.vm.current_instruction_pc = Some(instruction_pc);
-
-        // Log instructions that will write to Variable 216 (debugging corruption)
-        if inst.store_var == Some(216) {
-            log::error!(
-                "🔍 ABOUT_TO_WRITE_VAR_216: PC=0x{:04x}, inst: {:?}",
-                instruction_pc,
-                inst
-            );
-            log::error!(
-                "🔍   Stack depth: {}, top values: {:?}",
-                self.vm.stack.len(),
-                self.vm.stack.iter().rev().take(5).collect::<Vec<_>>()
-            );
-        }
-
         // Get operand values
         let operands = self.resolve_operands(inst)?;
 

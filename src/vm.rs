@@ -426,18 +426,6 @@ impl VM {
                 self.pc
             );
         }
-        // Log reads of variables used in exit corruption chain
-        if var == 236 || var == 237 || var == 239 {
-            if let Ok(val) = result {
-                log::error!(
-                    "🔍 READ_VAR_{}: value=0x{:04x} ({}), PC=0x{:04x}",
-                    var,
-                    val,
-                    val,
-                    self.current_instruction_pc.unwrap_or(self.pc)
-                );
-            }
-        }
         if var == 0x10 {
             debug!(
                 "read_variable(0x{:02x}) [Variable(16)/G00] at PC {:05x} returning value: {:?}",
