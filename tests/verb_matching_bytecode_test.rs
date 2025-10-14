@@ -88,9 +88,9 @@ fn test_verb_matching_generates_correct_je() {
 
             // For verb matching, we expect:
             // - op1 = 2 (word from parse buffer)
-            // - op2 = 17 (verb dict addr in Global G01)
+            // - op2 = 216 (verb dict addr in Global G200) [Bug #12 fix: changed from G01 to avoid score corruption]
             // - branch_on_true = true
-            if op1 == 2 && op2 == 17 {
+            if op1 == 2 && op2 == 216 {
                 println!("  ✓ This is a verb matching je!");
                 assert!(branch_on_true, "Verb matching je should branch on TRUE");
                 je_count += 1;

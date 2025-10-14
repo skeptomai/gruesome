@@ -358,7 +358,10 @@ impl ZMachineCodeGen {
             );
         }
 
-        // Add rooms as objects (rooms are just objects with specific properties)
+        // PASS 1: Collect all objects WITHOUT exit properties
+        // This builds the complete all_objects vector so we can create accurate object_id_to_number mapping
+
+        // Add rooms as objects (basic properties only, exits added in Pass 2)
         for room in &ir.rooms {
             let mut room_properties = IrProperties::new();
 
@@ -374,6 +377,102 @@ impl ZMachineCodeGen {
             room_properties.set_byte(visited_prop, 0); // Initially not visited
                                                        // location property removed - rooms use object tree containment (Oct 12, 2025)
             room_properties.set_byte(on_look_prop, 0); // No special on_look handler by default
+
+            // Exit properties will be added in Pass 2 after we have object_id_to_number mapping
+
+            all_objects.push(ObjectData {
+                id: room.id,
+                name: room.name.clone(),
+                short_name: room.display_name.clone(),
+                attributes: IrAttributes::new(), // Rooms have default attributes
+                properties: room_properties,
+                parent: None,
+                sibling: None,
+                child: None,
+            });
+
+            log::info!(
+                "Object #{}: ROOM '{}' (ID: {}, short: '{}')",
+                all_objects.len(),
+                room.name,
+                room.id,
+                room.display_name
+            );
+        }
+
+        // Add regular objects (skip player - already added as object #1)
+        for object in ir.objects.iter().skip(1) {
+            let mut object_properties = object.properties.clone();
+
+            // Ensure all objects have essential properties that games commonly access
+            // location_prop removed - uses object tree parent only (Oct 12, 2025)
+            let desc_prop = *self.property_numbers.get("description").unwrap_or(&7);
+
+            // location property removed - objects use object tree containment (Oct 12, 2025)
+
+            // Add desc property if missing (use short_name as fallback)
+            if !object_properties.properties.contains_key(&desc_prop) {
+                object_properties.set_string(desc_prop, object.short_name.clone());
+            }
+
+            all_objects.push(ObjectData {
+                id: object.id,
+                name: object.name.clone(),
+                short_name: object.short_name.clone(),
+                attributes: object.attributes.clone(),
+                properties: object_properties,
+                parent: object.parent,
+                sibling: object.sibling,
+                child: object.child,
+            });
+
+            log::info!(
+                "Object #{}: OBJECT '{}' (ID: {}, short: '{}')",
+                all_objects.len(),
+                object.name,
+                object.id,
+                object.short_name
+            );
+        }
+
+        // Build object_id_to_number mapping from complete all_objects vector
+        log::info!("=== BUILDING OBJECT ID MAPPING ===");
+        let mut object_id_to_number: IndexMap<IrId, u8> = IndexMap::new();
+        for (index, object) in all_objects.iter().enumerate() {
+            let obj_num = (index + 1) as u8; // Objects are numbered starting from 1
+            object_id_to_number.insert(object.id, obj_num);
+            log::info!(
+                "ID Mapping: IR ID {} → Object #{} ('{}')",
+                object.id,
+                obj_num,
+                object.short_name
+            );
+        }
+
+        // CRITICAL FIX (Oct 14, 2025): Update room_to_object_id with ACTUAL object numbers
+        // The IR assigns object numbers during semantic analysis (e.g., forest = 13)
+        // But codegen_objects.rs re-numbers objects sequentially during generation (forest = 8)
+        // Exit system uses room_to_object_id to translate IR IDs to object numbers
+        // Must use the ACTUAL object numbers from codegen, not the IR numbers!
+        log::info!("=== UPDATING ROOM_TO_OBJECT_ID MAPPING ===");
+        for room in &ir.rooms {
+            if let Some(&obj_num) = object_id_to_number.get(&room.id) {
+                let old_value = self.room_to_object_id.insert(room.id, obj_num as u16);
+                log::info!(
+                    "Room '{}' (IR ID {}) mapped: old={:?} → new={}",
+                    room.name,
+                    room.id,
+                    old_value,
+                    obj_num
+                );
+            }
+        }
+
+        // PASS 2: Add exit properties to rooms now that we have correct object_id_to_number mapping
+        log::info!("=== ADDING EXIT PROPERTIES TO ROOMS ===");
+        for (room_index, room) in ir.rooms.iter().enumerate() {
+            // Find this room in all_objects (it's at index room_index + 1 because player is at index 0)
+            let obj_index = room_index + 1; // +1 because player is at index 0
 
             // Generate exit properties for room navigation using parallel arrays
             // Architecture: Three parallel-array properties enable runtime direction lookup
@@ -479,7 +578,7 @@ impl ZMachineCodeGen {
                     }
                 }
 
-                // Write parallel array properties to room object
+                // Update the room's properties in all_objects vector
                 if !direction_addrs.is_empty() {
                     log::debug!(
                         "🔍 EXIT_PROPS: Room '{}' BEFORE set_bytes - exit_data length={}, contents={:02x?}",
@@ -494,12 +593,23 @@ impl ZMachineCodeGen {
                         exit_types
                     );
 
-                    room_properties.set_bytes(exit_directions_prop, direction_addrs);
-                    room_properties.set_bytes(exit_types_prop, exit_types.clone());
-                    room_properties.set_bytes(exit_data_prop, exit_data.clone());
+                    // Add exit properties to the room object in all_objects
+                    all_objects[obj_index]
+                        .properties
+                        .set_bytes(exit_directions_prop, direction_addrs);
+                    all_objects[obj_index]
+                        .properties
+                        .set_bytes(exit_types_prop, exit_types.clone());
+                    all_objects[obj_index]
+                        .properties
+                        .set_bytes(exit_data_prop, exit_data.clone());
 
                     // Verify properties were stored
-                    if let Some(stored_data) = room_properties.properties.get(&exit_data_prop) {
+                    if let Some(stored_data) = all_objects[obj_index]
+                        .properties
+                        .properties
+                        .get(&exit_data_prop)
+                    {
                         log::debug!(
                             "🔍 EXIT_PROPS: Room '{}' AFTER set_bytes - Property {} stored successfully: {:?}",
                             room.name,
@@ -531,70 +641,6 @@ impl ZMachineCodeGen {
                     );
                 }
             }
-
-            // Log all properties for this room
-            log::debug!(
-                "🔍 ROOM_PROPS: Room '{}' has {} properties:",
-                room.name,
-                room_properties.properties.len()
-            );
-            for (prop_num, prop_value) in &room_properties.properties {
-                log::debug!("🔍   Property {}: {:?}", prop_num, prop_value);
-            }
-
-            all_objects.push(ObjectData {
-                id: room.id,
-                name: room.name.clone(),
-                short_name: room.display_name.clone(),
-                attributes: IrAttributes::new(), // Rooms have default attributes
-                properties: room_properties,
-                parent: None,
-                sibling: None,
-                child: None,
-            });
-
-            log::info!(
-                "Object #{}: ROOM '{}' (ID: {}, short: '{}')",
-                all_objects.len(),
-                room.name,
-                room.id,
-                room.display_name
-            );
-        }
-
-        // Add regular objects (skip player - already added as object #1)
-        for object in ir.objects.iter().skip(1) {
-            let mut object_properties = object.properties.clone();
-
-            // Ensure all objects have essential properties that games commonly access
-            // location_prop removed - uses object tree parent only (Oct 12, 2025)
-            let desc_prop = *self.property_numbers.get("description").unwrap_or(&7);
-
-            // location property removed - objects use object tree containment (Oct 12, 2025)
-
-            // Add desc property if missing (use short_name as fallback)
-            if !object_properties.properties.contains_key(&desc_prop) {
-                object_properties.set_string(desc_prop, object.short_name.clone());
-            }
-
-            all_objects.push(ObjectData {
-                id: object.id,
-                name: object.name.clone(),
-                short_name: object.short_name.clone(),
-                attributes: object.attributes.clone(),
-                properties: object_properties,
-                parent: object.parent,
-                sibling: object.sibling,
-                child: object.child,
-            });
-
-            log::info!(
-                "Object #{}: OBJECT '{}' (ID: {}, short: '{}')",
-                all_objects.len(),
-                object.name,
-                object.id,
-                object.short_name
-            );
         }
 
         log::info!("=== OBJECT ID MAPPING ===",);
@@ -605,17 +651,11 @@ impl ZMachineCodeGen {
             ir.objects.len()
         );
 
-        // Step 3: Build object ID mapping table
+        // Build complete object_id_to_number mapping for create_object_entry_from_ir_with_mapping
         let mut object_id_to_number: IndexMap<IrId, u8> = IndexMap::new();
         for (index, object) in all_objects.iter().enumerate() {
-            let obj_num = (index + 1) as u8; // Objects are numbered starting from 1
+            let obj_num = (index + 1) as u8;
             object_id_to_number.insert(object.id, obj_num);
-            log::info!(
-                "ID Mapping: IR ID {} → Object #{} ('{}')",
-                object.id,
-                obj_num,
-                object.short_name
-            );
         }
 
         // Step 4: Create object table entries

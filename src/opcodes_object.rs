@@ -346,7 +346,7 @@ impl Interpreter {
 
                 // Log property 13 writes at opcode level
                 if prop_num == 13 {
-                    log::error!(
+                    log::debug!(
                         "🔍 PUT_PROP OPCODE: obj={}, prop={}, value=0x{:04x}, PC=0x{:04x}",
                         obj_num,
                         prop_num,
@@ -358,7 +358,9 @@ impl Interpreter {
                 debug!(
                     "put_prop at PC {:05x}: obj={}, prop={}, value={}",
                     self.vm.pc - inst.size as u32,
-                    obj_num, prop_num, value
+                    obj_num,
+                    prop_num,
+                    value
                 );
                 self.vm.put_property(obj_num, prop_num, value)?;
                 debug!("put_prop completed successfully");
