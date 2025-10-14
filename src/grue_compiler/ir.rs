@@ -2897,6 +2897,30 @@ impl IrGenerator {
                         );
                         return Ok(temp_id);
                     }
+                    "has_message" => {
+                        // Check if bit 14 is set (value >= 0x4000) - same as blocked
+                        // This is an alias for blocked with clearer semantics
+                        let builtin_id = self.next_id();
+                        self.builtin_functions
+                            .insert(builtin_id, "exit_has_message".to_string());
+
+                        log::debug!(
+                            "🚪 EXIT: Adding Call instruction for has_message: target={}, function={}, args=[{}]",
+                            temp_id,
+                            builtin_id,
+                            object_temp
+                        );
+                        block.add_instruction(IrInstruction::Call {
+                            target: Some(temp_id),
+                            function: builtin_id,
+                            args: vec![object_temp],
+                        });
+                        log::debug!(
+                            "🚪 EXIT: Call instruction added, returning temp_id={}",
+                            temp_id
+                        );
+                        return Ok(temp_id);
+                    }
                     "destination" => {
                         // Extract lower 14 bits (value & 0x3FFF) -> room ID
                         log::debug!("🚪 EXIT: Creating exit_get_destination builtin");

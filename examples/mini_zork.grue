@@ -328,7 +328,7 @@ fn handle_go(direction) {
         return;
     }
 
-    if exit.blocked {
+    if exit.has_message {
         print(exit.message);
         return;
     }

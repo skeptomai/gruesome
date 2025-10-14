@@ -9518,6 +9518,7 @@ impl ZMachineCodeGen {
         self.create_builtin_exit_get_message()?;
         self.create_builtin_value_is_none()?;
         self.create_builtin_exit_is_blocked()?;
+        self.create_builtin_exit_has_message()?;
         self.create_builtin_get_exit()?;
 
         log::debug!(
@@ -9606,22 +9607,26 @@ impl ZMachineCodeGen {
             let result_var = self.allocate_global_for_ir_id(target_ir_id);
             self.ir_id_to_stack_var.insert(target_ir_id, result_var);
 
-            // BUG #1 FIX (Oct 12, 2025): DO NOT mark exit_get_message results as properties!
+            // BUG #1 FIX (Oct 12, 2025): Split builtin pattern for safe property marking
             //
-            // PROBLEM: exit_get_message returns either:
-            //   - A valid packed string address (when exit is blocked) → needs print_paddr
-            //   - Zero (when exit is not blocked) → must NOT use print_paddr
+            // SOLUTION: Split into exit_has_message() and exit_get_message()
+            //   - exit_has_message checks if bit 14 is set (has message)
+            //   - exit_get_message extracts the message address (only called after has_message check)
+            //   - Now safe to mark exit_get_message as property since it's never called with 0
             //
-            // SOLUTION: Keep exit_get_message WITHOUT property marking
-            //   - Caller MUST check exit.blocked before accessing exit.message
-            //   - Example: if exit.blocked { print(exit.message); }
+            // USAGE:
+            //   if exit.has_message {
+            //       print(exit.message);  // exit.message guaranteed non-zero
+            //   }
             //
-            // WHY NOT property marking?
-            //   - If marked as property, print() always uses print_paddr
-            //   - print_paddr with value 0 unpacks to address 0x0000 (the header!)
-            //   - This causes garbage text to be printed
-            //
-            // LONG-TERM: Split into exit_has_message() and exit_get_message()
+            // Mark exit_get_message results as properties for correct print_paddr emission
+            if name == "exit_get_message" {
+                self.ir_id_from_property.insert(target_ir_id);
+                log::debug!(
+                    "🚪 EXIT: Marked exit_get_message result IR ID {} as property for print_paddr",
+                    target_ir_id
+                );
+            }
 
             // Pop from stack: load from variable 0 (stack), store to result_var
             self.emit_instruction_typed(
@@ -9705,6 +9710,7 @@ impl ZMachineCodeGen {
             "value_is_none" => self.call_builtin_function("value_is_none", args, target),
             "get_exit" => self.call_builtin_function("get_exit", args, target),
             "exit_is_blocked" => self.call_builtin_function("exit_is_blocked", args, target),
+            "exit_has_message" => self.call_builtin_function("exit_has_message", args, target),
             "exit_get_destination" => self.call_builtin_function("exit_get_data", args, target),
             "exit_get_message" => self.call_builtin_function("exit_get_message", args, target),
             "get_object_size" => self.generate_get_object_size_builtin(args, target),
@@ -11128,6 +11134,89 @@ impl ZMachineCodeGen {
 
         log::debug!(
             "Created exit_is_blocked at address 0x{:04x} (packed: 0x{:04x})",
+            func_addr,
+            func_addr / 2
+        );
+
+        Ok(())
+    }
+
+    /// Create exit_has_message builtin function
+    /// Signature: exit_has_message(exit_value) -> bool
+    /// Returns 1 if bit 14 is set (has message), else 0
+    /// This is identical to exit_is_blocked but with clearer semantics for the split builtin pattern
+    fn create_builtin_exit_has_message(&mut self) -> Result<(), CompilerError> {
+        log::debug!("Creating builtin function: exit_has_message");
+
+        let func_id: IrId = 1000000 + self.builtin_functions.len() as u32;
+
+        if self.code_address % 2 != 0 {
+            self.emit_byte(0xB4)?;
+        }
+
+        let func_addr = self.code_address;
+
+        let num_locals = 2;
+        self.emit_byte(num_locals)?;
+        for _ in 0..num_locals {
+            self.emit_word(0)?;
+        }
+
+        // jl local_1, 0x4000: if value < 0x4000, no message (return 0), else has message (return 1)
+        // Branch on true (value < 0x4000) to skip "ret 1" and go to "ret 0"
+
+        // Create a label for the "ret 0" instruction
+        let return_false_label = self.next_string_id;
+        self.next_string_id += 1;
+
+        let jl_layout = self.emit_instruction_typed(
+            Opcode::Op2(Op2::Jl),
+            &[Operand::Variable(1), Operand::LargeConstant(0x4000)],
+            None,
+            Some(-1), // Branch on true - will be resolved to return_false_label
+        )?;
+
+        // Create UnresolvedReference for the branch
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::Branch,
+                location: jl_layout
+                    .branch_location
+                    .expect("jl instruction must have branch location"),
+                target_id: return_false_label,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
+
+        // Fall through: value >= 0x4000, has message, return 1
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::Ret),
+            &[Operand::SmallConstant(1)],
+            None,
+            None,
+        )?;
+
+        // Branch target: value < 0x4000, no message, return 0
+        self.label_addresses
+            .insert(return_false_label, self.code_address);
+        self.record_final_address(return_false_label, self.code_address);
+
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::Ret),
+            &[Operand::SmallConstant(0)],
+            None,
+            None,
+        )?;
+
+        self.builtin_functions
+            .insert("exit_has_message".to_string(), func_id);
+        self.function_addresses.insert(func_id, func_addr);
+        self.record_final_address(func_id, func_addr);
+
+        log::debug!(
+            "Created exit_has_message at address 0x{:04x} (packed: 0x{:04x})",
             func_addr,
             func_addr / 2
         );
