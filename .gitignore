@@ -6,8 +6,14 @@ debug.log
 
 # Compiled outputs - should be in examples/ or out/ directories
 /*.z3
+/*.z4
 /*.z5
 /*.grue
+
+# Log files and debug output
+/*.log
+/*.txt
+*.out
 
 # Claude Code settings
 .claude/settings.local.json
