@@ -53,15 +53,17 @@ impl ZMachineCodeGen {
                         // Print literal string using print_paddr
                         log::debug!("  Emitting print_paddr for literal string ID {}", string_id);
 
-                        let operand_location = self.final_code_base + self.code_space.len() + 1;
-                        self.emit_instruction_typed(
+                        let layout = self.emit_instruction_typed(
                             PRINTPADDR,
                             &[Operand::LargeConstant(placeholder_word())],
                             None,
                             None,
                         )?;
 
-                        // Add unresolved reference for the string address
+                        // Add unresolved reference for the string address using layout
+                        let operand_location = layout
+                            .operand_location
+                            .expect("print_paddr must have operand location");
                         let reference = UnresolvedReference {
                             reference_type: LegacyReferenceType::StringRef,
                             location: operand_location,
@@ -77,9 +79,15 @@ impl ZMachineCodeGen {
                         log::debug!("  Emitting print for runtime value IR ID {}", ir_id);
 
                         let operand = self.resolve_ir_id_to_operand(ir_id)?;
+                        log::debug!("  Resolved IR ID {} to operand {:?}", ir_id, operand);
 
                         if self.ir_id_from_property.contains(&ir_id) {
                             // Property value - use print_paddr
+                            log::debug!(
+                                "  IR ID {} is from property, using print_paddr with {:?}",
+                                ir_id,
+                                operand
+                            );
                             self.emit_instruction_typed(
                                 Opcode::Op1(Op1::PrintPaddr),
                                 &[operand],
@@ -88,6 +96,11 @@ impl ZMachineCodeGen {
                             )?;
                         } else {
                             // Non-property value - use print_num
+                            log::debug!(
+                                "  IR ID {} is not from property, using print_num with {:?}",
+                                ir_id,
+                                operand
+                            );
                             self.emit_instruction_typed(
                                 Opcode::OpVar(OpVar::PrintNum),
                                 &[operand],

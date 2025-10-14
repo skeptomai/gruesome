@@ -9606,16 +9606,22 @@ impl ZMachineCodeGen {
             let result_var = self.allocate_global_for_ir_id(target_ir_id);
             self.ir_id_to_stack_var.insert(target_ir_id, result_var);
 
-            // BUG FIX (Oct 12, 2025): Mark exit_get_message results as properties
-            // exit_get_message returns a string address that should be printed with print_paddr
-            // This tells print() to use print_paddr instead of print_num
-            if name == "exit_get_message" {
-                self.ir_id_from_property.insert(target_ir_id);
-                log::debug!(
-                    "🚪 EXIT: Marked exit_get_message result IR ID {} as property for print_paddr",
-                    target_ir_id
-                );
-            }
+            // BUG #1 FIX (Oct 12, 2025): DO NOT mark exit_get_message results as properties!
+            //
+            // PROBLEM: exit_get_message returns either:
+            //   - A valid packed string address (when exit is blocked) → needs print_paddr
+            //   - Zero (when exit is not blocked) → must NOT use print_paddr
+            //
+            // SOLUTION: Keep exit_get_message WITHOUT property marking
+            //   - Caller MUST check exit.blocked before accessing exit.message
+            //   - Example: if exit.blocked { print(exit.message); }
+            //
+            // WHY NOT property marking?
+            //   - If marked as property, print() always uses print_paddr
+            //   - print_paddr with value 0 unpacks to address 0x0000 (the header!)
+            //   - This causes garbage text to be printed
+            //
+            // LONG-TERM: Split into exit_has_message() and exit_get_message()
 
             // Pop from stack: load from variable 0 (stack), store to result_var
             self.emit_instruction_typed(
@@ -10988,20 +10994,30 @@ impl ZMachineCodeGen {
         // Simple implementation: je local_1, 0 ?return_1
         // If value == 0, branch to return 1, else fall through to return 0
 
-        // JE local_1, 0 with manually emitted branch bytes
-        let _je_layout = self.emit_instruction_typed(
+        // Create a label for the "ret 1" instruction
+        let return_true_label = self.next_string_id;
+        self.next_string_id += 1;
+
+        let je_layout = self.emit_instruction_typed(
             Opcode::Op2(Op2::Je),
             &[Operand::Variable(1), Operand::SmallConstant(0)],
             None,
-            None, // No branch - we'll manually emit branch bytes below
+            Some(-1), // Branch on true - will be resolved to return_true_label
         )?;
 
-        // Manually emit branch bytes: we need to skip the next "ret 0" (2 bytes: opcode + operand)
-        // Branch format: bit 15=1 (branch on true), bit 14=0 (2-byte form), bits 13-0 = offset
-        // Offset = 2 (skip ret 0 instruction which is 2 bytes)
-        // 0x8002 = 1000000000000010 = branch on true, 2-byte form, offset 2
-        self.emit_byte(0x80)?; // High byte: branch on true, 2-byte form
-        self.emit_byte(0x02)?; // Low byte: offset 2
+        // Create UnresolvedReference for the branch
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::Branch,
+                location: je_layout
+                    .branch_location
+                    .expect("je instruction must have branch location"),
+                target_id: return_true_label,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
 
         // Fall through: value != 0, return 0
         self.emit_instruction_typed(
@@ -11012,6 +11028,10 @@ impl ZMachineCodeGen {
         )?;
 
         // Branch target: value == 0, return 1
+        self.label_addresses
+            .insert(return_true_label, self.code_address);
+        self.record_final_address(return_true_label, self.code_address);
+
         self.emit_instruction_typed(
             Opcode::Op1(Op1::Ret),
             &[Operand::SmallConstant(1)],
@@ -11054,19 +11074,32 @@ impl ZMachineCodeGen {
         }
 
         // jl local_1, 0x4000: if value < 0x4000, not blocked (return 0), else blocked (return 1)
-        // Branch on true (value < 0x4000) to skip "ret 1" and fall through to "ret 0"
-        self.emit_instruction_typed(
+        // Branch on true (value < 0x4000) to skip "ret 1" and go to "ret 0"
+
+        // Create a label for the "ret 0" instruction
+        let return_false_label = self.next_string_id;
+        self.next_string_id += 1;
+
+        let jl_layout = self.emit_instruction_typed(
             Opcode::Op2(Op2::Jl),
             &[Operand::Variable(1), Operand::LargeConstant(0x4000)],
             None,
-            None, // No branch - we'll manually emit it
+            Some(-1), // Branch on true - will be resolved to return_false_label
         )?;
 
-        // Manually emit branch bytes: skip "ret 1" instruction (2 bytes)
-        // Branch format: bit 15=1 (branch on true), bit 14=0 (2-byte form), bits 13-0 = offset
-        // Offset = 2 (skip ret 1 instruction which is 2 bytes)
-        self.emit_byte(0x80)?; // High byte: branch on true, 2-byte form
-        self.emit_byte(0x02)?; // Low byte: offset 2
+        // Create UnresolvedReference for the branch
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::Branch,
+                location: jl_layout
+                    .branch_location
+                    .expect("jl instruction must have branch location"),
+                target_id: return_false_label,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
 
         // Fall through: value >= 0x4000, blocked, return 1
         self.emit_instruction_typed(
@@ -11077,6 +11110,10 @@ impl ZMachineCodeGen {
         )?;
 
         // Branch target: value < 0x4000, not blocked, return 0
+        self.label_addresses
+            .insert(return_false_label, self.code_address);
+        self.record_final_address(return_false_label, self.code_address);
+
         self.emit_instruction_typed(
             Opcode::Op1(Op1::Ret),
             &[Operand::SmallConstant(0)],

@@ -101,6 +101,19 @@ impl Interpreter {
             (0x0D, crate::instruction::OperandCount::OP1) => {
                 // Print string at packed address
                 let pc = self.vm.pc - inst.size as u32;
+
+                // Debug string ID 458's packed address
+                if operands[0] == 0x04db {
+                    log::error!("*** print_paddr at PC {:05x} with packed address 0x{:04x} (string ID 458: 'There is ')", pc, operands[0]);
+                    let unpacked = operands[0] as usize * 2;
+                    log::error!("*** Unpacked address: 0x{:04x}", unpacked);
+                    log::error!("*** Bytes at unpacked address: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
+                        self.vm.game.memory[unpacked], self.vm.game.memory[unpacked+1],
+                        self.vm.game.memory[unpacked+2], self.vm.game.memory[unpacked+3],
+                        self.vm.game.memory[unpacked+4], self.vm.game.memory[unpacked+5],
+                        self.vm.game.memory[unpacked+6], self.vm.game.memory[unpacked+7]);
+                }
+
                 debug!("print_paddr at {:05x}: operand={:04x}", pc, operands[0]);
 
                 // Check if this might be the problematic address
@@ -119,6 +132,9 @@ impl Interpreter {
                     abbrev_addr,
                 ) {
                     Ok(string) => {
+                        if operands[0] == 0x04db {
+                            log::error!("*** Decoded string for 0x04db: '{}'", string);
+                        }
                         self.output_text(&string)?;
                     }
                     Err(e) => {
