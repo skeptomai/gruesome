@@ -1388,7 +1388,8 @@ impl IrGenerator {
         }
 
         // Generate function body with function-scoped parameters
-        let body = self.generate_block(func.body)?;
+        // Use generate_block_for_function to ensure implicit return is added
+        let body = self.generate_block_for_function(func.body)?;
         let local_vars = self.current_locals.clone();
 
         // SCOPE MANAGEMENT: Restore the global symbol table after processing function
@@ -1452,8 +1453,9 @@ impl IrGenerator {
         self.current_locals.clear();
         self.next_local_slot = 1; // Slot 0 reserved for return value
 
-        // Generate function body
-        let body = self.generate_block(block)?;
+        // Generate function body with implicit return
+        // Use generate_block_for_function to ensure implicit return is added
+        let body = self.generate_block_for_function(block)?;
         let local_vars = self.current_locals.clone();
 
         // SCOPE MANAGEMENT: Restore global symbol table
@@ -2078,6 +2080,48 @@ impl IrGenerator {
                 stmt
             );
             self.generate_statement(stmt.clone(), &mut ir_block)?;
+        }
+
+        Ok(ir_block)
+    }
+
+    /// Generate an IR block specifically for a function body.
+    ///
+    /// Unlike `generate_block()`, this ensures the function has a proper terminating
+    /// return instruction. Z-Machine functions MUST end with an explicit return
+    /// instruction (rtrue/rfalse/ret), otherwise the program counter continues
+    /// advancing into garbage memory or loops back to the function start.
+    ///
+    /// This method adds an implicit `rtrue` (return true) at the end of the function
+    /// if there isn't already an explicit return statement. This prevents infinite
+    /// loops and undefined behavior when execution reaches the end of a function.
+    ///
+    /// # Example
+    /// ```grue
+    /// fn look_around() {
+    ///     print(player.location.desc);
+    ///     // No explicit return - implicit rtrue added here
+    /// }
+    /// ```
+    ///
+    /// Without the implicit return, execution would continue past the function end,
+    /// potentially looping back and creating an infinite loop.
+    fn generate_block_for_function(
+        &mut self,
+        block: crate::grue_compiler::ast::BlockStmt,
+    ) -> Result<IrBlock, CompilerError> {
+        let mut ir_block = self.generate_block(block)?;
+
+        // Check if function already ends with explicit return
+        let needs_return = if let Some(last_instr) = ir_block.instructions.last() {
+            !matches!(last_instr, IrInstruction::Return { .. })
+        } else {
+            true // Empty function body needs return
+        };
+
+        if needs_return {
+            log::debug!("Adding implicit rtrue at end of function body");
+            ir_block.add_instruction(IrInstruction::Return { value: None });
         }
 
         Ok(ir_block)

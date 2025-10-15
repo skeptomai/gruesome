@@ -1,17 +1,39 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 14, 2025) - ROOM HANDLER IMPLEMENTATION 🔧
+## CURRENT STATUS (October 15, 2025) - BUG #19 FIXED ✅
 
-**ACTIVE TASK**: Implementing room event handlers (on_enter, on_exit, on_look) per `docs/ROOM_HANDLER_IMPLEMENTATION_PLAN.md`
+**PROGRESS**: Fixed Bug #19 - Missing Return Instructions in Functions. All 183 tests pass.
 
-**STATUS**: Phase 1 in progress - IR generation for room handlers
+### Bug 19: Missing Return Instructions in Functions ✅ FIXED (Oct 15, 2025)
+- **Issue**: Functions without explicit return statements didn't get terminating `rtrue` instructions
+- **Symptoms**: Execution fell through end of function and looped back to function start, causing infinite loops
+- **Example**: `look_around()` function caused infinite loop after calling `on_look()` handler
+- **Root Cause**: `generate_block()` didn't add terminating return, functions just ended
+  - Z-Machine requires explicit return instruction to terminate function execution
+  - Without it, PC continues advancing into garbage memory or loops back
+- **Fix**: Added `generate_block_for_function()` helper that adds implicit `rtrue` at end (`ir.rs:2086-2106`)
+  - Checks if last instruction is already a Return
+  - If not, adds `IrInstruction::Return { value: None }` (compiles to `rtrue`)
+  - Updated `generate_function()` and `create_function_from_block()` to use new helper
+- **Impact**: All 183 tests pass ✅, room handlers work correctly
+- **Files**:
+  - `src/grue_compiler/ir.rs:2086-2106` (new helper method)
+  - `src/grue_compiler/ir.rs:1392` (generate_function fix)
+  - `src/grue_compiler/ir.rs:1458` (create_function_from_block fix)
+- **Lesson**: Z-Machine functions must ALWAYS end with explicit return instruction
 
-**PROBLEM**: Room handlers exist in mini_zork.grue source but don't execute at runtime:
-- `behind_house.on_look` should print kitchen message when window is open
-- `west_of_house.on_enter` should print welcome message on first visit
-- Handlers are parsed but never called during gameplay
+## PREVIOUS STATUS (October 14, 2025) - ROOM HANDLER IMPLEMENTATION COMPLETE ✅
 
-**See**: `docs/ROOM_HANDLER_IMPLEMENTATION_PLAN.md` for complete implementation plan
+**COMPLETED**: Room event handlers (on_enter, on_exit, on_look) fully implemented and tested per `docs/ROOM_HANDLER_IMPLEMENTATION_PLAN.md`
+
+**STATUS**: Phase 4 complete - All success criteria met:
+- ✅ All room handlers converted to functions in IR
+- ✅ Function addresses stored in room properties
+- ✅ Handlers execute when called (on_enter confirmed working)
+- ✅ All 183 tests pass
+- ✅ Can navigate between rooms in mini_zork
+
+**See**: `docs/ROOM_HANDLER_IMPLEMENTATION_PLAN.md` for complete implementation details
 
 ### Recent Fixes (October 13, 2025)
 
@@ -269,3 +291,60 @@ Development history archived to `CLAUDE_HISTORICAL.md` for reference.
 - Never give percentages of completion or time estimates
 - Use IndexSet and IndexMap rather than HashSet or HashMap for determinism
 - **NEVER compile test files to `/tmp`** - Always use `tests/` directory in the repository for compiled Z3 files
+
+## CRITICAL: Always Check File Timestamps Before Debugging
+
+**LESSON LEARNED (Oct 15, 2025)**: Before investigating runtime bugs, ALWAYS verify test binaries are freshly compiled.
+
+**The Incident**:
+- Spent hours debugging "infinite loop" in room handlers after removing `if` checks
+- Investigated non-existent "property number mismatch" bug (Bug #20)
+- Built elaborate theories about IR generation differences
+- **Reality**: `tests/mini_zork.z3` was compiled the previous day and never recompiled
+- Testing stale binary from before the changes being investigated
+- Code worked perfectly - there was NO bug
+
+**Prevention Protocol**:
+1. **BEFORE debugging runtime issues**: Check `ls -la tests/*.z3` timestamps
+2. **ALWAYS recompile** after modifying source files: `./target/debug/grue-compiler examples/mini_zork.grue -o tests/mini_zork.z3`
+3. **Verify compilation** happened: Check file timestamp AFTER compile command
+4. **Golden rule**: If debugging seems nonsensical, check if you're testing stale binaries
+
+**Red flags that suggest stale binary**:
+- Removing code doesn't change behavior
+- Adding logging doesn't appear in output
+- "Same IR produces different bytecode" (actually testing different source versions)
+- Bug appears/disappears without code changes
+- Test results don't match expectations after verified source changes
+
+## CRITICAL: Gameplay Testing Protocol
+
+**Unit Tests ≠ Working Game**: Unit tests verify isolated compiler components but don't catch integration issues like infinite loops, handler dispatch problems, or navigation bugs.
+
+**Required Testing Protocol After Code Changes**:
+
+1. **Run unit tests**: `cargo test`
+2. **Recompile the game**: `./target/debug/grue-compiler examples/mini_zork.grue -o tests/mini_zork.z3`
+3. **Verify fresh binary**: `ls -la tests/mini_zork.z3` (check timestamp is current)
+4. **Play the game**: `./target/debug/gruesome tests/mini_zork.z3`
+5. **Test actual gameplay**:
+   - Try navigation commands (north, south, east, west, up, down)
+   - Examine objects related to your changes
+   - Test the specific features you modified
+   - Verify no infinite loops or crashes
+   - Check output formatting is correct
+
+**When Gameplay Testing is MANDATORY**:
+- Modifying IR generation (especially control flow, returns, branches)
+- Changing code generation for handlers/functions
+- Touching property systems or object trees
+- Any changes to builtins that affect runtime behavior
+- Control flow modifications (if/for/while statements)
+- Function call mechanisms or parameter passing
+
+**Example: Bug #19 (Missing Returns)**
+- Unit tests: ✅ All 183 passed
+- Gameplay: ❌ Infinite loop at first handler call
+- Lesson: Unit tests don't execute handler dispatch sequences
+
+**Remember**: Passing tests mean compiler components work in isolation. Playing the game means the compiled binary works as a complete system.
