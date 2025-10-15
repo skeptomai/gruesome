@@ -335,6 +335,12 @@ impl PropertyManager {
         manager.register_standard_property(StandardProperty::Adjective);
         // Location registration removed - uses object tree only (Oct 12, 2025)
 
+        // Pre-register exit system properties (not accessed during IR generation, only during codegen)
+        // These MUST be registered here to avoid property number collisions with runtime-generated properties
+        manager.get_property_number("exit_directions"); // Parallel array of dictionary addresses (2 bytes each)
+        manager.get_property_number("exit_types");      // Parallel array of exit types (1 byte each): 0=room, 1=blocked
+        manager.get_property_number("exit_data");       // Parallel array of exit data (2 bytes each): room_id or message_addr
+
         manager
     }
 

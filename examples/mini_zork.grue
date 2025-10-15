@@ -27,11 +27,8 @@ world {
             east: blocked("The door is boarded and you can't remove the boards.")
         }
         
-        on_enter: {
-            if !west_of_house.visited {
-                print("Welcome to Zork!");
-            }
-        }
+        // Note: Welcome message is printed in init block, not here
+        // on_enter handler removed - no special behavior needed
     }
     
     room north_of_house "North of House" {
@@ -341,12 +338,13 @@ fn handle_go(direction) {
 
     move(player, exit.destination);
 
-    player.location.visited = true;
-
     // Call location on_enter handler if it exists
+    // (called before setting visited so handler can check if first visit)
     if player.location.on_enter {
         player.location.on_enter();
     }
+
+    player.location.visited = true;
 
     look_around();
 }
@@ -452,8 +450,7 @@ fn take_all() {
 init {
     // Set up initial game state
     player.location = west_of_house;
-    west_of_house.visited = true;
-    
+
     // Print game banner
     print("DORK I: The Last Great Empire");
     print("Copyright (c) 2025 Grue Games. All rights reserved.");
@@ -461,7 +458,13 @@ init {
     print("DORK is .... not");
     print("Revision 1 / Serial number 8675309");
     print("");
-    
+
+    // Welcome message for first visit
+    print("Welcome to Zork!");
+
     // Show initial location
     look_around();
+
+    // Mark starting room as visited after showing it
+    west_of_house.visited = true;
 }
