@@ -437,12 +437,35 @@ impl ZMachineCodeGen {
             // Ensure all objects have essential properties that games commonly access
             // location_prop removed - uses object tree parent only (Oct 12, 2025)
             let desc_prop = *self.property_numbers.get("description").unwrap_or(&7);
+            let names_prop = *self.property_numbers.get("names").unwrap_or(&7);
 
             // location property removed - objects use object tree containment (Oct 12, 2025)
 
             // Add desc property if missing (use short_name as fallback)
             if !object_properties.properties.contains_key(&desc_prop) {
                 object_properties.set_string(desc_prop, object.short_name.clone());
+            }
+
+            // CRITICAL FIX (Oct 15, 2025): Add names property for object lookup
+            // Object lookup (codegen.rs:6841-6869) reads property 7 to find dictionary address of noun
+            // Must store dictionary address of first object name in property 7
+            // This uses placeholder + UnresolvedReference pattern (like exit_data in Bug #9)
+            if !object.names.is_empty() {
+                // Write placeholder - will be resolved to dictionary address during property serialization
+                // Pattern: Write 0xFFFF placeholder, then create DictionaryRef UnresolvedReference
+                object_properties.set_word(names_prop, 0xFFFF);
+
+                // Track the object name for DictionaryRef UnresolvedReference creation during serialization
+                // Store first name only (grammar lookup uses first matching name)
+                self.object_vocabulary_names
+                    .insert(object.name.clone(), object.names[0].clone());
+
+                log::debug!(
+                    "OBJECT_NAMES: Object '{}' names property {} will resolve to dictionary address of '{}'",
+                    object.name,
+                    names_prop,
+                    object.names[0]
+                );
             }
 
             all_objects.push(ObjectData {

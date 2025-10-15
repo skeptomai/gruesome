@@ -260,6 +260,10 @@ pub struct ZMachineCodeGen {
     pub room_exit_messages: IndexMap<String, Vec<(usize, u32)>>,
     /// Room handler function IDs: room_name -> (on_enter_id, on_exit_id, on_look_id)
     pub room_handlers: IndexMap<String, (Option<IrId>, Option<IrId>, Option<IrId>)>,
+    /// Object vocabulary names for DictionaryRef UnresolvedReferences
+    /// Maps object_name -> vocabulary_word (first name from object.names)
+    /// Used when writing names property to property table
+    pub object_vocabulary_names: IndexMap<String, String>,
     /// Global property registry: property name -> property number
     pub property_numbers: IndexMap<String, u8>,
     /// Properties used by each object: object_name -> set of property names
@@ -397,6 +401,7 @@ impl ZMachineCodeGen {
             room_exit_directions: IndexMap::new(),
             room_exit_messages: IndexMap::new(),
             room_handlers: IndexMap::new(),
+            object_vocabulary_names: IndexMap::new(),
             property_numbers,
             object_properties: IndexMap::new(),
             object_table_addr: 0,
@@ -5188,6 +5193,39 @@ impl ZMachineCodeGen {
                     }
                 }
 
+                // If this is names property (property 7), create DictionaryRef for object name
+                let names_prop = *self.property_numbers.get("names").unwrap_or(&7);
+                if prop_num == names_prop && i % 2 == 0 && i < prop_data.len() - 1 {
+                    // Check if this object has a vocabulary name mapped
+                    if let Some(vocab_word) = self.object_vocabulary_names.get(&object.name) {
+                        // Find position of this word in sorted dictionary
+                        let position = self
+                            .dictionary_words
+                            .iter()
+                            .position(|w| w == &vocab_word.to_lowercase())
+                            .unwrap_or(0) as u32;
+
+                        // Create UnresolvedReference for dictionary address
+                        self.reference_context
+                            .unresolved_refs
+                            .push(UnresolvedReference {
+                                reference_type: LegacyReferenceType::DictionaryRef {
+                                    word: vocab_word.clone(),
+                                },
+                                location: data_offset, // Location in object_space
+                                target_id: position,
+                                is_packed_address: false,
+                                offset_size: 2,
+                                location_space: MemorySpace::Objects,
+                            });
+
+                        log::debug!(
+                            "Created DictionaryRef UnresolvedReference for names property: object='{}', word='{}', position={}, object_space offset=0x{:04x}",
+                            object.name, vocab_word, position, data_offset
+                        );
+                    }
+                }
+
                 // If this is exit_data property (property 22), create StringRef for blocked exit messages
                 let exit_data_prop = *self.property_numbers.get("exit_data").unwrap_or(&22);
                 if prop_num == exit_data_prop && i % 2 == 0 && i < prop_data.len() - 1 {
@@ -5910,15 +5948,43 @@ impl ZMachineCodeGen {
             self.code_address
         );
 
+        // Pre-allocate labels for verb handler chain (linked list pattern)
+        // Each verb jumps to next verb on mismatch, last verb jumps to main_loop
+        let verb_labels: Vec<u32> = (0..grammar_rules.len())
+            .map(|i| {
+                let label = self.next_string_id;
+                self.next_string_id += 1;
+                debug!("Pre-allocated label {} for verb #{}", label, i);
+                label
+            })
+            .collect();
+
         // For each grammar verb, generate pattern matching logic
-        for grammar in grammar_rules {
+        for (index, grammar) in grammar_rules.iter().enumerate() {
+            // Register this verb's label at current code address (start of handler)
+            let current_verb_label = verb_labels[index];
+            self.record_final_address(current_verb_label, self.code_address);
+
             debug!(
-                "Processing grammar verb: '{}' at code_address=0x{:04x}",
-                grammar.verb, self.code_address
+                "🏷️  VERB_LABEL: Registered label {} for verb #{} '{}' at code_address=0x{:04x}",
+                current_verb_label, index, grammar.verb, self.code_address
             );
 
+            // Determine next handler: either next verb in chain or main_loop if last
+            let next_handler_label = if index + 1 < grammar_rules.len() {
+                verb_labels[index + 1]
+            } else {
+                main_loop_jump_id
+            };
+
             // Generate verb matching: check if first token matches this verb
-            self.generate_verb_matching(&grammar.verb, &grammar.patterns, main_loop_jump_id)?;
+            // Pass both next_handler_label (for verb mismatch) and main_loop_jump_id (for successful pattern execution)
+            self.generate_verb_matching(
+                &grammar.verb,
+                &grammar.patterns,
+                next_handler_label,
+                main_loop_jump_id,
+            )?;
         }
 
         debug!("Grammar pattern matching generation complete");
@@ -5926,10 +5992,17 @@ impl ZMachineCodeGen {
     }
 
     /// Generate Z-Machine code to match a specific verb and its patterns
+    ///
+    /// # Parameters
+    /// - `verb`: The verb string to match (e.g., "look", "examine")
+    /// - `patterns`: The patterns for this verb (verb-only, verb+noun, etc.)
+    /// - `next_handler_label`: Label to jump to if verb doesn't match (next verb in chain, or main_loop if last)
+    /// - `main_loop_jump_id`: Label to jump to after successful pattern execution (back to main loop for new input)
     fn generate_verb_matching(
         &mut self,
         verb: &str,
         patterns: &[crate::grue_compiler::ir::IrPattern],
+        next_handler_label: u32,
         main_loop_jump_id: u32,
     ) -> Result<(), CompilerError> {
         debug!(
@@ -6144,7 +6217,12 @@ impl ZMachineCodeGen {
                 });
         }
 
-        // If we get here, verb didn't match - skip to end
+        // If we get here, verb didn't match - jump to next verb handler in chain
+        // (or main_loop if this is the last verb)
+        debug!(
+            "🔗 VERB_CHAIN: Verb '{}' mismatch will jump to next_handler_label={}",
+            verb, next_handler_label
+        );
         let layout = self.emit_instruction(
             0x0C, // jump (unconditional)
             &[Operand::LargeConstant(placeholder_word())],
@@ -6158,7 +6236,7 @@ impl ZMachineCodeGen {
                 .push(UnresolvedReference {
                     reference_type: LegacyReferenceType::Jump,
                     location: operand_location,
-                    target_id: end_function_label,
+                    target_id: next_handler_label, // ✅ Jump to next verb, not end!
                     is_packed_address: false,
                     offset_size: 2,
                     location_space: MemorySpace::Code,
@@ -6770,19 +6848,22 @@ impl ZMachineCodeGen {
             .insert(loop_start_label, self.code_address);
         self.record_final_address(loop_start_label, self.code_address);
 
-        // Check if current object number exceeds maximum (68 for mini_zork actual count)
+        // Check if current object number exceeds maximum
+        // Calculate max object number from object_numbers map
+        let max_object_number = self.object_numbers.values().max().copied().unwrap_or(0);
         log::error!(
-            "🔍 OBJECT_LOOKUP: Checking Variable(4) > 68 at 0x{:04x}",
+            "🔍 OBJECT_LOOKUP: Checking Variable(4) > {} at 0x{:04x}",
+            max_object_number,
             self.code_address
         );
         let layout = self.emit_instruction(
             0x03, // jg: jump if greater
             &[
-                Operand::Variable(4),       // Current object number
-                Operand::SmallConstant(68), // Maximum actual object count in mini_zork
+                Operand::Variable(4),                            // Current object number
+                Operand::SmallConstant(max_object_number as u8), // Maximum actual object count
             ],
             None,
-            Some(0xBFFF_u16 as i16), // Placeholder - branch-on-TRUE (jump to end when object > 68)
+            Some(0xBFFF_u16 as i16), // Placeholder - branch-on-TRUE (jump to end when object > max)
         )?;
         // Register branch to end_label using proper branch_location from layout
         if let Some(branch_location) = layout.branch_location {

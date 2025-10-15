@@ -347,7 +347,7 @@ impl ZMachineCodeGen {
 
     /// Generate dictionary space with minimal word parsing dictionary
     pub fn generate_dictionary_space(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
-        debug!("📚 Generating dictionary with grammar verbs and basic commands");
+        debug!("📚 Generating dictionary with grammar verbs, object names, and basic commands");
 
         // Z-Machine dictionary format:
         // - Word separators count (1 byte): 0
@@ -374,6 +374,20 @@ impl ZMachineCodeGen {
                         words.insert(word.to_lowercase());
                         debug!("📚 Adding pattern literal to dictionary: '{}'", word);
                     }
+                }
+            }
+        }
+
+        // Add all object names from the names property
+        // These are the vocabulary words that the parser uses to identify objects
+        for object in &ir.objects {
+            for name in &object.names {
+                if !name.is_empty() {
+                    words.insert(name.to_lowercase());
+                    debug!(
+                        "📚 Adding object name to dictionary: '{}' (from object: {})",
+                        name, object.short_name
+                    );
                 }
             }
         }

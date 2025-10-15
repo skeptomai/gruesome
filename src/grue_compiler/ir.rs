@@ -1010,6 +1010,7 @@ pub struct IrGenerator {
     property_manager: PropertyManager,  // Manages property numbering and inheritance
     id_registry: IrIdRegistry,          // NEW: Track all IR IDs for debugging and mapping
     variable_sources: IndexMap<IrId, VariableSource>, // Track variable origins for iteration strategy
+    object_parent_rooms: IndexMap<String, String>, // Object name -> Parent room name (for automatic placement)
 }
 
 impl Default for IrGenerator {
@@ -1035,6 +1036,7 @@ impl IrGenerator {
             property_manager: PropertyManager::new(),
             id_registry: IrIdRegistry::new(), // NEW: Initialize ID registry
             variable_sources: IndexMap::new(), // NEW: Initialize variable source tracking
+            object_parent_rooms: IndexMap::new(), // NEW: Initialize object->room mapping
         }
     }
 
@@ -1300,7 +1302,12 @@ impl IrGenerator {
                 ir_program.grammar.extend(ir_grammar);
             }
             Item::Init(init) => {
-                let ir_block = self.generate_block(init.body)?;
+                let mut ir_block = self.generate_block(init.body)?;
+
+                // Prepend automatic object placement instructions for objects with parent_room
+                let placement_instructions = self.generate_object_placement_instructions();
+                ir_block.instructions.splice(0..0, placement_instructions);
+
                 ir_program.init_block = Some(ir_block);
 
                 // Save local variables declared in init block (e.g., let statements)
@@ -1509,7 +1516,7 @@ impl IrGenerator {
 
             // Register all objects in the room
             for obj in &room.objects {
-                self.register_object_and_nested(obj)?;
+                self.register_object_and_nested(obj, Some(&room.identifier))?;
             }
         }
 
@@ -1752,10 +1759,22 @@ impl IrGenerator {
     fn register_object_and_nested(
         &mut self,
         obj: &crate::grue_compiler::ast::ObjectDecl,
+        parent_room: Option<&str>,
     ) -> Result<(), CompilerError> {
         // Register the object itself
         let obj_id = self.next_id();
         self.symbol_ids.insert(obj.identifier.clone(), obj_id);
+
+        // Store parent room mapping if provided
+        if let Some(room_name) = parent_room {
+            self.object_parent_rooms
+                .insert(obj.identifier.clone(), room_name.to_string());
+            log::debug!(
+                "🏠 Object '{}' registered in room '{}'",
+                obj.identifier,
+                room_name
+            );
+        }
 
         // Assign object number (check if already assigned to avoid duplicates)
         if !self.object_numbers.contains_key(&obj.identifier) {
@@ -1783,9 +1802,9 @@ impl IrGenerator {
             self.object_numbers[&obj.identifier]
         );
 
-        // Process nested objects recursively
+        // Process nested objects recursively - they inherit the same parent room
         for nested_obj in &obj.contains {
-            self.register_object_and_nested(nested_obj)?;
+            self.register_object_and_nested(nested_obj, parent_room)?;
         }
 
         Ok(())
@@ -1927,7 +1946,7 @@ impl IrGenerator {
             room.identifier
         );
         for obj in &room.objects {
-            self.register_object_and_nested(obj)?;
+            self.register_object_and_nested(obj, Some(&room.identifier))?;
         }
 
         // Now process handlers - objects are available for reference
@@ -2066,6 +2085,40 @@ impl IrGenerator {
         }
 
         Ok(ir_grammar)
+    }
+
+    fn generate_object_placement_instructions(&mut self) -> Vec<IrInstruction> {
+        let mut instructions = Vec::new();
+
+        // Iterate through all objects and generate InsertObj for those with parent_room
+        for (obj_name, room_name) in &self.object_parent_rooms {
+            // Get IR IDs for object and room
+            if let (Some(&obj_id), Some(&room_id)) = (
+                self.symbol_ids.get(obj_name),
+                self.symbol_ids.get(room_name),
+            ) {
+                log::debug!(
+                    "🏠 AUTO_PLACEMENT: Placing object '{}' (ID {}) in room '{}' (ID {})",
+                    obj_name,
+                    obj_id,
+                    room_name,
+                    room_id
+                );
+
+                instructions.push(IrInstruction::InsertObj {
+                    object: obj_id,
+                    destination: room_id,
+                });
+            } else {
+                log::warn!(
+                    "⚠️ AUTO_PLACEMENT: Could not find IR IDs for object '{}' or room '{}'",
+                    obj_name,
+                    room_name
+                );
+            }
+        }
+
+        instructions
     }
 
     fn generate_block(

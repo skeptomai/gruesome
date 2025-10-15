@@ -71,14 +71,21 @@ world {
     
     room forest_path "Forest Path" {
         desc: "This is a path winding through a dimly lit forest. The path heads north-south here. One particularly large tree with some low branches stands at the edge of the path."
+
+        object tree {
+            names: ["tree", "large tree"]
+            desc: "The tree has low branches that look climbable."
+            takeable: false
+        }
+
         exits: {
             north: north_of_house,
             south: forest,
-            up: tree
+            up: up_a_tree
         }
     }
-    
-    room tree "Up a Tree" {
+
+    room up_a_tree "Up a Tree" {
         desc: "You are about 10 feet above the ground nestled among some large branches. The nearest branch above you is above your reach."
         
         object nest {

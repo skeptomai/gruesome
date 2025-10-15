@@ -301,8 +301,8 @@ impl SemanticAnalyzer {
                                 .insert(obj.identifier.clone(), obj_symbol);
                             object_names.push(obj.identifier.clone());
 
-                            // Handle nested objects
-                            self.collect_nested_objects(&obj.contains, &obj.identifier)?;
+                            // Handle nested objects - pass room identifier so they know their parent room
+                            self.collect_nested_objects(&obj.contains, &room.identifier)?;
                         }
 
                         self.room_objects
@@ -330,14 +330,14 @@ impl SemanticAnalyzer {
     fn collect_nested_objects(
         &mut self,
         objects: &[ObjectDecl],
-        _parent_obj: &str,
+        parent_room: &str,
     ) -> Result<(), CompilerError> {
         for obj in objects {
             let obj_symbol = Symbol {
                 name: obj.identifier.clone(),
                 symbol_type: SymbolType::Object {
                     names: obj.names.clone(),
-                    parent_room: None, // Nested objects don't have direct room parents
+                    parent_room: Some(parent_room.to_string()), // Nested objects inherit room from parent
                 },
                 line: 0,
             };
@@ -353,8 +353,8 @@ impl SemanticAnalyzer {
                 .symbols
                 .insert(obj.identifier.clone(), obj_symbol);
 
-            // Recurse into nested objects
-            self.collect_nested_objects(&obj.contains, &obj.identifier)?;
+            // Recurse into nested objects - they also belong to the same room
+            self.collect_nested_objects(&obj.contains, parent_room)?;
         }
         Ok(())
     }

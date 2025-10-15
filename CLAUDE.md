@@ -1,64 +1,55 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 15, 2025) - BUG #19 FIXED ✅
+## CURRENT STATUS (October 15, 2025) - BUG #21 ACTIVE ⚠️
 
-**PROGRESS**: Fixed Bug #19 - Missing Return Instructions in Functions. All 183 tests pass.
+**PROGRESS**: Fixed Bug #20 (Grammar Dispatch Chain). Discovered Bug #21: Object names property not populated with dictionary addresses. Object lookup fails for all objects (mailbox, tree, etc.).
 
-### Bug 19: Missing Return Instructions in Functions ✅ FIXED (Oct 15, 2025)
-- **Issue**: Functions without explicit return statements didn't get terminating `rtrue` instructions
-- **Symptoms**: Execution fell through end of function and looped back to function start, causing infinite loops
-- **Example**: `look_around()` function caused infinite loop after calling `on_look()` handler
-- **Root Cause**: `generate_block()` didn't add terminating return, functions just ended
-  - Z-Machine requires explicit return instruction to terminate function execution
-  - Without it, PC continues advancing into garbage memory or loops back
-- **Fix**: Added `generate_block_for_function()` helper that adds implicit `rtrue` at end (`ir.rs:2086-2106`)
-  - Checks if last instruction is already a Return
-  - If not, adds `IrInstruction::Return { value: None }` (compiles to `rtrue`)
-  - Updated `generate_function()` and `create_function_from_block()` to use new helper
-- **Impact**: All 183 tests pass ✅, room handlers work correctly
+### Bug 21: Object Names Property + Property Table Pointers ⚠️ ACTIVE (Oct 15, 2025)
+- **Issue**: "examine mailbox" and "examine tree" produce no output (object not found)
+- **Symptoms**: examine() called with object ID 0 because object lookup fails
+- **Investigation Results**:
+  - **PART 1 FIXED ✅**: Dictionary addresses ARE correctly written to property 7
+    - Mailbox names property at 0x0597 contains 0x0924 (correct dictionary address for "small mailbox")
+    - All 6 objects have DictionaryRef UnresolvedReferences created and resolved
+    - Property 7 data is correctly formatted (size byte 0x27 = property 7, 2 bytes)
+  - **PART 2 BROKEN ⚠️**: Property table pointers in object table are WRONG
+    - Object #2 (mailbox) property table pointer at 0x040A = 0x0492
+    - But mailbox property 7 is actually at 0x0596-0x0598
+    - Pointer points to wrong location, get_prop opcode reads garbage
+- **Root Cause**: Property table pointer patching issue
+  - Property tables are written to object_space with correct data
+  - UnresolvedReferences for property contents (strings, dictionary addresses) work correctly
+  - But object table entries have incorrect property table pointers
+  - Likely issue in `patch_property_table_addresses()` or initial pointer calculation
+- **Architecture**: **THREE systems** for object tracking (all necessary):
+  1. **Compile-time object tree** (IR parent/sibling/child) - Initial structure in object table
+  2. **Runtime InsertObj** (init block) - Dynamic placement in starting locations
+  3. **Dictionary → Object mapping** (property 7) - Enables noun lookup - **DATA FIXED, POINTERS BROKEN**
+- **Next Steps**: Debug property table pointer calculation and patching
+  - Check where object #2's property table actually starts (work backwards from 0x0596)
+  - Verify `create_object_entry_from_ir_with_mapping()` pointer calculation
+  - Check `patch_property_table_addresses()` adjustment logic
 - **Files**:
-  - `src/grue_compiler/ir.rs:2086-2106` (new helper method)
-  - `src/grue_compiler/ir.rs:1392` (generate_function fix)
-  - `src/grue_compiler/ir.rs:1458` (create_function_from_block fix)
-- **Lesson**: Z-Machine functions must ALWAYS end with explicit return instruction
+  - `src/grue_compiler/codegen_objects.rs:449-468` (names property placeholder) ✅ WORKING
+  - `src/grue_compiler/codegen.rs:266, 404` (field tracking) ✅ WORKING
+  - `src/grue_compiler/codegen.rs:5196-5227` (dictionary reference resolution) ✅ WORKING
+  - `src/grue_compiler/codegen.rs:5035-5109` (property table pointer patching) ⚠️ NEEDS INVESTIGATION
 
-## PREVIOUS STATUS (October 14, 2025) - ROOM HANDLER IMPLEMENTATION COMPLETE ✅
+## Recent Fixes (October 15, 2025)
 
-**COMPLETED**: Room event handlers (on_enter, on_exit, on_look) fully implemented and tested per `docs/ROOM_HANDLER_IMPLEMENTATION_PLAN.md`
+### Bug 20: Grammar Dispatch Chain Broken ✅ FIXED (Oct 15, 2025)
+- **Issue**: Only first verb worked, subsequent verbs caused infinite loop
+- **Fix**: Implemented proper verb handler chaining - each verb jumps to next verb on mismatch
+- **Files**: `codegen.rs:5913-5944, 5952-5960, 6170-6194`
+- **See**: `CLAUDE_HISTORICAL.md` for complete details
 
-**STATUS**: Phase 4 complete - All success criteria met:
-- ✅ All room handlers converted to functions in IR
-- ✅ Function addresses stored in room properties
-- ✅ Handlers execute when called (on_enter confirmed working)
-- ✅ All 183 tests pass
-- ✅ Can navigate between rooms in mini_zork
+### Bug 19: Missing Return Instructions ✅ FIXED (Oct 15, 2025)
+- **Issue**: Functions without explicit returns caused infinite loops
+- **Fix**: Added `generate_block_for_function()` helper that adds implicit `rtrue`
+- **Files**: `ir.rs:2086-2106, 1392, 1458`
+- **See**: `CLAUDE_HISTORICAL.md` for complete details
 
-**See**: `docs/ROOM_HANDLER_IMPLEMENTATION_PLAN.md` for complete implementation details
-
-### Recent Fixes (October 13, 2025)
-
-**Random Builtin Bug** ✅
-- Fixed `generate_random_builtin` incorrectly marking results as strings
-- Now properly maps result to stack variable 0
-- File: `src/grue_compiler/codegen_builtins.rs:719-728`
-
-**Object Numbers Timing Bug** ✅
-- Fixed timing issue where object numbers were transferred too late
-- Now transferred immediately in `generate_complete_game_image` after `setup_comprehensive_id_mappings`
-- Fixes "Room 'X' has no object number from IR" errors in unit tests
-- File: `src/grue_compiler/codegen.rs:582`
-
-**Test Infrastructure** ✅
-- Enhanced `create_minimal_ir()` to initialize object_numbers with player
-- Created `add_room_to_ir()` helper for proper room registration
-- All 6 exit-related unit tests now passing
-- File: `src/grue_compiler/codegen_tests.rs:13-51`
-
-### Exit System Complete (October 12, 2025) ✅
-
-All 5 exit builtins converted to real Z-Machine functions with proper calling conventions. Navigation commands ("north", "east", "south", "west") work correctly with both blocked and unblocked exits.
-
-**See**: `docs/BUILTIN_FUNCTION_CONVERSION_PLAN.md` and `CLAUDE_HISTORICAL.md` for detailed history.
+**Previous milestones**: Room handlers, exit system, grammar system complete. See `CLAUDE_HISTORICAL.md` for full history.
 
 ---
 

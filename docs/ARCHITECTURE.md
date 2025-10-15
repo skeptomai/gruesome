@@ -257,6 +257,86 @@ graph TB
     TRAIT_INTERFACE --> OPERATIONS
 ```
 
+### CRITICAL: Rooms vs Objects - What's in the Object Table?
+
+**Architecture Fundamental**: In the Z-Machine object table, **rooms are NOT objects**. Only actual game objects (items, scenery, etc.) are stored in the object table.
+
+#### What This Means
+
+**Rooms**:
+- Referenced by identifiers in Grue source code (e.g., `west_of_house`, `forest_path`)
+- Used in navigation code and initial object placement
+- **NOT stored in the object table**
+- **NOT assigned object IDs**
+- Cannot be examined, taken, or manipulated as objects
+- Exist only as conceptual locations in game logic
+
+**Objects**:
+- Stored in the object table with sequential IDs starting from 1
+- **Player is always object ID 1** (special requirement)
+- Can have properties, attributes, and parent/child/sibling relationships
+- Can be examined, taken, dropped, opened, etc.
+- Names must be in dictionary for parser recognition
+- Examples: mailbox, leaflet, tree, nest, egg
+
+#### Example from mini_zork.grue
+
+**Objects** (in object table):
+1. `player` - Object ID 1 (always)
+2. `mailbox` - Object ID 2
+3. `leaflet` - Object ID 3 (inside mailbox)
+4. `window` - Object ID 4
+5. `tree` - Object ID 5 (scenery object in forest_path)
+6. `nest` - Object ID 6 (in up_a_tree room)
+7. `egg` - Object ID 7 (inside nest)
+
+**Rooms** (NOT in object table):
+- `west_of_house` - Starting location
+- `north_of_house`
+- `south_of_house`
+- `behind_house`
+- `forest_path` - Where the tree object is located
+- `up_a_tree` - Room representing being in the tree
+- `forest`
+- `clearing`
+
+#### Why This Matters
+
+**1. Object ID Calculations During Debugging**
+- When debugging "Invalid object number X" errors, remember rooms are NOT in the object table
+- If you see object ID 7, count through actual game objects (player, mailbox, leaflet, etc.), not rooms
+
+**2. Property Lookups**
+- Rooms don't have properties in the object table
+- Room descriptions are stored in separate room handler code
+- Object descriptions are in object property tables
+
+**3. Object Tree Navigation**
+- Parent/child/sibling relationships only apply to objects
+- Room names used for navigation are purely in game logic, not object tree
+- Example: `player.location = west_of_house` uses `insert_obj` to put player in west_of_house, but west_of_house itself has no object ID
+
+**4. Dictionary Word Resolution**
+- Object names (from `names:` property) must be in dictionary for parser
+- Room names don't need to be in dictionary (used only in source code)
+- Example: "tree" and "large tree" are in dictionary (object names), but "up_a_tree" is not (room identifier)
+
+**5. Naming Conflicts**
+- Object identifiers and room identifiers share the same namespace during compilation
+- Cannot have both `object tree` and `room tree` in the same game
+- Solution: Use descriptive names like `room up_a_tree` vs `object tree`
+
+#### Common Debugging Pitfall
+
+When examining compiled Z-Machine files:
+- Object table starts at address specified in header
+- Each object entry is 9 bytes (v3) or 14 bytes (v4+)
+- Calculating "number of objects" from remaining space is **WRONG**
+- Property table data follows object entries, but is NOT part of object count
+- Always count actual object definitions in source code, not bytes in memory
+
+**See Also**: `docs/MINI_ZORK_OBJECT_ANALYSIS.md` for detailed mini_zork object structure.
+
 ### Location as Containment Only (October 12, 2025)
 
 **Architecture Decision**: Object location is ONLY represented by object tree parent pointers, never as a property.
@@ -938,6 +1018,73 @@ fn generate_grammar_pattern_matching(
 ### Verb Matching Logic
 
 **Location**: `src/grue_compiler/codegen.rs` lines 5263-5673
+
+#### Grammar Dispatch Control Flow: Linked List Pattern
+
+**CRITICAL DESIGN DECISION**: Grammar dispatch uses a **linked list (chain) pattern**, NOT an array loop.
+
+**The Pattern**:
+```
+main_loop:
+    Parse user input → extract verb dictionary address
+    ↓
+verb_handler_1: ("look")
+    Compare Variable(2) with "look" dictionary address
+    ✓ Match → execute patterns
+    ✗ No match → JUMP to verb_handler_2
+    ↓
+verb_handler_2: ("examine")
+    Compare Variable(2) with "examine" dictionary address
+    ✓ Match → execute patterns
+    ✗ No match → JUMP to verb_handler_3
+    ↓
+verb_handler_3: ("take")
+    Compare Variable(2) with "take" dictionary address
+    ✓ Match → execute patterns
+    ✗ No match → JUMP to verb_handler_4
+    ↓
+    ... (chain continues for all verbs)
+    ↓
+verb_handler_N: (last verb)
+    Compare Variable(2) with last verb dictionary address
+    ✓ Match → execute patterns
+    ✗ No match → JUMP to main_loop (no verb matched)
+```
+
+**Why Not Array Loop?**
+Alternative design would be iterating over grammar array:
+```
+for i = 0 to verb_count:
+    if parse_buffer[verb] == verbs[i]:
+        execute patterns[i]
+        break
+```
+
+**Reasons for Linked List Pattern**:
+1. **Z-Machine Efficiency**: No loop counter variable needed, no array bounds checking
+2. **Code Size**: Each verb handler is self-contained, no shared loop infrastructure
+3. **Memory Constraints**: No need to store verb array in memory (verbs are compile-time constants)
+4. **Infocom Precedent**: Commercial Infocom games use this pattern
+5. **Early Exit**: First matching verb exits immediately without checking remaining verbs
+
+**Implementation Details** (`codegen.rs` lines 5913-5922, 6147-6166):
+- Each verb handler ends with unconditional `jump` instruction
+- Jump target is **next verb handler's start label** (on mismatch)
+- Last verb handler jumps to `main_loop_jump_id` (no verb matched)
+- Each verb gets unique labels via hashing: `end_function_label = 90000 + hash(verb)`
+
+**Bug #20 - Broken Chain** (FIXED Oct 12, 2025):
+- Line 6161 originally jumped to `end_function_label` (end of ALL grammar)
+- This broke the chain - only first verb could ever match!
+- Fix: Change `target_id` from `end_function_label` to `next_handler_label`
+- Result: Verbs now correctly chain to next handler on mismatch
+
+**Why First Verb Works But Others Fail**:
+- "look" (first verb): Checked first, matches before any jumps
+- "examine" (second verb): Never reached if "look" jumps to end instead of chaining
+- Infinite loop: Main loop re-parses same input, tries "look" again, jumps to end, repeat
+
+---
 
 Each verb handler implements a multi-phase matching algorithm:
 
