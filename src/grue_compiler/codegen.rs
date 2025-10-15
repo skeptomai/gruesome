@@ -363,6 +363,12 @@ impl ZMachineCodeGen {
         // Initialize property numbers for standard properties
         let mut property_numbers = IndexMap::new();
 
+        // CRITICAL: Core object properties - DO NOT CHANGE THESE NUMBERS
+        // Property 7 is the description property used by examine(), look_around(), etc.
+        // Property 27 is the dictionary address for grammar object lookup
+        property_numbers.insert("description".to_string(), 7); // Description string (printed by examine/look)
+        property_numbers.insert("names".to_string(), 27); // Dictionary address for grammar lookup
+
         // Exit system properties (parallel arrays for runtime direction lookup)
         property_numbers.insert("exit_directions".to_string(), 20);
         property_numbers.insert("exit_types".to_string(), 21);
@@ -6881,16 +6887,18 @@ impl ZMachineCodeGen {
             panic!("BUG: emit_instruction didn't return branch_location for jg instruction");
         }
 
-        // Get property 7 (names) for current object
-        log::error!(
-            "🔍 OBJECT_LOOKUP: Getting property 7 (names) from Variable(4) → Variable(5) at 0x{:04x}",
+        // Get property 16 (names) for current object
+        let names_prop = *self.property_numbers.get("names").unwrap();
+        log::warn!(
+            "🔍 OBJECT_LOOKUP: Getting property {} (names) from Variable(4) → Variable(5) at 0x{:04x}",
+            names_prop,
             self.code_address
         );
         self.emit_instruction(
             0x11, // get_prop: get property value
             &[
-                Operand::Variable(4),      // Current object number
-                Operand::SmallConstant(7), // Property 7 (names)
+                Operand::Variable(4),                     // Current object number
+                Operand::SmallConstant(names_prop as u8), // Property 27 (names)
             ],
             Some(5), // Store property value in variable 5
             None,
@@ -6931,8 +6939,11 @@ impl ZMachineCodeGen {
             "🔍 OBJECT_LOOKUP: Incrementing Variable(4) at 0x{:04x}",
             self.code_address
         );
-        self.emit_instruction(
-            0x05,                    // inc
+        // CRITICAL FIX (Bug #21 Part 2 - Oct 15, 2025): Use emit_instruction_typed to ensure 1OP form
+        // Raw opcode 0x05 with emit_instruction incorrectly chose VAR form (print_char) instead of 1OP (inc)
+        // This caused infinite loop: Variable(4) was never incremented, always checked object 1 only
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::Inc),   // 1OP:5 inc (NOT VAR:5 print_char!)
             &[Operand::Variable(4)], // Increment object counter
             None,
             None,
@@ -7676,26 +7687,24 @@ impl ZMachineCodeGen {
     fn get_literal_value(&self, ir_id: IrId) -> Option<u16> {
         // Check if this IR ID corresponds to an integer literal
         if let Some(&integer_value) = self.ir_id_to_integer.get(&ir_id) {
-            // DEBUG: Track problematic IR IDs that create LargeConstant(0)
-            if integer_value < 0 {
-                debug!("Negative integer fallback: IR ID {} has negative value {} -> converting to LargeConstant(0)", ir_id, integer_value);
-                debug!("Root issue: This IR ID should NOT be in ir_id_to_integer table - it should be an object/function/string reference");
-            }
-
             // Convert to u16, handling negative values appropriately
             if integer_value >= 0 {
                 return Some(integer_value as u16);
             } else {
                 // For negative values, use 0 as fallback
+                debug!("Negative integer fallback: IR ID {} has negative value {} -> converting to LargeConstant(0)", ir_id, integer_value);
                 return Some(0);
             }
         }
 
-        // Check legacy mapping for backward compatibility
-        match ir_id {
-            id if id >= 1000 => Some((id - 1000) as u16), // Simple mapping for testing
-            _ => None,
-        }
+        // CRITICAL FIX (Oct 15, 2025): Removed legacy mapping fallback
+        // Previously had: `match ir_id { id if id >= 1000 => Some((id - 1000) as u16), _ => None }`
+        // This was a test fallback from August 2025 that caused serious bugs:
+        //   - Player (IR ID 9999) converted to 8999 instead of Variable(16)
+        //   - InsertObj emitted LargeConstant(8999) for player instead of correct operand
+        //   - Property access returned garbage because wrong object numbers were used
+        // All IR IDs must now be in proper mapping tables (ir_id_to_integer, ir_id_to_object_number, etc.)
+        None
     }
 
     /// Resolve an IR ID to the appropriate Z-Machine operand
@@ -7712,12 +7721,6 @@ impl ZMachineCodeGen {
                 ir_id,
                 literal_value
             );
-
-            // CRITICAL CHECK: Is 415 being returned?
-            // Historical note: Previously checked for literal_value == 415 (label ID bug)
-            // This was a systematic issue where label IDs were being used as operand values
-            // Fixed by proper IR ID mapping - keeping note for future reference
-
             return Ok(Operand::LargeConstant(literal_value));
         }
 
@@ -7749,38 +7752,23 @@ impl ZMachineCodeGen {
             )));
         }
 
-        // CRITICAL FIX: Check for player object first - player must use Variable(16)
+        // CRITICAL: Check for player object first - player must use Variable(16)
         // The player object is stored in global variable G00 (Variable 16) and must be accessed via variable read
         // This follows proper Z-Machine architecture where the player object is referenced via global variables
         if let Some(&object_number) = self.ir_id_to_object_number.get(&ir_id) {
             if object_number == 1 {
-                // Player is object #1
+                // Player is object #1 - must use global variable G00
                 log::debug!(
- " resolve_ir_id_to_operand: IR ID {} is player object - resolved to Variable(16) [Player global]",
- ir_id
- );
+                    " resolve_ir_id_to_operand: IR ID {} is player object - resolved to Variable(16) [Player global]",
+                    ir_id
+                );
                 return Ok(Operand::Variable(16)); // Global G00 = Variable(16)
             }
 
             log::debug!(
- " resolve_ir_id_to_operand: IR ID {} resolved to LargeConstant({}) [Object reference]",
- ir_id, object_number
- );
-
-            // Critical debug: Track invalid object numbers
-            if object_number == 77 {
-                debug!(
-                    "Object 77 debug: IR ID {} mapped to invalid object 77!",
-                    ir_id
-                );
-                debug!("Object table has only 14 objects (1-14), but object 77 was requested");
-                debug!("This suggests ir_id_to_object_number mapping is incorrect");
-                debug!(
-                    "Full object mapping table: {:?}",
-                    self.ir_id_to_object_number
-                );
-                debug!("Valid object range is 1-14. Consider if IR ID {} should map to a different object", ir_id);
-            }
+                " resolve_ir_id_to_operand: IR ID {} resolved to LargeConstant({}) [Object reference]",
+                ir_id, object_number
+            );
 
             return Ok(Operand::LargeConstant(object_number));
         }
@@ -7980,6 +7968,12 @@ impl ZMachineCodeGen {
 
         for (name, &ir_id) in &ir.symbol_ids {
             if let Some(&object_number) = ir.object_numbers.get(name) {
+                log::error!(
+                    "🗺️ OBJECT_MAPPING: '{}': IR ID {} → Object #{}",
+                    name,
+                    ir_id,
+                    object_number
+                );
                 self.ir_id_to_object_number.insert(ir_id, object_number);
                 log::debug!(
                     " MAPPING: IR ID {} ('{}') -> Object #{} {}",

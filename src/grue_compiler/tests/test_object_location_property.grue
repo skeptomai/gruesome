@@ -1,0 +1,105 @@
+// Test object.location property access
+// This tests the property access path that mini_zork uses
+
+world {
+    room living_room "Living Room" {
+        desc: "You are in a cozy living room."
+
+        object lamp {
+            names: ["lamp", "brass lamp"]
+            desc: "A shiny brass lamp."
+        }
+
+        object table {
+            names: ["table", "wooden table"]
+            desc: "A sturdy wooden table."
+
+            contains {
+                object book {
+                    names: ["book", "red book"]
+                    desc: "A red leather-bound book."
+                }
+            }
+        }
+    }
+
+    room kitchen "Kitchen" {
+        desc: "You are in a small kitchen."
+    }
+}
+
+fn test_location_property() {
+    print("=== Testing Object Location Property Access ===");
+
+    // Test 1: Room object location (should be 0 or special room marker)
+    print("Test 1: Room location");
+    let room_loc = living_room.location;
+    print("  living_room.location retrieved");
+
+    // Test 2: Object in room - location should be room
+    print("Test 2: Object in room");
+    let lamp_loc = lamp.location;
+    print("  lamp.location retrieved");
+    if lamp_loc == living_room {
+        print("  PASS: lamp.location == living_room");
+    } else {
+        print("  FAIL: lamp.location != living_room");
+    }
+
+    // Test 3: Object in container - location should be container
+    print("Test 3: Object in container");
+    let book_loc = book.location;
+    print("  book.location retrieved");
+    if book_loc == table {
+        print("  PASS: book.location == table");
+    } else {
+        print("  FAIL: book.location != table");
+    }
+
+    // Test 4: Container location - should be room
+    print("Test 4: Container in room");
+    let table_loc = table.location;
+    print("  table.location retrieved");
+    if table_loc == living_room {
+        print("  PASS: table.location == living_room");
+    } else {
+        print("  FAIL: table.location != living_room");
+    }
+
+    // Test 5: Player location
+    print("Test 5: Player location");
+    let player_loc = player.location;
+    print("  player.location retrieved");
+    if player_loc == living_room {
+        print("  PASS: player.location == living_room");
+    } else {
+        print("  FAIL: player.location != living_room");
+    }
+
+    // Test 6: Access location.name (property of location)
+    print("Test 6: Location name property");
+    let loc_name = player.location.name;
+    print("  player.location.name = '" + loc_name + "'");
+    if loc_name == "Living Room" {
+        print("  PASS: Got correct room name");
+    } else {
+        print("  FAIL: Got wrong room name");
+    }
+
+    // Test 7: Object location name
+    print("Test 7: Object's location name");
+    let lamp_loc_name = lamp.location.name;
+    print("  lamp.location.name = '" + lamp_loc_name + "'");
+    if lamp_loc_name == "Living Room" {
+        print("  PASS: Got correct location name");
+    } else {
+        print("  FAIL: Got wrong location name");
+    }
+
+    print("=== All Tests Complete ===");
+}
+
+init {
+    player.location = living_room;
+    test_location_property();
+}

@@ -2097,6 +2097,95 @@ match self.variable_sources.get(&iterable_id) {
 ### References
 
 - **Issue Discovery**: October 5, 2025
+
+## Standard Property Number Mappings
+
+The Grue compiler uses a standardized property numbering scheme for Z-Machine object properties. These mappings are consistent across the codebase to avoid confusion and property number collisions.
+
+### Core Property Mappings
+
+| Property Number | Property Name | Source Field | Description | Access Pattern |
+|----------------|---------------|--------------|-------------|----------------|
+| 1 | ShortName | `obj.identifier` | Object identifier (e.g., "mailbox") | Read-only, used internally |
+| 2 | LongName | Not used | Reserved for future use | - |
+| 7 | Description | `obj.description` (from `desc:` in Grue source) | Object description text for examine commands | Accessed via `obj.desc` |
+| 27 | Names | `obj.names` array | Dictionary addresses for parser recognition | Grammar system lookup (property 27) |
+
+### Property Assignment Architecture
+
+**Parser** (`parser.rs`):
+- Parses `desc:` field in object declarations (line 173-176)
+- Calls `parse_expression_as_string()` to extract string literal
+- Stores in AST `ObjectDecl.description` field
+
+**IR Generator** (`ir.rs`):
+- Line 1635-1641: Assigns description to property 7
+- `properties.set_string(StandardProperty::Description as u8, obj.description.clone())`
+- Property 7 is the **only** property used for descriptions
+
+**Code Generator** (`codegen.rs`):
+- Line 369: `property_numbers.insert("description".to_string(), 7)`
+- Line 373: `property_numbers.insert("names".to_string(), 27)`
+- Grammar system reads property 27 for object name lookup (line 6890-6905)
+
+### Critical Consistency Rules
+
+**ALWAYS use "description" (not "desc")** in property mappings:
+- ✅ `property_numbers.get("description")` - CORRECT
+- ❌ `property_numbers.get("desc")` - WRONG (causes key mismatch)
+
+**Property 7 is ONLY for descriptions**:
+- User-visible via `obj.desc` property access in Grue code
+- Printed by examine commands
+- Never used for dictionary addresses or other data
+
+**Property 27 is ONLY for grammar names**:
+- Contains array of dictionary word addresses
+- Used by grammar system for noun matching
+- Never printed directly to user
+
+### Historical Context
+
+**The "desc" vs "description" Confusion**:
+- Originally attempted to support both spellings to ease source authoring
+- Led to key mismatch bugs when codegen used one name and parser used another
+- **Resolution**: Use "description" everywhere in code, "desc:" in Grue source syntax only
+
+**Property Number Collision (Bug #21)**:
+- Property 7 was being used for BOTH descriptions AND dictionary addresses
+- Caused examine commands to print garbage or crash
+- Fixed by moving dictionary addresses to property 27
+- Separated concerns: property 7 = user-visible text, property 27 = parser data
+
+### Verification Commands
+
+Check property number consistency:
+```bash
+# Find all property_numbers.get() calls
+grep -n 'property_numbers\.get' src/grue_compiler/*.rs
+
+# Verify property 7 usage (should be description only)
+grep -n 'StandardProperty::Description' src/grue_compiler/*.rs
+
+# Verify property 27 usage (should be names only)
+grep -n 'names_prop' src/grue_compiler/*.rs
+```
+
+### Future Property Additions
+
+When adding new standard properties:
+1. Add to `StandardProperty` enum in `ir.rs`
+2. Register in `PropertyManager::new()` (ir.rs:306-370)
+3. Add to `property_numbers` in codegen.rs initialization
+4. Document in this table with property number, name, and purpose
+5. **NEVER reuse existing property numbers**
+
+### References
+
+- Bug #21 Part 2: Property number collision fix (October 15, 2025)
+- `src/grue_compiler/ir.rs:306-370` - PropertyManager and StandardProperty enum
+- `src/grue_compiler/codegen.rs:362-375` - Property number initialization
+- `src/grue_compiler/parser.rs:173-176` - Object description parsing
 - **Partial Implementation**: Commits 081637d (SSA fixes), current session
 - **Mini_zork Test Case**: `examples/mini_zork.grue` lines 292-298 (show_inventory)
 - **Error Manifestation**: "Invalid object number: 1000" at PC 0x140c

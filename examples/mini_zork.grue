@@ -238,6 +238,7 @@ fn look_around() {
 
 fn examine(obj) {
     clear_quit_state();
+
     if obj.location == player.location || obj.location == player {
         print(obj.desc);
     } else {

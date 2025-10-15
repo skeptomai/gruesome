@@ -321,12 +321,21 @@ impl Parser {
     }
 
     fn parse_expression_as_string(&mut self) -> Result<String, CompilerError> {
-        // Parse expression and convert to string representation
-        // This is a simplified approach - in a real compiler, we'd store the expression
-        let _expr = self.parse_expression()?;
-        // For now, return a placeholder string
-        // TODO: Properly evaluate string expressions during semantic analysis
-        Ok("[expression]".to_string())
+        // Parse expression and extract string literal value if possible
+        // For runtime expressions (concatenations with obj.open, etc.), return empty string
+        // The examine() function will handle these via obj.desc property access at runtime
+        let expr = self.parse_expression()?;
+        match expr {
+            Expr::String(s) => Ok(s),
+            // Runtime expressions - return empty string, will be handled at runtime via obj.desc access
+            Expr::Binary { .. } | Expr::Ternary { .. } | Expr::PropertyAccess { .. } => {
+                Ok(String::new())
+            }
+            _ => Err(CompilerError::ParseError(
+                "Description must be string literal or runtime expression".to_string(),
+                self.previous().position,
+            )),
+        }
     }
 
     fn parse_grammar_decl(&mut self) -> Result<GrammarDecl, CompilerError> {

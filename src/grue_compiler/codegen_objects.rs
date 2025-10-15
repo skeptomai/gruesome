@@ -340,12 +340,35 @@ impl ZMachineCodeGen {
         // Player is always first in ir.objects (inserted at index 0 by add_player_object)
         if !ir.objects.is_empty() {
             let player = &ir.objects[0];
+            let mut player_properties = player.properties.clone();
+
+            // CRITICAL FIX (Oct 15, 2025 - Bug #21 Part 2): Add names property to player
+            // Grammar object lookup reads property 16 (names) to find dictionary address of noun
+            // Player object was missing this property, causing "examine" commands to fail
+            // Must use same pattern as regular objects (lines 434-479) - placeholder + DictionaryRef
+            let names_prop = *self.property_numbers.get("names").unwrap_or(&7);
+            if !player.names.is_empty() {
+                // Write placeholder - will be resolved to dictionary address during property serialization
+                player_properties.set_word(names_prop, 0xFFFF);
+
+                // Track the player name for DictionaryRef UnresolvedReference creation during serialization
+                self.object_vocabulary_names
+                    .insert(player.name.clone(), player.names[0].clone());
+
+                log::debug!(
+                    "OBJECT_NAMES: Player '{}' names property {} will resolve to dictionary address of '{}'",
+                    player.name,
+                    names_prop,
+                    player.names[0]
+                );
+            }
+
             all_objects.push(ObjectData {
                 id: player.id,
                 name: player.name.clone(),
                 short_name: player.short_name.clone(),
                 attributes: player.attributes.clone(),
-                properties: player.properties.clone(),
+                properties: player_properties, // Use modified properties with names property
                 parent: player.parent,
                 sibling: player.sibling,
                 child: player.child,
@@ -709,6 +732,21 @@ impl ZMachineCodeGen {
         for (index, object) in all_objects.iter().enumerate() {
             let obj_num = (index + 1) as u8;
             object_id_to_number.insert(object.id, obj_num);
+        }
+
+        // CRITICAL FIX (Oct 15, 2025): Update self.ir_id_to_object_number with ACTUAL object numbers
+        // Problem: InsertObj instructions used old object numbers from semantic analysis (tree=#10, forest_path=#9)
+        // But object table generation re-numbered objects sequentially (tree=#13, forest_path=#6)
+        // InsertObj would execute with wrong numbers, inserting wrong objects into wrong parents!
+        // Solution: Copy the ACTUAL object_id_to_number mapping to self.ir_id_to_object_number
+        log::info!("=== UPDATING IR_ID_TO_OBJECT_NUMBER FOR INSERTOBJ ===");
+        for (ir_id, obj_num) in &object_id_to_number {
+            self.ir_id_to_object_number.insert(*ir_id, *obj_num as u16);
+            log::info!(
+                "InsertObj mapping: IR ID {} → Object #{} (will be used for InsertObj instructions)",
+                ir_id,
+                obj_num
+            );
         }
 
         // Step 4: Create object table entries

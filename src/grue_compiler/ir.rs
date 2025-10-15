@@ -341,6 +341,11 @@ impl PropertyManager {
         manager.get_property_number("exit_types"); // Parallel array of exit types (1 byte each): 0=room, 1=blocked
         manager.get_property_number("exit_data"); // Parallel array of exit data (2 bytes each): room_id or message_addr
 
+        // Pre-register names property for grammar object lookup (Bug #21 Part 2 fix - Oct 15, 2025)
+        // Grammar system reads this property to match nouns against dictionary addresses
+        // Must be distinct from property 7 (description) to avoid lookup confusion
+        manager.get_property_number("names"); // Dictionary address of primary object name for grammar matching
+
         manager
     }
 
@@ -1167,14 +1172,15 @@ impl IrGenerator {
             }
         }
 
+        // Add synthetic player object to IR BEFORE second pass
+        // CRITICAL (Oct 15, 2025): Player must be in symbol_ids before init block is generated
+        // The init block often contains player.location = room, which needs player's IR ID
+        self.add_player_object(&mut ir_program)?;
+
         // SECOND PASS: Generate IR for all items (functions will now use registered IDs)
         for item in ast.items.iter() {
             self.generate_item(item.clone(), &mut ir_program)?;
         }
-
-        // Add synthetic player object to IR
-        // The player is object #1 and needs to be in the IR like all other objects
-        self.add_player_object(&mut ir_program)?;
 
         // Copy symbol mappings from generator to IR program for use in codegen
         ir_program.symbol_ids = self.symbol_ids.clone();
@@ -1634,7 +1640,12 @@ impl IrGenerator {
 
         // Set standard properties
         properties.set_string(StandardProperty::ShortName as u8, obj.identifier.clone());
-        properties.set_string(StandardProperty::LongName as u8, obj.description.clone());
+
+        // Set description property (property 7) - this is what obj.desc accesses in Grue code
+        // The AST's description field comes from the "desc" property in object declarations
+        if !obj.description.is_empty() {
+            properties.set_string(StandardProperty::Description as u8, obj.description.clone());
+        }
 
         // Convert AST properties to Z-Machine properties using property manager
         for (prop_name, prop_value) in &obj.properties {
@@ -1817,7 +1828,17 @@ impl IrGenerator {
         let player_id = 9999u32;
 
         // Register player in symbol table
+        log::debug!(
+            "🎮 ADD_PLAYER: Registering player with IR ID {} in symbol_ids (current size: {})",
+            player_id,
+            self.symbol_ids.len()
+        );
         self.symbol_ids.insert("player".to_string(), player_id);
+        log::debug!(
+            "🎮 ADD_PLAYER: After insert, symbol_ids size: {}, keys: {:?}",
+            self.symbol_ids.len(),
+            self.symbol_ids.keys().collect::<Vec<_>>()
+        );
 
         // Player is always object #1 in Z-Machine
         // (Object numbers were incremented for rooms/objects, but player is inserted first during codegen)
@@ -2370,31 +2391,81 @@ impl IrGenerator {
                     }
                     crate::grue_compiler::ast::Expr::PropertyAccess { object, property } => {
                         // Property assignment: object.property = value
-                        let object_temp = self.generate_expression(*object, block)?;
 
                         // Special handling for .location assignment - use insert_obj instead of property
                         // (Oct 12, 2025): Location is object tree containment only, not a property
                         if property == "location" {
+                            // CRITICAL FIX (Oct 15, 2025): InsertObj requires object IR IDs, not runtime values
+                            // When object is an identifier (like 'player'), we need its semantic IR ID,
+                            // not the result of a load instruction (which would be a runtime variable value)
+                            let object_id = if let crate::grue_compiler::ast::Expr::Identifier(
+                                ref obj_name,
+                            ) = *object
+                            {
+                                // Look up the object's IR ID directly from symbol table
+                                log::debug!(
+                                    "🔍 LOCATION_WRITE: Looking up '{}' in symbol_ids (size={})",
+                                    obj_name,
+                                    self.symbol_ids.len()
+                                );
+                                if let Some(&obj_ir_id) = self.symbol_ids.get(obj_name) {
+                                    log::debug!(
+                                        "🏃 LOCATION_WRITE: Using object IR ID {} for '{}' (not generating load)",
+                                        obj_ir_id,
+                                        obj_name
+                                    );
+                                    obj_ir_id
+                                } else {
+                                    // Object not found - generate expression as fallback
+                                    log::warn!(
+                                        "⚠️ LOCATION_WRITE: Object '{}' not in symbol table, generating expression. Keys: {:?}",
+                                        obj_name,
+                                        self.symbol_ids.keys().collect::<Vec<_>>()
+                                    );
+                                    self.generate_expression(*object.clone(), block)?
+                                }
+                            } else {
+                                // Complex expression (like obj.location.owner) - evaluate it
+                                self.generate_expression(*object.clone(), block)?
+                            };
+
                             log::debug!(
-                                "🏃 LOCATION_WRITE: Using InsertObj for .location assignment"
+                                "🏃 LOCATION_WRITE: InsertObj with object={}, destination={}",
+                                object_id,
+                                value_temp
                             );
+
                             block.add_instruction(IrInstruction::InsertObj {
-                                object: object_temp,
+                                object: object_id,
                                 destination: value_temp,
                             });
-                        } else if let Some(standard_prop) = self.get_standard_property(&property) {
-                            // Check if this is a standard property that should use numbered access
-                            if let Some(prop_num) = self
-                                .property_manager
-                                .get_standard_property_number(standard_prop)
-                            {
-                                block.add_instruction(IrInstruction::SetPropertyByNumber {
-                                    object: object_temp,
-                                    property_num: prop_num,
-                                    value: value_temp,
-                                });
+                        } else {
+                            // For non-location properties, evaluate the object expression normally
+                            let object_temp = self.generate_expression(*object, block)?;
+
+                            if let Some(standard_prop) = self.get_standard_property(&property) {
+                                // Check if this is a standard property that should use numbered access
+                                if let Some(prop_num) = self
+                                    .property_manager
+                                    .get_standard_property_number(standard_prop)
+                                {
+                                    block.add_instruction(IrInstruction::SetPropertyByNumber {
+                                        object: object_temp,
+                                        property_num: prop_num,
+                                        value: value_temp,
+                                    });
+                                } else {
+                                    // Use dynamic property manager to assign property number even for standard properties without numbers
+                                    let prop_num =
+                                        self.property_manager.get_property_number(&property);
+                                    block.add_instruction(IrInstruction::SetPropertyByNumber {
+                                        object: object_temp,
+                                        property_num: prop_num,
+                                        value: value_temp,
+                                    });
+                                }
                             } else {
-                                // Use dynamic property manager to assign property number even for standard properties without numbers
+                                // Use dynamic property manager to assign property number for non-standard properties
                                 let prop_num = self.property_manager.get_property_number(&property);
                                 block.add_instruction(IrInstruction::SetPropertyByNumber {
                                     object: object_temp,
@@ -2402,14 +2473,6 @@ impl IrGenerator {
                                     value: value_temp,
                                 });
                             }
-                        } else {
-                            // Use dynamic property manager to assign property number for non-standard properties
-                            let prop_num = self.property_manager.get_property_number(&property);
-                            block.add_instruction(IrInstruction::SetPropertyByNumber {
-                                object: object_temp,
-                                property_num: prop_num,
-                                value: value_temp,
-                            });
                         }
                     }
                     _ => {

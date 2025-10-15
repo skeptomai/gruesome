@@ -504,6 +504,7 @@ impl Interpreter {
                     self.dump_memory_state();
                 }
             } else if self.debug
+                || (0x1750..=0x17a0).contains(&pc)  // Bug #21 Part 2: Grammar object lookup loop
                 || (0x06f70..=0x07000).contains(&pc)
                 || (0x08cb0..=0x08cc0).contains(&pc)
                 || (0x4f00..=0x5000).contains(&pc)
@@ -1167,12 +1168,6 @@ impl Interpreter {
                     });
                 let condition = op1 == op2;
                 debug!("JE: condition={} (equal={})", condition, op1 == op2);
-                // Log comparisons involving likely exit-related addresses (0x03b0-0x03d0)
-                if (op1 >= 0x03b0 && op1 <= 0x03d0) || (op2 >= 0x03b0 && op2 <= 0x03d0) || op2 == 0
-                {
-                    log::warn!("🔍 JE at PC=0x{:04x}: op1=0x{:04x} vs op2=0x{:04x}, condition={}, branch={:?}",
-                        pc, op1, op2, condition, inst.branch);
-                }
                 self.do_branch(inst, condition)
             }
             0x02 => {

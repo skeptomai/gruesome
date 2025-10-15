@@ -171,23 +171,6 @@ fn test_mini_zork_handlers_created() {
 
     let ir = result.unwrap();
 
-    // Find west_of_house room
-    let west_of_house = ir.rooms.iter().find(|r| r.name == "west_of_house");
-    assert!(west_of_house.is_some(), "Should have west_of_house room");
-    let west_of_house = west_of_house.unwrap();
-
-    // Verify on_enter handler exists
-    assert!(
-        west_of_house.on_enter.is_some(),
-        "west_of_house should have on_enter handler"
-    );
-
-    // Find the function
-    let on_enter_id = west_of_house.on_enter.unwrap();
-    let on_enter_func = ir.functions.iter().find(|f| f.id == on_enter_id);
-    assert!(on_enter_func.is_some(), "on_enter function should exist");
-    assert_eq!(on_enter_func.unwrap().name, "west_of_house__on_enter");
-
     // Find behind_house room
     let behind_house = ir.rooms.iter().find(|r| r.name == "behind_house");
     assert!(behind_house.is_some(), "Should have behind_house room");

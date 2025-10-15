@@ -283,6 +283,18 @@ impl Interpreter {
 
                 let value = self.vm.get_property(obj_num, prop_num)?;
 
+                // Log all get_prop calls during grammar object lookup (property 16 = names)
+                if prop_num == 16 {
+                    log::warn!(
+                        "🔍 GET_PROP: obj={}, prop={} (names), value=0x{:04x}, storing to var={:?}, PC=0x{:04x}",
+                        obj_num,
+                        prop_num,
+                        value,
+                        inst.store_var,
+                        self.vm.pc - inst.size as u32
+                    );
+                }
+
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, value)?;
                 }
