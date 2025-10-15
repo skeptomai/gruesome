@@ -187,7 +187,16 @@ grammar {
         noun => handle_read($noun)
     }
 
+    // Quit commands - all synonyms call the same handler for consistency
     verb "quit" {
+        default => handle_quit()
+    }
+
+    verb "exit" {
+        default => handle_quit()
+    }
+
+    verb "q" {
         default => handle_quit()
     }
 
@@ -460,7 +469,7 @@ init {
     print("");
 
     // Welcome message for first visit
-    print("Welcome to Zork!");
+    print("Welcome to Dork!");
 
     // Show initial location
     look_around();
