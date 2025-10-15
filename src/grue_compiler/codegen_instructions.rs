@@ -35,6 +35,7 @@ impl ZMachineCodeGen {
             IrInstruction::LoadImmediate { target, .. } => *target,
             IrInstruction::BinaryOp { target, .. } => *target,
             IrInstruction::Call { target, .. } => target.unwrap_or(0),
+            IrInstruction::CallIndirect { target, .. } => target.unwrap_or(0),
             IrInstruction::GetProperty { target, .. } => *target,
             IrInstruction::GetPropertyByNumber { target, .. } => *target,
             IrInstruction::UnaryOp { target, .. } => *target,
@@ -75,6 +76,14 @@ impl ZMachineCodeGen {
                 log::debug!("IR INSTRUCTION: Call creates target IR ID {}", t);
             }
             IrInstruction::Call { target: None, .. } => {
+                // No target to log
+            }
+            IrInstruction::CallIndirect {
+                target: Some(t), ..
+            } => {
+                log::debug!("IR INSTRUCTION: CallIndirect creates target IR ID {}", t);
+            }
+            IrInstruction::CallIndirect { target: None, .. } => {
                 // No target to log
             }
             IrInstruction::GetProperty { target, .. } => {
@@ -307,6 +316,46 @@ impl ZMachineCodeGen {
                         self.use_stack_for_result(*target_id);
                         log::debug!("Call result: IR ID {} -> stack", target_id);
                     }
+                }
+            }
+
+            IrInstruction::CallIndirect {
+                target,
+                function_addr,
+                args,
+            } => {
+                // CallIndirect: Call a function whose address is stored in a variable/property
+                // Used for property-based dispatch (e.g., room.on_look() where on_look is a property)
+                // The function address comes from a property value resolved at runtime
+                log::debug!(
+                    "📞 CALL_INDIRECT function address from IR ID {} with {} args",
+                    function_addr,
+                    args.len()
+                );
+
+                // Build operands: [function_address, arg1, arg2, ...]
+                let func_addr_operand = self.resolve_ir_id_to_operand(*function_addr)?;
+                let mut operands = vec![func_addr_operand];
+
+                for arg_id in args {
+                    let arg_operand = self.resolve_ir_id_to_operand(*arg_id)?;
+                    operands.push(arg_operand);
+                }
+
+                // Emit call_vs instruction with variable function address
+                // Store result on stack if target exists
+                let store_var = if target.is_some() {
+                    Some(0u8) // Stack
+                } else {
+                    None
+                };
+
+                self.emit_instruction_typed(CALLVS, &operands, store_var, None)?;
+
+                // Register call result target for proper LoadVar resolution
+                if let Some(target_id) = target {
+                    self.use_stack_for_result(*target_id);
+                    log::debug!("CallIndirect result: IR ID {} -> stack", target_id);
                 }
             }
 

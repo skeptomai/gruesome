@@ -1,8 +1,17 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 13, 2025) - ALL SYSTEMS OPERATIONAL ✅
+## CURRENT STATUS (October 14, 2025) - ROOM HANDLER IMPLEMENTATION 🔧
 
-**Compiler Status**: All tests passing (183 library tests + 5 golden file tests), navigation working correctly, exit system fully functional.
+**ACTIVE TASK**: Implementing room event handlers (on_enter, on_exit, on_look) per `docs/ROOM_HANDLER_IMPLEMENTATION_PLAN.md`
+
+**STATUS**: Phase 1 in progress - IR generation for room handlers
+
+**PROBLEM**: Room handlers exist in mini_zork.grue source but don't execute at runtime:
+- `behind_house.on_look` should print kitchen message when window is open
+- `west_of_house.on_enter` should print welcome message on first visit
+- Handlers are parsed but never called during gameplay
+
+**See**: `docs/ROOM_HANDLER_IMPLEMENTATION_PLAN.md` for complete implementation plan
 
 ### Recent Fixes (October 13, 2025)
 

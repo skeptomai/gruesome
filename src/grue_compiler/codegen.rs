@@ -258,6 +258,8 @@ pub struct ZMachineCodeGen {
     /// Track blocked exit message string IDs for UnresolvedReference creation
     /// Maps room name -> Vec of (exit_index, string_id) for blocked exits
     pub room_exit_messages: IndexMap<String, Vec<(usize, u32)>>,
+    /// Room handler function IDs: room_name -> (on_enter_id, on_exit_id, on_look_id)
+    pub room_handlers: IndexMap<String, (Option<IrId>, Option<IrId>, Option<IrId>)>,
     /// Global property registry: property name -> property number
     pub property_numbers: IndexMap<String, u8>,
     /// Properties used by each object: object_name -> set of property names
@@ -394,6 +396,7 @@ impl ZMachineCodeGen {
             room_to_object_id: IndexMap::new(),
             room_exit_directions: IndexMap::new(),
             room_exit_messages: IndexMap::new(),
+            room_handlers: IndexMap::new(),
             property_numbers,
             object_properties: IndexMap::new(),
             object_table_addr: 0,
@@ -5214,6 +5217,60 @@ impl ZMachineCodeGen {
                                 );
                                 break;
                             }
+                        }
+                    }
+                }
+
+                // If this is a room handler property (on_look, on_enter, on_exit), create FunctionCall reference
+                let on_look_prop = *self.property_numbers.get("on_look").unwrap_or(&18);
+                let on_enter_prop = *self.property_numbers.get("on_enter").unwrap_or(&21);
+                let on_exit_prop = *self.property_numbers.get("on_exit").unwrap_or(&20);
+
+                if (prop_num == on_look_prop
+                    || prop_num == on_enter_prop
+                    || prop_num == on_exit_prop)
+                    && i == 0
+                    && prop_data.len() >= 2
+                {
+                    // Check if this room has handler functions
+                    if let Some((on_enter_id, on_exit_id, on_look_id)) =
+                        self.room_handlers.get(&object.name)
+                    {
+                        // Determine which handler this property represents
+                        let handler_id = if prop_num == on_look_prop {
+                            *on_look_id
+                        } else if prop_num == on_enter_prop {
+                            *on_enter_id
+                        } else {
+                            *on_exit_id
+                        };
+
+                        // Only create reference if handler exists (Some)
+                        if let Some(func_id) = handler_id {
+                            // Create UnresolvedReference for function address (packed)
+                            self.reference_context
+                                .unresolved_refs
+                                .push(UnresolvedReference {
+                                    reference_type: LegacyReferenceType::FunctionCall,
+                                    location: data_offset, // Location in object_space
+                                    target_id: func_id,
+                                    is_packed_address: true, // Function addresses must be packed
+                                    offset_size: 2,
+                                    location_space: MemorySpace::Objects,
+                                });
+
+                            let prop_name = if prop_num == on_look_prop {
+                                "on_look"
+                            } else if prop_num == on_enter_prop {
+                                "on_enter"
+                            } else {
+                                "on_exit"
+                            };
+
+                            log::debug!(
+                                "Created FunctionCall UnresolvedReference for {} property: room='{}', func_id={}, object_space offset=0x{:04x}",
+                                prop_name, object.name, func_id, data_offset
+                            );
                         }
                     }
                 }

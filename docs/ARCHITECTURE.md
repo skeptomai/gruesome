@@ -2142,6 +2142,433 @@ For a 50-room game: ~750-1000 bytes total, well within Z-Machine limits.
 
 ---
 
+## Room Handler System Architecture
+
+### Overview
+
+The room handler system enables rooms to execute custom code when specific events occur: entering the room (`on_enter`), exiting the room (`on_exit`), and looking around (`on_look`). This provides dynamic behavior beyond static room descriptions and enables interactive elements like locked doors, special effects, and conditional messages.
+
+### Design Goals
+
+1. **Event-Driven Architecture**: Rooms respond to player actions with custom code
+2. **Property-Based Dispatch**: Handler functions stored as properties, called indirectly
+3. **Optional Handlers**: Rooms without handlers have minimal overhead
+4. **Type Safety**: Compile-time verification of handler signatures
+5. **Z-Machine Integration**: Uses standard property system and call instructions
+
+### Implementation Phases
+
+The room handler system was implemented in three phases, each building on the previous:
+
+#### Phase 1: Handlers to Functions (COMPLETE ✅)
+**Goal**: Convert handler blocks to standalone Z-Machine functions
+
+**Grue Source**:
+```grue
+room west_of_house {
+    on_enter {
+        print("You are standing in an open field.");
+    }
+    on_look {
+        print("The house is a beautiful colonial structure.");
+    }
+}
+```
+
+**IR Transformation**:
+1. During room processing, detect handler blocks (on_enter, on_exit, on_look)
+2. Extract block of IR instructions from each handler
+3. Create standalone function with naming convention: `room_name__handler_name`
+4. Replace handler block with function ID in IrRoom structure
+5. Register function in function registry
+
+**Example Function Names**:
+- `west_of_house__on_enter` → function ID 123
+- `west_of_house__on_look` → function ID 124
+- `behind_house__on_look` → function ID 125
+
+**Implementation Details**:
+- **Helper Method**: `create_function_from_block(room_name, handler_name, block)` in `ir.rs:2928-3003`
+  - Takes room name, handler name, and IR block
+  - Creates IrFunction with proper name, empty parameters, instructions from block
+  - Returns function ID for tracking
+  - Registers function in function_decls for later codegen
+
+- **IrRoom Structure Change**: Handler fields changed from `Option<IrBlock>` to `Option<IrId>`
+  ```rust
+  pub struct IrRoom {
+      pub name: String,
+      pub description: Option<IrId>,    // String ID
+      pub on_enter: Option<IrId>,       // Function ID (was Option<IrBlock>)
+      pub on_exit: Option<IrId>,        // Function ID (was Option<IrBlock>)
+      pub on_look: Option<IrId>,        // Function ID (was Option<IrBlock>)
+      pub exits: Vec<Exit>,
+  }
+  ```
+
+- **Code Location**: `src/grue_compiler/ir.rs:2928-3003, 3159-3207`
+
+**Benefits**:
+- Handlers are real Z-Machine functions with proper calling conventions
+- Can be debugged like any other function
+- Code reuse if multiple rooms share handler logic
+- Proper stack frame management
+
+**Testing**: `tests/room_handler_phase1_test.rs` - 3 validation tests passing
+
+---
+
+#### Phase 2: Function Addresses in Properties (COMPLETE ✅)
+**Goal**: Store handler function addresses in room object properties
+
+**Property Allocation**:
+- `on_look` → Property 18
+- `on_exit` → Property 20
+- `on_enter` → Property 21
+
+**Property Values**:
+- **Handler exists**: Packed function address (placeholder 0xFFFF until resolved)
+- **No handler**: Value 0 (indicates no handler present)
+
+**Implementation Details**:
+
+1. **Handler Tracking** (`codegen_objects.rs:403-409`):
+   ```rust
+   // During room object processing, track which rooms have handlers
+   if room.on_enter.is_some() || room.on_exit.is_some() || room.on_look.is_some() {
+       self.room_handlers.insert(
+           room.name.clone(),
+           (room.on_enter, room.on_exit, room.on_look),
+       );
+   }
+   ```
+
+2. **Placeholder Writing** (during property serialization):
+   - Handler exists: Write 0xFFFF (placeholder for function address)
+   - No handler: Write 0x0000 (indicates no handler)
+
+3. **UnresolvedReference Creation** (`codegen.rs:5224-5274`):
+   ```rust
+   // During property serialization, create references for handler properties
+   if (prop_num == on_look_prop || prop_num == on_enter_prop || prop_num == on_exit_prop)
+       && i == 0
+       && prop_data.len() >= 2
+   {
+       if let Some((on_enter_id, on_exit_id, on_look_id)) =
+           self.room_handlers.get(&object.name)
+       {
+           let handler_id = if prop_num == on_look_prop {
+               *on_look_id
+           } else if prop_num == on_enter_prop {
+               *on_enter_id
+           } else {
+               *on_exit_id
+           };
+
+           if let Some(func_id) = handler_id {
+               self.reference_context.unresolved_refs.push(UnresolvedReference {
+                   reference_type: LegacyReferenceType::FunctionCall,
+                   location: data_offset,
+                   target_id: func_id,
+                   is_packed_address: true,  // Z-Machine function addresses are packed
+                   offset_size: 2,
+                   location_space: MemorySpace::Objects,
+               });
+           }
+       }
+   }
+   ```
+
+4. **Reference Resolution** (during final linking):
+   - Resolver finds all FunctionCall references
+   - Patches 0xFFFF placeholders with actual packed function addresses
+   - Function addresses calculated from code generation phase
+
+**Example Object Table**:
+```
+Room: west_of_house (Object ID 2)
+  Property 21 (on_enter): 0x006E  ← Packed address of west_of_house__on_enter
+  Property 18 (on_look):  0x007C  ← Packed address of west_of_house__on_look
+  Property 20 (on_exit):  0x0000  ← No handler
+
+Room: behind_house (Object ID 3)
+  Property 21 (on_enter): 0x0000  ← No handler
+  Property 18 (on_look):  0x007C  ← Packed address of behind_house__on_look
+  Property 20 (on_exit):  0x0000  ← No handler
+```
+
+**Benefits**:
+- Standard Z-Machine property system
+- Zero overhead for rooms without handlers
+- Function addresses resolved automatically during linking
+- Properties readable at runtime for dynamic dispatch
+
+**Code Locations**:
+- Handler tracking: `codegen_objects.rs:403-409`
+- Property serialization: `codegen.rs:5224-5274`
+- Data structures: `codegen.rs:238-241, 369` (room_handlers field)
+
+---
+
+#### Phase 3: Property-Based Function Calls (COMPLETE ✅)
+**Goal**: Generate code to call handlers indirectly via property values
+
+**Grue Source**:
+```grue
+// Navigation handler checking for on_exit handler
+if player.location.on_exit {
+    player.location.on_exit();
+}
+```
+
+**Challenge**: Function address is stored in property, not known at compile time. Need indirect call mechanism.
+
+**Solution**: CallIndirect IR Instruction
+
+**IR Instruction Definition** (`ir.rs:559-563`):
+```rust
+/// Call function indirectly (function address in variable/property)
+/// Used for property-based function dispatch (e.g., room.on_look())
+CallIndirect {
+    target: Option<IrId>,     // Where to store return value (None for void)
+    function_addr: IrId,      // IR ID containing function address (from property)
+    args: Vec<IrId>,          // Arguments to pass to the function
+},
+```
+
+**IR Pattern Generated** (`ir.rs:2870-2922`):
+
+For `player.location.on_look()`, generates:
+
+```
+1. GetPropertyByNumber(object=location, prop_num=18) → func_addr_temp
+   ↓ (get function address from property)
+
+2. Branch(condition=func_addr_temp, true=call_label, false=no_handler_label)
+   ↓ (if address != 0, jump to call; else jump to no_handler)
+
+3. Label(call_label)
+4. CallIndirect(func_addr=func_addr_temp, args=[]) → result_temp
+   ↓ (call the function at the address)
+
+5. Jump(end_label)
+   ↓
+
+6. Label(no_handler_label)
+7. LoadImmediate(value=0) → result_temp
+   ↓ (no handler exists, return 0)
+
+8. Label(end_label)
+   ↓ (result_temp contains handler return value or 0)
+```
+
+**Z-Machine Code Generation** (`codegen_instructions.rs:313-353`):
+
+CallIndirect compiles to Z-Machine `call_vs` instruction:
+```rust
+IrInstruction::CallIndirect {
+    target,
+    function_addr,
+    args,
+} => {
+    // Build operands: [function_address, arg1, arg2, ...]
+    let func_addr_operand = self.resolve_ir_id_to_operand(*function_addr)?;
+    let mut operands = vec![func_addr_operand];
+
+    for arg_id in args {
+        let arg_operand = self.resolve_ir_id_to_operand(*arg_id)?;
+        operands.push(arg_operand);
+    }
+
+    // Emit call_vs with variable function address
+    let store_var = if target.is_some() {
+        Some(0u8) // Stack
+    } else {
+        None
+    };
+
+    self.emit_instruction_typed(
+        CALLVS,  // Z-Machine call_vs opcode
+        &operands,
+        store_var,
+        None,
+    )?;
+
+    // Track result on stack
+    if let Some(target_id) = target {
+        self.use_stack_for_result(*target_id);
+    }
+}
+```
+
+**Example Z-Machine Bytecode**:
+```
+PC 0x1234: get_prop [obj=2] [prop=18] -> var_239  ; Get on_look property
+PC 0x1238: jz var_239, label_skip                 ; Branch if no handler
+PC 0x123B: call_vs var_239 -> stack               ; Call function indirectly
+PC 0x123F: jump label_end
+PC 0x1241: label_skip:
+PC 0x1241: store var_240, 0                       ; Return 0 if no handler
+PC 0x1244: label_end:
+```
+
+**Benefits**:
+- Dynamic dispatch based on runtime property values
+- Same pattern as regular function calls (uses stack for return value)
+- Proper error handling (no handler → return 0)
+- Type-safe compilation (handler signatures verified)
+- Works with existing Z-Machine call infrastructure
+
+**Code Locations**:
+- CallIndirect instruction: `ir.rs:559-563`
+- IR generation: `ir.rs:2870-2922`
+- Codegen: `codegen_instructions.rs:313-353`
+- Tracking updates: `codegen_instructions.rs:38, 81-87`
+
+---
+
+### Complete Example: Room with Handlers
+
+**Grue Source** (`examples/mini_zork.grue`):
+```grue
+room west_of_house {
+    description: "You are standing in an open field west of a white house."
+
+    on_enter {
+        if !visited {
+            print("This is your first time here!");
+            score = score + 5;
+        }
+    }
+
+    on_look {
+        print("The house is a beautiful colonial structure.");
+    }
+
+    exits: {
+        north: north_of_house,
+        east: front_door,
+        south: south_of_house
+    }
+}
+```
+
+**Compilation Steps**:
+
+1. **Phase 1 - Functions Created**:
+   - `west_of_house__on_enter` (function ID 123)
+   - `west_of_house__on_look` (function ID 124)
+
+2. **Phase 2 - Properties Written**:
+   ```
+   Object 2 (west_of_house):
+     Property 21: 0xFFFF  ← Placeholder for on_enter
+     Property 18: 0xFFFF  ← Placeholder for on_look
+   ```
+   UnresolvedReferences created for both properties
+
+3. **Phase 2b - References Resolved**:
+   ```
+   Object 2 (west_of_house):
+     Property 21: 0x00DC  ← Packed address of function 123
+     Property 18: 0x00F8  ← Packed address of function 124
+   ```
+
+4. **Phase 3 - Call Sites Generated**:
+   ```grue
+   // In navigation code:
+   if player.location.on_exit {
+       player.location.on_exit();
+   }
+   ```
+
+   Compiles to:
+   ```
+   get_prop [player.location] [prop=20] -> var_X
+   jz var_X, skip_exit
+   call_vs var_X -> stack
+   skip_exit:
+   ```
+
+**Runtime Execution**:
+```
+1. Player types "look"
+2. Game calls player.location.on_look()
+3. IR: GetPropertyByNumber(player.location, 18) → gets 0x00F8
+4. IR: Branch(0x00F8 != 0) → jumps to call
+5. IR: CallIndirect(0x00F8) → calls west_of_house__on_look
+6. Z-Machine: Unpacks 0x00F8 * 2 = 0x01F0, jumps to code
+7. Handler executes: print("The house is a beautiful colonial structure.")
+8. Handler returns, execution continues
+```
+
+### Memory and Performance
+
+**Memory Overhead**:
+- Per room with handlers: 6 bytes (3 properties × 2 bytes each)
+- Per room without handlers: 0 bytes (properties with value 0 optimized out)
+- Handler functions: Variable size, generated once regardless of call sites
+
+**Performance**:
+- Property read: O(log n) binary search in property table
+- Handler check: 1 comparison (address != 0)
+- Function call: Standard Z-Machine call_vs overhead
+- No dynamic dispatch tables or hash maps needed
+
+**Comparison to Inline Code**:
+- **Inline**: Code duplicated at every call site = bloat
+- **Property-based**: Function generated once, called via address = compact
+- **Example**: 10 rooms with on_look handlers, 5 call sites each
+  - Inline: 10 × 5 = 50 code copies
+  - Property-based: 10 functions + 50 indirect calls = much smaller
+
+### Implementation Files
+
+**IR Generation**:
+- `src/grue_compiler/ir.rs:559-563` - CallIndirect instruction definition
+- `src/grue_compiler/ir.rs:2928-3003` - create_function_from_block() helper
+- `src/grue_compiler/ir.rs:3159-3207` - Room handler processing
+- `src/grue_compiler/ir.rs:2870-2922` - Handler method call generation
+- `src/grue_compiler/ir.rs:1225, 1246` - CallIndirect helper updates
+
+**Code Generation**:
+- `src/grue_compiler/codegen_instructions.rs:313-353` - CallIndirect codegen
+- `src/grue_compiler/codegen_instructions.rs:38, 81-87` - CallIndirect tracking
+- `src/grue_compiler/codegen_objects.rs:403-409` - Handler tracking
+- `src/grue_compiler/codegen.rs:238-241, 369` - room_handlers field
+- `src/grue_compiler/codegen.rs:5224-5274` - UnresolvedReference creation
+
+**Testing**:
+- `tests/room_handler_phase1_test.rs` - Phase 1 validation (3 tests)
+- `examples/mini_zork.grue` - Real-world usage example
+
+### Future Enhancements
+
+1. **Handler Parameters**: Allow handlers to receive parameters (e.g., `on_enter(from_room)`)
+2. **Return Value Semantics**: Define meaning of handler return values (e.g., `false` cancels action)
+3. **Handler Inheritance**: Room templates that share common handler logic
+4. **Dynamic Handler Registration**: Change handlers at runtime based on game state
+5. **Handler Priorities**: Control execution order when multiple handlers exist
+
+### Status
+
+**Phase 1**: ✅ COMPLETE (October 12, 2025)
+**Phase 2**: ✅ COMPLETE (October 12, 2025)
+**Phase 3**: ✅ COMPLETE (October 12, 2025)
+**Testing**: ✅ No regressions (178 tests passing)
+
+**Next**: Phase 4 - Comprehensive testing and validation
+
+### References
+
+- **Design Date**: October 12, 2025
+- **Implementation Date**: October 12, 2025
+- **Plan Document**: `docs/ROOM_HANDLER_IMPLEMENTATION_PLAN.md`
+- **Test Case**: `examples/mini_zork.grue` (west_of_house, behind_house)
+- **Validation Tests**: `tests/room_handler_phase1_test.rs`
+
+---
+
 ## CRITICAL: Property Table Patching Loop Bounds (October 6, 2025)
 
 ### The Problem

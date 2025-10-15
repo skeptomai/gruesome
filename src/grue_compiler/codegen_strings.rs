@@ -54,16 +54,9 @@ impl ZMachineCodeGen {
                 );
             }
 
-            // Collect strings from room event blocks
-            if let Some(on_enter) = &room.on_enter {
-                self.collect_strings_from_block(on_enter)?;
-            }
-            if let Some(on_exit) = &room.on_exit {
-                self.collect_strings_from_block(on_exit)?;
-            }
-            if let Some(on_look) = &room.on_look {
-                self.collect_strings_from_block(on_look)?;
-            }
+            // Room event handlers are now functions (Option<IrId>), not inline blocks
+            // Their strings will be collected when processing the handler functions themselves
+            // No need to collect from room.on_enter/on_exit/on_look here
 
             // Collect strings from blocked exit messages
             for (direction, exit_target) in &room.exits {

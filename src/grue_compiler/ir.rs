@@ -173,9 +173,9 @@ pub struct IrRoom {
     pub display_name: String,
     pub description: String,
     pub exits: IndexMap<String, IrExitTarget>,
-    pub on_enter: Option<IrBlock>,
-    pub on_exit: Option<IrBlock>,
-    pub on_look: Option<IrBlock>,
+    pub on_enter: Option<IrId>, // Changed from Option<IrBlock> - now stores function ID
+    pub on_exit: Option<IrId>,  // Changed from Option<IrBlock> - now stores function ID
+    pub on_look: Option<IrId>,  // Changed from Option<IrBlock> - now stores function ID
 }
 
 /// IR Object representation with Z-Machine compatibility
@@ -552,6 +552,14 @@ pub enum IrInstruction {
         target: Option<IrId>, // None for void functions
         function: IrId,
         args: Vec<IrId>,
+    },
+
+    /// Call function indirectly (function address in variable/property)
+    /// Used for property-based function dispatch (e.g., room.on_look())
+    CallIndirect {
+        target: Option<IrId>, // Where to store return value (None for void)
+        function_addr: IrId,  // IR ID containing function address (from property)
+        args: Vec<IrId>,      // Arguments to pass to the function
     },
 
     /// Create array
@@ -1214,6 +1222,7 @@ impl IrGenerator {
             IrInstruction::BinaryOp { target, .. } => Some(*target),
             IrInstruction::UnaryOp { target, .. } => Some(*target),
             IrInstruction::Call { target, .. } => *target,
+            IrInstruction::CallIndirect { target, .. } => *target,
             IrInstruction::GetProperty { target, .. } => Some(*target),
             IrInstruction::GetPropertyByNumber { target, .. } => Some(*target),
             IrInstruction::SetProperty { .. } => None,
@@ -1234,6 +1243,7 @@ impl IrGenerator {
                 IrInstruction::BinaryOp { .. } => "BinaryOp",
                 IrInstruction::UnaryOp { .. } => "UnaryOp",
                 IrInstruction::Call { .. } => "Call",
+                IrInstruction::CallIndirect { .. } => "CallIndirect",
                 IrInstruction::GetProperty { .. } => "GetProperty",
                 IrInstruction::GetPropertyByNumber { .. } => "GetPropertyByNumber",
                 IrInstruction::CreateArray { .. } => "CreateArray",
@@ -1410,6 +1420,67 @@ impl IrGenerator {
         })
     }
 
+    /// Helper method to create a function from a block (used for room handlers)
+    /// This wraps a block of code in a function with no parameters and adds it to ir_program
+    fn create_function_from_block(
+        &mut self,
+        name: String,
+        block: crate::grue_compiler::ast::BlockStmt,
+        ir_program: &mut IrProgram,
+    ) -> Result<IrId, CompilerError> {
+        // Allocate function ID - it should already be registered during first pass
+        // For room handlers, we'll use the naming pattern: room_name__handler_name
+        let func_id = if let Some(&existing_id) = self.symbol_ids.get(&name) {
+            existing_id
+        } else {
+            // Room handlers aren't pre-registered, so allocate a new ID
+            let new_id = self.next_id();
+            self.symbol_ids.insert(name.clone(), new_id);
+            self.id_registry.register_id(
+                new_id,
+                "room_handler",
+                "create_function_from_block",
+                false,
+            );
+            new_id
+        };
+
+        // SCOPE MANAGEMENT: Save current symbol table
+        let saved_symbol_ids = self.symbol_ids.clone();
+
+        // Reset local variable state (no parameters for room handlers)
+        self.current_locals.clear();
+        self.next_local_slot = 1; // Slot 0 reserved for return value
+
+        // Generate function body
+        let body = self.generate_block(block)?;
+        let local_vars = self.current_locals.clone();
+
+        // SCOPE MANAGEMENT: Restore global symbol table
+        self.symbol_ids = saved_symbol_ids;
+
+        log::debug!(
+            "Created room handler function '{}' with IR ID {} ({} local vars)",
+            name,
+            func_id,
+            local_vars.len()
+        );
+
+        // Create IrFunction and add to ir_program
+        let function = IrFunction {
+            id: func_id,
+            name: name.clone(),
+            parameters: Vec::new(), // Room handlers have no parameters
+            return_type: None,      // Room handlers don't return values
+            body,
+            local_vars,
+        };
+
+        ir_program.functions.push(function);
+
+        Ok(func_id)
+    }
+
     fn generate_world(
         &mut self,
         world: crate::grue_compiler::ast::WorldDecl,
@@ -1436,7 +1507,7 @@ impl IrGenerator {
 
         // Second pass: generate actual IR objects and rooms
         for room in world.rooms {
-            let ir_room = self.generate_room(room.clone())?;
+            let ir_room = self.generate_room(room.clone(), ir_program)?;
             let room_id = ir_room.id; // Save the room ID before moving ir_room
             ir_program.rooms.push(ir_room);
 
@@ -1782,6 +1853,7 @@ impl IrGenerator {
     fn generate_room(
         &mut self,
         room: crate::grue_compiler::ast::RoomDecl,
+        ir_program: &mut IrProgram,
     ) -> Result<IrRoom, CompilerError> {
         // Room ID should already be pre-registered during first pass
         let room_id = *self.symbol_ids.get(&room.identifier).unwrap_or_else(|| {
@@ -1851,20 +1923,27 @@ impl IrGenerator {
         }
 
         // Now process handlers - objects are available for reference
+        // Convert handler blocks to functions (Phase 1 of room handler implementation)
         let on_enter = if let Some(block) = room.on_enter {
-            Some(self.generate_block(block)?)
+            let func_name = format!("{}__on_enter", room.identifier);
+            let func_id = self.create_function_from_block(func_name, block, ir_program)?;
+            Some(func_id)
         } else {
             None
         };
 
         let on_exit = if let Some(block) = room.on_exit {
-            Some(self.generate_block(block)?)
+            let func_name = format!("{}__on_exit", room.identifier);
+            let func_id = self.create_function_from_block(func_name, block, ir_program)?;
+            Some(func_id)
         } else {
             None
         };
 
         let on_look = if let Some(block) = room.on_look {
-            Some(self.generate_block(block)?)
+            let func_name = format!("{}__on_look", room.identifier);
+            let func_id = self.create_function_from_block(func_name, block, ir_program)?;
+            Some(func_id)
         } else {
             None
         };
@@ -2803,21 +2882,68 @@ impl IrGenerator {
                         let property_number =
                             self.property_manager.get_property_number(&property_name);
 
-                        // Use proper property-based function call
+                        // Step 1: Get the property value (function address)
+                        let func_addr_temp = self.next_id();
+                        self.id_registry.register_id(
+                            func_addr_temp,
+                            "handler_addr",
+                            "method_call",
+                            false,
+                        );
                         block.add_instruction(IrInstruction::GetPropertyByNumber {
-                            target: result_temp,
+                            target: func_addr_temp,
                             object: object_temp,
                             property_num: property_number,
                         });
 
-                        // TODO: In a complete implementation, this would:
-                        // 1. Get the property value (function address)
-                        // 2. Check if it's non-zero (function exists)
-                        // 3. Call the function if it exists
-                        // For now, we'll return the property value directly
+                        // Step 2: Check if function exists (address != 0)
+                        let call_label = self.next_id();
+                        let no_handler_label = self.next_id();
+                        let end_label = self.next_id();
+                        self.id_registry.register_id(
+                            call_label,
+                            "call_handler_label",
+                            "method_call",
+                            false,
+                        );
+                        self.id_registry.register_id(
+                            no_handler_label,
+                            "no_handler_label",
+                            "method_call",
+                            false,
+                        );
+                        self.id_registry
+                            .register_id(end_label, "end_label", "method_call", false);
+
+                        // Branch: if func_addr != 0, jump to call_label; else jump to no_handler_label
+                        block.add_instruction(IrInstruction::Branch {
+                            condition: func_addr_temp,
+                            true_label: call_label, // Non-zero → call the handler
+                            false_label: no_handler_label, // Zero → no handler
+                        });
+
+                        // Call the handler function
+                        block.add_instruction(IrInstruction::Label { id: call_label });
+                        block.add_instruction(IrInstruction::CallIndirect {
+                            target: Some(result_temp),
+                            function_addr: func_addr_temp,
+                            args: arg_temps.clone(),
+                        });
+                        block.add_instruction(IrInstruction::Jump { label: end_label });
+
+                        // No handler: return 0
+                        block.add_instruction(IrInstruction::Label {
+                            id: no_handler_label,
+                        });
+                        block.add_instruction(IrInstruction::LoadImmediate {
+                            target: result_temp,
+                            value: IrValue::Integer(0),
+                        });
+
+                        block.add_instruction(IrInstruction::Label { id: end_label });
 
                         log::debug!(
-                            "Object handler '{}' mapped to property #{} for method call",
+                            "Object handler '{}' mapped to property #{} for indirect call",
                             property_name,
                             property_number
                         );

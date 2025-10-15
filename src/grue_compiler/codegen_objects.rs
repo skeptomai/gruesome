@@ -370,13 +370,43 @@ impl ZMachineCodeGen {
             let desc_prop = *self.property_numbers.get("description").unwrap_or(&7);
             let visited_prop = *self.property_numbers.get("visited").unwrap_or(&2);
             // location_prop removed - uses object tree parent only (Oct 12, 2025)
-            let on_look_prop = *self.property_numbers.get("on_look").unwrap_or(&13);
+            let on_look_prop = *self.property_numbers.get("on_look").unwrap_or(&18);
+            let on_enter_prop = *self.property_numbers.get("on_enter").unwrap_or(&21);
+            let on_exit_prop = *self.property_numbers.get("on_exit").unwrap_or(&20);
 
             // Set default property values for rooms
             room_properties.set_string(desc_prop, room.description.clone());
             room_properties.set_byte(visited_prop, 0); // Initially not visited
                                                        // location property removed - rooms use object tree containment (Oct 12, 2025)
-            room_properties.set_byte(on_look_prop, 0); // No special on_look handler by default
+
+            // Phase 2: Store handler function addresses in room properties
+            // Handlers are now functions (Phase 1 complete), need to store their addresses
+            // Since functions are generated AFTER objects, use placeholder + UnresolvedReference pattern
+            if room.on_look.is_some() {
+                room_properties.set_word(on_look_prop, 0xFFFF); // Placeholder for function address
+            } else {
+                room_properties.set_word(on_look_prop, 0); // No handler
+            }
+
+            if room.on_enter.is_some() {
+                room_properties.set_word(on_enter_prop, 0xFFFF); // Placeholder for function address
+            } else {
+                room_properties.set_word(on_enter_prop, 0); // No handler
+            }
+
+            if room.on_exit.is_some() {
+                room_properties.set_word(on_exit_prop, 0xFFFF); // Placeholder for function address
+            } else {
+                room_properties.set_word(on_exit_prop, 0); // No handler
+            }
+
+            // Track handler function IDs for UnresolvedReference creation during property serialization
+            if room.on_enter.is_some() || room.on_exit.is_some() || room.on_look.is_some() {
+                self.room_handlers.insert(
+                    room.name.clone(),
+                    (room.on_enter, room.on_exit, room.on_look),
+                );
+            }
 
             // Exit properties will be added in Pass 2 after we have object_id_to_number mapping
 
