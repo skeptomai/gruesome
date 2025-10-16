@@ -371,6 +371,23 @@ impl ZMachineCodeGen {
                 );
             }
 
+            // CRITICAL FIX (Oct 16, 2025): Auto-derive short_name from names[0]
+            // Issue: Objects define `names: ["leaflet", "paper"]` (property 16), but code accesses `.name` (property 1 = short_name)
+            // If short_name not explicitly set, derive it from first name in names array
+            // This prevents garbled text when examining objects that only define names array
+            let short_name_prop = *self.property_numbers.get("short_name").unwrap_or(&1);
+            if !player_properties.properties.contains_key(&short_name_prop)
+                && !player.names.is_empty()
+            {
+                player_properties.set_string(short_name_prop, player.names[0].clone());
+                log::debug!(
+                    "🔍 SHORT_NAME_AUTO: Player '{}' short_name (property #{}) auto-derived from names[0]: '{}'",
+                    player.name,
+                    short_name_prop,
+                    player.names[0]
+                );
+            }
+
             all_objects.push(ObjectData {
                 id: player.id,
                 name: player.name.clone(),
@@ -503,6 +520,23 @@ impl ZMachineCodeGen {
                     object.names,
                     names_prop,
                     object.names.len() * 2
+                );
+            }
+
+            // CRITICAL FIX (Oct 16, 2025): Auto-derive short_name from names[0]
+            // Issue: Objects define `names: ["leaflet", "paper"]` (property 16), but code accesses `.name` (property 1 = short_name)
+            // If short_name not explicitly set, derive it from first name in names array
+            // This prevents garbled text when examining objects that only define names array
+            let short_name_prop = *self.property_numbers.get("short_name").unwrap_or(&1);
+            if !object_properties.properties.contains_key(&short_name_prop)
+                && !object.names.is_empty()
+            {
+                object_properties.set_string(short_name_prop, object.names[0].clone());
+                log::debug!(
+                    "🔍 SHORT_NAME_AUTO: Object '{}' short_name (property #{}) auto-derived from names[0]: '{}'",
+                    object.name,
+                    short_name_prop,
+                    object.names[0]
                 );
             }
 

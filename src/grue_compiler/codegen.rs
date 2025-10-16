@@ -6628,7 +6628,9 @@ impl ZMachineCodeGen {
                         "🔀 OBJECT_CHECK: Registered branch to verb_only_label when object not found (Variable(3) == 0)"
                     );
                 } else {
-                    panic!("BUG: emit_instruction didn't return branch_location for je instruction");
+                    panic!(
+                        "BUG: emit_instruction didn't return branch_location for je instruction"
+                    );
                 }
 
                 // Call handler with resolved object ID parameter

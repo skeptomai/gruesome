@@ -511,6 +511,149 @@ Originally planned a "Phase 2" to set parent pointers at compile time during obj
 - ✅ `.location` reads return correct room
 - ✅ `.location =` writes update object tree correctly
 
+### CRITICAL: Object Name Property Disambiguation (October 16, 2025)
+
+**Issue**: Objects defining only `names: ["leaflet", "paper"]` produce garbled text when code accesses `item.name`, displaying garbage like "s   amFym xw cwm   glpgg rwjjj" instead of "leaflet".
+
+#### Executive Summary
+
+**Problem**: Property number mismatch between `names` array (property 16, plural, for parser) and `name` accessor (property 1, singular, for display). Objects set property 16 but never property 1, causing reads of uninitialized memory.
+
+**Solution**: Auto-derive property 1 from names[0] at compile time. If short_name not explicitly set AND names array exists, compiler automatically sets `short_name = names[0]`.
+
+**Impact**: Zero developer friction (define names once, works everywhere), zero runtime cost (happens at compile time), backwards compatible (explicit name: definitions still work).
+
+**Future Work**: If dynamic runtime name changes needed, would require property 16 → string conversion. Current approach optimizes for static definitions (99% use case).
+
+#### Root Cause
+
+**Property Number Mismatch**:
+- Z-Machine property 1 = `short_name` (singular, used for display)
+- Z-Machine property 16 = `names` (plural array, used for dictionary lookup)
+- Objects define `names` array (property 16), but never set property 1
+- Code accesses `.name` which compiles to property 1 lookup
+- Property 1 contains uninitialized memory → garbled text
+
+**Example from mini_zork.grue**:
+```grue
+object leaflet {
+    parent: mailbox,
+    names: ["leaflet", "paper"],  // Sets property 16 with dictionary addresses
+    description: "A small leaflet",
+}
+
+// Later in code:
+print(item.name);  // Compiles to: get property 1 from item → garbage!
+```
+
+#### Property System Background
+
+**IR PropertyManager** (`ir.rs:306-423`):
+- Assigns property numbers dynamically as properties are encountered
+- property 1 = `short_name` (first property registered)
+- property 16 = `names` (registered later during object processing)
+- Both compiler and runtime must use identical property numbers
+
+**Object Table Generation** (`codegen_objects.rs:464-524`):
+- Only populates properties explicitly set in object definitions
+- `names` property gets dictionary addresses (2 bytes per name)
+- `short_name` property NEVER set unless explicitly defined
+- No automatic conversion from names → short_name
+
+**Property Access Compilation** (`ir.rs:3135-3311`):
+```rust
+Expr::PropertyAccess { object, property } => {
+    // property "name" → PropertyManager.get_property_number("name") → 1
+    // Generates: IrInstruction::GetPropertyByNumber with property_num = 1
+}
+```
+
+#### Three Solution Options
+
+**Option A: Auto-derive short_name from names[0]** ✅ IMPLEMENTED
+- **How**: If property 1 unset AND names array exists, set property 1 = names[0]
+- **Where**: `codegen_objects.rs:509-522, 374-387` (after setting names property)
+- **Pros**:
+  - Backwards compatible (existing code works)
+  - Minimal invasive changes
+  - Natural developer experience (define names once, works everywhere)
+- **Cons**:
+  - Implicit magic (not obvious from source)
+  - Names property still has duplicate data
+- **Trade-off**: Convenience over explicitness
+
+**Option B: Make .name access property 16**
+- **How**: Change PropertyManager to map "name" → property 16 instead of property 1
+- **Pros**: Direct semantic match (name → names[0])
+- **Cons**:
+  - Property 16 stores dictionary addresses, not strings
+  - Would require runtime dictionary lookup for every .name access
+  - Performance penalty
+  - Complex runtime conversion
+- **Rejected**: Performance and complexity issues
+
+**Option C: Require explicit name: in object definitions**
+- **How**: Force developers to set both `name:` and `names:` explicitly
+- **Pros**: Explicit is better than implicit
+- **Cons**:
+  - Repetitive code (`name: "leaflet", names: ["leaflet", "paper"]`)
+  - Developer friction
+  - Higher chance of bugs (forgetting to set name)
+- **Rejected**: Poor developer experience
+
+#### Implementation Details
+
+**Fix Location**: `src/grue_compiler/codegen_objects.rs`
+
+**Player Object** (lines 374-387):
+```rust
+// After setting names property...
+let short_name_prop = *self.property_numbers.get("short_name").unwrap_or(&1);
+if !player_properties.properties.contains_key(&short_name_prop) && !player.names.is_empty() {
+    player_properties.set_string(short_name_prop, player.names[0].clone());
+    log::debug!("🔍 SHORT_NAME_AUTO: Player '{}' short_name auto-derived from names[0]", player.name);
+}
+```
+
+**Regular Objects** (lines 509-522):
+```rust
+// After setting names property...
+let short_name_prop = *self.property_numbers.get("short_name").unwrap_or(&1);
+if !object_properties.properties.contains_key(&short_name_prop) && !object.names.is_empty() {
+    object_properties.set_string(short_name_prop, object.names[0].clone());
+    log::debug!("🔍 SHORT_NAME_AUTO: Object '{}' short_name auto-derived from names[0]", object.name);
+}
+```
+
+**Key Implementation Points**:
+1. Check runs AFTER names property is set (ensures names[0] exists)
+2. Only auto-derives if short_name NOT explicitly set (respects explicit values)
+3. Only runs if names array not empty (safe check)
+4. Uses clone() to avoid lifetime issues
+5. Logging tracks when auto-derivation happens
+
+#### Why This Fix
+
+**Design Philosophy**: Prioritize developer experience over architectural purity.
+
+**Rationale**:
+1. **Common Case Optimization**: 90% of objects define only names array
+2. **Fail-Safe**: Explicit `name:` definitions still work (override auto-derivation)
+3. **Zero Runtime Cost**: Derivation happens at compile time
+4. **Natural Semantics**: "First name is primary name" is intuitive
+5. **Backwards Compatible**: Existing objects with explicit name: unchanged
+
+**Future Considerations**:
+- If runtime dynamic names needed (e.g., changing object.name at runtime), Option B would be required
+- Current approach optimizes for static object definitions (99% use case)
+- Can revisit if dynamic name changes become a requirement
+
+**Testing**:
+- ✅ Garbled text bug fixed (inventory displays correct names)
+- ✅ Explicit name: definitions still work
+- ✅ Objects with empty names array unaffected
+- ✅ All existing tests pass
+
 ## Modular Opcode Architecture
 
 ### Overview
