@@ -6599,6 +6599,38 @@ impl ZMachineCodeGen {
                 // Call object resolution function to convert dictionary address to object ID
                 self.generate_object_lookup_from_noun()?;
 
+                // CRITICAL FIX (Oct 16, 2025): Check if object lookup found anything
+                // If Variable(3) == 0, no object was found - jump to error message instead of calling handler with object 0
+                // This prevents "Cannot insert object 0" errors when user types invalid object names
+                let layout = self.emit_instruction(
+                    0x01, // je: jump if equal
+                    &[
+                        Operand::Variable(3),      // Resolved object ID (0 if not found)
+                        Operand::SmallConstant(0), // Compare with 0
+                    ],
+                    None,
+                    Some(0xBFFF_u16 as i16), // Branch-on-TRUE: jump to verb_only when object not found
+                )?;
+
+                // Register branch to verb_only_label (which prints "I don't understand that")
+                if let Some(branch_location) = layout.branch_location {
+                    self.reference_context
+                        .unresolved_refs
+                        .push(UnresolvedReference {
+                            reference_type: LegacyReferenceType::Branch,
+                            location: branch_location,
+                            target_id: verb_only_label,
+                            is_packed_address: false,
+                            offset_size: 2,
+                            location_space: MemorySpace::Code,
+                        });
+                    debug!(
+                        "🔀 OBJECT_CHECK: Registered branch to verb_only_label when object not found (Variable(3) == 0)"
+                    );
+                } else {
+                    panic!("BUG: emit_instruction didn't return branch_location for je instruction");
+                }
+
                 // Call handler with resolved object ID parameter
                 let layout = self.emit_instruction(
                     0x00, // call_vs: call routine with arguments, returns value (VAR:0/VAR:224)

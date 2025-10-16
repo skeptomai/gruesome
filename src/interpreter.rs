@@ -1730,7 +1730,16 @@ impl Interpreter {
                 // sread (V1-4) with timer support (V3+)
                 // Proper implementation that reads from stdin
                 if operands.len() < 2 {
-                    return Err("sread requires at least 2 operands".to_string());
+                    let pc = self.vm.pc - inst.size as u32;
+                    eprintln!("🔴 SREAD ERROR at PC 0x{:04x}: instruction size={}, operands={:?}", pc, inst.size, operands);
+                    eprintln!("🔴 Bytecode at PC:");
+                    for i in 0..20 {
+                        if pc as usize + i < self.vm.game.memory.len() {
+                            eprint!(" {:02x}", self.vm.game.memory[pc as usize + i]);
+                        }
+                    }
+                    eprintln!();
+                    return Err(format!("sread requires at least 2 operands (got {}), PC=0x{:04x}", operands.len(), pc));
                 }
                 let text_buffer = operands[0] as u32;
                 let parse_buffer = operands[1] as u32;

@@ -2094,7 +2094,9 @@ impl ZMachineCodeGen {
             0x00 => true, // call_vs (raw opcode 0)
             0x01 => true, // storew (raw opcode 1)
             0x03 => true, // put_prop (raw opcode 3)
-            0x04 => true, // sread (raw opcode 4)
+            // NOTE: 0x04 is NOT always VAR! It's context-dependent:
+            //   - 2OP:4 = dec_chk, 1OP:4 = get_prop_len, VAR:4 = sread
+            //   - Form must be determined by operand count, not forced to VAR
             0x05 => true, // print_char (raw opcode 5) - THIS IS THE FIX!
             0x06 => true, // print_num (raw opcode 6)
             0x07 => true, // random (raw opcode 7)
