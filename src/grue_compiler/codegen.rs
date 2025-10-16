@@ -7143,6 +7143,8 @@ impl ZMachineCodeGen {
         )?;
 
         // Check if property exists (address == 0 means no property)
+        // CRITICAL: je (Variable 5 == 0) is TRUE when property DOESN'T exist
+        // We want to branch when property doesn't exist, so use branch-on-TRUE
         log::warn!(
             "🔍 OBJECT_LOOKUP: Checking if property exists (Variable(5) == 0) at 0x{:04x}",
             self.code_address
@@ -7154,9 +7156,9 @@ impl ZMachineCodeGen {
                 Operand::SmallConstant(0), // Compare with 0
             ],
             None,
-            Some(0x3FFF_u16 as i16), // Placeholder - branch-on-FALSE (skip if property exists)
+            Some(0xBFFF_u16 as i16), // Placeholder - branch-on-TRUE (branch when property doesn't exist)
         )?;
-        // If property doesn't exist (address == 0), increment counter and continue to next object
+        // If property doesn't exist (address == 0), branch to no_names_label
         let no_names_label = self.next_string_id;
         self.next_string_id += 1;
         if let Some(branch_location) = layout.branch_location {
