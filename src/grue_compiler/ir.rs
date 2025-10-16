@@ -2109,37 +2109,23 @@ impl IrGenerator {
     }
 
     fn generate_object_placement_instructions(&mut self) -> Vec<IrInstruction> {
-        let mut instructions = Vec::new();
+        // DISABLED (Oct 15, 2025): This function generated WRONG InsertObj instructions
+        // for nested objects because object_parent_rooms maps objects to their containing ROOM,
+        // not their immediate parent in the object tree.
+        //
+        // Example bug: leaflet inside mailbox inside west_of_house
+        // - object_parent_rooms["leaflet"] = "west_of_house" (inherited from mailbox)
+        // - Generated: InsertObj(leaflet, west_of_house) ❌ WRONG!
+        // - Should be: InsertObj(leaflet, mailbox) ✅
+        //
+        // FIX: codegen.rs now generates correct InsertObj instructions from object.parent
+        // during init block generation (lines 8745-8797). That code reads the immediate parent
+        // from the IR object's parent field, which is set correctly during semantic analysis.
+        //
+        // object_parent_rooms is still used for other purposes (tracking which room an object
+        // belongs to for validation), but should NOT be used for InsertObj generation.
 
-        // Iterate through all objects and generate InsertObj for those with parent_room
-        for (obj_name, room_name) in &self.object_parent_rooms {
-            // Get IR IDs for object and room
-            if let (Some(&obj_id), Some(&room_id)) = (
-                self.symbol_ids.get(obj_name),
-                self.symbol_ids.get(room_name),
-            ) {
-                log::debug!(
-                    "🏠 AUTO_PLACEMENT: Placing object '{}' (ID {}) in room '{}' (ID {})",
-                    obj_name,
-                    obj_id,
-                    room_name,
-                    room_id
-                );
-
-                instructions.push(IrInstruction::InsertObj {
-                    object: obj_id,
-                    destination: room_id,
-                });
-            } else {
-                log::warn!(
-                    "⚠️ AUTO_PLACEMENT: Could not find IR IDs for object '{}' or room '{}'",
-                    obj_name,
-                    room_name
-                );
-            }
-        }
-
-        instructions
+        Vec::new() // Return empty vector - InsertObj handled in codegen.rs
     }
 
     fn generate_block(

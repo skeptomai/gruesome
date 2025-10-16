@@ -2,7 +2,7 @@
 
 ## CURRENT STATUS (October 15, 2025) - ALL SYSTEMS OPERATIONAL ✅
 
-**PROGRESS**: Fixed Bug #20 (Grammar Dispatch Chain) and Bug #21 (Object Names Property). Mini Zork fully playable with comprehensive gameplay verification.
+**PROGRESS**: Fixed Bug #22 (Interpreter Debug Code). All known bugs resolved. Mini Zork fully playable with clean error-free output.
 
 ### Bug 21: Object Names Property ✅ FIXED (Oct 15, 2025)
 - **Issue**: "examine mailbox" and "examine tree" should work but didn't initially
@@ -44,6 +44,29 @@
 - **See**: `CLAUDE_HISTORICAL.md` for complete details
 
 **Previous milestones**: Room handlers, exit system, grammar system complete. See `CLAUDE_HISTORICAL.md` for full history.
+
+### Bug 22: Interpreter Debug Code Accessing Invalid Objects ✅ FIXED (Oct 15, 2025)
+- **Issue**: 90+ "BOUNDS ERROR" messages when running compiled games
+- **Symptoms**: "Property table address 0x2707 out of bounds (file size: 7208)" for objects 16-255
+- **Root Cause**: `dump_object_tree()` debug function iterated through 1-256 objects without knowing actual count
+  - Z-Machine has NO explicit object count field in header or object table
+  - Function tried to detect object existence by checking parent/sibling/child bytes
+  - For fake objects #16+, those bytes are actually property table data and can be non-zero
+  - Function thought they were real objects, called `get_object_name()` with garbage property pointers
+- **Memory Layout**:
+  - Object table: Property defaults (62 bytes) → Object entries (9 bytes each) → Property tables
+  - Object entries occupy offsets 0x3e-0xc4 (135 bytes: 15 objects × 9 bytes)
+  - Property tables start at offset 0xc5 (indicated by minimum property table pointer)
+  - Bytes at 0xc5+ are property table data, NOT object entries
+- **The Proper Fix**: Calculate object count from Z-Machine structure (interpreter.rs:340-373)
+  - Property tables come AFTER all object entries (architectural invariant)
+  - Each object has property table pointer (last 2 bytes of entry)
+  - Find minimum property table address across all potential objects
+  - Object count = (min_prop_table_addr - first_obj_addr) / obj_entry_size
+  - Result: 15 objects, property tables at 0x0481 ✅
+- **Impact**: **Zero BOUNDS ERROR messages** (down from 90+), proper architectural solution
+- **Lesson**: Use file structure to calculate boundaries, not error handling as control flow
+- **Files**: `src/interpreter.rs:340-373` (proper object count calculation)
 
 ---
 

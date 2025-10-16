@@ -1024,11 +1024,19 @@ impl VM {
             return Ok(0); // Object 0 has no parent
         }
         let obj_addr = self.get_object_addr(obj_num)?;
-        if self.game.header.version <= 3 {
-            Ok(self.game.memory[obj_addr + 4] as u16)
+        let parent = if self.game.header.version <= 3 {
+            self.game.memory[obj_addr + 4] as u16
         } else {
-            Ok(self.read_word((obj_addr + 6) as u32))
-        }
+            self.read_word((obj_addr + 6) as u32)
+        };
+        log::debug!(
+            "🌳 GET_PARENT: obj={} → parent={} (read from 0x{:04x}+4 = 0x{:04x})",
+            obj_num,
+            parent,
+            obj_addr,
+            obj_addr + 4
+        );
+        Ok(parent)
     }
 
     /// Set parent of object
@@ -1108,6 +1116,15 @@ impl VM {
         Ok(())
     }
 
+    /// Get object tree information (parent, sibling, child) for a given object
+    /// Helper method that combines get_parent, get_sibling, and get_child calls
+    pub fn get_object_info(&self, obj_num: u16) -> Result<(u16, u16, u16), String> {
+        let parent = self.get_parent(obj_num)?;
+        let sibling = self.get_sibling(obj_num)?;
+        let child = self.get_child(obj_num)?;
+        Ok((parent, sibling, child))
+    }
+
     /// Remove object from its current location in the object tree
     pub fn remove_object(&mut self, obj_num: u16) -> Result<(), String> {
         if obj_num == 0 {
@@ -1146,6 +1163,13 @@ impl VM {
 
     /// Insert object as first child of destination
     pub fn insert_object(&mut self, obj_num: u16, dest_num: u16) -> Result<(), String> {
+        log::debug!(
+            "🌳 INSERT_OBJECT: obj={}, dest={}, PC=0x{:04x}",
+            obj_num,
+            dest_num,
+            self.pc
+        );
+
         if obj_num == 0 {
             log::debug!(" insert_object called with object 0 at PC {:05x}", self.pc);
             log::debug!(" dest_num: {}, stack depth: {}", dest_num, self.stack.len());
@@ -1159,22 +1183,33 @@ impl VM {
         }
 
         // First remove object from current location
+        let old_parent = self.get_parent(obj_num)?;
+        log::debug!("🌳 BEFORE: obj {} had parent={}", obj_num, old_parent);
         self.remove_object(obj_num)?;
 
         // Get current first child of destination
         let old_child = self.get_child(dest_num)?;
+        log::debug!("🌳 BEFORE: dest {} had child={}", dest_num, old_child);
 
         // Set object as new first child
         self.set_child(dest_num, obj_num)?;
         self.set_parent(obj_num, dest_num)?;
         self.set_sibling(obj_num, old_child)?;
 
+        log::debug!(
+            "🌳 AFTER: obj {} now has parent={}, sibling={}",
+            obj_num,
+            dest_num,
+            old_child
+        );
+        log::debug!("🌳 AFTER: dest {} now has child={}", dest_num, obj_num);
+
         Ok(())
     }
 
     /// Get the short name of an object (version-aware)
     pub fn get_object_name(&self, obj_num: u16) -> Result<String, String> {
-        log::debug!(" GET_OBJECT_NAME: Accessing object {}", obj_num);
+        log::debug!("🔍 GET_OBJECT_NAME: obj={}, PC=0x{:04x}", obj_num, self.pc);
 
         if obj_num == 0 {
             log::debug!(" Object 0 requested - returning empty string");

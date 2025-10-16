@@ -285,7 +285,7 @@ impl Interpreter {
 
                 // Log all get_prop calls during grammar object lookup (property 16 = names)
                 if prop_num == 16 {
-                    log::warn!(
+                    log::debug!(
                         "🔍 GET_PROP: obj={}, prop={} (names), value=0x{:04x}, storing to var={:?}, PC=0x{:04x}",
                         obj_num,
                         prop_num,

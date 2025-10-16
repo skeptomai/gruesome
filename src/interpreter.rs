@@ -50,6 +50,8 @@ pub struct Interpreter {
     pub(crate) display: Option<Box<dyn ZMachineDisplay>>,
     /// Output stream state
     output_streams: OutputStreamState,
+    /// Flag to track if we've dumped the object tree at startup
+    object_tree_dumped: bool,
 }
 
 /// State for managing output stream redirection
@@ -110,6 +112,7 @@ impl Interpreter {
             v4_input,
             display,
             output_streams: OutputStreamState::new(),
+            object_tree_dumped: false,
         }
     }
 
@@ -314,6 +317,89 @@ impl Interpreter {
         }
 
         debug!("=== END GAME STATE DUMP ===");
+    }
+
+    /// Dump the entire object tree for debugging
+    fn dump_object_tree(&self) {
+        log::warn!("🌳 ========== OBJECT TREE DUMP ==========");
+
+        // Get object table address from header
+        let obj_table_addr = self.vm.game.header.object_table_addr as usize;
+        let version = self.vm.game.header.version;
+
+        // Calculate object entry size
+        let obj_entry_size = if version <= 3 { 9 } else { 14 };
+
+        // Calculate where objects start (after 31 default properties for v1-3, 63 for v4+)
+        let defaults_size = if version <= 3 { 31 * 2 } else { 63 * 2 };
+        let first_obj_addr = obj_table_addr + defaults_size;
+        let prop_addr_offset = if version <= 3 { 7 } else { 12 };
+
+        log::warn!(
+            "🌳 Object table at 0x{:04x}, first object at 0x{:04x}",
+            obj_table_addr,
+            first_obj_addr
+        );
+
+        // Calculate actual object count from Z-Machine structure:
+        // - Property tables come AFTER all object entries
+        // - Find minimum property table address among all potential objects
+        // - Object count = (min_prop_table - first_obj_addr) / obj_entry_size
+        let mut min_prop_table_addr = usize::MAX;
+
+        for i in 0..256 {
+            let obj_addr = first_obj_addr + (i * obj_entry_size);
+
+            // Check if we're past the end of memory
+            if obj_addr + obj_entry_size > self.vm.game.memory.len() {
+                break;
+            }
+
+            // Read property table pointer
+            let prop_table_addr = self.vm.read_word((obj_addr + prop_addr_offset) as u32) as usize;
+
+            // Property table addresses should be >= first_obj_addr (after all objects)
+            // If we find one that's less, we've hit property table data being misread as an object
+            if prop_table_addr < first_obj_addr {
+                break;
+            }
+
+            min_prop_table_addr = min_prop_table_addr.min(prop_table_addr);
+        }
+
+        // Calculate actual object count
+        let max_objects = if min_prop_table_addr == usize::MAX {
+            0
+        } else {
+            (min_prop_table_addr - first_obj_addr) / obj_entry_size
+        };
+
+        log::warn!(
+            "🌳 Found {} objects (property tables start at 0x{:04x})",
+            max_objects,
+            min_prop_table_addr
+        );
+
+        // Iterate through actual objects only
+        for obj_num in 1..=(max_objects as u16) {
+            if let Ok(name) = self.vm.get_object_name(obj_num) {
+                if let Ok((parent, sibling, child)) = self.vm.get_object_info(obj_num) {
+                    // Only dump objects that exist (have valid parent/sibling/child or are roots)
+                    if parent != 0 || sibling != 0 || child != 0 {
+                        log::warn!(
+                            "🌳 Object #{:3} '{}': parent={:3}, sibling={:3}, child={:3}",
+                            obj_num,
+                            name,
+                            parent,
+                            sibling,
+                            child
+                        );
+                    }
+                }
+            }
+        }
+
+        log::warn!("🌳 ========================================");
     }
 
     pub fn run_with_limit(&mut self, max_instructions: Option<u64>) -> Result<(), String> {
@@ -635,6 +721,17 @@ impl Interpreter {
             }
 
             self.instruction_count += 1;
+
+            // Dump object tree after first instruction (after InsertObj instructions have run)
+            if self.instruction_count == 10 {
+                log::warn!("🌳 Instruction count reached 10, dumping object tree...");
+                if !self.object_tree_dumped {
+                    self.dump_object_tree();
+                    self.object_tree_dumped = true;
+                } else {
+                    log::warn!("🌳 Already dumped object tree, skipping");
+                }
+            }
 
             // Check instruction limit
             if let Some(limit) = max_instructions {

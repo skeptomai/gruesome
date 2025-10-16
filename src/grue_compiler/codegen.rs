@@ -1216,7 +1216,75 @@ impl ZMachineCodeGen {
                 }
             }
 
+            // DEBUG: Dump final_data BEFORE copy
+            log::error!(
+                "🔍 PRE_COPY: final_data[0x{:04x}..0x{:04x}] first 20 bytes: {:02x?}",
+                object_base,
+                object_base + 20,
+                &self.final_data[object_base..object_base + 20]
+            );
+
             self.final_data[object_base..dictionary_base].copy_from_slice(&self.object_space);
+
+            // DEBUG: Dump final_data IMMEDIATELY AFTER copy
+            log::error!(
+                "🔍 POST_COPY: final_data[0x{:04x}..0x{:04x}] first 80 bytes:",
+                object_base,
+                object_base + 80
+            );
+            for chunk_start in (0..80).step_by(16) {
+                let abs_start = object_base + chunk_start;
+                let abs_end = abs_start + 16;
+                if abs_end <= self.final_data.len() {
+                    log::error!(
+                        "🔍   [0x{:04x}..0x{:04x}]: {:02x?}",
+                        abs_start,
+                        abs_end,
+                        &self.final_data[abs_start..abs_end]
+                    );
+                }
+            }
+
+            // DEBUG: Dump object_space structure to find the 6-byte gap
+            log::error!(
+                "🔍 ALIGNMENT_DEBUG: object_space.len() = {} (0x{:04x})",
+                self.object_space.len(),
+                self.object_space.len()
+            );
+            log::error!("🔍 ALIGNMENT_DEBUG: object_space first 80 bytes:");
+            for chunk_start in (0..80.min(self.object_space.len())).step_by(16) {
+                let chunk_end = (chunk_start + 16).min(self.object_space.len());
+                log::error!(
+                    "🔍   [0x{:04x}..0x{:04x}]: {:02x?}",
+                    chunk_start,
+                    chunk_end,
+                    &self.object_space[chunk_start..chunk_end]
+                );
+            }
+            log::error!(
+                "🔍 ALIGNMENT_DEBUG: object_base=0x{:04x}, dictionary_base=0x{:04x}",
+                object_base,
+                dictionary_base
+            );
+            log::error!(
+                "🔍 ALIGNMENT_DEBUG: final_data[0x{:04x}..0x{:04x}] (first 20 bytes): {:02x?}",
+                object_base,
+                object_base + 20,
+                &self.final_data[object_base..object_base + 20]
+            );
+            if self.final_data.len() >= object_base + 0x46 {
+                log::error!("🔍 ALIGNMENT_DEBUG: final_data[0x{:04x}..0x{:04x}] (where first object ends up): {:02x?}",
+                    object_base + 0x3e, object_base + 0x46, &self.final_data[object_base + 0x3e..object_base + 0x46]);
+            }
+            log::error!(
+                "🔍 ALIGNMENT_DEBUG: Header says object table at: 0x{:04x}",
+                object_base
+            );
+            log::error!("🔍 ALIGNMENT_DEBUG: Property defaults should be 62 bytes (0x3e)");
+            log::error!(
+                "🔍 ALIGNMENT_DEBUG: First object should start at: 0x{:04x}",
+                object_base + 0x3e
+            );
 
             // Show West of House property table AFTER copy
             let final_obj2_offset = object_base + obj2_offset;
@@ -1238,6 +1306,122 @@ impl ZMachineCodeGen {
                     );
                 }
             }
+
+            // COMPREHENSIVE OBJECT TABLE ANALYSIS
+            log::error!("═════════════════════════════════════════════════════════════");
+            log::error!("🔬 OBJECT TABLE ANALYSIS");
+            log::error!("═════════════════════════════════════════════════════════════");
+
+            let defaults_size = 62; // V3 property defaults
+            let obj_entry_size = 9; // V3 object entry size
+
+            log::error!("📊 OBJECT SPACE STRUCTURE:");
+            log::error!(
+                "   object_space.len() = {} bytes (0x{:04x})",
+                self.object_space.len(),
+                self.object_space.len()
+            );
+            log::error!(
+                "   Property defaults: 0x0000-0x{:04x} ({} bytes)",
+                defaults_size - 1,
+                defaults_size
+            );
+
+            // Analyze objects in object_space (space-relative addresses)
+            log::error!("");
+            log::error!("📋 OBJECTS IN OBJECT_SPACE (space-relative addresses):");
+            let first_obj_offset = defaults_size;
+            let max_possible_objects = (self.object_space.len() - defaults_size) / obj_entry_size;
+            log::error!(
+                "   Max possible objects based on size: {}",
+                max_possible_objects
+            );
+
+            for i in 0..max_possible_objects.min(20) {
+                let obj_offset = first_obj_offset + (i * obj_entry_size);
+                if obj_offset + 8 >= self.object_space.len() {
+                    break;
+                }
+
+                let prop_ptr_high = self.object_space[obj_offset + 7];
+                let prop_ptr_low = self.object_space[obj_offset + 8];
+                let prop_ptr = ((prop_ptr_high as u16) << 8) | (prop_ptr_low as u16);
+
+                log::error!(
+                    "   Object #{:2} at obj_space[0x{:04x}..0x{:04x}]: prop_ptr=0x{:04x} ({})",
+                    i + 1,
+                    obj_offset,
+                    obj_offset + 8,
+                    prop_ptr,
+                    prop_ptr
+                );
+
+                // Check if this looks like a valid property pointer
+                if prop_ptr == 0 {
+                    log::error!("      ⚠️  Property pointer is ZERO - object not initialized or end of table");
+                } else if (prop_ptr as usize) < defaults_size {
+                    log::error!("      ⚠️  Property pointer points into defaults region!");
+                } else if (prop_ptr as usize) >= self.object_space.len() {
+                    log::error!("      ⚠️  Property pointer PAST END of object_space!");
+                }
+            }
+
+            // Analyze objects in final_data (absolute addresses)
+            log::error!("");
+            log::error!("📋 OBJECTS IN FINAL_DATA (absolute memory addresses):");
+            log::error!("   object_base = 0x{:04x}", object_base);
+            let final_first_obj = object_base + defaults_size;
+
+            for i in 0..max_possible_objects.min(20) {
+                let final_offset = final_first_obj + (i * obj_entry_size);
+                if final_offset + 8 >= self.final_data.len() {
+                    break;
+                }
+
+                let prop_ptr_high = self.final_data[final_offset + 7];
+                let prop_ptr_low = self.final_data[final_offset + 8];
+                let prop_ptr = ((prop_ptr_high as u16) << 8) | (prop_ptr_low as u16);
+
+                let status = if prop_ptr == 0 {
+                    "ZERO"
+                } else if (prop_ptr as usize) >= self.final_data.len() {
+                    "BOUNDS_ERROR"
+                } else {
+                    "OK"
+                };
+
+                log::error!(
+                    "   Object #{:2} at final[0x{:04x}..0x{:04x}]: prop_ptr=0x{:04x} ({:5}) [{}]",
+                    i + 1,
+                    final_offset,
+                    final_offset + 8,
+                    prop_ptr,
+                    prop_ptr,
+                    status
+                );
+            }
+
+            log::error!("");
+            log::error!("📐 EXPECTED LAYOUT:");
+            log::error!("   15 objects × 9 bytes = 135 bytes");
+            log::error!(
+                "   Object entries: 0x{:04x}-0x{:04x}",
+                defaults_size,
+                defaults_size + 135 - 1
+            );
+            log::error!("   Property tables start: 0x{:04x}", defaults_size + 135);
+            log::error!("");
+            log::error!("🔍 ACTUAL DATA AFTER 15 OBJECTS:");
+            let after_15_objs = defaults_size + (15 * obj_entry_size);
+            if after_15_objs + 40 <= self.object_space.len() {
+                log::error!(
+                    "   object_space[0x{:04x}..0x{:04x}]: {:02x?}",
+                    after_15_objs,
+                    after_15_objs + 40,
+                    &self.object_space[after_15_objs..after_15_objs + 40]
+                );
+            }
+            log::error!("═════════════════════════════════════════════════════════════");
 
             log::debug!(
                 " Object space copied: {} bytes at 0x{:04x}",
@@ -4652,10 +4836,16 @@ impl ZMachineCodeGen {
 
         // Reserve space for object table
         self.object_table_addr = addr;
+        // BUG FIX (Oct 15, 2025 - Bug #22): Player is in ir.objects[0], and object generation adds:
+        // - Player explicitly (1 object)
+        // - All rooms (ir.rooms.len() objects)
+        // - Other objects via iter().skip(1) (ir.objects.len() - 1 objects)
+        // Total: 1 + ir.rooms.len() + (ir.objects.len() - 1) = ir.rooms.len() + ir.objects.len()
+        // The old calculation added +1, causing object_entries_size to be 9 bytes too large (16 instead of 15)
         let estimated_objects = if ir.objects.is_empty() && ir.rooms.is_empty() {
             2
         } else {
-            ir.objects.len() + ir.rooms.len() + 1 // +1 for player object that gets added later
+            ir.objects.len() + ir.rooms.len() // Player is in ir.objects, no +1 needed
         }; // At least 2 objects (player + room)
         let object_entries_size = match self.version {
             ZMachineVersion::V3 => estimated_objects * 9, // v3: 9 bytes per object
@@ -4911,6 +5101,22 @@ impl ZMachineCodeGen {
         // Property table address (word) - bytes 7-8 of object entry
         self.write_to_object_space(obj_offset + 7, (prop_table_addr >> 8) as u8)?; // High byte
         self.write_to_object_space(obj_offset + 8, (prop_table_addr & 0xFF) as u8)?; // Low byte
+
+        // DEBUG: Log complete object entry that was just written
+        if obj_num == 1 {
+            log::error!(
+                "🔍 OBJECT#1_WRITTEN: Offset=0x{:04x}, Entry bytes (should be 9):",
+                obj_offset
+            );
+            if obj_offset + 9 <= self.object_space.len() {
+                log::error!(
+                    "🔍 OBJECT#1_WRITTEN: object_space[0x{:04x}..0x{:04x}] = {:02x?}",
+                    obj_offset,
+                    obj_offset + 9,
+                    &self.object_space[obj_offset..obj_offset + 9]
+                );
+            }
+        }
 
         // DEBUG: Verify what was actually written
         let written_high = self.object_space[obj_offset + 7];
@@ -8741,6 +8947,63 @@ impl ZMachineCodeGen {
         // Store header location for later local count patching
         self.function_header_locations
             .insert(init_routine_id, header_location);
+
+        // CRITICAL FIX (Oct 15, 2025): Generate InsertObj instructions for nested objects
+        // Objects declared with `contains {}` syntax have parent/sibling/child set in IR,
+        // but the Z-Machine requires InsertObj instructions to actually set up the object tree at runtime.
+        // Without these, GetObjectParent returns garbage because tree pointers aren't initialized.
+        log::debug!(
+            "🌳 OBJECT_TREE_INIT: Generating InsertObj instructions for {} objects",
+            _ir.objects.len()
+        );
+
+        for object in &_ir.objects {
+            if let Some(parent_id) = object.parent {
+                // Skip player object - it's handled by player.location assignment in user's init block
+                if object.name == "player" {
+                    log::debug!(
+                        "  Skipping player object (handled by user init: player.location = room)"
+                    );
+                    continue;
+                }
+
+                log::debug!(
+                    "🌳 INSERTING: Object '{}' (IR ID {}) → parent IR ID {}",
+                    object.name,
+                    object.id,
+                    parent_id
+                );
+
+                // Emit InsertObj instruction: insert_obj(object, parent)
+                // This initializes the object tree so GetObjectParent works correctly
+                let obj_operand = self.resolve_ir_id_to_operand(object.id)?;
+                let parent_operand = self.resolve_ir_id_to_operand(parent_id)?;
+
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::InsertObj),
+                    &[obj_operand, parent_operand],
+                    None, // No result
+                    None, // No branch
+                )?;
+
+                log::debug!(
+                    "  ✓ Emitted InsertObj at 0x{:04x}: {} → {}",
+                    self.code_address - 3, // InsertObj is 3 bytes
+                    object.name,
+                    parent_id
+                );
+            } else {
+                log::debug!("  Skipping '{}' (no parent specified in IR)", object.name);
+            }
+        }
+
+        log::debug!(
+            "🌳 OBJECT_TREE_INIT: Complete - {} InsertObj instructions generated",
+            _ir.objects
+                .iter()
+                .filter(|o| o.parent.is_some() && o.name != "player")
+                .count()
+        );
 
         // Generate the init block code directly after the header
         // CRITICAL: Use translate_ir_instruction to ensure proper instruction generation

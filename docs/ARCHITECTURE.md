@@ -337,6 +337,108 @@ When examining compiled Z-Machine files:
 
 **See Also**: `docs/MINI_ZORK_OBJECT_ANALYSIS.md` for detailed mini_zork object structure.
 
+### CRITICAL CLARIFICATION: Navigation vs Containment (October 15, 2025)
+
+**Key Insight**: The distinction between "room as location" vs "object as thing" is NOT about whether rooms are in the object table. Both rooms AND objects are in the object table with sequential IDs. The distinction is about **HOW they're used in game logic**.
+
+#### The Confusion: Tree Object vs Up_a_Tree Room
+
+**Example from mini_zork that clarifies everything**:
+
+```grue
+room forest_path "Forest Path" {
+    object tree {              // ← tree is an OBJECT (scenery, examinable)
+        names: ["tree", "large tree"]
+        desc: "The tree has low branches that look climbable."
+        takeable: false
+    }
+
+    exits: {
+        up: up_a_tree          // ← Going "up" navigates to a different location
+    }
+}
+
+room up_a_tree "Up a Tree" {   // ← up_a_tree is a ROOM (location player can be in)
+    object nest {              // ← nest is an OBJECT (container, takeable)
+        container: true
+        contains {
+            object egg { ... } // ← egg is inside nest
+        }
+    }
+}
+```
+
+**Both are in the object table**:
+- `tree` = Object ID 10, parent = forest_path (Object ID 9)
+- `up_a_tree` = Object ID 11 (it's a room, but also an object!)
+- `nest` = Object ID 12, parent = up_a_tree (Object ID 11)
+- `egg` = Object ID 13, parent = nest (Object ID 12)
+
+#### The Real Distinction
+
+**Navigation** (moving between locations):
+- Uses room exits: `exits: { up: up_a_tree }`
+- When player types "up" or "climb tree", game executes: `move(player, up_a_tree)`
+- This uses Z-Machine `insert_obj` to update player's parent pointer
+- `player.location` (a `get_parent` call) now returns up_a_tree's object number
+
+**Containment** (objects inside other objects):
+- Uses object tree parent/child pointers
+- `nest.parent = up_a_tree` (nest is IN the up_a_tree room)
+- `egg.parent = nest` (egg is IN the nest container)
+- Both use the SAME object tree mechanism (parent pointers)
+
+#### Why "tree" Doesn't Contain "nest"
+
+**In the game world narrative**: You climb the tree to reach the nest.
+
+**In the Z-Machine structure**:
+1. `tree` (obj#10) is scenery in `forest_path` (obj#9) - a thing you can examine
+2. Typing "climb tree" or "up" navigates to `up_a_tree` (obj#11) - a different location
+3. `nest` (obj#12) is in `up_a_tree` room, not in `tree` object
+4. These are connected by **room exits**, not **object containment**
+
+**The object tree shows**:
+```
+forest_path (obj#9)
+  └─ tree (obj#10)           ← tree is IN forest_path room (containment)
+
+up_a_tree (obj#11)           ← Different location (navigation)
+  └─ nest (obj#12)           ← nest is IN up_a_tree room (containment)
+      └─ egg (obj#13)        ← egg is IN nest object (containment)
+```
+
+**Room exits handle navigation**:
+```
+forest_path.exits.up → up_a_tree   ← This is NOT parent/child!
+up_a_tree.exits.down → forest_path
+```
+
+#### Key Architectural Points
+
+1. **Rooms ARE objects in the object table** - They have object IDs and can have parent/child relationships
+2. **Room exits are NOT object containment** - They're a separate navigation system in game logic
+3. **Scenery objects vs location objects** - Both in object table, used differently:
+   - Scenery (tree): Can examine, maybe climb, but it's just a "thing" in a location
+   - Location (up_a_tree): Player can BE here, has its own description and objects
+4. **Object containment is universal** - Same parent/child mechanism for:
+   - Objects in rooms (nest in up_a_tree)
+   - Objects in containers (egg in nest)
+   - Player in rooms (player in west_of_house)
+
+#### Design Pattern: Separating Object Identity from Location
+
+**Why this matters for game design**:
+- `tree` object gives players something to examine/interact with at ground level
+- `up_a_tree` room is a separate location with its own description and contents
+- Climbing doesn't move you "inside" the tree object - it navigates you to a different location
+- This separation allows flexible world design (rooms can represent physical locations OR conceptual states)
+
+**Infocom convention**:
+- Physical object: Examinable, potentially takeable, has attributes
+- Location/Room: Where player can be, has exits to other locations, contains objects
+- Both stored in object table, distinguished by usage in game logic
+
 ### Location as Containment Only (October 12, 2025)
 
 **Architecture Decision**: Object location is ONLY represented by object tree parent pointers, never as a property.
@@ -3752,3 +3854,170 @@ RUST_LOG=error timeout 3 ./target/debug/gruesome tests/mini_zork.z3 < /tmp/nav_t
 
 **Date**: October 11, 2025
 **Status**: Core architecture complete, variable mapping bug in progress
+
+---
+
+## Object Tree Initialization via InsertObj (October 15, 2025)
+
+### Overview
+
+The compiler generates `InsertObj` instructions during initialization to establish the runtime object containment hierarchy. This section documents how nested objects are initialized and the critical architectural insight that Z-Machine object tables contain **both rooms and objects** in sequential numbering.
+
+### Bug #21 Part 2: GetObjectParent Returning Wrong Values
+
+**Problem**: Nested objects (e.g., leaflet in mailbox, egg in nest) had parent=0 at runtime, causing containment checks to fail.
+
+**Root Cause**: Compiler wrote static parent IDs to object table during compilation, but these were IR object IDs, not runtime Z-Machine object numbers. The object number mapping happened during code generation, but the object table was already written.
+
+**Solution**: Generate InsertObj instructions in the init block to establish parent-child relationships at runtime using correct object numbers.
+
+### InsertObj Instruction Generation
+
+**Location**: `src/grue_compiler/codegen.rs` lines 8745-8797
+
+**Code Pattern**:
+```rust
+// Generate InsertObj instructions for nested objects
+for object in &_ir.objects {
+    if let Some(parent_id) = object.parent {
+        if object.name == "player" {
+            // Skip player - handled by user init: player.location = room
+            continue;
+        }
+
+        let obj_operand = self.resolve_ir_id_to_operand(object.id)?;
+        let parent_operand = self.resolve_ir_id_to_operand(parent_id)?;
+
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::InsertObj),
+            &[obj_operand, parent_operand],
+            None,
+            None,
+        )?;
+    }
+}
+```
+
+**Execution Timing**: InsertObj instructions execute at game startup, before any user code runs.
+
+### Object Tree Dump Feature
+
+**Purpose**: Debug mode that dumps the entire object tree structure at startup to verify InsertObj instructions executed correctly.
+
+**Implementation**: `src/interpreter.rs` lines 319-360
+
+**Trigger Logic**: Dumps object tree after 10 instructions (lines 686-694)
+
+**Output Format**:
+```
+🌳 Object #  1 'player': parent=  2, sibling=  0, child=  0
+🌳 Object #  3 'mailbox': parent=  2, sibling=  0, child=  4
+🌳 Object #  4 'leaflet': parent=  3, sibling=  0, child=  0
+🌳 Object # 10 'tree': parent=  9, sibling=  0, child=  0
+🌳 Object # 12 'nest': parent= 11, sibling=  0, child= 13
+🌳 Object # 13 'egg': parent= 12, sibling=  0, child=  0
+```
+
+### CRITICAL: Z-Machine Object Table Contains Both Rooms and Objects
+
+**Key Architectural Insight**: The Z-Machine object table stores both rooms AND objects in sequential numbering. This is standard Z-Machine behavior, not a compiler bug.
+
+**Example from mini_zork Object Numbering**:
+```
+obj# 1 = player (object)
+obj# 2 = west_of_house (ROOM)
+obj# 3 = mailbox (object)
+obj# 4 = leaflet (object)
+obj# 5 = north_of_house (ROOM)
+obj# 6 = south_of_house (ROOM)
+obj# 7 = behind_house (ROOM)
+obj# 8 = window (object)
+obj# 9 = forest_path (ROOM)
+obj#10 = tree (object)
+obj#11 = up_a_tree (ROOM)
+obj#12 = nest (object)
+obj#13 = egg (object)
+obj#14 = forest (ROOM)
+obj#15 = clearing (ROOM)
+```
+
+**Why This Matters**:
+- Rooms can contain objects (e.g., obj#2 west_of_house contains obj#1 player and obj#3 mailbox)
+- Rooms can be "contained" by other rooms for location hierarchy (though less common)
+- Objects can contain other objects (e.g., obj#3 mailbox contains obj#4 leaflet)
+- Object tree dump will show BOTH rooms and objects with parent/sibling/child relationships
+
+### Verified Containment Relationships
+
+**From Object Tree Dump**:
+
+1. **player → west_of_house**: obj#1 has parent=2 ✅
+   - Player starts in west_of_house room
+
+2. **mailbox → west_of_house**: obj#3 has parent=2 ✅
+   - Mailbox is in west_of_house room
+
+3. **leaflet → mailbox**: obj#4 has parent=3 ✅
+   - Leaflet is inside mailbox
+
+4. **window → behind_house**: obj#8 has parent=7 ✅
+   - Window is in behind_house room
+
+5. **tree → forest_path**: obj#10 has parent=9 ✅
+   - Tree is in forest_path room (NOT a container - just scenery)
+
+6. **nest → up_a_tree**: obj#12 has parent=11 ✅
+   - Nest is in up_a_tree ROOM (obj#11 is the room, not the tree!)
+
+7. **egg → nest**: obj#13 has parent=12 ✅
+   - Egg is inside nest
+
+### Common Misconception: Tree as Container
+
+**Incorrect Assumption**: Tree (obj#10) should contain nest (obj#12)
+
+**Actual Structure**:
+- tree (obj#10) is scenery in forest_path (obj#9)
+- up_a_tree (obj#11) is a ROOM
+- nest (obj#12) is in up_a_tree room
+- egg (obj#13) is in nest
+
+**Why**: In the game world, when you climb the tree from forest_path, you arrive at the up_a_tree room (a different location). The nest is in that room, not "inside" the tree object.
+
+### Helper Methods
+
+**get_object_info()**: `src/vm.rs` lines 1114-1121
+
+Combines three Z-Machine opcodes into one helper method:
+```rust
+pub fn get_object_info(&self, obj_num: u16) -> Result<(u16, u16, u16), String> {
+    let parent = self.get_parent(obj_num)?;
+    let sibling = self.get_sibling(obj_num)?;
+    let child = self.get_child(obj_num)?;
+    Ok((parent, sibling, child))
+}
+```
+
+### Verification Commands
+
+**Compile with InsertObj logging**:
+```bash
+RUST_LOG=warn cargo run --bin grue-compiler -- examples/mini_zork.grue -o tests/mini_zork.z3
+```
+
+**Run with object tree dump**:
+```bash
+RUST_LOG=warn timeout 3 ./target/debug/gruesome tests/mini_zork.z3
+```
+
+**Expected Output**: Object tree dump appears after 10 instructions showing all parent/child relationships established correctly.
+
+### Resolution Status
+
+✅ **Bug #21 Part 2 RESOLVED**: InsertObj instructions working correctly
+✅ **Object Tree Initialization**: All 6 nested objects have correct parents
+✅ **Architecture Clarification**: Rooms and objects coexist in object table sequentially
+✅ **Debug Tooling**: Object tree dump feature implemented and verified
+
+**Date**: October 15, 2025
+**Status**: Object tree initialization complete and verified
