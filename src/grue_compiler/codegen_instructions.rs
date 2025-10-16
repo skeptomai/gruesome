@@ -2094,10 +2094,8 @@ impl ZMachineCodeGen {
             0x00 => true, // call_vs (raw opcode 0)
             0x01 => true, // storew (raw opcode 1)
             0x03 => true, // put_prop (raw opcode 3)
-            // NOTE: 0x04 is NOT always VAR! It's context-dependent:
-            //   - 2OP:4 = dec_chk, 1OP:4 = get_prop_len, VAR:4 = sread
-            //   - Form must be determined by operand count, not forced to VAR
-            0x05 => true, // print_char (raw opcode 5) - THIS IS THE FIX!
+            0x04 => true, // sread (raw opcode 4) - when used as VAR form, needs bit 5 set
+            0x05 => true, // print_char (raw opcode 5)
             0x06 => true, // print_num (raw opcode 6)
             0x07 => true, // random (raw opcode 7)
             0x08 => true, // push (raw opcode 8) - MUST be VAR form (0xE8), NOT 2OP:or (0x08/0xC8)
@@ -2201,6 +2199,13 @@ impl ZMachineCodeGen {
             (0x0D, 1 | 2) => Ok(InstructionForm::Long), // store is 2OP, needs Long form
             (0x0D, _) => Ok(InstructionForm::Variable), // output_stream (3+ operands)
 
+            // Opcode 0x04: Context-dependent! (Bug #18 fix)
+            // - 1 operand: get_prop_len (1OP:4) - get property length
+            // - 2+ operands: sread (VAR:4) - read user input
+            // Object lookup uses get_prop_len (1 operand), initialization uses sread (2 operands)
+            (0x04, 1) => Ok(InstructionForm::Short), // get_prop_len is 1OP
+            (0x04, _) => Ok(InstructionForm::Variable), // sread (2+ operands) is VAR
+
             // Opcode 0x05: Context-dependent! (Bug #17 fix)
             // - 2 operands: inc_chk (2OP:5) - increment variable and branch if > value
             // - 1 operand: print_char (VAR:5) - print single character
@@ -2215,7 +2220,6 @@ impl ZMachineCodeGen {
             // This is required for init → main loop calls to work correctly.
             // Without this, opcode 0x00 with 1 operand would use SHORT form (incorrect).
             (0x00, _) => Ok(InstructionForm::Variable), // call_vs (VAR:224) is always VAR
-            (0x04, _) => Ok(InstructionForm::Variable), // sread is always VAR
             (0x06, _) => Ok(InstructionForm::Variable), // print_num is always VAR
             (0x07, _) => Ok(InstructionForm::Variable), // random is always VAR
             (0x08, _) => Ok(InstructionForm::Variable), // push (VAR:0x08) is always VAR - conflicts with 1OP:call_1s
