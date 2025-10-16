@@ -1,33 +1,10 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 15, 2025) - ALL SYSTEMS OPERATIONAL ✅
+## CURRENT STATUS (October 15, 2025) - GARBLED TEXT BUG 🔧
 
-**PROGRESS**: Fixed Bug #22 (Interpreter Debug Code). All known bugs resolved. Mini Zork fully playable with clean error-free output.
+**PROGRESS**: Fixed Bug #22 (Interpreter Debug Code). Investigating garbled examination text.
 
-### Bug 21: Object Names Property ✅ FIXED (Oct 15, 2025)
-- **Issue**: "examine mailbox" and "examine tree" should work but didn't initially
-- **Root Cause**: Rooms were getting property 7 populated when they shouldn't
-  - Only objects with explicit `names:` property should have property 7
-  - Rooms (IrRoom) have no `names` field in source code
-  - Items (IrObject) have `names: Vec<String>` field in source code
-- **Solution**: Check `if !object.names.is_empty()` at `codegen_objects.rs:453` ✅ ALREADY IN PLACE
-  - IrRoom: Empty `names` field → NO property 7 → Can't be matched by grammar
-  - IrObject: Populated `names` field → Property 7 gets dictionary address → Can be matched
-- **Architectural Insight**:
-  - Both `examine X` and `look at X` call same function: `examine(obj)`
-  - Only `look` (no args) calls `look_around()` for room description
-  - Design intent: Only objects with explicit `names:` can be examined/looked at
-- **Verification**: Comprehensive gameplay test shows all features work:
-  - ✅ Navigation (north, south, east, west, up, down)
-  - ✅ Looking around rooms
-  - ✅ Examining items (mailbox, window, tree, nest, leaflet)
-  - ✅ Taking items (leaflet, nest, egg)
-  - ✅ Inventory management
-  - ✅ Opening containers (mailbox)
-  - ✅ Reading items (leaflet)
-  - ✅ Dropping items
-  - ✅ "take all" command
-- **Files**: `src/grue_compiler/codegen_objects.rs:449-469`
+**ACTIVE BUG**: Property 16 (names) contains packed string address instead of dictionary addresses, causing garbled text when examining objects. See `ONGOING_TASKS.md` for detailed diagnostic plan.
 
 ## Recent Fixes (October 15, 2025)
 

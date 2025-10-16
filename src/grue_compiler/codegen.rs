@@ -261,9 +261,9 @@ pub struct ZMachineCodeGen {
     /// Room handler function IDs: room_name -> (on_enter_id, on_exit_id, on_look_id)
     pub room_handlers: IndexMap<String, (Option<IrId>, Option<IrId>, Option<IrId>)>,
     /// Object vocabulary names for DictionaryRef UnresolvedReferences
-    /// Maps object_name -> vocabulary_word (first name from object.names)
+    /// Maps object_name -> Vec<vocabulary_word> (ALL names from object.names)
     /// Used when writing names property to property table
-    pub object_vocabulary_names: IndexMap<String, String>,
+    pub object_vocabulary_names: IndexMap<String, Vec<String>>,
     /// Global property registry: property name -> property number
     pub property_numbers: IndexMap<String, u8>,
     /// Properties used by each object: object_name -> set of property names
@@ -5405,35 +5405,57 @@ impl ZMachineCodeGen {
                     }
                 }
 
-                // If this is names property (property 7), create DictionaryRef for object name
+                // If this is names property (property 16), create DictionaryRef for each name
                 let names_prop = *self.property_numbers.get("names").unwrap_or(&7);
                 if prop_num == names_prop && i % 2 == 0 && i < prop_data.len() - 1 {
-                    // Check if this object has a vocabulary name mapped
-                    if let Some(vocab_word) = self.object_vocabulary_names.get(&object.name) {
-                        // Find position of this word in sorted dictionary
-                        let position = self
-                            .dictionary_words
-                            .iter()
-                            .position(|w| w == &vocab_word.to_lowercase())
-                            .unwrap_or(0) as u32;
+                    // Check if this object has vocabulary names mapped
+                    if let Some(vocab_words) = self.object_vocabulary_names.get(&object.name) {
+                        // Calculate which name this is (i / 2 gives us the index in the names array)
+                        let name_index = i / 2;
 
-                        // Create UnresolvedReference for dictionary address
-                        self.reference_context
-                            .unresolved_refs
-                            .push(UnresolvedReference {
-                                reference_type: LegacyReferenceType::DictionaryRef {
-                                    word: vocab_word.clone(),
-                                },
-                                location: data_offset, // Location in object_space
-                                target_id: position,
-                                is_packed_address: false,
-                                offset_size: 2,
-                                location_space: MemorySpace::Objects,
-                            });
+                        if name_index < vocab_words.len() {
+                            let vocab_word = &vocab_words[name_index];
 
-                        log::debug!(
-                            "Created DictionaryRef UnresolvedReference for names property: object='{}', word='{}', position={}, object_space offset=0x{:04x}",
-                            object.name, vocab_word, position, data_offset
+                            // Find position of this word in sorted dictionary
+                            let position = self
+                                .dictionary_words
+                                .iter()
+                                .position(|w| w == &vocab_word.to_lowercase())
+                                .unwrap_or(0) as u32;
+
+                            log::debug!(
+                                "🔍 NAMES_DICT: Found names property (#{}) for object '{}' at byte offset {} (name #{}/{}: '{}')",
+                                prop_num, object.name, i, name_index + 1, vocab_words.len(), vocab_word
+                            );
+
+                            log::debug!(
+                                "🔍 NAMES_DICT: Looking up vocab word '{}' (lowercase: '{}') in dictionary, found at position {}",
+                                vocab_word, vocab_word.to_lowercase(), position
+                            );
+
+                            // Create UnresolvedReference for dictionary address
+                            self.reference_context
+                                .unresolved_refs
+                                .push(UnresolvedReference {
+                                    reference_type: LegacyReferenceType::DictionaryRef {
+                                        word: vocab_word.clone(),
+                                    },
+                                    location: data_offset, // Location in object_space
+                                    target_id: position,
+                                    is_packed_address: false,
+                                    offset_size: 2,
+                                    location_space: MemorySpace::Objects,
+                                });
+
+                            log::debug!(
+                                "🔍 NAMES_DICT: Created DictionaryRef #{} for names property: object='{}', word='{}', dict_position={}, object_space offset=0x{:04x}",
+                                name_index + 1, object.name, vocab_word, position, data_offset
+                            );
+                        }
+                    } else {
+                        log::warn!(
+                            "⚠️ NAMES_DICT: Object '{}' has names property but no vocabulary word mapping!",
+                            object.name
                         );
                     }
                 }
@@ -5927,18 +5949,24 @@ impl ZMachineCodeGen {
             main_loop_routine_address
         );
 
-        // Main loop needs 7 locals for grammar matching system:
+        // CRITICAL FIX (Oct 16, 2025): Main loop needs 9 locals for enhanced object lookup
+        // The object lookup code uses Variables 2-9, so we need at least 9 locals declared.
+        // Using undeclared locals (8-9) was causing stack corruption and sread errors.
+        //
+        // Main loop locals allocation:
         // Variable 1: word count
-        // Variable 2: word 1 dictionary address (verb matching)
-        // Variable 3: resolved object ID (noun matching)
+        // Variable 2: word 1 dictionary address (verb matching) + object lookup input
+        // Variable 3: resolved object ID (noun matching) + object lookup output
         // Variable 4: loop counter (object lookup)
-        // Variable 5: property value (object lookup)
-        // Variable 6: temporary for verb dictionary address
-        // Variable 7: temporary for additional grammar operations
-        self.emit_byte(0x07)?; // Routine header: 7 locals
+        // Variable 5: property address (object lookup - for property 16 data address)
+        // Variable 6: property length (object lookup - for property 16 byte count)
+        // Variable 7: name index counter (object lookup - for iterating through names array)
+        // Variable 8: name_index * 2 calculation (object lookup - for byte offset)
+        // Variable 9: loaded dictionary address (object lookup - for comparison)
+        self.emit_byte(0x09)?; // Routine header: 9 locals
 
         // V3 requires initial values for each local variable (2 bytes each)
-        for _ in 0..7 {
+        for _ in 0..9 {
             self.emit_word(0x0000)?; // Initialize all locals to 0
         }
 
@@ -7093,36 +7121,163 @@ impl ZMachineCodeGen {
             panic!("BUG: emit_instruction didn't return branch_location for jg instruction");
         }
 
-        // Get property 16 (names) for current object
+        // CRITICAL FIX (Oct 16, 2025): Check ALL names in property 16
+        // Property 16 now contains MULTIPLE dictionary addresses (one per name)
+        // Need to loop through all words and check if input matches ANY of them
         let names_prop = *self.property_numbers.get("names").unwrap();
+
+        // Get property address (get_prop_addr - 2OP:18 / 0x12)
         log::warn!(
-            "🔍 OBJECT_LOOKUP: Getting property {} (names) from Variable(4) → Variable(5) at 0x{:04x}",
+            "🔍 OBJECT_LOOKUP: Getting property {} (names) address from Variable(4) → Variable(5) at 0x{:04x}",
             names_prop,
             self.code_address
         );
         self.emit_instruction(
-            0x11, // get_prop: get property value
+            0x12, // get_prop_addr: get property data address
             &[
                 Operand::Variable(4),                     // Current object number
-                Operand::SmallConstant(names_prop as u8), // Property 27 (names)
+                Operand::SmallConstant(names_prop as u8), // Property 16 (names)
             ],
-            Some(5), // Store property value in variable 5
+            Some(5), // Store property address in variable 5
             None,
         )?;
 
-        // Compare property value with noun dictionary address
-        log::error!(
-            "🔍 OBJECT_LOOKUP: Comparing Variable(5) == Variable(2) at 0x{:04x}",
+        // Check if property exists (address == 0 means no property)
+        log::warn!(
+            "🔍 OBJECT_LOOKUP: Checking if property exists (Variable(5) == 0) at 0x{:04x}",
+            self.code_address
+        );
+        let layout = self.emit_instruction(
+            0x01, // je: jump if equal to 0
+            &[
+                Operand::Variable(5),      // Property address
+                Operand::SmallConstant(0), // Compare with 0
+            ],
+            None,
+            Some(0x3FFF_u16 as i16), // Placeholder - branch-on-FALSE (skip if property exists)
+        )?;
+        // If property doesn't exist (address == 0), increment counter and continue to next object
+        let no_names_label = self.next_string_id;
+        self.next_string_id += 1;
+        if let Some(branch_location) = layout.branch_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: branch_location,
+                    target_id: no_names_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        } else {
+            panic!("BUG: emit_instruction didn't return branch_location for je instruction");
+        }
+
+        // Get property length in bytes (get_prop_len - 1OP:4 / 0x04)
+        log::warn!(
+            "🔍 OBJECT_LOOKUP: Getting property length from Variable(5) → Variable(6) at 0x{:04x}",
+            self.code_address
+        );
+        self.emit_instruction(
+            0x04,                    // get_prop_len: get property length
+            &[Operand::Variable(5)], // Property address
+            Some(6),                 // Store length in variable 6
+            None,
+        )?;
+
+        // Initialize name index counter (Variable 7) to 0
+        log::warn!(
+            "🔍 OBJECT_LOOKUP: Initializing name index Variable(7)=0 at 0x{:04x}",
+            self.code_address
+        );
+        self.emit_instruction(
+            0x0D, // store
+            &[
+                Operand::Variable(7),      // Name index variable
+                Operand::SmallConstant(0), // Start at index 0
+            ],
+            None,
+            None,
+        )?;
+
+        // Inner loop: check each name
+        let name_loop_start = self.next_string_id;
+        self.next_string_id += 1;
+        log::warn!(
+            "🔍 OBJECT_LOOKUP: Name loop start at 0x{:04x}",
+            self.code_address
+        );
+        self.label_addresses
+            .insert(name_loop_start, self.code_address);
+        self.record_final_address(name_loop_start, self.code_address);
+
+        // Check if name_index * 2 >= property_length (loop exit condition)
+        // Calculate name_index * 2 and store in Variable 8
+        self.emit_instruction(
+            0x16, // mul: 2OP:22
+            &[
+                Operand::Variable(7),      // Name index
+                Operand::SmallConstant(2), // Multiply by 2 (words are 2 bytes)
+            ],
+            Some(8), // Store in Variable 8
+            None,
+        )?;
+
+        // Compare Variable(8) >= Variable(6)
+        let layout = self.emit_instruction(
+            0x05, // jl: jump if less (2OP:5)
+            &[
+                Operand::Variable(8), // name_index * 2
+                Operand::Variable(6), // property length
+            ],
+            None,
+            Some(0x3FFF_u16 as i16), // Placeholder - branch-on-FALSE (exit loop if >= length)
+        )?;
+        // If name_index * 2 >= length, exit inner loop (go to no_names_label to increment object)
+        if let Some(branch_location) = layout.branch_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: branch_location,
+                    target_id: no_names_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        } else {
+            panic!("BUG: emit_instruction didn't return branch_location for jl instruction");
+        }
+
+        // Load word at property_address[name_index] (loadw - VAR:15 / 0x0F)
+        log::warn!(
+            "🔍 OBJECT_LOOKUP: Loading word at property[Variable(7)] → Variable(9) at 0x{:04x}",
+            self.code_address
+        );
+        self.emit_instruction(
+            0x0F, // loadw: load word from array
+            &[
+                Operand::Variable(5), // Property address (base)
+                Operand::Variable(7), // Name index (offset in words)
+            ],
+            Some(9), // Store loaded dictionary address in Variable 9
+            None,
+        )?;
+
+        // Compare loaded address with input noun address
+        log::warn!(
+            "🔍 OBJECT_LOOKUP: Comparing Variable(9) == Variable(2) at 0x{:04x}",
             self.code_address
         );
         let layout = self.emit_instruction(
             0x01, // je: jump if equal
             &[
-                Operand::Variable(5), // Property value
-                Operand::Variable(2), // Noun dictionary address
+                Operand::Variable(9), // Loaded dictionary address
+                Operand::Variable(2), // Input noun dictionary address
             ],
             None,
-            Some(0xBFFF_u16 as i16), // Placeholder - branch-on-TRUE (jump to found when they match)
+            Some(0xBFFF_u16 as i16), // Placeholder - branch-on-TRUE (jump to found when match)
         )?;
         // Register branch to found_match_label using proper branch_location from layout
         if let Some(branch_location) = layout.branch_location {
@@ -7139,6 +7294,53 @@ impl ZMachineCodeGen {
         } else {
             panic!("BUG: emit_instruction didn't return branch_location for je instruction");
         }
+
+        // Increment name index
+        log::warn!(
+            "🔍 OBJECT_LOOKUP: Incrementing name index Variable(7) at 0x{:04x}",
+            self.code_address
+        );
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::Inc),   // 1OP:5 inc
+            &[Operand::Variable(7)], // Increment name index
+            None,
+            None,
+        )?;
+
+        // Jump back to name loop start
+        log::warn!(
+            "🔍 OBJECT_LOOKUP: Jump back to name loop start at 0x{:04x}",
+            self.code_address
+        );
+        let layout = self.emit_instruction(
+            0x0C,                                          // jump
+            &[Operand::LargeConstant(placeholder_word())], // Placeholder for name loop start
+            None,
+            None,
+        )?;
+        if let Some(operand_location) = layout.operand_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Jump,
+                    location: operand_location,
+                    target_id: name_loop_start,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        } else {
+            panic!("BUG: emit_instruction didn't return operand_location for jump instruction");
+        }
+
+        // no_names_label: property doesn't exist or no match found, continue to next object
+        log::warn!(
+            "🔍 OBJECT_LOOKUP: No names label at 0x{:04x}",
+            self.code_address
+        );
+        self.label_addresses
+            .insert(no_names_label, self.code_address);
+        self.record_final_address(no_names_label, self.code_address);
 
         // Increment loop counter
         log::error!(

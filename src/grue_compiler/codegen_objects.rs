@@ -342,24 +342,32 @@ impl ZMachineCodeGen {
             let player = &ir.objects[0];
             let mut player_properties = player.properties.clone();
 
-            // CRITICAL FIX (Oct 15, 2025 - Bug #21 Part 2): Add names property to player
-            // Grammar object lookup reads property 16 (names) to find dictionary address of noun
-            // Player object was missing this property, causing "examine" commands to fail
-            // Must use same pattern as regular objects (lines 434-479) - placeholder + DictionaryRef
+            // CRITICAL FIX (Oct 16, 2025): Add names property to player
+            // Grammar object lookup reads property 16 (names) to find dictionary addresses
+            // Must store ALL dictionary addresses for all player names
             let names_prop = *self.property_numbers.get("names").unwrap_or(&7);
             if !player.names.is_empty() {
-                // Write placeholder - will be resolved to dictionary address during property serialization
-                player_properties.set_word(names_prop, 0xFFFF);
+                // Create placeholder bytes for ALL names (2 bytes per name)
+                let mut name_placeholders = Vec::new();
+                for _ in &player.names {
+                    name_placeholders.push(0xFF);
+                    name_placeholders.push(0xFF);
+                }
 
-                // Track the player name for DictionaryRef UnresolvedReference creation during serialization
+                // Write all placeholders - will be resolved to dictionary addresses during property serialization
+                player_properties.set_bytes(names_prop, name_placeholders);
+
+                // Track ALL player names for DictionaryRef UnresolvedReference creation during serialization
                 self.object_vocabulary_names
-                    .insert(player.name.clone(), player.names[0].clone());
+                    .insert(player.name.clone(), player.names.clone());
 
                 log::debug!(
-                    "OBJECT_NAMES: Player '{}' names property {} will resolve to dictionary address of '{}'",
+                    "🔍 NAMES_PROP: Player '{}' has {} names {:?}, property #{} set to {} placeholder bytes",
                     player.name,
+                    player.names.len(),
+                    player.names,
                     names_prop,
-                    player.names[0]
+                    player.names.len() * 2
                 );
             }
 
@@ -469,25 +477,32 @@ impl ZMachineCodeGen {
                 object_properties.set_string(desc_prop, object.short_name.clone());
             }
 
-            // CRITICAL FIX (Oct 15, 2025): Add names property for object lookup
-            // Object lookup (codegen.rs:6841-6869) reads property 7 to find dictionary address of noun
-            // Must store dictionary address of first object name in property 7
-            // This uses placeholder + UnresolvedReference pattern (like exit_data in Bug #9)
+            // CRITICAL FIX (Oct 16, 2025): Add names property for object lookup
+            // Object lookup reads property 16 (names) to find dictionary addresses
+            // Must store ALL dictionary addresses for all object names
+            // This uses placeholder + UnresolvedReference pattern (like exit_directions)
             if !object.names.is_empty() {
-                // Write placeholder - will be resolved to dictionary address during property serialization
-                // Pattern: Write 0xFFFF placeholder, then create DictionaryRef UnresolvedReference
-                object_properties.set_word(names_prop, 0xFFFF);
+                // Create placeholder bytes for ALL names (2 bytes per name)
+                let mut name_placeholders = Vec::new();
+                for _ in &object.names {
+                    name_placeholders.push(0xFF);
+                    name_placeholders.push(0xFF);
+                }
 
-                // Track the object name for DictionaryRef UnresolvedReference creation during serialization
-                // Store first name only (grammar lookup uses first matching name)
+                // Write all placeholders - will be resolved to dictionary addresses during property serialization
+                object_properties.set_bytes(names_prop, name_placeholders);
+
+                // Track ALL object names for DictionaryRef UnresolvedReference creation during serialization
                 self.object_vocabulary_names
-                    .insert(object.name.clone(), object.names[0].clone());
+                    .insert(object.name.clone(), object.names.clone());
 
                 log::debug!(
-                    "OBJECT_NAMES: Object '{}' names property {} will resolve to dictionary address of '{}'",
+                    "🔍 NAMES_PROP: Object '{}' has {} names {:?}, property #{} set to {} placeholder bytes",
                     object.name,
+                    object.names.len(),
+                    object.names,
                     names_prop,
-                    object.names[0]
+                    object.names.len() * 2
                 );
             }
 
