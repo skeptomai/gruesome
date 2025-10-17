@@ -6335,7 +6335,7 @@ impl ZMachineCodeGen {
             self.code_address
         );
 
-        log::error!(
+        log::debug!(
             "📝 VAR1_WRITE: '{}' at 0x{:04x} - storing word count to Variable(1)",
             verb,
             self.code_address
@@ -6631,7 +6631,7 @@ impl ZMachineCodeGen {
  func_id, verb, self.code_address
  );
 
-                log::error!(
+                log::debug!(
                     "📍 PATTERN_HANDLER: '{}' noun pattern at 0x{:04x}",
                     verb,
                     self.code_address
@@ -6767,7 +6767,7 @@ impl ZMachineCodeGen {
                     func_id, verb, args.len()
                 );
 
-                log::error!(
+                log::debug!(
                     "📍 PATTERN_HANDLER: '{}' default pattern at 0x{:04x} (args={})",
                     verb,
                     self.code_address,
@@ -7000,7 +7000,7 @@ impl ZMachineCodeGen {
         // End of verb matching function - register the label for jump resolution
         self.record_final_address(end_function_label, self.code_address);
 
-        log::error!(
+        log::debug!(
             "📍 VERB_HANDLER: '{}' code range 0x{:04x}-0x{:04x}",
             verb,
             verb_start_address,
@@ -7102,15 +7102,15 @@ impl ZMachineCodeGen {
     /// Output: Variable 3 contains the matching object ID (or 0 if not found)
     fn generate_object_lookup_from_noun(&mut self) -> Result<(), CompilerError> {
         let lookup_start_address = self.code_address;
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP_START: Starting at 0x{:04x}",
             lookup_start_address
         );
         log::debug!("🔍 OBJECT_LOOKUP: Variable usage plan:");
-        log::error!("    - Variable(2) = noun dictionary address (INPUT)");
-        log::error!("    - Variable(3) = result object ID (OUTPUT)");
-        log::error!("    - Variable(4) = loop counter");
-        log::error!("    - Variable(5) = property value during comparison");
+        log::debug!("    - Variable(2) = noun dictionary address (INPUT)");
+        log::debug!("    - Variable(3) = result object ID (OUTPUT)");
+        log::debug!("    - Variable(4) = loop counter");
+        log::debug!("    - Variable(5) = property value during comparison");
 
         debug!(" OBJECT_LOOKUP_START: Generating dynamic object lookup from noun dictionary address at 0x{:04x}", self.code_address);
 
@@ -7123,7 +7123,7 @@ impl ZMachineCodeGen {
         // PROPER FLOW: noun lookup → dictionary→object mapping → Variable(3)=objectID → clear_attr(objectID, 1)
 
         // Initialize result variable to 0 (not found)
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Initializing Variable(3)=0 at 0x{:04x}",
             self.code_address
         );
@@ -7139,7 +7139,7 @@ impl ZMachineCodeGen {
 
         // Dynamic object lookup loop - check all objects for name match
         // Initialize loop counter (Variable 4) to 1 (first object)
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Initializing Variable(4)=1 (loop counter) at 0x{:04x}",
             self.code_address
         );
@@ -7167,7 +7167,7 @@ impl ZMachineCodeGen {
         );
 
         // Mark loop start at current address
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Loop start at 0x{:04x}",
             self.code_address
         );
@@ -7695,7 +7695,7 @@ impl ZMachineCodeGen {
             self.current_function_locals
         );
 
-        log::error!(
+        log::debug!(
             "🎯 USER_FUNCTION: '{}' starts at 0x{:04x} (code space, will be adjusted)",
             function.name,
             self.code_address
