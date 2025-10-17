@@ -1348,7 +1348,7 @@ impl ZMachineCodeGen {
             log::debug!("📋 OBJECTS IN OBJECT_SPACE (space-relative addresses):");
             let first_obj_offset = defaults_size;
             let max_possible_objects = (self.object_space.len() - defaults_size) / obj_entry_size;
-            log::error!(
+            log::debug!(
                 "   Max possible objects based on size: {}",
                 max_possible_objects
             );
@@ -1363,7 +1363,7 @@ impl ZMachineCodeGen {
                 let prop_ptr_low = self.object_space[obj_offset + 8];
                 let prop_ptr = ((prop_ptr_high as u16) << 8) | (prop_ptr_low as u16);
 
-                log::error!(
+                log::debug!(
                     "   Object #{:2} at obj_space[0x{:04x}..0x{:04x}]: prop_ptr=0x{:04x} ({})",
                     i + 1,
                     obj_offset,
@@ -1406,7 +1406,7 @@ impl ZMachineCodeGen {
                     "OK"
                 };
 
-                log::error!(
+                log::debug!(
                     "   Object #{:2} at final[0x{:04x}..0x{:04x}]: prop_ptr=0x{:04x} ({:5}) [{}]",
                     i + 1,
                     final_offset,
@@ -1420,7 +1420,7 @@ impl ZMachineCodeGen {
             log::debug!("");
             log::debug!("📐 EXPECTED LAYOUT:");
             log::debug!("   15 objects × 9 bytes = 135 bytes");
-            log::error!(
+            log::debug!(
                 "   Object entries: 0x{:04x}-0x{:04x}",
                 defaults_size,
                 defaults_size + 135 - 1
@@ -1430,7 +1430,7 @@ impl ZMachineCodeGen {
             log::debug!("🔍 ACTUAL DATA AFTER 15 OBJECTS:");
             let after_15_objs = defaults_size + (15 * obj_entry_size);
             if after_15_objs + 40 <= self.object_space.len() {
-                log::error!(
+                log::debug!(
                     "   object_space[0x{:04x}..0x{:04x}]: {:02x?}",
                     after_15_objs,
                     after_15_objs + 40,
@@ -1719,7 +1719,7 @@ impl ZMachineCodeGen {
 
             // DEBUG: Check if this reference is trying to write to Object #2's property table pointer
             if adjusted_reference.location == 0x040A || adjusted_reference.location == 0x040B {
-                log::error!(
+                log::debug!(
                     "⚠️  DETECTED WRITE TO 0x040A: Reference at 0x{:04x} target_id={} type={:?}",
                     adjusted_reference.location,
                     adjusted_reference.target_id,
