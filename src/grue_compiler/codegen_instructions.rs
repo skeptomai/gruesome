@@ -698,7 +698,7 @@ impl ZMachineCodeGen {
                 // PROPERTY ACCESS CORRECTION (Sept 28, 2025): Fixed branch out of bounds bug
                 // Same fix as GetProperty above - reverted from 0x01 (je) back to 0x11 (get_prop).
                 // This handles numbered property access (property_num instead of property name).
-                log::error!(
+                log::debug!(
                     "🔍 PROP_ACCESS: GetPropertyByNumber property_num={}, obj_operand={:?}, result_var={}",
                     property_num,
                     obj_operand,

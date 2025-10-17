@@ -981,37 +981,37 @@ impl ZMachineCodeGen {
         // Log complete memory layout
         log::debug!("📐 MEMORY_LAYOUT:");
         log::debug!("  Header:        0x0000-0x003f (64 bytes)");
-        log::error!(
+        log::debug!(
             "  Globals:       0x{:04x}-0x{:04x} ({} bytes)",
             globals_base,
             globals_base + globals_size,
             globals_size
         );
-        log::error!(
+        log::debug!(
             "  Abbreviations: 0x{:04x}-0x{:04x} ({} bytes)",
             abbreviations_base,
             abbreviations_base + abbreviations_size,
             abbreviations_size
         );
-        log::error!(
+        log::debug!(
             "  Objects:       0x{:04x}-0x{:04x} ({} bytes)",
             object_base,
             object_base + object_size,
             object_size
         );
-        log::error!(
+        log::debug!(
             "  Dictionary:    0x{:04x}-0x{:04x} ({} bytes)",
             dictionary_base,
             dictionary_base + dictionary_size,
             dictionary_size
         );
-        log::error!(
+        log::debug!(
             "  Strings:       0x{:04x}-0x{:04x} ({} bytes)",
             string_base,
             string_base + string_size,
             string_size
         );
-        log::error!(
+        log::debug!(
             "  Code:          0x{:04x}-0x{:04x} ({} bytes)",
             code_base,
             code_base + code_size,
@@ -1060,7 +1060,7 @@ impl ZMachineCodeGen {
                 absolute_addr,
                 self.final_code_base
             );
-            log::error!(
+            log::debug!(
                 "🎯 USER_FUNCTION_FINAL: '{}' at runtime address 0x{:04x}",
                 func_name,
                 absolute_addr
@@ -1233,7 +1233,7 @@ impl ZMachineCodeGen {
             }
 
             // DEBUG: Dump final_data BEFORE copy
-            log::error!(
+            log::debug!(
                 "🔍 PRE_COPY: final_data[0x{:04x}..0x{:04x}] first 20 bytes: {:02x?}",
                 object_base,
                 object_base + 20,
@@ -1243,7 +1243,7 @@ impl ZMachineCodeGen {
             self.final_data[object_base..dictionary_base].copy_from_slice(&self.object_space);
 
             // DEBUG: Dump final_data IMMEDIATELY AFTER copy
-            log::error!(
+            log::debug!(
                 "🔍 POST_COPY: final_data[0x{:04x}..0x{:04x}] first 80 bytes:",
                 object_base,
                 object_base + 80
@@ -1252,7 +1252,7 @@ impl ZMachineCodeGen {
                 let abs_start = object_base + chunk_start;
                 let abs_end = abs_start + 16;
                 if abs_end <= self.final_data.len() {
-                    log::error!(
+                    log::debug!(
                         "🔍   [0x{:04x}..0x{:04x}]: {:02x?}",
                         abs_start,
                         abs_end,
