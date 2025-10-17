@@ -394,7 +394,7 @@ impl ZMachineCodeGen {
 
         // Resolve IR IDs to proper operands - CRITICAL FIX
         let object_operand = self.resolve_ir_id_to_operand(object_ir_id)?;
-        log::error!("🔧 MOVE_BUILTIN_DEBUG: object_operand={:?}", object_operand);
+        log::debug!("🔧 MOVE_BUILTIN_DEBUG: object_operand={:?}", object_operand);
         let destination_operand = self.resolve_ir_id_to_operand(destination_ir_id)?;
         log::error!(
             "🔧 MOVE_BUILTIN_DEBUG: destination_operand={:?}",

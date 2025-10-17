@@ -979,8 +979,8 @@ impl ZMachineCodeGen {
         total_size += padding_bytes;
 
         // Log complete memory layout
-        log::error!("📐 MEMORY_LAYOUT:");
-        log::error!("  Header:        0x0000-0x003f (64 bytes)");
+        log::debug!("📐 MEMORY_LAYOUT:");
+        log::debug!("  Header:        0x0000-0x003f (64 bytes)");
         log::error!(
             "  Globals:       0x{:04x}-0x{:04x} ({} bytes)",
             globals_base,
@@ -1267,7 +1267,7 @@ impl ZMachineCodeGen {
                 self.object_space.len(),
                 self.object_space.len()
             );
-            log::error!("🔍 ALIGNMENT_DEBUG: object_space first 80 bytes:");
+            log::debug!("🔍 ALIGNMENT_DEBUG: object_space first 80 bytes:");
             for chunk_start in (0..80.min(self.object_space.len())).step_by(16) {
                 let chunk_end = (chunk_start + 16).min(self.object_space.len());
                 log::error!(
@@ -1296,7 +1296,7 @@ impl ZMachineCodeGen {
                 "🔍 ALIGNMENT_DEBUG: Header says object table at: 0x{:04x}",
                 object_base
             );
-            log::error!("🔍 ALIGNMENT_DEBUG: Property defaults should be 62 bytes (0x3e)");
+            log::debug!("🔍 ALIGNMENT_DEBUG: Property defaults should be 62 bytes (0x3e)");
             log::error!(
                 "🔍 ALIGNMENT_DEBUG: First object should start at: 0x{:04x}",
                 object_base + 0x3e
@@ -1324,14 +1324,14 @@ impl ZMachineCodeGen {
             }
 
             // COMPREHENSIVE OBJECT TABLE ANALYSIS
-            log::error!("═════════════════════════════════════════════════════════════");
-            log::error!("🔬 OBJECT TABLE ANALYSIS");
-            log::error!("═════════════════════════════════════════════════════════════");
+            log::debug!("═════════════════════════════════════════════════════════════");
+            log::debug!("🔬 OBJECT TABLE ANALYSIS");
+            log::debug!("═════════════════════════════════════════════════════════════");
 
             let defaults_size = 62; // V3 property defaults
             let obj_entry_size = 9; // V3 object entry size
 
-            log::error!("📊 OBJECT SPACE STRUCTURE:");
+            log::debug!("📊 OBJECT SPACE STRUCTURE:");
             log::error!(
                 "   object_space.len() = {} bytes (0x{:04x})",
                 self.object_space.len(),
@@ -1344,8 +1344,8 @@ impl ZMachineCodeGen {
             );
 
             // Analyze objects in object_space (space-relative addresses)
-            log::error!("");
-            log::error!("📋 OBJECTS IN OBJECT_SPACE (space-relative addresses):");
+            log::debug!("");
+            log::debug!("📋 OBJECTS IN OBJECT_SPACE (space-relative addresses):");
             let first_obj_offset = defaults_size;
             let max_possible_objects = (self.object_space.len() - defaults_size) / obj_entry_size;
             log::error!(
@@ -1383,8 +1383,8 @@ impl ZMachineCodeGen {
             }
 
             // Analyze objects in final_data (absolute addresses)
-            log::error!("");
-            log::error!("📋 OBJECTS IN FINAL_DATA (absolute memory addresses):");
+            log::debug!("");
+            log::debug!("📋 OBJECTS IN FINAL_DATA (absolute memory addresses):");
             log::error!("   object_base = 0x{:04x}", object_base);
             let final_first_obj = object_base + defaults_size;
 
@@ -1417,17 +1417,17 @@ impl ZMachineCodeGen {
                 );
             }
 
-            log::error!("");
-            log::error!("📐 EXPECTED LAYOUT:");
-            log::error!("   15 objects × 9 bytes = 135 bytes");
+            log::debug!("");
+            log::debug!("📐 EXPECTED LAYOUT:");
+            log::debug!("   15 objects × 9 bytes = 135 bytes");
             log::error!(
                 "   Object entries: 0x{:04x}-0x{:04x}",
                 defaults_size,
                 defaults_size + 135 - 1
             );
             log::error!("   Property tables start: 0x{:04x}", defaults_size + 135);
-            log::error!("");
-            log::error!("🔍 ACTUAL DATA AFTER 15 OBJECTS:");
+            log::debug!("");
+            log::debug!("🔍 ACTUAL DATA AFTER 15 OBJECTS:");
             let after_15_objs = defaults_size + (15 * obj_entry_size);
             if after_15_objs + 40 <= self.object_space.len() {
                 log::error!(
@@ -1437,7 +1437,7 @@ impl ZMachineCodeGen {
                     &self.object_space[after_15_objs..after_15_objs + 40]
                 );
             }
-            log::error!("═════════════════════════════════════════════════════════════");
+            log::debug!("═════════════════════════════════════════════════════════════");
 
             log::debug!(
                 " Object space copied: {} bytes at 0x{:04x}",
@@ -3689,11 +3689,11 @@ impl ZMachineCodeGen {
             ));
         }
 
-        log::error!("🔧 MOVE_DEBUG: args[0]={}, args[1]={}", args[0], args[1]);
+        log::debug!("🔧 MOVE_DEBUG: args[0]={}, args[1]={}", args[0], args[1]);
         let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
-        log::error!("🔧 MOVE_DEBUG: obj_operand={:?}", obj_operand);
+        log::debug!("🔧 MOVE_DEBUG: obj_operand={:?}", obj_operand);
         let dest_operand = self.resolve_ir_id_to_operand(args[1])?;
-        log::error!("🔧 MOVE_DEBUG: dest_operand={:?}", dest_operand);
+        log::debug!("🔧 MOVE_DEBUG: dest_operand={:?}", dest_operand);
 
         // Generate insert_obj instruction (2OP:14)
         let layout = self.emit_instruction_typed(
