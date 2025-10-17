@@ -63,9 +63,14 @@
 
 **CRITICAL: Log Level Usage**:
 - `log::error!()` - ONLY for actual fault conditions, errors, bugs (e.g., "Failed to read file", "Invalid opcode")
-- `log::warn!()` - For warnings about questionable but non-fatal situations
+- `log::warn!()` - For destructive action or action with unverified input
 - `log::info!()` - For high-level informational messages (e.g., "Starting compiler", "Compilation complete")
 - `log::debug!()` - For debugging output, diagnostics, detailed trace information (DEFAULT for most logging)
+
+**DEFINITIVE LOGGING RULES**:
+- **ERROR**: ONLY for fault conditions (file I/O failures, invalid opcodes, crashes, compilation failures)
+- **WARN**: For destructive action or action with unverified input (potential data loss, deprecated usage)
+- **DEBUG and INFO**: For information (object dumps, property traces, address dumps, diagnostic output, status messages)
 
 **NEVER use `log::error!()` for debugging dumps, traces, or diagnostic output!** Use `log::debug!()` instead.
 

@@ -3,6 +3,7 @@
 // Handles string collection, encoding, dictionary generation, and text processing
 // for the Z-Machine bytecode compiler.
 
+use crate::grue_compiler::codegen::z_words;
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
 use crate::grue_compiler::ZMachineVersion;
@@ -646,7 +647,7 @@ impl ZMachineCodeGen {
                         byte_address
                     )));
                 }
-                byte_address / 2
+                z_words(byte_address)
             }
             ZMachineVersion::V4 | ZMachineVersion::V5 => {
                 if byte_address % 4 != 0 {

@@ -3,6 +3,7 @@
 // Handles Z-Machine header generation, memory layout calculation, and address resolution
 // for the Z-Machine bytecode compiler.
 
+use crate::grue_compiler::codegen::z_words;
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ZMachineVersion;
 
@@ -130,7 +131,7 @@ impl ZMachineCodeGen {
 
         let file_length = self.final_data.len();
         let packed_length = match self.version {
-            ZMachineVersion::V3 => file_length / 2,
+            ZMachineVersion::V3 => z_words(file_length),
             ZMachineVersion::V4 | ZMachineVersion::V5 => file_length / 4,
         };
         let checksum = self.calculate_checksum();
@@ -248,7 +249,7 @@ impl ZMachineCodeGen {
                     let final_addr = self.final_string_base + string_offset;
                     // For Z-Machine, string addresses are packed (divided by 2 for v3, 4 for v4+)
                     match self.version {
-                        ZMachineVersion::V3 => final_addr / 2,
+                        ZMachineVersion::V3 => z_words(final_addr),
                         ZMachineVersion::V4 | ZMachineVersion::V5 => final_addr / 4,
                     }
                 } else {
@@ -275,7 +276,7 @@ impl ZMachineCodeGen {
                     let final_addr = self.final_code_base + code_label_addr;
                     // Routine addresses are packed like strings
                     match self.version {
-                        ZMachineVersion::V3 => final_addr / 2,
+                        ZMachineVersion::V3 => z_words(final_addr),
                         ZMachineVersion::V4 | ZMachineVersion::V5 => final_addr / 4,
                     }
                 } else {

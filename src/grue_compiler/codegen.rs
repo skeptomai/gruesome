@@ -43,6 +43,13 @@ pub const fn placeholder_word() -> u16 {
     ((PLACEHOLDER_BYTE as u16) << 8) | (PLACEHOLDER_BYTE as u16)
 }
 
+/// Convert byte addresses to Z-Machine word addresses
+/// In Z-Machine V3, word addresses are byte addresses divided by 2
+/// This helper makes the intent explicit and prevents calculation errors
+pub const fn z_words(byte_count: usize) -> usize {
+    byte_count / 2
+}
+
 /// Memory space types for the separated compilation model
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MemorySpace {
@@ -1999,7 +2006,7 @@ impl ZMachineCodeGen {
                     // Z-Machine packed address calculation
                     let packed_result = if reference.is_packed_address {
                         let packed = match self.version {
-                            ZMachineVersion::V3 => final_addr / 2,
+                            ZMachineVersion::V3 => z_words(final_addr),
                             ZMachineVersion::V4 | ZMachineVersion::V5 => final_addr / 4,
                         };
                         log::debug!(
@@ -5307,7 +5314,7 @@ impl ZMachineCodeGen {
         };
         // Z-Machine property tables store text length in words, not bytes
         // Each Z-Machine word is 2 bytes, so divide byte count by 2
-        let text_length = name_bytes.len() / 2;
+        let text_length = z_words(name_bytes.len());
 
         // Write text length byte to property table header
         let text_offset = addr - self.object_table_addr;
@@ -10314,7 +10321,7 @@ impl ZMachineCodeGen {
                         "Routine address must be even for v3".to_string(),
                     ));
                 }
-                Ok((byte_address / 2) as u16)
+                Ok(z_words(byte_address) as u16)
             }
             ZMachineVersion::V4 | ZMachineVersion::V5 => {
                 // v4/v5: packed address = byte address / 4
@@ -10978,7 +10985,7 @@ impl ZMachineCodeGen {
         for (&string_id, &offset) in &self.string_offsets {
             let absolute_address = self.final_string_base + offset;
             let packed_address = match self.version {
-                ZMachineVersion::V3 => absolute_address / 2,
+                ZMachineVersion::V3 => z_words(absolute_address),
                 ZMachineVersion::V4 | ZMachineVersion::V5 => absolute_address / 4,
             };
             string_packed_addresses.insert(string_id, packed_address);
@@ -11776,7 +11783,7 @@ impl ZMachineCodeGen {
         log::debug!(
             "Created exit_get_data at address 0x{:04x} (packed: 0x{:04x})",
             func_addr,
-            func_addr / 2
+            z_words(func_addr)
         );
 
         Ok(())
@@ -11820,7 +11827,7 @@ impl ZMachineCodeGen {
         log::debug!(
             "Created exit_get_message at address 0x{:04x} (packed: 0x{:04x})",
             func_addr,
-            func_addr / 2
+            z_words(func_addr)
         );
 
         Ok(())
@@ -11918,7 +11925,7 @@ impl ZMachineCodeGen {
         log::debug!(
             "Created value_is_none at address 0x{:04x} (packed: 0x{:04x})",
             func_addr,
-            func_addr / 2
+            z_words(func_addr)
         );
 
         Ok(())
@@ -12000,7 +12007,7 @@ impl ZMachineCodeGen {
         log::debug!(
             "Created exit_is_blocked at address 0x{:04x} (packed: 0x{:04x})",
             func_addr,
-            func_addr / 2
+            z_words(func_addr)
         );
 
         Ok(())
@@ -12083,7 +12090,7 @@ impl ZMachineCodeGen {
         log::debug!(
             "Created exit_has_message at address 0x{:04x} (packed: 0x{:04x})",
             func_addr,
-            func_addr / 2
+            z_words(func_addr)
         );
 
         Ok(())
@@ -12416,7 +12423,7 @@ impl ZMachineCodeGen {
         log::debug!(
             "Created get_exit at address 0x{:04x} (packed: 0x{:04x})",
             func_addr,
-            func_addr / 2
+            z_words(func_addr)
         );
 
         Ok(())
