@@ -134,7 +134,7 @@ impl VM {
 
         // Optional stack tracing (enable with TRACE_STACK=1)
         if std::env::var("TRACE_STACK").is_ok() {
-            log::error!(
+            log::debug!(
                 "📥 PUSH: value=0x{:04x} ({}), PC=0x{:04x}, depth={}",
                 value,
                 value,
@@ -215,7 +215,7 @@ impl VM {
 
         // Optional stack tracing (enable with TRACE_STACK=1)
         if std::env::var("TRACE_STACK").is_ok() {
-            log::error!(
+            log::debug!(
                 "📤 POP: value=0x{:04x} ({}), PC=0x{:04x}, depth={}",
                 value,
                 value,
@@ -548,7 +548,7 @@ impl VM {
     pub fn get_property(&self, obj_num: u16, prop_num: u8) -> Result<u16, String> {
         // CRITICAL DEBUG: Track mailbox object property accesses
         if obj_num == 10 && (prop_num == 7 || prop_num == 16) {
-            log::error!(
+            log::debug!(
                 "🔍 MAILBOX_PROPERTY_ACCESS: obj={}, prop={}, PC=0x{:04x}",
                 obj_num,
                 prop_num,

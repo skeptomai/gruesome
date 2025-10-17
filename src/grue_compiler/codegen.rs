@@ -1374,18 +1374,18 @@ impl ZMachineCodeGen {
 
                 // Check if this looks like a valid property pointer
                 if prop_ptr == 0 {
-                    log::error!("      ⚠️  Property pointer is ZERO - object not initialized or end of table");
+                    log::debug!("      ⚠️  Property pointer is ZERO - object not initialized or end of table");
                 } else if (prop_ptr as usize) < defaults_size {
-                    log::error!("      ⚠️  Property pointer points into defaults region!");
+                    log::debug!("      ⚠️  Property pointer points into defaults region!");
                 } else if (prop_ptr as usize) >= self.object_space.len() {
-                    log::error!("      ⚠️  Property pointer PAST END of object_space!");
+                    log::debug!("      ⚠️  Property pointer PAST END of object_space!");
                 }
             }
 
             // Analyze objects in final_data (absolute addresses)
             log::debug!("");
             log::debug!("📋 OBJECTS IN FINAL_DATA (absolute memory addresses):");
-            log::error!("   object_base = 0x{:04x}", object_base);
+            log::debug!("   object_base = 0x{:04x}", object_base);
             let final_first_obj = object_base + defaults_size;
 
             for i in 0..max_possible_objects.min(20) {
@@ -1425,7 +1425,7 @@ impl ZMachineCodeGen {
                 defaults_size,
                 defaults_size + 135 - 1
             );
-            log::error!("   Property tables start: 0x{:04x}", defaults_size + 135);
+            log::debug!("   Property tables start: 0x{:04x}", defaults_size + 135);
             log::debug!("");
             log::debug!("🔍 ACTUAL DATA AFTER 15 OBJECTS:");
             let after_15_objs = defaults_size + (15 * obj_entry_size);
@@ -5163,12 +5163,12 @@ impl ZMachineCodeGen {
 
         // DEBUG: Log complete object entry that was just written
         if obj_num == 1 {
-            log::error!(
+            log::debug!(
                 "🔍 OBJECT#1_WRITTEN: Offset=0x{:04x}, Entry bytes (should be 9):",
                 obj_offset
             );
             if obj_offset + 9 <= self.object_space.len() {
-                log::error!(
+                log::debug!(
                     "🔍 OBJECT#1_WRITTEN: object_space[0x{:04x}..0x{:04x}] = {:02x?}",
                     obj_offset,
                     obj_offset + 9,
@@ -7178,7 +7178,7 @@ impl ZMachineCodeGen {
         // Check if current object number exceeds maximum
         // Calculate max object number from object_numbers map
         let max_object_number = self.object_numbers.values().max().copied().unwrap_or(0);
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Checking Variable(4) > {} at 0x{:04x}",
             max_object_number,
             self.code_address
@@ -7432,7 +7432,7 @@ impl ZMachineCodeGen {
         self.record_final_address(no_names_label, self.code_address);
 
         // Increment loop counter
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Incrementing Variable(4) at 0x{:04x}",
             self.code_address
         );
@@ -7447,7 +7447,7 @@ impl ZMachineCodeGen {
         )?;
 
         // Jump back to loop start
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Jump back to loop start at 0x{:04x}",
             self.code_address
         );
@@ -7474,14 +7474,14 @@ impl ZMachineCodeGen {
         }
 
         // Found match - store current object number as result
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Found match label at 0x{:04x}",
             self.code_address
         );
         self.label_addresses
             .insert(found_match_label, self.code_address);
         self.record_final_address(found_match_label, self.code_address);
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Storing Variable(4) → Variable(3) at 0x{:04x}",
             self.code_address
         );
@@ -7500,7 +7500,7 @@ impl ZMachineCodeGen {
         self.label_addresses.insert(end_label, self.code_address);
         self.record_final_address(end_label, self.code_address);
 
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP_END: Complete at 0x{:04x} (size={} bytes)",
             self.code_address,
             self.code_address - lookup_start_address
@@ -7656,7 +7656,7 @@ impl ZMachineCodeGen {
 
                 // CRITICAL DEBUG: Track slot 2 allocations for handle_go
                 if function.name == "handle_go" && local.slot == 2 {
-                    log::error!(
+                    log::debug!(
                         "🔍 SLOT_2_ALLOC: Function 'handle_go' allocated slot 2 to '{}' (IR ID {})",
                         local.name,
                         local.ir_id

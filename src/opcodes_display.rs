@@ -104,10 +104,10 @@ impl Interpreter {
 
                 // Debug string ID 458's packed address
                 if operands[0] == 0x04db {
-                    log::error!("*** print_paddr at PC {:05x} with packed address 0x{:04x} (string ID 458: 'There is ')", pc, operands[0]);
+                    log::debug!("*** print_paddr at PC {:05x} with packed address 0x{:04x} (string ID 458: 'There is ')", pc, operands[0]);
                     let unpacked = operands[0] as usize * 2;
-                    log::error!("*** Unpacked address: 0x{:04x}", unpacked);
-                    log::error!("*** Bytes at unpacked address: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
+                    log::debug!("*** Unpacked address: 0x{:04x}", unpacked);
+                    log::debug!("*** Bytes at unpacked address: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
                         self.vm.game.memory[unpacked], self.vm.game.memory[unpacked+1],
                         self.vm.game.memory[unpacked+2], self.vm.game.memory[unpacked+3],
                         self.vm.game.memory[unpacked+4], self.vm.game.memory[unpacked+5],
@@ -133,7 +133,7 @@ impl Interpreter {
                 ) {
                     Ok(string) => {
                         if operands[0] == 0x04db {
-                            log::error!("*** Decoded string for 0x04db: '{}'", string);
+                            log::debug!("*** Decoded string for 0x04db: '{}'", string);
                         }
                         self.output_text(&string)?;
                     }
