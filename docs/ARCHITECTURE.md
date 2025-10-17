@@ -290,6 +290,73 @@ graph TB
 6. `nest` - Object ID 6 (in up_a_tree room)
 7. `egg` - Object ID 7 (inside nest)
 
+#### Special Player Object Architecture
+
+**The player object is special and implicit**:
+- **Automatically created**: The compiler implicitly creates the player object during IR generation
+- **Internal ID**: Uses special ID 9999 during compilation phases for tracking
+- **Final object number**: Always becomes Object #1 in the final Z-Machine binary
+- **Implicit properties**: The player object can have implicit properties that are referenced in code but not explicitly defined in the source
+- **State management**: Contains game state control variables for managing input loops and game flow
+
+**Player Object Creation** (src/grue_compiler/ir.rs):
+```rust
+let player_object = IrObject {
+    id: player_id,                         // Special ID 9999
+    name: "player".to_string(),
+    short_name: "yourself".to_string(),
+    description: String::new(),
+    names: vec!["yourself".to_string()],
+    attributes: IrAttributes::new(),
+    properties: player_properties,
+    parent: initial_parent,                // Start in first room
+    sibling: None,
+    child: None,                          // Can contain inventory
+    comprehensive_object: None,
+};
+// Inserted as Object #1 during codegen
+```
+
+**Critical State Control Property: quit_pending**
+- **Property number**: 17 (ACTION property in Z-Machine)
+- **Purpose**: State control variable for input loop re-entry after 'quit' command
+- **Behavior**: Enables the game to re-enter input loop looking for y/n confirmation
+- **Usage pattern**:
+  ```grue
+  fn handle_quit() {
+      print("Are you sure you want to quit? (y/n)");
+      player.quit_pending = true;
+  }
+
+  fn handle_yes() {
+      if player.quit_pending {
+          player.quit_pending = false;
+          quit();
+      } else {
+          print("Yes to what?");
+      }
+  }
+
+  fn handle_no() {
+      if player.quit_pending {
+          player.quit_pending = false;
+          print("Continuing game...");
+      } else {
+          print("No to what?");
+      }
+  }
+  ```
+
+**Why This Architecture Matters**:
+1. **Implicit properties**: Properties like `quit_pending` can be accessed in code without explicit definition
+2. **State flow control**: Enables sophisticated input handling patterns for confirmation dialogs
+3. **Object #1 guarantee**: Other systems can rely on player always being Object #1
+4. **Special handling**: Compiler and interpreter know to treat Object #1 specially for various operations
+
+**Common Issues**:
+- **"Property 17 not found for object 1"**: This error occurs when the interpreter correctly tries to access `quit_pending` but the property wasn't properly initialized in the object table
+- **Debugging confusion**: The internal ID 9999 during compilation vs final Object #1 can cause confusion when debugging object numbering issues
+
 **Rooms** (NOT in object table):
 - `west_of_house` - Starting location
 - `north_of_house`
@@ -4164,3 +4231,93 @@ RUST_LOG=warn timeout 3 ./target/debug/gruesome tests/mini_zork.z3
 
 **Date**: October 15, 2025
 **Status**: Object tree initialization complete and verified
+
+### CRITICAL: Object Numbering System Architecture (October 17, 2025)
+
+**Status**: ⚠️ ARCHITECTURAL ISSUE IDENTIFIED - Bug #23
+
+#### The Architectural Problem
+
+The Grue compiler has **two competing object numbering systems** that create inconsistent property address calculations:
+
+1. **IR Semantic Analysis System** (`ir.rs`)
+2. **Object Generation System** (`codegen_objects.rs`)
+
+These systems assign different numbers to the same objects, causing address mismatches in the final binary.
+
+#### System #1: IR Semantic Analysis
+
+**Purpose**: Assigns object numbers during semantic analysis phase
+**Location**: `src/grue_compiler/ir.rs`
+**Algorithm**:
+```
+Player = Object #1 (hardcoded)
+object_counter = 2
+For each room: assign object_counter++
+For each object: assign object_counter++
+```
+
+**Result**: `ir.object_numbers` HashMap containing semantic assignments
+
+**Example mini_zork numbering**:
+```
+player: Object #1
+west_of_house: Object #2
+north_of_house: Object #3
+mailbox: Object #3  ⚠️ COLLISION with north_of_house!
+```
+
+#### System #2: Object Generation
+
+**Purpose**: Assigns object numbers during Z-Machine binary generation
+**Location**: `src/grue_compiler/codegen_objects.rs:805`
+**Algorithm**:
+```rust
+let obj_num = (index + 1) as u8; // Sequential based on all_objects vector
+```
+
+**Result**: Sequential numbering based on generation order
+
+**Example mini_zork numbering**:
+```
+all_objects[0] = player: obj_num 1
+all_objects[1] = west_of_house: obj_num 2
+...
+all_objects[9] = mailbox: obj_num 10
+```
+
+#### The Architecture Conflict
+
+**Property Address Calculation**:
+1. Object generation uses **sequential obj_num** (mailbox=10)
+2. Property tables generated with correct addresses for obj_num 10
+3. Object mapping phase **overwrites** with semantic numbers (mailbox=3)
+4. UnresolvedReferences resolve using **wrong obj_num** (3 instead of 10)
+5. Result: 7-byte address mismatch (property 7 vs property 16)
+
+#### Architectural Decision: Use IR Semantic Numbering
+
+**STRATEGY**: Fix object generation to use IR semantic numbering consistently
+
+**Rationale**:
+- IR semantic analysis establishes object relationships and dependencies
+- Semantic numbering is deliberate and meaningful
+- Sequential numbering is arbitrary (based on vector order)
+- Changing semantic numbering would break existing IR references
+
+**Implementation**:
+- Modify `codegen_objects.rs:805` to use `ir.object_numbers` lookup
+- Remove overwrite behavior in `codegen.rs:8392`
+- Ensure consistency between generation and mapping phases
+
+**Files Affected**:
+- `src/grue_compiler/codegen_objects.rs` - Object generation logic
+- `src/grue_compiler/codegen.rs` - Object mapping logic
+
+**Success Criteria**:
+- Both numbering systems produce identical object numbers
+- Property addresses calculated consistently
+- No address mismatches in UnresolvedReference resolution
+- Garbled text bug resolved
+
+**Status**: Implementation in progress as of October 17, 2025

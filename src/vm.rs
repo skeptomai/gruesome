@@ -546,6 +546,16 @@ impl VM {
 
     /// Get the value of an object property
     pub fn get_property(&self, obj_num: u16, prop_num: u8) -> Result<u16, String> {
+        // CRITICAL DEBUG: Track mailbox object property accesses
+        if obj_num == 10 && (prop_num == 7 || prop_num == 16) {
+            log::error!(
+                "🔍 MAILBOX_PROPERTY_ACCESS: obj={}, prop={}, PC=0x{:04x}",
+                obj_num,
+                prop_num,
+                self.pc
+            );
+        }
+
         if obj_num == 0 {
             return Ok(0); // Object 0 has no properties
         }
@@ -701,7 +711,7 @@ impl VM {
         loop {
             let size_byte = self.game.memory[prop_addr];
             if size_byte == 0 {
-                if prop_num == 13 {
+                if prop_num == 13 || prop_num == 17 {
                     log::debug!(
                         "🔍 Object {} properties found: {:?}, property {} NOT FOUND",
                         obj_num,
@@ -714,7 +724,7 @@ impl VM {
 
             let (prop_id, prop_size, size_bytes) = self.get_property_info(prop_addr)?;
 
-            if prop_num == 13 {
+            if prop_num == 13 || prop_num == 17 {
                 props_found.push(prop_id);
             }
 
@@ -739,8 +749,8 @@ impl VM {
 
     /// Write a value to an object property
     pub fn put_property(&mut self, obj_num: u16, prop_num: u8, value: u16) -> Result<(), String> {
-        // Log property 13 writes specifically
-        if prop_num == 13 {
+        // Log property 13 and 17 writes specifically
+        if prop_num == 13 || prop_num == 17 {
             log::debug!(
                 "🔍 PUT_PROPERTY: obj={}, prop={}, value=0x{:04x}, PC=0x{:04x}",
                 obj_num,
@@ -800,21 +810,34 @@ impl VM {
         // Search for the property
         loop {
             let size_byte = self.game.memory[prop_addr];
-            debug!(
-                "put_property: checking prop_addr=0x{:04x}, size_byte=0x{:02x}",
-                prop_addr, size_byte
-            );
+            if obj_num == 1 {
+                log::debug!(
+                    "🔍 PLAYER_PROP_SEARCH: checking prop_addr=0x{:04x}, size_byte=0x{:02x}",
+                    prop_addr,
+                    size_byte
+                );
+            }
             if size_byte == 0 {
+                if obj_num == 1 {
+                    log::debug!(
+                        "🔍 PLAYER_PROP_SEARCH: hit terminator, property {} not found",
+                        prop_num
+                    );
+                }
                 return Err(format!(
                     "Property {prop_num} not found for object {obj_num}"
                 ));
             }
 
             let (prop_id, prop_size, size_bytes) = self.get_property_info(prop_addr)?;
-            debug!(
-                "put_property: prop_id={}, prop_size={}, size_bytes={}",
-                prop_id, prop_size, size_bytes
-            );
+            if obj_num == 1 {
+                log::debug!(
+                    "🔍 PLAYER_PROP_SEARCH: found prop_id={}, prop_size={}, size_bytes={}",
+                    prop_id,
+                    prop_size,
+                    size_bytes
+                );
+            }
 
             if prop_id == prop_num {
                 // Found the property - write the value

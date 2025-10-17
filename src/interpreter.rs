@@ -321,7 +321,7 @@ impl Interpreter {
 
     /// Dump the entire object tree for debugging
     fn dump_object_tree(&self) {
-        log::warn!("🌳 ========== OBJECT TREE DUMP ==========");
+        log::debug!("🌳 ========== OBJECT TREE DUMP ==========");
 
         // Get object table address from header
         let obj_table_addr = self.vm.game.header.object_table_addr as usize;
@@ -335,7 +335,7 @@ impl Interpreter {
         let first_obj_addr = obj_table_addr + defaults_size;
         let prop_addr_offset = if version <= 3 { 7 } else { 12 };
 
-        log::warn!(
+        log::debug!(
             "🌳 Object table at 0x{:04x}, first object at 0x{:04x}",
             obj_table_addr,
             first_obj_addr
@@ -374,7 +374,7 @@ impl Interpreter {
             (min_prop_table_addr - first_obj_addr) / obj_entry_size
         };
 
-        log::warn!(
+        log::debug!(
             "🌳 Found {} objects (property tables start at 0x{:04x})",
             max_objects,
             min_prop_table_addr
@@ -386,7 +386,7 @@ impl Interpreter {
                 if let Ok((parent, sibling, child)) = self.vm.get_object_info(obj_num) {
                     // Only dump objects that exist (have valid parent/sibling/child or are roots)
                     if parent != 0 || sibling != 0 || child != 0 {
-                        log::warn!(
+                        log::debug!(
                             "🌳 Object #{:3} '{}': parent={:3}, sibling={:3}, child={:3}",
                             obj_num,
                             name,
@@ -399,7 +399,7 @@ impl Interpreter {
             }
         }
 
-        log::warn!("🌳 ========================================");
+        log::debug!("🌳 ========================================");
     }
 
     /// Dump all objects and their properties at startup for debugging
@@ -868,12 +868,12 @@ impl Interpreter {
 
             // Dump object tree after first instruction (after InsertObj instructions have run)
             if self.instruction_count == 10 {
-                log::warn!("🌳 Instruction count reached 10, dumping object tree...");
+                log::debug!("🌳 Instruction count reached 10, dumping object tree...");
                 if !self.object_tree_dumped {
                     self.dump_object_tree();
                     self.object_tree_dumped = true;
                 } else {
-                    log::warn!("🌳 Already dumped object tree, skipping");
+                    log::debug!("🌳 Already dumped object tree, skipping");
                 }
             }
 

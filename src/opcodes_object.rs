@@ -285,7 +285,7 @@ impl Interpreter {
 
                 // Log all get_prop calls during grammar object lookup (property 16 = names)
                 if prop_num == 16 {
-                    log::error!(
+                    log::debug!(
                         "🔍 GET_PROP_16: obj={}, prop={} (names), value=0x{:04x}, storing to var={:?}, PC=0x{:04x}",
                         obj_num,
                         prop_num,
@@ -310,7 +310,7 @@ impl Interpreter {
 
                 // Enhanced logging for object lookup debugging
                 if current_pc >= 0x1700 && current_pc <= 0x1900 {
-                    log::error!(
+                    log::debug!(
                         "🔍 GET_PROP_ADDR_CALL: PC=0x{:04x}, obj={}, prop={}, store_var={:?}",
                         current_pc,
                         obj_num,
@@ -328,7 +328,7 @@ impl Interpreter {
                 let addr = self.vm.get_property_addr(obj_num, prop_num)? as u16;
 
                 if current_pc >= 0x1700 && current_pc <= 0x1900 {
-                    log::error!(
+                    log::debug!(
                         "🔍 GET_PROP_ADDR_RESULT: PC=0x{:04x}, obj={}, prop={} -> addr=0x{:04x}, storing to var={:?}",
                         current_pc, obj_num, prop_num, addr, inst.store_var
                     );

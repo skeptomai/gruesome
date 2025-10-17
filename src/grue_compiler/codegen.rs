@@ -5295,30 +5295,24 @@ impl ZMachineCodeGen {
         let mut addr = prop_table_addr;
 
         // Write object name (short description) as Z-Machine encoded string
-        let name_bytes = self.encode_object_name(&object.short_name);
-        // For now, set text_length to 0 (no object name text) to fix property access
-        // TODO: Implement proper Z-Machine text encoding for object names
-        let text_length = 0;
+        let name_bytes = if object.short_name.is_empty() {
+            Vec::new()
+        } else {
+            self.encode_string(&object.short_name).map_err(|e| {
+                CompilerError::CodeGenError(format!(
+                    "Failed to encode object name '{}': {}",
+                    object.short_name, e
+                ))
+            })?
+        };
+        // Z-Machine property tables store text length in words, not bytes
+        // Each Z-Machine word is 2 bytes, so divide byte count by 2
+        let text_length = name_bytes.len() / 2;
 
-        // Text length byte
+        // Write text length byte to property table header
         let text_offset = addr - self.object_table_addr;
         self.write_to_object_space(text_offset, text_length as u8)?;
-        debug!(
-            "PROP TABLE DEBUG: Writing text_length={} at addr=0x{:04x} for object '{}'",
-            text_length, addr, object.short_name
-        );
-        debug!(
-            "Object '{}': name_bytes.len()={}, text_length={}, addr=0x{:04x}",
-            object.short_name,
-            name_bytes.len(),
-            text_length,
-            addr
-        );
         addr += 1;
-        debug!(
-            "PROP TABLE DEBUG: After text_length, addr=0x{:04x}, about to write properties",
-            addr
-        );
 
         // Only write name bytes if text_length > 0
         if text_length > 0 {
@@ -5340,7 +5334,7 @@ impl ZMachineCodeGen {
         let mut properties: Vec<_> = object.properties.properties.iter().collect();
         properties.sort_by(|a, b| b.0.cmp(a.0)); // Sort by property number, descending
 
-        log::warn!(
+        log::debug!(
             "🔍 PROP_ENCODE: Object '{}' has {} properties to encode: {:?}",
             object.short_name,
             properties.len(),
@@ -8464,13 +8458,28 @@ impl ZMachineCodeGen {
 
         for (name, &ir_id) in &ir.symbol_ids {
             if let Some(&object_number) = ir.object_numbers.get(name) {
-                log::error!(
-                    "🗺️ OBJECT_MAPPING: '{}': IR ID {} → Object #{}",
-                    name,
-                    ir_id,
-                    object_number
-                );
-                self.ir_id_to_object_number.insert(ir_id, object_number);
+                // CRITICAL FIX (Bug #23, Oct 17, 2025): Prevent overwriting correct mappings from object generation
+                // Problem: Object generation phase already set correct IR_ID → object_number mappings
+                // This function was overwriting those with semantic numbers that don't match generation reality
+                // Solution: Only insert if not already present - preserve generation phase mappings
+                if !self.ir_id_to_object_number.contains_key(&ir_id) {
+                    self.ir_id_to_object_number.insert(ir_id, object_number);
+                    log::debug!(
+                        "🗺️ OBJECT_MAPPING: '{}': IR ID {} → Object #{} (new mapping)",
+                        name,
+                        ir_id,
+                        object_number
+                    );
+                } else {
+                    let existing = self.ir_id_to_object_number[&ir_id];
+                    log::debug!(
+                        "🗺️ OBJECT_MAPPING: '{}': IR ID {} → Object #{} (existing: {}, not overwritten)",
+                        name,
+                        ir_id,
+                        object_number,
+                        existing
+                    );
+                }
                 log::debug!(
                     " MAPPING: IR ID {} ('{}') -> Object #{} {}",
                     ir_id,

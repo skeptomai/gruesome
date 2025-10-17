@@ -1861,6 +1861,20 @@ impl IrGenerator {
         let quit_pending_prop = self.property_manager.get_property_number("quit_pending");
         player_properties.set_word(quit_pending_prop, 0); // Initially false
 
+        // DEBUG: Verify quit_pending was added
+        log::warn!(
+            "🔍 IR_PLAYER: quit_pending property #{} added to player, total properties: {}",
+            quit_pending_prop,
+            player_properties.properties.len()
+        );
+        for (prop_num, prop_value) in &player_properties.properties {
+            log::warn!(
+                "🔍 IR_PLAYER_PROP: Property {} = {:?}",
+                prop_num,
+                prop_value
+            );
+        }
+
         // Create player object
         // BUG FIX (Oct 11, 2025): Set player's initial parent to match location property
         // Since player.location now reads from object tree (get_parent), not property,

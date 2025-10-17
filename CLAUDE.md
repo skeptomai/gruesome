@@ -69,6 +69,43 @@
 
 **NEVER use `log::error!()` for debugging dumps, traces, or diagnostic output!** Use `log::debug!()` instead.
 
+## ⚠️ CRITICAL: LOGGING LEVEL ENFORCEMENT (Bug #23 Lesson)
+
+**REPEATED VIOLATIONS WILL NOT BE TOLERATED**
+
+The user has expressed extreme frustration about repeated misuse of ERROR logging level for debugging information. This is a critical rule violation that disrupts the project.
+
+**MANDATORY LOGGING RULES:**
+- **`log::error!()`** - ONLY for ACTUAL FAULTS: file I/O errors, invalid opcodes, crashes, compilation failures
+- **`log::debug!()`** - FOR ALL DEBUGGING: object dumps, property traces, address dumps, diagnostic output
+- **`log::info!()`** - FOR HIGH-LEVEL STATUS: "Starting compilation", "Game loaded successfully"
+- **`log::warn!()`** - FOR QUESTIONABLE SITUATIONS: deprecated features, potential issues
+
+**EXAMPLES OF CORRECT USAGE:**
+```rust
+// ✅ CORRECT - Actual error condition
+log::error!("Failed to read Z-Machine file: {}", error);
+log::error!("Invalid opcode 0x{:02x} at address 0x{:04x}", opcode, pc);
+
+// ✅ CORRECT - Debugging/diagnostic information
+log::debug!("🔢 OBJECT_GEN: index={}, obj_num={}, name='{}'", index, obj_num, name);
+log::debug!("🗺️ Property table dump: {:?}", properties);
+log::debug!("📍 Address translation: 0x{:04x} → 0x{:04x}", from, to);
+
+// ✅ CORRECT - High-level status
+log::info!("Compilation completed successfully");
+log::info!("Z-Machine interpreter starting");
+
+// ❌ WRONG - Debugging information as ERROR
+log::error!("🔢 OBJECT_GEN: index={}, obj_num={}, name='{}'", index, obj_num, name);
+log::error!("Property table dump: {:?}", properties);
+```
+
+**BEFORE COMMITTING:** Search entire codebase for inappropriate `log::error!()` usage:
+```bash
+grep -r "log::error!" src/ | grep -v "Failed\|Error\|Invalid\|Cannot\|Unable"
+```
+
 ## Auto-Commit Instructions ("Make it so!")
 
 When the user says "Make it so!", "Ship it", "Send it", or "Commit and push":

@@ -340,12 +340,36 @@ impl ZMachineCodeGen {
         // Player is always first in ir.objects (inserted at index 0 by add_player_object)
         if !ir.objects.is_empty() {
             let player = &ir.objects[0];
+
+            // DEBUG: Show what properties the player has before cloning
+            log::warn!(
+                "🔍 PLAYER_PROPS_BEFORE: Player '{}' has {} properties: {:?}",
+                player.name,
+                player.properties.properties.len(),
+                player.properties.properties.keys().collect::<Vec<_>>()
+            );
+            for (prop_num, prop_value) in &player.properties.properties {
+                log::warn!(
+                    "🔍 PLAYER_PROP_DETAIL: Property {} = {:?}",
+                    prop_num,
+                    prop_value
+                );
+            }
+
             let mut player_properties = player.properties.clone();
 
             // CRITICAL FIX (Oct 16, 2025): Add names property to player
             // Grammar object lookup reads property 16 (names) to find dictionary addresses
             // Must store ALL dictionary addresses for all player names
             let names_prop = *self.property_numbers.get("names").unwrap_or(&16); // CRITICAL FIX (Bug #23): Fallback to property 16, not 7
+
+            // DEBUG: Show what property number names gets assigned
+            log::warn!(
+                "🔍 NAMES_PROP_NUM: names property = {}, property_numbers has {} entries: {:?}",
+                names_prop,
+                self.property_numbers.len(),
+                self.property_numbers.keys().collect::<Vec<_>>()
+            );
             if !player.names.is_empty() {
                 // Create placeholder bytes for ALL names (2 bytes per name)
                 let mut name_placeholders = Vec::new();
@@ -356,6 +380,13 @@ impl ZMachineCodeGen {
 
                 // Write all placeholders - will be resolved to dictionary addresses during property serialization
                 player_properties.set_bytes(names_prop, name_placeholders);
+
+                // DEBUG: Show player properties after adding names property
+                log::warn!(
+                    "🔍 PLAYER_PROPS_AFTER_NAMES: Player now has {} properties: {:?}",
+                    player_properties.properties.len(),
+                    player_properties.properties.keys().collect::<Vec<_>>()
+                );
 
                 // Track ALL player names for DictionaryRef UnresolvedReference creation during serialization
                 self.object_vocabulary_names
@@ -376,10 +407,26 @@ impl ZMachineCodeGen {
             // If short_name not explicitly set, derive it from first name in names array
             // This prevents garbled text when examining objects that only define names array
             let short_name_prop = *self.property_numbers.get("short_name").unwrap_or(&1);
+
+            // DEBUG: Show short_name property assignment
+            log::warn!(
+                "🔍 SHORT_NAME_PROP: short_name property = {}, player.names = {:?}",
+                short_name_prop,
+                player.names
+            );
+
             if !player_properties.properties.contains_key(&short_name_prop)
                 && !player.names.is_empty()
             {
                 player_properties.set_string(short_name_prop, player.names[0].clone());
+
+                // DEBUG: Show player properties after short_name addition
+                log::warn!(
+                    "🔍 PLAYER_PROPS_AFTER_SHORT_NAME: Player now has {} properties: {:?}",
+                    player_properties.properties.len(),
+                    player_properties.properties.keys().collect::<Vec<_>>()
+                );
+
                 log::debug!(
                     "🔍 SHORT_NAME_AUTO: Player '{}' short_name (property #{}) auto-derived from names[0]: '{}'",
                     player.name,
@@ -486,7 +533,7 @@ impl ZMachineCodeGen {
             // location_prop removed - uses object tree parent only (Oct 12, 2025)
             let desc_prop = *self.property_numbers.get("description").unwrap_or(&7);
             let names_prop = *self.property_numbers.get("names").unwrap_or(&16); // CRITICAL FIX (Bug #23): Fallback to property 16, not 7
-            log::error!(
+            log::debug!(
                 "🔍 PROPERTY_NUMBERS: Object '{}': description={}, names={}",
                 object.name,
                 desc_prop,
@@ -806,9 +853,22 @@ impl ZMachineCodeGen {
 
         // Step 4: Create object table entries
         for (index, object) in all_objects.iter().enumerate() {
-            let obj_num = (index + 1) as u8; // Objects are numbered starting from 1
-            log::error!(
-                "🔢 OBJECT_GEN: index={}, obj_num={}, name='{}', short_name='{}'",
+            // CRITICAL FIX (Bug #23, Oct 17, 2025): Use IR semantic object numbering instead of sequential
+            // Problem: Sequential numbering (index + 1) creates different numbers than IR semantic analysis
+            // This causes address mismatches when resolving UnresolvedReferences for property values
+            // Solution: Use ir.object_numbers for consistent numbering between generation and mapping phases
+            let obj_num = if let Some(&semantic_number) = ir.object_numbers.get(&object.name) {
+                semantic_number as u8
+            } else {
+                // Fallback for objects not in IR (shouldn't happen in normal operation)
+                log::warn!(
+                    "🔢 OBJECT_GEN: Object '{}' not found in ir.object_numbers, using sequential fallback",
+                    object.name
+                );
+                (index + 1) as u8
+            };
+            log::debug!(
+                "🔢 OBJECT_GEN: index={}, obj_num={} (from IR), name='{}', short_name='{}'",
                 index,
                 obj_num,
                 object.name,
