@@ -1017,7 +1017,7 @@ impl ZMachineCodeGen {
             code_base + code_size,
             code_size
         );
-        log::error!(
+        log::debug!(
             "  Total:         {} bytes{}",
             total_size,
             if padding_bytes > 0 {
@@ -1262,7 +1262,7 @@ impl ZMachineCodeGen {
             }
 
             // DEBUG: Dump object_space structure to find the 6-byte gap
-            log::error!(
+            log::debug!(
                 "🔍 ALIGNMENT_DEBUG: object_space.len() = {} (0x{:04x})",
                 self.object_space.len(),
                 self.object_space.len()
@@ -1270,34 +1270,34 @@ impl ZMachineCodeGen {
             log::debug!("🔍 ALIGNMENT_DEBUG: object_space first 80 bytes:");
             for chunk_start in (0..80.min(self.object_space.len())).step_by(16) {
                 let chunk_end = (chunk_start + 16).min(self.object_space.len());
-                log::error!(
+                log::debug!(
                     "🔍   [0x{:04x}..0x{:04x}]: {:02x?}",
                     chunk_start,
                     chunk_end,
                     &self.object_space[chunk_start..chunk_end]
                 );
             }
-            log::error!(
+            log::debug!(
                 "🔍 ALIGNMENT_DEBUG: object_base=0x{:04x}, dictionary_base=0x{:04x}",
                 object_base,
                 dictionary_base
             );
-            log::error!(
+            log::debug!(
                 "🔍 ALIGNMENT_DEBUG: final_data[0x{:04x}..0x{:04x}] (first 20 bytes): {:02x?}",
                 object_base,
                 object_base + 20,
                 &self.final_data[object_base..object_base + 20]
             );
             if self.final_data.len() >= object_base + 0x46 {
-                log::error!("🔍 ALIGNMENT_DEBUG: final_data[0x{:04x}..0x{:04x}] (where first object ends up): {:02x?}",
+                log::debug!("🔍 ALIGNMENT_DEBUG: final_data[0x{:04x}..0x{:04x}] (where first object ends up): {:02x?}",
                     object_base + 0x3e, object_base + 0x46, &self.final_data[object_base + 0x3e..object_base + 0x46]);
             }
-            log::error!(
+            log::debug!(
                 "🔍 ALIGNMENT_DEBUG: Header says object table at: 0x{:04x}",
                 object_base
             );
             log::debug!("🔍 ALIGNMENT_DEBUG: Property defaults should be 62 bytes (0x3e)");
-            log::error!(
+            log::debug!(
                 "🔍 ALIGNMENT_DEBUG: First object should start at: 0x{:04x}",
                 object_base + 0x3e
             );
@@ -1332,12 +1332,12 @@ impl ZMachineCodeGen {
             let obj_entry_size = 9; // V3 object entry size
 
             log::debug!("📊 OBJECT SPACE STRUCTURE:");
-            log::error!(
+            log::debug!(
                 "   object_space.len() = {} bytes (0x{:04x})",
                 self.object_space.len(),
                 self.object_space.len()
             );
-            log::error!(
+            log::debug!(
                 "   Property defaults: 0x0000-0x{:04x} ({} bytes)",
                 defaults_size - 1,
                 defaults_size
@@ -2932,7 +2932,7 @@ impl ZMachineCodeGen {
     fn translate_load_var(&mut self, target: IrId, var_id: IrId) -> Result<(), CompilerError> {
         log::debug!("LOAD_VAR: target={}, var_id={}", target, var_id);
 
-        log::error!(
+        log::debug!(
             "📝 VAR1_WRITE: LoadVar at 0x{:04x} - HARDCODED storing to Variable(1) (BUG?)",
             self.code_address
         );
