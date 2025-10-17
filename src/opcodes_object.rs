@@ -285,8 +285,8 @@ impl Interpreter {
 
                 // Log all get_prop calls during grammar object lookup (property 16 = names)
                 if prop_num == 16 {
-                    log::debug!(
-                        "🔍 GET_PROP: obj={}, prop={} (names), value=0x{:04x}, storing to var={:?}, PC=0x{:04x}",
+                    log::error!(
+                        "🔍 GET_PROP_16: obj={}, prop={} (names), value=0x{:04x}, storing to var={:?}, PC=0x{:04x}",
                         obj_num,
                         prop_num,
                         value,
@@ -306,13 +306,34 @@ impl Interpreter {
                 // get_prop_addr
                 let obj_num = operands[0];
                 let prop_num = operands[1] as u8;
+                let current_pc = self.vm.pc - inst.size as u32;
+
+                // Enhanced logging for object lookup debugging
+                if current_pc >= 0x1700 && current_pc <= 0x1900 {
+                    log::error!(
+                        "🔍 GET_PROP_ADDR_CALL: PC=0x{:04x}, obj={}, prop={}, store_var={:?}",
+                        current_pc,
+                        obj_num,
+                        prop_num,
+                        inst.store_var
+                    );
+                }
+
                 log::debug!(
                     "🔍 GET_PROP_ADDR CALLED: obj={}, prop={}, PC=0x{:04x}",
                     obj_num,
                     prop_num,
-                    self.vm.pc - inst.size as u32
+                    current_pc
                 );
                 let addr = self.vm.get_property_addr(obj_num, prop_num)? as u16;
+
+                if current_pc >= 0x1700 && current_pc <= 0x1900 {
+                    log::error!(
+                        "🔍 GET_PROP_ADDR_RESULT: PC=0x{:04x}, obj={}, prop={} -> addr=0x{:04x}, storing to var={:?}",
+                        current_pc, obj_num, prop_num, addr, inst.store_var
+                    );
+                }
+
                 log::debug!(
                     "🔍 GET_PROP_ADDR RESULT: addr=0x{:04x}, storing to var={:?}",
                     addr,

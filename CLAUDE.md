@@ -59,7 +59,15 @@
 3. Compiler-generated code needs the feature
 4. Fix is verified with comprehensive regression testing
 
-**LOGGING ALLOWED**: You MAY add temporary debug logging to the interpreter to diagnose issues. Use `log::debug!()` or `log::error!()`, NEVER `eprintln!()` or `println!()`. Clean up logging after debugging is complete.
+**LOGGING ALLOWED**: You MAY add temporary debug logging to the interpreter to diagnose issues. Use `log::debug!()` or `log::info!()`, NEVER `eprintln!()` or `println!()`. Clean up logging after debugging is complete.
+
+**CRITICAL: Log Level Usage**:
+- `log::error!()` - ONLY for actual fault conditions, errors, bugs (e.g., "Failed to read file", "Invalid opcode")
+- `log::warn!()` - For warnings about questionable but non-fatal situations
+- `log::info!()` - For high-level informational messages (e.g., "Starting compiler", "Compilation complete")
+- `log::debug!()` - For debugging output, diagnostics, detailed trace information (DEFAULT for most logging)
+
+**NEVER use `log::error!()` for debugging dumps, traces, or diagnostic output!** Use `log::debug!()` instead.
 
 ## Auto-Commit Instructions ("Make it so!")
 

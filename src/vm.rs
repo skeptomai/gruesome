@@ -373,7 +373,7 @@ impl VM {
                     .ok_or("No active routine for local variable access")?;
                 let index = (var - 1) as usize;
                 if index >= frame.num_locals as usize {
-                    debug!("WARNING: Reading local variable {} but routine only has {} locals - returning 0", 
+                    debug!("WARNING: Reading local variable {} but routine only has {} locals - returning 0",
  var, frame.num_locals);
                     return Ok(0);
                 }
@@ -395,6 +395,22 @@ impl VM {
             debug!(
                 "read_variable(0x{:02x}) [Variable(16)/G00] at PC {:05x} returning value: {:?}",
                 var, self.pc, result
+            );
+        }
+        // Debug logging for Variable 110 (0x6E) - parse buffer address (Global G6e)
+        if var == 0x6E {
+            log::debug!(
+                "🔍 READ_VAR_110/G6e (parse_buffer): value={:04x?}, PC=0x{:04x}",
+                result,
+                self.pc
+            );
+        }
+        // Debug logging for Variable 4 - object loop counter
+        if var == 0x04 {
+            log::debug!(
+                "🔍 READ_VAR_4 (object_counter): value={:04x?}, PC=0x{:04x}",
+                result,
+                self.pc
             );
         }
         if var == 0x52 && self.pc >= 0x8d50 && self.pc <= 0x8d60 {
@@ -486,6 +502,14 @@ impl VM {
                 self.pc
             );
         }
+        // Log writes to Variable 110 (0x6E) - parse buffer address (Global G6e)
+        if var == 0x6E {
+            log::debug!(
+                "🔍 WRITE_VAR_110/G6e (parse_buffer): value=0x{:04x}, PC=0x{:04x}",
+                value,
+                self.pc
+            );
+        }
         match var {
             0x00 => {
                 // Writing to variable 0 means push onto stack
@@ -570,7 +594,7 @@ impl VM {
     }
 
     /// Parse property size byte to get property number, size, and header size
-    fn get_property_info(&self, prop_addr: usize) -> Result<(u8, usize, usize), String> {
+    pub fn get_property_info(&self, prop_addr: usize) -> Result<(u8, usize, usize), String> {
         let size_byte = self.game.memory[prop_addr];
 
         if self.game.header.version <= 3 {

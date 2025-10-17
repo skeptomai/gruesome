@@ -272,7 +272,15 @@ pub struct ZMachineCodeGen {
     // Tables for Z-Machine structures
     pub object_table_addr: usize,
     pub property_table_addr: usize,
-    pub current_property_addr: usize, // Current property table allocation pointer
+    pub current_property_addr: usize, // Current property table allocation pointer (moves during compilation)
+    /// Fixed boundary between object entries and property tables for address translation.
+    ///
+    /// CRITICAL FIX (Bug #23): This field stores the initial value of current_property_addr
+    /// and never changes, providing a stable boundary for translate_space_address_to_final().
+    /// Problem was that current_property_addr changes during compilation (e.g., 0x00c5 → 0x0236)
+    /// causing address translation to use wrong boundary conditions and misclassify property
+    /// table addresses as object entry addresses, leading to incorrect final addresses.
+    pub initial_property_addr: usize,
     dictionary_addr: usize,
     global_vars_addr: usize,
 
@@ -413,6 +421,7 @@ impl ZMachineCodeGen {
             object_table_addr: 0,
             property_table_addr: 0,
             current_property_addr: 0,
+            initial_property_addr: 0, // Fixed boundary for address translation
             dictionary_addr: 0,
             global_vars_addr: 0,
             strings: Vec::new(),
@@ -1664,11 +1673,12 @@ impl ZMachineCodeGen {
         // DEBUG: List all unresolved references
         for (i, ref_) in self.reference_context.unresolved_refs.iter().enumerate() {
             log::debug!(
-                " Unresolved ref {}: type={:?}, location=0x{:04x}, target={}",
+                " Unresolved ref {}: type={:?}, location=0x{:04x}, target={}, space={:?}",
                 i,
                 ref_.reference_type,
                 ref_.location,
-                ref_.target_id
+                ref_.target_id,
+                ref_.location_space
             );
         }
 
@@ -1821,6 +1831,18 @@ impl ZMachineCodeGen {
             reference.offset_size
         );
 
+        // CRITICAL DEBUG: Track string ID 1019 (mailbox description)
+        if reference.target_id == 1019 {
+            log::debug!("🔍 STRING_1019_TRACE: Processing mailbox description reference");
+            log::debug!(
+                "🔍 STRING_1019_TRACE: Type={:?}, location=0x{:04x}, packed={}, offset_size={}",
+                reference.reference_type,
+                reference.location,
+                reference.is_packed_address,
+                reference.offset_size
+            );
+        }
+
         // DEBUG: Check current state before resolution
         log::debug!(
  " RESOLVE_REF_STATE: code_space.len()={}, final_data.len()={}, final_code_base=0x{:04x}",
@@ -1836,6 +1858,12 @@ impl ZMachineCodeGen {
  " STRING_RESOLVE_DEBUG: String ID {} offset=0x{:04x} + base=0x{:04x} = final_addr=0x{:04x}",
  reference.target_id, string_offset, self.final_string_base, final_addr
  );
+
+                    // CRITICAL DEBUG: Track string ID 1019 (mailbox description)
+                    if reference.target_id == 1019 {
+                        log::debug!("🔍 STRING_1019_TRACE: String found! offset=0x{:04x}, final_addr=0x{:04x}", string_offset, final_addr);
+                    }
+
                     // FIXED: Don't pack here - let the patch function handle packing
                     // This avoids double-packing the address
                     final_addr
@@ -2350,8 +2378,31 @@ impl ZMachineCodeGen {
                     reference.location
                 );
 
+                // CRITICAL DEBUG: Track string ID 1019 (mailbox description)
+                if reference.target_id == 1019 {
+                    log::debug!("🔍 STRING_1019_TRACE: About to write 0x{:02x} 0x{:02x} (0x{:04x}) to location 0x{:04x}",
+                        high_byte, low_byte, final_value, reference.location);
+                    let old_high = self.final_data[reference.location];
+                    let old_low = self.final_data[reference.location + 1];
+                    log::debug!(
+                        "🔍 STRING_1019_TRACE: Old value at 0x{:04x}: 0x{:02x} 0x{:02x} (0x{:04x})",
+                        reference.location,
+                        old_high,
+                        old_low,
+                        (old_high as u16) << 8 | old_low as u16
+                    );
+                }
+
                 self.final_data[reference.location] = high_byte;
                 self.final_data[reference.location + 1] = low_byte;
+
+                // CRITICAL DEBUG: Verify the write for string ID 1019
+                if reference.target_id == 1019 {
+                    let written_high = self.final_data[reference.location];
+                    let written_low = self.final_data[reference.location + 1];
+                    log::debug!("🔍 STRING_1019_TRACE: Verification - wrote 0x{:02x} 0x{:02x} (0x{:04x}) to location 0x{:04x}",
+                        written_high, written_low, (written_high as u16) << 8 | written_low as u16, reference.location);
+                }
 
                 // Debug tracking for string ID 568
                 if reference.target_id == 568 {
@@ -4865,6 +4916,7 @@ impl ZMachineCodeGen {
         // In object space: property defaults (62 bytes) + object entries, then property tables start
         let property_start_in_object_space = default_props_size + object_entries_size;
         self.current_property_addr = property_start_in_object_space; // Object space relative addressing
+        self.initial_property_addr = property_start_in_object_space; // Fixed boundary for address translation
 
         debug!(" PROPERTY_ADDR_INIT: Final memory property_table_addr=0x{:04x}, object space current_property_addr=0x{:04x}", 
  addr, self.current_property_addr);
@@ -11358,13 +11410,40 @@ impl ZMachineCodeGen {
         space: MemorySpace,
         space_offset: usize,
     ) -> Result<usize, CompilerError> {
+        // Debug address translation for complex memory spaces
+        log::debug!(
+            "translate_space_address_to_final: space={:?}, offset=0x{:04x}",
+            space,
+            space_offset
+        );
+
         let final_address = match space {
             MemorySpace::Header => space_offset,
             // CRITICAL FIX: Account for 220 bytes of input buffer space (text_buffer=100 + parse_buffer=120)
             // These buffers are reserved at 0x0040-0x013B (before globals), matching commercial Z-Machine layout
             MemorySpace::Globals => 64 + 220 + space_offset, // 284 + offset = 0x011C + offset
             MemorySpace::Abbreviations => 64 + 220 + 480 + space_offset, // 764 + offset = 0x02FC + offset
-            MemorySpace::Objects => 64 + 220 + 480 + 192 + space_offset, // 956 + offset = 0x03BC + offset
+            MemorySpace::Objects => {
+                // CRITICAL FIX (Bug #23): Property table addresses need special translation
+                // Object space contains multiple regions:
+                // - Property defaults: 0x0000-0x003D (62 bytes)
+                // - Object entries: 0x003E-0x00C4 (varies by object count)
+                // - Property tables: 0x00C5 onwards (initial_property_addr marks the FIXED start)
+                //
+                // CRITICAL FIX (Bug #23): Use initial_property_addr (fixed boundary) for address translation
+                // Problem: current_property_addr changes during compilation, but initial_property_addr stays constant
+                // This ensures property table addresses are correctly distinguished from object entries
+                if space_offset >= self.initial_property_addr {
+                    // This is a property table address - translate relative to property table base
+                    let property_table_offset = space_offset - self.initial_property_addr;
+                    let final_property_table_base =
+                        self.final_object_base + self.initial_property_addr;
+                    final_property_table_base + property_table_offset
+                } else {
+                    // This is an object entry address - use standard translation
+                    self.final_object_base + space_offset
+                }
+            }
             MemorySpace::Dictionary => {
                 64 + 220 + 480 + 192 + self.object_space.len() + space_offset
             }

@@ -402,9 +402,142 @@ impl Interpreter {
         log::warn!("🌳 ========================================");
     }
 
+    /// Dump all objects and their properties at startup for debugging
+    fn dump_all_objects_and_properties(&self) {
+        log::debug!("═══════════════════════════════════════════════════════════════");
+        log::debug!("🔍 COMPLETE OBJECT AND PROPERTY DUMP AT STARTUP");
+        log::debug!("═══════════════════════════════════════════════════════════════");
+
+        // Determine max objects based on version
+        let _max_objects = if self.vm.game.header.version <= 3 {
+            255
+        } else {
+            65535
+        };
+
+        // Try each object number and dump if it exists
+        for obj_num in 1..=15 {
+            // Start with reasonable limit
+            // Try to get object name to see if object exists
+            match self.vm.get_object_name(obj_num) {
+                Ok(name) => {
+                    log::debug!(
+                        "─────────────────────────────────────────────────────────────────"
+                    );
+                    log::debug!("📦 Object #{}: \"{}\"", obj_num, name);
+
+                    // Get parent, sibling, child
+                    if let Ok((parent, sibling, child)) = self.vm.get_object_info(obj_num) {
+                        log::debug!(
+                            "   Tree: parent={}, sibling={}, child={}",
+                            parent,
+                            sibling,
+                            child
+                        );
+                    }
+
+                    // Dump all properties by iterating the property table directly
+                    log::debug!("   Properties:");
+
+                    // Get property table address for this object
+                    let obj_table_addr = self.vm.game.header.object_table_addr;
+                    let property_defaults = obj_table_addr;
+                    let default_props = if self.vm.game.header.version <= 3 {
+                        31
+                    } else {
+                        63
+                    };
+                    let obj_tree_base = property_defaults + default_props * 2;
+                    let obj_entry_size = if self.vm.game.header.version <= 3 {
+                        9
+                    } else {
+                        14
+                    };
+                    let obj_addr = obj_tree_base + ((obj_num - 1) as usize * obj_entry_size);
+                    let prop_addr_offset = if self.vm.game.header.version <= 3 {
+                        7
+                    } else {
+                        12
+                    };
+                    let prop_table_addr =
+                        self.vm.read_word((obj_addr + prop_addr_offset) as u32) as usize;
+
+                    // Skip the description length
+                    let desc_len = self.vm.game.memory[prop_table_addr] as usize;
+                    let mut prop_addr = prop_table_addr + 1 + desc_len * 2;
+
+                    // Iterate through all properties
+                    loop {
+                        let size_byte = self.vm.game.memory[prop_addr];
+                        if size_byte == 0 {
+                            break; // End of properties
+                        }
+
+                        // Parse property header
+                        if let Ok((prop_num, prop_size, header_size)) =
+                            self.vm.get_property_info(prop_addr)
+                        {
+                            let data_addr = prop_addr + header_size;
+
+                            // Read property value (first word for multi-word properties)
+                            let value = if prop_size == 1 {
+                                self.vm.read_byte(data_addr as u32) as u16
+                            } else {
+                                self.vm.read_word(data_addr as u32)
+                            };
+
+                            // Special handling for property 16 (names array)
+                            if prop_num == 16 {
+                                log::debug!("      Property {}: 0x{:04x} ← ⚠️  NAMES PROPERTY (should be dictionary address array)", prop_num, value);
+                                log::debug!(
+                                    "         Length: {} bytes ({} words)",
+                                    prop_size,
+                                    prop_size / 2
+                                );
+
+                                // Read each word
+                                for i in 0..(prop_size / 2) {
+                                    let word_addr = data_addr + (i * 2);
+                                    let dict_addr = self.vm.read_word(word_addr as u32);
+                                    log::debug!(
+                                        "         [{}]: 0x{:04x} (dict addr at 0x{:04x})",
+                                        i,
+                                        dict_addr,
+                                        word_addr
+                                    );
+                                }
+                            } else {
+                                log::debug!(
+                                    "      Property {}: 0x{:04x} ({})",
+                                    prop_num,
+                                    value,
+                                    value
+                                );
+                            }
+
+                            // Move to next property
+                            prop_addr += header_size + prop_size;
+                        } else {
+                            break; // Error parsing property
+                        }
+                    }
+                }
+                Err(_) => {
+                    // Object doesn't exist or error reading it - stop
+                    break;
+                }
+            }
+        }
+
+        log::debug!("═══════════════════════════════════════════════════════════════");
+    }
+
     pub fn run_with_limit(&mut self, max_instructions: Option<u64>) -> Result<(), String> {
         info!("Starting Z-Machine interpreter...");
         info!("Initial PC: {:05x}", self.vm.pc);
+
+        // Dump all objects and properties at startup
+        self.dump_all_objects_and_properties();
 
         // Set up initial display for v3 games
         if self.vm.game.header.version == 3 {
@@ -513,6 +646,17 @@ impl Interpreter {
                     pc, instruction.opcode, instruction.form, instruction.operand_count
                 );
                 debug!("TRACE: Stack depth: {}", self.vm.stack.len());
+            }
+
+            // Debug: trace examine handler execution (object lookup range)
+            if (0x1780..=0x1800).contains(&pc) {
+                log::debug!(
+                    "🔍 EXAMINE_TRACE: PC=0x{:04x}, opcode=0x{:02x}, form={:?}, operand_count={:?}",
+                    pc,
+                    instruction.opcode,
+                    instruction.form,
+                    instruction.operand_count
+                );
             }
 
             // Check if we should single-step this instruction
@@ -1994,6 +2138,30 @@ impl Interpreter {
                         }
                     }
                 }
+
+                // Debug: Dump parse buffer contents after parsing
+                log::debug!(
+                    "🔍 PARSE_BUFFER_DUMP after sread, buffer at 0x{:04x}:",
+                    parse_buffer
+                );
+                let max_words = self.vm.read_byte(parse_buffer);
+                let word_count = self.vm.read_byte(parse_buffer + 1);
+                log::debug!("  Byte 0 (max words): {}", max_words);
+                log::debug!("  Byte 1 (word count): {}", word_count);
+                for i in 0..word_count.min(4) {
+                    let offset = parse_buffer + 2 + (i as u32 * 4);
+                    let dict_addr = self.vm.read_word(offset);
+                    let word_len = self.vm.read_byte(offset + 2);
+                    let text_pos = self.vm.read_byte(offset + 3);
+                    log::debug!(
+                        "  Word {}: dict=0x{:04x}, len={}, pos={}",
+                        i,
+                        dict_addr,
+                        word_len,
+                        text_pos
+                    );
+                }
+
                 Ok(ExecutionResult::Continue)
             }
             0x07 => {

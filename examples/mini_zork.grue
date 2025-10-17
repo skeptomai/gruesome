@@ -9,7 +9,7 @@ world {
 
         object mailbox {
             names: ["small mailbox", "mailbox", "box"]
-            desc: "The small mailbox is " + (mailbox.open ? "open" : "closed") + "."
+            desc: "The small mailbox is closed."
             openable: true
             container: true
             

@@ -56,6 +56,19 @@ impl Interpreter {
                     }
                 }
 
+                // Track object lookup variables during examine
+                if current_pc >= 0x1700 && current_pc <= 0x1900 {
+                    if var_num >= 2 && var_num <= 9 {
+                        log::debug!(
+                            "🔍 STORE_VAR: PC=0x{:04x}, Variable({})={} (0x{:04x})",
+                            current_pc,
+                            var_num,
+                            value,
+                            value
+                        );
+                    }
+                }
+
                 debug!("store: var_num={:02x}, value={}", var_num, value);
                 self.vm.write_variable(var_num, value)?;
                 Ok(ExecutionResult::Continue)
@@ -66,10 +79,23 @@ impl Interpreter {
                 // loadw
                 let addr = operands[0] as u32 + (operands[1] as u32 * 2);
                 let value = self.vm.read_word(addr);
+                let current_pc = self.vm.pc - inst.size as u32;
+
+                // Log ALL loadw operations during examine command (PC around object lookup code)
+                if current_pc >= 0x1700 && current_pc <= 0x1900 {
+                    log::debug!("🔍 LOADW_ALL: PC=0x{:04x}, base=0x{:04x}, index={}, addr=0x{:04x} -> value=0x{:04x}, store_var={:?}",
+                        current_pc, operands[0], operands[1], addr, value, inst.store_var);
+                }
+
                 // Temporary debug logging for get_exit debugging (property table addresses)
                 if operands[0] >= 0x03b0 && operands[0] <= 0x03c0 {
                     log::debug!("🔍 loadw: base_addr=0x{:04x}, index={}, addr=0x{:04x}, value=0x{:04x} ({})",
                         operands[0], operands[1], addr, value, value);
+                }
+                // Debug: Track reads from parse buffer area (0x00a4)
+                if operands[0] >= 0x00a0 && operands[0] <= 0x00b0 {
+                    log::debug!("🔍 LOADW_PARSE_BUFFER: base=0x{:04x}, index={}, addr=0x{:04x} -> value=0x{:04x}, store_var={:?}, PC=0x{:04x}",
+                        operands[0], operands[1], addr, value, inst.store_var, current_pc);
                 }
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, value)?;

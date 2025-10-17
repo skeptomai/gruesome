@@ -345,7 +345,7 @@ impl ZMachineCodeGen {
             // CRITICAL FIX (Oct 16, 2025): Add names property to player
             // Grammar object lookup reads property 16 (names) to find dictionary addresses
             // Must store ALL dictionary addresses for all player names
-            let names_prop = *self.property_numbers.get("names").unwrap_or(&7);
+            let names_prop = *self.property_numbers.get("names").unwrap_or(&16); // CRITICAL FIX (Bug #23): Fallback to property 16, not 7
             if !player.names.is_empty() {
                 // Create placeholder bytes for ALL names (2 bytes per name)
                 let mut name_placeholders = Vec::new();
@@ -485,7 +485,13 @@ impl ZMachineCodeGen {
             // Ensure all objects have essential properties that games commonly access
             // location_prop removed - uses object tree parent only (Oct 12, 2025)
             let desc_prop = *self.property_numbers.get("description").unwrap_or(&7);
-            let names_prop = *self.property_numbers.get("names").unwrap_or(&7);
+            let names_prop = *self.property_numbers.get("names").unwrap_or(&16); // CRITICAL FIX (Bug #23): Fallback to property 16, not 7
+            log::error!(
+                "🔍 PROPERTY_NUMBERS: Object '{}': description={}, names={}",
+                object.name,
+                desc_prop,
+                names_prop
+            );
 
             // location property removed - objects use object tree containment (Oct 12, 2025)
 
@@ -801,6 +807,13 @@ impl ZMachineCodeGen {
         // Step 4: Create object table entries
         for (index, object) in all_objects.iter().enumerate() {
             let obj_num = (index + 1) as u8; // Objects are numbered starting from 1
+            log::error!(
+                "🔢 OBJECT_GEN: index={}, obj_num={}, name='{}', short_name='{}'",
+                index,
+                obj_num,
+                object.name,
+                object.short_name
+            );
             self.create_object_entry_from_ir_with_mapping(obj_num, object, &object_id_to_number)?;
         }
 
