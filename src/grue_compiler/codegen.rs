@@ -171,6 +171,10 @@ pub enum LegacyReferenceType {
     StringPackedAddress { string_id: IrId }, // Reference to packed string address for properties
     DictionaryRef { word: String },          // Reference to dictionary entry address
     GlobalsBase, // Reference to global variables base address from header
+    /// UNIFICATION: Property table address resolution (unified from patch system)
+    /// Replaces the separate patch_property_table_addresses() system with unified resolution
+    /// Args: object_number for debugging, space_relative_prop_table_addr for calculating final address
+    PropertyTableAddress { object_number: u8, space_relative_prop_table_addr: usize },
 }
 
 /// Reference context for tracking what needs resolution
@@ -1460,7 +1464,8 @@ impl ZMachineCodeGen {
                 object_base
             );
 
-            // Patch property table addresses from space-relative to absolute
+            // TEMPORARY: Keep both systems running until unification is complete
+            // The PropertyTableAddress variant is implemented but needs debugging
             self.patch_property_table_addresses(object_base)?;
 
             // DEBUG: Verify object #2 property table pointer IMMEDIATELY after patching
@@ -2561,6 +2566,62 @@ impl ZMachineCodeGen {
                         label_id
                     )));
                 }
+            }
+
+            LegacyReferenceType::PropertyTableAddress { object_number, space_relative_prop_table_addr } => {
+                // UNIFICATION: Property table address resolution (unified from patch system)
+                // Convert space-relative property table address to final absolute address
+                // Property tables are in the object memory space after objects
+                let final_prop_table_addr = self.final_objects_base + space_relative_prop_table_addr;
+
+                // The reference.location is in object space, needs to be translated to final address space
+                let final_location = self.final_objects_base + reference.location;
+
+                log::debug!(
+                    "🏠 PROPERTY_TABLE_RESOLVE: Object {} space_relative=0x{:04x} + objects_base=0x{:04x} = final_prop_table_addr=0x{:04x}",
+                    object_number, space_relative_prop_table_addr, self.final_objects_base, final_prop_table_addr
+                );
+                log::debug!(
+                    "🏠 PROPERTY_TABLE_PATCH: Writing prop_table_addr=0x{:04x} to location=0x{:04x} (obj space 0x{:04x} + objects_base 0x{:04x})",
+                    final_prop_table_addr, final_location, reference.location, self.final_objects_base
+                );
+
+                // Check what we're overwriting - should be 0xFFFF placeholder
+                let old_high = self.final_data[final_location];
+                let old_low = self.final_data[final_location + 1];
+                let old_word = ((old_high as u16) << 8) | (old_low as u16);
+
+                // VALIDATION: Ensure we're overwriting a 0xFFFF placeholder
+                if old_word != 0xFFFF {
+                    panic!(
+                        "❌ PROPERTY_TABLE_VALIDATION: Expected to overwrite 0xFFFF placeholder at location 0x{:04x}, but found 0x{:04x} (bytes 0x{:02x} 0x{:02x})! \
+                        Object {}, prop_table_addr=0x{:04x}",
+                        final_location,
+                        old_word,
+                        old_high,
+                        old_low,
+                        object_number,
+                        final_prop_table_addr
+                    );
+                } else {
+                    log::debug!(
+                        "✅ PROPERTY_TABLE_VALIDATION: Successfully overwriting 0xFFFF placeholder at location 0x{:04x}",
+                        final_location
+                    );
+                }
+
+                // Write the property table address as big-endian 16-bit value
+                self.final_data[final_location] = ((final_prop_table_addr >> 8) & 0xFF) as u8;
+                self.final_data[final_location + 1] = (final_prop_table_addr & 0xFF) as u8;
+
+                log::debug!(
+                    "🏠 PROPERTY_TABLE_WRITTEN: Object {} prop_table at 0x{:04x} -> bytes 0x{:02x} 0x{:02x}",
+                    object_number, final_location,
+                    ((final_prop_table_addr >> 8) & 0xFF) as u8,
+                    (final_prop_table_addr & 0xFF) as u8
+                );
+
+                return Ok(());
             }
         };
 
@@ -5499,7 +5560,7 @@ impl ZMachineCodeGen {
         let prop_table_final_id = prop_table_addr as u32; // Use space-relative addr as unique ID
 
         log::debug!(
-            "🔗 PROP_TABLE_REF: Creating UnresolvedReference for obj={} prop_table_addr=0x{:04x} at location=0x{:04x}",
+            "🔗 PROP_TABLE_REF: Creating PropertyTableAddress UnresolvedReference for obj={} prop_table_addr=0x{:04x} at location=0x{:04x}",
             obj_num, prop_table_addr, reference_location
         );
 
