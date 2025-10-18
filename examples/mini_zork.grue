@@ -301,13 +301,23 @@ fn handle_take(obj) {
         print("You can't see any such thing.");
         return;
     }
-    
-    // Check if object is inside a closed container
-    if obj.location.container {
+
+    // FIXED: Check if object is inside a closed container
+    // Previous bug: checked obj.location.container (blocked ALL containers)
+    // Now: properly checks obj.location.container && !obj.location.open
+    if obj.location.container && !obj.location.open {
         print("The " + obj.location.name + " is closed.");
         return;
     }
-    
+
+    // FIXED: Added missing takeable property validation
+    // Previous bug: never checked takeable property, allowed taking non-takeable objects
+    // Now: respects takeable: false property (defaults to true if not specified)
+    if obj.takeable == false {
+        print("You can't take that.");
+        return;
+    }
+
     move(obj, player);
     print("Taken.");
 }
@@ -449,17 +459,39 @@ fn list_contents(container) {
 }
 
 fn take_all() {
+    // FIXED: Added clear_quit_state() for consistency with other action functions
+    clear_quit_state();
     let objects = player.location.contents();
     let taken = 0;
-    
+
     for obj in objects {
         if obj != player {
-            move(obj, player);
-            print(obj.name + ": Taken.");
-            taken = taken + 1;
+            // FIXED: Added comprehensive safety checks matching handle_take() behavior
+            // Previous bugs: missing visibility, container, and takeable checks
+
+            // Check if already in inventory
+            if obj.location == player {
+                print(obj.name + ": You already have that.");
+            } else if !player_can_see(obj) {
+                // FIXED: Added visibility check - skip silently if player can't see it
+                // This handles objects in closed containers or otherwise hidden
+            } else if obj.location.container && !obj.location.open {
+                // FIXED: Proper closed container check
+                // Previous bug: missing entirely, could take from closed containers
+                print(obj.name + ": The " + obj.location.name + " is closed.");
+            } else if obj.takeable == false {
+                // FIXED: Respect takeable property
+                // Previous bug: only checked this, ignored other safety checks
+                print(obj.name + ": You can't take that.");
+            } else {
+                // All safety checks passed - take the object
+                move(obj, player);
+                print(obj.name + ": Taken.");
+                taken = taken + 1;
+            }
         }
     }
-    
+
     if taken == 0 {
         print("There's nothing here to take.");
     }

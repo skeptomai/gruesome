@@ -17,9 +17,15 @@
 - Uses bitwise fallback with proper stack storage for now (safer than complex branching)
 - Result: All compilation errors resolved, core game loop functional
 
-### ❌ REMAINING ISSUE: Object Examination Displays Garbled Text
+### ❌ REMAINING ISSUES: Multiple System Problems
 
-**Current Problem**: While object lookup works correctly, examination shows garbled output
+**Issue 1: Inventory Shows Wrong Objects**
+- `inventory` command shows tree in player inventory instead of forest_path
+- InsertObj timing fix attempted but failed - tree still incorrectly placed
+- See `docs/DUAL_NUMBERING_ANALYSIS.md` for architectural root cause analysis
+
+**Issue 2: Object Examination Displays Garbled Text**
+- While object lookup works correctly, examination shows garbled output
 
 **Symptom**: `examine mailbox` displays garbled text or crashes with invalid string references
 

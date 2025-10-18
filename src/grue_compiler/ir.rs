@@ -2876,7 +2876,11 @@ impl IrGenerator {
             } => {
                 // CRITICAL FIX: Special handling for logical operations on comparison expressions
                 // Z-Machine comparison operations are branch-only and cannot store results
-                let is_logical_op = matches!(operator, crate::grue_compiler::ast::BinaryOp::And | crate::grue_compiler::ast::BinaryOp::Or);
+                let is_logical_op = matches!(
+                    operator,
+                    crate::grue_compiler::ast::BinaryOp::And
+                        | crate::grue_compiler::ast::BinaryOp::Or
+                );
 
                 if is_logical_op {
                     let left_is_comparison = Self::is_comparison_expression(&left);

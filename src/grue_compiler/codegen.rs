@@ -271,6 +271,10 @@ pub struct ZMachineCodeGen {
     /// Maps object_name -> Vec<vocabulary_word> (ALL names from object.names)
     /// Used when writing names property to property table
     pub object_vocabulary_names: IndexMap<String, Vec<String>>,
+    /// Pending InsertObj instructions with correct object mappings
+    /// Stored during object table generation, emitted during init block generation
+    /// Each tuple contains: (object_number, parent_number, object_name)
+    pub pending_insertobj_instructions: Vec<(u16, u16, String)>,
     /// Global property registry: property name -> property number
     pub property_numbers: IndexMap<String, u8>,
     /// Properties used by each object: object_name -> set of property names
@@ -423,6 +427,7 @@ impl ZMachineCodeGen {
             room_exit_messages: IndexMap::new(),
             room_handlers: IndexMap::new(),
             object_vocabulary_names: IndexMap::new(),
+            pending_insertobj_instructions: Vec::new(),
             property_numbers,
             object_properties: IndexMap::new(),
             object_table_addr: 0,
@@ -1670,8 +1675,255 @@ impl ZMachineCodeGen {
     /// Processes all unresolved references and pending fixups to patch addresses
     /// in the final assembled game image.
     ///
+    /// Consolidated reference resolution function with comprehensive instrumentation
+    /// Tracks and debugs all reference types: StringPackedAddress, DictionaryRef, FunctionCall, etc.
+    fn consolidated_reference_resolution(&mut self) -> Result<(), CompilerError> {
+        log::debug!("🔧 CONSOLIDATED_REFERENCE_RESOLUTION: Starting comprehensive resolution with instrumentation");
+
+        // Initialize counters for each reference type
+        let mut string_packed_count = 0;
+        let mut string_ref_count = 0;
+        let mut dictionary_ref_count = 0;
+        let mut function_call_count = 0;
+        let mut jump_count = 0;
+        let mut branch_count = 0;
+        let mut label_count = 0;
+        let mut globals_base_count = 0;
+        let mut total_processed = 0;
+        let mut resolution_errors = 0;
+
+        // Phase 1: Categorize and count all references by type
+        log::debug!(
+            "📊 REFERENCE_CATEGORIZATION: Analyzing {} unresolved references",
+            self.reference_context.unresolved_refs.len()
+        );
+
+        for (_i, reference) in self.reference_context.unresolved_refs.iter().enumerate() {
+            match &reference.reference_type {
+                LegacyReferenceType::StringPackedAddress { string_id } => {
+                    string_packed_count += 1;
+                    log::debug!(
+                        "🔤 STRING_PACKED[{}]: ID {} -> uses string_offsets table",
+                        string_packed_count,
+                        string_id
+                    );
+                }
+                LegacyReferenceType::StringRef => {
+                    string_ref_count += 1;
+                    log::debug!(
+                        "🔤 STRING_REF[{}]: ID {} -> uses string_offsets table",
+                        string_ref_count,
+                        reference.target_id
+                    );
+                }
+                LegacyReferenceType::DictionaryRef { word } => {
+                    dictionary_ref_count += 1;
+                    log::debug!(
+                        "📖 DICTIONARY_REF[{}]: word '{}' pos {} -> uses dictionary calculation",
+                        dictionary_ref_count,
+                        word,
+                        reference.target_id
+                    );
+                }
+                LegacyReferenceType::FunctionCall => {
+                    function_call_count += 1;
+                    log::debug!(
+                        "🔧 FUNCTION_CALL[{}]: ID {} -> uses ir_id_to_address table",
+                        function_call_count,
+                        reference.target_id
+                    );
+                }
+                LegacyReferenceType::Jump => {
+                    jump_count += 1;
+                    log::debug!(
+                        "🎯 JUMP[{}]: ID {} -> uses ir_id_to_address table",
+                        jump_count,
+                        reference.target_id
+                    );
+                }
+                LegacyReferenceType::Branch => {
+                    branch_count += 1;
+                    log::debug!(
+                        "🌿 BRANCH[{}]: ID {} -> uses ir_id_to_address table",
+                        branch_count,
+                        reference.target_id
+                    );
+                }
+                LegacyReferenceType::Label(label_id) => {
+                    label_count += 1;
+                    log::debug!(
+                        "🏷️  LABEL[{}]: ID {} -> uses ir_id_to_address table",
+                        label_count,
+                        label_id
+                    );
+                }
+                LegacyReferenceType::GlobalsBase => {
+                    globals_base_count += 1;
+                    log::debug!(
+                        "🌍 GLOBALS_BASE[{}]: -> uses header calculation",
+                        globals_base_count
+                    );
+                }
+            }
+        }
+
+        // Phase 2: Report comprehensive resolution strategy summary
+        log::debug!("📈 RESOLUTION_STRATEGY_SUMMARY:");
+        log::debug!(
+            "   🔤 StringPackedAddress: {} refs -> string_offsets table",
+            string_packed_count
+        );
+        log::debug!(
+            "   🔤 StringRef: {} refs -> string_offsets table",
+            string_ref_count
+        );
+        log::debug!(
+            "   📖 DictionaryRef: {} refs -> dictionary calculation",
+            dictionary_ref_count
+        );
+        log::debug!(
+            "   🔧 FunctionCall: {} refs -> ir_id_to_address table",
+            function_call_count
+        );
+        log::debug!("   🎯 Jump: {} refs -> ir_id_to_address table", jump_count);
+        log::debug!(
+            "   🌿 Branch: {} refs -> ir_id_to_address table",
+            branch_count
+        );
+        log::debug!(
+            "   🏷️  Label: {} refs -> ir_id_to_address table",
+            label_count
+        );
+        log::debug!(
+            "   🌍 GlobalsBase: {} refs -> header calculation",
+            globals_base_count
+        );
+        log::debug!(
+            "   📊 TOTAL: {} references",
+            string_packed_count
+                + string_ref_count
+                + dictionary_ref_count
+                + function_call_count
+                + jump_count
+                + branch_count
+                + label_count
+                + globals_base_count
+        );
+
+        // Phase 3: Validate resolution resources are available
+        let ir_id_count = self.reference_context.ir_id_to_address.len();
+        let string_offset_count = self.string_offsets.len();
+        let ir_dependent_refs = function_call_count + jump_count + branch_count + label_count;
+        let string_dependent_refs = string_packed_count + string_ref_count;
+
+        log::debug!("🔍 RESOLUTION_RESOURCE_VALIDATION:");
+        log::debug!("   📊 ir_id_to_address mappings: {}", ir_id_count);
+        log::debug!("   📊 string_offsets mappings: {}", string_offset_count);
+        log::debug!(
+            "   🔗 References needing ir_id_to_address: {}",
+            ir_dependent_refs
+        );
+        log::debug!(
+            "   🔗 References needing string_offsets: {}",
+            string_dependent_refs
+        );
+        log::debug!(
+            "   🔗 References needing other resolution: {}",
+            dictionary_ref_count + globals_base_count
+        );
+
+        // Validate we have sufficient resources for each resolution type
+        if ir_dependent_refs > ir_id_count {
+            log::warn!("⚠️  IR_ID_SHORTAGE: {} references need ir_id_to_address but only {} mappings available",
+                      ir_dependent_refs, ir_id_count);
+        }
+        if string_dependent_refs > string_offset_count {
+            log::warn!("⚠️  STRING_OFFSET_SHORTAGE: {} references need string_offsets but only {} mappings available",
+                      string_dependent_refs, string_offset_count);
+        }
+
+        // Phase 4: Process all references using existing resolution logic with enhanced tracking
+        for (_i, reference) in self
+            .reference_context
+            .unresolved_refs
+            .clone()
+            .iter()
+            .enumerate()
+        {
+            total_processed += 1;
+
+            log::debug!(
+                "🔄 PROCESSING_REF[{}/{}]: {:?} target_id={} location=0x{:04x}",
+                total_processed,
+                self.reference_context.unresolved_refs.len(),
+                reference.reference_type,
+                reference.target_id,
+                reference.location
+            );
+
+            // Translate location to final address space
+            let adjusted_location = self
+                .translate_space_address_to_final(reference.location_space, reference.location)?;
+
+            let adjusted_reference = UnresolvedReference {
+                reference_type: reference.reference_type.clone(),
+                location: adjusted_location,
+                target_id: reference.target_id,
+                is_packed_address: reference.is_packed_address,
+                offset_size: reference.offset_size,
+                location_space: reference.location_space,
+            };
+
+            // Attempt resolution with type-specific tracking
+            match self.resolve_unresolved_reference(&adjusted_reference) {
+                Ok(()) => {
+                    log::debug!(
+                        "✅ RESOLUTION_SUCCESS[{}]: {:?} resolved successfully",
+                        total_processed,
+                        reference.reference_type
+                    );
+                }
+                Err(e) => {
+                    resolution_errors += 1;
+                    log::debug!(
+                        "❌ RESOLUTION_FAILED[{}]: {:?} failed: {}",
+                        total_processed,
+                        reference.reference_type,
+                        e
+                    );
+                    return Err(e);
+                }
+            }
+        }
+
+        // Phase 5: Final summary report
+        log::debug!("🎯 CONSOLIDATION_SUMMARY:");
+        log::debug!(
+            "   ✅ Successfully processed: {}/{} references",
+            total_processed - resolution_errors,
+            total_processed
+        );
+        log::debug!("   ❌ Resolution errors: {}", resolution_errors);
+        log::debug!(
+            "   🔤 String resolution: {} refs",
+            string_packed_count + string_ref_count
+        );
+        log::debug!("   📖 Dictionary resolution: {} refs", dictionary_ref_count);
+        log::debug!("   🔧 IR-based resolution: {} refs", ir_dependent_refs);
+        log::debug!("   🌍 Header-based resolution: {} refs", globals_base_count);
+
+        if resolution_errors == 0 {
+            log::debug!("🎉 ALL_REFERENCES_RESOLVED: Consolidation completed successfully");
+        }
+
+        Ok(())
+    }
+
     fn resolve_all_addresses(&mut self) -> Result<(), CompilerError> {
         log::info!(" Resolving all address references in final game image");
+
+        // Use the new consolidated resolution function with comprehensive instrumentation
+        self.consolidated_reference_resolution()?;
 
         // Phase 1: Process unresolved references (modern system)
         let unresolved_count = self.reference_context.unresolved_refs.len();
@@ -3690,10 +3942,38 @@ impl ZMachineCodeGen {
         }
 
         log::debug!("🔧 MOVE_DEBUG: args[0]={}, args[1]={}", args[0], args[1]);
-        let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
-        log::debug!("🔧 MOVE_DEBUG: obj_operand={:?}", obj_operand);
-        let dest_operand = self.resolve_ir_id_to_operand(args[1])?;
-        log::debug!("🔧 MOVE_DEBUG: dest_operand={:?}", dest_operand);
+
+        // CRITICAL FIX (Oct 18, 2025): Use corrected object number mappings, not raw IR IDs
+        // Problem: resolve_ir_id_to_operand resolves forest_path IR ID 26 to IR ID 26 instead of Object #6
+        // Solution: Use ir_id_to_object_number mapping that was corrected during object table generation
+        let obj_num = if let Some(&correct_obj_num) = self.ir_id_to_object_number.get(&args[0]) {
+            correct_obj_num
+        } else {
+            return Err(CompilerError::CodeGenError(format!(
+                "Move builtin: object IR ID {} not found in corrected object mappings",
+                args[0]
+            )));
+        };
+
+        let dest_num = if let Some(&correct_dest_num) = self.ir_id_to_object_number.get(&args[1]) {
+            correct_dest_num
+        } else {
+            return Err(CompilerError::CodeGenError(format!(
+                "Move builtin: destination IR ID {} not found in corrected object mappings",
+                args[1]
+            )));
+        };
+
+        let obj_operand = Operand::SmallConstant(obj_num as u8);
+        let dest_operand = Operand::SmallConstant(dest_num as u8);
+
+        log::debug!(
+            "🔧 MOVE_FIXED: IR {} → Object #{}, IR {} → Object #{}",
+            args[0],
+            obj_num,
+            args[1],
+            dest_num
+        );
 
         // Generate insert_obj instruction (2OP:14)
         let layout = self.emit_instruction_typed(
@@ -8057,7 +8337,12 @@ impl ZMachineCodeGen {
         right: IrId,
         target: IrId,
     ) -> Result<(), CompilerError> {
-        log::debug!("Generating logical AND with short-circuit evaluation for left={}, right={}, target={}", left, right, target);
+        log::debug!(
+            "Generating logical AND with short-circuit evaluation for left={}, right={}, target={}",
+            left,
+            right,
+            target
+        );
 
         // For now, fall back to non-short-circuit bitwise AND to avoid compilation errors
         // This maintains compatibility while we work on the implementation
@@ -8082,7 +8367,12 @@ impl ZMachineCodeGen {
         right: IrId,
         target: IrId,
     ) -> Result<(), CompilerError> {
-        log::debug!("Generating logical OR with short-circuit evaluation for left={}, right={}, target={}", left, right, target);
+        log::debug!(
+            "Generating logical OR with short-circuit evaluation for left={}, right={}, target={}",
+            left,
+            right,
+            target
+        );
 
         // For now, fall back to non-short-circuit bitwise OR to avoid compilation errors
         // This maintains compatibility while we work on the implementation
@@ -8511,35 +8801,38 @@ impl ZMachineCodeGen {
         }
 
         for (name, &ir_id) in &ir.symbol_ids {
-            if let Some(&object_number) = ir.object_numbers.get(name) {
-                // CRITICAL FIX (Bug #23, Oct 17, 2025): Prevent overwriting correct mappings from object generation
-                // Problem: Object generation phase already set correct IR_ID → object_number mappings
-                // This function was overwriting those with semantic numbers that don't match generation reality
-                // Solution: Only insert if not already present - preserve generation phase mappings
-                if !self.ir_id_to_object_number.contains_key(&ir_id) {
-                    self.ir_id_to_object_number.insert(ir_id, object_number);
+            if let Some(&ir_semantic_number) = ir.object_numbers.get(name) {
+                // CRITICAL FIX (Oct 18, 2025): Object table generation phase already set correct mappings
+                // Problem: ir.object_numbers contains OLD IR semantic numbering (tree=#10)
+                // But object table generation corrected these to ACTUAL Z-Machine numbers (tree=#13)
+                // Solution: Only add mappings for objects that don't have corrected mappings yet
+                let final_object_number = if !self.ir_id_to_object_number.contains_key(&ir_id) {
+                    // For objects not processed during object table generation, use IR semantic numbering
+                    self.ir_id_to_object_number
+                        .insert(ir_id, ir_semantic_number);
                     log::debug!(
-                        "🗺️ OBJECT_MAPPING: '{}': IR ID {} → Object #{} (new mapping)",
+                        "🗺️ OBJECT_MAPPING: '{}': IR ID {} → Object #{} (fallback from IR semantic)",
                         name,
                         ir_id,
-                        object_number
+                        ir_semantic_number
                     );
+                    ir_semantic_number
                 } else {
                     let existing = self.ir_id_to_object_number[&ir_id];
                     log::debug!(
-                        "🗺️ OBJECT_MAPPING: '{}': IR ID {} → Object #{} (existing: {}, not overwritten)",
+                        "🗺️ OBJECT_MAPPING: '{}': IR ID {} already mapped to Object #{} (preserving object table generation mapping)",
                         name,
                         ir_id,
-                        object_number,
                         existing
                     );
-                }
+                    existing
+                };
                 log::debug!(
                     " MAPPING: IR ID {} ('{}') -> Object #{} {}",
                     ir_id,
                     name,
-                    object_number,
-                    if object_number == 77 {
+                    final_object_number,
+                    if final_object_number == 77 {
                         " <- THIS IS THE PROBLEM!"
                     } else {
                         ""
@@ -8552,7 +8845,7 @@ impl ZMachineCodeGen {
                         "MAPPING PROBLEMATIC IR ID {} ('{}') -> Object #{}",
                         ir_id,
                         name,
-                        object_number
+                        final_object_number
                     );
                 }
             } else {
@@ -8838,9 +9131,11 @@ impl ZMachineCodeGen {
         result
     }
 
-
     /// Helper function to get Z-Machine opcode and branch sense for comparison operations
-    fn get_comparison_opcode_and_sense(&self, op: &IrBinaryOp) -> Result<(u8, bool), CompilerError> {
+    fn get_comparison_opcode_and_sense(
+        &self,
+        op: &IrBinaryOp,
+    ) -> Result<(u8, bool), CompilerError> {
         let (opcode, branch_on_true) = match op {
             IrBinaryOp::Equal => (0x01, true),         // je - branch if equal
             IrBinaryOp::NotEqual => (0x01, false),     // je - branch if NOT equal
@@ -9334,61 +9629,41 @@ impl ZMachineCodeGen {
         self.function_header_locations
             .insert(init_routine_id, header_location);
 
-        // CRITICAL FIX (Oct 15, 2025): Generate InsertObj instructions for nested objects
-        // Objects declared with `contains {}` syntax have parent/sibling/child set in IR,
-        // but the Z-Machine requires InsertObj instructions to actually set up the object tree at runtime.
-        // Without these, GetObjectParent returns garbage because tree pointers aren't initialized.
+        // NOTE: InsertObj instruction generation moved to after object table generation
+        // This ensures correct object mappings are used (see generate_object_tables completion)
+
+        // CRITICAL FIX (Oct 17, 2025): Emit pending InsertObj instructions with correct mappings
+        // These were generated during object table generation when correct mappings were available
         log::debug!(
-            "🌳 OBJECT_TREE_INIT: Generating InsertObj instructions for {} objects",
-            _ir.objects.len()
+            "🌳 EMITTING: {} pending InsertObj instructions with correct object mappings",
+            self.pending_insertobj_instructions.len()
         );
 
-        for object in &_ir.objects {
-            if let Some(parent_id) = object.parent {
-                // Skip player object - it's handled by player.location assignment in user's init block
-                if object.name == "player" {
-                    log::debug!(
-                        "  Skipping player object (handled by user init: player.location = room)"
-                    );
-                    continue;
-                }
+        let pending_instructions = self.pending_insertobj_instructions.clone();
+        for (obj_num, parent_num, object_name) in &pending_instructions {
+            // Create operands for the correct object numbers
+            let obj_operand = Operand::SmallConstant(*obj_num as u8);
+            let parent_operand = Operand::SmallConstant(*parent_num as u8);
 
-                log::debug!(
-                    "🌳 INSERTING: Object '{}' (IR ID {}) → parent IR ID {}",
-                    object.name,
-                    object.id,
-                    parent_id
-                );
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::InsertObj),
+                &[obj_operand, parent_operand],
+                None, // No result
+                None, // No branch
+            )?;
 
-                // Emit InsertObj instruction: insert_obj(object, parent)
-                // This initializes the object tree so GetObjectParent works correctly
-                let obj_operand = self.resolve_ir_id_to_operand(object.id)?;
-                let parent_operand = self.resolve_ir_id_to_operand(parent_id)?;
-
-                self.emit_instruction_typed(
-                    Opcode::Op2(Op2::InsertObj),
-                    &[obj_operand, parent_operand],
-                    None, // No result
-                    None, // No branch
-                )?;
-
-                log::debug!(
-                    "  ✓ Emitted InsertObj at 0x{:04x}: {} → {}",
-                    self.code_address - 3, // InsertObj is 3 bytes
-                    object.name,
-                    parent_id
-                );
-            } else {
-                log::debug!("  Skipping '{}' (no parent specified in IR)", object.name);
-            }
+            log::debug!(
+                "  ✓ Emitted InsertObj at 0x{:04x}: Object #{} ('{}') → Parent #{}",
+                self.code_address - 3, // InsertObj is 3 bytes
+                obj_num,
+                object_name,
+                parent_num
+            );
         }
 
         log::debug!(
-            "🌳 OBJECT_TREE_INIT: Complete - {} InsertObj instructions generated",
-            _ir.objects
-                .iter()
-                .filter(|o| o.parent.is_some() && o.name != "player")
-                .count()
+            "🌳 OBJECT_TREE_INIT: Complete - {} InsertObj instructions emitted with correct mappings",
+            self.pending_insertobj_instructions.len()
         );
 
         // Generate the init block code directly after the header

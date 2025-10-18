@@ -613,14 +613,25 @@ impl ZMachineCodeGen {
             );
         }
 
-        // Build object_id_to_number mapping from complete all_objects vector
+        // CRITICAL FIX (Oct 18, 2025): Build object_id_to_number mapping using IR semantic numbering
+        // This must match the numbering used in actual object creation (lines 917-926)
+        // Problem was sequential numbering here vs IR semantic numbering in object creation
         log::info!("=== BUILDING OBJECT ID MAPPING ===");
         let mut object_id_to_number: IndexMap<IrId, u8> = IndexMap::new();
-        for (index, object) in all_objects.iter().enumerate() {
-            let obj_num = (index + 1) as u8; // Objects are numbered starting from 1
+        for object in all_objects.iter() {
+            let obj_num = if let Some(&semantic_number) = ir.object_numbers.get(&object.name) {
+                semantic_number as u8
+            } else {
+                // Fallback: find position in all_objects vector for objects not in IR numbering
+                let index = all_objects
+                    .iter()
+                    .position(|o| o.id == object.id)
+                    .unwrap_or(0);
+                (index + 1) as u8
+            };
             object_id_to_number.insert(object.id, obj_num);
             log::info!(
-                "ID Mapping: IR ID {} → Object #{} ('{}')",
+                "ID Mapping: IR ID {} → Object #{} ('{}') - using IR semantic numbering",
                 object.id,
                 obj_num,
                 object.short_name
@@ -829,12 +840,7 @@ impl ZMachineCodeGen {
             ir.objects.len()
         );
 
-        // Build complete object_id_to_number mapping for create_object_entry_from_ir_with_mapping
-        let mut object_id_to_number: IndexMap<IrId, u8> = IndexMap::new();
-        for (index, object) in all_objects.iter().enumerate() {
-            let obj_num = (index + 1) as u8;
-            object_id_to_number.insert(object.id, obj_num);
-        }
+        // NOTE: object_id_to_number mapping already created above with correct IR semantic numbering
 
         // CRITICAL FIX (Oct 15, 2025): Update self.ir_id_to_object_number with ACTUAL object numbers
         // Problem: InsertObj instructions used old object numbers from semantic analysis (tree=#10, forest_path=#9)
@@ -850,6 +856,61 @@ impl ZMachineCodeGen {
                 obj_num
             );
         }
+
+        // CRITICAL FIX (Oct 17, 2025): Generate InsertObj instructions NOW with correct mappings
+        // Problem: InsertObj generation happened during init block before object table generation
+        // This used incorrect mappings (tree=#13 vs actual #10) causing wrong object tree setup
+        // Solution: Generate InsertObj instructions here AFTER mappings are corrected
+        // These will be stored and added to the init block when it's generated later
+        log::info!("=== GENERATING INSERTOBJ INSTRUCTIONS WITH CORRECT MAPPINGS ===");
+        self.pending_insertobj_instructions.clear(); // Clear any old instructions
+
+        for object in &ir.objects {
+            if let Some(parent_id) = object.parent {
+                // Skip player object - it's handled by player.location assignment in user's init block
+                if object.name == "player" {
+                    log::debug!(
+                        "  Skipping player object (handled by user init: player.location = room)"
+                    );
+                    continue;
+                }
+
+                // Get the CORRECT object numbers from the updated mapping
+                let obj_num = self
+                    .ir_id_to_object_number
+                    .get(&object.id)
+                    .copied()
+                    .unwrap_or(0);
+                let parent_num = self
+                    .ir_id_to_object_number
+                    .get(&parent_id)
+                    .copied()
+                    .unwrap_or(0);
+
+                log::info!(
+                    "🌳 INSERTING: Object '{}' (IR ID {} → Object #{}) → parent (IR ID {} → Object #{})",
+                    object.name,
+                    object.id,
+                    obj_num,
+                    parent_id,
+                    parent_num
+                );
+
+                // Store the InsertObj instruction for later emission during init block generation
+                self.pending_insertobj_instructions.push((
+                    obj_num,
+                    parent_num,
+                    object.name.clone(),
+                ));
+            } else {
+                log::debug!("  Skipping '{}' (no parent specified in IR)", object.name);
+            }
+        }
+
+        log::info!(
+            "🌳 OBJECT_TREE_INIT: {} InsertObj instructions prepared with correct mappings",
+            self.pending_insertobj_instructions.len()
+        );
 
         // Step 4: Create object table entries
         for (index, object) in all_objects.iter().enumerate() {
