@@ -1,0 +1,56 @@
+// MINIMAL TEST CASE: Property 16 (names) garbled text bug
+// Isolates the invalid packed address 0x0000 issue when examining objects
+//
+// BUG: Property 16 (names) contains packed string address instead of dictionary addresses
+// ERROR: print_paddr called with invalid packed address 0x0000
+//
+// This minimal test should reproduce the issue when running "examine coin"
+
+world {
+    room simple_room "Simple Room" {
+        desc: "A simple test room."
+
+        // Single object to test property 16 (names) encoding
+        object coin {
+            names: ["coin"]
+            desc: "A simple coin."
+        }
+    }
+}
+
+grammar {
+    verb "look" {
+        default => look_around(),
+        "at" + noun => examine($2)
+    }
+
+    verb "examine" {
+        noun => examine($noun)
+    }
+}
+
+fn look_around() {
+    print(player.location.desc);
+    list_objects(player.location);
+}
+
+fn examine(obj) {
+    // This should trigger the garbled text bug when accessing obj.desc
+    // because it needs to resolve the object's names property first
+    print(obj.desc);
+}
+
+fn list_objects(location) {
+    let objects = location.contents();
+    for obj in objects {
+        if obj != player {
+            print("There is " + obj.name + " here.");
+        }
+    }
+}
+
+init {
+    player.location = simple_room;
+    print("Property 16 Test - try 'examine coin'");
+    look_around();
+}

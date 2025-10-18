@@ -35,6 +35,7 @@ pub enum CompilerError {
     StringTooLong(String),
     InvalidBytecode(String),
     UnresolvedReference(String),
+    InvalidPropertyTableReference(String),
     OpcodeFormConflict {
         opcode: u8,
         long_form_name: String,
@@ -109,6 +110,9 @@ impl fmt::Display for CompilerError {
             }
             CompilerError::UnresolvedReference(msg) => {
                 write!(f, "Unresolved reference: {}", msg)
+            }
+            CompilerError::InvalidPropertyTableReference(msg) => {
+                write!(f, "Invalid property table reference: {}", msg)
             }
             CompilerError::OpcodeFormConflict {
                 opcode,

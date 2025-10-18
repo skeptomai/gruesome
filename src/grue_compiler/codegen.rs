@@ -275,13 +275,18 @@ pub struct ZMachineCodeGen {
     /// Stored during object table generation, emitted during init block generation
     /// Each tuple contains: (object_number, parent_number, object_name)
     pub pending_insertobj_instructions: Vec<(u16, u16, String)>,
+    /// Pending property table address references for final address resolution
+    /// Stored during object table generation, resolved during final assembly
+    /// Each tuple contains: (object_number, space_relative_location, space_relative_prop_table_addr)
+    pub pending_property_table_refs: Vec<(u8, usize, usize)>,
     /// Global property registry: property name -> property number
     pub property_numbers: IndexMap<String, u8>,
     /// Properties used by each object: object_name -> set of property names
     pub object_properties: IndexMap<String, Vec<String>>,
 
     // Tables for Z-Machine structures
-    pub object_table_addr: usize,
+    pub object_table_addr: usize, // Object-space relative address (used during generation)
+    pub object_table_final_addr: usize, // Final memory address (used during resolution)
     pub property_table_addr: usize,
     pub current_property_addr: usize, // Current property table allocation pointer (moves during compilation)
     /// Fixed boundary between object entries and property tables for address translation.
@@ -428,9 +433,11 @@ impl ZMachineCodeGen {
             room_handlers: IndexMap::new(),
             object_vocabulary_names: IndexMap::new(),
             pending_insertobj_instructions: Vec::new(),
+            pending_property_table_refs: Vec::new(),
             property_numbers,
             object_properties: IndexMap::new(),
-            object_table_addr: 0,
+            object_table_addr: 0, // Object-space relative (always 0 for separated spaces)
+            object_table_final_addr: 0, // Final memory address (set during layout)
             property_table_addr: 0,
             current_property_addr: 0,
             initial_property_addr: 0, // Fixed boundary for address translation
@@ -612,6 +619,7 @@ impl ZMachineCodeGen {
         // Phase 1: Analyze and prepare all content
         log::info!("Phase 1: Content analysis and preparation");
         self.layout_memory_structures(&ir)?; // CRITICAL: Plan memory layout before generation
+        log::debug!("🔍 POST_LAYOUT: object_table_addr = 0x{:04x}, object_table_final_addr = 0x{:04x} after layout_memory_structures", self.object_table_addr, self.object_table_final_addr);
         self.setup_comprehensive_id_mappings(&ir);
         // CRITICAL: Transfer object numbers from IR early so they're available when generating object tables
         self.object_numbers = ir.object_numbers.clone();
@@ -625,7 +633,9 @@ impl ZMachineCodeGen {
 
         // Phase 2: Generate ALL Z-Machine sections to separated working spaces
         log::info!("Phase 2: Generate ALL Z-Machine sections to separated memory spaces");
+        log::debug!("🔍 PRE_GENERATE: object_table_addr = 0x{:04x}, object_table_final_addr = 0x{:04x} before generate_all_zmachine_sections", self.object_table_addr, self.object_table_final_addr);
         self.generate_all_zmachine_sections(&ir)?;
+        log::debug!("🔍 POST_GENERATE: object_table_addr = 0x{:04x}, object_table_final_addr = 0x{:04x} after generate_all_zmachine_sections", self.object_table_addr, self.object_table_final_addr);
         log::info!(" Phase 2 complete: All Z-Machine sections generated");
 
         // DEBUG: Show space population before final assembly
@@ -1450,7 +1460,7 @@ impl ZMachineCodeGen {
                 object_base
             );
 
-            // CRITICAL FIX: Patch property table addresses from object space relative to absolute addresses
+            // Patch property table addresses from space-relative to absolute
             self.patch_property_table_addresses(object_base)?;
 
             // DEBUG: Verify object #2 property table pointer IMMEDIATELY after patching
@@ -1653,6 +1663,7 @@ impl ZMachineCodeGen {
 
         // Phase 3f: Resolve all address references (including string properties)
         log::debug!(" Step 3f: Resolving all address references and fixups");
+        log::debug!("🔍 PRE_RESOLVE: object_table_addr = 0x{:04x}, object_table_final_addr = 0x{:04x} before resolve_all_addresses", self.object_table_addr, self.object_table_final_addr);
         self.resolve_all_addresses()?;
 
         // Phase 3g: Finalize file metadata (length and checksum - must be last)
@@ -1941,85 +1952,81 @@ impl ZMachineCodeGen {
             );
         }
 
-        for reference in &self.reference_context.unresolved_refs.clone() {
-            // CRITICAL FIX: Translate reference location from space-relative to final-assembly layout
-            // References now include which memory space they belong to for deterministic translation
-            let adjusted_location = self
-                .translate_space_address_to_final(reference.location_space, reference.location)?;
+        // CRITICAL BUG FIX: DO NOT PROCESS REFERENCES AGAIN!
+        // The consolidated_reference_resolution() function above already resolved ALL references.
+        // Processing them again causes DOUBLE RESOLUTION, corrupting object table entries.
+        // This was causing Object 4's property table address to become 0x3100 instead of ~0x0449.
 
-            let adjusted_reference = UnresolvedReference {
-                reference_type: reference.reference_type.clone(),
-                location: adjusted_location,
-                target_id: reference.target_id,
-                is_packed_address: reference.is_packed_address,
-                offset_size: reference.offset_size,
-                location_space: reference.location_space,
-            };
+        // OLD BUGGY CODE (REMOVED):
+        // for reference in &self.reference_context.unresolved_refs.clone() {
+        //     ... process reference again (WRONG!)
+        // }
 
-            log::trace!(
- "📍 ADDRESS TRANSLATION: Reference location 0x{:04x} -> 0x{:04x} (generation->final mapping)",
- reference.location,
- adjusted_reference.location
- );
+        // Instead, skip duplicate processing since consolidated function already handled everything
 
-            log::debug!(
-                "Reference resolution: location=0x{:04x} target_id={} type={:?}",
-                adjusted_reference.location,
-                adjusted_reference.target_id,
-                adjusted_reference.reference_type
-            );
+        log::info!(" All unresolved references already processed by consolidated function");
 
-            // DEBUG: Check if this reference is trying to write to Object #2's property table pointer
-            if adjusted_reference.location == 0x040A || adjusted_reference.location == 0x040B {
+        // Phase 1.5: Process pending property table address references
+        let prop_table_ref_count = self.pending_property_table_refs.len();
+        log::debug!("🔄 PROP_TABLE_PHASE: Found {} pending property table references, object_table_final_addr=0x{:04x}", prop_table_ref_count, self.object_table_final_addr);
+        if prop_table_ref_count > 0 {
+            log::debug!("🏠 PROPERTY_TABLES: Resolving {} property table address references", prop_table_ref_count);
+            log::debug!("🔄 ENTERING_LOOP: About to start property table resolution loop");
+
+            for (obj_num, reference_location, prop_table_addr) in &self.pending_property_table_refs.clone() {
                 log::debug!(
-                    "⚠️  DETECTED WRITE TO 0x040A: Reference at 0x{:04x} target_id={} type={:?}",
-                    adjusted_reference.location,
-                    adjusted_reference.target_id,
-                    adjusted_reference.reference_type
+                    " Property table ref: Object {} at location 0x{:04x}, object-space addr 0x{:04x}",
+                    obj_num,
+                    reference_location,
+                    prop_table_addr
+                );
+
+                // Translate object-space address to final-file address
+                log::debug!(" 🔄 STARTING_TRANSLATION: Object {}", obj_num);
+                let final_address = self.translate_space_address_to_final(
+                    MemorySpace::Objects,
+                    *prop_table_addr
+                )?;
+
+                log::debug!(
+                    " ✅ TRANSLATION_SUCCESS: Object {} property table: 0x{:04x} (object-space) → 0x{:04x} (final)",
+                    obj_num,
+                    prop_table_addr,
+                    final_address
+                );
+
+                // Write the resolved address to the final data
+                let object_base = self.object_table_final_addr; // Use final memory address for resolution
+                let final_location = object_base + reference_location;
+
+                log::debug!(
+                    " 🔧 BOUNDS_CHECK: object_base=0x{:04x} + reference_location=0x{:04x} = final_location=0x{:04x}, final_data.len()={}",
+                    object_base, reference_location, final_location, self.final_data.len()
+                );
+
+                if final_location + 1 < self.final_data.len() {
+                    log::debug!(" 🔧 BOUNDS_OK: Writing to final_data[0x{:04x}..0x{:04x}]", final_location, final_location + 1);
+                    self.final_data[final_location] = (final_address >> 8) as u8;     // High byte
+                    self.final_data[final_location + 1] = (final_address & 0xFF) as u8; // Low byte
+                    log::debug!(" 🔧 WRITE_DONE: Bytes written successfully");
+                } else {
+                    log::debug!(" 🔧 BOUNDS_FAIL: final_location=0x{:04x} + 1 >= final_data.len()={}", final_location, self.final_data.len());
+                    return Err(CompilerError::CodeGenError(format!(
+                        "Property table address write out of bounds: final_location=0x{:04x}, final_data.len()={}",
+                        final_location, self.final_data.len()
+                    )));
+                }
+
+                log::debug!(
+                    " ✅ Written property table address 0x{:04x} for Object {} at location 0x{:04x}",
+                    final_address,
+                    obj_num,
+                    reference_location
                 );
             }
 
-            // DEBUG: Track specific addresses that are problematic - EXACT CRASH LOCATION
-            if adjusted_reference.location >= 0x1220 && adjusted_reference.location <= 0x1230 {
-                log::debug!(
- " EXACT CRASH LOCATION: Processing reference at PC 0x{:04x} (near crash location!)",
- adjusted_reference.location
- );
-                log::debug!(" Target ID: {}", adjusted_reference.target_id);
-                log::debug!(" Type: {:?}", adjusted_reference.reference_type);
-                log::debug!(" Is packed: {}", adjusted_reference.is_packed_address);
-                log::debug!(" Offset size: {:?}", adjusted_reference.offset_size);
-
-                // CHECK: Is this target ID in our mapping table?
-                if let Some(&mapped_address) = self
-                    .reference_context
-                    .ir_id_to_address
-                    .get(&adjusted_reference.target_id)
-                {
-                    log::debug!(
-                        " Target ID {} FOUND in ir_id_to_address -> 0x{:04x}",
-                        adjusted_reference.target_id,
-                        mapped_address
-                    );
-                } else {
-                    log::debug!(
-                        " Target ID {} NOT FOUND in ir_id_to_address table!",
-                        adjusted_reference.target_id
-                    );
-                    log::debug!(
-                        " Available IDs: {:?}",
-                        self.reference_context
-                            .ir_id_to_address
-                            .keys()
-                            .take(20)
-                            .collect::<Vec<_>>()
-                    );
-                }
-            }
-
-            self.resolve_unresolved_reference(&adjusted_reference)?;
+            log::info!(" ✅ All {} property table address references resolved", prop_table_ref_count);
         }
-        log::info!(" All unresolved references processed");
 
         // Phase 2: Process pending fixups (legacy compatibility)
         let fixup_count = self.pending_fixups.len();
@@ -2584,6 +2591,24 @@ impl ZMachineCodeGen {
                     (target_address & 0xFF) as u8
                 );
 
+                // VALIDATION: Ensure we're overwriting a 0xFF placeholder
+                if old_value != 0xFF {
+                    panic!(
+                        "❌ PLACEHOLDER_VALIDATION: Expected to overwrite 0xFF placeholder at location 0x{:04x}, but found 0x{:02x}! \
+                        Reference: type={:?}, target_id={}, location=0x{:04x}",
+                        reference.location,
+                        old_value,
+                        reference.reference_type,
+                        reference.target_id,
+                        reference.location
+                    );
+                } else {
+                    log::debug!(
+                        "✅ PLACEHOLDER_VALIDATION: Successfully overwriting 0xFF placeholder at location 0x{:04x}",
+                        reference.location
+                    );
+                }
+
                 // Single byte
                 self.final_data[reference.location] = (target_address & 0xFF) as u8;
 
@@ -2600,7 +2625,28 @@ impl ZMachineCodeGen {
                 // Check what we're overwriting - should be 0xFFFF if this was a placeholder
                 let old_high = self.final_data[reference.location];
                 let old_low = self.final_data[reference.location + 1];
+                let old_word = ((old_high as u16) << 8) | (old_low as u16);
                 debug!("Patch 2-byte: location=0x{:04x} old_value=0x{:02x}{:02x} -> new_value=0x{:04x}", reference.location, old_high, old_low, target_address);
+
+                // VALIDATION: Ensure we're overwriting a 0xFFFF placeholder
+                if old_word != 0xFFFF {
+                    panic!(
+                        "❌ PLACEHOLDER_VALIDATION: Expected to overwrite 0xFFFF placeholder at location 0x{:04x}, but found 0x{:04x} (bytes 0x{:02x} 0x{:02x})! \
+                        Reference: type={:?}, target_id={}, location=0x{:04x}",
+                        reference.location,
+                        old_word,
+                        old_high,
+                        old_low,
+                        reference.reference_type,
+                        reference.target_id,
+                        reference.location
+                    );
+                } else {
+                    log::debug!(
+                        "✅ PLACEHOLDER_VALIDATION: Successfully overwriting 0xFFFF placeholder at location 0x{:04x}",
+                        reference.location
+                    );
+                }
 
                 // CRITICAL FIX: For string references, we need to pack the address
                 // StringPackedAddress is ALWAYS packed (used for object properties)
@@ -5170,7 +5216,9 @@ impl ZMachineCodeGen {
         self.story_data[self.parse_buffer_addr + 1] = 0; // Current words
 
         // Reserve space for object table
-        self.object_table_addr = addr;
+        self.object_table_final_addr = addr; // Final memory address for address resolution
+        self.object_table_addr = 0; // Object-space relative address for generation
+        log::debug!("🏗️ LAYOUT: Setting object_table_final_addr = 0x{:04x}, object_table_addr = 0", addr);
         // BUG FIX (Oct 15, 2025 - Bug #22): Player is in ir.objects[0], and object generation adds:
         // - Player explicitly (1 object)
         // - All rooms (ir.rooms.len() objects)
@@ -5435,8 +5483,28 @@ impl ZMachineCodeGen {
         );
 
         // Property table address (word) - bytes 7-8 of object entry
-        self.write_to_object_space(obj_offset + 7, (prop_table_addr >> 8) as u8)?; // High byte
-        self.write_to_object_space(obj_offset + 8, (prop_table_addr & 0xFF) as u8)?; // Low byte
+        // CRITICAL FIX: Property table addresses must be resolved to final file layout
+        // Previous bug: Wrote space-relative addresses directly, causing Object #4+ corruption
+        // when interpreter's object count calculation found wrong minimum property table address
+        // Solution: Write placeholders and create UnresolvedReference for final address resolution
+
+        // Write placeholder bytes for property table address (will be resolved during final assembly)
+        self.write_to_object_space(obj_offset + 7, 0xFF)?; // High byte placeholder
+        self.write_to_object_space(obj_offset + 8, 0xFF)?; // Low byte placeholder
+
+        // Create UnresolvedReference to resolve property table address during final assembly
+        // The target is the space-relative property table address that needs translation to final layout
+        // Using a special reference type that will translate object-space addresses to final addresses
+        let reference_location = obj_offset + 7; // Location in object space where address should be written
+        let prop_table_final_id = prop_table_addr as u32; // Use space-relative addr as unique ID
+
+        log::debug!(
+            "🔗 PROP_TABLE_REF: Creating UnresolvedReference for obj={} prop_table_addr=0x{:04x} at location=0x{:04x}",
+            obj_num, prop_table_addr, reference_location
+        );
+
+        // Store this for resolution during final assembly - we need to translate space addresses to final addresses
+        self.pending_property_table_refs.push((obj_num, reference_location, prop_table_addr));
 
         // DEBUG: Log complete object entry that was just written
         if obj_num == 1 {
@@ -5454,21 +5522,28 @@ impl ZMachineCodeGen {
             }
         }
 
-        // DEBUG: Verify what was actually written
+        // DEBUG: Verify placeholders were written correctly
         let written_high = self.object_space[obj_offset + 7];
         let written_low = self.object_space[obj_offset + 8];
         let written_addr = ((written_high as u16) << 8) | (written_low as u16);
-        log::warn!(
+        log::debug!(
             "🔗 OBJ_PTR_WRITE: obj_num={} name='{}' obj_offset=0x{:04x} prop_table_addr=0x{:04x} written=0x{:04x}",
             obj_num, object.short_name, obj_offset, prop_table_addr, written_addr
         );
 
-        if written_addr != prop_table_addr as u16 {
+        // FIXED: During object creation, we expect 0xFFFF placeholders, not final addresses
+        // Final address resolution happens later during property table resolution phase
+        if written_addr != 0xFFFF {
             log::error!(
-                "❌ OBJ_PTR_MISMATCH: obj_num={} Expected 0x{:04x} but wrote 0x{:04x}!",
+                "❌ OBJ_PLACEHOLDER_ERROR: obj_num={} Expected placeholder 0xFFFF but wrote 0x{:04x}!",
                 obj_num,
-                prop_table_addr,
                 written_addr
+            );
+        } else {
+            log::debug!(
+                "✅ OBJ_PLACEHOLDER_OK: obj_num={} placeholder 0xFFFF written correctly, will resolve to 0x{:04x} later",
+                obj_num,
+                prop_table_addr
             );
         }
 
@@ -5737,6 +5812,15 @@ impl ZMachineCodeGen {
 
                 // If this is names property (property 16), create DictionaryRef for each name
                 let names_prop = *self.property_numbers.get("names").unwrap_or(&16);
+                // CRITICAL DEBUG: Track names property processing
+                if prop_num == names_prop {
+                    log::debug!(
+                        "🔍 NAMES_PROCESSING: object='{}' prop_num={} names_prop={} i={} i%2={} prop_data.len()={} condition_check={}",
+                        object.name, prop_num, names_prop, i, i % 2, prop_data.len(),
+                        (i % 2 == 0 && i < prop_data.len() - 1)
+                    );
+                }
+
                 if prop_num == names_prop && i % 2 == 0 && i < prop_data.len() - 1 {
                     // Check if this object has vocabulary names mapped
                     if let Some(vocab_words) = self.object_vocabulary_names.get(&object.name) {
@@ -5847,6 +5931,12 @@ impl ZMachineCodeGen {
                             *on_exit_id
                         };
 
+                        // CRITICAL DEBUG: Track function handler processing
+                        log::debug!(
+                            "🔍 FUNCTION_HANDLER: object='{}' prop_num={} handler_id={:?} on_look_prop={} on_enter_prop={} on_exit_prop={}",
+                            object.name, prop_num, handler_id, on_look_prop, on_enter_prop, on_exit_prop
+                        );
+
                         // Only create reference if handler exists (Some)
                         if let Some(func_id) = handler_id {
                             // Create UnresolvedReference for function address (packed)
@@ -5948,166 +6038,86 @@ impl ZMachineCodeGen {
     /// After object_space is copied to final_data, property table pointers in object headers
     /// need to be updated from space-relative offsets to absolute memory addresses.
     ///
-    /// CRITICAL: We calculate max_objects from total space size, which includes property tables.
-    /// This means we'll loop past actual objects into property table data. We detect the boundary
-    /// by checking if property table pointers are valid (must point >= defaults_size).
-    /// When we hit invalid pointers, we BREAK (not continue) - we've reached the boundary.
-    ///
-    /// Bug History: Previously looped through 126 "objects" when only 14 existed, treating
-    /// property table bytes as object headers and corrupting property data. See CLAUDE.md Bug 6.
+    /// Patches property table addresses from object space relative to absolute file addresses.
+    /// Uses the pending_property_table_refs list to know exactly which objects need patching.
     fn patch_property_table_addresses(&mut self, object_base: usize) -> Result<(), CompilerError> {
-        log::debug!(" PATCH: Starting property table address patching");
+        log::debug!("PATCH: Starting property table address patching using pending_property_table_refs");
+        log::debug!("PATCH: object_base=0x{:04x}, {} pending refs to patch",
+            object_base, self.pending_property_table_refs.len());
 
-        // Calculate how many objects exist based on object space size
-        // Each object entry is 9 bytes in V3: attributes(4) + parent(1) + sibling(1) + child(1) + prop_table_addr(2)
-        let obj_entry_size = match self.version {
-            ZMachineVersion::V3 => 9,
-            ZMachineVersion::V4 | ZMachineVersion::V5 => 14,
-        };
-
-        // Find where objects end by looking for property defaults table
-        // Property defaults come first, then objects, then property tables
-        let default_props = match self.version {
-            ZMachineVersion::V3 => 31,
-            ZMachineVersion::V4 | ZMachineVersion::V5 => 63,
-        };
-        let defaults_size = default_props * 2; // 2 bytes per default
-        let objects_start = defaults_size; // Objects start after defaults
-
-        // Calculate maximum possible objects from remaining space
-        // WARNING: This OVERESTIMATES because remaining_space includes property tables!
-        // We use validation below to detect when we've gone past actual objects.
-        let remaining_space = self.object_space.len() - objects_start;
-        let max_objects = remaining_space / obj_entry_size;
-
-        log::debug!(" PATCH: Object space layout analysis:");
-        log::debug!(" - Object space size: {} bytes", self.object_space.len());
-        log::debug!(
-            " - Defaults table: {} bytes (0x00-0x{:02x})",
-            defaults_size,
-            defaults_size - 1
-        );
-        log::debug!(" - Objects start at: 0x{:02x}", objects_start);
-        log::debug!(
-            " - Max objects: {} ({}x{} bytes)",
-            max_objects,
-            max_objects,
-            obj_entry_size
-        );
-
-        // Calculate minimum valid property table address
-        // Property tables must be AFTER all object headers
-        // We don't know exact object count, but we can detect when we've gone too far
-        // by checking if property table pointer points backwards into defaults/headers
-        let min_valid_prop_addr = objects_start; // At minimum, must be after defaults
-
-        // Patch property table addresses for each object
         let mut objects_patched = 0;
-        for obj_index in 0..max_objects {
-            let obj_offset_in_space = objects_start + (obj_index * obj_entry_size);
-            let prop_addr_offset = obj_offset_in_space + 7; // Property table address at bytes 7-8
 
-            // Check if we're still within object space bounds
-            if prop_addr_offset + 1 >= self.object_space.len() {
-                break; // Reached end of object space
+        // Use the exact list of property table references that need patching
+        for (obj_num, space_relative_location, space_relative_prop_table_addr) in &self.pending_property_table_refs {
+            log::debug!("PATCH_REF: Processing object {}, space_relative_location=0x{:04x}, space_relative_prop_table_addr=0x{:04x}",
+                obj_num, space_relative_location, space_relative_prop_table_addr);
+
+            // Calculate where in final_data the property table address is stored
+            // The property table address is stored in the object entry at bytes 7-8
+            // Each object entry is 9 bytes in V3: attributes(4) + parent(1) + sibling(1) + child(1) + prop_table_addr(2)
+            let obj_entry_size = match self.version {
+                ZMachineVersion::V3 => 9,
+                ZMachineVersion::V4 | ZMachineVersion::V5 => 14,
+            };
+
+            let default_props = match self.version {
+                ZMachineVersion::V3 => 31,
+                ZMachineVersion::V4 | ZMachineVersion::V5 => 63,
+            };
+            let defaults_size = default_props * 2; // 2 bytes per default
+            let objects_start = defaults_size; // Objects start after defaults
+
+            // The space_relative_location already points to where the property table address should be patched
+            let final_addr_offset = object_base + space_relative_location;
+
+            log::debug!("PATCH_CALC: obj#{} space_relative_location=0x{:04x} final_offset=0x{:04x}",
+                obj_num, space_relative_location, final_addr_offset);
+
+            // Verify we're overwriting a 0xFFFF placeholder
+            let current_high = self.final_data[final_addr_offset];
+            let current_low = self.final_data[final_addr_offset + 1];
+            let current_word = ((current_high as u16) << 8) | (current_low as u16);
+
+            if current_word != 0xFFFF {
+                log::error!("PATCH_ERROR: Expected 0xFFFF placeholder at object {} (offset 0x{:04x}), found 0x{:04x}",
+                    obj_num, final_addr_offset, current_word);
+                return Err(CompilerError::InvalidPropertyTableReference(
+                    format!("Object {} property table address not placeholder: found 0x{:04x}, expected 0xFFFF",
+                        obj_num, current_word)));
             }
 
-            // Read the current object space relative property table address
-            let final_addr_offset = object_base + prop_addr_offset;
+            // Calculate absolute address from space-relative property table address
+            let absolute_addr = object_base + space_relative_prop_table_addr;
 
-            debug!(
-                " PATCH DETAILED: Object {} (index {}):",
-                obj_index + 1,
-                obj_index
-            );
-            debug!(" - obj_offset_in_space: 0x{:04x}", obj_offset_in_space);
-            debug!(" - prop_addr_offset: 0x{:04x}", prop_addr_offset);
-            debug!(
-                " - final_addr_offset: 0x{:04x} (object_base 0x{:04x} + prop_addr_offset 0x{:04x})",
-                final_addr_offset, object_base, prop_addr_offset
-            );
-
-            // Debug what we're reading from final_data
-            let byte1 = self.final_data[final_addr_offset];
-            let byte2 = self.final_data[final_addr_offset + 1];
-            debug!(
-                " - Reading bytes from final_data[0x{:04x}]: 0x{:02x} 0x{:02x}",
-                final_addr_offset, byte1, byte2
-            );
-            debug!(
-                " - As chars: '{}' '{}'",
-                if (0x20..=0x7e).contains(&byte1) {
-                    byte1 as char
-                } else {
-                    '.'
-                },
-                if (0x20..=0x7e).contains(&byte2) {
-                    byte2 as char
-                } else {
-                    '.'
-                }
-            );
-
-            let space_relative_addr = ((byte1 as u16) << 8) | (byte2 as u16);
-            debug!(
-                " - Decoded space_relative_addr: 0x{:04x}",
-                space_relative_addr
-            );
-
-            // Check if this looks like a valid property table address
-            // Valid property table pointers must:
-            // 1. Be non-zero
-            // 2. Point after the defaults table (>= min_valid_prop_addr)
-            // 3. Be within object_space bounds
-            if space_relative_addr == 0
-                || space_relative_addr < min_valid_prop_addr as u16
-                || space_relative_addr > self.object_space.len() as u16
-            {
-                log::debug!(
-                    " PATCH: Object {} has invalid prop table addr 0x{:04x} (expected >= 0x{:04x}), stopping iteration",
-                    obj_index + 1,
-                    space_relative_addr,
-                    min_valid_prop_addr
-                );
-                break; // Stop iteration - we've gone past actual objects into property table data
-            }
-
-            // Calculate absolute final memory address
-            let absolute_addr = object_base + (space_relative_addr as usize);
-            debug!(" - Calculated absolute_addr: 0x{:04x} (object_base 0x{:04x} + space_relative 0x{:04x})", 
- absolute_addr, object_base, space_relative_addr);
-
-            // Write the corrected absolute address back to final_data
+            // Write the corrected absolute address
             let new_high_byte = (absolute_addr >> 8) as u8;
             let new_low_byte = (absolute_addr & 0xFF) as u8;
-            debug!(
-                " - Writing absolute addr 0x{:04x} as bytes: 0x{:02x} 0x{:02x}",
-                absolute_addr, new_high_byte, new_low_byte
-            );
 
-            self.final_data[final_addr_offset] = new_high_byte; // High byte
-            self.final_data[final_addr_offset + 1] = new_low_byte; // Low byte
+            log::debug!("PATCH_WRITE: obj#{} space_relative_prop_table_addr=0x{:04x} → absolute=0x{:04x} (bytes 0x{:02x} 0x{:02x})",
+                obj_num, space_relative_prop_table_addr, absolute_addr, new_high_byte, new_low_byte);
 
-            // Verify what we just wrote
-            let verify_byte1 = self.final_data[final_addr_offset];
-            let verify_byte2 = self.final_data[final_addr_offset + 1];
-            let verify_addr = ((verify_byte1 as u16) << 8) | (verify_byte2 as u16);
-            debug!(
-                " - VERIFICATION: Read back 0x{:02x} 0x{:02x} = 0x{:04x}",
-                verify_byte1, verify_byte2, verify_addr
-            );
+            self.final_data[final_addr_offset] = new_high_byte;
+            self.final_data[final_addr_offset + 1] = new_low_byte;
+
+            // Verify what we wrote
+            let verify_high = self.final_data[final_addr_offset];
+            let verify_low = self.final_data[final_addr_offset + 1];
+            let verify_addr = ((verify_high as u16) << 8) | (verify_low as u16);
+
+            if verify_addr != absolute_addr as u16 {
+                log::error!("PATCH_VERIFY_ERROR: obj#{} wrote 0x{:04x} but read back 0x{:04x}",
+                    obj_num, absolute_addr, verify_addr);
+                return Err(CompilerError::InvalidPropertyTableReference(
+                    format!("Property table address verification failed for object {}", obj_num)));
+            }
+
+            log::debug!("PATCH_SUCCESS: obj#{} 0xFFFF → 0x{:04x} at final_offset=0x{:04x}",
+                obj_num, absolute_addr, final_addr_offset);
 
             objects_patched += 1;
-            log::warn!(
-                "🔧 PATCH_OBJ: obj_num={} space_relative=0x{:04x} → absolute=0x{:04x} final_offset=0x{:04x}",
-                obj_index + 1,
-                space_relative_addr,
-                absolute_addr,
-                final_addr_offset
-            );
         }
 
-        log::warn!("🔧 PATCH_COMPLETE: {} objects patched", objects_patched);
+        log::debug!("PATCH_COMPLETE: {} objects patched using pending_property_table_refs", objects_patched);
         Ok(())
     }
 
@@ -9997,8 +10007,8 @@ impl ZMachineCodeGen {
             ("Header", 0x0000, 0x0040),
             (
                 "Object table",
-                self.object_table_addr,
-                self.object_table_addr + 200,
+                self.object_table_final_addr,
+                self.object_table_final_addr + 200,
             ), // Estimate
             (
                 "Property tables",

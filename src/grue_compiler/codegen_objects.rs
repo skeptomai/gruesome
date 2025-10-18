@@ -90,11 +90,15 @@ impl ZMachineCodeGen {
 
     /// Setup object table generation for full object table
     pub fn setup_object_table_generation(&mut self) {
-        // For separated spaces, object table starts at the beginning of object space
-        self.object_table_addr = 0; // Will be adjusted when assembled into final image
+        // CRITICAL FIX (Oct 18, 2025): Use proper address separation
+        // object_table_addr = object-space relative address (always 0 for separated spaces)
+        // object_table_final_addr = final memory address (set during layout phase)
+        // This prevents overflow when calculating object-space offsets during generation
+        self.object_table_addr = 0; // Always 0 for object-space relative addressing
         log::debug!(
-            " Object table generation setup: starting address 0x{:04x}",
-            self.object_table_addr
+            " Object table generation setup: object_table_addr=0x{:04x}, object_table_final_addr=0x{:04x}",
+            self.object_table_addr,
+            self.object_table_final_addr
         );
     }
 
