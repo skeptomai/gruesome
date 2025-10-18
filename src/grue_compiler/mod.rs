@@ -356,6 +356,9 @@ fn print_block(block: &ir::IrBlock, indent: usize) {
             } => {
                 println!("  t{}.prop#{} = t{}", object, property_num, value);
             }
+            IrInstruction::LogicalComparisonOp { target, op, .. } => {
+                println!("  t{} = logical_comparison {:?} (deferred)", target, op);
+            }
             _ => {
                 println!("  {:?}", inst);
             }

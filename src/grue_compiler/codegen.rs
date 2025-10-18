@@ -1454,7 +1454,7 @@ impl ZMachineCodeGen {
                 let byte1 = self.final_data[obj2_prop_ptr_addr];
                 let byte2 = self.final_data[obj2_prop_ptr_addr + 1];
                 let prop_ptr = ((byte1 as u16) << 8) | (byte2 as u16);
-                log::error!(
+                log::debug!(
                     "🔍 VERIFY_AFTER_PATCH: Object #2 prop ptr at 0x{:04x} = 0x{:02x} 0x{:02x} = 0x{:04x}",
                     obj2_prop_ptr_addr, byte1, byte2, prop_ptr
                 );
@@ -3732,16 +3732,13 @@ impl ZMachineCodeGen {
 
         let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
 
-        // Generate get_parent instruction (1OP:3)
-        // FIXED: Use stack for get_location builtin result (temporary value)
+        // Emit get_parent instruction (1OP:3)
         let layout = self.emit_instruction_typed(
             Opcode::Op1(Op1::GetParent),
             &[obj_operand],
-            Some(0),
-            None,
+            Some(0), // Store result to stack
+            None,    // No branch
         )?;
-
-        // emit_instruction already pushed bytes to code_space
 
         // Register target mapping if provided
         if let Some(target_id) = target {
@@ -5459,7 +5456,7 @@ impl ZMachineCodeGen {
                 }
 
                 // If this is names property (property 16), create DictionaryRef for each name
-                let names_prop = *self.property_numbers.get("names").unwrap_or(&7);
+                let names_prop = *self.property_numbers.get("names").unwrap_or(&16);
                 if prop_num == names_prop && i % 2 == 0 && i < prop_data.len() - 1 {
                     // Check if this object has vocabulary names mapped
                     if let Some(vocab_words) = self.object_vocabulary_names.get(&object.name) {
@@ -8772,9 +8769,12 @@ impl ZMachineCodeGen {
             return Ok(());
         }
 
+        // Note: Logical operations on comparisons are now handled at the IR level
+        // using LogicalComparisonOp instructions, so they won't reach this point
+
         // Fallback for non-comparison conditions (use jz branch approach)
         log::debug!(
-            "Condition {} is not a comparison - using jz branch approach",
+            "Condition {} is not a comparison or logical comparison - using jz branch approach",
             condition
         );
         let result = self.emit_jz_branch(condition, true_label, false_label);
@@ -8786,6 +8786,26 @@ impl ZMachineCodeGen {
             after_addr
         );
         result
+    }
+
+
+    /// Helper function to get Z-Machine opcode and branch sense for comparison operations
+    fn get_comparison_opcode_and_sense(&self, op: &IrBinaryOp) -> Result<(u8, bool), CompilerError> {
+        let (opcode, branch_on_true) = match op {
+            IrBinaryOp::Equal => (0x01, true),         // je - branch if equal
+            IrBinaryOp::NotEqual => (0x01, false),     // je - branch if NOT equal
+            IrBinaryOp::Less => (0x02, true),          // jl - branch if less
+            IrBinaryOp::LessEqual => (0x03, false),    // jg - branch if NOT greater
+            IrBinaryOp::Greater => (0x03, true),       // jg - branch if greater
+            IrBinaryOp::GreaterEqual => (0x02, false), // jl - branch if NOT less
+            _ => {
+                return Err(CompilerError::CodeGenError(format!(
+                    "Unsupported comparison operation: {:?}",
+                    op
+                )));
+            }
+        };
+        Ok((opcode, branch_on_true))
     }
 
     /// Emit a jz (jump if zero) branch instruction for boolean conditions

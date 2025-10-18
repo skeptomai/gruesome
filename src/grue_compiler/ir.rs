@@ -857,6 +857,16 @@ pub enum IrInstruction {
         value: IrId,
     },
 
+    /// Logical operation on comparison expressions - deferred generation
+    /// This instruction preserves the AST expressions for later conditional compilation
+    /// where they can be properly compiled to Z-Machine short-circuit branch logic
+    LogicalComparisonOp {
+        target: IrId,
+        op: IrBinaryOp, // And or Or
+        left_expr: Box<crate::grue_compiler::ast::Expr>,
+        right_expr: Box<crate::grue_compiler::ast::Expr>,
+    },
+
     /// No-operation (used for optimization)
     Nop,
 }
@@ -909,6 +919,22 @@ pub enum IrBinaryOp {
     // Logical
     And,
     Or,
+}
+
+impl IrBinaryOp {
+    /// Returns true if this operation is a comparison that should generate branch instructions
+    /// rather than value-storing instructions in Z-Machine context
+    pub fn is_comparison(&self) -> bool {
+        matches!(
+            self,
+            IrBinaryOp::Equal
+                | IrBinaryOp::NotEqual
+                | IrBinaryOp::Less
+                | IrBinaryOp::LessEqual
+                | IrBinaryOp::Greater
+                | IrBinaryOp::GreaterEqual
+        )
+    }
 }
 
 /// Unary operations in IR
@@ -1042,6 +1068,24 @@ impl IrGenerator {
             id_registry: IrIdRegistry::new(), // NEW: Initialize ID registry
             variable_sources: IndexMap::new(), // NEW: Initialize variable source tracking
             object_parent_rooms: IndexMap::new(), // NEW: Initialize object->room mapping
+        }
+    }
+
+    /// Check if an expression is a comparison operation that should generate branch logic
+    fn is_comparison_expression(expr: &crate::grue_compiler::ast::Expr) -> bool {
+        match expr {
+            crate::grue_compiler::ast::Expr::Binary { operator, .. } => {
+                matches!(
+                    operator,
+                    crate::grue_compiler::ast::BinaryOp::Equal
+                        | crate::grue_compiler::ast::BinaryOp::NotEqual
+                        | crate::grue_compiler::ast::BinaryOp::Less
+                        | crate::grue_compiler::ast::BinaryOp::LessEqual
+                        | crate::grue_compiler::ast::BinaryOp::Greater
+                        | crate::grue_compiler::ast::BinaryOp::GreaterEqual
+                )
+            }
+            _ => false,
         }
     }
 
@@ -1235,6 +1279,7 @@ impl IrGenerator {
             IrInstruction::StoreVar { var_id, .. } => Some(*var_id),
             IrInstruction::BinaryOp { target, .. } => Some(*target),
             IrInstruction::UnaryOp { target, .. } => Some(*target),
+            IrInstruction::LogicalComparisonOp { target, .. } => Some(*target),
             IrInstruction::Call { target, .. } => *target,
             IrInstruction::CallIndirect { target, .. } => *target,
             IrInstruction::GetProperty { target, .. } => Some(*target),
@@ -1256,6 +1301,7 @@ impl IrGenerator {
                 IrInstruction::StoreVar { .. } => "StoreVar",
                 IrInstruction::BinaryOp { .. } => "BinaryOp",
                 IrInstruction::UnaryOp { .. } => "UnaryOp",
+                IrInstruction::LogicalComparisonOp { .. } => "LogicalComparisonOp",
                 IrInstruction::Call { .. } => "Call",
                 IrInstruction::CallIndirect { .. } => "CallIndirect",
                 IrInstruction::GetProperty { .. } => "GetProperty",
@@ -2828,6 +2874,48 @@ impl IrGenerator {
                 operator,
                 right,
             } => {
+                // CRITICAL FIX: Special handling for logical operations on comparison expressions
+                // Z-Machine comparison operations are branch-only and cannot store results
+                let is_logical_op = matches!(operator, crate::grue_compiler::ast::BinaryOp::And | crate::grue_compiler::ast::BinaryOp::Or);
+
+                if is_logical_op {
+                    let left_is_comparison = Self::is_comparison_expression(&left);
+                    let right_is_comparison = Self::is_comparison_expression(&right);
+
+                    if left_is_comparison || right_is_comparison {
+                        // CRITICAL: Z-Machine comparisons are branch-only and cannot store results
+                        // Logical operations on comparisons MUST be handled at the conditional level
+                        // using short-circuit evaluation, not as value-producing instructions
+                        log::debug!(
+                            "🔧 IR_FIX: Detected logical operation {:?} with comparison operands (left={}, right={})",
+                            operator,
+                            left_is_comparison,
+                            right_is_comparison
+                        );
+
+                        // Create a special logical comparison instruction that will be resolved
+                        // during conditional compilation with proper short-circuit branching
+                        let temp_id = self.next_id();
+
+                        // DO NOT generate the operand expressions yet - they will be generated
+                        // during conditional compilation to preserve their comparison nature
+                        block.add_instruction(IrInstruction::LogicalComparisonOp {
+                            target: temp_id,
+                            op: operator.clone().into(),
+                            left_expr: Box::new((*left).clone()),
+                            right_expr: Box::new((*right).clone()),
+                        });
+
+                        log::debug!(
+                            "🔧 Generated logical comparison placeholder: {} = {:?} with deferred operand generation",
+                            temp_id, &operator
+                        );
+
+                        return Ok(temp_id);
+                    }
+                }
+
+                // Standard binary operation handling (arithmetic, non-comparison)
                 let left_id = self.generate_expression(*left, block)?;
                 let right_id = self.generate_expression(*right, block)?;
                 let temp_id = self.next_id();

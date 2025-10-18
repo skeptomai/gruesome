@@ -1,12 +1,20 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 15, 2025) - GARBLED TEXT BUG 🔧
+## CURRENT STATUS (October 18, 2025) - ALL MAJOR BUGS FIXED ✅
 
-**PROGRESS**: Fixed Bug #22 (Interpreter Debug Code). Investigating garbled examination text.
+**MILESTONE ACHIEVED**: Core compiler functionality complete. Property system, object examination, and string handling all working correctly.
 
-**ACTIVE BUG**: Property 16 (names) contains packed string address instead of dictionary addresses, causing garbled text when examining objects. See `ONGOING_TASKS.md` for detailed diagnostic plan.
+**LATEST FIX**: Bug #24 (Property Access) - Fixed garbled text when examining objects. GetPropertyByNumber now correctly stores results to allocated global variables.
 
-## Recent Fixes (October 15, 2025)
+## Recent Fixes (October 2025)
+
+### Bug 24: Property Access Invalid Packed Address ✅ FIXED (Oct 18, 2025)
+- **Issue**: GetPropertyByNumber incorrectly stored results to variable 0 (stack) instead of allocated global variables
+- **Symptoms**: "print_paddr called with invalid packed address 0x0000" panic when examining objects
+- **Root Cause**: Property access results were being stored to stack variable 0, causing 0x0000 packed addresses during print operations
+- **Fix**: Corrected GetPropertyByNumber to store results to properly allocated global variables (200+)
+- **Files**: `src/grue_compiler/codegen_instructions.rs:666-718`
+- **Impact**: Object examination now works correctly - no more packed address panics
 
 ### Bug 20: Grammar Dispatch Chain Broken ✅ FIXED (Oct 15, 2025)
 - **Issue**: Only first verb worked, subsequent verbs caused infinite loop

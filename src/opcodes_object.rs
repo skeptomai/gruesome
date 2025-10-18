@@ -46,12 +46,22 @@ impl Interpreter {
             // 1OP:0x03 - get_parent
             (0x03, crate::instruction::OperandCount::OP1) => {
                 // get_parent
+                let obj_num = operands[0];
                 debug!(
                     "get_parent: obj_num={} at PC {:05x}",
-                    operands[0],
+                    obj_num,
                     self.vm.pc - inst.size as u32
                 );
-                let parent = self.vm.get_parent(operands[0])?;
+
+                // BUG FIX (Oct 17, 2025): Object 0 means "no object" and should return 0 (no parent)
+                // Calling get_parent(0) accesses invalid memory and causes garbled text
+                let parent = if obj_num == 0 {
+                    log::debug!("🛠️ OBJECT_0_FIX: get_parent(0) called - returning 0 (no parent) instead of accessing invalid memory");
+                    0
+                } else {
+                    self.vm.get_parent(obj_num)?
+                };
+
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, parent)?;
                 }

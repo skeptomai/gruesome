@@ -102,6 +102,11 @@ impl Interpreter {
                 // Print string at packed address
                 let pc = self.vm.pc - inst.size as u32;
 
+                // CRITICAL: Detect compiler bug - print_paddr with invalid address 0x0000
+                if operands[0] == 0x0000 {
+                    panic!("🚨 COMPILER BUG: print_paddr called with invalid packed address 0x0000 at PC {:05x}! This indicates the compiler generated an invalid string reference. The garbled text issue is caused by this invalid address.", pc);
+                }
+
                 // Debug string ID 458's packed address
                 if operands[0] == 0x04db {
                     log::debug!("*** print_paddr at PC {:05x} with packed address 0x{:04x} (string ID 458: 'There is ')", pc, operands[0]);
@@ -148,12 +153,15 @@ impl Interpreter {
             (0x07, crate::instruction::OperandCount::OP1) => {
                 // Print string at unpacked address
                 let addr = operands[0] as usize;
+                let pc = self.vm.pc - inst.size as u32;
+
+                // CRITICAL: Detect compiler bug - print_addr with invalid address 0x0000
+                if operands[0] == 0x0000 {
+                    panic!("🚨 COMPILER BUG: print_addr called with invalid address 0x0000 at PC {:05x}! This indicates the compiler generated an invalid string reference.", pc);
+                }
+
                 let abbrev_addr = self.vm.game.header.abbrev_table;
-                debug!(
-                    "print_addr: addr={:04x} at PC {:05x}",
-                    addr,
-                    self.vm.pc - inst.size as u32
-                );
+                debug!("print_addr: addr={:04x} at PC {:05x}", addr, pc);
 
                 // Check if this might be related to our bug
                 if addr == 0xa11d || addr == 0x1da1 {

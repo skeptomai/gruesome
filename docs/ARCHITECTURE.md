@@ -2975,6 +2975,172 @@ PC 0x1244: label_end:
 
 ---
 
+## LogicalComparisonOp IR Instruction (October 17, 2025)
+
+### The Problem
+
+Logical operations on comparison expressions in Grue source code (`if (player.is_alive() && player.location == tree_house)`) were generating invalid IR that tried to store comparison results in local variables. However, Z-Machine comparison operations are branch-only instructions that don't produce values - they only set condition codes and branch.
+
+**The Bug Pattern**:
+```grue
+if (player.is_alive() && player.location == tree_house)
+```
+
+**Problematic IR Generated**:
+```
+t81 = t80 And t79    // ❌ Can't store logical result of comparisons!
+Branch(t81) ? L1 : L2
+```
+
+**Root Cause**: Z-Machine doesn't support storing comparison results in variables. Comparison instructions like `je` (jump if equal) only branch - they don't produce storable values.
+
+### Solution: LogicalComparisonOp IR Instruction
+
+**IR Instruction Definition** (`ir.rs:634-641`):
+```rust
+/// Logical operation on comparison expressions (deferred compilation)
+/// Used for expressions like (a == b && c != d) where comparisons can't be stored
+LogicalComparisonOp {
+    target: IrId,                    // Where logical result should conceptually go
+    op: LogicalOp,                   // And/Or operation
+    left_comparison: Box<AstExpression>,   // Left comparison AST (preserved)
+    right_comparison: Box<AstExpression>,  // Right comparison AST (preserved)
+},
+```
+
+**Key Architectural Insights**:
+1. **AST Preservation**: Store original AST expressions instead of IR IDs to enable conditional compilation
+2. **Deferred Compilation**: Don't compile comparisons until context (branch vs value) is known
+3. **Stack-Based Results**: Use Z-Machine stack (Variable 0) for temporary results, not local variables
+4. **Short-Circuit Evaluation**: Implement proper boolean short-circuiting as branch sequences
+
+### IR Generation Pattern
+
+**For Grue source**: `if (player.is_alive() && player.location == tree_house)`
+
+**New IR Generated**:
+```
+t81 = logical_comparison And (deferred)  // ✅ Deferred compilation marker
+Branch(t81) ? L1 : L2                    // Context-aware compilation happens here
+```
+
+**Benefits**:
+- No premature compilation of comparisons
+- Preserves full expression context for optimization
+- Enables proper short-circuit evaluation
+- Avoids impossible variable storage of branch-only operations
+
+### Z-Machine Code Generation
+
+**Conditional Compilation Framework** (`codegen_instructions.rs:1087-1178`):
+
+```rust
+IrInstruction::LogicalComparisonOp { target, op, left_comparison, right_comparison } => {
+    // Use stack for result storage (like other expression results)
+    self.use_stack_for_result(*target);
+
+    match op {
+        LogicalOp::And => self.generate_short_circuit_and(left_comparison, right_comparison)?,
+        LogicalOp::Or => self.generate_short_circuit_or(left_comparison, right_comparison)?,
+    }
+}
+```
+
+**Short-Circuit AND Pattern**:
+```
+1. Evaluate left_comparison
+   ↓ (if false, short-circuit to result=0)
+2. Evaluate right_comparison
+   ↓ (if false, result=0; if true, result=1)
+3. Store final result on stack
+```
+
+**Short-Circuit OR Pattern**:
+```
+1. Evaluate left_comparison
+   ↓ (if true, short-circuit to result=1)
+2. Evaluate right_comparison
+   ↓ (if true, result=1; if false, result=0)
+3. Store final result on stack
+```
+
+### Key Architectural Benefits
+
+1. **Z-Machine Compliance**: Respects that comparisons are branch-only operations
+2. **Proper Evaluation Order**: Maintains left-to-right evaluation with short-circuiting
+3. **Stack Management**: Uses Variable 0 for temporary results (Z-Machine standard)
+4. **AST Preservation**: Enables context-aware compilation and optimization
+5. **Future-Proof**: Provides foundation for complex boolean expression optimization
+
+### Implementation Files
+
+**IR Generation**:
+- `src/grue_compiler/ir.rs:634-641` - LogicalComparisonOp instruction definition
+- `src/grue_compiler/ir.rs:1728-1773` - IR generation for logical expressions
+- `src/grue_compiler/ast.rs:` - AST preservation for deferred compilation
+
+**Code Generation**:
+- `src/grue_compiler/codegen_instructions.rs:1087-1178` - LogicalComparisonOp codegen
+- `src/grue_compiler/codegen_instructions.rs:1179-1218` - Short-circuit AND implementation
+- `src/grue_compiler/codegen_instructions.rs:1219-1258` - Short-circuit OR implementation
+- `src/grue_compiler/codegen_instructions.rs:1259-1290` - Expression evaluation helpers
+
+**Testing**:
+- `examples/mini_zork.grue` - Real-world logical expression usage
+- IR output: `t81 = logical_comparison Or (deferred)` confirms proper generation
+
+### Current Status & Next Steps
+
+**✅ ARCHITECTURAL FOUNDATION COMPLETE**:
+- LogicalComparisonOp IR instruction architecture
+- AST preservation and deferred compilation framework
+- Stack-based variable allocation (Variable 0 usage)
+- Pattern matching and routing system
+- All compilation errors resolved
+
+**❌ CORE FUNCTIONALITY INCOMPLETE**:
+**CRITICAL REALITY CHECK**: The current implementation is **stubbed out** and **non-functional**.
+
+**Current Implementation** (`codegen_instructions.rs:3217-3262`):
+```rust
+fn generate_short_circuit_and(...) -> Result<(), CompilerError> {
+    // For now, simplified implementation that always returns false
+    self.emit_instruction_typed(
+        Opcode::Op2(Op2::Store),
+        &[SmallConstant(0), Variable(0)],  // ← ALWAYS RETURNS FALSE!
+        None, None,
+    )?;
+    Ok(())
+}
+```
+
+**What This Means**:
+- ✅ Code compiles without "Branch target ID not found" errors
+- ❌ ALL logical expressions (`&&`, `||`) evaluate to false regardless of operands
+- ❌ Any game logic depending on OR/AND operations will behave incorrectly
+- ❌ Testing is severely limited - can't validate complex logical patterns
+
+**What's Missing**:
+The actual short-circuit evaluation logic that should:
+1. Generate unique Z-Machine labels for control flow branches
+2. Evaluate left expression and conditionally branch
+3. Evaluate right expression only when needed (short-circuit)
+4. Generate proper Z-Machine branch sequences
+5. Handle forward label references and resolution
+
+**Impact on Game Behavior**:
+- Simple comparisons work: `obj.location == player.location`
+- Complex logic fails: `obj.location == player.location || obj.location == player`
+- All OR expressions return false, breaking visibility logic
+- All AND expressions return false, breaking conditional checks
+
+**Implementation Status**: ARCHITECTURAL STUB - CORE LOGIC MISSING
+
+**Date**: October 17, 2025
+**Status**: Architectural implementation complete, root cause investigation continues
+
+---
+
 ### Complete Example: Room with Handlers
 
 **Grue Source** (`examples/mini_zork.grue`):
