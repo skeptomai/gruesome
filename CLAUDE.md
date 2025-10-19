@@ -360,6 +360,54 @@ Development history archived to `CLAUDE_HISTORICAL.md` for reference.
 - Bug appears/disappears without code changes
 - Test results don't match expectations after verified source changes
 
+## CRITICAL: Regression Debugging Protocol (Oct 19, 2025)
+
+**LESSON LEARNED**: When functionality "used to work but now doesn't," start with version comparison, not symptom investigation.
+
+**The Navigation Bug Incident**:
+- Spent hours investigating grammar systems, dictionary encoding, property tables, object trees
+- All investigations were wrong - the real bug was a 2-line variable allocation typo
+- User guidance: "git commit 731a actually works. compare" was the correct approach
+- Evidence was in git history: commit 48fccdf said "BROKEN: Command processing completely non-functional"
+
+### **MANDATORY Process for "It Used to Work" Bugs:**
+
+1. **IMMEDIATE VERSION COMPARISON:**
+   ```bash
+   git checkout LAST_WORKING_COMMIT
+   cargo run --bin grue-compiler -- examples/mini_zork.grue -o tests/mini_zork_working.z3
+   git checkout main
+   cargo run --bin grue-compiler -- examples/mini_zork.grue -o tests/mini_zork_current.z3
+   # Compare compilation logs and test both versions
+   ```
+
+2. **CHECK COMMIT HISTORY FIRST:**
+   ```bash
+   git log --oneline WORKING_COMMIT..HEAD
+   # Look for commits with "BROKEN", "non-functional", or warning messages
+   ```
+
+3. **READ COMMIT MESSAGES AS EVIDENCE:**
+   - Commits saying "BROKEN" or "completely non-functional" are prime suspects
+   - Look for mentions of exact changes that could cause the regression
+   - Trust explicit user guidance about working versions
+
+4. **COMPARE COMPILATION OUTPUTS:**
+   - Look for differences in variable allocation, operand resolution
+   - Focus on recent changes, not fundamental architecture
+   - Simple bugs (typos, wrong variable numbers) are more likely than complex system failures
+
+### **What NOT to Do:**
+- ❌ Start with complex system-level debugging theories
+- ❌ Ignore commit messages with warning keywords
+- ❌ Investigate elaborate grammar/dictionary/property theories before checking recent changes
+- ❌ Pursue multiple debugging paths simultaneously without evidence
+
+### **Application:**
+The LoadVar instruction was accidentally changed from `Some(result_var as u8)` to `Some(0 as u8)` in commit 48fccdf, causing all loaded variables to resolve to the stack instead of allocated globals. This broke navigation because the player object resolved to Variable(0) instead of Variable(217).
+
+**Time saved by following this protocol:** Hours of misdirected investigation
+
 ## CRITICAL: Gameplay Testing Protocol
 
 **Unit Tests ≠ Working Game**: Unit tests verify isolated compiler components but don't catch integration issues like infinite loops, handler dispatch problems, or navigation bugs.
