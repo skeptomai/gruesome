@@ -1,0 +1,294 @@
+// COMPREHENSIVE TEST FILE: take_all() validation
+// Created to isolate and verify take_all() and handle_take() fixes
+// Tests all edge cases: containers, visibility, takeable property, already-owned objects
+//
+// FIXED ISSUES BEING TESTED:
+// 1. Missing visibility checks (player_can_see)
+// 2. Wrong closed container logic (was blocking ALL containers)
+// 3. Missing "already have" validation
+// 4. Missing takeable property respect
+// 5. Inconsistent behavior between take_all() and handle_take()
+//
+// TEST SCENARIOS:
+// - Objects with explicit takeable: true/false
+// - Objects with no takeable property (test default behavior)
+// - Closed container with objects inside (should NOT be accessible)
+// - Open container with objects inside (SHOULD be accessible)
+// - Objects already in player inventory (should not take again)
+
+world {
+    room test_room "Test Room" {
+        desc: "A room designed to test take_all() behavior with various object conditions."
+
+        // Object with explicit takeable: true (should be taken)
+        object coin {
+            names: ["coin", "gold coin"]
+            desc: "A shiny gold coin."
+            takeable: true
+        }
+
+        // Object with explicit takeable: false (should NOT be taken)
+        object statue {
+            names: ["statue", "stone statue"]
+            desc: "A heavy stone statue."
+            takeable: false
+        }
+
+        // Object with no takeable property (test default behavior)
+        object book {
+            names: ["book", "red book"]
+            desc: "A small red book."
+        }
+
+        // Closed container with objects inside (objects should NOT be taken)
+        object chest {
+            names: ["chest", "wooden chest"]
+            desc: "A wooden chest."
+            openable: true
+            container: true
+            // chest starts closed (open: false is default)
+
+            contains {
+                object gem {
+                    names: ["gem", "blue gem"]
+                    desc: "A valuable blue gem."
+                    takeable: true
+                }
+            }
+        }
+
+        // Open container with objects inside (objects SHOULD be taken)
+        object basket {
+            names: ["basket", "wicker basket"]
+            desc: "A wicker basket."
+            openable: true
+            container: true
+            open: true  // explicitly open
+
+            contains {
+                object apple {
+                    names: ["apple", "red apple"]
+                    desc: "A red apple."
+                    takeable: true
+                }
+            }
+        }
+
+        // Object that will be moved to player inventory in init (should not be taken again)
+        object key {
+            names: ["key", "brass key"]
+            desc: "A brass key."
+            takeable: true
+        }
+    }
+}
+
+grammar {
+    verb "take" {
+        noun => handle_take($noun),
+        "all" => take_all()
+    }
+
+    verb "open" {
+        noun => handle_open($noun)
+    }
+
+    verb "close" {
+        noun => handle_close($noun)
+    }
+
+    verb "look" {
+        default => look_around(),
+        "at" + noun => examine($2)
+    }
+
+    verb "examine" {
+        noun => examine($noun)
+    }
+
+    verb "inventory" {
+        default => show_inventory()
+    }
+}
+
+fn look_around() {
+    print(player.location.desc);
+    list_objects(player.location);
+}
+
+fn examine(obj) {
+    if !player_can_see(obj) {
+        print("You can't see any such thing.");
+        return;
+    }
+    print(obj.desc);
+}
+
+fn handle_open(obj) {
+    if !player_can_see(obj) {
+        print("You can't see any such thing.");
+        return;
+    }
+
+    if !obj.openable {
+        print("You can't open that.");
+        return;
+    }
+
+    if obj.open {
+        print("It's already open.");
+    } else {
+        obj.open = true;
+        print("Opened.");
+
+        if obj.container {
+            print("The " + obj.name + " contains:");
+            list_contents(obj);
+        }
+    }
+}
+
+fn handle_close(obj) {
+    if !player_can_see(obj) {
+        print("You can't see any such thing.");
+        return;
+    }
+
+    if !obj.openable {
+        print("You can't close that.");
+        return;
+    }
+
+    if !obj.open {
+        print("It's already closed.");
+    } else {
+        obj.open = false;
+        print("Closed.");
+    }
+}
+
+fn handle_take(obj) {
+    if obj.location == player {
+        print("You already have that.");
+        return;
+    }
+
+    if !player_can_see(obj) {
+        print("You can't see any such thing.");
+        return;
+    }
+
+    // Check if object is inside a closed container
+    if obj.location.container && !obj.location.open {
+        print("The " + obj.location.name + " is closed.");
+        return;
+    }
+
+    // Check takeable property (default to true if not specified)
+    if obj.takeable == false {
+        print("You can't take that.");
+        return;
+    }
+
+    move(obj, player);
+    print("Taken.");
+}
+
+fn take_all() {
+    let objects = player.location.contents();
+    let taken = 0;
+
+    for obj in objects {
+        if obj != player {
+            // Check if already in inventory
+            if obj.location == player {
+                print(obj.name + ": You already have that.");
+            } else if !player_can_see(obj) {
+                // Skip silently - player can't see it, so don't mention it
+            } else if obj.location.container && !obj.location.open {
+                // Check if object is inside a closed container
+                print(obj.name + ": The " + obj.location.name + " is closed.");
+            } else if obj.takeable == false {
+                // Check takeable property (default to true if not specified)
+                print(obj.name + ": You can't take that.");
+            } else {
+                // All checks passed - take the object
+                move(obj, player);
+                print(obj.name + ": Taken.");
+                taken = taken + 1;
+            }
+        }
+    }
+
+    if taken == 0 {
+        print("There's nothing here to take.");
+    }
+}
+
+fn show_inventory() {
+    let items = player.contents();
+    if items.empty() {
+        print("You are empty-handed.");
+    } else {
+        print("You are carrying:");
+        for item in items {
+            print("  " + item.name);
+        }
+    }
+}
+
+fn player_can_see(obj) -> bool {
+    // Player can see objects in current location or in inventory
+    if obj.location == player.location || obj.location == player {
+        return true;
+    }
+
+    // Can see objects in open containers in current location
+    if obj.location.container &&
+       obj.location.open &&
+       obj.location.location == player.location {
+        return true;
+    }
+
+    return false;
+}
+
+fn list_objects(location) {
+    let objects = location.contents();
+
+    for obj in objects {
+        if obj != player {
+            print("There is " + obj.name + " here.");
+        }
+    }
+}
+
+fn list_contents(container) {
+    let contents = container.contents();
+    for item in contents {
+        print("  " + item.name);
+    }
+}
+
+init {
+    // Set up test scenario
+    player.location = test_room;
+
+    // Put key in player inventory to test "already have" condition
+    move(key, player);
+
+    print("=== TAKE_ALL TEST SCENARIO ===");
+    print("Objects in room:");
+    print("- coin (takeable: true) - SHOULD be taken");
+    print("- statue (takeable: false) - should NOT be taken");
+    print("- book (no takeable property) - behavior depends on default");
+    print("- chest (closed container with gem inside) - gem should NOT be taken");
+    print("- basket (open container with apple inside) - apple SHOULD be taken");
+    print("- key already in inventory - should NOT be taken again");
+    print("");
+    print("Try: 'take all' to test the implementation");
+    print("Try: 'open chest' then 'take all' to test after opening container");
+    print("");
+
+    look_around();
+}

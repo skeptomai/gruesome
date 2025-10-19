@@ -52,6 +52,8 @@ pub struct Interpreter {
     output_streams: OutputStreamState,
     /// Flag to track if we've dumped the object tree at startup
     object_tree_dumped: bool,
+    /// Flag to track if we've dumped the dictionary at startup
+    dictionary_dumped: bool,
 }
 
 /// State for managing output stream redirection
@@ -113,6 +115,7 @@ impl Interpreter {
             display,
             output_streams: OutputStreamState::new(),
             object_tree_dumped: false,
+            dictionary_dumped: false,
         }
     }
 
@@ -532,6 +535,157 @@ impl Interpreter {
         log::debug!("═══════════════════════════════════════════════════════════════");
     }
 
+    /// Dump the entire dictionary for debugging
+    ///
+    /// ANALYSIS RESULTS (Oct 18, 2025): Dictionary generation is CORRECT.
+    /// All verbs (north, south, east, west, up, down, look, go, quit, etc.)
+    /// are properly encoded and present in the Z-Machine dictionary.
+    ///
+    /// CONCLUSION: Navigation issues are NOT due to dictionary problems.
+    /// Root cause appears to be in runtime parsing/grammar dispatching:
+    /// - "look" and "inventory" work (get recognized and executed)
+    /// - "north", "south", etc. fail with "I don't understand that"
+    /// - Dictionary lookup should work for both, so issue is in grammar matching
+    fn dump_dictionary(&self) {
+        log::debug!("📚 ========== DICTIONARY DUMP ==========");
+
+        let dict_addr = self.vm.game.header.dictionary as u32;
+
+        // Read dictionary header
+        let sep_count = self.vm.read_byte(dict_addr);
+        log::debug!("📚 Dictionary separators count: {}", sep_count);
+
+        // Read separators
+        for i in 0..sep_count {
+            let sep = self.vm.read_byte(dict_addr + 1 + i as u32);
+            log::debug!("📚   Separator {}: '{}' (0x{:02x})", i, sep as char, sep);
+        }
+
+        let entry_start = dict_addr + 1 + sep_count as u32;
+        let entry_length = self.vm.read_byte(entry_start);
+        let entry_count = self.vm.read_word(entry_start + 1);
+
+        log::debug!(
+            "📚 Dictionary entries: {} entries, {} bytes each",
+            entry_count,
+            entry_length
+        );
+        log::debug!("📚 Dictionary table starts at: 0x{:04x}", entry_start + 3);
+
+        // Dictionary entries start here
+        let entries_addr = entry_start + 3;
+
+        // Dump all dictionary entries
+        for i in 0..entry_count {
+            let entry_addr = entries_addr + (i as u32 * entry_length as u32);
+
+            if self.vm.game.header.version <= 3 {
+                // V3: 2 words (4 bytes) for encoded text
+                let word1 = self.vm.read_word(entry_addr);
+                let word2 = self.vm.read_word(entry_addr + 2);
+
+                // Decode the Z-encoded text
+                let decoded = self.decode_dictionary_entry_v3(word1, word2);
+
+                log::debug!(
+                    "📚   Entry {:3}: '{:12}' = 0x{:04x} 0x{:04x} @ 0x{:04x}",
+                    i,
+                    decoded,
+                    word1,
+                    word2,
+                    entry_addr
+                );
+            } else {
+                // V4+: 3 words (6 bytes) for encoded text
+                let word1 = self.vm.read_word(entry_addr);
+                let word2 = self.vm.read_word(entry_addr + 2);
+                let word3 = self.vm.read_word(entry_addr + 4);
+
+                // Decode the Z-encoded text
+                let decoded = self.decode_dictionary_entry_v4_plus(word1, word2, word3);
+
+                log::debug!(
+                    "📚   Entry {:3}: '{:12}' = 0x{:04x} 0x{:04x} 0x{:04x} @ 0x{:04x}",
+                    i,
+                    decoded,
+                    word1,
+                    word2,
+                    word3,
+                    entry_addr
+                );
+            }
+        }
+
+        log::debug!("📚 ========================================");
+    }
+
+    /// Decode a V3 dictionary entry from two Z-encoded words
+    fn decode_dictionary_entry_v3(&self, word1: u16, word2: u16) -> String {
+        // Decode 6 Z-characters from 2 words (5 bits each, 15 bits per word)
+        let mut result = String::new();
+
+        // Extract 5-bit Z-characters
+        let chars = [
+            ((word1 >> 10) & 0x1f) as u8,
+            ((word1 >> 5) & 0x1f) as u8,
+            (word1 & 0x1f) as u8,
+            ((word2 >> 10) & 0x1f) as u8,
+            ((word2 >> 5) & 0x1f) as u8,
+            (word2 & 0x1f) as u8,
+        ];
+
+        for &ch in &chars {
+            if ch == 0 {
+                break;
+            } // Null terminator
+            if ch == 5 {
+                continue;
+            } // Space (skip for dictionary display)
+            if ch >= 6 && ch <= 31 {
+                result.push((b'a' + ch - 6) as char); // a-z
+            } else {
+                result.push('?'); // Unknown character
+            }
+        }
+
+        result
+    }
+
+    /// Decode a V4+ dictionary entry from three Z-encoded words
+    fn decode_dictionary_entry_v4_plus(&self, word1: u16, word2: u16, word3: u16) -> String {
+        // Decode 9 Z-characters from 3 words (5 bits each, 15 bits per word)
+        let mut result = String::new();
+
+        // Extract 5-bit Z-characters
+        let chars = [
+            ((word1 >> 10) & 0x1f) as u8,
+            ((word1 >> 5) & 0x1f) as u8,
+            (word1 & 0x1f) as u8,
+            ((word2 >> 10) & 0x1f) as u8,
+            ((word2 >> 5) & 0x1f) as u8,
+            (word2 & 0x1f) as u8,
+            ((word3 >> 10) & 0x1f) as u8,
+            ((word3 >> 5) & 0x1f) as u8,
+            (word3 & 0x1f) as u8,
+        ];
+
+        for &ch in &chars {
+            if ch == 0 {
+                break;
+            } // Null terminator
+            if ch == 5 {
+                continue;
+            } // Space (skip for dictionary display)
+            if ch >= 6 && ch <= 31 {
+                result.push((b'a' + ch - 6) as char); // a-z
+            } else {
+                result.push('?'); // Unknown character
+            }
+        }
+
+        result
+    }
+
     pub fn run_with_limit(&mut self, max_instructions: Option<u64>) -> Result<(), String> {
         info!("Starting Z-Machine interpreter...");
         info!("Initial PC: {:05x}", self.vm.pc);
@@ -874,6 +1028,15 @@ impl Interpreter {
                     self.object_tree_dumped = true;
                 } else {
                     log::debug!("🌳 Already dumped object tree, skipping");
+                }
+
+                // Also dump dictionary at the same time
+                log::debug!("📚 Dumping dictionary...");
+                if !self.dictionary_dumped {
+                    self.dump_dictionary();
+                    self.dictionary_dumped = true;
+                } else {
+                    log::debug!("📚 Already dumped dictionary, skipping");
                 }
             }
 

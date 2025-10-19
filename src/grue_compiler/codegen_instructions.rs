@@ -1151,7 +1151,10 @@ impl ZMachineCodeGen {
                 // because move() uses insert_obj which updates the tree, not properties
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
 
-                log::debug!("🛠️ OBJECT_0_FIX: Compiling GetObjectParent with object operand: {:?}", obj_operand);
+                log::debug!(
+                    "🛠️ OBJECT_0_FIX: Compiling GetObjectParent with object operand: {:?}",
+                    obj_operand
+                );
 
                 self.emit_instruction_typed(
                     Opcode::Op1(Op1::GetParent),
@@ -3211,7 +3214,10 @@ impl ZMachineCodeGen {
         left_expr: &crate::grue_compiler::ast::Expr,
         right_expr: &crate::grue_compiler::ast::Expr,
     ) -> Result<(), CompilerError> {
-        log::debug!("Short-circuit AND: evaluating left expression, target IR ID {}", target);
+        log::debug!(
+            "Short-circuit AND: evaluating left expression, target IR ID {}",
+            target
+        );
 
         // Use stack for result storage
         self.use_stack_for_result(*target);
@@ -3273,7 +3279,10 @@ impl ZMachineCodeGen {
         left_expr: &crate::grue_compiler::ast::Expr,
         right_expr: &crate::grue_compiler::ast::Expr,
     ) -> Result<(), CompilerError> {
-        log::debug!("Short-circuit OR: evaluating left expression, target IR ID {}", target);
+        log::debug!(
+            "Short-circuit OR: evaluating left expression, target IR ID {}",
+            target
+        );
 
         // Use stack for result storage
         self.use_stack_for_result(*target);
@@ -3336,31 +3345,53 @@ impl ZMachineCodeGen {
         branch_on_false: bool,
     ) -> Result<(), CompilerError> {
         match expr {
-            crate::grue_compiler::ast::Expr::Binary { left, operator, right } => {
+            crate::grue_compiler::ast::Expr::Binary {
+                left,
+                operator,
+                right,
+            } => {
                 // Evaluate operands to get Z-Machine operands
                 let left_operand = self.evaluate_expression_to_operand(left)?;
                 let right_operand = self.evaluate_expression_to_operand(right)?;
 
                 // Map comparison operators to Z-Machine branch opcodes
                 let (opcode, should_invert) = match operator {
-                    crate::grue_compiler::ast::BinaryOp::Equal => {
-                        (crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Je), false)
-                    }
-                    crate::grue_compiler::ast::BinaryOp::NotEqual => {
-                        (crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Je), true)
-                    }
-                    crate::grue_compiler::ast::BinaryOp::Less => {
-                        (crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Jl), false)
-                    }
-                    crate::grue_compiler::ast::BinaryOp::Greater => {
-                        (crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Jg), false)
-                    }
-                    crate::grue_compiler::ast::BinaryOp::LessEqual => {
-                        (crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Jg), true)
-                    }
-                    crate::grue_compiler::ast::BinaryOp::GreaterEqual => {
-                        (crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Jl), true)
-                    }
+                    crate::grue_compiler::ast::BinaryOp::Equal => (
+                        crate::grue_compiler::opcodes::Opcode::Op2(
+                            crate::grue_compiler::opcodes::Op2::Je,
+                        ),
+                        false,
+                    ),
+                    crate::grue_compiler::ast::BinaryOp::NotEqual => (
+                        crate::grue_compiler::opcodes::Opcode::Op2(
+                            crate::grue_compiler::opcodes::Op2::Je,
+                        ),
+                        true,
+                    ),
+                    crate::grue_compiler::ast::BinaryOp::Less => (
+                        crate::grue_compiler::opcodes::Opcode::Op2(
+                            crate::grue_compiler::opcodes::Op2::Jl,
+                        ),
+                        false,
+                    ),
+                    crate::grue_compiler::ast::BinaryOp::Greater => (
+                        crate::grue_compiler::opcodes::Opcode::Op2(
+                            crate::grue_compiler::opcodes::Op2::Jg,
+                        ),
+                        false,
+                    ),
+                    crate::grue_compiler::ast::BinaryOp::LessEqual => (
+                        crate::grue_compiler::opcodes::Opcode::Op2(
+                            crate::grue_compiler::opcodes::Op2::Jg,
+                        ),
+                        true,
+                    ),
+                    crate::grue_compiler::ast::BinaryOp::GreaterEqual => (
+                        crate::grue_compiler::opcodes::Opcode::Op2(
+                            crate::grue_compiler::opcodes::Op2::Jl,
+                        ),
+                        true,
+                    ),
                     _ => {
                         return Err(CompilerError::CodeGenError(format!(
                             "Unsupported comparison operator in logical expression: {:?}",
@@ -3382,29 +3413,28 @@ impl ZMachineCodeGen {
 
                 // Register branch reference for later resolution
                 if let Some(branch_location) = layout.branch_location {
-                    self.reference_context
-                        .unresolved_refs
-                        .push(crate::grue_compiler::codegen_headers::UnresolvedReference {
-                            reference_type: crate::grue_compiler::codegen::LegacyReferenceType::Branch,
+                    self.reference_context.unresolved_refs.push(
+                        crate::grue_compiler::codegen_headers::UnresolvedReference {
+                            reference_type:
+                                crate::grue_compiler::codegen::LegacyReferenceType::Branch,
                             location: branch_location,
                             target_id: branch_label,
                             is_packed_address: false,
                             offset_size: 2,
-                            location_space: crate::grue_compiler::codegen_headers::MemorySpace::Code,
-                        });
+                            location_space:
+                                crate::grue_compiler::codegen_headers::MemorySpace::Code,
+                        },
+                    );
                 }
 
                 Ok(())
             }
-            _ => {
-                Err(CompilerError::CodeGenError(format!(
-                    "Expected comparison expression in logical operation, found: {:?}",
-                    expr
-                )))
-            }
+            _ => Err(CompilerError::CodeGenError(format!(
+                "Expected comparison expression in logical operation, found: {:?}",
+                expr
+            ))),
         }
     }
-
 
     /// Evaluate expression to Z-Machine operand
     fn evaluate_expression_to_operand(
@@ -3429,9 +3459,13 @@ impl ZMachineCodeGen {
             }
             crate::grue_compiler::ast::Expr::Integer(value) => {
                 if *value >= 0 && *value <= 255 {
-                    Ok(crate::grue_compiler::codegen::Operand::SmallConstant(*value as u8))
+                    Ok(crate::grue_compiler::codegen::Operand::SmallConstant(
+                        *value as u8,
+                    ))
                 } else {
-                    Ok(crate::grue_compiler::codegen::Operand::LargeConstant(*value as u16))
+                    Ok(crate::grue_compiler::codegen::Operand::LargeConstant(
+                        *value as u16,
+                    ))
                 }
             }
             crate::grue_compiler::ast::Expr::PropertyAccess { object, property } => {
@@ -3441,13 +3475,18 @@ impl ZMachineCodeGen {
                 // Map well-known property names to property numbers
                 let property_num = match property.as_str() {
                     "location" => 1, // location is typically property 1
-                    _ => 2, // default to property 2 for others
+                    _ => 2,          // default to property 2 for others
                 };
 
                 // Generate get_prop instruction to get property value
                 self.emit_instruction_typed(
-                    crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::GetProp),
-                    &[object_operand, crate::grue_compiler::codegen::Operand::SmallConstant(property_num)],
+                    crate::grue_compiler::opcodes::Opcode::Op2(
+                        crate::grue_compiler::opcodes::Op2::GetProp,
+                    ),
+                    &[
+                        object_operand,
+                        crate::grue_compiler::codegen::Operand::SmallConstant(property_num),
+                    ],
                     Some(0), // Store result on stack
                     None,
                 )?;
@@ -3455,12 +3494,10 @@ impl ZMachineCodeGen {
                 // Return stack operand where result is stored
                 Ok(crate::grue_compiler::codegen::Operand::Variable(0))
             }
-            _ => {
-                Err(CompilerError::CodeGenError(format!(
-                    "Unsupported expression type in comparison: {:?}",
-                    expr
-                )))
-            }
+            _ => Err(CompilerError::CodeGenError(format!(
+                "Unsupported expression type in comparison: {:?}",
+                expr
+            ))),
         }
     }
 

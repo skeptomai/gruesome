@@ -8057,7 +8057,12 @@ impl ZMachineCodeGen {
         right: IrId,
         target: IrId,
     ) -> Result<(), CompilerError> {
-        log::debug!("Generating logical AND with short-circuit evaluation for left={}, right={}, target={}", left, right, target);
+        log::debug!(
+            "Generating logical AND with short-circuit evaluation for left={}, right={}, target={}",
+            left,
+            right,
+            target
+        );
 
         // For now, fall back to non-short-circuit bitwise AND to avoid compilation errors
         // This maintains compatibility while we work on the implementation
@@ -8082,7 +8087,12 @@ impl ZMachineCodeGen {
         right: IrId,
         target: IrId,
     ) -> Result<(), CompilerError> {
-        log::debug!("Generating logical OR with short-circuit evaluation for left={}, right={}, target={}", left, right, target);
+        log::debug!(
+            "Generating logical OR with short-circuit evaluation for left={}, right={}, target={}",
+            left,
+            right,
+            target
+        );
 
         // For now, fall back to non-short-circuit bitwise OR to avoid compilation errors
         // This maintains compatibility while we work on the implementation
@@ -8838,9 +8848,11 @@ impl ZMachineCodeGen {
         result
     }
 
-
     /// Helper function to get Z-Machine opcode and branch sense for comparison operations
-    fn get_comparison_opcode_and_sense(&self, op: &IrBinaryOp) -> Result<(u8, bool), CompilerError> {
+    fn get_comparison_opcode_and_sense(
+        &self,
+        op: &IrBinaryOp,
+    ) -> Result<(u8, bool), CompilerError> {
         let (opcode, branch_on_true) = match op {
             IrBinaryOp::Equal => (0x01, true),         // je - branch if equal
             IrBinaryOp::NotEqual => (0x01, false),     // je - branch if NOT equal
