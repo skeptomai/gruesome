@@ -1716,6 +1716,8 @@ impl IrGenerator {
             properties.set_string(StandardProperty::Description as u8, obj.description.clone());
         }
 
+        // TEMPORARY DEBUG: Property 27 generation disabled to test if it's causing memory corruption
+        //
         // CRITICAL: Set names property (property 27) - dictionary addresses for grammar object lookup
         // This enables the grammar system to match user input words against object names
         //

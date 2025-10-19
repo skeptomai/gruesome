@@ -620,8 +620,47 @@ impl ZMachineCodeGen {
                     prop_num
                 );
 
-                // CRITICAL: Register target for property result
-                self.use_stack_for_result(*target);
+                // ARCHITECTURAL CHOICE: Variable Storage Pattern for Property Results
+                //
+                // DECISION: Use allocated global variables (200+) instead of local variables (1-15) or stack (0)
+                //
+                // REASONING:
+                // 1. Z-Machine Constraint: Local variables must be statically declared at function start
+                //    - Function headers specify exact local count (e.g., "routine has 3 locals")
+                //    - Cannot dynamically add locals during compilation of function body
+                //
+                // 2. Single-Pass Compilation: We generate code as we process IR instructions
+                //    - Don't know total local requirements until entire function is processed
+                //    - Would need multi-pass compilation to pre-calculate local needs
+                //
+                // 3. Stack Variable (0) Problems: Ephemeral storage, corrupted by nested operations
+                //    - Function calls push/pop values, overwriting stack storage
+                //    - Property values become 0x0000 when stack gets corrupted
+                //    - Results in "print_paddr 0x0000" crashes
+                //
+                // 4. Global Variables (200+): Persistent, allocation-based storage
+                //    - Each IR ID gets unique global variable allocated once
+                //    - Values persist across function calls and complex expressions
+                //    - Commercial Zork I uses similar pattern for intermediate results
+                //
+                // FUTURE OPTIMIZATION CANDIDATES:
+                // - Multi-pass compilation to pre-calculate local variable requirements
+                // - Static analysis to determine variable lifetime and reuse locals
+                // - Register allocation algorithms for optimal variable assignment
+                //
+                // CURRENT IMPLEMENTATION: Follow GetPropertyByNumber pattern for consistency
+                // Check if we've already allocated a variable for this IR ID
+                if !self.ir_id_to_stack_var.contains_key(target) {
+                    // Use the proper global allocation function (same as builtins)
+                    let fresh_var = self.allocate_global_for_ir_id(*target);
+                    self.ir_id_to_stack_var.insert(*target, fresh_var);
+                    log::debug!(
+                        "GetProperty: Allocated global variable {} for IR ID {}",
+                        fresh_var,
+                        target
+                    );
+                }
+                let result_var = *self.ir_id_to_stack_var.get(target).unwrap();
 
                 // Track that this IR ID comes from a property access (for print() type detection)
                 self.ir_id_from_property.insert(*target);
@@ -644,13 +683,17 @@ impl ZMachineCodeGen {
                 //
                 // RESOLUTION: Reverted to correct opcode 0x11 (get_prop per Z-Machine spec)
                 // IMPACT: Property access now works without branch errors, mini_zork reaches command prompt
+                //
+                // CRITICAL FIX (Oct 19, 2025): Changed from Variable 0 (stack) to allocated global variable
+                // PROBLEM: Variable 0 is ephemeral stack storage, gets overwritten by other operations
+                // SOLUTION: Use same pattern as GetPropertyByNumber - allocate persistent global variables
                 self.emit_instruction_typed(
                     Opcode::Op2(Op2::GetProp),
                     &[obj_operand, Operand::SmallConstant(prop_num)],
-                    Some(0), // Store to stack
+                    Some(result_var), // Store to allocated global variable (not stack!)
                     None,
                 )?;
-                log::debug!("GetProperty: IR ID {} -> stack", target);
+                log::debug!("GetProperty: IR ID {} -> global var {}", target, result_var);
             }
 
             IrInstruction::SetProperty {

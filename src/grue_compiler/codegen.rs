@@ -5316,6 +5316,14 @@ impl ZMachineCodeGen {
         // Write text length byte to property table header
         let text_offset = addr - self.object_table_addr;
         self.write_to_object_space(text_offset, text_length as u8)?;
+
+        // DEBUG: Verify text length byte write for West of House
+        if object.short_name == "West of House" {
+            log::warn!(
+                "🔍 TEXT_LENGTH_WRITE: West of House text_length={} written to offset 0x{:04x}, verify: 0x{:02x}",
+                text_length, text_offset, self.object_space[text_offset]
+            );
+        }
         addr += 1;
 
         // Only write name bytes if text_length > 0

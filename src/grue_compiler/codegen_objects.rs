@@ -38,6 +38,17 @@ impl ZMachineCodeGen {
             self.object_space.resize(offset + 1, 0);
         }
 
+        // DEBUG: Check for overwrites in west_of_house property table region (0x00d9-0x0106)
+        if offset >= 0x00d9 && offset <= 0x0106 {
+            let old_value = self.object_space[offset];
+            if old_value != 0xAA && old_value != 0x00 && old_value != byte {
+                log::warn!(
+                    "🚨 OVERWRITE_DETECTED: offset 0x{:04x} had 0x{:02x}, writing 0x{:02x}",
+                    offset, old_value, byte
+                );
+            }
+        }
+
         log::debug!(
             "📝 OBJECT_SPACE: Write 0x{:02x} at offset 0x{:04x} (space size: {})",
             byte,

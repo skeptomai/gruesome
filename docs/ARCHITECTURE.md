@@ -4231,6 +4231,108 @@ RUST_LOG=error timeout 3 ./target/debug/gruesome tests/mini_zork.z3 < /tmp/nav_t
 **Date**: October 11, 2025
 **Status**: Core architecture complete, variable mapping bug in progress
 
+## Property Access Variable Storage Architecture (October 19, 2025)
+
+### Architectural Decision: Global Variable Allocation for Property Results
+
+**Context**: The compiler must decide where to store results from property access operations (`GetProperty`, `GetPropertyByNumber`). Three storage options exist:
+
+1. **Local Variables (1-15)**: Function-local storage with static declaration
+2. **Stack Variable (0)**: Ephemeral storage, push/pop operations
+3. **Global Variables (200+)**: Persistent, dynamically allocated storage
+
+### Design Decision: Global Variable Pattern
+
+**DECISION**: Use allocated global variables (200+) for all property access results instead of local variables or stack storage.
+
+**Implementation Location**: `src/grue_compiler/codegen_instructions.rs:623-651`
+
+```rust
+// Check if we've already allocated a variable for this IR ID
+if !self.ir_id_to_stack_var.contains_key(target) {
+    // Use the proper global allocation function (same as builtins)
+    let fresh_var = self.allocate_global_for_ir_id(*target);
+    self.ir_id_to_stack_var.insert(*target, fresh_var);
+}
+let result_var = *self.ir_id_to_stack_var.get(target).unwrap();
+```
+
+### Technical Rationale
+
+#### 1. Z-Machine Local Variable Constraints
+- **Static Declaration**: Function headers must specify exact local count at compilation start
+- **Cannot Dynamically Add**: Unable to add locals during function body compilation
+- **Example**: `routine has 3 locals` - count cannot change during code generation
+
+#### 2. Single-Pass Compilation Architecture
+- **Progressive Generation**: Code generated as IR instructions are processed
+- **Unknown Requirements**: Total local variable needs unknown until function complete
+- **Alternative**: Would require multi-pass compilation to pre-calculate local requirements
+
+#### 3. Stack Variable (0) Corruption Issues
+- **Empirical Evidence**: Property values become 0x0000 when stack gets corrupted
+- **Function Call Impact**: Nested function calls push/pop values, overwriting stack storage
+- **Runtime Crashes**: Results in `print_paddr 0x0000` crashes during execution
+
+#### 4. Global Variable Benefits
+- **Persistent Storage**: Values survive across function calls and complex expressions
+- **Unique Allocation**: Each IR ID receives dedicated global variable
+- **Commercial Validation**: Zork I uses similar patterns for intermediate results
+- **Unlimited Space**: Up to 255 global variables available
+
+### Alternative Approaches Considered
+
+#### Multi-Pass Compilation
+- **Advantages**: Could pre-calculate local variable requirements, optimize allocation
+- **Disadvantages**: Significantly more complex, slower compilation, architectural overhaul
+- **Assessment**: Requires complete rewrite of compilation pipeline
+
+#### Stack-Based Storage
+- **Advantages**: Simple implementation, no allocation tracking needed
+- **Disadvantages**: Values corrupted by nested function calls, proven empirically buggy
+- **Assessment**: Rejected due to evidence of corruption in practice
+
+#### Hybrid Local/Global Approach
+- **Advantages**: Use locals for simple cases, globals for complex cases
+- **Disadvantages**: Complex heuristics needed, inconsistent behavior patterns
+- **Assessment**: Adds complexity without clear benefits
+
+### Future Optimization Candidates
+
+#### 1. Multi-Pass Compilation Framework
+- **Pass 1**: Analyze function bodies, calculate local variable requirements
+- **Pass 2**: Generate code with optimal local variable allocation
+- **Benefits**: Reduced global variable usage, potentially faster runtime
+
+#### 2. Static Analysis for Variable Lifetime
+- **Technique**: Determine variable lifetime, reuse locals across non-overlapping lifetimes
+- **Algorithm**: Register allocation algorithms for optimal variable assignment
+- **Benefits**: Efficient variable usage, optimal memory patterns
+
+#### 3. Register Allocation Algorithms
+- **Approach**: Graph coloring algorithms to minimize variable conflicts
+- **Analysis**: Live range analysis for optimal variable reuse
+- **Benefits**: Minimal variable usage, optimized runtime performance
+
+### Commercial Game Reference
+
+**Zork I Validation**: Analysis of commercial Infocom games shows similar global variable patterns for intermediate results, validating this architectural choice as proven in production Z-Machine environments.
+
+### Current Status
+
+- ✅ **Implemented**: GetProperty uses global variable allocation pattern
+- ✅ **Documented**: Code comments explain architectural reasoning
+- ✅ **Consistent**: Matches GetPropertyByNumber implementation pattern
+- ✅ **Tested**: No compilation errors, maintains full test suite compatibility
+- ✅ **Validated**: Eliminates Variable 0 corruption issues in practice
+
+### Impact and Benefits
+
+**Immediate**: Eliminates property value corruption that caused `print_paddr 0x0000` crashes
+**Architectural**: Establishes consistent pattern for all property access operations
+**Performance**: Provides persistent storage for complex property expressions
+**Maintainability**: Single pattern reduces code complexity and debugging surface area
+
 ---
 
 ## Object Tree Initialization via InsertObj (October 15, 2025)

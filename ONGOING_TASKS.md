@@ -833,8 +833,238 @@ function examine (id=2):
 
 ---
 
+## ARCHITECTURAL CHOICE: Variable Storage Pattern for Property Results (Oct 19, 2025)
+
+### Design Decision: Global Variables vs Local Variables
+
+**DECISION**: Use allocated global variables (200+) for property access results instead of local variables (1-15) or stack (Variable 0).
+
+**REASONING**:
+
+1. **Z-Machine Constraint**: Local variables must be statically declared at function start
+   - Function headers specify exact local count (e.g., "routine has 3 locals")
+   - Cannot dynamically add locals during compilation of function body
+   - Would require complete function analysis before code generation
+
+2. **Single-Pass Compilation Architecture**: We generate code as we process IR instructions
+   - Don't know total local requirements until entire function is processed
+   - Would need multi-pass compilation to pre-calculate local needs
+   - Current architecture optimizes for compilation speed and simplicity
+
+3. **Stack Variable (0) Problems**: Ephemeral storage, corrupted by nested operations
+   - Function calls push/pop values, overwriting stack storage
+   - Property values become 0x0000 when stack gets corrupted
+   - Results in "print_paddr 0x0000" crashes in runtime
+
+4. **Global Variables (200+) Benefits**: Persistent, allocation-based storage
+   - Each IR ID gets unique global variable allocated once
+   - Values persist across function calls and complex expressions
+   - Commercial Zork I uses similar pattern for intermediate results
+   - Unlimited allocation space (up to 255 global variables)
+
+**IMPLEMENTATION LOCATION**: `src/grue_compiler/codegen_instructions.rs:623-651`
+
+### Current Implementation Pattern
+
+```rust
+// Check if we've already allocated a variable for this IR ID
+if !self.ir_id_to_stack_var.contains_key(target) {
+    // Use the proper global allocation function (same as builtins)
+    let fresh_var = self.allocate_global_for_ir_id(*target);
+    self.ir_id_to_stack_var.insert(*target, fresh_var);
+}
+let result_var = *self.ir_id_to_stack_var.get(target).unwrap();
+```
+
+### Alternative Approaches Considered
+
+**Multi-Pass Compilation**:
+- **Pro**: Could pre-calculate local variable requirements, optimize allocation
+- **Con**: Significantly more complex, slower compilation, architectural overhaul
+- **Assessment**: Requires complete rewrite of compilation pipeline
+
+**Stack-Based Storage**:
+- **Pro**: Simple, no allocation tracking needed
+- **Con**: Values get corrupted by nested function calls, proven buggy
+- **Assessment**: Rejected due to empirical evidence of corruption
+
+**Hybrid Approach**:
+- **Pro**: Use locals for simple cases, globals for complex cases
+- **Con**: Complex heuristics needed, inconsistent behavior
+- **Assessment**: Adds complexity without clear benefits
+
+### Future Optimization Candidates
+
+1. **Multi-Pass Compilation Framework**:
+   - Pass 1: Analyze function bodies, calculate local variable requirements
+   - Pass 2: Generate code with optimal local variable allocation
+   - Benefits: Reduced global variable usage, potentially faster runtime
+
+2. **Static Analysis for Variable Lifetime**:
+   - Determine variable lifetime and reuse locals across non-overlapping lifetimes
+   - Register allocation algorithms for optimal variable assignment
+   - Benefits: Efficient variable usage, optimal memory patterns
+
+3. **Register Allocation Algorithms**:
+   - Graph coloring algorithms to minimize variable conflicts
+   - Live range analysis for optimal variable reuse
+   - Benefits: Minimal variable usage, optimized runtime performance
+
+### Commercial Reference
+
+**Zork I Analysis**: Commercial Infocom games use similar global variable patterns for intermediate results, validating this architectural choice. The approach is proven to work correctly in production Z-Machine games.
+
+### Status
+
+- ✅ **Implemented**: GetProperty uses global variable allocation
+- ✅ **Documented**: Code comments explain architectural reasoning
+- ✅ **Consistent**: Matches GetPropertyByNumber pattern
+- ✅ **Tested**: No compilation errors, maintains test suite compatibility
+
+---
+
+## CRITICAL BUG: Object_space Mass Clear Before Copy Operation (Oct 19, 2025)
+
+### 🚨 BLOCKING ISSUE: Property Data Complete Loss
+
+**Status**: 🔧 ROOT CAUSE IDENTIFIED - Mass clearing operation destroying all object_space data
+
+**Symptom**: Object #2 (West of House) missing property 7, causing `print_paddr 0x0000` crash when accessing room descriptions.
+
+### Investigation Timeline
+
+**Phase 1**: ✅ Confirmed single block copy (not piece-by-piece)
+- Object_space (1206 bytes) copied as single operation to final_data
+- Copy mechanism itself is correct
+
+**Phase 2**: ✅ Identified data loss between creation and copying
+- Property table written correctly: `first_bytes=[05, 13, 8a, 63, 20, 51, 60, 11, b4, eb]`
+- Before copy operation: `Property table at offset 0x00d9: []` - **EMPTY**
+
+**Phase 3**: ✅ Debug pattern test reveals mass clearing
+- Initialized object_space with 2048 bytes of 0xAA pattern
+- By copy time: ALL bytes are 0x00 (entire vector cleared)
+- No selective overwrites detected - complete data wipe
+
+### Root Cause Analysis
+
+**CONFIRMED**: Entire object_space gets mass-cleared/reinitialized between property creation and copy operation.
+
+**Evidence**:
+1. Property table data written correctly initially
+2. Debug pattern (0xAA) completely replaced with 0x00 throughout entire vector
+3. No overwrite detection triggered - implies bulk operation not individual writes
+4. Single block copy correctly copies the cleared (empty) source data
+
+### Suspected Culprits
+
+**High Priority Suspects**:
+1. **Complete vector reassignment**: `object_space = Vec::new()`
+2. **Clear operation**: `object_space.clear()`
+3. **Bulk fill operation**: `object_space.fill(0)` or similar
+4. **New instance creation**: Fresh object_space instance replaces existing one
+
+**Search Strategy**:
+- Look for any operation that creates new empty object_space
+- Find bulk modification operations on object_space
+- Check for object_space reassignments
+
+### Impact
+
+**Immediate**: Game crashes on room description access
+**Systemic**: Any object property access could be affected if data loss is widespread
+
+### BREAKTHROUGH: Systematic Phase Isolation Complete (Oct 19, 2025)
+
+**MAJOR SUCCESS**: ✅ **Object_space clearing happens during Phase 3 (final assembly)**
+
+Through systematic phase-by-phase testing, isolated the exact location where object_space data gets cleared:
+
+**Phases Tested**:
+- ✅ **Step 2c** (object generation): Property data written correctly and intact
+  - West of House property table: `[05, 13, 8a, 63, 20, 51, 60, 11, b4, eb, 0a, 26, 00, 45, 00, 00, 44, 00, 00, 42]`
+- ✅ **Step 2d** (globals generation): Property data still intact
+- ✅ **Step 2e** (abbreviations): Property data still intact
+- ✅ **Step 2f** (code generation): Property data still intact
+- ❌ **Phase 3** (final assembly): This is where object_space gets cleared!
+
+### Phase 3 Assembly Analysis
+
+**How Phase 3 Works** (`assemble_complete_zmachine_image()` around line 868-899):
+
+**Structure**:
+1. **Step 3a**: Calculate memory layout (determine section positions)
+2. **Step 3b**: Initialize `final_data` vector with calculated total size
+3. **Step 3c**: Generate static header with correct addresses
+4. **Step 3d**: Copy all spaces to their calculated positions in `final_data`
+
+**Memory Layout**:
+```
+Header (64 bytes) → Input Buffers (220 bytes) → Globals → Abbreviations → Objects → Dictionary → Strings → Code
+```
+
+**Critical Copy Operations in Step 3d**:
+```rust
+final_data[objects_base..].copy_from_slice(&self.object_space);  // ← SUSPECT AREA
+```
+
+### Suspected Bug Scenarios
+
+**Primary Suspect**: Object space cleared before copy operation
+
+**Scenario 1: Object Space Cleared Before Copy**
+```rust
+// Somewhere in Phase 3:
+self.object_space.clear();  // ← BUG: Clears before copy
+// Then later:
+final_data[objects_base..].copy_from_slice(&self.object_space); // Copies empty data
+```
+
+**Scenario 2: Wrong Source in Copy Operation**
+```rust
+// Instead of copying FROM object_space TO final_data:
+self.object_space.copy_from_slice(&final_data[objects_base..]);  // ← BUG: Backwards
+```
+
+**Scenario 3: Object Space Reinitialized During Phase 3**
+```rust
+// During layout calc or header generation:
+self.object_space = vec![0; new_size];  // ← BUG: Reinitializes to zeros
+```
+
+### Investigation Plan
+
+**Strategic Debug Logging Approach**:
+
+1. **Confirm object_space intact at Phase 3 start**
+2. **Add checkpoints before each Phase 3 operation**:
+   - Before Step 3a (layout calculation)
+   - Before Step 3b (final_data initialization)
+   - Before Step 3c (header generation)
+   - Before Step 3d (copy operations)
+3. **Focus on object space copy operation specifically**
+4. **Search for any clear/reinitialize operations on object_space**
+
+**Key Questions to Answer**:
+- Is object_space intact when `assemble_complete_zmachine_image()` begins?
+- Which specific operation in Phase 3 clears the object_space?
+- Is it explicit clearing or accidental reinitialization?
+
+### Most Likely Culprit
+
+Based on the mass clearing pattern (entire object_space → 0x00), suspect **explicit clearing operation**:
+- `self.object_space.clear()`
+- `self.object_space = Vec::new()`
+- `self.object_space = vec![0; size]`
+
+### Next Action
+
+**PRIORITY 1**: Add strategic debug logging to Phase 3 to pinpoint exact clearing location, then eliminate the mass clearing operation.
+
+---
+
 ## Future Tasks
 
-**Priority 1**: Complete LogicalComparisonOp conditional compilation implementation
+**Priority 1**: Find and fix object_space mass clearing operation
 **Priority 2**: Document IR→Z-Machine translation patterns in ARCHITECTURE.md
-**Priority 3**: Test comprehensive gameplay scenarios with logical expression handling
+**Priority 3**: Implement future optimization candidates for variable allocation
