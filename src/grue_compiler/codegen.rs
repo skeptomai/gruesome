@@ -5455,8 +5455,8 @@ impl ZMachineCodeGen {
                     }
                 }
 
-                // If this is names property (property 16), create DictionaryRef for each name
-                let names_prop = *self.property_numbers.get("names").unwrap_or(&16);
+                // If this is names property (property 27), create DictionaryRef for each name
+                let names_prop = *self.property_numbers.get("names").unwrap_or(&27);
                 if prop_num == names_prop && i % 2 == 0 && i < prop_data.len() - 1 {
                     // Check if this object has vocabulary names mapped
                     if let Some(vocab_words) = self.object_vocabulary_names.get(&object.name) {

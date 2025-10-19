@@ -361,7 +361,7 @@ impl ZMachineCodeGen {
             // CRITICAL FIX (Oct 16, 2025): Add names property to player
             // Grammar object lookup reads property 16 (names) to find dictionary addresses
             // Must store ALL dictionary addresses for all player names
-            let names_prop = *self.property_numbers.get("names").unwrap_or(&16); // CRITICAL FIX (Bug #23): Fallback to property 16, not 7
+            let names_prop = *self.property_numbers.get("names").unwrap_or(&27); // Property 27 for grammar names
 
             // DEBUG: Show what property number names gets assigned
             log::warn!(
@@ -532,7 +532,7 @@ impl ZMachineCodeGen {
             // Ensure all objects have essential properties that games commonly access
             // location_prop removed - uses object tree parent only (Oct 12, 2025)
             let desc_prop = *self.property_numbers.get("description").unwrap_or(&7);
-            let names_prop = *self.property_numbers.get("names").unwrap_or(&16); // CRITICAL FIX (Bug #23): Fallback to property 16, not 7
+            let names_prop = *self.property_numbers.get("names").unwrap_or(&27); // Property 27 for grammar names
             log::debug!(
                 "🔍 PROPERTY_NUMBERS: Object '{}': description={}, names={}",
                 object.name,
