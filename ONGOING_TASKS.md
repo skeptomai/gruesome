@@ -77,6 +77,108 @@
 - **Assessment**: Completely unrelated to Property 27 - different string reference issue
 - **Priority**: HIGH - blocking all gameplay testing
 
+### 🔍 CRITICAL ASSUMPTION: Property Disappearance After Correct Creation (Oct 20, 2025)
+
+**CONFIRMED INVESTIGATION FINDING**: West of House Property 7 is created correctly but disappears before final interpretation.
+
+**Evidence Chain**:
+1. **✅ Property Creation**: Property 7 correctly written with size_byte=0x27, 0xFFFF placeholders at object_space offsets 0x0104-0x0105, string_id=1001
+2. **✅ UnresolvedReference Creation**: Reference created at object_space offset 0x0104 for string ID 1001
+3. **✅ Address Resolution**: String ID 1001 correctly resolves to packed address 0x0608
+4. **✅ Reference Patching**: Writes to correct final_data location 0x04c0 (object_base 0x03bc + offset 0x0104)
+5. **❌ Final Result**: Interpreter shows West of House only has Property 6, Property 7 completely missing
+
+**Critical Log Evidence**:
+```
+🔍 PROP_WRITE: Writing property 7 for object 'West of House': size_byte=0x27, data=0xffff (65535), string_id=Some(1001)
+🚨 PROPERTY_TABLE_WRITE: location=0x04c0 writing 0x0608 (value=0x0608) target_id=1001 type=StringPackedAddress { string_id: 1001 }
+📦 Object #2: "West of House" Properties: Property 6: 0x0045 (69)  [Property 7 MISSING]
+```
+
+**CONCLUSION**: The property is created correctly, patched correctly, but then gets corrupted or overwritten AFTER reference resolution completes. This indicates a post-processing step that damages the property table data before final game execution.
+
+## 🔬 SYSTEMATIC INVESTIGATION PLAN: Find Property Corruption Step (Oct 20, 2025)
+
+### Investigation Plan: Progressive Code Commenting to Find Property Corruption Step
+
+#### Baseline Understanding
+- **West of House property table**: Should be at object_space offset 0x00d9, final address 0x0495 (0x03bc + 0x00d9)
+- **Property 7 data location**: object_space offset 0x0104, final address 0x04c0 (0x03bc + 0x0104)
+- **Expected sequence**: 0xFFFF placeholders → 0x0608 (packed address) → should remain 0x0608
+
+#### Phase 1: Baseline - Comment Out Everything After Object Space Copy
+**Target**: Verify property exists with placeholders in binary
+
+**What to comment out** (in `assemble_complete_zmachine_image()`):
+- All reference resolution (`resolve_unresolved_references()`)
+- Property table address patching (`patch_property_table_addresses()`)
+- Header finalization (`finalize_header_metadata()`)
+
+**Test method**:
+```bash
+xxd -s 0x0495 -l 50 tests/mini_zork.z3  # Check West of House property table header
+xxd -s 0x04c0 -l 4 tests/mini_zork.z3   # Check Property 7 data location
+```
+
+**Expected result**:
+- Property table should show Property 7 exists in header
+- Location 0x04c0 should contain 0xFFFF (placeholders)
+
+#### Phase 2: Add Back Reference Resolution Only
+**Target**: Verify 0xFFFF becomes 0x0608
+
+**What to uncomment**:
+- Only `resolve_unresolved_references()`
+- Keep property table patching and header finalization commented
+
+**Test method**:
+```bash
+xxd -s 0x04c0 -l 4 tests/mini_zork.z3   # Should now show 0x0608
+```
+
+**Expected result**:
+- Property 7 data should change from 0xFFFF to 0x0608
+- Property table structure should remain intact
+
+#### Phase 3: Add Back Property Table Address Patching
+**Target**: See if `patch_property_table_addresses()` corrupts property content
+
+**What to uncomment**:
+- `patch_property_table_addresses(object_base)`
+
+**Test method**:
+```bash
+xxd -s 0x0495 -l 50 tests/mini_zork.z3  # Check if property table structure corrupted
+xxd -s 0x04c0 -l 4 tests/mini_zork.z3   # Check if Property 7 data corrupted
+```
+
+**Expected result if this is the culprit**:
+- Property table structure damaged
+- Property 7 data overwritten or missing
+
+#### Phase 4: Add Back Header Finalization
+**Target**: Check if header operations corrupt property data
+
+**What to uncomment**:
+- `finalize_header_metadata()`
+
+**Test method**: Same xxd checks
+
+#### Phase 5: Add Back Any Remaining Steps
+**Target**: Find any other corruption sources
+
+#### Implementation Strategy
+1. **Make changes in `src/grue_compiler/codegen.rs`** in the `assemble_complete_zmachine_image()` function
+2. **Use block comments** to disable entire sections
+3. **Test each phase** with fresh compilation and xxd analysis
+4. **Document exact byte changes** at each step
+
+#### Critical Verification Points
+At each phase, check:
+1. **Property table header integrity**: Does West of House show it has Property 7?
+2. **Property 7 data location**: Is 0x04c0 intact with expected value?
+3. **Overall memory layout**: Are other properties/objects affected?
+
 ---
 
 ## ARCHIVED STATUS: Previous Working State (Oct 19, 2025)
@@ -1063,8 +1165,123 @@ Based on the mass clearing pattern (entire object_space → 0x00), suspect **exp
 
 ---
 
+## CURRENT CRITICAL BUG: Room Property Processing Missing (Oct 20, 2025)
+
+### 🚨 ROOT CAUSE IDENTIFIED: Room Description Properties Not Generated
+
+**Status**: 🎯 **EXACT BUG LOCATION FOUND** - Room processing code path skips basic property setup
+
+**Discovery Summary**: Through systematic investigation, found that west_of_house crashes because it has NO Property 7 (description) at all. The runtime tries to access Property 7 for room descriptions, but the compiler never creates it.
+
+### Complete Investigation Chain
+
+**STEP 1**: ✅ **Confirmed crash is property access, not string corruption**
+- `print_paddr called with invalid packed address 0x0000` at PC 011f2
+- Runtime error occurs when `look_around` tries to access Property 7 of current room
+- IR shows: `t54 = t53.prop#7` (get description property of current room)
+
+**STEP 2**: ✅ **Discovered west_of_house has NO Property 7**
+- Interpreter dump shows: Object #2 has ONLY Property 6 (0x0045)
+- Property 7 is completely missing from west_of_house object table
+- All other objects (mailbox, leaflet, tree, etc.) DO have Property 7
+
+**STEP 3**: ✅ **Confirmed source file HAS description**
+- `examples/mini_zork.grue` line 8: `desc: "You are standing in an open field west of a white house..."`
+- The description EXISTS in source but never gets compiled to Property 7
+
+**STEP 4**: ✅ **Found processing code path difference**
+- Objects (mailbox, leaflet, etc.) get `🔍 PROPERTY_NUMBERS: Object 'mailbox': description=7` logs
+- west_of_house gets NO such logs - skips basic property processing entirely
+- west_of_house only gets exit property processing (Property 13, 14, 15)
+
+**STEP 5**: ✅ **Located expected room processing code**
+- Found `ROOM_DESC_DEBUG` code in `codegen_objects.rs:493-503` that should process room descriptions
+- Code exists to set `room_properties.set_string(desc_prop, room.description.clone())`
+- But this code path is NOT being executed for any rooms
+
+**STEP 6**: ✅ **Confirmed room loop not running**
+- `ROOM_LOOP_START` and `ROOM_PROCESSING` debug logs never appear
+- Room description processing code exists but is never called
+- Rooms get created as objects but skip basic property initialization
+
+### The Exact Bug
+
+**ARCHITECTURE ISSUE**: Room objects are processed through a different code path than regular objects:
+
+1. **Regular Objects** (mailbox, leaflet, tree, etc.):
+   - Go through property setup code that creates Property 7 (description)
+   - Get `🔍 PROPERTY_NUMBERS: Object 'X': description=7` logs
+   - Receive all standard object properties
+
+2. **Room Objects** (west_of_house, north_of_house, etc.):
+   - Skip basic property setup entirely
+   - Only get exit property processing (Properties 13, 14, 15)
+   - Never get Property 7 (description) created
+   - Missing `ROOM_DESC_DEBUG` processing
+
+### Evidence Trail
+
+**Compiler Logs Show**:
+```
+[INFO] Object #2: ROOM 'west_of_house' (ID: 19, short: 'West of House')
+[DEBUG] Exit system: Room 'west_of_house' exit 0 direction 'north' -> room IR ID 22 = object 3
+[DEBUG] Exit system: Generated parallel arrays for room 'west_of_house' with 3 exits
+```
+
+**Missing Logs** (should appear but don't):
+```
+[WARN] 🏠 ROOM_DESC_DEBUG: Room 'west_of_house' setting property 7 with description: 'You are...'
+[ERROR] 🏠 ROOM_PROCESSING: Starting room 'west_of_house'
+```
+
+**Runtime Evidence**:
+```
+📦 Object #2: "West of House" Properties: Property 6: 0x0045 (69)  [Property 7 MISSING]
+```
+
+### Investigation Methods Used
+
+✅ **Systematic Phase Testing**: Ruled out post-processing corruption
+✅ **Binary Analysis**: Confirmed Property 7 never exists in final binary
+✅ **IR Analysis**: Verified look_around expects Property 7 on all rooms
+✅ **Log Analysis**: Found exact code path differences between objects vs rooms
+✅ **Source Code Review**: Confirmed room descriptions exist in source files
+
+### Next Steps
+
+**IMMEDIATE FIX NEEDED**: Find why room basic property processing code (`ROOM_DESC_DEBUG` section) is not being executed and ensure all rooms get Property 7 created from their `room.description` field.
+
+**Location**: `src/grue_compiler/codegen_objects.rs` - Room processing loop around lines 478-503
+
+**Root Cause**: Room objects are being created but the basic property initialization code path (that sets description, visited, etc.) is being skipped entirely.
+
+---
+
+## ARCHIVE: Object_space Mass Clear Investigation (Oct 19-20, 2025)
+
+### 🔄 INVESTIGATION PIVOT: Root Cause Was Elsewhere
+
+**Original Theory**: Object_space gets mass-cleared between property creation and final copy
+**Reality**: west_of_house never gets Property 7 created in the first place
+
+**What We Learned**:
+- ✅ Object_space copy mechanism works correctly
+- ✅ Post-processing phases (reference resolution, property patching) work correctly
+- ✅ String reference resolution works correctly
+- ✅ Property table format follows Z-Machine spec correctly
+- ❌ **ACTUAL ISSUE**: Room property generation code path missing
+
+**Systematic Testing Results**:
+- **Phase Test 1**: Code space copy - NOT the corruption source
+- **Phase Test 2**: String space copy - NOT the corruption source
+- **Major Discovery**: west_of_house completely absent from property generation logs
+
+**Value of Investigation**: Eliminated multiple potential causes and confirmed the compiler infrastructure works correctly. The issue is specifically in the room vs object processing logic.
+
+---
+
 ## Future Tasks
 
-**Priority 1**: Find and fix object_space mass clearing operation
+**Priority 1**: Fix room basic property processing code path (Property 7 generation)
 **Priority 2**: Document IR→Z-Machine translation patterns in ARCHITECTURE.md
 **Priority 3**: Implement future optimization candidates for variable allocation

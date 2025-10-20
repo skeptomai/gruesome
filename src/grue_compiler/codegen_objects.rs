@@ -38,9 +38,16 @@ impl ZMachineCodeGen {
             self.object_space.resize(offset + 1, 0);
         }
 
-        // DEBUG: Check for overwrites in west_of_house property table region (0x00d9-0x0106)
+        // DEBUG: Enhanced tracking for west_of_house property table region (0x00d9-0x0106)
         if offset >= 0x00d9 && offset <= 0x0106 {
             let old_value = self.object_space[offset];
+
+            // Log ALL writes to this critical region, not just overwrites
+            log::debug!(
+                "🎯 WEST_OF_HOUSE_REGION: Write 0x{:02x} at offset 0x{:04x} (was 0x{:02x})",
+                byte, offset, old_value
+            );
+
             if old_value != 0xAA && old_value != 0x00 && old_value != byte {
                 log::warn!(
                     "🚨 OVERWRITE_DETECTED: offset 0x{:04x} had 0x{:02x}, writing 0x{:02x}",
@@ -292,7 +299,10 @@ impl ZMachineCodeGen {
     }
 
     /// Generate object and property tables
+    /// This is the main function that generates full object tables for interactive programs,
+    /// including both room objects and regular objects with their property tables.
     pub fn generate_object_tables(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
+
         log::info!("=== OBJECT TABLE GENERATION DEBUG ===");
         log::info!("Target version: {:?}", self.version);
         log::info!(
@@ -468,6 +478,8 @@ impl ZMachineCodeGen {
         // This builds the complete all_objects vector so we can create accurate object_id_to_number mapping
 
         // Add rooms as objects (basic properties only, exits added in Pass 2)
+        // Rooms need basic properties like 'description' for look_around() to work correctly
+        log::debug!("Processing {} rooms to generate room objects...", ir.rooms.len());
         for room in &ir.rooms {
             let mut room_properties = IrProperties::new();
 
@@ -480,7 +492,7 @@ impl ZMachineCodeGen {
             let on_enter_prop = *self.property_numbers.get("on_enter").unwrap_or(&21);
             let on_exit_prop = *self.property_numbers.get("on_exit").unwrap_or(&20);
 
-            // Set default property values for rooms
+            // Set room description property for look_around() functionality
             room_properties.set_string(desc_prop, room.description.clone());
             room_properties.set_byte(visited_prop, 0); // Initially not visited
                                                        // location property removed - rooms use object tree containment (Oct 12, 2025)

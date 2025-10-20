@@ -623,6 +623,17 @@ impl ZMachineCodeGen {
         self.generate_all_zmachine_sections(&ir)?;
         log::info!(" Phase 2 complete: All Z-Machine sections generated");
 
+        // CRITICAL DEBUG: Check object_space integrity right after Phase 2
+        log::info!("🔍 PHASE2_END: object_space.len() = {}", self.object_space.len());
+        if self.object_space.len() > 0x00d9 {
+            log::info!("🔍 PHASE2_END: object_space[0x00d9] = 0x{:02x} (should be 0x05 for text length)",
+                       self.object_space[0x00d9]);
+            log::info!("🔍 PHASE2_END: West of House property data at 0x00d9: {:02x?}",
+                       &self.object_space[0x00d9..std::cmp::min(0x00d9 + 20, self.object_space.len())]);
+        } else {
+            log::info!("🔍 PHASE2_END: object_space is too small (len={}), 0x00d9 is beyond bounds!", self.object_space.len());
+        }
+
         // DEBUG: Show space population before final assembly
         self.debug_space_population();
 
@@ -639,6 +650,21 @@ impl ZMachineCodeGen {
         log::debug!(" Phase 5: Validating final Z-Machine image");
         // Final validation disabled - can be enabled for additional checks
         // self.validate_final_assembly()?;
+
+        // FINAL VERIFICATION: Check west_of_house property 7 just before returning file
+        let prop_addr = 0x04c0; // West of House property 7 from debug logs
+        if prop_addr + 1 < final_game_image.len() {
+            let byte1 = final_game_image[prop_addr];
+            let byte2 = final_game_image[prop_addr + 1];
+            let value = ((byte1 as u16) << 8) | (byte2 as u16);
+            log::info!("🔍 FINAL_VERIFICATION: West of House property 7 at 0x{:04x} = 0x{:02x} 0x{:02x} = 0x{:04x}",
+                       prop_addr, byte1, byte2, value);
+            if value == 0x0000 {
+                log::error!("🚨 FINAL_STATE_CORRUPT: West of House property 7 is 0x0000 at file write time!");
+            } else {
+                log::info!("✅ FINAL_STATE_OK: West of House property 7 has valid value 0x{:04x}", value);
+            }
+        }
 
         log::info!(
             "🎉 COMPLETE Z-MACHINE FILE generation complete: {} bytes",
@@ -870,6 +896,17 @@ impl ZMachineCodeGen {
         _ir: &IrProgram,
     ) -> Result<Vec<u8>, CompilerError> {
         log::info!(" Phase 3: Assembling complete Z-Machine image from ALL separated spaces");
+
+        // CRITICAL DEBUG: Check object_space integrity at Phase 3 START
+        log::info!("🔍 PHASE3_START: object_space.len() = {}", self.object_space.len());
+        if self.object_space.len() > 0x00d9 {
+            log::info!("🔍 PHASE3_START: object_space[0x00d9] = 0x{:02x} (should be 0x05 for text length)",
+                       self.object_space[0x00d9]);
+            log::info!("🔍 PHASE3_START: West of House property data at 0x00d9: {:02x?}",
+                       &self.object_space[0x00d9..std::cmp::min(0x00d9 + 20, self.object_space.len())]);
+        } else {
+            log::info!("🔍 PHASE3_START: object_space is too small (len={}), 0x00d9 is beyond bounds!", self.object_space.len());
+        }
 
         // Phase 3a: Calculate precise memory layout for ALL Z-Machine sections
         log::debug!("📏 Step 3a: Calculating comprehensive memory layout");
@@ -1196,6 +1233,14 @@ impl ZMachineCodeGen {
         // Copy object space
         if !self.object_space.is_empty() {
             log::warn!("🔧 OBJECT_COPY: About to copy object_space to final_data");
+
+            // CRITICAL DEBUG: Check object_space integrity right before copy
+            log::warn!("🔍 CRITICAL_CHECK: object_space[0x00d9] = 0x{:02x} (expecting 0x05 for text length)",
+                       if 0x00d9 < self.object_space.len() { self.object_space[0x00d9] } else { 0xFF });
+            if 0x00d9 < self.object_space.len() {
+                log::warn!("🔍 CRITICAL_CHECK: West of House property data at 0x00d9: {:02x?}",
+                           &self.object_space[0x00d9..std::cmp::min(0x00d9 + 20, self.object_space.len())]);
+            }
             log::warn!(
                 "   object_base=0x{:04x}, dictionary_base=0x{:04x}, object_size={}",
                 object_base,
@@ -1239,6 +1284,10 @@ impl ZMachineCodeGen {
                 object_base + 20,
                 &self.final_data[object_base..object_base + 20]
             );
+
+            // FINAL DEBUG: Check object_space right before the actual copy
+            log::warn!("🔍 FINAL_COPY_CHECK: About to copy object_space[0x00d9] = 0x{:02x}",
+                       if 0x00d9 < self.object_space.len() { self.object_space[0x00d9] } else { 0xFF });
 
             self.final_data[object_base..dictionary_base].copy_from_slice(&self.object_space);
 
@@ -1445,8 +1494,9 @@ impl ZMachineCodeGen {
                 object_base
             );
 
-            // CRITICAL FIX: Patch property table addresses from object space relative to absolute addresses
-            self.patch_property_table_addresses(object_base)?;
+            // PHASE 3 INVESTIGATION: Add back property table patching to test corruption
+            // FIX: Comment out patch_property_table_addresses() - it overwrites property content with 0x0000
+            // self.patch_property_table_addresses(object_base)?;
 
             // DEBUG: Verify object #2 property table pointer IMMEDIATELY after patching
             let obj2_prop_ptr_addr = 0x040A;
@@ -1646,16 +1696,13 @@ impl ZMachineCodeGen {
         log::debug!(" Step 3e.6: Consolidating ALL IR ID mappings (functions, strings, labels)");
         self.consolidate_all_ir_mappings();
 
-        // Phase 3f: Resolve all address references (including string properties)
+        // PHASE 3 INVESTIGATION: Reference resolution confirmed NOT the cause - restore
         log::debug!(" Step 3f: Resolving all address references and fixups");
         self.resolve_all_addresses()?;
 
-        // Phase 3g: Finalize file metadata (length and checksum - must be last)
-        // This phase calculates and writes file length and checksum.
-        // MUST be called last since it depends on the complete final file.
-        // Updates: File length (bytes 26-27), Checksum (bytes 28-29)
-        log::debug!(" Step 3g: Finalizing file length and checksum");
-        self.finalize_header_metadata()?;
+        // PHASE 1 INVESTIGATION: Comment out header finalization
+        // log::debug!(" Step 3g: Finalizing file length and checksum");
+        // self.finalize_header_metadata()?;
 
         log::info!(
             "🎉 COMPLETE Z-MACHINE FILE assembled successfully: {} bytes",
@@ -2398,6 +2445,18 @@ impl ZMachineCodeGen {
                         old_low,
                         (old_high as u16) << 8 | old_low as u16
                     );
+                }
+
+                // CRITICAL DEBUG: Check for writes to property table region
+                if reference.location >= 0x0480 && reference.location <= 0x0500 {
+                    log::warn!("🚨 PROPERTY_TABLE_WRITE: location=0x{:04x} writing 0x{:02x}{:02x} (value=0x{:04x}) target_id={} type={:?}",
+                               reference.location, high_byte, low_byte, final_value, reference.target_id, reference.reference_type);
+
+                    // Check for ZERO writes which indicate failed resolution
+                    if final_value == 0 {
+                        log::error!("🚨 ZERO_WRITE_DETECTED: Writing 0x0000 to 0x{:04x} - this will cause print_paddr crash!", reference.location);
+                        log::error!("   Failed target_id={} type={:?}", reference.target_id, reference.reference_type);
+                    }
                 }
 
                 self.final_data[reference.location] = high_byte;
@@ -5674,10 +5733,16 @@ impl ZMachineCodeGen {
                 break; // Stop iteration - we've gone past actual objects into property table data
             }
 
-            // Calculate absolute final memory address
-            let absolute_addr = object_base + (space_relative_addr as usize);
-            debug!(" - Calculated absolute_addr: 0x{:04x} (object_base 0x{:04x} + space_relative 0x{:04x})", 
- absolute_addr, object_base, space_relative_addr);
+            // Calculate absolute final memory address using reliable final_object_base
+            let absolute_addr = self.final_object_base + (space_relative_addr as usize);
+            debug!(" - Calculated absolute_addr: 0x{:04x} (final_object_base 0x{:04x} + space_relative 0x{:04x})",
+ absolute_addr, self.final_object_base, space_relative_addr);
+
+            // CRITICAL DEBUG: Check for zero calculations
+            if absolute_addr == 0 {
+                log::debug!("🚨 PROPERTY_PATCH_ZERO: Object {} calculating absolute_addr=0x0000! space_relative=0x{:04x} final_object_base=0x{:04x}",
+                           obj_index + 1, space_relative_addr, self.final_object_base);
+            }
 
             // Write the corrected absolute address back to final_data
             let new_high_byte = (absolute_addr >> 8) as u8;

@@ -1,10 +1,12 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 18, 2025) - ALL MAJOR BUGS FIXED ✅
+## CURRENT STATUS (October 20, 2025) - ROOM DESCRIPTION BUG INVESTIGATION 🔍
 
-**MILESTONE ACHIEVED**: Core compiler functionality complete. Property system, object examination, and string handling all working correctly.
+**ACTIVE DEBUGGING**: Room property processing architectural bug causing startup crashes.
 
-**LATEST FIX**: Bug #24 (Property Access) - Fixed garbled text when examining objects. GetPropertyByNumber now correctly stores results to allocated global variables.
+**CURRENT ISSUE**: Game crashes with `print_paddr 0x0000` because west_of_house has NO Property 7 (description). Room objects skip basic property setup entirely - they only get exit properties but never get description properties created from their `room.description` field.
+
+**INVESTIGATION PLAN**: Following systematic 4-phase debugging plan in `ROOM_DESC_DEBUG_PLAN.md` to trace why room property processing code exists but never executes.
 
 ## Recent Fixes (October 2025)
 
