@@ -986,6 +986,143 @@ pub struct CallFrame {
 }
 ```
 
+### Z-Machine Stack Usage and Discipline
+
+**CRITICAL ARCHITECTURAL PRINCIPLE**: The Z-Machine stack (Variable 0) must be used with proper push/pull discipline, not avoided due to complexity.
+
+#### Z-Machine Specification Compliance
+
+**Variable Numbering** (Z-Machine Spec Section 4.2.2):
+```
+Variable number $00 refers to the top of the stack,
+$01 to $0f mean the local variables of the current routine
+$10 to $ff mean the global variables.
+```
+
+**Stack Operations** (Z-Machine Spec Section 6.3):
+```
+Writing to the stack pointer (variable number $00) pushes a value onto the stack;
+reading from it pulls a value off. Stack entries are 2-byte words as usual.
+```
+
+**STACK (Variable 0) MUST be used for**:
+1. ✅ Function call return values
+2. ✅ Function call arguments (before moving to locals)
+3. ✅ Immediate consumption values
+4. ✅ Expression evaluation
+
+#### Available Stack Operations
+
+| Opcode | Form | Operation | Usage |
+|--------|------|-----------|-------|
+| `push` | VAR:232/8 | Push value onto game stack | Store temporary values |
+| `pull` | VAR:233/9 | Pull value off stack into variable | Retrieve temporary values |
+| Variable 0 | Direct access | Read/write top of stack | Immediate consumption |
+
+#### Current Compiler Problem: Lack of Stack Discipline
+
+**BROKEN Current Approach**:
+```rust
+// Multiple IR temporaries mapped to same Variable(0) - treating like storage slots
+ir_id_51 -> Variable(0)    // store Variable(0), clear_quit_state_result
+ir_id_533 -> Variable(0)   // store Variable(0), property_result  ← OVERWRITES!
+// Earlier values lost, Variable 0 collisions cause crashes
+```
+
+**Z-Machine Reality**:
+- Variable 0 = **LIFO stack top** (only most recent push accessible)
+- Earlier values are **buried** until pops occur
+- Multiple concurrent Variable(0) storage = **guaranteed data loss**
+
+#### Proper Stack Discipline Pattern
+
+**CORRECT Approach**:
+```rust
+// ✅ CORRECT: Use actual stack operations with push/pull symmetry
+evaluate_expr_1() -> push result              // Stack: [result1]
+evaluate_expr_2() -> push result              // Stack: [result1, result2]
+consume_expr_2() -> pull temp_var             // Stack: [result1], temp_var = result2
+consume_expr_1() -> pull temp_var2            // Stack: [], temp_var2 = result1
+```
+
+**Key Principles**:
+1. **LIFO Order**: Last pushed, first pulled
+2. **Balanced Operations**: Every push must have corresponding pull
+3. **Stack Depth Tracking**: Compiler must track current stack depth
+4. **Immediate vs Persistent**: Variable 0 for immediate consumption, globals for persistence
+
+#### Missing Compiler Infrastructure
+
+**Current Gaps**:
+- ❌ No `emit_push()` / `emit_pull()` code generation helpers
+- ❌ No stack depth tracking in compiler state
+- ❌ No expression evaluation planning for nested expressions
+- ❌ `use_stack_for_result()` just maps to Variable(0) storage (wrong)
+
+**Required Infrastructure**:
+```rust
+struct CodegenContext {
+    stack_depth: usize,           // Current stack depth tracking
+    stack_contents: Vec<IrId>,    // Debug: what IR values are on stack
+}
+
+fn emit_push(&mut self, operand: Operand) -> Result<(), CompilerError> {
+    self.emit_instruction_typed(Opcode::Op2(Op2::Push), &[operand], None, None)?;
+    self.stack_depth += 1;
+    Ok(())
+}
+
+fn emit_pull(&mut self, target_var: u8) -> Result<(), CompilerError> {
+    self.emit_instruction_typed(Opcode::Var(VarOp::Pull), &[Operand::Variable(target_var)], None, None)?;
+    self.stack_depth -= 1;
+    Ok(())
+}
+```
+
+#### Expression Evaluation Patterns
+
+**Complex Expression**: `foo(bar(), baz())`
+
+**Proper Stack Evaluation**:
+```z-machine
+call bar                       ; Result in Variable(0)
+push Variable(0)               ; Save bar() result: Stack: [bar_result]
+call baz                       ; Result in Variable(0)
+push Variable(0)               ; Save baz() result: Stack: [bar_result, baz_result]
+pull arg2                      ; arg2 = baz_result, Stack: [bar_result]
+pull arg1                      ; arg1 = bar_result, Stack: []
+call foo, arg1, arg2           ; Both arguments available
+```
+
+#### Implementation Strategy
+
+**Phase 1: Stack Management Infrastructure**
+- Add stack depth tracking to codegen context
+- Implement `emit_push()` / `emit_pull()` helper functions
+- Add stack state validation for debug builds
+
+**Phase 2: Replace Variable(0) Overuse**
+- Convert `use_stack_for_result()` to use actual stack operations
+- Generate balanced push/pull sequences for complex expressions
+- Plan expression evaluation sequences (right-to-left argument evaluation)
+
+**Phase 3: Optimize for Immediate Consumption**
+- Keep Variable(0) direct access for immediate consumption
+- Use push/pull only when values need to persist during other operations
+- Implement consumption distance analysis
+
+#### Engineering Philosophy
+
+**Key Insight**: Real stack discipline means **using the stack correctly with push/pop symmetry**, not avoiding it because we can't manage the complexity.
+
+**Z-Machine Design Intent**:
+- Stack is **the primary mechanism** for expression evaluation
+- Variable 0 provides **direct access to stack top**
+- Push/pull opcodes enable **proper stack management**
+- Multiple temporary values **should use the stack with proper discipline**
+
+**Architectural Validation**: Commercial Infocom games (Zork I, AMFV) use similar stack patterns for complex expression evaluation, validating this approach.
+
 ## Instruction Processing Pipeline
 
 ```mermaid

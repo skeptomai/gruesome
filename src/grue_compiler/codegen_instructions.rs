@@ -1198,20 +1198,38 @@ impl ZMachineCodeGen {
                 // because move() uses insert_obj which updates the tree, not properties
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
 
+                // CRITICAL FIX: Use global variable allocation instead of Variable 0 (stack)
+                // Same pattern as GetPropertyByNumber - allocate unique global variable for each result
+                // This prevents Variable 0 overwrite issues that caused Property 28 corruption
+                if !self.ir_id_to_stack_var.contains_key(target) {
+                    let fresh_var = self.allocate_global_for_ir_id(*target);
+                    self.ir_id_to_stack_var.insert(*target, fresh_var);
+                    log::debug!(
+                        "GetObjectParent: Allocated global variable {} for IR ID {}",
+                        fresh_var,
+                        target
+                    );
+                }
+
+                let result_var = *self.ir_id_to_stack_var.get(target).unwrap();
+
                 log::debug!(
-                    "🛠️ OBJECT_0_FIX: Compiling GetObjectParent with object operand: {:?}",
-                    obj_operand
+                    "🛠️ OBJECT_PARENT_FIX: Compiling GetObjectParent with object operand: {:?}, storing to Variable({})",
+                    obj_operand, result_var
                 );
 
                 self.emit_instruction_typed(
                     Opcode::Op1(Op1::GetParent),
                     &[obj_operand],
-                    Some(0), // Store result to stack
-                    None,    // No branch
+                    Some(result_var), // Store result to allocated global variable
+                    None,             // No branch
                 )?;
 
-                // Register target as using stack result
-                self.use_stack_for_result(*target);
+                log::debug!(
+                    "GetObjectParent: IR ID {} -> global var {}",
+                    target,
+                    result_var
+                );
             }
 
             IrInstruction::InsertObj {

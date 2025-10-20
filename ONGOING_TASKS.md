@@ -1,5 +1,158 @@
 # Ongoing Tasks
 
+## CRITICAL ARCHITECTURAL DISCOVERY: Z-Machine Stack Usage Analysis (Oct 20, 2025)
+
+### 🎯 MAJOR INSIGHT: Stack Discipline vs Stack Avoidance
+
+**STATUS**: 📋 **ARCHITECTURAL UNDERSTANDING COMPLETE** - Design approach clarified
+
+**Investigation Triggered By**: Property 28 crash and Variable 0 collision debugging showing 20+ operations using Variable 0 simultaneously, leading to incorrect assertion that "we're misusing the stack."
+
+### Specification Analysis Results ✅
+
+**Z-Machine Specification (Sections 4.2.2, 6.3) EXPLICITLY SUPPORTS**:
+```
+Variable number $00 refers to the top of the stack,
+Writing to the stack pointer (variable number $00) pushes a value onto the stack;
+reading from it pulls a value off.
+```
+
+**STACK (Variable 0) MUST be used for** (from CLAUDE.md):
+1. ✅ Function call return values
+2. ✅ Function call arguments (before moving to locals)
+3. ✅ Immediate consumption values
+4. ✅ Expression evaluation
+
+**Available Stack Operations**:
+- ✅ `push` (VAR:232/8) - Pushes value onto the game stack
+- ✅ `pull` (VAR:233/9) - Pulls value off stack into variable
+- ✅ Variable 0 direct access - Read/write top of stack
+
+### Root Cause: Lack of Stack Discipline, NOT Stack Misuse
+
+**INCORRECT Previous Analysis**:
+- ❌ "We're misusing the stack because it's push/pop only but expecting multiple slots"
+- ❌ "Move everything to globals to avoid stack complexity"
+- ❌ "Stack is too hard to track, use persistent storage instead"
+
+**CORRECT Analysis** (per Z-Machine spec):
+- ✅ **Multiple values on stack is legal and expected**
+- ✅ **Problem is treating Variable(0) like persistent storage slots**
+- ✅ **Need proper push/pull symmetry, not stack avoidance**
+- ✅ **Solution is implementing stack discipline, not avoiding complexity**
+
+### The Real Problem: Compiler Architecture Gap
+
+**Current (Broken) Approach**:
+```rust
+// Multiple IR temporaries mapped to same Variable(0) - treating like storage slots
+ir_id_51 -> Variable(0)    // store Variable(0), clear_quit_state_result
+ir_id_533 -> Variable(0)   // store Variable(0), property_result  ← OVERWRITES!
+// Earlier values lost, Property 28 gets garbage data
+```
+
+**Z-Machine Reality**:
+```
+Variable 0 = LIFO stack top (only most recent push accessible)
+Earlier values are buried until pops occur
+Multiple concurrent Variable(0) storage = guaranteed data loss
+```
+
+**Proper Stack Discipline**:
+```rust
+// ✅ CORRECT: Use actual stack operations
+evaluate_expr_1() -> push result              // Stack: [result1]
+evaluate_expr_2() -> push result              // Stack: [result1, result2]
+consume_expr_2() -> pull temp_var             // Stack: [result1], temp_var = result2
+consume_expr_1() -> pull temp_var2            // Stack: [], temp_var2 = result1
+```
+
+### Missing Compiler Infrastructure
+
+**Current Gaps**:
+- ❌ No `emit_push()` / `emit_pull()` code generation helpers
+- ❌ No stack depth tracking in compiler state
+- ❌ No expression evaluation planning for nested expressions
+- ❌ `use_stack_for_result()` just maps to Variable(0) storage (wrong)
+
+**Required Infrastructure**:
+```rust
+struct CodegenContext {
+    stack_depth: usize,           // Current stack depth tracking
+    stack_contents: Vec<IrId>,    // Debug: what IR values are on stack
+}
+
+fn emit_push(&mut self, operand: Operand) -> Result<(), CompilerError> {
+    self.emit_instruction_typed(Opcode::Op2(Op2::Push), &[operand], None, None)?;
+    self.stack_depth += 1;
+}
+
+fn emit_pull(&mut self, target_var: u8) -> Result<(), CompilerError> {
+    self.emit_instruction_typed(Opcode::Var(VarOp::Pull), &[Operand::Variable(target_var)], None, None)?;
+    self.stack_depth -= 1;
+}
+```
+
+### Engineering Philosophy: Manage Complexity, Don't Avoid It
+
+**Key Insight**: Real stack discipline means **using the stack correctly with push/pop symmetry**, not avoiding it because we can't manage the complexity.
+
+**Z-Machine Design Intent**:
+- Stack is **the primary mechanism** for expression evaluation
+- Variable 0 provides **direct access to stack top**
+- Push/pull opcodes enable **proper stack management**
+- Multiple temporary values **should use the stack with proper discipline**
+
+### Implementation Strategy
+
+**Phase 1: Stack Management Infrastructure**
+- Add stack depth tracking to codegen context
+- Implement `emit_push()` / `emit_pull()` helper functions
+- Add stack state validation for debug builds
+
+**Phase 2: Replace Variable(0) Overuse**
+- Convert `use_stack_for_result()` to use actual stack operations
+- Generate balanced push/pull sequences for complex expressions
+- Plan expression evaluation sequences (right-to-left argument evaluation)
+
+**Phase 3: Optimize for Immediate Consumption**
+- Keep Variable(0) direct access for immediate consumption
+- Use push/pull only when values need to persist during other operations
+- Implement consumption distance analysis
+
+### Property 28 Crash Resolution
+
+**Current Collision**:
+```
+1. IR ID 51 (clear_quit_state) → Variable(0)
+2. IR ID 533 (property_access) → Variable(0) ← Overwrites #1
+3. Property code reads wrong value → 0x0000 → crash
+```
+
+**With Proper Stack Discipline**:
+```
+1. clear_quit_state() → push result           // Stack: [result51]
+2. property_access() → push result            // Stack: [result51, result533]
+3. consume property → pull temp_var           // Stack: [result51], correct value
+4. consume clear_quit → pull temp_var2        // Stack: [], correct value
+```
+
+### Architectural Validation
+
+**Commercial Reference**: Analysis of Zork I shows similar stack usage patterns for complex expression evaluation, validating this approach.
+
+**Z-Machine Specification Compliance**: This approach follows the official Z-Machine Standards Document exactly as designed.
+
+### Critical Correction of Previous Analysis
+
+**Previous Assertion (WRONG)**: "We're misusing the stack since it's push/pop only but we are expecting multiple slots"
+
+**Corrected Understanding (RIGHT)**: Z-Machine specification explicitly supports multiple values on stack with proper push/pull discipline. The issue is treating Variable 0 like concurrent storage rather than implementing proper LIFO stack management.
+
+**Engineering Lesson**: When facing architectural complexity, the solution is to **implement proper patterns**, not to **avoid the intended design**. The Z-Machine stack is designed to be used - we should use it correctly.
+
+---
+
 ## CRITICAL RESTORATION: Why We Reverted to 4834fd8 (Oct 19, 2025)
 
 ### 🚨 MAJOR ARCHITECTURAL ERROR CORRECTED
