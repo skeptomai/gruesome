@@ -5014,48 +5014,6 @@ impl ZMachineCodeGen {
 
     /// Generate object and property tables
 
-    /// Create a single object entry in the object table
-    fn create_object_entry(
-        &mut self,
-        obj_num: u8,
-        parent: u8,
-        sibling: u8,
-        child: u8,
-    ) -> Result<(), CompilerError> {
-        // ARCHITECTURAL FIX: Write to object_space instead of contaminating code_space
-        // Space-relative offset: each object is 9 bytes in V3
-        let obj_offset = ((obj_num - 1) as usize) * 9; // V3: 9 bytes per object
-
-        // Attributes (4 bytes, all zeros for now)
-        self.write_to_object_space(obj_offset, 0)?;
-        self.write_to_object_space(obj_offset + 1, 0)?;
-        self.write_to_object_space(obj_offset + 2, 0)?;
-        self.write_to_object_space(obj_offset + 3, 0)?;
-
-        // Relationships (V3 uses 1 byte each)
-        self.write_to_object_space(obj_offset + 4, parent)?;
-        self.write_to_object_space(obj_offset + 5, sibling)?;
-        self.write_to_object_space(obj_offset + 6, child)?;
-
-        // Create property table for this object
-        // Debug: Check state before creating property table
-        let prop_table_addr = self.create_property_table(obj_num)?;
-        // Debug: Check state after creating property table
-
-        // Property table address (word) - bytes 7-8 of object entry
-        debug!(
-            "Writing property table address 0x{:04x} to object {} at space offset 0x{:04x}",
-            prop_table_addr,
-            obj_num,
-            obj_offset + 7
-        );
-        self.write_to_object_space(obj_offset + 7, (prop_table_addr >> 8) as u8)?; // High byte
-        self.write_to_object_space(obj_offset + 8, (prop_table_addr & 0xFF) as u8)?; // Low byte
-                                                                                     // Debug: Property address written successfully
-
-        Ok(())
-    }
-
     /// Create a single object entry from IR object data
     pub fn create_object_entry_from_ir_with_mapping(
         &mut self,
@@ -5201,91 +5159,7 @@ impl ZMachineCodeGen {
     }
 
     /// Create a property table for an object
-    fn create_property_table(&mut self, obj_num: u8) -> Result<usize, CompilerError> {
-        // Use the allocated property table region in dynamic memory
-        let prop_table_addr = self.current_property_addr;
-
-        debug!(
-            "Creating complete property table for object {} at address 0x{:04x}",
-            obj_num, prop_table_addr
-        );
-
-        // Get properties for this object number
-        let object_name = self.get_object_name_by_number(obj_num);
-        let properties = self
-            .object_properties
-            .get(&object_name)
-            .cloned()
-            .unwrap_or_else(Vec::new);
-
-        // Estimate space needed: text-length + (3 bytes per property) + terminator
-        let estimated_size = 1 + (properties.len() * 3) + 1;
-        self.ensure_capacity(prop_table_addr + estimated_size);
-
-        // Text-length byte (0 = no short name)
-        let prop_offset = prop_table_addr - self.object_table_addr; // Convert to object_space-relative offset
-        self.write_to_object_space(prop_offset, 0)?;
-        let mut addr = prop_table_addr + 1;
-
-        // Create properties in descending order (Z-Machine requirement)
-        let mut sorted_properties: Vec<(u8, String)> = properties
-            .iter()
-            .filter_map(|name| {
-                self.property_numbers
-                    .get(name)
-                    .map(|&num| (num, name.clone()))
-            })
-            .collect();
-        sorted_properties.sort_by(|a, b| b.0.cmp(&a.0)); // Descending order
-
-        debug!(
-            "Creating {} properties for object {}: {:?}",
-            sorted_properties.len(),
-            obj_num,
-            sorted_properties
-        );
-
-        for (prop_num, prop_name) in sorted_properties {
-            // Property header: top 3 bits = size-1, bottom 5 bits = property number
-            // For 2-byte properties: (2-1) << 5 | prop_num
-            let header = ((2u8 - 1) << 5) | prop_num;
-
-            debug!(
-                "Writing property {} ({}) header 0x{:02x} at address 0x{:04x}",
-                prop_num, prop_name, header, addr
-            );
-            let header_offset = addr - self.object_table_addr;
-            self.write_to_object_space(header_offset, header)?;
-            addr += 1;
-
-            // Property data (2 bytes, default value 0)
-            debug!(
-                "Writing property {} data (0x0000) at address 0x{:04x}",
-                prop_num, addr
-            );
-            let data_offset = addr - self.object_table_addr;
-            self.write_to_object_space(data_offset, 0)?; // High byte
-            self.write_to_object_space(data_offset + 1, 0)?; // Low byte
-            addr += 2;
-        }
-
-        // End of property table (property 0 marks end)
-        debug!("Writing property terminator 0x00 at address 0x{:04x}", addr);
-        let terminator_offset = addr - self.object_table_addr;
-        self.write_to_object_space(terminator_offset, 0)?;
-        addr += 1;
-
-        // Update current property allocation pointer for next property table
-        self.current_property_addr = addr;
-
-        debug!(
- "Complete property table for object {} created with {} properties, next address: 0x{:04x}",
- obj_num, properties.len(), addr
- );
-
-        Ok(prop_table_addr)
-    }
-
+    
     /// Create a property table for an object using IR property data
     fn create_property_table_from_ir(
         &mut self,
