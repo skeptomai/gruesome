@@ -764,24 +764,7 @@ impl ZMachineCodeGen {
             log::debug!("Generating minimal object table for Script program");
             self.generate_objects_to_space(ir)?;
         }
-        // Check if property table was written correctly
-        let obj2_offset = 0x0047;
-        let obj2_prop_ptr_offset = obj2_offset + 7;
-        if obj2_prop_ptr_offset + 1 < self.object_space.len() {
-            let prop_addr = ((self.object_space[obj2_prop_ptr_offset] as u16) << 8)
-                | (self.object_space[obj2_prop_ptr_offset + 1] as u16);
-            log::warn!(
-                "🔍 OBJ_SPACE_CHECK: After object generation, object 2 prop pointer = 0x{:04x}",
-                prop_addr
-            );
-            if (prop_addr as usize) + 20 <= self.object_space.len() {
-                log::warn!(
-                    "🔍   Property table at offset 0x{:04x}: {:02x?}",
-                    prop_addr,
-                    &self.object_space[prop_addr as usize..(prop_addr as usize + 20)]
-                );
-            }
-        }
+        // Property table generation complete
 
         log::info!(
             " Step 2c complete: Object space populated ({} bytes)",
@@ -1253,240 +1236,35 @@ impl ZMachineCodeGen {
                 dictionary_base - object_base
             );
 
-            // Show West of House property table BEFORE copy (object 2 at offset 0x0047)
-            let obj2_offset = 0x0047;
-            let obj2_prop_ptr_offset = obj2_offset + 7;
-            if obj2_prop_ptr_offset + 1 < self.object_space.len() {
-                let prop_addr = ((self.object_space[obj2_prop_ptr_offset] as u16) << 8)
-                    | (self.object_space[obj2_prop_ptr_offset + 1] as u16);
-                log::warn!(
-                    "   BEFORE: Object 2 prop pointer at offset 0x{:04x} = 0x{:04x}",
-                    obj2_prop_ptr_offset,
-                    prop_addr
-                );
-                if (prop_addr as usize) < self.object_space.len() {
-                    let prop_offset = prop_addr as usize;
-                    log::warn!(
-                        "   BEFORE: Property table at offset 0x{:04x}: {:02x?}",
-                        prop_offset,
-                        &self.object_space[prop_offset
-                            ..prop_offset
-                                .min(self.object_space.len())
-                                .min(prop_offset + 20)]
-                    );
-                }
-            }
-
-            // DEBUG: Dump final_data BEFORE copy
-            log::debug!(
-                "🔍 PRE_COPY: final_data[0x{:04x}..0x{:04x}] first 20 bytes: {:02x?}",
-                object_base,
-                object_base + 20,
-                &self.final_data[object_base..object_base + 20]
-            );
-
-            // FINAL DEBUG: Check object_space right before the actual copy
-            log::warn!("🔍 FINAL_COPY_CHECK: About to copy object_space[0x00d9] = 0x{:02x}",
-                       if 0x00d9 < self.object_space.len() { self.object_space[0x00d9] } else { 0xFF });
 
             self.final_data[object_base..dictionary_base].copy_from_slice(&self.object_space);
 
-            // DEBUG: Dump final_data IMMEDIATELY AFTER copy
-            log::debug!(
-                "🔍 POST_COPY: final_data[0x{:04x}..0x{:04x}] first 80 bytes:",
-                object_base,
-                object_base + 80
-            );
-            for chunk_start in (0..80).step_by(16) {
-                let abs_start = object_base + chunk_start;
-                let abs_end = abs_start + 16;
-                if abs_end <= self.final_data.len() {
-                    log::debug!(
-                        "🔍   [0x{:04x}..0x{:04x}]: {:02x?}",
-                        abs_start,
-                        abs_end,
-                        &self.final_data[abs_start..abs_end]
-                    );
+            // CRITICAL FIX: Adjust object property table pointers after object_space copy
+            // Object pointers in object_space are relative to object_space, but need to be
+            // absolute addresses in final_data. Add object_base to convert relative to absolute.
+            let obj_entry_size = 9; // V3: 9 bytes per object entry
+            let defaults_size = 31 * 2; // 31 default properties * 2 bytes each
+            let objects_start = defaults_size;
+            let max_objects = 15; // Maximum objects based on current codebase
+
+            for i in 0..max_objects {
+                let obj_offset = objects_start + (i * obj_entry_size);
+                let prop_ptr_offset_final = object_base + obj_offset + 7; // Final address of property pointer
+
+                if prop_ptr_offset_final + 1 < self.final_data.len() {
+                    let current_ptr_high = self.final_data[prop_ptr_offset_final];
+                    let current_ptr_low = self.final_data[prop_ptr_offset_final + 1];
+                    let current_ptr = ((current_ptr_high as u16) << 8) | (current_ptr_low as u16);
+
+                    // Convert from object_space-relative to final_data absolute address
+                    let adjusted_ptr = current_ptr + (object_base as u16);
+
+                    // Write back the adjusted pointer
+                    self.final_data[prop_ptr_offset_final] = ((adjusted_ptr >> 8) & 0xFF) as u8;
+                    self.final_data[prop_ptr_offset_final + 1] = (adjusted_ptr & 0xFF) as u8;
                 }
             }
 
-            // DEBUG: Dump object_space structure to find the 6-byte gap
-            log::debug!(
-                "🔍 ALIGNMENT_DEBUG: object_space.len() = {} (0x{:04x})",
-                self.object_space.len(),
-                self.object_space.len()
-            );
-            log::debug!("🔍 ALIGNMENT_DEBUG: object_space first 80 bytes:");
-            for chunk_start in (0..80.min(self.object_space.len())).step_by(16) {
-                let chunk_end = (chunk_start + 16).min(self.object_space.len());
-                log::debug!(
-                    "🔍   [0x{:04x}..0x{:04x}]: {:02x?}",
-                    chunk_start,
-                    chunk_end,
-                    &self.object_space[chunk_start..chunk_end]
-                );
-            }
-            log::debug!(
-                "🔍 ALIGNMENT_DEBUG: object_base=0x{:04x}, dictionary_base=0x{:04x}",
-                object_base,
-                dictionary_base
-            );
-            log::debug!(
-                "🔍 ALIGNMENT_DEBUG: final_data[0x{:04x}..0x{:04x}] (first 20 bytes): {:02x?}",
-                object_base,
-                object_base + 20,
-                &self.final_data[object_base..object_base + 20]
-            );
-            if self.final_data.len() >= object_base + 0x46 {
-                log::debug!("🔍 ALIGNMENT_DEBUG: final_data[0x{:04x}..0x{:04x}] (where first object ends up): {:02x?}",
-                    object_base + 0x3e, object_base + 0x46, &self.final_data[object_base + 0x3e..object_base + 0x46]);
-            }
-            log::debug!(
-                "🔍 ALIGNMENT_DEBUG: Header says object table at: 0x{:04x}",
-                object_base
-            );
-            log::debug!("🔍 ALIGNMENT_DEBUG: Property defaults should be 62 bytes (0x3e)");
-            log::debug!(
-                "🔍 ALIGNMENT_DEBUG: First object should start at: 0x{:04x}",
-                object_base + 0x3e
-            );
-
-            // Show West of House property table AFTER copy
-            let final_obj2_offset = object_base + obj2_offset;
-            let final_prop_ptr_offset = final_obj2_offset + 7;
-            if final_prop_ptr_offset + 1 < self.final_data.len() {
-                let prop_addr = ((self.final_data[final_prop_ptr_offset] as u16) << 8)
-                    | (self.final_data[final_prop_ptr_offset + 1] as u16);
-                log::warn!(
-                    "   AFTER: Object 2 prop pointer at 0x{:04x} = 0x{:04x}",
-                    final_prop_ptr_offset,
-                    prop_addr
-                );
-                if (prop_addr as usize) < self.final_data.len() {
-                    log::warn!(
-                        "   AFTER: Property table at 0x{:04x}: {:02x?}",
-                        prop_addr,
-                        &self.final_data[prop_addr as usize
-                            ..(prop_addr as usize + 20).min(self.final_data.len())]
-                    );
-                }
-            }
-
-            // COMPREHENSIVE OBJECT TABLE ANALYSIS
-            log::debug!("═════════════════════════════════════════════════════════════");
-            log::debug!("🔬 OBJECT TABLE ANALYSIS");
-            log::debug!("═════════════════════════════════════════════════════════════");
-
-            let defaults_size = 62; // V3 property defaults
-            let obj_entry_size = 9; // V3 object entry size
-
-            log::debug!("📊 OBJECT SPACE STRUCTURE:");
-            log::debug!(
-                "   object_space.len() = {} bytes (0x{:04x})",
-                self.object_space.len(),
-                self.object_space.len()
-            );
-            log::debug!(
-                "   Property defaults: 0x0000-0x{:04x} ({} bytes)",
-                defaults_size - 1,
-                defaults_size
-            );
-
-            // Analyze objects in object_space (space-relative addresses)
-            log::debug!("");
-            log::debug!("📋 OBJECTS IN OBJECT_SPACE (space-relative addresses):");
-            let first_obj_offset = defaults_size;
-            let max_possible_objects = (self.object_space.len() - defaults_size) / obj_entry_size;
-            log::debug!(
-                "   Max possible objects based on size: {}",
-                max_possible_objects
-            );
-
-            for i in 0..max_possible_objects.min(20) {
-                let obj_offset = first_obj_offset + (i * obj_entry_size);
-                if obj_offset + 8 >= self.object_space.len() {
-                    break;
-                }
-
-                let prop_ptr_high = self.object_space[obj_offset + 7];
-                let prop_ptr_low = self.object_space[obj_offset + 8];
-                let prop_ptr = ((prop_ptr_high as u16) << 8) | (prop_ptr_low as u16);
-
-                log::debug!(
-                    "   Object #{:2} at obj_space[0x{:04x}..0x{:04x}]: prop_ptr=0x{:04x} ({})",
-                    i + 1,
-                    obj_offset,
-                    obj_offset + 8,
-                    prop_ptr,
-                    prop_ptr
-                );
-
-                // Check if this looks like a valid property pointer
-                if prop_ptr == 0 {
-                    log::debug!("      ⚠️  Property pointer is ZERO - object not initialized or end of table");
-                } else if (prop_ptr as usize) < defaults_size {
-                    log::debug!("      ⚠️  Property pointer points into defaults region!");
-                } else if (prop_ptr as usize) >= self.object_space.len() {
-                    log::debug!("      ⚠️  Property pointer PAST END of object_space!");
-                }
-            }
-
-            // Analyze objects in final_data (absolute addresses)
-            log::debug!("");
-            log::debug!("📋 OBJECTS IN FINAL_DATA (absolute memory addresses):");
-            log::debug!("   object_base = 0x{:04x}", object_base);
-            let final_first_obj = object_base + defaults_size;
-
-            for i in 0..max_possible_objects.min(20) {
-                let final_offset = final_first_obj + (i * obj_entry_size);
-                if final_offset + 8 >= self.final_data.len() {
-                    break;
-                }
-
-                let prop_ptr_high = self.final_data[final_offset + 7];
-                let prop_ptr_low = self.final_data[final_offset + 8];
-                let prop_ptr = ((prop_ptr_high as u16) << 8) | (prop_ptr_low as u16);
-
-                let status = if prop_ptr == 0 {
-                    "ZERO"
-                } else if (prop_ptr as usize) >= self.final_data.len() {
-                    "BOUNDS_ERROR"
-                } else {
-                    "OK"
-                };
-
-                log::debug!(
-                    "   Object #{:2} at final[0x{:04x}..0x{:04x}]: prop_ptr=0x{:04x} ({:5}) [{}]",
-                    i + 1,
-                    final_offset,
-                    final_offset + 8,
-                    prop_ptr,
-                    prop_ptr,
-                    status
-                );
-            }
-
-            log::debug!("");
-            log::debug!("📐 EXPECTED LAYOUT:");
-            log::debug!("   15 objects × 9 bytes = 135 bytes");
-            log::debug!(
-                "   Object entries: 0x{:04x}-0x{:04x}",
-                defaults_size,
-                defaults_size + 135 - 1
-            );
-            log::debug!("   Property tables start: 0x{:04x}", defaults_size + 135);
-            log::debug!("");
-            log::debug!("🔍 ACTUAL DATA AFTER 15 OBJECTS:");
-            let after_15_objs = defaults_size + (15 * obj_entry_size);
-            if after_15_objs + 40 <= self.object_space.len() {
-                log::debug!(
-                    "   object_space[0x{:04x}..0x{:04x}]: {:02x?}",
-                    after_15_objs,
-                    after_15_objs + 40,
-                    &self.object_space[after_15_objs..after_15_objs + 40]
-                );
-            }
-            log::debug!("═════════════════════════════════════════════════════════════");
 
             log::debug!(
                 " Object space copied: {} bytes at 0x{:04x}",
@@ -1494,21 +1272,6 @@ impl ZMachineCodeGen {
                 object_base
             );
 
-            // PHASE 3 INVESTIGATION: Add back property table patching to test corruption
-            // FIX: Comment out patch_property_table_addresses() - it overwrites property content with 0x0000
-            // self.patch_property_table_addresses(object_base)?;
-
-            // DEBUG: Verify object #2 property table pointer IMMEDIATELY after patching
-            let obj2_prop_ptr_addr = 0x040A;
-            if obj2_prop_ptr_addr + 1 < self.final_data.len() {
-                let byte1 = self.final_data[obj2_prop_ptr_addr];
-                let byte2 = self.final_data[obj2_prop_ptr_addr + 1];
-                let prop_ptr = ((byte1 as u16) << 8) | (byte2 as u16);
-                log::debug!(
-                    "🔍 VERIFY_AFTER_PATCH: Object #2 prop ptr at 0x{:04x} = 0x{:02x} 0x{:02x} = 0x{:04x}",
-                    obj2_prop_ptr_addr, byte1, byte2, prop_ptr
-                );
-            }
         }
 
         // Copy dictionary space
@@ -1696,13 +1459,11 @@ impl ZMachineCodeGen {
         log::debug!(" Step 3e.6: Consolidating ALL IR ID mappings (functions, strings, labels)");
         self.consolidate_all_ir_mappings();
 
-        // PHASE 3 INVESTIGATION: Reference resolution confirmed NOT the cause - restore
         log::debug!(" Step 3f: Resolving all address references and fixups");
         self.resolve_all_addresses()?;
 
-        // PHASE 1 INVESTIGATION: Comment out header finalization
-        // log::debug!(" Step 3g: Finalizing file length and checksum");
-        // self.finalize_header_metadata()?;
+        log::debug!(" Step 3g: Finalizing file length and checksum");
+        self.finalize_header_metadata()?;
 
         log::info!(
             "🎉 COMPLETE Z-MACHINE FILE assembled successfully: {} bytes",
@@ -1723,6 +1484,13 @@ impl ZMachineCodeGen {
         // Phase 1: Process unresolved references (modern system)
         let unresolved_count = self.reference_context.unresolved_refs.len();
         log::info!("Processing {} unresolved references", unresolved_count);
+
+        // Check player property table BEFORE reference resolution
+        let player_final_addr = self.final_object_base + 0x00c5;
+        if player_final_addr + 20 <= self.final_data.len() {
+            log::warn!("🔍 PLAYER_BEFORE_REF_RESOLUTION: final_data player props at 0x{:04x}: {:02x?}",
+                      player_final_addr, &self.final_data[player_final_addr..player_final_addr + 20]);
+        }
 
         // DEBUG: List all unresolved references
         for (i, ref_) in self.reference_context.unresolved_refs.iter().enumerate() {
@@ -1815,6 +1583,29 @@ impl ZMachineCodeGen {
             self.resolve_unresolved_reference(&adjusted_reference)?;
         }
         log::info!(" All unresolved references processed");
+
+        // Check player property table AFTER reference resolution
+        let player_final_addr = self.final_object_base + 0x00c5;
+        if player_final_addr + 20 <= self.final_data.len() {
+            log::warn!("🔍 PLAYER_AFTER_REF_RESOLUTION: final_data player props at 0x{:04x}: {:02x?}",
+                      player_final_addr, &self.final_data[player_final_addr..player_final_addr + 20]);
+        }
+
+        // CRITICAL: Verify object 1 property table pointer points to the right place
+        let obj1_entry_addr = self.final_object_base + 0x003e;  // Object 1 entry in final data
+        if obj1_entry_addr + 8 < self.final_data.len() {
+            let prop_ptr_high = self.final_data[obj1_entry_addr + 7];
+            let prop_ptr_low = self.final_data[obj1_entry_addr + 8];
+            let prop_ptr = ((prop_ptr_high as u16) << 8) | (prop_ptr_low as u16);
+            log::warn!("🔍 OBJECT1_POINTER_CHECK: Object 1 at 0x{:04x}, property pointer = 0x{:04x} (expected 0x{:04x})",
+                      obj1_entry_addr, prop_ptr, player_final_addr);
+
+            // Verify what's actually at the pointer location
+            if (prop_ptr as usize) + 20 <= self.final_data.len() {
+                log::warn!("🔍 OBJECT1_ACTUAL_PROPS: Data at pointer 0x{:04x}: {:02x?}",
+                          prop_ptr, &self.final_data[prop_ptr as usize..(prop_ptr as usize + 20)]);
+            }
+        }
 
         // Phase 2: Process pending fixups (legacy compatibility)
         let fixup_count = self.pending_fixups.len();
