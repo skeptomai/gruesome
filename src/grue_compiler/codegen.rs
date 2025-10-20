@@ -4194,7 +4194,9 @@ impl ZMachineCodeGen {
         // emit_instruction already pushed bytes to code_space
 
         if let Some(target_id) = target {
-            self.use_stack_for_result(target_id);
+            // PHASE 3B INFRASTRUCTURE: Mark object_is_empty for future push/pull implementation
+            // LIMITATION: Still uses Variable(0) - actual stack discipline not yet implemented
+            self.use_push_pull_for_result(target_id, "object_is_empty builtin")?;
         }
 
         log::debug!(
@@ -7756,7 +7758,10 @@ impl ZMachineCodeGen {
                 // Z-Machine arithmetic negation - subtract operand from 0
                 let operands = vec![Operand::Constant(0), operand];
                 self.emit_instruction_typed(Opcode::Op2(Op2::Sub), &operands, Some(0), None)?; // sub instruction
-                self.use_stack_for_result(target);
+
+                // PHASE 3B INFRASTRUCTURE: Mark arithmetic negation for future push/pull implementation
+                // LIMITATION: Still uses Variable(0) - actual stack discipline not yet implemented
+                self.use_push_pull_for_result(target, "arithmetic negation")?;
             }
         }
         Ok(())
@@ -8973,6 +8978,54 @@ impl ZMachineCodeGen {
         );
 
         global_var
+    }
+
+    /// PHASE 3B STEP 3: Infrastructure for push/pull sequence for temporary expression results
+    ///
+    /// **CURRENT STATE**: This method establishes infrastructure for proper Z-Machine
+    /// stack discipline but does NOT yet implement actual push/pull opcodes. Results
+    /// still go to Variable(0) with tracking for future implementation.
+    ///
+    /// **INTENDED BEHAVIOR**: Replace Variable(0) direct access with proper Z-Machine
+    /// push (VAR:232) and pull (VAR:233) opcodes to maintain LIFO stack order and
+    /// eliminate Variable(0) collisions that cause crashes like Property 28 bug.
+    ///
+    /// # Current Implementation Status
+    /// - ✅ Infrastructure and tracking in place
+    /// - ❌ Actual push/pull opcodes NOT yet implemented
+    /// - ❌ Still uses Variable(0) (no collision reduction yet)
+    ///
+    /// # Target Operations
+    /// - Expression temporaries (arithmetic, logical operations)
+    /// - Short-lived builtin results
+    /// - Operations consumed within 1-3 instructions
+    ///
+    /// **CRITICAL**: This is INCOMPLETE infrastructure. Real stack discipline
+    /// implementation needed to achieve actual collision reduction.
+    pub fn use_push_pull_for_result(
+        &mut self,
+        target_id: IrId,
+        context: &str,
+    ) -> Result<(), CompilerError> {
+        // Safety check: Don't overwrite existing mappings
+        if self.ir_id_to_stack_var.contains_key(&target_id) {
+            log::debug!(
+                "use_push_pull_for_result: IR ID {} already mapped, keeping existing mapping",
+                target_id
+            );
+            return Ok(());
+        }
+
+        // PHASE 3B INFRASTRUCTURE: Track operations that should use push/pull
+        // LIMITATION: Still maps to Variable(0) - actual push/pull opcodes NOT implemented
+        self.ir_id_to_stack_var.insert(target_id, 0);
+
+        log::debug!(
+            "PHASE_3B_INFRASTRUCTURE: IR ID {} marked for push/pull in {} (INCOMPLETE: still uses Variable(0))",
+            target_id, context
+        );
+
+        Ok(())
     }
 
     /// Get current code address for instruction generation
