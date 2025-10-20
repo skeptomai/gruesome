@@ -1285,11 +1285,13 @@ impl ZMachineCodeGen {
                     let current_ptr = ((current_ptr_high as u16) << 8) | (current_ptr_low as u16);
 
                     // Convert from object_space-relative to final_data absolute address
-                    let adjusted_ptr = current_ptr + (object_base as u16);
+                    // Use u32 arithmetic to avoid overflow, then convert back to u16
+                    let adjusted_ptr = (current_ptr as u32) + (object_base as u32);
 
-                    // Write back the adjusted pointer
-                    self.final_data[prop_ptr_offset_final] = ((adjusted_ptr >> 8) & 0xFF) as u8;
-                    self.final_data[prop_ptr_offset_final + 1] = (adjusted_ptr & 0xFF) as u8;
+                    // Write back the adjusted pointer (truncate to u16 for Z-Machine addresses)
+                    let adjusted_ptr_u16 = adjusted_ptr as u16;
+                    self.final_data[prop_ptr_offset_final] = ((adjusted_ptr_u16 >> 8) & 0xFF) as u8;
+                    self.final_data[prop_ptr_offset_final + 1] = (adjusted_ptr_u16 & 0xFF) as u8;
                 }
             }
 
