@@ -355,6 +355,9 @@ pub struct ZMachineCodeGen {
     /// Dictionary words in alphabetically sorted order (for word position lookup)
     /// Populated during generate_dictionary_space(), used by lookup_word_in_dictionary()
     pub dictionary_words: Vec<String>,
+    /// Set of IR IDs that should use push/pull sequence for stack discipline
+    /// Phase C1.1: Track values that need actual VAR:232/233 push/pull opcodes
+    push_pull_ir_ids: IndexSet<IrId>,
 }
 
 impl ZMachineCodeGen {
@@ -446,6 +449,7 @@ impl ZMachineCodeGen {
             final_string_base: 0,
             final_object_base: 0,
             dictionary_words: Vec::new(),
+            push_pull_ir_ids: IndexSet::new(),
         }
     }
 
@@ -2997,9 +3001,9 @@ impl ZMachineCodeGen {
                             location_space: MemorySpace::Code,
                         });
 
-                    // Handle target variable mapping
+                    // Phase C2: Convert function calls to use push/pull stack discipline
                     if let Some(target) = target {
-                        self.use_stack_for_result(target);
+                        self.use_push_pull_for_result(target, "function call")?;
                     }
 
                     return Ok(());
@@ -3350,7 +3354,8 @@ impl ZMachineCodeGen {
 
         // Register target mapping if provided
         if let Some(target_id) = target {
-            self.use_stack_for_result(target_id);
+            // Phase C2: Convert GetChild to use push/pull stack discipline
+            self.use_push_pull_for_result(target_id, "get_child builtin")?;
         }
 
         log::debug!(
@@ -3392,6 +3397,11 @@ impl ZMachineCodeGen {
 
         // emit_instruction already pushed bytes to code_space
 
+        // Phase C2: Convert GetSibling to use push/pull stack discipline
+        if let Some(target_id) = _target {
+            self.use_push_pull_for_result(target_id, "get_sibling builtin")?;
+        }
+
         log::debug!(
             " PHASE2_GET_SIBLING: Get_sibling builtin translated successfully ({} bytes)",
             layout.total_size
@@ -3429,6 +3439,11 @@ impl ZMachineCodeGen {
         )?;
 
         // emit_instruction already pushed bytes to code_space
+
+        // Phase C2: Convert GetProp to use push/pull stack discipline
+        if let Some(target_id) = _target {
+            self.use_push_pull_for_result(target_id, "get_prop builtin")?;
+        }
 
         log::debug!(
             " PHASE2_GET_PROP: Get_prop builtin translated successfully ({} bytes)",
@@ -4134,8 +4149,10 @@ impl ZMachineCodeGen {
                     None,
                 )?;
 
-                // Map target to stack for temporary result
-                self.use_stack_for_result(target);
+                // Phase C2: Convert binary operations in generate_binary_op to use push/pull
+                // Note: This requires changing the signature to include target_id
+                // For now, this will remain as Variable(0) - the main conversion is in translate_binary_op
+                self.use_push_pull_for_result(target, "unary operation")?;
             }
         }
 
@@ -4172,8 +4189,8 @@ impl ZMachineCodeGen {
                     None,    // No branch
                 )?;
 
-                // Map result to stack
-                self.use_stack_for_result(target);
+                // Phase C2: Convert unary NOT to use push/pull stack discipline
+                self.use_push_pull_for_result(target, "unary NOT operation")?;
 
                 log::debug!(
                     " UNARY_OP: Generated {} bytes for NOT operation, result at stack depth {}",
@@ -4191,11 +4208,11 @@ impl ZMachineCodeGen {
                     None,                                           // No branch
                 )?;
 
-                // Map result to stack
-                self.use_stack_for_result(target);
+                // Phase C2: Convert arithmetic negation to use push/pull stack discipline
+                self.use_push_pull_for_result(target, "arithmetic negation (multiply)")?;
 
                 log::debug!(
-                    " UNARY_OP: Generated {} bytes for MINUS operation, result on stack",
+                    " UNARY_OP: Generated {} bytes for MINUS operation, result with push/pull",
                     layout.total_size
                 );
             }
@@ -7215,7 +7232,8 @@ impl ZMachineCodeGen {
                 self.label_addresses.insert(label_done, self.code_address);
                 self.record_final_address(label_done, self.code_address);
 
-                self.use_stack_for_result(target);
+                // Phase C2: Convert boolean operation to use push/pull stack discipline
+                self.use_push_pull_for_result(target, "boolean unary operation")?;
             }
             IrUnaryOp::Minus => {
                 // Z-Machine arithmetic negation - subtract operand from 0
@@ -7448,7 +7466,7 @@ impl ZMachineCodeGen {
     }
 
     /// Resolve an IR ID to the appropriate Z-Machine operand
-    pub fn resolve_ir_id_to_operand(&self, ir_id: IrId) -> Result<Operand, CompilerError> {
+    pub fn resolve_ir_id_to_operand(&mut self, ir_id: IrId) -> Result<Operand, CompilerError> {
         log::debug!(
             " RESOLVE_IR_ID_TO_OPERAND: Attempting to resolve IR ID {}",
             ir_id
@@ -7468,6 +7486,25 @@ impl ZMachineCodeGen {
             // Fixed by proper IR ID mapping - keeping note for future reference
 
             return Ok(Operand::LargeConstant(literal_value));
+        }
+
+        // Phase C2: Check if this IR ID was marked for push/pull sequence
+        // If so, emit pull instruction to temporary global and return that global
+        if self.push_pull_ir_ids.contains(&ir_id) {
+            // Allocate a temporary global variable for pull operation
+            let temp_global = self.allocate_global_variable();
+
+            // VAR:233 pull(variable) - pops value from Z-Machine stack into temporary global
+            // Pull takes the target variable as an operand, not as store_var
+            let pull_operands = vec![Operand::Variable(temp_global)];
+            self.emit_instruction_typed(Opcode::OpVar(OpVar::Pull), &pull_operands, None, None)?;
+
+            log::debug!(
+                "PHASE_C2: IR ID {} resolved via pull to Variable({}) [Temporary global for stack value]",
+                ir_id, temp_global
+            );
+
+            return Ok(Operand::Variable(temp_global));
         }
 
         // Check if this IR ID maps to a stack variable (e.g., result of GetProperty)
@@ -8322,7 +8359,16 @@ impl ZMachineCodeGen {
         address
     }
 
-    /// Map IR ID to stack storage (Variable 0) for temporary results
+    /// DEPRECATED - DO NOT USE: Map IR ID to stack storage (Variable 0) for temporary results
+    ///
+    /// ⚠️  CRITICAL BUG: This function causes Variable(0) collisions that crash Property 28 access!
+    ///
+    /// REPLACEMENT: Use `use_push_pull_for_result()` instead for proper stack discipline
+    /// TODO: Remove this function entirely after verifying all calls are replaced
+    #[deprecated(
+        since = "Phase C2",
+        note = "Causes Variable(0) collisions. Use use_push_pull_for_result() instead"
+    )]
     pub fn use_stack_for_result(&mut self, target_id: IrId) {
         // BUG FIX (Oct 11, 2025): Don't overwrite existing mappings from builtins
         // Builtins allocate unique global variables - don't replace with stack
@@ -8342,6 +8388,145 @@ impl ZMachineCodeGen {
             "use_stack_for_result: IR ID {} -> stack (Variable 0) for temporary result",
             target_id
         );
+    }
+
+    /// PHASE 3B: Improved stack discipline for function call results
+    ///
+    /// This method replaces use_stack_for_result() for critical cases where multiple
+    /// operations compete for Variable(0), causing collisions and crashes like the
+    /// Property 28 bug. By allocating unique global variables instead of using the
+    /// contested stack, we reduce Variable(0) contention significantly.
+    ///
+    /// # Strategy
+    /// - Function call results that need persistent storage → unique global variables
+    /// - Temporary expression results → still use Variable(0) (TODO: Phase 3C push/pull)
+    /// - Property access results → already use globals (existing bug fix)
+    ///
+    /// # Usage
+    /// Convert critical builtin calls: get_location, random, get_object_contents, etc.
+    /// that are frequently called and likely to collide with other Variable(0) operations.
+    pub fn use_global_for_result(&mut self, target_id: IrId, context: &str) {
+        // Safety check: Don't overwrite existing mappings from builtins
+        if self.ir_id_to_stack_var.contains_key(&target_id) {
+            log::debug!(
+                "use_global_for_result: IR ID {} already mapped, keeping existing mapping",
+                target_id
+            );
+            return;
+        }
+
+        // Allocate a unique global variable instead of using contested Variable(0)
+        let global_var = self.allocate_global_variable();
+        self.ir_id_to_stack_var.insert(target_id, global_var);
+        log::debug!(
+            "PHASE_3B_IMPROVEMENT: IR ID {} → global variable {} for {} (avoiding Variable(0) collision)",
+            target_id, global_var, context
+        );
+    }
+
+    /// Allocate a unique global variable for results that need persistent storage
+    ///
+    /// # Z-Machine Variable Layout
+    /// - Variables 0: Stack (Variable(0) - contested, causes collisions)
+    /// - Variables 1-15: Local variables (function parameters)
+    /// - Variables 16+: Global variables (persistent, safe for function results)
+    ///
+    /// This method ensures each allocated global is unique by tracking allocation count.
+    fn allocate_global_variable(&mut self) -> u8 {
+        // Global variables start at 16 (0x10) after locals (0-15)
+        // Continue from allocated_globals_count to ensure uniqueness
+        let global_var = 16 + (self.allocated_globals_count as u8);
+        self.allocated_globals_count += 1;
+
+        log::debug!(
+            "GLOBAL_VAR_ALLOC: Allocated Variable({}) for persistent storage (total allocated: {})",
+            global_var,
+            self.allocated_globals_count
+        );
+
+        global_var
+    }
+
+    /// PHASE 3B STEP 3: Infrastructure for push/pull sequence for temporary expression results
+    ///
+    /// **CURRENT STATE**: This method establishes infrastructure for proper Z-Machine
+    /// stack discipline but does NOT yet implement actual push/pull opcodes. Results
+    /// still go to Variable(0) with tracking for future implementation.
+    ///
+    /// **INTENDED BEHAVIOR**: Replace Variable(0) direct access with proper Z-Machine
+    /// push (VAR:232) and pull (VAR:233) opcodes to maintain LIFO stack order and
+    /// eliminate Variable(0) collisions that cause crashes like Property 28 bug.
+    ///
+    /// # Current Implementation Status
+    /// - ✅ Infrastructure and tracking in place
+    /// - ❌ Actual push/pull opcodes NOT yet implemented
+    /// - ❌ Still uses Variable(0) (no collision reduction yet)
+    ///
+    /// # Target Operations
+    /// - Expression temporaries (arithmetic, logical operations)
+    /// - Short-lived builtin results
+    /// - Operations consumed within 1-3 instructions
+    ///
+    /// Phase C2: Complete stack discipline for ALL Variable(0) operations
+    /// Converts Variable(0) collision-prone operations to use Z-Machine stack discipline
+    /// SCOPE: All operations that store results in Variable(0) must use this
+    pub fn use_push_pull_for_result(
+        &mut self,
+        target_id: IrId,
+        context: &str,
+    ) -> Result<(), CompilerError> {
+        // Safety check: Don't overwrite existing mappings
+        if self.push_pull_ir_ids.contains(&target_id) {
+            log::debug!(
+                "use_push_pull_for_result: IR ID {} already marked for push/pull, skipping",
+                target_id
+            );
+            return Ok(());
+        }
+
+        // Phase C2: Emit actual push instruction for stack discipline
+        // VAR:232 push(value) - pushes current Variable(0) content onto Z-Machine stack
+        // This implements proper LIFO stack discipline to eliminate Variable(0) collisions
+        let push_operand = Operand::Variable(0);
+        self.emit_instruction_typed(Opcode::OpVar(OpVar::Push), &[push_operand], None, None)?;
+
+        // Track this IR ID as using push/pull sequence - DO NOT map to Variable(0)
+        // Instead, this IR ID will trigger pull operations when consumed via resolve_ir_id_to_operand
+        self.push_pull_ir_ids.insert(target_id);
+
+        log::debug!(
+            "PHASE_C2: IR ID {} marked for push/pull in {} - value pushed to Z-Machine stack, will use temporary global on consumption",
+            target_id, context
+        );
+
+        Ok(())
+    }
+
+    /// Emit pull instruction for IR ID that was previously pushed
+    /// Phase C1.1: Retrieve pushed values from Z-Machine stack when they're consumed
+    pub fn emit_pull_for_ir_id(&mut self, ir_id: IrId, context: &str) -> Result<(), CompilerError> {
+        // Check if this IR ID was marked for push/pull
+        if self.push_pull_ir_ids.contains(&ir_id) {
+            // VAR:233 pull(variable) - pops value from Z-Machine stack into Variable(0)
+            let pull_operands = vec![Operand::Variable(0)];
+            self.emit_instruction_typed(Opcode::OpVar(OpVar::Pull), &pull_operands, None, None)?;
+
+            log::debug!(
+                "PHASE_C1.1: IR ID {} using pull instruction in {} - value retrieved from Z-Machine stack to Variable(0)",
+                ir_id, context
+            );
+        }
+        Ok(())
+    }
+
+    /// Resolve IR ID to operand with automatic pull instruction for push-marked values
+    /// Phase C1.1: This combines pull emission and operand resolution
+    pub fn resolve_ir_id_with_pull(&mut self, ir_id: IrId, context: &str) -> Result<Operand, CompilerError> {
+        // Emit pull instruction if this IR ID was previously pushed
+        self.emit_pull_for_ir_id(ir_id, context)?;
+
+        // Now resolve to operand (the pulled value will be in Variable(0))
+        self.resolve_ir_id_to_operand(ir_id)
     }
 
     /// Get current code address for instruction generation
@@ -8381,9 +8566,9 @@ impl ZMachineCodeGen {
         );
 
         if is_comparison {
-            // For comparison operations, register the target but don't generate bytecode
+            // Phase C2: For comparison operations, use push/pull stack discipline
             // The actual Z-Machine branch instruction will be generated by direct branch logic
-            self.use_stack_for_result(target);
+            self.use_push_pull_for_result(target, "comparison operation")?;
             log::debug!(
  "Comparison BinaryOp registered: IR ID {} -> stack, bytecode deferred to branch generation",
  target
@@ -8415,9 +8600,9 @@ impl ZMachineCodeGen {
                 }
             }
 
-            // Register result target
-            self.use_stack_for_result(target);
-            log::debug!("BinaryOp ({:?}) result: IR ID {} -> stack", op, target);
+            // Phase C2: Convert binary operations to use push/pull stack discipline
+            self.use_push_pull_for_result(target, "binary operation")?;
+            log::debug!("BinaryOp ({:?}) result: IR ID {} -> push/pull stack", op, target);
         }
 
         Ok(())

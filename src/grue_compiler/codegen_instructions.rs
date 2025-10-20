@@ -296,13 +296,45 @@ impl ZMachineCodeGen {
 
                     // Generate user function call with proper reference registration
                     self.generate_user_function_call(*function, args, *target)?;
+                    // CRITICAL: Register call result target for proper LoadVar resolution
+                    // Use stack for call results (per Z-Machine specification)
+                    // This is ONLY for user function calls, not builtins
+                    if let Some(target_id) = target {
+                        self.use_push_pull_for_result(*target_id, "user function call")?;
+                        log::debug!("Call result: IR ID {} -> push/pull stack", target_id);
+                    }
+                }
+            }
+
+            IrInstruction::CallIndirect {
+                target,
+                function_addr,
+                args,
+            } => {
+                // CallIndirect: Call a function whose address is stored in a variable/property
+                // Used for property-based dispatch (e.g., room.on_look() where on_look is a property)
+                // The function address comes from a property value resolved at runtime
+                log::debug!(
+                    "📞 CALL_INDIRECT function address from IR ID {} with {} args",
+                    function_addr,
+                    args.len()
+                );
+
+                // Build operands: [function_address, arg1, arg2, ...]
+                let func_addr_operand = self.resolve_ir_id_to_operand(*function_addr)?;
+                let mut operands = vec![func_addr_operand];
+
+                for arg_id in args {
+                    let arg_operand = self.resolve_ir_id_to_operand(*arg_id)?;
+                    operands.push(arg_operand);
+                }
                 }
 
                 // CRITICAL: Register call result target for proper LoadVar resolution
                 // Use stack for call results (per Z-Machine specification)
                 if let Some(target_id) = target {
-                    self.use_stack_for_result(*target_id);
-                    log::debug!("Call result: IR ID {} -> stack", target_id);
+                    self.use_push_pull_for_result(*target_id, "indirect function call")?;
+                    log::debug!("CallIndirect result: IR ID {} -> push/pull stack", target_id);
                 }
             }
 
@@ -481,8 +513,8 @@ impl ZMachineCodeGen {
                 log::debug!("Creating array with size {:?}", size);
 
                 // CRITICAL: Register target for array result
-                self.use_stack_for_result(*target);
-                log::debug!("CreateArray: IR ID {} -> stack", target);
+                self.use_push_pull_for_result(*target, "array creation")?;
+                log::debug!("CreateArray: IR ID {} -> push/pull stack", target);
 
                 // Extract size value from IrValue
                 let size_value = match size {
@@ -676,7 +708,7 @@ impl ZMachineCodeGen {
                 let prop_operand = self.resolve_ir_id_to_operand((*property_num).into())?;
 
                 // CRITICAL: Register target for test result
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "test_attr operation")?;
 
                 // Use test_attr instruction: 2OP:10 (0x0A) for testing
                 self.emit_instruction_typed(
@@ -704,7 +736,7 @@ impl ZMachineCodeGen {
                 let prop_operand = self.resolve_ir_id_to_operand((*current_property).into())?;
 
                 // CRITICAL: Register target for next property result
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "get_next_prop operation")?;
 
                 // Use get_next_prop instruction: 2OP:19 (0x13)
                 self.emit_instruction_typed(
@@ -721,7 +753,7 @@ impl ZMachineCodeGen {
                 // TODO: Implement proper array empty checking
 
                 // CRITICAL: Register target for array empty result
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array empty check")?;
 
                 // For now, just push 0 (empty/false) as a placeholder
                 self.emit_instruction_typed(
@@ -742,7 +774,7 @@ impl ZMachineCodeGen {
                 // TODO: Implement proper array element access
 
                 // CRITICAL: Register target for array element result
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array element access")?;
 
                 // For now, just push placeholder string address
                 self.emit_instruction_typed(
@@ -774,7 +806,7 @@ impl ZMachineCodeGen {
                 index: _,
             } => {
                 // Array remove operation - placeholder returns 0
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array remove operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -787,7 +819,7 @@ impl ZMachineCodeGen {
 
             IrInstruction::ArrayLength { target, array: _ } => {
                 // Array length operation - placeholder returns 0
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array length operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -804,7 +836,7 @@ impl ZMachineCodeGen {
                 value: _,
             } => {
                 // Array contains operation - placeholder returns false (0)
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array contains operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -821,7 +853,7 @@ impl ZMachineCodeGen {
                 value: _,
             } => {
                 // Array indexOf operation - placeholder returns -1 (not found)
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array indexOf operation")?;
                 // Emit instruction to push -1 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -838,7 +870,7 @@ impl ZMachineCodeGen {
                 predicate: _,
             } => {
                 // Array filter operation - placeholder returns empty array (0)
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array filter operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -855,7 +887,7 @@ impl ZMachineCodeGen {
                 transform: _,
             } => {
                 // Array map operation - placeholder returns empty array (0)
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array map operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -872,7 +904,7 @@ impl ZMachineCodeGen {
                 predicate: _,
             } => {
                 // Array find operation - placeholder returns null (0)
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array find operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -889,7 +921,7 @@ impl ZMachineCodeGen {
                 separator: _,
             } => {
                 // Array join operation - placeholder returns empty string (0)
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array join operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -902,7 +934,7 @@ impl ZMachineCodeGen {
 
             IrInstruction::ArrayReverse { target, array: _ } => {
                 // Array reverse operation - placeholder returns original array (0)
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array reverse operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -919,7 +951,7 @@ impl ZMachineCodeGen {
                 comparator: _,
             } => {
                 // Array sort operation - placeholder returns original array (0)
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array sort operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -1033,7 +1065,7 @@ impl ZMachineCodeGen {
                 }
 
                 // Register target as using stack result
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "LoadVar operation")?;
             }
 
             IrInstruction::GetObjectSibling {
@@ -1072,7 +1104,7 @@ impl ZMachineCodeGen {
                 }
 
                 // Register target as using stack result
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "GetObjectSibling operation")?;
             }
 
             IrInstruction::GetObjectParent { target, object } => {
@@ -1494,6 +1526,37 @@ impl ZMachineCodeGen {
                 self.generate_debug_break_builtin(label)?;
             }
 
+            IrInstruction::LogicalComparisonOp {
+                target,
+                op,
+                left_expr,
+                right_expr,
+            } => {
+                // Generate proper short-circuit evaluation for logical operations on comparisons
+                log::debug!(
+                    "LogicalComparisonOp: Generating short-circuit {:?} logic for target IR ID {}",
+                    op,
+                    target
+                );
+
+                // Use stack for result storage
+                self.use_push_pull_for_result(*target, "string operation")?;
+
+                match op {
+                    crate::grue_compiler::ir::IrBinaryOp::And => {
+                        self.generate_short_circuit_and(target, left_expr, right_expr)?;
+                    }
+                    crate::grue_compiler::ir::IrBinaryOp::Or => {
+                        self.generate_short_circuit_or(target, left_expr, right_expr)?;
+                    }
+                    _ => {
+                        return Err(CompilerError::CodeGenError(format!(
+                            "LogicalComparisonOp: unsupported operation {:?}",
+                            op
+                        )));
+                    }
+                }
+            }
             _ => {
                 // Handle other instruction types that are not yet implemented in the extracted code
                 return Err(CompilerError::CodeGenError(format!(
@@ -2941,7 +3004,7 @@ impl ZMachineCodeGen {
 
     /// Try to resolve a value as an IR ID if it has a mapping
     /// Returns Some(resolved_operand) if it was an IR ID, None if it's a literal constant
-    fn try_resolve_ir_id_if_needed(&self, value: u32) -> Option<Operand> {
+    fn try_resolve_ir_id_if_needed(&mut self, value: u32) -> Option<Operand> {
         // Try to resolve this value as an IR ID
         if let Ok(resolved_operand) = self.resolve_ir_id_to_operand(value) {
             // If it resolved to something different than LargeConstant(value),
@@ -3119,6 +3182,310 @@ impl ZMachineCodeGen {
 
         Ok(())
     }
+
+
+
+    /// Generate short-circuit AND logic for logical operations on comparison expressions
+    /// Pattern: if left is false, result = false; if left is true, result = right
+    fn generate_short_circuit_and(
+        &mut self,
+        target: &crate::grue_compiler::ir::IrId,
+        left_expr: &crate::grue_compiler::ast::Expr,
+        right_expr: &crate::grue_compiler::ast::Expr,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "Short-circuit AND: evaluating left expression, target IR ID {}",
+            target
+        );
+
+        // Use stack for result storage
+        self.use_push_pull_for_result(*target, "short circuit AND operation")?;
+
+        // Generate unique labels for control flow
+        let false_label = self.next_string_id;
+        self.next_string_id += 1;
+        let end_label = self.next_string_id;
+        self.next_string_id += 1;
+
+        // Step 1: Evaluate left expression
+        // If left is false, branch to false_label to set result = false
+        // If left is true, fall through to evaluate right
+        self.generate_comparison_branch(left_expr, false_label, true)?;
+
+        // Left was true, now evaluate right expression
+        // If right is false, branch to false_label to set result = false
+        // If right is true, fall through to set result = true
+        self.generate_comparison_branch(right_expr, false_label, true)?;
+
+        // Both left and right were true - store true result
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Store),
+            &[
+                crate::grue_compiler::codegen::Operand::SmallConstant(1),
+                crate::grue_compiler::codegen::Operand::Variable(0),
+            ],
+            None,
+            None,
+        )?;
+
+        // Jump to end
+        self.translate_jump(end_label)?;
+
+        // Step 2: False result label
+        self.pending_labels.push(false_label);
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Store),
+            &[
+                crate::grue_compiler::codegen::Operand::SmallConstant(0),
+                crate::grue_compiler::codegen::Operand::Variable(0),
+            ],
+            None,
+            None,
+        )?;
+
+        // Step 3: End label
+        self.pending_labels.push(end_label);
+
+        log::debug!("Short-circuit AND: completed for target IR ID {}", target);
+        Ok(())
+    }
+
+    /// Generate short-circuit OR logic for logical operations on comparison expressions
+    /// Pattern: if left is true, result = true; if left is false, result = right
+    fn generate_short_circuit_or(
+        &mut self,
+        target: &crate::grue_compiler::ir::IrId,
+        left_expr: &crate::grue_compiler::ast::Expr,
+        right_expr: &crate::grue_compiler::ast::Expr,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "Short-circuit OR: evaluating left expression, target IR ID {}",
+            target
+        );
+
+        // Use stack for result storage
+        self.use_push_pull_for_result(*target, "short circuit OR operation")?;
+
+        // Generate unique labels for control flow
+        let true_label = self.next_string_id;
+        self.next_string_id += 1;
+        let end_label = self.next_string_id;
+        self.next_string_id += 1;
+
+        // Step 1: Evaluate left expression
+        // If left is true, branch to true_label to set result = true
+        // If left is false, fall through to evaluate right
+        self.generate_comparison_branch(left_expr, true_label, false)?;
+
+        // Left was false, now evaluate right expression
+        // If right is true, branch to true_label to set result = true
+        // If right is false, fall through to set result = false
+        self.generate_comparison_branch(right_expr, true_label, false)?;
+
+        // Both left and right were false - store false result
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Store),
+            &[
+                crate::grue_compiler::codegen::Operand::SmallConstant(0),
+                crate::grue_compiler::codegen::Operand::Variable(0),
+            ],
+            None,
+            None,
+        )?;
+
+        // Jump to end
+        self.translate_jump(end_label)?;
+
+        // Step 2: True result label
+        self.pending_labels.push(true_label);
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Store),
+            &[
+                crate::grue_compiler::codegen::Operand::SmallConstant(1),
+                crate::grue_compiler::codegen::Operand::Variable(0),
+            ],
+            None,
+            None,
+        )?;
+
+        // Step 3: End label
+        self.pending_labels.push(end_label);
+
+        log::debug!("Short-circuit OR: completed for target IR ID {}", target);
+        Ok(())
+    }
+
+    /// Generate comparison branch for logical operation helper
+    /// Compiles a comparison expression into Z-Machine branch instruction
+    fn generate_comparison_branch(
+        &mut self,
+        expr: &crate::grue_compiler::ast::Expr,
+        branch_label: crate::grue_compiler::ir::IrId,
+        branch_on_false: bool,
+    ) -> Result<(), CompilerError> {
+        match expr {
+            crate::grue_compiler::ast::Expr::Binary {
+                left,
+                operator,
+                right,
+            } => {
+                // Evaluate operands to get Z-Machine operands
+                let left_operand = self.evaluate_expression_to_operand(left)?;
+                let right_operand = self.evaluate_expression_to_operand(right)?;
+
+                // Map comparison operators to Z-Machine branch opcodes
+                let (opcode, should_invert) = match operator {
+                    crate::grue_compiler::ast::BinaryOp::Equal => (
+                        crate::grue_compiler::opcodes::Opcode::Op2(
+                            crate::grue_compiler::opcodes::Op2::Je,
+                        ),
+                        false,
+                    ),
+                    crate::grue_compiler::ast::BinaryOp::NotEqual => (
+                        crate::grue_compiler::opcodes::Opcode::Op2(
+                            crate::grue_compiler::opcodes::Op2::Je,
+                        ),
+                        true,
+                    ),
+                    crate::grue_compiler::ast::BinaryOp::Less => (
+                        crate::grue_compiler::opcodes::Opcode::Op2(
+                            crate::grue_compiler::opcodes::Op2::Jl,
+                        ),
+                        false,
+                    ),
+                    crate::grue_compiler::ast::BinaryOp::Greater => (
+                        crate::grue_compiler::opcodes::Opcode::Op2(
+                            crate::grue_compiler::opcodes::Op2::Jg,
+                        ),
+                        false,
+                    ),
+                    crate::grue_compiler::ast::BinaryOp::LessEqual => (
+                        crate::grue_compiler::opcodes::Opcode::Op2(
+                            crate::grue_compiler::opcodes::Op2::Jg,
+                        ),
+                        true,
+                    ),
+                    crate::grue_compiler::ast::BinaryOp::GreaterEqual => (
+                        crate::grue_compiler::opcodes::Opcode::Op2(
+                            crate::grue_compiler::opcodes::Op2::Jl,
+                        ),
+                        true,
+                    ),
+                    _ => {
+                        return Err(CompilerError::CodeGenError(format!(
+                            "Unsupported comparison operator in logical expression: {:?}",
+                            operator
+                        )));
+                    }
+                };
+
+                // Determine branch condition (branch_on_false XOR should_invert)
+                let branch_condition = branch_on_false ^ should_invert;
+
+                // Create unresolved reference for the branch
+                let layout = self.emit_instruction_typed(
+                    opcode,
+                    &[left_operand, right_operand],
+                    None,
+                    Some(placeholder_word() as i16),
+                )?;
+
+                // Register branch reference for later resolution
+                if let Some(branch_location) = layout.branch_location {
+                    self.reference_context.unresolved_refs.push(
+                        crate::grue_compiler::codegen_headers::UnresolvedReference {
+                            reference_type:
+                                crate::grue_compiler::codegen::LegacyReferenceType::Branch,
+                            location: branch_location,
+                            target_id: branch_label,
+                            is_packed_address: false,
+                            offset_size: 2,
+                            location_space:
+                                crate::grue_compiler::codegen_headers::MemorySpace::Code,
+                        },
+                    );
+                }
+
+                Ok(())
+            }
+            _ => Err(CompilerError::CodeGenError(format!(
+                "Expected comparison expression in logical operation, found: {:?}",
+                expr
+            ))),
+        }
+    }
+
+    /// Evaluate expression to Z-Machine operand
+    fn evaluate_expression_to_operand(
+        &mut self,
+        expr: &crate::grue_compiler::ast::Expr,
+    ) -> Result<crate::grue_compiler::codegen::Operand, CompilerError> {
+        match expr {
+            crate::grue_compiler::ast::Expr::Identifier(name) => {
+                // Simplified identifier resolution for initial implementation
+                // For well-known identifiers, return appropriate operands
+                match name.as_str() {
+                    "player" => {
+                        // Player is typically object 1 in Z-Machine
+                        Ok(crate::grue_compiler::codegen::Operand::SmallConstant(1))
+                    }
+                    _ => {
+                        // For other identifiers, try to find them in function parameters
+                        // For now, assume it's a local variable and use Variable(1)
+                        Ok(crate::grue_compiler::codegen::Operand::Variable(1))
+                    }
+                }
+            }
+            crate::grue_compiler::ast::Expr::Integer(value) => {
+                if *value >= 0 && *value <= 255 {
+                    Ok(crate::grue_compiler::codegen::Operand::SmallConstant(
+                        *value as u8,
+                    ))
+                } else {
+                    Ok(crate::grue_compiler::codegen::Operand::LargeConstant(
+                        *value as u16,
+                    ))
+                }
+            }
+            crate::grue_compiler::ast::Expr::PropertyAccess { object, property } => {
+                // Simplified property access for initial implementation
+                let object_operand = self.evaluate_expression_to_operand(object)?;
+
+                // Map well-known property names to property numbers
+                let property_num = match property.as_str() {
+                    "location" => 1, // location is typically property 1
+                    _ => 2,          // default to property 2 for others
+                };
+
+                // Generate get_prop instruction to get property value
+                self.emit_instruction_typed(
+                    crate::grue_compiler::opcodes::Opcode::Op2(
+                        crate::grue_compiler::opcodes::Op2::GetProp,
+                    ),
+                    &[
+                        object_operand,
+                        crate::grue_compiler::codegen::Operand::SmallConstant(property_num),
+                    ],
+                    Some(0), // Store result on stack
+                    None,
+                )?;
+
+                // Return stack operand where result is stored
+                Ok(crate::grue_compiler::codegen::Operand::Variable(0))
+            }
+            _ => Err(CompilerError::CodeGenError(format!(
+                "Unsupported expression type in comparison: {:?}",
+                expr
+            ))),
+        }
+    }
+
+    /// Helper to generate unique label IDs (simplified implementation)
+    fn get_next_label_id(&mut self) -> crate::grue_compiler::ir::IrId {
+        // Simple implementation - use current address as unique ID
+        self.code_address as crate::grue_compiler::ir::IrId
+    }
+
 }
 
 #[cfg(test)]
