@@ -45,13 +45,17 @@ impl ZMachineCodeGen {
             // Log ALL writes to this critical region, not just overwrites
             log::debug!(
                 "🎯 WEST_OF_HOUSE_REGION: Write 0x{:02x} at offset 0x{:04x} (was 0x{:02x})",
-                byte, offset, old_value
+                byte,
+                offset,
+                old_value
             );
 
             if old_value != 0xAA && old_value != 0x00 && old_value != byte {
                 log::warn!(
                     "🚨 OVERWRITE_DETECTED: offset 0x{:04x} had 0x{:02x}, writing 0x{:02x}",
-                    offset, old_value, byte
+                    offset,
+                    old_value,
+                    byte
                 );
             }
         }
@@ -302,7 +306,6 @@ impl ZMachineCodeGen {
     /// This is the main function that generates full object tables for interactive programs,
     /// including both room objects and regular objects with their property tables.
     pub fn generate_object_tables(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
-
         log::info!("=== OBJECT TABLE GENERATION DEBUG ===");
         log::info!("Target version: {:?}", self.version);
         log::info!(
@@ -479,7 +482,10 @@ impl ZMachineCodeGen {
 
         // Add rooms as objects (basic properties only, exits added in Pass 2)
         // Rooms need basic properties like 'description' for look_around() to work correctly
-        log::debug!("Processing {} rooms to generate room objects...", ir.rooms.len());
+        log::debug!(
+            "Processing {} rooms to generate room objects...",
+            ir.rooms.len()
+        );
         for room in &ir.rooms {
             let mut room_properties = IrProperties::new();
 

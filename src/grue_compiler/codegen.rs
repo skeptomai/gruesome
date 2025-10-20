@@ -624,14 +624,24 @@ impl ZMachineCodeGen {
         log::info!(" Phase 2 complete: All Z-Machine sections generated");
 
         // CRITICAL DEBUG: Check object_space integrity right after Phase 2
-        log::info!("🔍 PHASE2_END: object_space.len() = {}", self.object_space.len());
+        log::info!(
+            "🔍 PHASE2_END: object_space.len() = {}",
+            self.object_space.len()
+        );
         if self.object_space.len() > 0x00d9 {
-            log::info!("🔍 PHASE2_END: object_space[0x00d9] = 0x{:02x} (should be 0x05 for text length)",
-                       self.object_space[0x00d9]);
-            log::info!("🔍 PHASE2_END: West of House property data at 0x00d9: {:02x?}",
-                       &self.object_space[0x00d9..std::cmp::min(0x00d9 + 20, self.object_space.len())]);
+            log::info!(
+                "🔍 PHASE2_END: object_space[0x00d9] = 0x{:02x} (should be 0x05 for text length)",
+                self.object_space[0x00d9]
+            );
+            log::info!(
+                "🔍 PHASE2_END: West of House property data at 0x00d9: {:02x?}",
+                &self.object_space[0x00d9..std::cmp::min(0x00d9 + 20, self.object_space.len())]
+            );
         } else {
-            log::info!("🔍 PHASE2_END: object_space is too small (len={}), 0x00d9 is beyond bounds!", self.object_space.len());
+            log::info!(
+                "🔍 PHASE2_END: object_space is too small (len={}), 0x00d9 is beyond bounds!",
+                self.object_space.len()
+            );
         }
 
         // DEBUG: Show space population before final assembly
@@ -662,7 +672,10 @@ impl ZMachineCodeGen {
             if value == 0x0000 {
                 log::error!("🚨 FINAL_STATE_CORRUPT: West of House property 7 is 0x0000 at file write time!");
             } else {
-                log::info!("✅ FINAL_STATE_OK: West of House property 7 has valid value 0x{:04x}", value);
+                log::info!(
+                    "✅ FINAL_STATE_OK: West of House property 7 has valid value 0x{:04x}",
+                    value
+                );
             }
         }
 
@@ -881,14 +894,24 @@ impl ZMachineCodeGen {
         log::info!(" Phase 3: Assembling complete Z-Machine image from ALL separated spaces");
 
         // CRITICAL DEBUG: Check object_space integrity at Phase 3 START
-        log::info!("🔍 PHASE3_START: object_space.len() = {}", self.object_space.len());
+        log::info!(
+            "🔍 PHASE3_START: object_space.len() = {}",
+            self.object_space.len()
+        );
         if self.object_space.len() > 0x00d9 {
-            log::info!("🔍 PHASE3_START: object_space[0x00d9] = 0x{:02x} (should be 0x05 for text length)",
-                       self.object_space[0x00d9]);
-            log::info!("🔍 PHASE3_START: West of House property data at 0x00d9: {:02x?}",
-                       &self.object_space[0x00d9..std::cmp::min(0x00d9 + 20, self.object_space.len())]);
+            log::info!(
+                "🔍 PHASE3_START: object_space[0x00d9] = 0x{:02x} (should be 0x05 for text length)",
+                self.object_space[0x00d9]
+            );
+            log::info!(
+                "🔍 PHASE3_START: West of House property data at 0x00d9: {:02x?}",
+                &self.object_space[0x00d9..std::cmp::min(0x00d9 + 20, self.object_space.len())]
+            );
         } else {
-            log::info!("🔍 PHASE3_START: object_space is too small (len={}), 0x00d9 is beyond bounds!", self.object_space.len());
+            log::info!(
+                "🔍 PHASE3_START: object_space is too small (len={}), 0x00d9 is beyond bounds!",
+                self.object_space.len()
+            );
         }
 
         // Phase 3a: Calculate precise memory layout for ALL Z-Machine sections
@@ -1221,8 +1244,10 @@ impl ZMachineCodeGen {
             log::warn!("🔍 CRITICAL_CHECK: object_space[0x00d9] = 0x{:02x} (expecting 0x05 for text length)",
                        if 0x00d9 < self.object_space.len() { self.object_space[0x00d9] } else { 0xFF });
             if 0x00d9 < self.object_space.len() {
-                log::warn!("🔍 CRITICAL_CHECK: West of House property data at 0x00d9: {:02x?}",
-                           &self.object_space[0x00d9..std::cmp::min(0x00d9 + 20, self.object_space.len())]);
+                log::warn!(
+                    "🔍 CRITICAL_CHECK: West of House property data at 0x00d9: {:02x?}",
+                    &self.object_space[0x00d9..std::cmp::min(0x00d9 + 20, self.object_space.len())]
+                );
             }
             log::warn!(
                 "   object_base=0x{:04x}, dictionary_base=0x{:04x}, object_size={}",
@@ -1235,7 +1260,6 @@ impl ZMachineCodeGen {
                 self.object_space.len(),
                 dictionary_base - object_base
             );
-
 
             self.final_data[object_base..dictionary_base].copy_from_slice(&self.object_space);
 
@@ -1265,13 +1289,11 @@ impl ZMachineCodeGen {
                 }
             }
 
-
             log::debug!(
                 " Object space copied: {} bytes at 0x{:04x}",
                 object_size,
                 object_base
             );
-
         }
 
         // Copy dictionary space
@@ -1488,8 +1510,11 @@ impl ZMachineCodeGen {
         // Check player property table BEFORE reference resolution
         let player_final_addr = self.final_object_base + 0x00c5;
         if player_final_addr + 20 <= self.final_data.len() {
-            log::warn!("🔍 PLAYER_BEFORE_REF_RESOLUTION: final_data player props at 0x{:04x}: {:02x?}",
-                      player_final_addr, &self.final_data[player_final_addr..player_final_addr + 20]);
+            log::warn!(
+                "🔍 PLAYER_BEFORE_REF_RESOLUTION: final_data player props at 0x{:04x}: {:02x?}",
+                player_final_addr,
+                &self.final_data[player_final_addr..player_final_addr + 20]
+            );
         }
 
         // DEBUG: List all unresolved references
@@ -1587,12 +1612,15 @@ impl ZMachineCodeGen {
         // Check player property table AFTER reference resolution
         let player_final_addr = self.final_object_base + 0x00c5;
         if player_final_addr + 20 <= self.final_data.len() {
-            log::warn!("🔍 PLAYER_AFTER_REF_RESOLUTION: final_data player props at 0x{:04x}: {:02x?}",
-                      player_final_addr, &self.final_data[player_final_addr..player_final_addr + 20]);
+            log::warn!(
+                "🔍 PLAYER_AFTER_REF_RESOLUTION: final_data player props at 0x{:04x}: {:02x?}",
+                player_final_addr,
+                &self.final_data[player_final_addr..player_final_addr + 20]
+            );
         }
 
         // CRITICAL: Verify object 1 property table pointer points to the right place
-        let obj1_entry_addr = self.final_object_base + 0x003e;  // Object 1 entry in final data
+        let obj1_entry_addr = self.final_object_base + 0x003e; // Object 1 entry in final data
         if obj1_entry_addr + 8 < self.final_data.len() {
             let prop_ptr_high = self.final_data[obj1_entry_addr + 7];
             let prop_ptr_low = self.final_data[obj1_entry_addr + 8];
@@ -1602,8 +1630,11 @@ impl ZMachineCodeGen {
 
             // Verify what's actually at the pointer location
             if (prop_ptr as usize) + 20 <= self.final_data.len() {
-                log::warn!("🔍 OBJECT1_ACTUAL_PROPS: Data at pointer 0x{:04x}: {:02x?}",
-                          prop_ptr, &self.final_data[prop_ptr as usize..(prop_ptr as usize + 20)]);
+                log::warn!(
+                    "🔍 OBJECT1_ACTUAL_PROPS: Data at pointer 0x{:04x}: {:02x?}",
+                    prop_ptr,
+                    &self.final_data[prop_ptr as usize..(prop_ptr as usize + 20)]
+                );
             }
         }
 
@@ -2246,7 +2277,11 @@ impl ZMachineCodeGen {
                     // Check for ZERO writes which indicate failed resolution
                     if final_value == 0 {
                         log::error!("🚨 ZERO_WRITE_DETECTED: Writing 0x0000 to 0x{:04x} - this will cause print_paddr crash!", reference.location);
-                        log::error!("   Failed target_id={} type={:?}", reference.target_id, reference.reference_type);
+                        log::error!(
+                            "   Failed target_id={} type={:?}",
+                            reference.target_id,
+                            reference.reference_type
+                        );
                     }
                 }
 
@@ -3592,7 +3627,9 @@ impl ZMachineCodeGen {
 
         // Register target mapping if provided
         if let Some(target_id) = target {
-            self.use_stack_for_result(target_id);
+            // PHASE 3B IMPROVEMENT: get_location results use dedicated global variable
+            // instead of contested Variable(0) to prevent stack collisions
+            self.use_global_for_result(target_id, "get_location builtin");
         }
 
         log::debug!(
@@ -3954,9 +3991,11 @@ impl ZMachineCodeGen {
         // Update code_space for IR tracking system
         // emit_instruction already pushed bytes to code_space
 
-        // If we have a target, create stack mapping
+        // If we have a target, create variable mapping
         if let Some(target_id) = target {
-            self.use_stack_for_result(target_id);
+            // PHASE 3B IMPROVEMENT: random results use dedicated global variable
+            // instead of contested Variable(0) to prevent stack collisions
+            self.use_global_for_result(target_id, "random builtin");
         }
 
         log::debug!(
@@ -4117,7 +4156,9 @@ impl ZMachineCodeGen {
         // emit_instruction already pushed bytes to code_space
 
         if let Some(target_id) = target {
-            self.use_stack_for_result(target_id);
+            // PHASE 3B IMPROVEMENT: get_object_contents results use dedicated global variable
+            // instead of contested Variable(0) to prevent stack collisions
+            self.use_global_for_result(target_id, "get_object_contents builtin");
         }
 
         log::debug!(" PHASE3_GET_OBJECT_CONTENTS: Get_object_contents builtin translated successfully ({} bytes)", layout.total_size);
@@ -5009,7 +5050,7 @@ impl ZMachineCodeGen {
     }
 
     /// Create a property table for an object
-    
+
     /// Create a property table for an object using IR property data
     fn create_property_table_from_ir(
         &mut self,
@@ -8875,6 +8916,63 @@ impl ZMachineCodeGen {
             "use_stack_for_result: IR ID {} -> stack (Variable 0) for temporary result",
             target_id
         );
+    }
+
+    /// PHASE 3B: Improved stack discipline for function call results
+    ///
+    /// This method replaces use_stack_for_result() for critical cases where multiple
+    /// operations compete for Variable(0), causing collisions and crashes like the
+    /// Property 28 bug. By allocating unique global variables instead of using the
+    /// contested stack, we reduce Variable(0) contention significantly.
+    ///
+    /// # Strategy
+    /// - Function call results that need persistent storage → unique global variables
+    /// - Temporary expression results → still use Variable(0) (TODO: Phase 3C push/pull)
+    /// - Property access results → already use globals (existing bug fix)
+    ///
+    /// # Usage
+    /// Convert critical builtin calls: get_location, random, get_object_contents, etc.
+    /// that are frequently called and likely to collide with other Variable(0) operations.
+    pub fn use_global_for_result(&mut self, target_id: IrId, context: &str) {
+        // Safety check: Don't overwrite existing mappings from builtins
+        if self.ir_id_to_stack_var.contains_key(&target_id) {
+            log::debug!(
+                "use_global_for_result: IR ID {} already mapped, keeping existing mapping",
+                target_id
+            );
+            return;
+        }
+
+        // Allocate a unique global variable instead of using contested Variable(0)
+        let global_var = self.allocate_global_variable();
+        self.ir_id_to_stack_var.insert(target_id, global_var);
+        log::debug!(
+            "PHASE_3B_IMPROVEMENT: IR ID {} → global variable {} for {} (avoiding Variable(0) collision)",
+            target_id, global_var, context
+        );
+    }
+
+    /// Allocate a unique global variable for results that need persistent storage
+    ///
+    /// # Z-Machine Variable Layout
+    /// - Variables 0: Stack (Variable(0) - contested, causes collisions)
+    /// - Variables 1-15: Local variables (function parameters)
+    /// - Variables 16+: Global variables (persistent, safe for function results)
+    ///
+    /// This method ensures each allocated global is unique by tracking allocation count.
+    fn allocate_global_variable(&mut self) -> u8 {
+        // Global variables start at 16 (0x10) after locals (0-15)
+        // Continue from allocated_globals_count to ensure uniqueness
+        let global_var = 16 + (self.allocated_globals_count as u8);
+        self.allocated_globals_count += 1;
+
+        log::debug!(
+            "GLOBAL_VAR_ALLOC: Allocated Variable({}) for persistent storage (total allocated: {})",
+            global_var,
+            self.allocated_globals_count
+        );
+
+        global_var
     }
 
     /// Get current code address for instruction generation
