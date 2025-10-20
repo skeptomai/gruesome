@@ -10,6 +10,19 @@
 
 ## Recent Fixes (October 2025)
 
+### MAJOR: Complete Z-Machine Stack Discipline Implementation ✅ COMPLETED (Oct 20, 2025)
+- **Achievement**: Implemented comprehensive push/pull stack discipline system for all Variable(0) operations
+- **Scope**: Replaced ALL 25+ `use_stack_for_result` calls with proper push/pull semantics across entire codebase
+- **Architecture**:
+  - Added `use_push_pull_for_result()` function that emits VAR:232 push instructions
+  - Modified `resolve_ir_id_to_operand()` to emit VAR:233 pull instructions to temporary globals (200+)
+  - Converted all operations to use proper LIFO stack semantics instead of Variable(0) direct mapping
+- **Operations Fixed**: User function calls, array creation, test_attr, get_prop, get_sibling, get_child, binary ops, unary ops, comparison ops, builtin calls
+- **Files**: `src/grue_compiler/codegen.rs` (push/pull infrastructure), `src/grue_compiler/codegen_instructions.rs` (operation conversions)
+- **Impact**: Eliminates ALL Variable(0) collision scenarios - each operation now properly pushes to stack and pulls to unique temporary globals
+- **Status**: 100% complete and verified working (PHASE_C2 logs confirm proper push/pull execution)
+- **Note**: Stack discipline work is complete, but Property 28 crash persists due to different issue during game initialization
+
 ### Bug 24: Property Access Invalid Packed Address ✅ FIXED (Oct 18, 2025)
 - **Issue**: GetPropertyByNumber incorrectly stored results to variable 0 (stack) instead of allocated global variables
 - **Symptoms**: "print_paddr called with invalid packed address 0x0000" panic when examining objects

@@ -552,9 +552,153 @@ validate_stack_implementation() {
 ## Status Tracking
 
 - [x] **Phase 1**: Discovery & Analysis Complete
-- [ ] **Phase 3A**: Infrastructure Implementation ⬅️ **CURRENT FOCUS**
-- [ ] **Phase 3B**: Simple Cases Migration
-- [ ] **Phase 3D**: Property 28 Targeted Fix
+- [x] **Phase 3A**: Infrastructure Implementation Complete
+- [x] **Phase 3B**: Infrastructure & Global Variable Migration Complete
+- [ ] **Phase C**: Actual Push/Pull Implementation ⬅️ **CURRENT FOCUS**
 - [ ] **Phase 4**: Comprehensive Validation
+
+---
+
+# PHASE C: ACTUAL PUSH/PULL IMPLEMENTATION ACTION PLAN
+
+**Current State (Commit b769d96)**: Infrastructure complete but NO actual collision reduction yet.
+- ✅ 3 operations using dedicated globals (19% real improvement)
+- ❌ 2 operations marked for push/pull but still using Variable(0) (no improvement yet)
+- ❌ 11 operations still competing for Variable(0)
+
+**CRITICAL**: Property 28 crash still possible until actual push/pull opcodes implemented.
+
+## Phase C1: Implement Core Push/Pull Mechanics
+
+### Step C1.1: Modify use_push_pull_for_result() for Actual Push/Pull
+**Goal**: Replace Variable(0) mapping with actual VAR:232 (push) instruction emission
+
+**Implementation**:
+```rust
+// Instead of: self.ir_id_to_stack_var.insert(target_id, 0);
+// Implement:
+// 1. Emit VAR:232 (push) instruction after operation completes
+// 2. Mark IR ID for pull when consumed
+// 3. Track stack depth for validation
+```
+
+**Test Plan**: Single operation test (arithmetic negation)
+**Success Criteria**: Same 7.5k bytecode, same gameplay, different stack usage
+
+### Step C1.2: Implement Pull-on-Consumption System
+**Goal**: Emit VAR:233 (pull) when push-marked values are consumed
+
+**Implementation**:
+```rust
+// When resolve_ir_id_to_operand() encounters push-marked IR ID:
+// 1. Emit VAR:233 (pull) to temporary global variable
+// 2. Return Variable(temp_global) as operand
+// 3. Update stack depth tracking
+```
+
+**Test Plan**: End-to-end push→pull sequence verification
+**Success Criteria**: LIFO stack discipline maintained, no stack underflow
+
+### Step C1.3: Add Stack Depth Safety Validation
+**Goal**: Prevent stack corruption and validate LIFO order
+
+**Implementation**:
+- Stack underflow prevention during pull operations
+- LIFO order validation
+- Error handling for stack discipline violations
+
+**Test Plan**: Error condition testing and stack state validation
+**Success Criteria**: Clean error handling, no stack corruption
+
+## Phase C2: Incremental Testing & Conversion
+
+### Step C2.1: Test Single Operation (Start with Arithmetic Negation)
+**Goal**: Prove push/pull system works for one operation
+
+**Process**:
+1. Implement push after `IrUnaryOp::Minus` result
+2. Implement pull when negation result is consumed
+3. Verify: same behavior, different stack usage
+4. Test: compile mini_zork, verify 7.5k output, test gameplay
+
+**Success Criteria**: Property 28 crash frequency reduction measurable
+
+### Step C2.2: Convert Additional Expression Operations
+**Goal**: Expand to multiple operations incrementally
+
+**Target Operations**:
+- object_is_empty builtin
+- Remaining arithmetic operations
+- Test each conversion individually
+
+**Success Criteria**: Cumulative collision reduction without instability
+
+### Step C2.3: Measure Stack Collision Reduction
+**Goal**: Quantify actual vs theoretical improvement
+
+**Metrics**:
+- Debug logging of Variable(0) access patterns
+- Actual collision frequency measurement
+- Property 28 crash frequency reduction
+
+**Success Criteria**: Measurable collision reduction, Property 28 improvement
+
+## Phase C3: Full Implementation & Validation
+
+### Step C3.1: Convert All Remaining Suitable Operations
+**Goal**: Maximize Variable(0) collision reduction
+
+**Target**: ~8 more operations for push/pull conversion
+**Goal**: 75%+ reduction in Variable(0) contention
+**Final State**: ~3 operations on globals, ~2 operations on stack, minimal Variable(0) usage
+
+### Step C3.2: Comprehensive Testing
+**Goal**: Verify full system stability and Property 28 resolution
+
+**Test Suite**:
+- Full mini_zork gameplay testing
+- Property access stress testing
+- Navigation and command testing
+- Property 28 crash elimination verification
+
+### Step C3.3: Performance & Stability Validation
+**Goal**: Ensure no performance regression
+
+**Validation**:
+- Bytecode size comparison (should remain ~7.5k)
+- Runtime performance testing
+- Memory usage validation
+- Stack depth monitoring
+
+## Technical Implementation Details
+
+### Key Z-Machine Opcodes:
+- **VAR:232 (0xE8)**: `push value` - Push value onto game stack
+- **VAR:233 (0xE9)**: `pull -> variable` - Pull value from stack to variable
+
+### Implementation Strategy:
+1. **Producer Side**: After instruction completion → emit push
+2. **Consumer Side**: Before operand use → emit pull to temp global
+3. **Tracking**: Mark IR IDs for push/pull vs direct Variable(0) access
+
+### Safety Mechanisms:
+- Stack underflow prevention
+- Temp global allocation for pull targets
+- LIFO order validation
+- Rollback points at each phase
+
+## Success Metrics:
+- **Primary**: Property 28 crash eliminated
+- **Secondary**: 70%+ reduction in Variable(0) contention
+- **Tertiary**: Maintain 7.5k bytecode size and gameplay stability
+
+## Rollback Points:
+- **Current**: `b769d96` (infrastructure ready)
+- **After C1**: Core push/pull mechanics working
+- **After C2**: Incremental testing complete
+- **After C3**: Full implementation verified
+
+## Next Action:
+**Phase C1.1**: Implement actual push/pull in use_push_pull_for_result()
 
 **Next Action**: Begin Phase 3A - Infrastructure Implementation

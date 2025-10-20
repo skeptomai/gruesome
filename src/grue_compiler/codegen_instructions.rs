@@ -313,8 +313,8 @@ impl ZMachineCodeGen {
                     // Use stack for call results (per Z-Machine specification)
                     // This is ONLY for user function calls, not builtins
                     if let Some(target_id) = target {
-                        self.use_stack_for_result(*target_id);
-                        log::debug!("Call result: IR ID {} -> stack", target_id);
+                        self.use_push_pull_for_result(*target_id, "user function call")?;
+                        log::debug!("Call result: IR ID {} -> push/pull stack", target_id);
                     }
                 }
             }
@@ -354,8 +354,8 @@ impl ZMachineCodeGen {
 
                 // Register call result target for proper LoadVar resolution
                 if let Some(target_id) = target {
-                    self.use_stack_for_result(*target_id);
-                    log::debug!("CallIndirect result: IR ID {} -> stack", target_id);
+                    self.use_push_pull_for_result(*target_id, "indirect function call")?;
+                    log::debug!("CallIndirect result: IR ID {} -> push/pull stack", target_id);
                 }
             }
 
@@ -549,8 +549,8 @@ impl ZMachineCodeGen {
                 log::debug!("Creating array with size {:?}", size);
 
                 // CRITICAL: Register target for array result
-                self.use_stack_for_result(*target);
-                log::debug!("CreateArray: IR ID {} -> stack", target);
+                self.use_push_pull_for_result(*target, "array creation")?;
+                log::debug!("CreateArray: IR ID {} -> push/pull stack", target);
 
                 // Extract size value from IrValue
                 let size_value = match size {
@@ -793,7 +793,7 @@ impl ZMachineCodeGen {
                 let prop_operand = self.resolve_ir_id_to_operand((*property_num).into())?;
 
                 // CRITICAL: Register target for test result
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "test_attr operation")?;
 
                 // Use test_attr instruction: 2OP:10 (0x0A) for testing
                 self.emit_instruction_typed(
@@ -821,7 +821,7 @@ impl ZMachineCodeGen {
                 let prop_operand = self.resolve_ir_id_to_operand((*current_property).into())?;
 
                 // CRITICAL: Register target for next property result
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "get_next_prop operation")?;
 
                 // Use get_next_prop instruction: 2OP:19 (0x13)
                 self.emit_instruction_typed(
@@ -838,7 +838,7 @@ impl ZMachineCodeGen {
                 // TODO: Implement proper array empty checking
 
                 // CRITICAL: Register target for array empty result
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array empty check")?;
 
                 // For now, just push 0 (empty/false) as a placeholder
                 self.emit_instruction_typed(
@@ -859,7 +859,7 @@ impl ZMachineCodeGen {
                 // TODO: Implement proper array element access
 
                 // CRITICAL: Register target for array element result
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array element access")?;
 
                 // For now, just push placeholder string address
                 self.emit_instruction_typed(
@@ -891,7 +891,7 @@ impl ZMachineCodeGen {
                 index: _,
             } => {
                 // Array remove operation - placeholder returns 0
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array remove operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -904,7 +904,7 @@ impl ZMachineCodeGen {
 
             IrInstruction::ArrayLength { target, array: _ } => {
                 // Array length operation - placeholder returns 0
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array length operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -921,7 +921,7 @@ impl ZMachineCodeGen {
                 value: _,
             } => {
                 // Array contains operation - placeholder returns false (0)
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array contains operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -938,7 +938,7 @@ impl ZMachineCodeGen {
                 value: _,
             } => {
                 // Array indexOf operation - placeholder returns -1 (not found)
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array indexOf operation")?;
                 // Emit instruction to push -1 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -955,7 +955,7 @@ impl ZMachineCodeGen {
                 predicate: _,
             } => {
                 // Array filter operation - placeholder returns empty array (0)
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array filter operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -972,7 +972,7 @@ impl ZMachineCodeGen {
                 transform: _,
             } => {
                 // Array map operation - placeholder returns empty array (0)
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array map operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -989,7 +989,7 @@ impl ZMachineCodeGen {
                 predicate: _,
             } => {
                 // Array find operation - placeholder returns null (0)
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array find operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -1006,7 +1006,7 @@ impl ZMachineCodeGen {
                 separator: _,
             } => {
                 // Array join operation - placeholder returns empty string (0)
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array join operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -1019,7 +1019,7 @@ impl ZMachineCodeGen {
 
             IrInstruction::ArrayReverse { target, array: _ } => {
                 // Array reverse operation - placeholder returns original array (0)
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array reverse operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -1036,7 +1036,7 @@ impl ZMachineCodeGen {
                 comparator: _,
             } => {
                 // Array sort operation - placeholder returns original array (0)
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "array sort operation")?;
                 // Emit instruction to push 0 onto stack as placeholder result
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
@@ -1150,7 +1150,7 @@ impl ZMachineCodeGen {
                 }
 
                 // Register target as using stack result
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "LoadVar operation")?;
             }
 
             IrInstruction::GetObjectSibling {
@@ -1189,7 +1189,7 @@ impl ZMachineCodeGen {
                 }
 
                 // Register target as using stack result
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "GetObjectSibling operation")?;
             }
 
             IrInstruction::GetObjectParent { target, object } => {
@@ -1621,7 +1621,7 @@ impl ZMachineCodeGen {
                 );
 
                 // Use stack for result storage
-                self.use_stack_for_result(*target);
+                self.use_push_pull_for_result(*target, "string operation")?;
 
                 match op {
                     crate::grue_compiler::ir::IrBinaryOp::And => {
@@ -3092,7 +3092,7 @@ impl ZMachineCodeGen {
 
     /// Try to resolve a value as an IR ID if it has a mapping
     /// Returns Some(resolved_operand) if it was an IR ID, None if it's a literal constant
-    fn try_resolve_ir_id_if_needed(&self, value: u32) -> Option<Operand> {
+    fn try_resolve_ir_id_if_needed(&mut self, value: u32) -> Option<Operand> {
         // Try to resolve this value as an IR ID
         if let Ok(resolved_operand) = self.resolve_ir_id_to_operand(value) {
             // If it resolved to something different than LargeConstant(value),
@@ -3285,7 +3285,7 @@ impl ZMachineCodeGen {
         );
 
         // Use stack for result storage
-        self.use_stack_for_result(*target);
+        self.use_push_pull_for_result(*target, "short circuit AND operation")?;
 
         // Generate unique labels for control flow
         let false_label = self.next_string_id;
@@ -3350,7 +3350,7 @@ impl ZMachineCodeGen {
         );
 
         // Use stack for result storage
-        self.use_stack_for_result(*target);
+        self.use_push_pull_for_result(*target, "short circuit OR operation")?;
 
         // Generate unique labels for control flow
         let true_label = self.next_string_id;

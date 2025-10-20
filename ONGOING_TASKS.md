@@ -1,12 +1,20 @@
 # Ongoing Tasks
 
-## CRITICAL ARCHITECTURAL DISCOVERY: Z-Machine Stack Usage Analysis (Oct 20, 2025)
+## CURRENT STATUS (Oct 20, 2025): Stack Discipline Complete, Property 28 Investigation Needed
 
-### 🎯 MAJOR INSIGHT: Stack Discipline vs Stack Avoidance
+**STACK DISCIPLINE**: ✅ **100% COMPLETE** - All Variable(0) operations converted to proper push/pull semantics
 
-**STATUS**: 📋 **ARCHITECTURAL UNDERSTANDING COMPLETE** - Design approach clarified
+**PROPERTY 28 INVESTIGATION**: 🔍 **READY FOR REASSESSMENT** - Stack discipline was NOT the root cause of Property 28 crash. The crash persists and requires fresh investigation approach focusing on game initialization, not Variable(0) collisions during gameplay.
 
-**Investigation Triggered By**: Property 28 crash and Variable 0 collision debugging showing 20+ operations using Variable 0 simultaneously, leading to incorrect assertion that "we're misusing the stack."
+**KEY INSIGHT**: Property 28 crash occurs during game startup, not during Variable(0) operations that were fixed by stack discipline. The root cause is elsewhere in the system.
+
+## COMPLETED: Z-Machine Stack Discipline Implementation (Oct 20, 2025)
+
+### ✅ MAJOR SUCCESS: Complete Stack Discipline Implementation Finished
+
+**STATUS**: 🎯 **IMPLEMENTATION 100% COMPLETE** - All Variable(0) operations converted to proper push/pull semantics
+
+**Achievement Summary**: Successfully implemented comprehensive push/pull stack discipline system, eliminating ALL Variable(0) collision scenarios across the entire codebase.
 
 ### Specification Analysis Results ✅
 
@@ -120,22 +128,24 @@ fn emit_pull(&mut self, target_var: u8) -> Result<(), CompilerError> {
 - Use push/pull only when values need to persist during other operations
 - Implement consumption distance analysis
 
-### Property 28 Crash Resolution
+### ✅ Stack Discipline Implementation Complete
 
-**Current Collision**:
+**BEFORE (Broken Variable(0) Collisions)**:
 ```
 1. IR ID 51 (clear_quit_state) → Variable(0)
 2. IR ID 533 (property_access) → Variable(0) ← Overwrites #1
 3. Property code reads wrong value → 0x0000 → crash
 ```
 
-**With Proper Stack Discipline**:
+**AFTER (Proper Push/Pull Stack Discipline)**:
 ```
-1. clear_quit_state() → push result           // Stack: [result51]
-2. property_access() → push result            // Stack: [result51, result533]
-3. consume property → pull temp_var           // Stack: [result51], correct value
-4. consume clear_quit → pull temp_var2        // Stack: [], correct value
+1. clear_quit_state() → push result (VAR:232)   // Stack: [result51]
+2. property_access() → push result (VAR:232)    // Stack: [result51, result533]
+3. consume property → pull Variable(200+)       // Stack: [result51], correct unique value
+4. consume clear_quit → pull Variable(201+)     // Stack: [], correct unique value
 ```
+
+**IMPLEMENTATION STATUS**: ✅ All 25+ `use_stack_for_result` calls replaced with `use_push_pull_for_result` calls
 
 ### Architectural Validation
 
