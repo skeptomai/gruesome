@@ -16,6 +16,8 @@ pub mod object_system;
 pub mod opcodes;
 #[cfg(test)]
 mod opcodes_tests;
+#[cfg(test)]
+mod unresolved_reference_tests;
 pub mod parser;
 pub mod semantic;
 
