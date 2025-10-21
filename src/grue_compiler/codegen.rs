@@ -188,6 +188,56 @@ pub struct ArrayInfo {
     pub base_address: Option<u16>, // For future Z-Machine memory implementation
 }
 
+/// Deferred branch patch for two-pass compilation (Option A implementation)
+///
+/// ARCHITECTURAL PURPOSE: Solves the branch target address calculation bug where
+/// instruction insertion (like push/pull) shifts addresses and invalidates branch offsets.
+///
+/// PROBLEM SOLVED: In single-pass compilation, branch offsets are calculated during
+/// instruction emission. If subsequent push/pull instructions are inserted, the branch
+/// targets become incorrect, leading to runtime crashes with "Invalid Long form opcode 0x00".
+///
+/// SOLUTION: Store branch patch information during instruction emission, calculate
+/// correct offsets after ALL instructions are emitted in resolve_deferred_branches().
+#[derive(Debug, Clone)]
+pub struct DeferredBranchPatch {
+    /// Address where the branch instruction starts in code_space
+    pub instruction_address: usize,
+    /// Exact byte offset in code_space where the branch offset field is located
+    /// This is where we'll write the calculated offset during resolution
+    pub branch_offset_location: usize,
+    /// IR ID of the target label that this branch jumps to
+    pub target_label_id: IrId,
+    /// Z-Machine branch polarity: true = branch on true, false = branch on false
+    /// Controls bit 7 of the branch offset encoding
+    pub branch_on_true: bool,
+    /// Size of the branch offset field: 1 or 2 bytes
+    /// Determines whether we write a single byte or 16-bit offset
+    pub offset_size: u8,
+}
+
+/// Two-pass compilation state for delayed branch patching
+///
+/// LIFECYCLE:
+/// 1. Phase 1: Infrastructure created, enabled=false (backward compatible)
+/// 2. Phase 2: Branch deferral implemented, enabled during branch-heavy operations
+/// 3. Phase 3: Push/pull integration, enabled for get_child/get_sibling
+/// 4. Phase 4: Global enablement, replaces single-pass branch system
+///
+/// THREAD SAFETY: Not thread-safe (single-threaded compilation assumed)
+#[derive(Debug, Clone)]
+pub struct TwoPassState {
+    /// Master switch: when true, branch instructions are deferred instead of immediately resolved
+    /// When false, compilation behaves exactly as before (backward compatibility)
+    pub enabled: bool,
+    /// Collection of branch patches waiting for resolution
+    /// Populated during instruction emission, resolved in resolve_deferred_branches()
+    pub deferred_branches: Vec<DeferredBranchPatch>,
+    /// Final addresses of all labels after instruction emission complete
+    /// Used to calculate correct branch offsets during resolution
+    pub label_addresses: IndexMap<IrId, usize>,
+}
+
 /// Constant value types for control flow optimization
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConstantValue {
@@ -374,6 +424,17 @@ pub struct ZMachineCodeGen {
     /// Set of IR IDs that should use push/pull sequence for stack discipline
     /// Phase C1.1: Track values that need actual VAR:232/233 push/pull opcodes
     push_pull_ir_ids: IndexSet<IrId>,
+
+    /// Two-pass compilation state for delayed branch patching (Option A)
+    ///
+    /// INTEGRATION: This field enables the optional two-pass compilation system
+    /// that solves branch target address calculation bugs without breaking existing code.
+    ///
+    /// CURRENT STATE (Phase 1): Infrastructure complete, disabled by default
+    /// NEXT PHASES: Will be selectively enabled for problematic instruction sequences
+    ///
+    /// BACKWARD COMPATIBILITY: When enabled=false, zero impact on existing compilation
+    pub two_pass_state: TwoPassState,
 }
 
 impl ZMachineCodeGen {
@@ -476,6 +537,13 @@ impl ZMachineCodeGen {
             final_object_base: 0,
             dictionary_words: Vec::new(),
             push_pull_ir_ids: IndexSet::new(),
+
+            // Initialize two-pass compilation state (disabled by default)
+            two_pass_state: TwoPassState {
+                enabled: false,
+                deferred_branches: Vec::new(),
+                label_addresses: IndexMap::new(),
+            },
         }
     }
 
@@ -1536,6 +1604,102 @@ impl ZMachineCodeGen {
         );
 
         Ok(self.final_data.clone())
+    }
+
+    /// Resolve deferred branch patches for two-pass compilation (Option A)
+    ///
+    /// This method is called after all instructions have been emitted to code_space
+    /// but before final assembly. It calculates correct branch offsets using final
+    /// label addresses and patches the branch offset bytes in code_space.
+    ///
+    /// This solves the branch target address calculation bug by ensuring that
+    /// instruction insertion (like push/pull) doesn't invalidate branch offsets.
+    ///
+    pub fn resolve_deferred_branches(&mut self) -> Result<(), CompilerError> {
+        if !self.two_pass_state.enabled {
+            log::debug!("Two-pass mode disabled, skipping deferred branch resolution");
+            return Ok(());
+        }
+
+        let branch_count = self.two_pass_state.deferred_branches.len();
+        log::debug!("Resolving {} deferred branch patches", branch_count);
+
+        for (i, patch) in self.two_pass_state.deferred_branches.iter().enumerate() {
+            log::debug!(
+                "DEFERRED_BRANCH[{}]: instruction=0x{:04x}, offset_location=0x{:04x}, target={}, branch_on_true={}",
+                i, patch.instruction_address, patch.branch_offset_location,
+                patch.target_label_id, patch.branch_on_true
+            );
+
+            // Look up the target label address
+            let target_address = self.two_pass_state.label_addresses.get(&patch.target_label_id)
+                .ok_or_else(|| CompilerError::CodeGenError(format!(
+                    "Deferred branch target label {} not found", patch.target_label_id
+                )))?;
+
+            // Calculate branch offset
+            // Z-Machine branch offset is calculated from the byte AFTER the branch offset field
+            let branch_from = patch.branch_offset_location + patch.offset_size as usize;
+            let offset = if *target_address >= branch_from {
+                (*target_address - branch_from) as i16
+            } else {
+                // Backward branch - calculate negative offset
+                -((branch_from - *target_address) as i16)
+            };
+
+            log::debug!(
+                "BRANCH_CALC: target=0x{:04x}, from=0x{:04x}, offset={}",
+                target_address, branch_from, offset
+            );
+
+            // Patch the branch offset in code_space
+            if patch.offset_size == 1 {
+                // 1-byte offset with branch_on_true bit
+                let offset_byte = if patch.branch_on_true {
+                    (offset as u8) | 0x80  // Set bit 7 for "branch on true"
+                } else {
+                    (offset as u8) & 0x7F  // Clear bit 7 for "branch on false"
+                };
+
+                if patch.branch_offset_location < self.code_space.len() {
+                    self.code_space[patch.branch_offset_location] = offset_byte;
+                    log::debug!("Patched 1-byte branch: location=0x{:04x}, value=0x{:02x}",
+                               patch.branch_offset_location, offset_byte);
+                } else {
+                    return Err(CompilerError::CodeGenError(format!(
+                        "Branch offset location 0x{:04x} out of bounds (code_space.len()={})",
+                        patch.branch_offset_location, self.code_space.len()
+                    )));
+                }
+            } else if patch.offset_size == 2 {
+                // 2-byte offset with branch_on_true bit in first byte
+                let high_byte = if patch.branch_on_true {
+                    ((offset as u16) >> 8) as u8 | 0x80  // Set bit 7 for "branch on true"
+                } else {
+                    ((offset as u16) >> 8) as u8 & 0x7F  // Clear bit 7 for "branch on false"
+                };
+                let low_byte = (offset as u16) as u8;
+
+                if patch.branch_offset_location + 1 < self.code_space.len() {
+                    self.code_space[patch.branch_offset_location] = high_byte;
+                    self.code_space[patch.branch_offset_location + 1] = low_byte;
+                    log::debug!("Patched 2-byte branch: location=0x{:04x}, value=0x{:02x}{:02x}",
+                               patch.branch_offset_location, high_byte, low_byte);
+                } else {
+                    return Err(CompilerError::CodeGenError(format!(
+                        "Branch offset location 0x{:04x}-0x{:04x} out of bounds (code_space.len()={})",
+                        patch.branch_offset_location, patch.branch_offset_location + 1, self.code_space.len()
+                    )));
+                }
+            } else {
+                return Err(CompilerError::CodeGenError(format!(
+                    "Invalid branch offset size: {} (must be 1 or 2)", patch.offset_size
+                )));
+            }
+        }
+
+        log::debug!("Successfully resolved {} deferred branch patches", branch_count);
+        Ok(())
     }
 
     /// Resolve all address references in the final game image (PURE SEPARATED SPACES)
@@ -12683,3 +12847,7 @@ impl ZMachineCodeGen {
 #[cfg(test)]
 #[path = "codegen_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "two_pass_tests.rs"]
+mod two_pass_tests;

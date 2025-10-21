@@ -371,6 +371,188 @@ Given the analysis of what Option B doesn't fix, **Option A (Delayed Branch Patc
 
 **IMPLEMENTATION APPROACH**: Strategic architectural solution for permanent fix
 
+## 🎯 OPTION A IMPLEMENTATION PLAN: DELAYED BRANCH PATCHING
+
+### **Architecture Analysis Complete**
+
+**Current State**:
+- **Phase 2**: All instructions emitted to `code_space` with immediate `UnresolvedReference` creation for placeholders
+- **Phase 3**: `resolve_all_references()` patches all addresses after final layout calculation
+- **Problem**: Push/pull instructions inserted during Phase 2 shift addresses, invalidating branch calculations
+
+**Root Cause**: Branch offsets calculated during instruction emission, but subsequent instruction insertions invalidate those calculations.
+
+---
+
+## 📋 PHASED TESTING STRATEGY
+
+### **Phase 0: Baseline Verification (15 minutes)**
+**Goal**: Establish known working baseline before changes
+
+1. **Compile Current State**:
+   ```bash
+   cargo run --bin grue-compiler -- examples/mini_zork.grue -o tests/baseline_before_option_a.z3
+   ```
+
+2. **Document Current Failure**:
+   ```bash
+   RUST_LOG=debug ./target/debug/gruesome tests/baseline_before_option_a.z3 2>&1 | head -20
+   ```
+
+3. **Verify Unit Tests**: `cargo test` (should pass all 178 tests)
+
+### **Phase 1: Two-Pass Infrastructure (45 minutes)**
+**Goal**: Create two-pass compilation without modifying existing instruction emission
+
+**Changes**:
+- Add `deferred_branch_patches: Vec<DeferredBranchPatch>` to track branches
+- Add `two_pass_mode: bool` flag to control branch behavior
+- Modify `emit_instruction()` to defer branch patching when flag is set
+
+**Testing**:
+- Compile with `two_pass_mode = false` (should work same as before)
+- Compile with `two_pass_mode = true` (may fail but shouldn't crash during compilation)
+- Unit tests should still pass
+
+### **Phase 2: Branch Deferral Implementation (60 minutes)**
+**Goal**: Implement deferred branch patching for all branch instructions
+
+**Changes**:
+- Capture branch creation context in `DeferredBranchPatch` struct
+- Modify comparison operators (`emit_comparison_branch()`) to use deferred system
+- Add `resolve_deferred_branches()` function called after all instructions emitted
+
+**Testing**:
+- Compile and verify: no "Invalid Long form opcode 0x00" crashes
+- Test basic navigation (north, south commands)
+- Verify branch logic still works correctly
+
+### **Phase 3: Push/Pull Integration (30 minutes)**
+**Goal**: Enable two-pass mode for problematic get_child/get_sibling operations
+
+**Changes**:
+- Set `two_pass_mode = true` in `generate_builtin_function_call()`
+- Test that push/pull instructions no longer break branch targets
+
+**Testing**:
+- Test object traversal: `inventory` command should work
+- Test room navigation with objects present
+- Verify object tree iteration works correctly
+
+### **Phase 4: Full System Integration (45 minutes)**
+**Goal**: Enable two-pass mode globally and remove temporary workarounds
+
+**Changes**:
+- Enable two-pass mode for entire code generation
+- Remove temporary push/pull logic in `generate_builtin_function_call()`
+- Clean up old single-pass branch patching code
+
+**Testing**:
+- Full gameplay test: multiple room navigation, object interaction
+- Stress test: complex command sequences
+- Performance verification: compilation time comparison
+
+---
+
+## 🔧 DETAILED IMPLEMENTATION PLAN
+
+### **Data Structures Required**
+
+```rust
+/// Deferred branch patch for two-pass compilation
+#[derive(Debug, Clone)]
+pub struct DeferredBranchPatch {
+    pub instruction_address: usize,  // Where the branch instruction was emitted
+    pub branch_offset_location: usize, // Exact byte offset where branch offset goes
+    pub target_label_id: IrId,       // Target label to calculate offset to
+    pub branch_on_true: bool,        // Z-Machine branch polarity
+    pub offset_size: u8,             // 1 or 2 bytes for offset field
+}
+
+/// Two-pass compilation state
+pub struct TwoPassState {
+    pub enabled: bool,
+    pub deferred_branches: Vec<DeferredBranchPatch>,
+    pub label_addresses: IndexMap<IrId, usize>, // Final addresses of labels
+}
+```
+
+### **Modified Functions**
+
+1. **`emit_instruction()` in `codegen_instructions.rs`**:
+   - Add `two_pass_mode` parameter check
+   - When enabled: emit placeholder for branch, record `DeferredBranchPatch`
+   - When disabled: current behavior (immediate branch calculation)
+
+2. **`emit_comparison_branch()` in `codegen.rs`**:
+   - Check `two_pass_mode` flag
+   - Create `DeferredBranchPatch` instead of immediate `UnresolvedReference`
+
+3. **New `resolve_deferred_branches()` function**:
+   - Called after all code generation complete
+   - Calculate actual branch offsets using final addresses
+   - Patch branch offset bytes in `code_space`
+
+### **Integration Points**
+
+**Phase 2 (Code Generation)**:
+```rust
+// In generate_executable_code()
+self.two_pass_state.enabled = true;  // Enable deferred patching
+// ... generate all instructions ...
+self.resolve_deferred_branches()?;   // Resolve after all code emitted
+```
+
+**Phase 3 (Final Assembly)**:
+- Deferred branch resolution happens BEFORE `resolve_all_references()`
+- Branch patches complete before final image assembly
+- No changes to current Phase 3 architecture
+
+---
+
+## 🎯 SUCCESS CRITERIA
+
+### **Functional Requirements**
+1. ✅ Object traversal works: `inventory` command shows objects
+2. ✅ Navigation works: `north`, `south`, `east`, `west` commands
+3. ✅ No runtime crashes: "Invalid Long form opcode 0x00" eliminated
+4. ✅ All unit tests pass: 178 tests maintain functionality
+
+### **Performance Requirements**
+1. ✅ Compilation time increase < 10%
+2. ✅ Memory usage increase < 5%
+3. ✅ Runtime game performance unchanged
+
+### **Architecture Requirements**
+1. ✅ Clean separation: two-pass logic isolated and modular
+2. ✅ Backward compatibility: can be disabled if issues arise
+3. ✅ Future-proof: handles ANY instruction insertion scenarios
+4. ✅ Maintainable: clear code structure and documentation
+
+---
+
+## 🔧 ROLLBACK PLAN
+
+**If Implementation Fails**:
+1. **Immediate**: Set `two_pass_mode = false` to restore current behavior
+2. **Revert**: Use git to return to clean state (commit ef9ad83)
+3. **Alternative**: Implement Option B as tactical fix
+4. **Analysis**: Document lessons learned for future architectural decisions
+
+---
+
+## ⏱️ ESTIMATED TIMELINE
+
+**Total Implementation Time**: 3-4 hours
+- Phase 0: 15 minutes (baseline)
+- Phase 1: 45 minutes (infrastructure)
+- Phase 2: 60 minutes (branch deferral)
+- Phase 3: 30 minutes (integration)
+- Phase 4: 45 minutes (cleanup)
+- Testing/validation: 45 minutes
+
+**Confidence Level**: High - well-defined scope, clear rollback plan, incremental testing approach
+
 ## Historical Investigation Archive
 
 The extensive Property 28 investigation history (2000+ lines) has been archived to:
