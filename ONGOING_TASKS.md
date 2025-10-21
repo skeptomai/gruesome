@@ -898,13 +898,51 @@ fn list_objects(location) {
 
 **Root Issue**: The "simplified" tests were created because the real tests used non-existent APIs and wrong opcode enums. The system failed when used with real compilation because tests passed but implementation had `target_label_id = 0` bug.
 
-### **Current Conflict: Two Reference Systems**
+### **ARCHITECTURAL ANALYSIS: UnresolvedReference vs DeferredBranchPatch Conflict**
 
-**Problem**: Both systems try to handle branch patching:
-- **Old system**: Creates `UnresolvedReference` objects with correct target labels
-- **New system**: Creates `DeferredBranchPatch` objects with hardcoded `target_label_id = 0`
+**TIMING AND PIPELINE DIFFERENCES**:
 
-**Status**: Two-pass system temporarily disabled (`enabled: false`) to avoid conflicts.
+1. **UnresolvedReference System**:
+   - **When Created**: During instruction generation (`emit_instruction_with_branch`)
+   - **When Resolved**: Late in compilation pipeline (Phase 3e.6 in `resolve_all_addresses()`)
+   - **Timing**: After all code/objects/strings generated, during final assembly
+   - **Scope**: Handles ALL reference types (Jump, Branch, Label, FunctionCall, StringRef)
+
+2. **DeferredBranchPatch System**:
+   - **When Created**: During instruction generation (`emit_branch_instruction_two_pass`)
+   - **When Resolved**: Early in compilation pipeline (Phase 3 in `generate_code_space()`)
+   - **Timing**: Immediately after code generation, BEFORE object/string generation
+   - **Scope**: Branch instructions ONLY with Z-Machine specific encoding
+
+**FUNDAMENTAL ARCHITECTURAL CONFLICT**:
+
+**Different Resolution Timing**:
+- `resolve_deferred_branches()` called in `generate_code_space()` (Phase 3)
+- `resolve_all_addresses()` called in main compilation flow (Phase 3e.6)
+- DeferredBranchPatch resolves ~30 compilation steps BEFORE UnresolvedReference
+
+**Different Capabilities**:
+- **UnresolvedReference**: General-purpose system, handles any reference type
+- **DeferredBranchPatch**: Specialized Z-Machine branch encoding with polarity bits
+
+**Address Space Conflict**:
+- UnresolvedReference operates on final assembled addresses
+- DeferredBranchPatch operates on code_space relative addresses
+
+**RECOMMENDED ARCHITECTURAL DECISION**:
+
+**Option A: Unify Systems (Extend UnresolvedReference)**
+- Add Z-Machine branch encoding fields to UnresolvedReference
+- Add `branch_on_true: bool` field for polarity
+- Eliminate DeferredBranchPatch completely
+- Single resolution point in `resolve_all_addresses()`
+
+**Option B: Keep Separate Systems (Current Architecture)**
+- DeferredBranchPatch for immediate Z-Machine branch encoding needs
+- UnresolvedReference for everything else (jumps, function calls, strings)
+- Different timing allows specialized optimization
+
+**Status**: Two-pass system enabled (`enabled: true`) and working correctly after bug fixes.
 
 ## Outstanding Work
 
