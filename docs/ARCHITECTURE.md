@@ -2547,6 +2547,238 @@ match self.variable_sources.get(&iterable_id) {
 
 - **Issue Discovery**: October 5, 2025
 
+## Z-Machine Object Tree Traversal Bug Investigation (October 21, 2025)
+
+### Critical Bug: Objects Invisible in Room Descriptions
+
+**STATUS**: ✅ **ROOT CAUSE IDENTIFIED** - Object insertion order causes player to overwrite mailbox as first child
+
+**SYMPTOM**: Objects not visible in room descriptions and examine commands crash with control character corruption
+
+**REPRODUCTION**:
+1. Start game in west_of_house
+2. Mailbox should be visible but isn't shown in room description
+3. `examine mailbox` causes infinite loop/crash with control characters
+
+### 🎯 ROOT CAUSE IDENTIFIED: Object Insertion Order Bug
+
+**Evidence from Investigation**:
+```
+1. INSERT_OBJECT: obj=3, dest=2  // mailbox → west_of_house (becomes first child)
+2. INSERT_OBJECT: obj=1, dest=2  // player → west_of_house (OVERWRITES mailbox as first child)
+```
+
+**Object Tree Structure (CORRECT)**:
+```
+west_of_house (obj #2)
+ └── player (obj #1) [first child]
+      └── sibling: mailbox (obj #3)
+           └── child: leaflet (obj #4)
+```
+
+**The Bug**: `list_objects()` only examines **first child** (player), not **sibling chain** (mailbox)
+
+### Z-Machine Object Tree Architecture
+
+**CRITICAL UNDERSTANDING**: Z-Machine uses **linked lists**, not arrays, for object containment:
+
+```
+Room (Container)
+ │
+ └── First Child ──sibling──> Second Child ──sibling──> Third Child ──sibling──> NULL
+      │                       │                         │
+      └── (its children)      └── (its children)        └── (its children)
+```
+
+**Object Entry Structure (V3)**:
+```
++4:    Parent object number
++5:    Sibling object number
++6:    Child object number     ← Only stores FIRST child!
+```
+
+### The Broken Implementation
+
+**Current `list_objects()` Logic**:
+```grue
+fn list_objects(location) {
+    let objects = location.contents();  // ❌ Only returns FIRST child
+    for obj in objects {                // ❌ Loop runs once or not at all
+        if obj != player {
+            print("There is " + obj.name + " here.");
+        }
+    }
+}
+```
+
+**What Actually Happens**:
+1. `contents()` calls `get_child(west_of_house)` → returns `player` (first child only)
+2. Loop runs once with `obj = player`
+3. `if obj != player` → false → nothing printed
+4. Loop ends, mailbox never found (it's player's sibling, not child)
+
+### Required Fix
+
+**Correct Implementation Should**:
+```grue
+fn list_objects(location) {
+    let first_child = location.get_child();
+    let current = first_child;
+    while current != 0 {
+        if current != player {
+            print("There is " + current.name + " here.");
+        }
+        current = current.get_sibling();  // ← Walk the sibling chain
+    }
+}
+```
+
+### Technical Investigation Results
+
+**✅ VERIFIED**: Object tree structure is correct
+- Object dump shows proper parent/child/sibling relationships
+- `get_child` instruction works correctly
+- `INSERT_OBJECT` instruction works correctly
+
+**❌ BUG**: `contents()` method or `list_objects()` implementation doesn't traverse sibling chain
+
+### Impact Assessment
+
+**CRITICAL FUNCTIONALITY BROKEN**:
+- ❌ Object listing in rooms (`look` command)
+- ❌ Object examination (`examine` command infinite loops)
+- ❌ All object tree iteration (`for obj in location.contents()`)
+- ❌ Grammar object resolution (crashes during parsing)
+
+**Game State**: Completely unplayable - core object visibility system non-functional
+
+### Solution Options Analysis
+
+**ORIGINAL SOLUTION APPROACHES**: Fix `contents()` method or object insertion order
+1. **Option A**: Modify `contents()` to return all siblings, not just first child
+2. **Option B**: Fix object insertion order so non-player objects come first
+3. **Option C**: Modify `list_objects()` to manually traverse sibling chain
+
+### Design Philosophy Decision: Z-Machine Native Approach
+
+**USER CONSTRAINT**: "Z-Machine native. we can't paper over these constraints."
+
+**EVALUATION OF ORIGINAL OPTIONS**:
+
+**Option A (Array-Based)**: ❌ **REJECTED** - Violates Z-Machine Design Principles
+- Building temporary arrays defeats Z-Machine's memory-efficient linked list design
+- Creates unnecessary allocation overhead in low-memory environment
+- Works against the hardware architecture instead of with it
+- Not elegant for the target platform
+
+**Option B (Insertion Order)**: ❌ **REJECTED** - Band-Aid Solution
+- Only works for single object scenarios
+- Doesn't fix the fundamental traversal bug
+- Fragile and breaks with multiple objects in rooms
+
+**Option C (Manual Traversal)**: ❌ **INSUFFICIENT** - Partial Fix
+- Fixes the specific `list_objects()` function
+- Leaves `contents()` method broken for all other uses
+- Doesn't address the architectural mismatch
+
+### ✅ Selected Solution: Option D - Iterator-Style Z-Machine Native Traversal
+
+**APPROACH**: Provide traversal methods that work directly with Z-Machine linked list architecture
+
+**LANGUAGE DESIGN PHILOSOPHY**:
+- Grue should be a **Z-Machine native language** that exposes underlying architecture efficiently
+- Do NOT paper over hardware constraints with high-level abstractions
+- Respect Z-Machine's low-memory design principles
+- Map language constructs directly to Z-Machine opcodes when possible
+
+**IMPLEMENTATION STRATEGY**:
+
+```grue
+// CURRENT (High-level, memory inefficient)
+fn list_objects(location) {
+    let objects = location.contents();  // Creates temporary array
+    for obj in objects { ... }
+}
+
+fn show_inventory() {
+    let items = player.contents();      // Creates temporary array
+    for item in items { ... }
+}
+
+// NEW (Z-Machine native, memory efficient)
+fn list_objects(location) {
+    let current = location.first_child();  // Direct get_child opcode
+    while current != null {
+        if current != player {
+            print("There is " + current.name + " here.");
+        }
+        current = current.next_sibling();  // Direct get_sibling opcode
+    }
+}
+
+fn show_inventory() {
+    let current = player.first_child();    // Direct get_child opcode
+    if current == null {
+        print("You are empty-handed.");
+    } else {
+        print("You are carrying:");
+        while current != null {
+            print("  " + current.name);
+            current = current.next_sibling(); // Direct get_sibling opcode
+        }
+    }
+}
+```
+
+**BENEFITS OF Z-MACHINE NATIVE APPROACH**:
+- ✅ **Memory Efficient**: Zero temporary arrays, constant memory usage
+- ✅ **Hardware Aligned**: Maps directly to `get_child` and `get_sibling` opcodes
+- ✅ **Architecturally Correct**: Respects Z-Machine's low-memory design philosophy
+- ✅ **Performance Optimal**: No artificial abstractions over hardware
+- ✅ **Scalable**: Works efficiently regardless of object count
+
+**LANGUAGE API CHANGES REQUIRED**:
+1. Add `first_child()` method (maps to Z-Machine `get_child` opcode)
+2. Add `next_sibling()` method (maps to Z-Machine `get_sibling` opcode)
+3. Deprecate or redefine `contents()` to avoid array creation
+4. Update all object iteration patterns to use iterator-style traversal
+5. Update compiler to generate efficient linked list traversal code
+
+**ARCHITECTURAL PRINCIPLE ESTABLISHED**:
+> "Grue language design must respect and expose Z-Machine architecture efficiently, not abstract it away with memory-inefficient high-level constructs."
+
+### Key Files and Functions
+
+**Investigation Tools Used**:
+- `--debug-objects` flag: Object tree structure verification
+- Debug instrumentation in `src/vm.rs:1137-1189` (get_child/set_child functions)
+- Object tree dump analysis showing correct parent/child/sibling relationships
+
+**Core Functions Affected**:
+- `list_objects()` in `/examples/mini_zork.grue`
+- `contents()` builtin method (Z-Machine get_child instruction)
+- Object tree traversal logic for sibling chain iteration
+
+### Z-Machine Object Tree Semantics
+
+**LIFO Insertion Behavior**:
+- Z-Machine INSERT_OBJECT uses Last-In-First-Out semantics
+- Last inserted object becomes the first child
+- Previous first child becomes sibling of new first child
+- This is architecturally correct Z-Machine behavior
+
+**Traversal Requirements**:
+- To find all objects in a container, must traverse entire sibling chain
+- Cannot stop at first child - must follow sibling pointers until NULL
+- Current implementation fails because it only examines first child
+
+### References
+
+- **Issue Discovery**: October 21, 2025
+- **Files Modified**: `src/vm.rs:1137-1189` (debug instrumentation)
+- **Documentation**: `ONGOING_TASKS.md` (complete investigation log)
+- **Investigation Method**: Systematic 2-phase debugging with instrumentation
+
 ## Standard Property Number Mappings
 
 The Grue compiler uses a standardized property numbering scheme for Z-Machine object properties. These mappings are consistent across the codebase to avoid confusion and property number collisions.

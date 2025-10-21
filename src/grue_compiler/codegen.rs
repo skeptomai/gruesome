@@ -10792,7 +10792,35 @@ impl ZMachineCodeGen {
                 "Unimplemented builtin function: {}",
                 function_name
             ))),
+        }?;
+
+        // TEMPORARY WORKAROUND: Generic target handling for builtins that store results on stack (Variable 0)
+        //
+        // ARCHITECTURAL ISSUE: This push/pull approach inserts additional instructions after
+        // builtin function calls, which shifts addresses and breaks branch target calculations.
+        // This causes runtime crashes with "Invalid Long form opcode 0x00" when branch
+        // offsets become incorrect due to inserted push/pull instructions.
+        //
+        // PLANNED SOLUTION: Option A (Delayed Branch Patching) - Implement two-pass compilation
+        // where all instructions are emitted first, then all branch offsets are calculated and
+        // patched in a second pass. This will permanently solve ALL instruction insertion
+        // scenarios and provide a robust foundation for future compiler evolution.
+        //
+        // TODO: Remove this entire section when Option A is implemented
+        if let Some(target_id) = target {
+            match function_name.as_str() {
+                "get_child" | "get_sibling" => {
+                    // These builtins store results on stack but don't handle target mapping
+                    // This causes branch target address calculation bugs - see ONGOING_TASKS.md
+                    self.use_push_pull_for_result(target_id, &format!("{} builtin", function_name))?;
+                }
+                _ => {
+                    // Other builtins handle their own targets or don't have results
+                }
+            }
         }
+
+        Ok(())
     }
 
     /// Generate method call - handles property method calls like object.method()

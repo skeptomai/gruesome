@@ -3207,7 +3207,7 @@ impl IrGenerator {
 
                 // Check if this is a known built-in pseudo-method that doesn't require property lookup
                 let is_builtin_pseudo_method =
-                    matches!(method.as_str(), "get_exit" | "empty" | "none");
+                    matches!(method.as_str(), "get_exit" | "empty" | "none" | "first_child" | "next_sibling");
 
                 if is_builtin_pseudo_method {
                     // For built-in pseudo-methods, generate direct call without property check
@@ -3249,6 +3249,34 @@ impl IrGenerator {
 
                             let mut call_args = vec![object_temp];
                             call_args.extend(arg_temps);
+
+                            block.add_instruction(IrInstruction::Call {
+                                target: Some(result_temp),
+                                function: builtin_id,
+                                args: call_args,
+                            });
+                        }
+                        "first_child" => {
+                            // Z-Machine native first_child() method - maps directly to get_child opcode
+                            let builtin_id = self.next_id();
+                            self.builtin_functions
+                                .insert(builtin_id, "get_child".to_string());
+
+                            let call_args = vec![object_temp]; // get_child takes 1 argument (object)
+
+                            block.add_instruction(IrInstruction::Call {
+                                target: Some(result_temp),
+                                function: builtin_id,
+                                args: call_args,
+                            });
+                        }
+                        "next_sibling" => {
+                            // Z-Machine native next_sibling() method - maps directly to get_sibling opcode
+                            let builtin_id = self.next_id();
+                            self.builtin_functions
+                                .insert(builtin_id, "get_sibling".to_string());
+
+                            let call_args = vec![object_temp]; // get_sibling takes 1 argument (object)
 
                             block.add_instruction(IrInstruction::Call {
                                 target: Some(result_temp),

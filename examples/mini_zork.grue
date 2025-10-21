@@ -323,13 +323,16 @@ fn handle_drop(obj) {
 }
 
 fn show_inventory() {
-    let items = player.contents();
-    if items.empty() {
+    // Z-Machine native object tree traversal - check if player has any children
+    let first_item = player.first_child();
+    if first_item == 0 {
         print("You are empty-handed.");
     } else {
         print("You are carrying:");
-        for item in items {
-            print("  " + item.name);
+        let current = first_item;
+        while current != 0 {
+            print("  " + current.name);
+            current = current.next_sibling();
         }
     }
 }
@@ -432,16 +435,17 @@ fn player_can_see(obj) -> bool {
 }
 
 fn list_objects(location) {
-    let objects = location.contents();
-
-    for obj in objects {
-        if obj != player {
-            print("There is " + obj.name + " here.");
-        }
+    // TEMPORARY: Test just first_child() method first
+    let first = location.first_child();
+    if first != 0 {
+        print("First child found: " + first.name);
+    } else {
+        print("No children found.");
     }
 }
 
 fn list_contents(container) {
+    // TEMPORARY: Revert to simple contents call while testing
     let contents = container.contents();
     for item in contents {
         print("  " + item.name);
@@ -449,9 +453,10 @@ fn list_contents(container) {
 }
 
 fn take_all() {
+    // TEMPORARY: Revert to simple contents call while testing
     let objects = player.location.contents();
     let taken = 0;
-    
+
     for obj in objects {
         if obj != player {
             move(obj, player);
@@ -459,7 +464,7 @@ fn take_all() {
             taken = taken + 1;
         }
     }
-    
+
     if taken == 0 {
         print("There's nothing here to take.");
     }

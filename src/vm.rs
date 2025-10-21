@@ -1139,11 +1139,17 @@ impl VM {
             return Ok(0); // Object 0 has no child
         }
         let obj_addr = self.get_object_addr(obj_num)?;
-        if self.game.header.version <= 3 {
-            Ok(self.game.memory[obj_addr + 6] as u16)
+        let child = if self.game.header.version <= 3 {
+            self.game.memory[obj_addr + 6] as u16
         } else {
-            Ok(self.read_word((obj_addr + 10) as u32))
-        }
+            self.read_word((obj_addr + 10) as u32)
+        };
+
+        // DEBUG: Log get_child calls to investigate object tree traversal
+        log::debug!("🔍 GET_CHILD: obj={} → child={} (obj_addr=0x{:04x}, child_byte=0x{:02x})",
+                   obj_num, child, obj_addr, self.game.memory[obj_addr + 6]);
+
+        Ok(child)
     }
 
     /// Set child of object
@@ -1152,6 +1158,14 @@ impl VM {
             return Err("Cannot set child of object 0".to_string());
         }
         let obj_addr = self.get_object_addr(obj_num)?;
+
+        // DEBUG: Log before and after values
+        let old_child = if self.game.header.version <= 3 {
+            self.game.memory[obj_addr + 6] as u16
+        } else {
+            self.read_word((obj_addr + 10) as u32)
+        };
+
         if self.game.header.version <= 3 {
             if child > 255 {
                 return Err(format!("Child object number too large for v3: {child}"));
@@ -1160,6 +1174,17 @@ impl VM {
         } else {
             self.write_word((obj_addr + 10) as u32, child)?;
         }
+
+        // DEBUG: Verify the write worked
+        let new_child = if self.game.header.version <= 3 {
+            self.game.memory[obj_addr + 6] as u16
+        } else {
+            self.read_word((obj_addr + 10) as u32)
+        };
+
+        log::debug!("🔧 SET_CHILD: obj={} child: {} → {} (obj_addr=0x{:04x}, offset+6=0x{:02x})",
+                   obj_num, old_child, new_child, obj_addr, self.game.memory[obj_addr + 6]);
+
         Ok(())
     }
 

@@ -518,6 +518,10 @@ impl ZMachineCodeGen {
     }
 
     /// Generate get_child builtin function - gets first child of an object
+    ///
+    /// ARCHITECTURAL NOTE: This function stores results to Variable(0) (stack), which requires
+    /// post-processing push/pull instructions that cause branch target address calculation bugs.
+    /// See ONGOING_TASKS.md for details on Option A (Delayed Branch Patching) solution.
     pub fn generate_get_child_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
         if args.len() != 1 {
             return Err(CompilerError::CodeGenError(format!(
@@ -544,7 +548,11 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Generate get_sibling builtin function - gets sibling of an object  
+    /// Generate get_sibling builtin function - gets sibling of an object
+    ///
+    /// ARCHITECTURAL NOTE: This function stores results to Variable(0) (stack), which requires
+    /// post-processing push/pull instructions that cause branch target address calculation bugs.
+    /// See ONGOING_TASKS.md for details on Option A (Delayed Branch Patching) solution.
     pub fn generate_get_sibling_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
         if args.len() != 1 {
             return Err(CompilerError::CodeGenError(format!(
