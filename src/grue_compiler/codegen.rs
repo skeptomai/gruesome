@@ -746,32 +746,9 @@ impl ZMachineCodeGen {
             self.dictionary_space.len()
         );
 
-        // Phase 2c: Setup room-to-object ID mapping (needed for exit data generation)
-        log::debug!("🗺️  Step 2c-pre: Setting up room-to-object ID mapping");
-        // Use the object numbers already assigned by IR generator (via set_object_numbers)
-        // Do NOT recalculate - IR assigns numbers sequentially as it encounters rooms and objects
-        for room in &ir.rooms {
-            if let Some(&object_number) = self.object_numbers.get(&room.name) {
-                self.room_to_object_id.insert(room.id, object_number);
-                log::debug!(
-                    "Mapped room '{}' (IR ID {}) to object #{} (from IR)",
-                    room.name,
-                    room.id,
-                    object_number
-                );
-            } else {
-                return Err(CompilerError::CodeGenError(format!(
-                    "Room '{}' has no object number from IR",
-                    room.name
-                )));
-            }
-        }
-        log::info!(
-            " Step 2c-pre complete: Mapped {} rooms to object IDs from IR",
-            self.room_to_object_id.len()
-        );
-
-        // Phase 2c: Generate objects/properties to object_space
+        // Phase 2c: Generate objects/properties to object_space FIRST
+        // CRITICAL FIX: Object generation must happen BEFORE room-to-object mapping
+        // so that room mapping uses the authoritative object numbers from generation
         log::debug!("🏠 Step 2c: Generating object space");
         if ir.has_objects() {
             log::debug!("Generating full object table for Interactive program");
@@ -786,6 +763,35 @@ impl ZMachineCodeGen {
         log::info!(
             " Step 2c complete: Object space populated ({} bytes)",
             self.object_space.len()
+        );
+
+        // Phase 2c-post: Setup room-to-object ID mapping using AUTHORITATIVE object numbers
+        // CRITICAL FIX: Use ir_id_to_object_number (from object generation) instead of
+        // self.object_numbers (from semantic phase) to ensure exit system uses same
+        // object numbers as the actual generated object tree
+        log::debug!(
+            "🗺️  Step 2c-post: Setting up room-to-object ID mapping from generated objects"
+        );
+        for room in &ir.rooms {
+            if let Some(&object_number) = self.ir_id_to_object_number.get(&room.id) {
+                self.room_to_object_id.insert(room.id, object_number);
+                log::debug!(
+                    "Mapped room '{}' (IR ID {}) to object #{} (from object generation)",
+                    room.name,
+                    room.id,
+                    object_number
+                );
+            } else {
+                return Err(CompilerError::CodeGenError(format!(
+                    "Room '{}' (IR ID {}) has no object number from object generation - this indicates object generation failed",
+                    room.name,
+                    room.id
+                )));
+            }
+        }
+        log::info!(
+            " Step 2c-post complete: Mapped {} rooms to object IDs from object generation",
+            self.room_to_object_id.len()
         );
 
         // Phase 2d: Generate global variables to globals_space

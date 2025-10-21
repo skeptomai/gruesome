@@ -679,8 +679,15 @@ impl ZMachineCodeGen {
         // Build object_id_to_number mapping from complete all_objects vector
         log::info!("=== BUILDING OBJECT ID MAPPING ===");
         let mut object_id_to_number: IndexMap<IrId, u8> = IndexMap::new();
-        for (index, object) in all_objects.iter().enumerate() {
-            let obj_num = (index + 1) as u8; // Objects are numbered starting from 1
+        for object in all_objects.iter() {
+            let obj_num = if let Some(&semantic_number) = ir.object_numbers.get(&object.name) {
+                semantic_number as u8
+            } else {
+                return Err(CompilerError::CodeGenError(format!(
+                    "Object '{}' (IR ID {}) not found in semantic object numbers - this indicates a semantic analysis bug",
+                    object.name, object.id
+                )));
+            };
             object_id_to_number.insert(object.id, obj_num);
             log::info!(
                 "ID Mapping: IR ID {} → Object #{} ('{}')",
@@ -980,10 +987,26 @@ impl ZMachineCodeGen {
         );
 
         // Build complete object_id_to_number mapping for create_object_entry_from_ir_with_mapping
+        // CRITICAL FIX: Use semantic object numbers from ir.object_numbers instead of sequential index
+        // Problem: Sequential numbering (index + 1) creates different numbers than semantic analysis
+        // This causes object table to use different numbers than exit system and IR references
         let mut object_id_to_number: IndexMap<IrId, u8> = IndexMap::new();
-        for (index, object) in all_objects.iter().enumerate() {
-            let obj_num = (index + 1) as u8;
+        for object in all_objects.iter() {
+            let obj_num = if let Some(&semantic_number) = ir.object_numbers.get(&object.name) {
+                semantic_number as u8
+            } else {
+                return Err(CompilerError::CodeGenError(format!(
+                    "Object '{}' (IR ID {}) not found in semantic object numbers - this indicates a semantic analysis bug",
+                    object.name, object.id
+                )));
+            };
             object_id_to_number.insert(object.id, obj_num);
+            log::debug!(
+                "ID Mapping (semantic): IR ID {} → Object #{} ('{}')",
+                object.id,
+                obj_num,
+                object.short_name
+            );
         }
 
         // CRITICAL FIX (Oct 15, 2025): Update self.ir_id_to_object_number with ACTUAL object numbers
