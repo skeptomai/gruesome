@@ -856,9 +856,62 @@ fn list_objects(location) {
 
 **Investigation Complete**: Ready for Z-Machine native implementation
 
+## 🎯 PHASE 3 TWO-PASS SYSTEM ANALYSIS (Oct 21, 2025)
+
+### **Question 1: Is DeferredBranchPatch a superset of UnresolvedReference?**
+
+**Answer: NO** - UnresolvedReference is actually the superset.
+
+**DeferredBranchPatch** (branch-specific):
+- `instruction_address`: Where branch instruction starts
+- `branch_offset_location`: Exact byte to patch
+- `target_label_id`: Target label
+- `branch_on_true`: Z-Machine branch polarity bit
+- `offset_size`: 1 or 2 bytes
+
+**UnresolvedReference** (general-purpose):
+- `reference_type`: Enum covering Jump, Branch, FunctionCall, StringRef, DictionaryRef, etc.
+- `location`: Generic byte offset to patch
+- `target_id`: Generic IR ID
+- `is_packed_address`: Whether to pack the address
+- `location_space`: Which memory space (code, object, string, etc.)
+
+**UnresolvedReference handles MORE cases**: Function calls, string references, dictionary references, packed addresses for properties, multiple memory spaces.
+
+**DeferredBranchPatch is MORE specialized**: Only handles branches, has Z-Machine specific branch polarity, has precise instruction start tracking.
+
+### **Question 2: Do simplified tests actually test correctness?**
+
+**Answer: NO** - They are useless smoke tests that only verify code runs and produces something, NOT correctness.
+
+**What the "simplified" tests actually verify**:
+1. Two-pass state initializes with correct defaults
+2. `resolve_deferred_branches()` doesn't crash with empty data
+3. Can insert/retrieve label addresses
+
+**What they DON'T test (the critical stuff)**:
+- Branch offset calculation
+- Label resolution with real labels
+- Address patching with correct bytes written to code_space
+- Z-Machine encoding (branch polarity bits, offset encoding)
+- Integration with push/pull (the original bug scenario)
+
+**Root Issue**: The "simplified" tests were created because the real tests used non-existent APIs and wrong opcode enums. The system failed when used with real compilation because tests passed but implementation had `target_label_id = 0` bug.
+
+### **Current Conflict: Two Reference Systems**
+
+**Problem**: Both systems try to handle branch patching:
+- **Old system**: Creates `UnresolvedReference` objects with correct target labels
+- **New system**: Creates `DeferredBranchPatch` objects with hardcoded `target_label_id = 0`
+
+**Status**: Two-pass system temporarily disabled (`enabled: false`) to avoid conflicts.
+
 ## Outstanding Work
 
-**IMMEDIATE**: Fix Z-Machine object tree traversal bug
+**IMMEDIATE**:
+1. Write real tests for two-pass system that verify actual correctness
+2. Resolve UnresolvedReference vs DeferredBranchPatch conflict
+3. Fix Z-Machine object tree traversal bug
 
 Additional compiler improvements and bug fixes as discovered during testing.
 

@@ -3206,8 +3206,10 @@ impl IrGenerator {
                 }
 
                 // Check if this is a known built-in pseudo-method that doesn't require property lookup
-                let is_builtin_pseudo_method =
-                    matches!(method.as_str(), "get_exit" | "empty" | "none" | "first_child" | "next_sibling");
+                let is_builtin_pseudo_method = matches!(
+                    method.as_str(),
+                    "get_exit" | "empty" | "none" | "first_child" | "next_sibling"
+                );
 
                 if is_builtin_pseudo_method {
                     // For built-in pseudo-methods, generate direct call without property check

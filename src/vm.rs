@@ -1146,8 +1146,13 @@ impl VM {
         };
 
         // DEBUG: Log get_child calls to investigate object tree traversal
-        log::debug!("🔍 GET_CHILD: obj={} → child={} (obj_addr=0x{:04x}, child_byte=0x{:02x})",
-                   obj_num, child, obj_addr, self.game.memory[obj_addr + 6]);
+        log::debug!(
+            "🔍 GET_CHILD: obj={} → child={} (obj_addr=0x{:04x}, child_byte=0x{:02x})",
+            obj_num,
+            child,
+            obj_addr,
+            self.game.memory[obj_addr + 6]
+        );
 
         Ok(child)
     }
@@ -1182,8 +1187,14 @@ impl VM {
             self.read_word((obj_addr + 10) as u32)
         };
 
-        log::debug!("🔧 SET_CHILD: obj={} child: {} → {} (obj_addr=0x{:04x}, offset+6=0x{:02x})",
-                   obj_num, old_child, new_child, obj_addr, self.game.memory[obj_addr + 6]);
+        log::debug!(
+            "🔧 SET_CHILD: obj={} child: {} → {} (obj_addr=0x{:04x}, offset+6=0x{:02x})",
+            obj_num,
+            old_child,
+            new_child,
+            obj_addr,
+            self.game.memory[obj_addr + 6]
+        );
 
         Ok(())
     }

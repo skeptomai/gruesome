@@ -1,5 +1,7 @@
 // Import placeholder_word for consistent placeholder handling throughout the codebase
-use crate::grue_compiler::codegen::{placeholder_word, ConstantValue, ZMachineCodeGen};
+use crate::grue_compiler::codegen::{
+    placeholder_word, ConstantValue, DeferredBranchPatch, ZMachineCodeGen,
+};
 use crate::grue_compiler::codegen::{
     InstructionForm, InstructionLayout, Operand, OperandType, UNIMPLEMENTED_OPCODE,
 };
@@ -2046,6 +2048,41 @@ impl ZMachineCodeGen {
         // Record instruction start address
         let instruction_start = self.code_address;
 
+        // PHASE 2: BRANCH DEFERRAL IMPLEMENTATION
+        // When two-pass mode is enabled AND this is a branch instruction,
+        // defer the branch patching by using placeholder branch offset
+        let (actual_branch_offset, _deferred_target_label) = if self.two_pass_state.enabled
+            && self.is_branch_instruction(opcode)
+            && branch_offset.is_some()
+        {
+            // This is a branch instruction in two-pass mode
+            let original_offset = branch_offset.unwrap();
+
+            // Check if this is a placeholder offset indicating a label target
+            if original_offset == -1 {
+                // This is a label target that needs deferred resolution
+                log::debug!(
+                    "BRANCH_DEFER: Opcode 0x{:02x} at 0x{:04x} has label target, deferring branch patching",
+                    opcode, instruction_start
+                );
+
+                // Use placeholder for now, will be patched in resolve_deferred_branches()
+                (Some(-1), None) // Will need target_label_id from caller
+            } else {
+                // This is a direct offset - still defer to maintain consistency
+                log::debug!(
+                    "BRANCH_DEFER: Opcode 0x{:02x} at 0x{:04x} has direct offset {}, deferring branch patching",
+                    opcode, instruction_start, original_offset
+                );
+
+                // Use placeholder, will patch with original_offset in resolve_deferred_branches()
+                (Some(-1), Some(original_offset))
+            }
+        } else {
+            // Not a branch instruction or two-pass mode disabled - use original logic
+            (branch_offset, None)
+        };
+
         let form = self.determine_instruction_form_with_operands(operands, opcode)?;
         log::debug!(
             " FORM_DETERMINATION: opcode=0x{:02x} operands={:?} -> form={:?}",
@@ -2060,21 +2097,21 @@ impl ZMachineCodeGen {
                 opcode,
                 operands,
                 actual_store_var,
-                branch_offset,
+                actual_branch_offset,
             )?,
             InstructionForm::Short => self.emit_short_form_with_layout(
                 instruction_start,
                 opcode,
                 operands,
                 actual_store_var,
-                branch_offset,
+                actual_branch_offset,
             )?,
             InstructionForm::Variable => self.emit_variable_form_with_layout(
                 instruction_start,
                 opcode,
                 operands,
                 actual_store_var,
-                branch_offset,
+                actual_branch_offset,
             )?,
             InstructionForm::Extended => {
                 return Err(CompilerError::CodeGenError(
@@ -2086,7 +2123,90 @@ impl ZMachineCodeGen {
         // Track stack operations for debugging
         self.track_stack_operation(opcode, operands, actual_store_var);
 
+        // PHASE 2: CREATE DEFERRED BRANCH PATCH
+        // If we deferred a branch instruction, create a patch for later resolution
+        if self.two_pass_state.enabled
+            && self.is_branch_instruction(opcode)
+            && branch_offset.is_some()
+        {
+            // Calculate where the branch offset will be written
+            let branch_offset_location = if let Some(branch_loc) = layout.branch_location {
+                branch_loc
+            } else {
+                return Err(CompilerError::CodeGenError(format!(
+                    "Branch instruction 0x{:02x} at 0x{:04x} has no branch_location in layout",
+                    opcode, instruction_start
+                )));
+            };
+
+            // Determine branch polarity (branch_on_true) from the original offset
+            // Z-Machine branch encoding: bit 7 of first byte indicates polarity
+            let original_offset = branch_offset.unwrap();
+            let branch_on_true = if original_offset == -1 {
+                // Placeholder - default to true, will be updated by caller
+                true
+            } else {
+                // Direct offset - extract polarity from Z-Machine encoding
+                original_offset >= 0
+            };
+
+            // For now, we don't have the target_label_id from this context
+            // This is a limitation of the current implementation that will need
+            // to be addressed by the caller providing target information
+            // For Phase 2, we'll use a placeholder that causes an error
+            let target_label_id = 0; // This will need to be provided by caller
+
+            // Determine offset size (1 or 2 bytes) from the original encoding
+            let offset_size =
+                if original_offset == -1 || (original_offset >= -64 && original_offset < 64) {
+                    1 // Short form offset
+                } else {
+                    2 // Long form offset
+                };
+
+            let patch = DeferredBranchPatch {
+                instruction_address: instruction_start,
+                branch_offset_location,
+                target_label_id,
+                branch_on_true,
+                offset_size,
+            };
+
+            log::debug!(
+                "BRANCH_DEFER: Created patch for 0x{:02x} at 0x{:04x}, branch_offset_location=0x{:04x}, target_label={}",
+                opcode, instruction_start, branch_offset_location, target_label_id
+            );
+
+            self.two_pass_state.deferred_branches.push(patch);
+        }
+
         Ok(layout)
+    }
+
+    /// Identify if an instruction is a branch instruction that needs deferred patching
+    ///
+    /// Branch instructions in Z-Machine have branch parameters that specify conditional
+    /// jump targets. These are the instructions affected by the address calculation bug.
+    pub fn is_branch_instruction(&self, opcode: u8) -> bool {
+        match opcode {
+            // Conditional branch instructions from Z-Machine spec (section 14 table)
+            // Only instructions with "Br" column marked with "*" in the spec table
+            0x01 => true, // je (jump if equal)
+            0x02 => true, // jl (jump if less)
+            0x03 => true, // jg (jump if greater)
+            0x04 => true, // dec_chk (decrement and check)
+            0x05 => true, // inc_chk (increment and check)
+            0x06 => true, // jin (jump if object in object)
+            0x07 => true, // test (jump if all bits set)
+            // 0x08 => false, // or (bitwise or) - stores result, does NOT branch
+            // 0x09 => false, // and (bitwise and) - stores result, does NOT branch
+            0x0A => true, // test_attr (test attribute, then branch)
+            // 0x0D => false, // print_paddr (1OP form) - does NOT branch in our compiler
+            0x0F => true, // jz (jump if zero)
+            0x10 => true, // get_sibling (get sibling, branch if exists)
+            0x11 => true, // get_child (get child, branch if exists)
+            _ => false,
+        }
     }
 
     /// Track stack operations for debugging and validation

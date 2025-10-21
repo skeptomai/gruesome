@@ -538,7 +538,7 @@ impl ZMachineCodeGen {
             dictionary_words: Vec::new(),
             push_pull_ir_ids: IndexSet::new(),
 
-            // Initialize two-pass compilation state (disabled by default)
+            // Initialize two-pass compilation state (temporarily disabled due to UnresolvedReference conflict)
             two_pass_state: TwoPassState {
                 enabled: false,
                 deferred_branches: Vec::new(),
@@ -1632,10 +1632,16 @@ impl ZMachineCodeGen {
             );
 
             // Look up the target label address
-            let target_address = self.two_pass_state.label_addresses.get(&patch.target_label_id)
-                .ok_or_else(|| CompilerError::CodeGenError(format!(
-                    "Deferred branch target label {} not found", patch.target_label_id
-                )))?;
+            let target_address = self
+                .two_pass_state
+                .label_addresses
+                .get(&patch.target_label_id)
+                .ok_or_else(|| {
+                    CompilerError::CodeGenError(format!(
+                        "Deferred branch target label {} not found",
+                        patch.target_label_id
+                    ))
+                })?;
 
             // Calculate branch offset
             // Z-Machine branch offset is calculated from the byte AFTER the branch offset field
@@ -1649,42 +1655,54 @@ impl ZMachineCodeGen {
 
             log::debug!(
                 "BRANCH_CALC: target=0x{:04x}, from=0x{:04x}, offset={}",
-                target_address, branch_from, offset
+                target_address,
+                branch_from,
+                offset
             );
 
             // Patch the branch offset in code_space
             if patch.offset_size == 1 {
                 // 1-byte offset with branch_on_true bit
                 let offset_byte = if patch.branch_on_true {
-                    (offset as u8) | 0x80  // Set bit 7 for "branch on true"
+                    (offset as u8) | 0x80 // Set bit 7 for "branch on true"
                 } else {
-                    (offset as u8) & 0x7F  // Clear bit 7 for "branch on false"
+                    (offset as u8) & 0x7F // Clear bit 7 for "branch on false"
                 };
 
                 if patch.branch_offset_location < self.code_space.len() {
                     self.code_space[patch.branch_offset_location] = offset_byte;
-                    log::debug!("Patched 1-byte branch: location=0x{:04x}, value=0x{:02x}",
-                               patch.branch_offset_location, offset_byte);
+                    log::debug!(
+                        "Patched 1-byte branch: location=0x{:04x}, value=0x{:02x}",
+                        patch.branch_offset_location,
+                        offset_byte
+                    );
                 } else {
                     return Err(CompilerError::CodeGenError(format!(
                         "Branch offset location 0x{:04x} out of bounds (code_space.len()={})",
-                        patch.branch_offset_location, self.code_space.len()
+                        patch.branch_offset_location,
+                        self.code_space.len()
                     )));
                 }
             } else if patch.offset_size == 2 {
-                // 2-byte offset with branch_on_true bit in first byte
+                // 2-byte offset with Z-Machine branch encoding format
+                // Z-Machine spec: bit 7 = branch_on_true, bit 6 = 2-byte indicator (MUST be set for 2-byte)
+                // CRITICAL FIX: Missing 0x40 bit caused test failures - 2-byte branches need bit 6 set
                 let high_byte = if patch.branch_on_true {
-                    ((offset as u16) >> 8) as u8 | 0x80  // Set bit 7 for "branch on true"
+                    ((offset as u16) >> 8) as u8 | 0x80 | 0x40 // Set bit 7 (branch on true) + bit 6 (2-byte indicator)
                 } else {
-                    ((offset as u16) >> 8) as u8 & 0x7F  // Clear bit 7 for "branch on false"
+                    ((offset as u16) >> 8) as u8 | 0x40 // Set bit 6 (2-byte indicator), clear bit 7 (branch on false)
                 };
                 let low_byte = (offset as u16) as u8;
 
                 if patch.branch_offset_location + 1 < self.code_space.len() {
                     self.code_space[patch.branch_offset_location] = high_byte;
                     self.code_space[patch.branch_offset_location + 1] = low_byte;
-                    log::debug!("Patched 2-byte branch: location=0x{:04x}, value=0x{:02x}{:02x}",
-                               patch.branch_offset_location, high_byte, low_byte);
+                    log::debug!(
+                        "Patched 2-byte branch: location=0x{:04x}, value=0x{:02x}{:02x}",
+                        patch.branch_offset_location,
+                        high_byte,
+                        low_byte
+                    );
                 } else {
                     return Err(CompilerError::CodeGenError(format!(
                         "Branch offset location 0x{:04x}-0x{:04x} out of bounds (code_space.len()={})",
@@ -1693,12 +1711,16 @@ impl ZMachineCodeGen {
                 }
             } else {
                 return Err(CompilerError::CodeGenError(format!(
-                    "Invalid branch offset size: {} (must be 1 or 2)", patch.offset_size
+                    "Invalid branch offset size: {} (must be 1 or 2)",
+                    patch.offset_size
                 )));
             }
         }
 
-        log::debug!("Successfully resolved {} deferred branch patches", branch_count);
+        log::debug!(
+            "Successfully resolved {} deferred branch patches",
+            branch_count
+        );
         Ok(())
     }
 
@@ -2987,8 +3009,21 @@ impl ZMachineCodeGen {
             log::info!(" PHASE2_ANALYSIS: All {} instructions correctly generated zero bytes (string literals, labels, etc.)", 
  expected_zero_instructions);
         } else {
-            log::info!(" PHASE2_ANALYSIS: {} bytecode instructions, {} zero-byte instructions = {} bytes generated", 
+            log::info!(" PHASE2_ANALYSIS: {} bytecode instructions, {} zero-byte instructions = {} bytes generated",
  expected_bytecode_instructions, expected_zero_instructions, total_code_generated);
+        }
+
+        // Phase 3: Resolve deferred branches (two-pass compilation)
+        log::info!("Phase 3: Resolving deferred branches");
+        if self.two_pass_state.enabled {
+            log::debug!(
+                "🔄 Two-pass: Resolving {} deferred branches",
+                self.two_pass_state.deferred_branches.len()
+            );
+            self.resolve_deferred_branches()?;
+            log::info!("Two-pass: All deferred branches resolved successfully");
+        } else {
+            log::debug!("Two-pass compilation disabled, no branches to resolve");
         }
 
         Ok(())
@@ -10976,7 +11011,10 @@ impl ZMachineCodeGen {
                 "get_child" | "get_sibling" => {
                     // These builtins store results on stack but don't handle target mapping
                     // This causes branch target address calculation bugs - see ONGOING_TASKS.md
-                    self.use_push_pull_for_result(target_id, &format!("{} builtin", function_name))?;
+                    self.use_push_pull_for_result(
+                        target_id,
+                        &format!("{} builtin", function_name),
+                    )?;
                 }
                 _ => {
                     // Other builtins handle their own targets or don't have results
