@@ -272,7 +272,7 @@ pub struct ZMachineCodeGen {
     // Code generation state
     pub label_addresses: IndexMap<IrId, usize>, // IR label ID -> byte address
     string_addresses: IndexMap<IrId, usize>,    // IR string ID -> byte address
-    pub function_addresses: IndexMap<IrId, usize>,  // IR function ID -> function header byte address
+    pub function_addresses: IndexMap<IrId, usize>, // IR function ID -> function header byte address
     function_names: IndexMap<IrId, String>,     // IR function ID -> function name (for debugging)
     function_locals_count: IndexMap<IrId, usize>, // IR function ID -> locals count (for header size calculation)
     builtin_functions: IndexMap<String, IrId>, // Builtin name -> pseudo function ID for address lookup

@@ -15,8 +15,10 @@
 //! to final_data at expected locations with correct address calculations.
 
 use super::*; // Import from parent module like other test files
+use crate::grue_compiler::codegen::{
+    LegacyReferenceType, MemorySpace, UnresolvedReference, ZMachineCodeGen,
+};
 use crate::grue_compiler::ir::IrId;
-use crate::grue_compiler::codegen::{ZMachineCodeGen, UnresolvedReference, LegacyReferenceType, MemorySpace};
 
 /// Create a test codegen instance with minimal setup for UnresolvedReference testing
 fn create_unresolved_reference_test_codegen() -> ZMachineCodeGen {
@@ -30,7 +32,7 @@ fn create_unresolved_reference_test_codegen() -> ZMachineCodeGen {
 
     // Set up basic final assembly layout
     codegen.final_data.clear();
-    codegen.final_code_base = 0x1000;  // Standard code start for V3
+    codegen.final_code_base = 0x1000; // Standard code start for V3
     codegen.final_string_base = 0x2000; // String space after code
     codegen.final_object_base = 0x3000; // Object space after strings
 
@@ -55,7 +57,9 @@ fn test_real_string_reference_resolution_correctness() {
     let string_offset = 0x100; // Known offset in string space
 
     // Add string to string space and track its offset
-    codegen.string_space.resize(string_offset + test_string.len() + 1, 0);
+    codegen
+        .string_space
+        .resize(string_offset + test_string.len() + 1, 0);
     codegen.string_space[string_offset..string_offset + test_string.len()]
         .copy_from_slice(test_string.as_bytes());
     codegen.string_offsets.insert(string_id, string_offset);
@@ -70,11 +74,14 @@ fn test_real_string_reference_resolution_correctness() {
         location: reference_location,
         target_id: string_id,
         is_packed_address: true, // CRITICAL: Test packed addressing
-        offset_size: 2, // 2-byte reference
+        offset_size: 2,          // 2-byte reference
         location_space: MemorySpace::Code,
     };
 
-    codegen.reference_context.unresolved_refs.push(unresolved_ref);
+    codegen
+        .reference_context
+        .unresolved_refs
+        .push(unresolved_ref);
 
     // Phase 4: Set up address mapping for target string
     let expected_final_string_addr = codegen.final_string_base + string_offset;
@@ -82,7 +89,10 @@ fn test_real_string_reference_resolution_correctness() {
 
     // Phase 5: Resolve references (simulate full pipeline)
     let result = codegen.resolve_all_addresses();
-    assert!(result.is_ok(), "UnresolvedReference resolution should succeed");
+    assert!(
+        result.is_ok(),
+        "UnresolvedReference resolution should succeed"
+    );
 
     // Phase 6: CRITICAL VERIFICATION - Check exact bytes written
     let final_reference_location = codegen.final_code_base + reference_location;
@@ -132,12 +142,16 @@ fn test_real_function_call_resolution_correctness() {
 
     // Add function to code space (simulate function bytecode)
     let function_bytecode = vec![0x01, 0x42, 0x43, 0x00]; // Sample je instruction
-    codegen.code_space.resize(function_code_offset + function_bytecode.len(), 0);
+    codegen
+        .code_space
+        .resize(function_code_offset + function_bytecode.len(), 0);
     codegen.code_space[function_code_offset..function_code_offset + function_bytecode.len()]
         .copy_from_slice(&function_bytecode);
 
     // Register function address mapping
-    codegen.function_addresses.insert(function_id, function_code_offset);
+    codegen
+        .function_addresses
+        .insert(function_id, function_code_offset);
 
     // Phase 2: Create final_data and set up reference location
     let reference_location = 0x80; // Location where function call operand will be written
@@ -149,16 +163,22 @@ fn test_real_function_call_resolution_correctness() {
         location: reference_location,
         target_id: function_id,
         is_packed_address: true, // CRITICAL: Function calls use packed routine addresses
-        offset_size: 2, // 2-byte reference
+        offset_size: 2,          // 2-byte reference
         location_space: MemorySpace::Code,
     };
 
-    codegen.reference_context.unresolved_refs.push(unresolved_ref);
+    codegen
+        .reference_context
+        .unresolved_refs
+        .push(unresolved_ref);
 
     // Phase 4: Set up address mapping in ir_id_to_address
     let expected_final_function_addr = codegen.final_code_base + function_code_offset;
     let expected_packed_routine_addr = expected_final_function_addr / 2; // Z-Machine V3 routine packing
-    codegen.reference_context.ir_id_to_address.insert(function_id, expected_final_function_addr);
+    codegen
+        .reference_context
+        .ir_id_to_address
+        .insert(function_id, expected_final_function_addr);
 
     // Phase 5: Resolve references
     let result = codegen.resolve_all_addresses();
@@ -221,7 +241,7 @@ fn test_real_jump_branch_resolution_correctness() {
         location: jump_reference_location,
         target_id: label_id,
         is_packed_address: false, // Jump operands are NOT packed
-        offset_size: 2, // 2-byte jump operand
+        offset_size: 2,           // 2-byte jump operand
         location_space: MemorySpace::Code,
     };
 
@@ -230,7 +250,7 @@ fn test_real_jump_branch_resolution_correctness() {
         location: branch_reference_location,
         target_id: label_id,
         is_packed_address: false, // Branch targets are NOT packed
-        offset_size: 1, // 1-byte branch offset (testing different size)
+        offset_size: 1,           // 1-byte branch offset (testing different size)
         location_space: MemorySpace::Code,
     };
 
@@ -239,7 +259,10 @@ fn test_real_jump_branch_resolution_correctness() {
 
     // Phase 4: Set up label address mapping
     let expected_final_label_addr = codegen.final_code_base + label_code_offset;
-    codegen.reference_context.ir_id_to_address.insert(label_id, expected_final_label_addr);
+    codegen
+        .reference_context
+        .ir_id_to_address
+        .insert(label_id, expected_final_label_addr);
 
     // Setup complete - proceed with resolution
 
@@ -259,7 +282,10 @@ fn test_real_jump_branch_resolution_correctness() {
     println!("  jump_high_byte: 0x{:02x}", jump_high_byte);
     println!("  jump_low_byte: 0x{:02x}", jump_low_byte);
     println!("  written_jump_address: 0x{:04x}", written_jump_address);
-    println!("  expected_final_label_addr: 0x{:04x}", expected_final_label_addr);
+    println!(
+        "  expected_final_label_addr: 0x{:04x}",
+        expected_final_label_addr
+    );
 
     // Calculate expected relative offset for Jump instruction (Z-Machine specification)
     // Jump is relative: offset = target - PC_after_instruction + 2
@@ -271,7 +297,10 @@ fn test_real_jump_branch_resolution_correctness() {
     println!("🔍 DEBUG Jump offset calculation:");
     println!("  instruction_pc: 0x{:04x}", instruction_pc);
     println!("  pc_after_instruction: 0x{:04x}", pc_after_instruction);
-    println!("  expected_offset: {} (0x{:04x})", expected_offset, expected_offset_u16);
+    println!(
+        "  expected_offset: {} (0x{:04x})",
+        expected_offset, expected_offset_u16
+    );
 
     assert_eq!(
         written_jump_address, expected_offset_u16,
@@ -315,7 +344,9 @@ fn test_real_memory_space_translation_correctness() {
     let string_offset = 0x80;
     let test_string = "Cross-space reference test";
 
-    codegen.string_space.resize(string_offset + test_string.len() + 1, 0);
+    codegen
+        .string_space
+        .resize(string_offset + test_string.len() + 1, 0);
     codegen.string_space[string_offset..string_offset + test_string.len()]
         .copy_from_slice(test_string.as_bytes());
     codegen.string_offsets.insert(string_id, string_offset);
@@ -325,18 +356,22 @@ fn test_real_memory_space_translation_correctness() {
     let function_code_offset = 0x120;
     let function_bytecode = vec![0x01, 0x42, 0x43, 0xBB]; // Sample function
 
-    codegen.code_space.resize(function_code_offset + function_bytecode.len(), 0);
+    codegen
+        .code_space
+        .resize(function_code_offset + function_bytecode.len(), 0);
     codegen.code_space[function_code_offset..function_code_offset + function_bytecode.len()]
         .copy_from_slice(&function_bytecode);
-    codegen.function_addresses.insert(function_id, function_code_offset);
+    codegen
+        .function_addresses
+        .insert(function_id, function_code_offset);
 
     // Phase 2: Create final_data with multiple reference locations
     codegen.final_data.resize(0x5000, 0x00);
 
     // References from different locations to different target spaces
-    let code_to_string_location = 0x40;   // Code space referencing string space
+    let code_to_string_location = 0x40; // Code space referencing string space
     let code_to_function_location = 0x60; // Code space referencing code space
-    let code_to_object_location = 0x80;   // Code space referencing object space (simulate object property access)
+    let code_to_object_location = 0x80; // Code space referencing object space (simulate object property access)
 
     // Phase 3: Add UnresolvedReferences with different space combinations
     // Test 1: Code space references string space (typical for print operations)
@@ -371,9 +406,18 @@ fn test_real_memory_space_translation_correctness() {
         location_space: MemorySpace::Code, // Reference IS IN code space
     };
 
-    codegen.reference_context.unresolved_refs.push(code_to_string_ref);
-    codegen.reference_context.unresolved_refs.push(code_to_function_ref);
-    codegen.reference_context.unresolved_refs.push(code_to_label_ref);
+    codegen
+        .reference_context
+        .unresolved_refs
+        .push(code_to_string_ref);
+    codegen
+        .reference_context
+        .unresolved_refs
+        .push(code_to_function_ref);
+    codegen
+        .reference_context
+        .unresolved_refs
+        .push(code_to_label_ref);
 
     // Phase 4: Set up expected final addresses
     let expected_final_string_addr = codegen.final_string_base + string_offset;
@@ -381,12 +425,21 @@ fn test_real_memory_space_translation_correctness() {
     let expected_final_label_addr = codegen.final_code_base + target_label_offset;
 
     // Register target addresses for resolution
-    codegen.reference_context.ir_id_to_address.insert(function_id, expected_final_function_addr);
-    codegen.reference_context.ir_id_to_address.insert(target_label_id, expected_final_label_addr);
+    codegen
+        .reference_context
+        .ir_id_to_address
+        .insert(function_id, expected_final_function_addr);
+    codegen
+        .reference_context
+        .ir_id_to_address
+        .insert(target_label_id, expected_final_label_addr);
 
     // Phase 5: Resolve all references across memory spaces
     let result = codegen.resolve_all_addresses();
-    assert!(result.is_ok(), "Cross-space reference resolution should succeed");
+    assert!(
+        result.is_ok(),
+        "Cross-space reference resolution should succeed"
+    );
 
     // Phase 6: CRITICAL VERIFICATION - Check code space to string space reference
     let final_code_to_string_location = codegen.final_code_base + code_to_string_location;
@@ -405,7 +458,8 @@ fn test_real_memory_space_translation_correctness() {
     let final_code_to_function_location = codegen.final_code_base + code_to_function_location;
     let code_to_function_high = codegen.final_data[final_code_to_function_location];
     let code_to_function_low = codegen.final_data[final_code_to_function_location + 1];
-    let written_function_addr = ((code_to_function_high as u16) << 8) | (code_to_function_low as u16);
+    let written_function_addr =
+        ((code_to_function_high as u16) << 8) | (code_to_function_low as u16);
 
     let expected_packed_function_addr = expected_final_function_addr / 2; // Routine packing
     assert_eq!(
@@ -440,9 +494,7 @@ fn test_real_memory_space_translation_correctness() {
         expected_offset_u16, written_jump_value
     );
 
-    println!(
-        "✅ Memory space translation verified:"
-    );
+    println!("✅ Memory space translation verified:");
     println!(
         "  Code→String: 0x{:04x} (packed from 0x{:04x})",
         written_string_addr, expected_final_string_addr
@@ -475,7 +527,9 @@ fn test_real_mixed_reference_types_integration() {
     let string2_offset = 0x90;
     let string2_content = "Second test string";
 
-    codegen.string_space.resize(string2_offset + string2_content.len() + 1, 0);
+    codegen
+        .string_space
+        .resize(string2_offset + string2_content.len() + 1, 0);
     codegen.string_space[string1_offset..string1_offset + string1_content.len()]
         .copy_from_slice(string1_content.as_bytes());
     codegen.string_space[string2_offset..string2_offset + string2_content.len()]
@@ -493,14 +547,20 @@ fn test_real_mixed_reference_types_integration() {
     let function2_offset = 0x200;
     let function2_bytecode = vec![0x05, 0x11, 0x22, 0x33, 0xBB]; // Sample function 2
 
-    codegen.code_space.resize(function2_offset + function2_bytecode.len(), 0);
+    codegen
+        .code_space
+        .resize(function2_offset + function2_bytecode.len(), 0);
     codegen.code_space[function1_offset..function1_offset + function1_bytecode.len()]
         .copy_from_slice(&function1_bytecode);
     codegen.code_space[function2_offset..function2_offset + function2_bytecode.len()]
         .copy_from_slice(&function2_bytecode);
 
-    codegen.function_addresses.insert(function1_id, function1_offset);
-    codegen.function_addresses.insert(function2_id, function2_offset);
+    codegen
+        .function_addresses
+        .insert(function1_id, function1_offset);
+    codegen
+        .function_addresses
+        .insert(function2_id, function2_offset);
 
     // Set up multiple labels/jump targets
     let label1_id: IrId = 5005;
@@ -514,13 +574,25 @@ fn test_real_mixed_reference_types_integration() {
 
     // Create a realistic scenario with mixed reference types
     let ref_locations = [
-        (0x20, string1_id, LegacyReferenceType::StringRef, true, 2),     // String reference 1
-        (0x30, function1_id, LegacyReferenceType::FunctionCall, true, 2), // Function call 1
-        (0x40, label1_id, LegacyReferenceType::Jump, false, 2),          // Jump to label 1
-        (0x50, string2_id, LegacyReferenceType::StringRef, true, 2),     // String reference 2
-        (0x60, function2_id, LegacyReferenceType::FunctionCall, true, 2), // Function call 2
-        (0x70, label2_id, LegacyReferenceType::Jump, false, 2),          // Jump to label 2
-        (0x80, label1_id, LegacyReferenceType::Branch, false, 1),        // Branch to label 1 (1-byte)
+        (0x20, string1_id, LegacyReferenceType::StringRef, true, 2), // String reference 1
+        (
+            0x30,
+            function1_id,
+            LegacyReferenceType::FunctionCall,
+            true,
+            2,
+        ), // Function call 1
+        (0x40, label1_id, LegacyReferenceType::Jump, false, 2),      // Jump to label 1
+        (0x50, string2_id, LegacyReferenceType::StringRef, true, 2), // String reference 2
+        (
+            0x60,
+            function2_id,
+            LegacyReferenceType::FunctionCall,
+            true,
+            2,
+        ), // Function call 2
+        (0x70, label2_id, LegacyReferenceType::Jump, false, 2),      // Jump to label 2
+        (0x80, label1_id, LegacyReferenceType::Branch, false, 1),    // Branch to label 1 (1-byte)
     ];
 
     // Phase 3: Add all UnresolvedReferences
@@ -533,7 +605,10 @@ fn test_real_mixed_reference_types_integration() {
             offset_size: *offset_size,
             location_space: MemorySpace::Code,
         };
-        codegen.reference_context.unresolved_refs.push(unresolved_ref);
+        codegen
+            .reference_context
+            .unresolved_refs
+            .push(unresolved_ref);
     }
 
     // Phase 4: Set up expected final addresses for all targets
@@ -545,14 +620,29 @@ fn test_real_mixed_reference_types_integration() {
     let expected_label2_addr = codegen.final_code_base + label2_offset;
 
     // Register all target addresses
-    codegen.reference_context.ir_id_to_address.insert(function1_id, expected_function1_addr);
-    codegen.reference_context.ir_id_to_address.insert(function2_id, expected_function2_addr);
-    codegen.reference_context.ir_id_to_address.insert(label1_id, expected_label1_addr);
-    codegen.reference_context.ir_id_to_address.insert(label2_id, expected_label2_addr);
+    codegen
+        .reference_context
+        .ir_id_to_address
+        .insert(function1_id, expected_function1_addr);
+    codegen
+        .reference_context
+        .ir_id_to_address
+        .insert(function2_id, expected_function2_addr);
+    codegen
+        .reference_context
+        .ir_id_to_address
+        .insert(label1_id, expected_label1_addr);
+    codegen
+        .reference_context
+        .ir_id_to_address
+        .insert(label2_id, expected_label2_addr);
 
     // Phase 5: Resolve all references in mixed scenario
     let result = codegen.resolve_all_addresses();
-    assert!(result.is_ok(), "Mixed reference types resolution should succeed");
+    assert!(
+        result.is_ok(),
+        "Mixed reference types resolution should succeed"
+    );
 
     // Phase 6: COMPREHENSIVE VERIFICATION - Check all reference types
 
@@ -647,9 +737,7 @@ fn test_real_mixed_reference_types_integration() {
         "Branch should not have placeholder value 0xFF"
     );
 
-    println!(
-        "✅ Mixed reference types integration verified:"
-    );
+    println!("✅ Mixed reference types integration verified:");
     println!(
         "  String refs: 0x{:04x}, 0x{:04x} (packed)",
         written_string1_addr, written_string2_addr
@@ -662,14 +750,8 @@ fn test_real_mixed_reference_types_integration() {
         "  Jumps: 0x{:04x}, 0x{:04x} (relative)",
         written_jump1_value, written_jump2_value
     );
-    println!(
-        "  Branch: 0x{:02x} (1-byte relative)",
-        written_branch_byte
-    );
-    println!(
-        "  Total references resolved: {}",
-        ref_locations.len()
-    );
+    println!("  Branch: 0x{:02x} (1-byte relative)", written_branch_byte);
+    println!("  Total references resolved: {}", ref_locations.len());
 }
 
 // ========================================

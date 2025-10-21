@@ -16,10 +16,12 @@ pub mod object_system;
 pub mod opcodes;
 #[cfg(test)]
 mod opcodes_tests;
+pub mod parser;
+#[cfg(test)]
+mod push_pull_branch_integration_tests;
+pub mod semantic;
 #[cfg(test)]
 mod unresolved_reference_tests;
-pub mod parser;
-pub mod semantic;
 
 use std::fmt;
 

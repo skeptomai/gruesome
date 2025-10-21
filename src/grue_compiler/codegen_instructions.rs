@@ -2083,11 +2083,12 @@ impl ZMachineCodeGen {
             (branch_offset, None)
         };
 
-        let form = self.determine_instruction_form_with_operands(operands, opcode)?;
+        let form = self.determine_instruction_form_with_context(operands, opcode, store_var)?;
         log::debug!(
-            " FORM_DETERMINATION: opcode=0x{:02x} operands={:?} -> form={:?}",
+            " FORM_DETERMINATION: opcode=0x{:02x} operands={:?} (count={}) -> form={:?}",
             opcode,
             operands,
+            operands.len(),
             form
         );
 
@@ -2499,6 +2500,31 @@ impl ZMachineCodeGen {
         }
     }
 
+    /// Determine instruction form with full context including store_var
+    pub fn determine_instruction_form_with_context(
+        &self,
+        operands: &[Operand],
+        opcode: u8,
+        store_var: Option<u8>,
+    ) -> Result<InstructionForm, CompilerError> {
+        // Special handling for opcode 0x0D which is context-dependent
+        if opcode == 0x0D {
+            match (operands.len(), store_var) {
+                // 1 operand + no store_var = print_paddr (1OP:13)
+                (1, None) => return Ok(InstructionForm::Short),
+                // 1 operand + store_var = store (2OP:13) in Long form
+                (1, Some(_)) => return Ok(InstructionForm::Long),
+                // 2 operands = store (2OP:13) in Long form
+                (2, _) => return Ok(InstructionForm::Long),
+                // 3+ operands = output_stream (VAR:13)
+                (_, _) => return Ok(InstructionForm::Variable),
+            }
+        }
+
+        // For all other opcodes, use the existing logic
+        self.determine_instruction_form_with_operands(operands, opcode)
+    }
+
     /// Emit long form instruction (2OP)
     fn emit_long_form(
         &mut self,
@@ -2509,8 +2535,10 @@ impl ZMachineCodeGen {
     ) -> Result<(), CompilerError> {
         if operands.len() != 2 {
             return Err(CompilerError::CodeGenError(format!(
-                "Long form requires exactly 2 operands, got {}",
-                operands.len()
+                "Long form requires exactly 2 operands, got {} (opcode=0x{:02x}, operands={:?})",
+                operands.len(),
+                opcode,
+                operands
             )));
         }
 
@@ -3014,8 +3042,10 @@ impl ZMachineCodeGen {
         }
         if operands.len() != 2 {
             return Err(CompilerError::CodeGenError(format!(
-                "Long form requires exactly 2 operands, got {}",
-                operands.len()
+                "Long form requires exactly 2 operands, got {} (opcode=0x{:02x}, operands={:?})",
+                operands.len(),
+                opcode,
+                operands
             )));
         }
 
