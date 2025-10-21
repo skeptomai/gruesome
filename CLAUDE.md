@@ -1,14 +1,33 @@
 # Infocom Z-Machine Interpreter Project Guidelines
 
-## CURRENT STATUS (October 20, 2025) - ROOM DESCRIPTION BUG INVESTIGATION 🔍
+## CURRENT STATUS (October 21, 2025) - PROPERTY 28 CRASH COMPLETELY RESOLVED ✅
 
-**ACTIVE DEBUGGING**: Room property processing architectural bug causing startup crashes.
+**CRITICAL DISCOVERY**: Property 28 crash was caused by property number collision due to Z-Machine 5-bit encoding limits, not memory corruption.
 
-**CURRENT ISSUE**: Game crashes with `print_paddr 0x0000` because west_of_house has NO Property 7 (description). Room objects skip basic property setup entirely - they only get exit properties but never get description properties created from their `room.description` field.
+**ROOT CAUSE IDENTIFIED**: Property number collision - Property 38 encoded as Property 6 due to Z-Machine V3 5-bit limit (38 & 0x1F = 6).
 
-**INVESTIGATION PLAN**: Following systematic 4-phase debugging plan in `ROOM_DESC_DEBUG_PLAN.md` to trace why room property processing code exists but never executes.
+**SOLUTION IMPLEMENTED**: Version-aware PropertyManager with intelligent property number allocation that respects Z-Machine version limits (V3: 1-31, V4/V5: 1-63) and comprehensive validation with panic handling.
+
+**VERIFICATION COMPLETE**: Game compiles and runs correctly with proper room descriptions. Property numbers now correctly allocated [26, 25, 24, 22, 15, 14, 13, 7] instead of problematic [38, 37, 36, 34, 15, 14, 13, 7].
 
 ## Recent Fixes (October 2025)
+
+### MAJOR: Property 28 Crash Resolution - Property Number Collision Bug ✅ FIXED (Oct 21, 2025)
+- **Issue**: "print_paddr called with invalid packed address 0x0000" crashes when accessing room descriptions
+- **Root Cause**: Property number collision due to Z-Machine 5-bit encoding limits
+  - Compiler assigned property numbers > 31 (Property 38, 37, 36, 34)
+  - Z-Machine V3 uses 5-bit property encoding (1-31 range only)
+  - Property 38 encoded as Property 6 (38 & 0x1F = 6)
+  - Property table structure corrupted by number collisions
+- **Solution**: Version-aware PropertyManager with intelligent allocation
+  - V3: Properties 1-31 (5-bit encoding)
+  - V4/V5: Properties 1-63 (6-bit encoding)
+  - Smart allocation finds first available number in valid range
+  - Comprehensive validation with panic handling for out-of-bounds assignments
+- **Result**: Property numbers correctly allocated [26, 25, 24, 22, 15, 14, 13, 7]
+- **Files**: `src/grue_compiler/ir.rs:318-514` (PropertyManager implementation)
+- **Impact**: Game compiles and runs with proper room descriptions, zero crashes
+- **Lesson**: Always respect Z-Machine architectural limits, especially bit-field constraints
 
 ### MAJOR: Complete Z-Machine Stack Discipline Implementation ✅ COMPLETED (Oct 20, 2025)
 - **Achievement**: Implemented comprehensive push/pull stack discipline system for all Variable(0) operations

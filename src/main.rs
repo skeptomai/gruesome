@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         eprintln!(
-            "Usage: {} <game_file.dat> [--step start_pc end_pc]",
+            "Usage: {} <game_file.dat> [--step start_pc end_pc] [--debug-objects]",
             args[0]
         );
         eprintln!("Examples:");
@@ -22,9 +22,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "  {} resources/test/zork1/DATA/ZORK1.DAT --step 0x577c 0x5880",
             args[0]
         );
+        eprintln!(
+            "  {} resources/test/zork1/DATA/ZORK1.DAT --debug-objects",
+            args[0]
+        );
         eprintln!();
         eprintln!("The --step option enables single-step debugging for instructions");
         eprintln!("in the specified PC range (hex values with or without 0x prefix)");
+        eprintln!("The --debug-objects option dumps the complete object tree after init");
         return Err("Invalid arguments".into());
     }
 
@@ -44,6 +49,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
+    // Check for --debug-objects option
+    let debug_objects = args.contains(&"--debug-objects".to_string());
+    if debug_objects {
+        info!("Object tree debugging enabled");
+    }
+
     // Load the game file
     debug!("Loading Z-Machine game: {}", game_path);
     let mut file = File::open(game_path)?;
@@ -53,7 +64,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create the game and VM
     let game = Game::from_memory(game_data)?;
     let vm = VM::new(game);
-    let mut interpreter = Interpreter::new(vm);
+    let mut interpreter = if debug_objects {
+        Interpreter::new_with_debug(vm, true)
+    } else {
+        Interpreter::new(vm)
+    };
 
     // Enable single-stepping if requested
     if let Some((start, end)) = step_range {

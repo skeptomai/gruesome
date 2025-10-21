@@ -54,6 +54,8 @@ pub struct Interpreter {
     object_tree_dumped: bool,
     /// Flag to track if we've dumped the dictionary at startup
     dictionary_dumped: bool,
+    /// Flag to enable object tree debugging
+    debug_objects: bool,
 }
 
 /// State for managing output stream redirection
@@ -76,6 +78,11 @@ impl OutputStreamState {
 impl Interpreter {
     /// Create a new interpreter
     pub fn new(vm: VM) -> Self {
+        Self::new_with_debug(vm, false)
+    }
+
+    /// Create a new interpreter with debug options
+    pub fn new_with_debug(vm: VM, debug_objects: bool) -> Self {
         // Get the game version for creating appropriate display
         let version = vm.game.header.version;
 
@@ -116,6 +123,7 @@ impl Interpreter {
             output_streams: OutputStreamState::new(),
             object_tree_dumped: false,
             dictionary_dumped: false,
+            debug_objects,
         }
     }
 
@@ -690,8 +698,10 @@ impl Interpreter {
         info!("Starting Z-Machine interpreter...");
         info!("Initial PC: {:05x}", self.vm.pc);
 
-        // Dump all objects and properties at startup
-        self.dump_all_objects_and_properties();
+        // Dump all objects and properties at startup if debug_objects flag is enabled
+        if self.debug_objects {
+            self.dump_all_objects_and_properties();
+        }
 
         // Set up initial display for v3 games
         if self.vm.game.header.version == 3 {
@@ -1021,8 +1031,8 @@ impl Interpreter {
             self.instruction_count += 1;
 
             // Dump object tree after first instruction (after InsertObj instructions have run)
-            if self.instruction_count == 10 {
-                log::debug!("🌳 Instruction count reached 10, dumping object tree...");
+            if self.instruction_count == 1 && self.debug_objects {
+                log::debug!("🌳 Instruction count reached 1, dumping object tree...");
                 if !self.object_tree_dumped {
                     self.dump_object_tree();
                     self.object_tree_dumped = true;

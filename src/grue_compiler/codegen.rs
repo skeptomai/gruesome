@@ -1490,8 +1490,39 @@ impl ZMachineCodeGen {
         log::debug!(" Step 3f: Resolving all address references and fixups");
         self.resolve_all_addresses()?;
 
+        // PROPERTY TABLE CHECKPOINT 4: Right after resolve_all_addresses returns
+        let west_house_prop7_addr = 0x04c0; // Where Property 7 should be
+        if west_house_prop7_addr + 1 < self.final_data.len() {
+            let prop7_high = self.final_data[west_house_prop7_addr];
+            let prop7_low = self.final_data[west_house_prop7_addr + 1];
+            let prop7_value = ((prop7_high as u16) << 8) | (prop7_low as u16);
+            log::warn!("🔍 CHECKPOINT_AFTER_RESOLVE: west_of_house Property 7 at 0x{:04x} = 0x{:04x} (0x{:02x} 0x{:02x}) - AFTER resolve_all_addresses RETURNS",
+                       west_house_prop7_addr, prop7_value, prop7_high, prop7_low);
+        }
+
         log::debug!(" Step 3g: Finalizing file length and checksum");
+
+        // PROPERTY TABLE CHECKPOINT 5: Right before finalize_header_metadata
+        let west_house_prop7_addr = 0x04c0; // Where Property 7 should be
+        if west_house_prop7_addr + 1 < self.final_data.len() {
+            let prop7_high = self.final_data[west_house_prop7_addr];
+            let prop7_low = self.final_data[west_house_prop7_addr + 1];
+            let prop7_value = ((prop7_high as u16) << 8) | (prop7_low as u16);
+            log::warn!("🔍 CHECKPOINT_BEFORE_FINALIZE: west_of_house Property 7 at 0x{:04x} = 0x{:04x} (0x{:02x} 0x{:02x}) - BEFORE finalize_header_metadata",
+                       west_house_prop7_addr, prop7_value, prop7_high, prop7_low);
+        }
+
         self.finalize_header_metadata()?;
+
+        // PROPERTY TABLE CHECKPOINT 6: Right after finalize_header_metadata
+        let west_house_prop7_addr = 0x04c0; // Where Property 7 should be
+        if west_house_prop7_addr + 1 < self.final_data.len() {
+            let prop7_high = self.final_data[west_house_prop7_addr];
+            let prop7_low = self.final_data[west_house_prop7_addr + 1];
+            let prop7_value = ((prop7_high as u16) << 8) | (prop7_low as u16);
+            log::warn!("🔍 CHECKPOINT_AFTER_FINALIZE: west_of_house Property 7 at 0x{:04x} = 0x{:04x} (0x{:02x} 0x{:02x}) - AFTER finalize_header_metadata",
+                       west_house_prop7_addr, prop7_value, prop7_high, prop7_low);
+        }
 
         log::info!(
             "🎉 COMPLETE Z-MACHINE FILE assembled successfully: {} bytes",
@@ -1551,10 +1582,10 @@ impl ZMachineCodeGen {
             };
 
             log::trace!(
- "📍 ADDRESS TRANSLATION: Reference location 0x{:04x} -> 0x{:04x} (generation->final mapping)",
- reference.location,
- adjusted_reference.location
- );
+                "📍 ADDRESS TRANSLATION: Reference location 0x{:04x} -> 0x{:04x} (generation->final mapping)",
+                reference.location,
+                adjusted_reference.location
+            );
 
             log::debug!(
                 "Reference resolution: location=0x{:04x} target_id={} type={:?}",
@@ -1576,13 +1607,23 @@ impl ZMachineCodeGen {
             // DEBUG: Track specific addresses that are problematic - EXACT CRASH LOCATION
             if adjusted_reference.location >= 0x1220 && adjusted_reference.location <= 0x1230 {
                 log::debug!(
- " EXACT CRASH LOCATION: Processing reference at PC 0x{:04x} (near crash location!)",
- adjusted_reference.location
- );
+                    " EXACT CRASH LOCATION: Processing reference at PC 0x{:04x} (near crash location!)",
+                    adjusted_reference.location
+                );
                 log::debug!(" Target ID: {}", adjusted_reference.target_id);
                 log::debug!(" Type: {:?}", adjusted_reference.reference_type);
                 log::debug!(" Is packed: {}", adjusted_reference.is_packed_address);
                 log::debug!(" Offset size: {:?}", adjusted_reference.offset_size);
+
+                // PROPERTY TABLE CHECKPOINT 1: Check west_of_house Property 7 at line 1587
+                let west_house_prop7_addr = 0x04c0; // Where Property 7 should be
+                if west_house_prop7_addr + 1 < self.final_data.len() {
+                    let prop7_high = self.final_data[west_house_prop7_addr];
+                    let prop7_low = self.final_data[west_house_prop7_addr + 1];
+                    let prop7_value = ((prop7_high as u16) << 8) | (prop7_low as u16);
+                    log::warn!("🔍 CHECKPOINT_1587: west_of_house Property 7 at 0x{:04x} = 0x{:04x} (0x{:02x} 0x{:02x})",
+                               west_house_prop7_addr, prop7_value, prop7_high, prop7_low);
+                }
 
                 // CHECK: Is this target ID in our mapping table?
                 if let Some(&mapped_address) = self
@@ -1623,6 +1664,16 @@ impl ZMachineCodeGen {
                 player_final_addr,
                 &self.final_data[player_final_addr..player_final_addr + 20]
             );
+        }
+
+        // PROPERTY TABLE CHECKPOINT 2: Check west_of_house Property 7 at line 1627
+        let west_house_prop7_addr = 0x04c0; // Where Property 7 should be
+        if west_house_prop7_addr + 1 < self.final_data.len() {
+            let prop7_high = self.final_data[west_house_prop7_addr];
+            let prop7_low = self.final_data[west_house_prop7_addr + 1];
+            let prop7_value = ((prop7_high as u16) << 8) | (prop7_low as u16);
+            log::warn!("🔍 CHECKPOINT_1627: west_of_house Property 7 at 0x{:04x} = 0x{:04x} (0x{:02x} 0x{:02x})",
+                       west_house_prop7_addr, prop7_value, prop7_high, prop7_low);
         }
 
         // CRITICAL: Verify object 1 property table pointer points to the right place
@@ -1693,6 +1744,16 @@ impl ZMachineCodeGen {
                     failed_count
                 )));
             }
+        }
+
+        // PROPERTY TABLE CHECKPOINT 3: Final check at end of resolve_all_addresses
+        let west_house_prop7_addr = 0x04c0; // Where Property 7 should be
+        if west_house_prop7_addr + 1 < self.final_data.len() {
+            let prop7_high = self.final_data[west_house_prop7_addr];
+            let prop7_low = self.final_data[west_house_prop7_addr + 1];
+            let prop7_value = ((prop7_high as u16) << 8) | (prop7_low as u16);
+            log::warn!("🔍 CHECKPOINT_FINAL: west_of_house Property 7 at 0x{:04x} = 0x{:04x} (0x{:02x} 0x{:02x}) - END OF RESOLVE_ALL_ADDRESSES",
+                       west_house_prop7_addr, prop7_value, prop7_high, prop7_low);
         }
 
         log::info!(" All address references resolved successfully");
@@ -5025,6 +5086,25 @@ impl ZMachineCodeGen {
         );
 
         // Property table address (word) - bytes 7-8 of object entry
+        // INSTRUMENTATION: Track property table pointer being written to object entry
+        if object.short_name == "West of House" {
+            log::error!(
+                "🎯 PROP_TABLE_PTR_WRITE: Object '{}' (obj_num={}, name='{}') writing prop_table_addr=0x{:04x} to obj_offset+7-8=0x{:04x}, has_prop7={}",
+                object.short_name, obj_num, object.name, prop_table_addr, obj_offset + 7,
+                object.properties.properties.contains_key(&7)
+            );
+            if object.properties.properties.contains_key(&7) {
+                log::error!(
+                    "🎯 PROP_TABLE_PTR_WRITE: Property 7 value = {:?}",
+                    object.properties.properties.get(&7)
+                );
+            } else {
+                log::error!(
+                    "🎯 PROP_TABLE_PTR_WRITE: Properties available: {:?}",
+                    object.properties.properties.keys().collect::<Vec<_>>()
+                );
+            }
+        }
         self.write_to_object_space(obj_offset + 7, (prop_table_addr >> 8) as u8)?; // High byte
         self.write_to_object_space(obj_offset + 8, (prop_table_addr & 0xFF) as u8)?; // Low byte
 
@@ -5132,6 +5212,31 @@ impl ZMachineCodeGen {
         let mut properties: Vec<_> = object.properties.properties.iter().collect();
         properties.sort_by(|a, b| b.0.cmp(a.0)); // Sort by property number, descending
 
+        // INSTRUMENTATION: Track addr progression for West of House
+        if object.short_name == "West of House" {
+            log::error!(
+                "🎯 WEST_HOUSE_ADDR_START: prop_table_addr=0x{:04x}, addr=0x{:04x}, object_table_addr=0x{:04x}",
+                prop_table_addr, addr, self.object_table_addr
+            );
+        }
+
+        // INSTRUMENTATION: Track exact properties for West of House
+        if object.short_name == "West of House" {
+            log::error!(
+                "🎯 PROP_TABLE_START: Object '{}' has {} properties to encode: {:?}",
+                object.short_name,
+                properties.len(),
+                properties.iter().map(|(n, _)| **n).collect::<Vec<_>>()
+            );
+            for (&prop_num, prop_value) in &properties {
+                log::error!(
+                    "🎯 PROP_TABLE_START: Property {} = {:?}",
+                    prop_num,
+                    prop_value
+                );
+            }
+        }
+
         log::debug!(
             "🔍 PROP_ENCODE: Object '{}' has {} properties to encode: {:?}",
             object.short_name,
@@ -5154,6 +5259,19 @@ impl ZMachineCodeGen {
             } else {
                 format!("{:02x?}", prop_data)
             };
+
+            // PROPERTY 6 DETECTION: Property 6 = Life routine, shouldn't exist on rooms
+            if prop_num == 6 {
+                log::error!("🚨 PROPERTY_6_CREATION: Creating Property 6 (Life) for object '{}': size_byte=0x{:02x}, data={}, string_id={:?}",
+                           object.short_name, size_byte, data_display, string_id_opt);
+                log::error!(
+                    "🚨 PROPERTY_6_CREATION: STACK TRACE: This should NOT happen for room objects!"
+                );
+                log::error!(
+                    "🚨 PROPERTY_6_CREATION: Object properties: {:?}",
+                    object.properties.properties.keys().collect::<Vec<_>>()
+                );
+            }
 
             log::warn!(
                 "🔍 PROP_WRITE: Writing property {} for object '{}': size_byte=0x{:02x}, data={}, string_id={:?}, two_byte_format={}",
@@ -5188,6 +5306,13 @@ impl ZMachineCodeGen {
             // Write property data
             for (i, &byte) in prop_data.iter().enumerate() {
                 let data_offset = addr - self.object_table_addr;
+
+                // DEBUG: Track west_of_house Property 7 offset calculation
+                if object.short_name == "West of House" && prop_num == 7 && i == 0 {
+                    log::warn!("🔍 WEST_HOUSE_PROP7_OFFSET: addr=0x{:04x}, object_table_addr=0x{:04x}, data_offset=0x{:04x}, prop_table_addr=0x{:04x}",
+                               addr, self.object_table_addr, data_offset, prop_table_addr);
+                }
+
                 self.write_to_object_space(data_offset, byte)?;
 
                 // If this is a string property, create UnresolvedReference for packed address
@@ -5396,11 +5521,31 @@ impl ZMachineCodeGen {
                 );
                 addr += 1;
             }
+
+            // INSTRUMENTATION: Track addr after each property for West of House
+            if object.short_name == "West of House" {
+                log::error!(
+                    "🎯 WEST_HOUSE_AFTER_PROP{}: addr=0x{:04x}, prop_size={}, total_written={}",
+                    prop_num,
+                    addr,
+                    header_size + prop_data.len(),
+                    addr - prop_table_addr
+                );
+            }
         }
 
         // Terminator (property 0)
         let terminator_offset = addr - self.object_table_addr;
         self.write_to_object_space(terminator_offset, 0)?;
+
+        // INSTRUMENTATION: Track terminator location for West of House
+        if object.short_name == "West of House" {
+            log::error!(
+                "🎯 WEST_HOUSE_TERMINATOR: addr=0x{:04x}, terminator_offset=0x{:04x}, total_table_size={}",
+                addr, terminator_offset, addr - prop_table_addr
+            );
+        }
+
         debug!(
             "PROP TABLE DEBUG: Writing terminator 0x00 at addr=0x{:04x}",
             addr
@@ -9102,7 +9247,11 @@ impl ZMachineCodeGen {
 
     /// Resolve IR ID to operand with automatic pull instruction for push-marked values
     /// Phase C1.1: This combines pull emission and operand resolution
-    pub fn resolve_ir_id_with_pull(&mut self, ir_id: IrId, context: &str) -> Result<Operand, CompilerError> {
+    pub fn resolve_ir_id_with_pull(
+        &mut self,
+        ir_id: IrId,
+        context: &str,
+    ) -> Result<Operand, CompilerError> {
         // Emit pull instruction if this IR ID was previously pushed
         self.emit_pull_for_ir_id(ir_id, context)?;
 
@@ -9193,7 +9342,11 @@ impl ZMachineCodeGen {
 
             // Phase C2: Convert binary operations to use push/pull stack discipline
             self.use_push_pull_for_result(target, "binary operation")?;
-            log::debug!("BinaryOp ({:?}) result: IR ID {} -> push/pull stack", op, target);
+            log::debug!(
+                "BinaryOp ({:?}) result: IR ID {} -> push/pull stack",
+                op,
+                target
+            );
         }
 
         Ok(())

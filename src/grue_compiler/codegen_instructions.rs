@@ -355,7 +355,10 @@ impl ZMachineCodeGen {
                 // Register call result target for proper LoadVar resolution
                 if let Some(target_id) = target {
                     self.use_push_pull_for_result(*target_id, "indirect function call")?;
-                    log::debug!("CallIndirect result: IR ID {} -> push/pull stack", target_id);
+                    log::debug!(
+                        "CallIndirect result: IR ID {} -> push/pull stack",
+                        target_id
+                    );
                 }
             }
 
@@ -3466,7 +3469,8 @@ impl ZMachineCodeGen {
                 };
 
                 // Determine branch condition (branch_on_false XOR should_invert)
-                let branch_condition = branch_on_false ^ should_invert;
+                // Note: This value is calculated but not currently used in the implementation
+                let _branch_condition = branch_on_false ^ should_invert;
 
                 // Create unresolved reference for the branch
                 let layout = self.emit_instruction_typed(

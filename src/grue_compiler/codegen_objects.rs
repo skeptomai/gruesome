@@ -38,6 +38,34 @@ impl ZMachineCodeGen {
             self.object_space.resize(offset + 1, 0);
         }
 
+        // PROPERTY 6 PATTERN DETECTION: Track writes of Property 6 size byte (0x26)
+        if byte == 0x26 {
+            log::error!(
+                "🚨 PROPERTY_6_SIZE_BYTE: Writing Property 6 size byte 0x26 at offset 0x{:04x}",
+                offset
+            );
+            // Check if this is followed by Property 6 data pattern
+            if offset + 2 < self.object_space.len() {
+                // We can't see future writes yet, but log this for tracking
+                log::error!(
+                    "🚨 PROPERTY_6_SIZE_BYTE: Location could be start of Property 6 pattern"
+                );
+            }
+        }
+
+        // PROPERTY 6 VALUE DETECTION: Track writes of 0x45 (Property 6 value)
+        if byte == 0x45 && offset > 0 {
+            // Check if previous bytes match Property 6 pattern: [0x26, 0x00, 0x45]
+            if offset >= 2 && self.object_space.len() > offset - 2 {
+                let prev2 = self.object_space[offset - 2];
+                let prev1 = self.object_space[offset - 1];
+                if prev2 == 0x26 && prev1 == 0x00 {
+                    log::error!("🚨 PROPERTY_6_COMPLETE_PATTERN: Found complete Property 6 pattern [0x26, 0x00, 0x45] ending at offset 0x{:04x}", offset);
+                    log::error!("🚨 PROPERTY_6_COMPLETE_PATTERN: This should NOT exist - Property 6 (Life) not in IR properties!");
+                }
+            }
+        }
+
         // DEBUG: Enhanced tracking for west_of_house property table region (0x00d9-0x0106)
         if offset >= 0x00d9 && offset <= 0x0106 {
             let old_value = self.object_space[offset];
@@ -499,6 +527,12 @@ impl ZMachineCodeGen {
             let on_exit_prop = *self.property_numbers.get("on_exit").unwrap_or(&20);
 
             // Set room description property for look_around() functionality
+            log::warn!(
+                "🏠 ROOM_DESC_DEBUG: Room '{}' setting property {} with description: '{}'",
+                room.name,
+                desc_prop,
+                room.description
+            );
             room_properties.set_string(desc_prop, room.description.clone());
             room_properties.set_byte(visited_prop, 0); // Initially not visited
                                                        // location property removed - rooms use object tree containment (Oct 12, 2025)
@@ -677,6 +711,29 @@ impl ZMachineCodeGen {
 
         // PASS 2: Add exit properties to rooms now that we have correct object_id_to_number mapping
         log::info!("=== ADDING EXIT PROPERTIES TO ROOMS ===");
+
+        // INSTRUMENTATION: Check if Property 7 exists in west_of_house BEFORE PASS 2
+        for (room_index, room) in ir.rooms.iter().enumerate() {
+            if room.name == "west_of_house" {
+                let obj_index = room_index + 1;
+                let has_prop7 = all_objects[obj_index]
+                    .properties
+                    .properties
+                    .contains_key(&7);
+                let prop_count = all_objects[obj_index].properties.properties.len();
+                log::error!(
+                    "🎯 BEFORE_PASS2: west_of_house obj_index={}, has_property_7={}, total_properties={}",
+                    obj_index, has_prop7, prop_count
+                );
+                if has_prop7 {
+                    if let Some(prop7_value) = all_objects[obj_index].properties.properties.get(&7)
+                    {
+                        log::error!("🎯 BEFORE_PASS2: Property 7 value = {:?}", prop7_value);
+                    }
+                }
+                break;
+            }
+        }
         for (room_index, room) in ir.rooms.iter().enumerate() {
             // Find this room in all_objects (it's at index room_index + 1 because player is at index 0)
             let obj_index = room_index + 1; // +1 because player is at index 0
@@ -811,6 +868,38 @@ impl ZMachineCodeGen {
                         .properties
                         .set_bytes(exit_data_prop, exit_data.clone());
 
+                    // INSTRUMENTATION: Check Property 7 immediately after exit properties are added
+                    if room.name == "west_of_house" {
+                        let has_prop7 = all_objects[obj_index]
+                            .properties
+                            .properties
+                            .contains_key(&7);
+                        let prop_count = all_objects[obj_index].properties.properties.len();
+                        log::error!(
+                            "🎯 AFTER_EXIT_PROPS: west_of_house obj_index={}, array_name='{}', array_short_name='{}', has_property_7={}, total_properties={}",
+                            obj_index, all_objects[obj_index].name, all_objects[obj_index].short_name, has_prop7, prop_count
+                        );
+                        if has_prop7 {
+                            if let Some(prop7_value) =
+                                all_objects[obj_index].properties.properties.get(&7)
+                            {
+                                log::error!(
+                                    "🎯 AFTER_EXIT_PROPS: Property 7 value = {:?}",
+                                    prop7_value
+                                );
+                            }
+                        } else {
+                            log::error!(
+                                "🎯 AFTER_EXIT_PROPS: Property 7 MISSING! Properties: {:?}",
+                                all_objects[obj_index]
+                                    .properties
+                                    .properties
+                                    .keys()
+                                    .collect::<Vec<_>>()
+                            );
+                        }
+                    }
+
                     // Verify properties were stored
                     if let Some(stored_data) = all_objects[obj_index]
                         .properties
@@ -847,6 +936,38 @@ impl ZMachineCodeGen {
                         room.exits.len()
                     );
                 }
+            }
+        }
+
+        // INSTRUMENTATION: Check if Property 7 exists in west_of_house AFTER PASS 2
+        for (room_index, room) in ir.rooms.iter().enumerate() {
+            if room.name == "west_of_house" {
+                let obj_index = room_index + 1;
+                let has_prop7 = all_objects[obj_index]
+                    .properties
+                    .properties
+                    .contains_key(&7);
+                let prop_count = all_objects[obj_index].properties.properties.len();
+                log::error!(
+                    "🎯 AFTER_PASS2: west_of_house obj_index={}, has_property_7={}, total_properties={}",
+                    obj_index, has_prop7, prop_count
+                );
+                if has_prop7 {
+                    if let Some(prop7_value) = all_objects[obj_index].properties.properties.get(&7)
+                    {
+                        log::error!("🎯 AFTER_PASS2: Property 7 value = {:?}", prop7_value);
+                    }
+                } else {
+                    log::error!(
+                        "🎯 AFTER_PASS2: Property 7 MISSING! Properties present: {:?}",
+                        all_objects[obj_index]
+                            .properties
+                            .properties
+                            .keys()
+                            .collect::<Vec<_>>()
+                    );
+                }
+                break;
             }
         }
 
