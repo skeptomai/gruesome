@@ -3951,13 +3951,13 @@ impl ZMachineCodeGen {
         let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
 
         // Generate get_child instruction (1OP:130, opcode 2)
-        // CRITICAL FIX: get_child REQUIRES a branch target per Z-Machine spec
-        // We'll branch to the next instruction (fall through behavior) with offset +2
+        // FIXED: Remove branch behavior since we only need the return value
+        // Z-Machine get_child can branch on success, but here we just want the result
         let layout = self.emit_instruction_typed(
             Opcode::Op1(Op1::GetChild),
             &[obj_operand],
-            Some(0),
-            Some(2),
+            Some(0), // Store result on stack
+            None,    // No branch - just fall through
             None,
         )?;
 
@@ -3997,13 +3997,13 @@ impl ZMachineCodeGen {
         let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
 
         // Generate get_sibling instruction (1OP:129, opcode 0x81)
-        // CRITICAL FIX: get_sibling REQUIRES a branch target per Z-Machine spec
-        // We'll branch to the next instruction (fall through behavior) with offset +2
+        // FIXED: Remove branch behavior since we only need the return value
+        // Z-Machine get_sibling can branch on success, but here we just want the result
         let layout = self.emit_instruction_typed(
             Opcode::Op1(Op1::GetSibling),
             &[obj_operand],
-            Some(0),
-            Some(2),
+            Some(0), // Store result on stack
+            None,    // No branch - just fall through
             None,
         )?;
 
@@ -8095,26 +8095,18 @@ impl ZMachineCodeGen {
                 let label_done = self.next_string_id;
                 self.next_string_id += 1;
 
+                // PHASE 2B CONVERSION: Convert unary NOT to use proper target label
                 // je operand, 0 [FALSE] label_true (branch if operand != 0)
-                let layout = self.emit_instruction(
-                    0x01,
+                let _layout = self.emit_instruction_typed(
+                    Opcode::Op2(Op2::Je),
                     &[operand, Operand::Constant(0)],
-                    None,
-                    Some(0x7FFF), // branch-on-FALSE placeholder
+                    None,             // No store
+                    Some(0x7FFF),     // branch-on-FALSE placeholder
+                    Some(label_true), // NEW: Target label for deferred resolution
                 )?;
 
-                if let Some(branch_location) = layout.branch_location {
-                    self.reference_context
-                        .unresolved_refs
-                        .push(UnresolvedReference {
-                            reference_type: LegacyReferenceType::Branch,
-                            location: branch_location,
-                            target_id: label_true,
-                            is_packed_address: false,
-                            offset_size: 2,
-                            location_space: MemorySpace::Code,
-                        });
-                }
+                // PHASE 2B CONVERSION: No manual UnresolvedReference creation needed!
+                // The emit_instruction_typed call automatically creates DeferredBranchPatch
 
                 // store 0 (false)
                 self.emit_instruction(
@@ -12430,27 +12422,17 @@ impl ZMachineCodeGen {
         let return_true_label = self.next_string_id;
         self.next_string_id += 1;
 
-        let je_layout = self.emit_instruction_typed(
+        // PHASE 2B CONVERSION: Convert hybrid pattern to proper target label
+        let _je_layout = self.emit_instruction_typed(
             Opcode::Op2(Op2::Je),
             &[Operand::Variable(1), Operand::SmallConstant(0)],
             None,
             Some(-1), // Branch on true - will be resolved to return_true_label
-            None,
+            Some(return_true_label), // NEW: Target label for deferred resolution
         )?;
 
-        // Create UnresolvedReference for the branch
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Branch,
-                location: je_layout
-                    .branch_location
-                    .expect("je instruction must have branch location"),
-                target_id: return_true_label,
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        // PHASE 2B CONVERSION: No manual UnresolvedReference creation needed!
+        // The emit_instruction_typed call automatically creates DeferredBranchPatch
 
         // Fall through: value != 0, return 0
         self.emit_instruction_typed(
@@ -12515,27 +12497,17 @@ impl ZMachineCodeGen {
         let return_false_label = self.next_string_id;
         self.next_string_id += 1;
 
-        let jl_layout = self.emit_instruction_typed(
+        // PHASE 2B CONVERSION: Convert hybrid pattern to proper target label
+        let _jl_layout = self.emit_instruction_typed(
             Opcode::Op2(Op2::Jl),
             &[Operand::Variable(1), Operand::LargeConstant(0x4000)],
             None,
             Some(-1), // Branch on true - will be resolved to return_false_label
-            None,
+            Some(return_false_label), // NEW: Target label for deferred resolution
         )?;
 
-        // Create UnresolvedReference for the branch
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Branch,
-                location: jl_layout
-                    .branch_location
-                    .expect("jl instruction must have branch location"),
-                target_id: return_false_label,
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        // PHASE 2B CONVERSION: No manual UnresolvedReference creation needed!
+        // The emit_instruction_typed call automatically creates DeferredBranchPatch
 
         // Fall through: value >= 0x4000, blocked, return 1
         self.emit_instruction_typed(
@@ -12601,27 +12573,17 @@ impl ZMachineCodeGen {
         let return_false_label = self.next_string_id;
         self.next_string_id += 1;
 
-        let jl_layout = self.emit_instruction_typed(
+        // PHASE 2B CONVERSION: Convert hybrid pattern to proper target label
+        let _jl_layout = self.emit_instruction_typed(
             Opcode::Op2(Op2::Jl),
             &[Operand::Variable(1), Operand::LargeConstant(0x4000)],
             None,
             Some(-1), // Branch on true - will be resolved to return_false_label
-            None,
+            Some(return_false_label), // NEW: Target label for deferred resolution
         )?;
 
-        // Create UnresolvedReference for the branch
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Branch,
-                location: jl_layout
-                    .branch_location
-                    .expect("jl instruction must have branch location"),
-                target_id: return_false_label,
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        // PHASE 2B CONVERSION: No manual UnresolvedReference creation needed!
+        // The emit_instruction_typed call automatically creates DeferredBranchPatch
 
         // Fall through: value >= 0x4000, has message, return 1
         self.emit_instruction_typed(
@@ -12872,29 +12834,20 @@ impl ZMachineCodeGen {
         )?;
 
         // Step 8: Compare current direction with parameter -> found_label
-        let compare_layout = self.emit_instruction_typed(
+        // PHASE 2B CONVERSION: Final exit system branch instruction conversion
+        let _compare_layout = self.emit_instruction_typed(
             Opcode::Op2(Op2::Je),
             &[
                 Operand::Variable(8), // local_8 (current dir)
                 Operand::Variable(2), // local_2 (direction arg)
             ],
             None,
-            Some(-1), // Branch on true (if equal, goto found)
-            None,
+            Some(-1),          // Branch on true (if equal, goto found)
+            Some(found_label), // NEW: Target label for deferred resolution
         )?;
 
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Branch,
-                location: compare_layout
-                    .branch_location
-                    .expect("je needs branch location"),
-                target_id: found_label,
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        // PHASE 2B CONVERSION: No manual UnresolvedReference creation needed!
+        // The emit_instruction_typed call automatically creates DeferredBranchPatch
 
         // Step 9: Increment index and loop
         self.emit_instruction_typed(
