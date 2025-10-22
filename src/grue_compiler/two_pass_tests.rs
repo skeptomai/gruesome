@@ -127,14 +127,14 @@ mod branch_deferral_tests {
         // Test that TwoPassState is properly integrated with ZMachineCodeGen
         let mut codegen = create_test_codegen();
 
-        // Should be initialized with disabled state
-        assert!(!codegen.two_pass_state.enabled);
+        // Should be initialized with enabled state (Phase 3 default)
+        assert!(codegen.two_pass_state.enabled);
         assert_eq!(codegen.two_pass_state.deferred_branches.len(), 0);
         assert_eq!(codegen.two_pass_state.label_addresses.len(), 0);
 
-        // Should be able to enable two-pass mode
-        codegen.two_pass_state.enabled = true;
-        assert!(codegen.two_pass_state.enabled);
+        // Should be able to disable two-pass mode
+        codegen.two_pass_state.enabled = false;
+        assert!(!codegen.two_pass_state.enabled);
     }
 
     #[test]
@@ -142,7 +142,8 @@ mod branch_deferral_tests {
         // Test that resolve_deferred_branches() works when disabled
         let mut codegen = create_test_codegen();
 
-        // Should succeed when disabled (no-op)
+        // Explicitly disable two-pass for this test (tests disabled behavior)
+        codegen.two_pass_state.enabled = false;
         assert!(!codegen.two_pass_state.enabled);
         let result = codegen.resolve_deferred_branches();
         assert!(result.is_ok());

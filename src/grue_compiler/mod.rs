@@ -13,12 +13,16 @@ pub mod error;
 pub mod ir;
 pub mod lexer;
 pub mod object_system;
+#[cfg(test)]
+mod opcode_form_unit_tests;
 pub mod opcodes;
 #[cfg(test)]
 mod opcodes_tests;
 pub mod parser;
 #[cfg(test)]
 mod push_pull_branch_integration_tests;
+#[cfg(test)]
+mod push_pull_unit_tests;
 pub mod semantic;
 #[cfg(test)]
 mod unresolved_reference_tests;

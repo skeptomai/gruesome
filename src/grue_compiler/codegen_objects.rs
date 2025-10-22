@@ -735,7 +735,7 @@ impl ZMachineCodeGen {
                 if has_prop7 {
                     if let Some(prop7_value) = all_objects[obj_index].properties.properties.get(&7)
                     {
-                        log::error!("🎯 BEFORE_PASS2: Property 7 value = {:?}", prop7_value);
+                        log::debug!("🎯 BEFORE_PASS2: Property 7 value = {:?}", prop7_value);
                     }
                 }
                 break;
@@ -962,7 +962,7 @@ impl ZMachineCodeGen {
                 if has_prop7 {
                     if let Some(prop7_value) = all_objects[obj_index].properties.properties.get(&7)
                     {
-                        log::error!("🎯 AFTER_PASS2: Property 7 value = {:?}", prop7_value);
+                        log::debug!("🎯 AFTER_PASS2: Property 7 value = {:?}", prop7_value);
                     }
                 } else {
                     log::error!(

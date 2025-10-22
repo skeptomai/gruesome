@@ -141,7 +141,7 @@ pub enum InstructionForm {
 }
 
 /// Operand value that can be encoded
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Operand {
     Constant(u16),      // Immediate value
     Variable(u8),       // Variable number (0=stack, 1-15=locals, 16-255=globals)
@@ -538,9 +538,9 @@ impl ZMachineCodeGen {
             dictionary_words: Vec::new(),
             push_pull_ir_ids: IndexSet::new(),
 
-            // Initialize two-pass compilation state (temporarily disabled due to UnresolvedReference conflict)
+            // Initialize two-pass compilation state (enabled by default for Phase 3)
             two_pass_state: TwoPassState {
-                enabled: false,
+                enabled: true,
                 deferred_branches: Vec::new(),
                 label_addresses: IndexMap::new(),
             },
