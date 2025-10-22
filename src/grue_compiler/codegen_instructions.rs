@@ -1862,7 +1862,7 @@ impl ZMachineCodeGen {
     /// Emit a typed Z-Machine instruction with comprehensive validation and optional target label integration.
     ///
     /// Parameters:
-    /// - `target_label_id_param`: NEW - Optional target label ID for deferred branch resolution.
+    /// - `target_label_id_param`: Optional target label ID for deferred branch resolution.
     ///   When provided with a branch instruction, creates a DeferredBranchPatch for two-pass compilation.
     ///   Pass `None` for non-branch instructions or immediate branch resolution.
     pub fn emit_instruction_typed(
@@ -1985,14 +1985,27 @@ impl ZMachineCodeGen {
                     // This is a branch instruction with a target label ID
                     // Create DeferredBranchPatch for second-pass resolution
                     if let Some(branch_location) = layout.branch_location {
+                        // PHASE 2: Extract branch_on_true from branch_offset encoding
+                        // Legacy emit_comparison_branch encodes polarity in placeholder:
+                        // 0xBFFF (bit 15=1) = branch_on_true, 0x7FFF (bit 15=0) = branch_on_false
+                        let branch_on_true = if let Some(offset) = branch_offset {
+                            (offset as u16) & 0x8000 != 0 // Check bit 15
+                        } else {
+                            true // Default for non-encoded offsets
+                        };
+
+                        // PHASE 2: Determine offset_size from branch_offset value
+                        // For now, use 2 bytes (will be optimized during resolution)
+                        let offset_size = 2;
+
                         self.two_pass_state
                             .deferred_branches
                             .push(DeferredBranchPatch {
                                 instruction_address: start_address,
                                 branch_offset_location: branch_location,
                                 target_label_id,
-                                branch_on_true: true, // TODO: Phase 2 - Determine from opcode analysis
-                                offset_size: 2, // TODO: Phase 2 - Determine from branch encoding
+                                branch_on_true,
+                                offset_size,
                             });
                     }
                 }

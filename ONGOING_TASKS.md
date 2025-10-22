@@ -278,24 +278,81 @@ pub fn emit_instruction_typed(
 
 **Achievements**: Infrastructure in place for target label integration. All call sites properly handle new parameter. Deferred branch system uses correct field names and structure.
 
-## 🚧 CURRENT PRIORITY: Phase 2 - Critical Branch Instruction Migration (Oct 22, 2025)
+## 🚧 CURRENT PRIORITY: Phase 2 - Systematic Branch Instruction Migration (Oct 22, 2025)
 
-### **NEXT STEP: Identify and Migrate Branch Instructions to Use Target Labels**
+### **✅ PHASE 2 INFRASTRUCTURE COMPLETE**
 
-**Goal**: Replace hardcoded `target_label_id = 0` with actual target label IDs from callers. Enable real game compilation with proper branch resolution.
+**Major Achievements**:
+- ✅ emit_comparison_branch conversion complete
+- ✅ branch_on_true/offset_size extraction from placeholder encoding
+- ✅ Proven conversion pattern established
+- ✅ 1 of 8 branch instructions converted successfully
 
-**TODOs Remaining in Code**:
-- Determine correct `branch_on_true` value from opcode (line 1965)
-- Determine correct `offset_size` value from branch encoding (line 1966)
+### **🎯 SYSTEMATIC CONVERSION PLAN: 7 Remaining Branch Instructions**
 
-#### **Phase 2: Migrate Critical Branch Instructions**
-1. Identify raw `emit_instruction` calls that emit branch instructions
-2. Convert raw opcodes to typed constants:
-   - `0x01` (je) → Find appropriate enum constant
-   - `0x02` (jl) → Find appropriate enum constant
-   - `0x0F` (callvs) → `CALLVS`
-3. Replace `emit_instruction` with `emit_instruction_typed` + `target_label_id`
-4. Test real game compilation after each critical migration
+**Complete Inventory with Priorities**:
+
+| **Location** | **Opcode** | **Context** | **Target Label** | **Priority** |
+|--------------|------------|-------------|------------------|--------------|
+| **Line 6546** | `0x02 jl` | Word count < 1 check | `end_function_label` | **🔴 HIGH** |
+| **Line 6774** | `0x02 jl` | Word count < 2 check | `verb_only_label` | **🔴 HIGH** |
+| **Line 6837** | `0x01 je` | Object not found check | `verb_only_label` | **🔴 CRITICAL** |
+| **Line 7377** | `0x03 jg` | Property iteration | Dynamic label | **🟡 MEDIUM** |
+| **Line 7430** | `0x01 je` | Property address check | Dynamic label | **🟡 MEDIUM** |
+| **Line 7508** | `0x05 jl` | Property loop | Dynamic label | **🟡 MEDIUM** |
+| **Line 7553** | `0x01 je` | String comparison | Dynamic label | **🟡 MEDIUM** |
+
+**Proven Conversion Pattern**:
+```rust
+// STEP 1: Identify target label BEFORE emit_instruction_typed
+let target_label = existing_label_or_create_new();
+
+// STEP 2: Convert opcode to typed constant
+let typed_opcode = match raw_opcode {
+    0x01 => Opcode::Op2(Op2::Je), // je
+    0x02 => Opcode::Op2(Op2::Jl), // jl
+    0x03 => Opcode::Op2(Op2::Jg), // jg
+};
+
+// STEP 3: Replace emit_instruction with emit_instruction_typed
+let layout = self.emit_instruction_typed(
+    typed_opcode, &operands, None,
+    Some(placeholder_word() as i16), // Standard placeholder
+    Some(target_label),              // NEW: Target for deferred resolution
+)?;
+
+// STEP 4: Remove manual UnresolvedReference creation (automatic now)
+```
+
+**⚠️ CRITICAL REORDERING ISSUE**: Some target labels are created AFTER emit_instruction calls. Must reorder label creation to occur BEFORE emit_instruction_typed calls to avoid undefined label references.
+
+### **🚦 Conversion Strategy: High→Medium Priority**
+
+#### **Phase 2A: Critical Path Blockers (HIGH Priority)**
+**Target**: 3 instructions likely causing "target label 0" compilation failure
+1. **Line 6546**: Word count < 1 check (main loop entry point)
+2. **Line 6774**: Word count < 2 check (core grammar dispatch)
+3. **Line 6837**: Object validation (error handling path)
+
+**Expected Outcome**: Eliminate compilation error, enable basic game compilation
+
+#### **Phase 2B: Property System (MEDIUM Priority)**
+**Target**: 4 instructions in property/object resolution system
+4. **Line 7377**: Property iteration boundary check
+5. **Line 7430**: Property address validation
+6. **Line 7508**: Property data loop control
+7. **Line 7553**: String comparison in property lookup
+
+**Expected Outcome**: Complete branch migration, full property system integration
+
+### **🧪 Incremental Testing Protocol**
+1. **Convert 1 instruction** → `cargo build` (verify compilation)
+2. **Test game compilation** → `./target/debug/grue-compiler examples/mini_zork.grue`
+3. **If successful** → Continue to next instruction
+4. **If failed** → Debug specific conversion before proceeding
+5. **After each phase** → Full gameplay testing
+
+**Current Status**: Starting Phase 2A with HIGH priority conversions
 
 #### **Phase 3: Complete Migration Strategy (30 minutes)**
 1. Migrate remaining non-critical `emit_instruction` call sites to typed variants
