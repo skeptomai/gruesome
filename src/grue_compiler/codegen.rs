@@ -3102,6 +3102,7 @@ impl ZMachineCodeGen {
             &[var_operand],
             Some(1), // Store result in variable 1
             None,
+            None,
         )?;
 
         // emit_instruction already pushed bytes to code_space
@@ -3186,6 +3187,7 @@ impl ZMachineCodeGen {
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder for string address
                 None,
                 None,
+                None,
             )?;
 
             // Add unresolved reference for string address using pre-calculated location
@@ -3208,6 +3210,7 @@ impl ZMachineCodeGen {
                 &[operand],
                 None,
                 None,
+                None,
             )?;
         }
 
@@ -3227,12 +3230,14 @@ impl ZMachineCodeGen {
                 &[operand],
                 None,
                 None,
+                None,
             )?;
         } else {
             // Return true (rtrue)
             self.emit_instruction_typed(
                 Opcode::Op0(Op0::Rtrue), // rtrue opcode (0OP:176)
                 &[],
+                None,
                 None,
                 None,
             )?;
@@ -3311,6 +3316,7 @@ impl ZMachineCodeGen {
         let layout = self.emit_instruction_typed(
             Opcode::Op1(Op1::Jump),                        // jump opcode (1OP:140)
             &[Operand::LargeConstant(placeholder_word())], // Placeholder for jump offset
+            None,
             None,
             None,
         )?;
@@ -3491,6 +3497,7 @@ impl ZMachineCodeGen {
                 &operands,
                 store_var,
                 None,
+                None,
             )?;
 
             // Add unresolved reference for function address using pre-calculated location
@@ -3578,6 +3585,7 @@ impl ZMachineCodeGen {
                         Opcode::OpVar(OpVar::CallVs), // call_vs raw opcode (VAR:224)
                         &operands,
                         store_var,
+                        None,
                         None,
                     )?;
 
@@ -3673,6 +3681,7 @@ impl ZMachineCodeGen {
                         &operands,
                         store_var,
                         None,
+                        None,
                     )?;
 
                     // Create UnresolvedReference for function address
@@ -3743,6 +3752,7 @@ impl ZMachineCodeGen {
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
                 None,                       // No store (returns true automatically)
                 None,                       // No branch
+                None,
             )?;
 
             // Add unresolved reference for the string address
@@ -3774,6 +3784,7 @@ impl ZMachineCodeGen {
                 &[operand],
                 None,
                 None,
+                None,
             )?;
 
             // new_line
@@ -3782,12 +3793,14 @@ impl ZMachineCodeGen {
                 &[],
                 None,
                 None,
+                None,
             )?;
 
             // rtrue (return 1)
             let layout3 = self.emit_instruction_typed(
                 Opcode::Op0(Op0::Rtrue), // rtrue opcode (0OP:176)
                 &[],
+                None,
                 None,
                 None,
             )?;
@@ -3820,6 +3833,7 @@ impl ZMachineCodeGen {
             &[],                       // No operands
             None,                      // No store
             None,                      // No branch
+            None,
         )?;
 
         log::debug!(
@@ -3856,6 +3870,7 @@ impl ZMachineCodeGen {
         let layout = self.emit_instruction_typed(
             Opcode::Op2(Op2::InsertObj),
             &[obj_operand, dest_operand],
+            None,
             None,
             None,
         )?;
@@ -3895,6 +3910,7 @@ impl ZMachineCodeGen {
             &[obj_operand],
             Some(0), // Store result to stack
             None,    // No branch
+            None,
         )?;
 
         // Register target mapping if provided
@@ -3942,6 +3958,7 @@ impl ZMachineCodeGen {
             &[obj_operand],
             Some(0),
             Some(2),
+            None,
         )?;
 
         // emit_instruction already pushed bytes to code_space
@@ -3987,6 +4004,7 @@ impl ZMachineCodeGen {
             &[obj_operand],
             Some(0),
             Some(2),
+            None,
         )?;
 
         // emit_instruction already pushed bytes to code_space
@@ -4029,6 +4047,7 @@ impl ZMachineCodeGen {
             Opcode::Op2(Op2::GetProp),
             &[obj_operand, prop_operand],
             Some(0),
+            None,
             None,
         )?;
 
@@ -4083,6 +4102,7 @@ impl ZMachineCodeGen {
                     &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
                     Some(0),
                     None,
+                    None,
                 )?;
                 return Ok(());
             }
@@ -4098,6 +4118,7 @@ impl ZMachineCodeGen {
                     &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
                     Some(0),
                     None,
+                    None,
                 )?;
                 return Ok(());
             }
@@ -4109,6 +4130,7 @@ impl ZMachineCodeGen {
             Opcode::Op2(Op2::TestAttr),
             &[obj_operand, attr_operand],
             Some(0),
+            None,
             None,
         )?;
 
@@ -4169,6 +4191,7 @@ impl ZMachineCodeGen {
         let layout = self.emit_instruction_typed(
             Opcode::Op2(Op2::SetAttr),
             &[obj_operand, attr_operand],
+            None,
             None,
             None,
         )?;
@@ -4232,6 +4255,7 @@ impl ZMachineCodeGen {
             &[obj_operand, attr_operand],
             None,
             None,
+            None,
         )?;
 
         // emit_instruction already pushed bytes to code_space
@@ -4268,6 +4292,7 @@ impl ZMachineCodeGen {
             Opcode::OpVar(OpVar::Random),
             &[range_operand],
             Some(0),
+            None,
             None,
         )?;
 
@@ -4314,6 +4339,7 @@ impl ZMachineCodeGen {
             &[obj_operand, Operand::SmallConstant(1)],
             Some(0),
             None,
+            None,
         )?;
 
         // emit_instruction already pushed bytes to code_space
@@ -4346,6 +4372,7 @@ impl ZMachineCodeGen {
         let layout = self.emit_instruction_typed(
             Opcode::Op1(Op1::PrintPaddr),
             &[Operand::LargeConstant(placeholder_word())],
+            None,
             None,
             None,
         )?;
@@ -4394,6 +4421,7 @@ impl ZMachineCodeGen {
             &[Operand::LargeConstant(placeholder_word())],
             None,
             None,
+            None,
         )?;
 
         // Add unresolved reference for the string address using pre-calculated location
@@ -4433,8 +4461,13 @@ impl ZMachineCodeGen {
 
         // Generate get_child instruction to get first child
         // FIXED: Use stack for get_object_contents builtin result (temporary value)
-        let layout =
-            self.emit_instruction_typed(Opcode::Op1(Op1::GetChild), &[obj_operand], Some(0), None)?;
+        let layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::GetChild),
+            &[obj_operand],
+            Some(0),
+            None,
+            None,
+        )?;
 
         // emit_instruction already pushed bytes to code_space
 
@@ -4471,8 +4504,13 @@ impl ZMachineCodeGen {
 
         // Check if object has children (get_child, compare with 0)
         // FIXED: Use stack for object_is_empty builtin result (temporary value)
-        let layout =
-            self.emit_instruction_typed(Opcode::Op1(Op1::GetChild), &[obj_operand], Some(0), None)?;
+        let layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::GetChild),
+            &[obj_operand],
+            Some(0),
+            None,
+            None,
+        )?;
 
         // emit_instruction already pushed bytes to code_space
 
@@ -4512,6 +4550,7 @@ impl ZMachineCodeGen {
             &[obj_operand, Operand::SmallConstant(3)],
             Some(0),
             None,
+            None,
         )?;
 
         // emit_instruction already pushed bytes to code_space
@@ -4548,6 +4587,7 @@ impl ZMachineCodeGen {
                 Opcode::OpVar(OpVar::Push),
                 &[Operand::SmallConstant(1)],
                 None, // Push doesn't use store_var (implicitly stores to stack)
+                None,
                 None,
             )?;
 
@@ -4706,6 +4746,7 @@ impl ZMachineCodeGen {
                     &[left_operand, right_operand],
                     Some(0), // Store to stack for immediate consumption
                     None,
+                    None,
                 )?;
 
                 // Phase C2: Convert binary operations in generate_binary_op to use push/pull
@@ -4746,6 +4787,7 @@ impl ZMachineCodeGen {
                     &[operand_val],
                     Some(0), // Store result on stack
                     None,    // No branch
+                    None,
                 )?;
 
                 // Phase C2: Convert unary NOT to use push/pull stack discipline
@@ -4765,6 +4807,7 @@ impl ZMachineCodeGen {
                     &[operand_val, Operand::LargeConstant(0xFFFF)], // multiply by -1 (0xFFFF = -1 in 16-bit signed)
                     Some(0),                                        // Store result on stack
                     None,                                           // No branch
+                    None,
                 )?;
 
                 // Phase C2: Convert arithmetic negation to use push/pull stack discipline
@@ -7541,6 +7584,7 @@ impl ZMachineCodeGen {
             &[Operand::Variable(7)], // Increment name index
             None,
             None,
+            None,
         )?;
 
         // Jump back to name loop start
@@ -7589,6 +7633,7 @@ impl ZMachineCodeGen {
         self.emit_instruction_typed(
             Opcode::Op1(Op1::Inc),   // 1OP:5 inc (NOT VAR:5 print_char!)
             &[Operand::Variable(4)], // Increment object counter
+            None,
             None,
             None,
         )?;
@@ -8127,7 +8172,7 @@ impl ZMachineCodeGen {
             IrUnaryOp::Minus => {
                 // Z-Machine arithmetic negation - subtract operand from 0
                 let operands = vec![Operand::Constant(0), operand];
-                self.emit_instruction_typed(Opcode::Op2(Op2::Sub), &operands, Some(0), None)?; // sub instruction
+                self.emit_instruction_typed(Opcode::Op2(Op2::Sub), &operands, Some(0), None, None)?; // sub instruction
 
                 // PHASE 3B INFRASTRUCTURE: Mark arithmetic negation for future push/pull implementation
                 // LIMITATION: Still uses Variable(0) - actual stack discipline not yet implemented
@@ -8196,7 +8241,7 @@ impl ZMachineCodeGen {
             }
             _ => {
                 // Arithmetic operations store result normally
-                self.emit_instruction_typed(opcode, &operands, store_var, None)?;
+                self.emit_instruction_typed(opcode, &operands, store_var, None, None)?;
             }
         }
 
@@ -8226,6 +8271,7 @@ impl ZMachineCodeGen {
             Opcode::Op2(Op2::And),
             &[left_op, right_op],
             Some(0), // Store to stack
+            None,
             None,
         )?;
 
@@ -8257,6 +8303,7 @@ impl ZMachineCodeGen {
             &[left_op, right_op],
             Some(0), // Store to stack
             None,
+            None,
         )?;
 
         log::debug!("Generated bitwise OR as temporary fallback for logical OR");
@@ -8279,7 +8326,7 @@ impl ZMachineCodeGen {
         let mut operands = vec![function_addr];
         operands.extend_from_slice(args);
 
-        self.emit_instruction_typed(opcode, &operands, store_var, None)?;
+        self.emit_instruction_typed(opcode, &operands, store_var, None, None)?;
         Ok(())
     }
 
@@ -8365,7 +8412,7 @@ impl ZMachineCodeGen {
         let store_var = Some(0x00); // Always store to stack (Variable 0)
 
         // Generate the call instruction with placeholder address
-        let layout = self.emit_instruction_typed(opcode, &operands, store_var, None)?;
+        let layout = self.emit_instruction_typed(opcode, &operands, store_var, None, None)?;
 
         // Add unresolved reference for function address using correct operand location
         let operand_location = layout
@@ -8441,7 +8488,13 @@ impl ZMachineCodeGen {
             // VAR:233 pull(variable) - pops value from Z-Machine stack into temporary global
             // Pull takes the target variable as an operand, not as store_var
             let pull_operands = vec![Operand::Variable(temp_global)];
-            self.emit_instruction_typed(Opcode::OpVar(OpVar::Pull), &pull_operands, None, None)?;
+            self.emit_instruction_typed(
+                Opcode::OpVar(OpVar::Pull),
+                &pull_operands,
+                None,
+                None,
+                None,
+            )?;
 
             log::debug!(
                 "PHASE_C2: IR ID {} resolved via pull to Variable({}) [Temporary global for stack value]",
@@ -9419,7 +9472,13 @@ impl ZMachineCodeGen {
         // VAR:232 push(value) - pushes current Variable(0) content onto Z-Machine stack
         // This implements proper LIFO stack discipline to eliminate Variable(0) collisions
         let push_operand = Operand::Variable(0);
-        self.emit_instruction_typed(Opcode::OpVar(OpVar::Push), &[push_operand], None, None)?;
+        self.emit_instruction_typed(
+            Opcode::OpVar(OpVar::Push),
+            &[push_operand],
+            None,
+            None,
+            None,
+        )?;
 
         // Track this IR ID as using push/pull sequence - DO NOT map to Variable(0)
         // Instead, this IR ID will trigger pull operations when consumed via resolve_ir_id_to_operand
@@ -9440,7 +9499,13 @@ impl ZMachineCodeGen {
         if self.push_pull_ir_ids.contains(&ir_id) {
             // VAR:233 pull(variable) - pops value from Z-Machine stack into Variable(0)
             let pull_operands = vec![Operand::Variable(0)];
-            self.emit_instruction_typed(Opcode::OpVar(OpVar::Pull), &pull_operands, None, None)?;
+            self.emit_instruction_typed(
+                Opcode::OpVar(OpVar::Pull),
+                &pull_operands,
+                None,
+                None,
+                None,
+            )?;
 
             log::debug!(
                 "PHASE_C1.1: IR ID {} using pull instruction in {} - value retrieved from Z-Machine stack to Variable(0)",
@@ -9711,6 +9776,7 @@ impl ZMachineCodeGen {
                     &[obj_operand, parent_operand],
                     None, // No result
                     None, // No branch
+                    None,
                 )?;
 
                 log::debug!(
@@ -10836,6 +10902,7 @@ impl ZMachineCodeGen {
             &operands,
             if target.is_some() { Some(0) } else { None }, // Store to stack if target exists
             None,
+            None,
         )?;
 
         // Create UnresolvedReference for the builtin function address
@@ -10895,6 +10962,7 @@ impl ZMachineCodeGen {
                 &[Operand::Variable(0), Operand::SmallConstant(0)], // Read from stack, OR with 0
                 Some(result_var),                                   // Store to result_var
                 None,
+                None,
             )?;
 
             // Also push back to stack for immediate consumption
@@ -10902,6 +10970,7 @@ impl ZMachineCodeGen {
                 Opcode::Op2(Op2::Or),
                 &[Operand::Variable(result_var), Operand::SmallConstant(0)],
                 Some(0), // Push to stack
+                None,
                 None,
             )?;
         }
@@ -12216,12 +12285,14 @@ impl ZMachineCodeGen {
             ],
             Some(2), // store result in local_2
             None,
+            None,
         )?;
 
         // Return local_2
         self.emit_instruction_typed(
             Opcode::Op1(Op1::Ret),
             &[Operand::Variable(2)], // return value from local_2
+            None,
             None,
             None,
         )?;
@@ -12267,9 +12338,16 @@ impl ZMachineCodeGen {
             &[Operand::Variable(1), Operand::LargeConstant(0x3FFF)],
             Some(2),
             None,
+            None,
         )?;
 
-        self.emit_instruction_typed(Opcode::Op1(Op1::Ret), &[Operand::Variable(2)], None, None)?;
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::Ret),
+            &[Operand::Variable(2)],
+            None,
+            None,
+            None,
+        )?;
 
         self.builtin_functions
             .insert("exit_get_message".to_string(), func_id);
@@ -12333,6 +12411,7 @@ impl ZMachineCodeGen {
             &[Operand::Variable(1), Operand::SmallConstant(0)],
             None,
             Some(-1), // Branch on true - will be resolved to return_true_label
+            None,
         )?;
 
         // Create UnresolvedReference for the branch
@@ -12355,6 +12434,7 @@ impl ZMachineCodeGen {
             &[Operand::SmallConstant(0)],
             None,
             None,
+            None,
         )?;
 
         // Branch target: value == 0, return 1
@@ -12365,6 +12445,7 @@ impl ZMachineCodeGen {
         self.emit_instruction_typed(
             Opcode::Op1(Op1::Ret),
             &[Operand::SmallConstant(1)],
+            None,
             None,
             None,
         )?;
@@ -12415,6 +12496,7 @@ impl ZMachineCodeGen {
             &[Operand::Variable(1), Operand::LargeConstant(0x4000)],
             None,
             Some(-1), // Branch on true - will be resolved to return_false_label
+            None,
         )?;
 
         // Create UnresolvedReference for the branch
@@ -12437,6 +12519,7 @@ impl ZMachineCodeGen {
             &[Operand::SmallConstant(1)],
             None,
             None,
+            None,
         )?;
 
         // Branch target: value < 0x4000, not blocked, return 0
@@ -12447,6 +12530,7 @@ impl ZMachineCodeGen {
         self.emit_instruction_typed(
             Opcode::Op1(Op1::Ret),
             &[Operand::SmallConstant(0)],
+            None,
             None,
             None,
         )?;
@@ -12498,6 +12582,7 @@ impl ZMachineCodeGen {
             &[Operand::Variable(1), Operand::LargeConstant(0x4000)],
             None,
             Some(-1), // Branch on true - will be resolved to return_false_label
+            None,
         )?;
 
         // Create UnresolvedReference for the branch
@@ -12520,6 +12605,7 @@ impl ZMachineCodeGen {
             &[Operand::SmallConstant(1)],
             None,
             None,
+            None,
         )?;
 
         // Branch target: value < 0x4000, no message, return 0
@@ -12530,6 +12616,7 @@ impl ZMachineCodeGen {
         self.emit_instruction_typed(
             Opcode::Op1(Op1::Ret),
             &[Operand::SmallConstant(0)],
+            None,
             None,
             None,
         )?;
@@ -12641,6 +12728,7 @@ impl ZMachineCodeGen {
             ],
             Some(3), // store in local_3 (directions_addr)
             None,
+            None,
         )?;
 
         // Step 2: Check if property exists (addr == 0 means no exits)
@@ -12676,6 +12764,7 @@ impl ZMachineCodeGen {
             ],
             Some(4), // store in local_4 (types_addr)
             None,
+            None,
         )?;
 
         self.emit_instruction_typed(
@@ -12686,6 +12775,7 @@ impl ZMachineCodeGen {
             ],
             Some(5), // store in local_5 (data_addr)
             None,
+            None,
         )?;
 
         // Step 4: Get length of exit_directions array and calculate num_exits
@@ -12693,6 +12783,7 @@ impl ZMachineCodeGen {
             Opcode::Op1(Op1::GetPropLen),
             &[Operand::Variable(3)], // local_3 (directions_addr)
             Some(7),                 // store in local_7 (num_exits)
+            None,
             None,
         )?;
 
@@ -12702,6 +12793,7 @@ impl ZMachineCodeGen {
             &[Operand::Variable(7), Operand::SmallConstant(2)],
             Some(7), // store quotient in local_7 (num_exits)
             None,
+            None,
         )?;
 
         // Step 5: Initialize loop counter (index = 0)
@@ -12709,6 +12801,7 @@ impl ZMachineCodeGen {
             Opcode::Op2(Op2::Store),
             &[Operand::Variable(6), Operand::SmallConstant(0)], // local_6 (index) = 0
             None,                                               // Store does NOT use store_var
+            None,
             None,
         )?;
 
@@ -12750,6 +12843,7 @@ impl ZMachineCodeGen {
             ],
             Some(8), // store in local_8 (temp)
             None,
+            None,
         )?;
 
         // Step 8: Compare current direction with parameter -> found_label
@@ -12761,6 +12855,7 @@ impl ZMachineCodeGen {
             ],
             None,
             Some(-1), // Branch on true (if equal, goto found)
+            None,
         )?;
 
         self.reference_context
@@ -12782,12 +12877,14 @@ impl ZMachineCodeGen {
             &[Operand::Variable(6), Operand::SmallConstant(1)],
             Some(6), // store back to local_6 (index)
             None,
+            None,
         )?;
 
         // Jump back to loop start
         let loop_jump_layout = self.emit_instruction_typed(
             Opcode::Op1(Op1::Jump),
             &[Operand::LargeConstant(placeholder_word())],
+            None,
             None,
             None,
         )?;
@@ -12818,6 +12915,7 @@ impl ZMachineCodeGen {
             ],
             Some(8), // store in local_8 (type_byte)
             None,
+            None,
         )?;
 
         // mul type, 16384 -> local_8 (type_shifted, 16384 = 2^14)
@@ -12825,6 +12923,7 @@ impl ZMachineCodeGen {
             Opcode::Op2(Op2::Mul),
             &[Operand::Variable(8), Operand::LargeConstant(16384)],
             Some(8), // store in local_8 (type_shifted)
+            None,
             None,
         )?;
 
@@ -12837,6 +12936,7 @@ impl ZMachineCodeGen {
             ],
             Some(9), // store in local_9 (result)
             None,
+            None,
         )?;
 
         // or type_shifted, data -> local_9 (result)
@@ -12845,12 +12945,14 @@ impl ZMachineCodeGen {
             &[Operand::Variable(8), Operand::Variable(9)],
             Some(9), // store in local_9 (result)
             None,
+            None,
         )?;
 
         // Return result
         self.emit_instruction_typed(
             Opcode::Op1(Op1::Ret),
             &[Operand::Variable(9)], // return local_9 (result)
+            None,
             None,
             None,
         )?;
@@ -12863,6 +12965,7 @@ impl ZMachineCodeGen {
         self.emit_instruction_typed(
             Opcode::Op1(Op1::Ret),
             &[Operand::SmallConstant(0)], // return 0 (not found)
+            None,
             None,
             None,
         )?;

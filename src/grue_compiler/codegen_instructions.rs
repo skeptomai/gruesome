@@ -6,7 +6,7 @@ use crate::grue_compiler::codegen::{
     InstructionForm, InstructionLayout, Operand, OperandType, UNIMPLEMENTED_OPCODE,
 };
 use crate::grue_compiler::error::CompilerError;
-use crate::grue_compiler::ir::{IrInstruction, IrValue};
+use crate::grue_compiler::ir::{IrId, IrInstruction, IrValue};
 use crate::grue_compiler::opcodes::*;
 use log::debug;
 
@@ -352,7 +352,7 @@ impl ZMachineCodeGen {
                     None
                 };
 
-                self.emit_instruction_typed(CALLVS, &operands, store_var, None)?;
+                self.emit_instruction_typed(CALLVS, &operands, store_var, None, None)?;
 
                 // Register call result target for proper LoadVar resolution
                 if let Some(target_id) = target {
@@ -369,10 +369,10 @@ impl ZMachineCodeGen {
                     // Return with value - use ret opcode with operand
                     let return_operand = self.resolve_ir_id_to_operand(*ir_value)?;
                     let operands = vec![return_operand]; // Return resolved value
-                    self.emit_instruction_typed(RET, &operands, None, None)?;
+                    self.emit_instruction_typed(RET, &operands, None, None, None)?;
                 } else {
                     // Return without value - rtrue (no operands)
-                    self.emit_instruction_typed(RTRUE, &[], None, None)?;
+                    self.emit_instruction_typed(RTRUE, &[], None, None, None)?;
                 }
             }
 
@@ -470,7 +470,13 @@ impl ZMachineCodeGen {
                 // Bug: Commit 48fccdf accidentally changed this to Some(0), causing all LoadVar
                 // operations to store to Variable(0) (stack) instead of unique global variables.
                 // This broke navigation because player object resolved to Variable(0) instead of Variable(217).
-                self.emit_instruction_typed(LOAD, &[var_operand], Some(result_var as u8), None)?;
+                self.emit_instruction_typed(
+                    LOAD,
+                    &[var_operand],
+                    Some(result_var as u8),
+                    None,
+                    None,
+                )?;
 
                 // Track this IR ID as using the allocated global (NOT stack)
                 // CRITICAL FIX (Oct 19, 2025): Map to allocated global variable, NOT Variable(0)
@@ -517,7 +523,13 @@ impl ZMachineCodeGen {
 
                 // Store to variable using 2OP:13 store instruction
                 let var_operand = Operand::SmallConstant(var_num);
-                self.emit_instruction_typed(STORE, &[var_operand, value_operand], None, None)?;
+                self.emit_instruction_typed(
+                    STORE,
+                    &[var_operand, value_operand],
+                    None,
+                    None,
+                    None,
+                )?;
                 log::debug!(
                     "StoreVar: Stored value from IR ID {} to Z-Machine variable {} (var_id {})",
                     source,
@@ -579,6 +591,7 @@ impl ZMachineCodeGen {
                         &[Operand::SmallConstant(0), Operand::SmallConstant(1)], // Loadw requires 2 operands
                         Some(0), // Store result to stack
                         None,
+                        None,
                     )?;
                 } else {
                     // Non-empty array: For now, just return a placeholder null value
@@ -597,6 +610,7 @@ impl ZMachineCodeGen {
                     self.emit_instruction_typed(
                         Opcode::OpVar(OpVar::Push),
                         &[Operand::SmallConstant(0)],
+                        None,
                         None,
                         None,
                     )?;
@@ -697,6 +711,7 @@ impl ZMachineCodeGen {
                     &[obj_operand, Operand::SmallConstant(prop_num)],
                     Some(result_var), // Store to allocated global variable (not stack!)
                     None,
+                    None,
                 )?;
                 log::debug!("GetProperty: IR ID {} -> global var {}", target, result_var);
             }
@@ -761,6 +776,7 @@ impl ZMachineCodeGen {
                     &[obj_operand, prop_operand],
                     Some(result_var), // Store to allocated global variable
                     None,
+                    None,
                 )?;
                 log::debug!(
                     "GetPropertyByNumber: IR ID {} -> global var {}",
@@ -781,7 +797,13 @@ impl ZMachineCodeGen {
                     Operand::Constant(*property_num as u16), // Property number
                     self.resolve_ir_id_to_operand(*value)?,  // Value (properly resolved)
                 ];
-                self.emit_instruction_typed(Opcode::OpVar(OpVar::PutProp), &operands, None, None)?;
+                self.emit_instruction_typed(
+                    Opcode::OpVar(OpVar::PutProp),
+                    &operands,
+                    None,
+                    None,
+                    None,
+                )?;
                 log::debug!(
                     "Generated put_prop for property number {} with resolved object",
                     property_num
@@ -805,6 +827,7 @@ impl ZMachineCodeGen {
                     Opcode::Op2(Op2::TestAttr),
                     &[obj_operand, prop_operand],
                     Some(0), // Store to stack
+                    None,
                     None,
                 )?;
                 log::debug!("TestProperty: IR ID {} -> stack", target);
@@ -834,6 +857,7 @@ impl ZMachineCodeGen {
                     &[obj_operand, prop_operand],
                     Some(0), // Store to stack
                     None,
+                    None,
                 )?;
                 log::debug!("GetNextProperty: IR ID {} -> stack", target);
             }
@@ -850,6 +874,7 @@ impl ZMachineCodeGen {
                     Opcode::OpVar(OpVar::Push),
                     &[Operand::LargeConstant(0)],
                     None, // Push doesn't use store_var
+                    None,
                     None,
                 )?;
                 log::debug!("ArrayEmpty: IR ID {} -> stack (placeholder: false)", target);
@@ -871,6 +896,7 @@ impl ZMachineCodeGen {
                     Opcode::OpVar(OpVar::Push),
                     &[Operand::LargeConstant(1000)], // Placeholder string ID
                     None,                            // Push doesn't use store_var
+                    None,
                     None,
                 )?;
                 log::debug!(
@@ -903,6 +929,7 @@ impl ZMachineCodeGen {
                     &[Operand::SmallConstant(0)],
                     None,
                     None,
+                    None,
                 )?;
                 log::debug!("ArrayRemove: IR ID {} -> stack (placeholder: 0)", target);
             }
@@ -914,6 +941,7 @@ impl ZMachineCodeGen {
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
                     &[Operand::SmallConstant(0)],
+                    None,
                     None,
                     None,
                 )?;
@@ -933,6 +961,7 @@ impl ZMachineCodeGen {
                     &[Operand::SmallConstant(0)],
                     None,
                     None,
+                    None,
                 )?;
                 log::debug!("ArrayContains: IR ID {} -> stack (placeholder: 0)", target);
             }
@@ -948,6 +977,7 @@ impl ZMachineCodeGen {
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
                     &[Operand::LargeConstant(65535)],
+                    None,
                     None,
                     None,
                 )?;
@@ -967,6 +997,7 @@ impl ZMachineCodeGen {
                     &[Operand::SmallConstant(0)],
                     None,
                     None,
+                    None,
                 )?;
                 log::debug!("ArrayFilter: IR ID {} -> stack (placeholder: 0)", target);
             }
@@ -982,6 +1013,7 @@ impl ZMachineCodeGen {
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
                     &[Operand::SmallConstant(0)],
+                    None,
                     None,
                     None,
                 )?;
@@ -1001,6 +1033,7 @@ impl ZMachineCodeGen {
                     &[Operand::SmallConstant(0)],
                     None,
                     None,
+                    None,
                 )?;
                 log::debug!("ArrayFind: IR ID {} -> stack (placeholder: 0)", target);
             }
@@ -1018,6 +1051,7 @@ impl ZMachineCodeGen {
                     &[Operand::SmallConstant(0)],
                     None,
                     None,
+                    None,
                 )?;
                 log::debug!("ArrayJoin: IR ID {} -> stack (placeholder: 0)", target);
             }
@@ -1029,6 +1063,7 @@ impl ZMachineCodeGen {
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
                     &[Operand::SmallConstant(0)],
+                    None,
                     None,
                     None,
                 )?;
@@ -1046,6 +1081,7 @@ impl ZMachineCodeGen {
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Push),
                     &[Operand::SmallConstant(0)],
+                    None,
                     None,
                     None,
                 )?;
@@ -1107,6 +1143,7 @@ impl ZMachineCodeGen {
                     &[array_op.clone(), Operand::SmallConstant(1)],
                     Some(0), // Store to stack
                     None,
+                    None,
                 )?;
 
                 // Now store: storew (stack), index, value
@@ -1114,6 +1151,7 @@ impl ZMachineCodeGen {
                 self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::Storew),
                     &[Operand::Variable(0), index_op, value_op], // Variable 0 = stack
+                    None,
                     None,
                     None,
                 )?;
@@ -1228,6 +1266,7 @@ impl ZMachineCodeGen {
                     &[obj_operand],
                     Some(result_var), // Store result to allocated global variable
                     None,             // No branch
+                    None,
                 )?;
 
                 log::debug!(
@@ -1254,6 +1293,7 @@ impl ZMachineCodeGen {
                     &[obj_operand, dest_operand],
                     None, // No result
                     None, // No branch
+                    None,
                 )?;
             }
 
@@ -1819,12 +1859,19 @@ impl ZMachineCodeGen {
     /// // Or:
     /// self.emit_instruction_typed(QUIT, &[], None, None)?;
     /// ```
+    /// Emit a typed Z-Machine instruction with comprehensive validation and optional target label integration.
+    ///
+    /// Parameters:
+    /// - `target_label_id_param`: NEW - Optional target label ID for deferred branch resolution.
+    ///   When provided with a branch instruction, creates a DeferredBranchPatch for two-pass compilation.
+    ///   Pass `None` for non-branch instructions or immediate branch resolution.
     pub fn emit_instruction_typed(
         &mut self,
         opcode: super::opcodes::Opcode,
         operands: &[Operand],
         store_var: Option<u8>,
         branch_offset: Option<i16>,
+        target_label_id_param: Option<IrId>,
     ) -> Result<InstructionLayout, CompilerError> {
         #[allow(unused_imports)]
         use super::opcodes::OpcodeMetadata;
@@ -1929,6 +1976,29 @@ impl ZMachineCodeGen {
                 opcode, start_address
             ))),
         }
+        .map(|layout| {
+            // PHASE 1 INTEGRATION: Deferred Branch Target Label Support
+            // When target_label_id is provided with a branch instruction, register it for
+            // two-pass resolution instead of requiring immediate branch offset calculation.
+            if let Some(target_label_id) = target_label_id_param {
+                if branch_offset.is_some() {
+                    // This is a branch instruction with a target label ID
+                    // Create DeferredBranchPatch for second-pass resolution
+                    if let Some(branch_location) = layout.branch_location {
+                        self.two_pass_state
+                            .deferred_branches
+                            .push(DeferredBranchPatch {
+                                instruction_address: start_address,
+                                branch_offset_location: branch_location,
+                                target_label_id,
+                                branch_on_true: true, // TODO: Phase 2 - Determine from opcode analysis
+                                offset_size: 2, // TODO: Phase 2 - Determine from branch encoding
+                            });
+                    }
+                }
+            }
+            layout
+        })
     }
 
     ///
@@ -3399,7 +3469,7 @@ impl ZMachineCodeGen {
         // Emit the call instruction (VAR form call_vs)
         // CRITICAL: Use raw opcode 0x00, NOT encoded byte 0xE0
         // emit_instruction will determine the VAR form encoding
-        let layout = self.emit_instruction_typed(CALLVS, &operands, store_var, None)?;
+        let layout = self.emit_instruction_typed(CALLVS, &operands, store_var, None, None)?;
 
         // CRITICAL: Register function reference for patching
         if let Some(operand_loc) = layout.operand_location {
@@ -3465,6 +3535,7 @@ impl ZMachineCodeGen {
             ],
             None,
             None,
+            None,
         )?;
 
         // Jump to end
@@ -3478,6 +3549,7 @@ impl ZMachineCodeGen {
                 crate::grue_compiler::codegen::Operand::SmallConstant(0),
                 crate::grue_compiler::codegen::Operand::Variable(0),
             ],
+            None,
             None,
             None,
         )?;
@@ -3530,6 +3602,7 @@ impl ZMachineCodeGen {
             ],
             None,
             None,
+            None,
         )?;
 
         // Jump to end
@@ -3543,6 +3616,7 @@ impl ZMachineCodeGen {
                 crate::grue_compiler::codegen::Operand::SmallConstant(1),
                 crate::grue_compiler::codegen::Operand::Variable(0),
             ],
+            None,
             None,
             None,
         )?;
@@ -3628,6 +3702,7 @@ impl ZMachineCodeGen {
                     &[left_operand, right_operand],
                     None,
                     Some(placeholder_word() as i16),
+                    None,
                 )?;
 
                 // Register branch reference for later resolution
@@ -3707,6 +3782,7 @@ impl ZMachineCodeGen {
                         crate::grue_compiler::codegen::Operand::SmallConstant(property_num),
                     ],
                     Some(0), // Store result on stack
+                    None,
                     None,
                 )?;
 

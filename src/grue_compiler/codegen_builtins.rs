@@ -58,6 +58,7 @@ impl ZMachineCodeGen {
                             &[Operand::LargeConstant(placeholder_word())],
                             None,
                             None,
+                            None,
                         )?;
 
                         // Add unresolved reference for the string address using layout
@@ -93,6 +94,7 @@ impl ZMachineCodeGen {
                                 &[operand],
                                 None,
                                 None,
+                                None,
                             )?;
                         } else {
                             // Non-property value - use print_num
@@ -106,6 +108,7 @@ impl ZMachineCodeGen {
                                 &[operand],
                                 None,
                                 None,
+                                None,
                             )?;
                         }
                     }
@@ -113,7 +116,7 @@ impl ZMachineCodeGen {
             }
 
             // Emit new_line after all parts
-            self.emit_instruction_typed(NEWLINE, &[], None, None)?;
+            self.emit_instruction_typed(NEWLINE, &[], None, None, None)?;
 
             return Ok(());
         }
@@ -137,6 +140,7 @@ impl ZMachineCodeGen {
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
                 None,                                          // No store
                 None,                                          // No branch
+                None,
             )?;
 
             // Add unresolved reference for the string address using pre-calculated location
@@ -157,6 +161,7 @@ impl ZMachineCodeGen {
                 &[],  // No operands
                 None, // No store
                 None, // No branch
+                None,
             )?;
         } else {
             // This is not a string literal - it's a dynamic expression that needs runtime evaluation
@@ -182,6 +187,7 @@ impl ZMachineCodeGen {
                             &[operand], // The property address (from get_prop)
                             None,       // No store
                             None,       // No branch
+                            None,
                         )?;
 
                         // Emit new_line instruction after print_paddr for proper line breaks
@@ -190,6 +196,7 @@ impl ZMachineCodeGen {
                             &[],  // No operands
                             None, // No store
                             None, // No branch
+                            None,
                         )?;
                     } else {
                         // Not from property access - generate print_num for numeric values
@@ -204,6 +211,7 @@ impl ZMachineCodeGen {
                             &[operand], // The resolved operand (Variable(0) is now valid)
                             None,       // No store
                             None,       // No branch
+                            None,
                         )?;
                     }
                 }
@@ -228,6 +236,7 @@ impl ZMachineCodeGen {
                         &[Operand::LargeConstant(placeholder_word())], // Placeholder address
                         None,                                          // No store
                         None,                                          // No branch
+                        None,
                     )?;
 
                     // Add unresolved reference for the string address
@@ -305,10 +314,11 @@ impl ZMachineCodeGen {
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
                 None,                                          // No store
                 None,                                          // No branch
+                None,
             )?;
 
             // Add new_line instruction
-            let layout2 = self.emit_instruction_typed(NEWLINE, &[], None, None)?;
+            let layout2 = self.emit_instruction_typed(NEWLINE, &[], None, None, None)?;
 
             // Add unresolved reference for the string address
             let operand_address = layout1
@@ -339,10 +349,11 @@ impl ZMachineCodeGen {
                 &[operand],
                 None,
                 None,
+                None,
             )?;
 
             // new_line
-            let layout2 = self.emit_instruction_typed(NEWLINE, &[], None, None)?;
+            let layout2 = self.emit_instruction_typed(NEWLINE, &[], None, None, None)?;
 
             log::debug!(
                 "generate_print_ret_builtin: Generated print_num+newline for computed value {} ({} bytes total)",
@@ -364,7 +375,7 @@ impl ZMachineCodeGen {
         }
 
         // Generate new_line instruction (0OP:187, opcode 0x8B)
-        let layout = self.emit_instruction_typed(NEWLINE, &[], None, None)?;
+        let layout = self.emit_instruction_typed(NEWLINE, &[], None, None, None)?;
 
         log::debug!(
             "generate_new_line_builtin: Generated new_line ({} bytes)",
@@ -418,6 +429,7 @@ impl ZMachineCodeGen {
             &[object_operand, destination_operand],
             None, // No store
             None, // No branch
+            None,
         )?;
 
         log::debug!("move builtin: generated insert_obj with safe operands");
@@ -445,7 +457,7 @@ impl ZMachineCodeGen {
             self.resolve_ir_id_to_operand(object_id)?, // Object
             self.resolve_ir_id_to_operand(attr_num)?,  // Attribute number
         ];
-        self.emit_instruction_typed(Opcode::Op2(Op2::TestAttr), &operands, Some(0), None)?; // Store result in stack
+        self.emit_instruction_typed(Opcode::Op2(Op2::TestAttr), &operands, Some(0), None, None)?; // Store result in stack
 
         Ok(())
     }
@@ -467,7 +479,7 @@ impl ZMachineCodeGen {
             self.resolve_ir_id_to_operand(object_id)?, // Object
             self.resolve_ir_id_to_operand(attr_num)?,  // Attribute number
         ];
-        self.emit_instruction_typed(Opcode::Op2(Op2::SetAttr), &operands, None, None)?; // No return value
+        self.emit_instruction_typed(Opcode::Op2(Op2::SetAttr), &operands, None, None, None)?; // No return value
 
         Ok(())
     }
@@ -489,7 +501,7 @@ impl ZMachineCodeGen {
             self.resolve_ir_id_to_operand(object_id)?, // Object
             self.resolve_ir_id_to_operand(attr_num)?,  // Attribute number
         ];
-        self.emit_instruction_typed(Opcode::Op2(Op2::ClearAttr), &operands, None, None)?; // No return value
+        self.emit_instruction_typed(Opcode::Op2(Op2::ClearAttr), &operands, None, None, None)?; // No return value
 
         Ok(())
     }
@@ -512,7 +524,7 @@ impl ZMachineCodeGen {
             self.resolve_ir_id_to_operand(prop_num)?,  // Property number
         ];
         // Use local variable 4 for get_child results
-        self.emit_instruction_typed(Opcode::Op2(Op2::GetProp), &operands, Some(4), None)?; // Store result in local var 4
+        self.emit_instruction_typed(Opcode::Op2(Op2::GetProp), &operands, Some(4), None, None)?; // Store result in local var 4
 
         Ok(())
     }
@@ -541,6 +553,7 @@ impl ZMachineCodeGen {
             &[object_operand],
             Some(0), // Store result on stack
             None,    // No branch
+            None,
         )?;
 
         // Do NOT add return instruction here - this is inline code generation
@@ -572,6 +585,7 @@ impl ZMachineCodeGen {
             &[object_operand],
             Some(0), // Store result on stack
             None,    // No branch
+            None,
         )?;
 
         // Do NOT add return instruction here - this is inline code generation
@@ -596,6 +610,7 @@ impl ZMachineCodeGen {
             &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
             Some(0),                                                 // Store result on stack
             None,
+            None,
         )?;
 
         Ok(())
@@ -618,6 +633,7 @@ impl ZMachineCodeGen {
         let layout = self.emit_instruction_typed(
             PRINTPADDR,
             &[Operand::LargeConstant(placeholder_word())], // Placeholder address
+            None,
             None,
             None,
         )?;
@@ -655,6 +671,7 @@ impl ZMachineCodeGen {
         let layout = self.emit_instruction_typed(
             PRINTPADDR,
             &[Operand::LargeConstant(placeholder_word())], // Placeholder address
+            None,
             None,
             None,
         )?;
@@ -735,6 +752,7 @@ impl ZMachineCodeGen {
             &[range_operand], // Range operand
             store_var,        // Store result in variable 0 (stack)
             None,             // No branch
+            None,
         )?;
 
         // If we have a target, track it as using stack variable 0 (where RANDOM stores result)
@@ -818,6 +836,7 @@ impl ZMachineCodeGen {
                         &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
                         Some(0), // Store to stack (variable 0)
                         None,    // No branch
+                        None,
                     )?;
 
                     log::debug!(
@@ -844,6 +863,7 @@ impl ZMachineCodeGen {
                         &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
                         Some(0), // Store to stack (variable 0)
                         None,    // No branch
+                        None,
                     )?;
                 }
             }
@@ -876,6 +896,7 @@ impl ZMachineCodeGen {
                 &[Operand::LargeConstant(0), Operand::SmallConstant(0)], // 0 | 0 = 0 (false)
                 Some(result_var),
                 None,
+                None,
             )?;
         }
 
@@ -905,6 +926,7 @@ impl ZMachineCodeGen {
                 Opcode::Op2(Op2::Or),
                 &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
                 Some(result_var),
+                None,
                 None,
             )?;
         }
@@ -1186,6 +1208,7 @@ impl ZMachineCodeGen {
             &[],  // No operands
             None, // No store
             None, // No branch
+            None,
         )?;
 
         Ok(())
@@ -1207,6 +1230,7 @@ impl ZMachineCodeGen {
             &[Operand::LargeConstant(0xFFFE)], // Magic marker for breakpoint
             None,                              // No store
             None,                              // No branch
+            None,
         )?;
 
         log::debug!(
