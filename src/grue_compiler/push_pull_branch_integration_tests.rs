@@ -730,7 +730,7 @@ fn test_real_high_stress_push_pull_branch_integration() -> Result<(), CompilerEr
     // Phase 5: STRESS TEST VERIFICATION
     // Verify that all branches resolved correctly despite many push/pull insertions
 
-    for (i, (branch_address, branch_offset_location, _label_id)) in
+    for (i, (_branch_address, branch_offset_location, _label_id)) in
         branch_patches.iter().enumerate()
     {
         let branch_high_byte = codegen.code_space[*branch_offset_location];

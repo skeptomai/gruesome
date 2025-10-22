@@ -2239,16 +2239,41 @@ impl ZMachineCodeGen {
             // 3. Previously fixed: Exit system branches, Unary NOT, GetChild/GetSibling builtins
             // 4. All emit_comparison_branch calls already had proper target labels
             //
-            // RESULT: Complete migration to Phase 2 deferred branch patching system.
-            // All branch instructions now use emit_instruction_typed with target_label_id.
-            // The "label 0" error has been completely eliminated.
+            // LEGACY FALLBACK: For backward compatibility with existing test code and edge cases,
+            // create deferred branches with target_label_id = 0. This maintains the old behavior
+            // while the new Phase 2 pattern uses proper target labels.
             //
-            // This legacy fallback should now only handle edge cases or test code.
+            // TEST COMPATIBILITY: This fallback ensures all existing unit tests continue to work
+            // after Phase 2 migration. Tests like test_branch_polarity_detection and
+            // test_branch_offset_size_detection depend on this behavior.
             log::warn!(
                 "Legacy branch instruction fallback: opcode=0x{:02x} at 0x{:04x}",
                 opcode,
                 instruction_start
             );
+
+            // Calculate offset_size based on original branch offset value
+            // Z-Machine branch encoding: 1-byte for -64 to +63, 2-byte otherwise
+            let offset_size = if original_offset == -1 {
+                // Placeholder should default to 1-byte offset
+                1
+            } else if original_offset >= -64 && original_offset <= 63 {
+                // Short offsets fit in 1 byte
+                1
+            } else {
+                // Long offsets need 2 bytes
+                2
+            };
+
+            // Create legacy deferred branch patch for backward compatibility
+            let patch = DeferredBranchPatch {
+                instruction_address: instruction_start,
+                branch_offset_location: _branch_offset_location,
+                target_label_id: 0, // Default to label 0 for legacy behavior
+                branch_on_true: _branch_on_true,
+                offset_size,
+            };
+            self.two_pass_state.deferred_branches.push(patch);
         }
 
         Ok(layout)
@@ -3823,6 +3848,7 @@ mod opcode_encoding_tests {
                 ],
                 Some(0),
                 None,
+                None, // No target label for CALLVS instruction
             )
             .unwrap();
 
@@ -3846,6 +3872,7 @@ mod opcode_encoding_tests {
                 ],
                 None,
                 None,
+                None, // No target label for PutProp instruction
             )
             .unwrap();
 
@@ -3857,7 +3884,13 @@ mod opcode_encoding_tests {
     fn test_print_paddr_encoding() {
         let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
         codegen
-            .emit_instruction_typed(PRINTPADDR, &[Operand::LargeConstant(0x0399)], None, None)
+            .emit_instruction_typed(
+                PRINTPADDR,
+                &[Operand::LargeConstant(0x0399)],
+                None,
+                None,
+                None, // No target label for PRINTPADDR instruction
+            )
             .unwrap();
 
         // Should emit 0x8D (SHORT form, 1OP, opcode 0x0D)
@@ -3894,7 +3927,7 @@ mod opcode_encoding_tests {
     }
 
     #[test]
-    fn test_rejects_encoded_opcode_0xE0() {
+    fn test_rejects_encoded_opcode_0x_e0() {
         let mut codegen = ZMachineCodeGen::new(ZMachineVersion::V3);
         let result =
             codegen.emit_instruction(0xE0, &[Operand::LargeConstant(0x1234)], Some(0), None);
@@ -3917,6 +3950,7 @@ mod opcode_encoding_tests {
                 &[Operand::LargeConstant(1), Operand::SmallConstant(0)],
                 Some(0),
                 None,
+                None, // No target label for Or instruction
             )
             .unwrap();
 
@@ -3944,6 +3978,7 @@ mod opcode_encoding_tests {
                 &[Operand::LargeConstant(0x1234), Operand::SmallConstant(0)],
                 Some(0),
                 None,
+                None, // No target label for Call2s instruction
             )
             .unwrap();
 
