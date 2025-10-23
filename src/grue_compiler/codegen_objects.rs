@@ -40,14 +40,14 @@ impl ZMachineCodeGen {
 
         // PROPERTY 6 PATTERN DETECTION: Track writes of Property 6 size byte (0x26)
         if byte == 0x26 {
-            log::error!(
+            log::debug!(
                 "🚨 PROPERTY_6_SIZE_BYTE: Writing Property 6 size byte 0x26 at offset 0x{:04x}",
                 offset
             );
             // Check if this is followed by Property 6 data pattern
             if offset + 2 < self.object_space.len() {
                 // We can't see future writes yet, but log this for tracking
-                log::error!(
+                log::debug!(
                     "🚨 PROPERTY_6_SIZE_BYTE: Location could be start of Property 6 pattern"
                 );
             }
@@ -728,7 +728,7 @@ impl ZMachineCodeGen {
                     .properties
                     .contains_key(&7);
                 let prop_count = all_objects[obj_index].properties.properties.len();
-                log::error!(
+                log::debug!(
                     "🎯 BEFORE_PASS2: west_of_house obj_index={}, has_property_7={}, total_properties={}",
                     obj_index, has_prop7, prop_count
                 );
@@ -789,7 +789,7 @@ impl ZMachineCodeGen {
                                 .get(room_ir_id)
                                 .copied()
                                 .unwrap_or_else(|| {
-                                    log::error!(
+                                    log::debug!(
                                         "Exit system: Room '{}' exit direction '{}' references IR ID {} which has no object number mapping, using 0",
                                         room.name,
                                         direction,
@@ -820,7 +820,7 @@ impl ZMachineCodeGen {
                             let string_id = match self.find_or_create_string_id(message) {
                                 Ok(id) => id,
                                 Err(e) => {
-                                    log::error!(
+                                    log::debug!(
                                         "Failed to get string ID for blocked exit message in room '{}': {:?}",
                                         room.name,
                                         e
@@ -882,7 +882,7 @@ impl ZMachineCodeGen {
                             .properties
                             .contains_key(&7);
                         let prop_count = all_objects[obj_index].properties.properties.len();
-                        log::error!(
+                        log::debug!(
                             "🎯 AFTER_EXIT_PROPS: west_of_house obj_index={}, array_name='{}', array_short_name='{}', has_property_7={}, total_properties={}",
                             obj_index, all_objects[obj_index].name, all_objects[obj_index].short_name, has_prop7, prop_count
                         );
@@ -890,13 +890,13 @@ impl ZMachineCodeGen {
                             if let Some(prop7_value) =
                                 all_objects[obj_index].properties.properties.get(&7)
                             {
-                                log::error!(
+                                log::debug!(
                                     "🎯 AFTER_EXIT_PROPS: Property 7 value = {:?}",
                                     prop7_value
                                 );
                             }
                         } else {
-                            log::error!(
+                            log::debug!(
                                 "🎯 AFTER_EXIT_PROPS: Property 7 MISSING! Properties: {:?}",
                                 all_objects[obj_index]
                                     .properties
@@ -920,7 +920,7 @@ impl ZMachineCodeGen {
                             stored_data
                         );
                     } else {
-                        log::error!(
+                        log::debug!(
                             "❌ EXIT_PROPS: Room '{}' - Property {} NOT FOUND after set_bytes!",
                             room.name,
                             exit_data_prop
@@ -955,7 +955,7 @@ impl ZMachineCodeGen {
                     .properties
                     .contains_key(&7);
                 let prop_count = all_objects[obj_index].properties.properties.len();
-                log::error!(
+                log::debug!(
                     "🎯 AFTER_PASS2: west_of_house obj_index={}, has_property_7={}, total_properties={}",
                     obj_index, has_prop7, prop_count
                 );
@@ -965,7 +965,7 @@ impl ZMachineCodeGen {
                         log::debug!("🎯 AFTER_PASS2: Property 7 value = {:?}", prop7_value);
                     }
                 } else {
-                    log::error!(
+                    log::debug!(
                         "🎯 AFTER_PASS2: Property 7 MISSING! Properties present: {:?}",
                         all_objects[obj_index]
                             .properties
