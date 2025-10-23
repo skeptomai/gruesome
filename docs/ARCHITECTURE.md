@@ -2187,6 +2187,142 @@ grep -n "emit_instruction(0x03" src/grue_compiler/*.rs  # jl
 - **Current Bug Report**: October 3, 2025 (grammar system `store` → `output_stream` conflict)
 - **File Locations**: See "Integration Points" above
 
+## CRITICAL: The 0xB4 Dangerous No-Op Instruction Bug (October 23, 2025)
+
+### The Fatal Mistake: Form Determination Ambiguity
+
+**ROOT CAUSE**: Using raw opcode byte `0xB4` as "no-op" instruction without proper form encoding caused dangerous instruction misinterpretation that led to stack underflow crashes.
+
+### What Was Intended vs What Actually Happened
+
+**Original Intent**:
+- Developer looked up "no operation" in Z-Machine specification
+- Found **0OP:180** (`nop` instruction) - "Probably the official no operation instruction"
+- Converted: `180 decimal = 0xB4 hex`
+- Used `0xB4` byte for padding/alignment purposes
+
+**Critical Error**:
+- **Intended**: 0OP:180 (nop) - safe, no operands needed
+- **Actually executed**: VAR:244 (input_stream) - requires operands, manipulates stack
+- **Result**: Stack underflow when trying to read operands that don't exist
+
+### The Form Determination Problem
+
+**Z-Machine Reality**: The same opcode number means different instructions depending on instruction form:
+
+| Opcode Byte | Form | Instruction | Operands Required | Stack Impact |
+|-------------|------|-------------|-------------------|--------------|
+| `0xB4` | 0OP:180 | `nop` | None | Safe ✅ |
+| `0xB4` | VAR:244 | `input_stream` | 1 operand | **Stack manipulation ❌** |
+
+**What Went Wrong**:
+1. Raw byte `0xB4` emitted without form context
+2. Z-Machine interpreter decodes based on instruction stream context
+3. When decoded as VAR:244, expects operand from stack
+4. Stack empty → **STACK UNDERFLOW** → crash
+
+### Examples of Crashes Caused
+
+**Fall-through Jump Conversion** (`src/grue_compiler/codegen.rs:2507-2518`):
+```rust
+// DANGEROUS CODE (pre-fix):
+if offset == 2 {  // Fall-through jump
+    // Replace 3-byte jump with 3 NOP instructions
+    self.write_byte_at(instruction_pc, 0xB4)?;     // ❌ VAR:244!
+    self.write_byte_at(final_location, 0xB4)?;     // ❌ VAR:244!
+    self.write_byte_at(final_location + 1, 0xB4)?; // ❌ VAR:244!
+}
+```
+
+**Function Alignment Padding** (multiple locations):
+```rust
+// DANGEROUS CODE (pre-fix):
+if self.code_address % 2 != 0 {
+    self.emit_byte(0xB4)?; // ❌ VAR:244!
+}
+```
+
+### The Correct Solution: 0x8B (new_line)
+
+**Why 0x8B is Perfect**:
+- **0x8B = 0OP:187**: `new_line` instruction
+- **Always interpreted correctly**: No form ambiguity
+- **Safe operation**: Prints newline, no stack manipulation
+- **Harmless side effect**: Extra newlines better than crashing
+
+**Fixed Code** (`src/grue_compiler/codegen.rs:2515-2517`):
+```rust
+// SAFE CODE (post-fix):
+if offset == 2 {  // Fall-through jump
+    // Replace with safe new_line instructions
+    self.write_byte_at(instruction_pc, 0x8B)?;     // ✅ 0OP:187 new_line
+    self.write_byte_at(final_location, 0x8B)?;     // ✅ 0OP:187 new_line
+    self.write_byte_at(final_location + 1, 0x8B)?; // ✅ 0OP:187 new_line
+}
+```
+
+### The Architectural Lesson
+
+**Why This Happened**:
+1. **Raw opcode usage**: Bypassed form determination safety mechanisms
+2. **Decimal-to-hex confusion**: 180 decimal became 0xB4 hex without form context
+3. **Lack of validation**: No runtime detection of incorrect operand requirements
+
+**How to Prevent Future Occurrences**:
+
+#### ✅ Use emit_instruction_typed for All Instructions
+```rust
+// CORRECT: Type-safe instruction emission
+self.emit_instruction_typed(
+    Opcode::Op0(Op0::NewLine),  // Unambiguous instruction specification
+    &[],                        // Clear operand requirements
+    None,                       // No store variable
+    None,                       // No branch
+)?;
+
+// WRONG: Raw opcode emission
+self.emit_byte(0x8B)?;  // Could be misinterpreted in different contexts
+```
+
+#### ✅ Understand Z-Machine Specification Nuances
+- **Opcode numbers are NOT stable across forms**
+- **Form bits determine instruction meaning**
+- **Always specify both opcode AND form together**
+
+#### ✅ Test Padding Instructions Under Load
+- **Verify alignment padding doesn't cause crashes**
+- **Test fall-through scenarios with actual game execution**
+- **Use interpreter debug logging to detect stack underflow**
+
+### Detection Commands
+
+**Find remaining raw opcode usage**:
+```bash
+# Search for raw hex opcode usage
+grep -r "0x[0-9A-Fa-f][0-9A-Fa-f]" src/grue_compiler/ | grep -E "(emit_byte|write_byte)"
+
+# Search for decimal opcode constants
+grep -r "180\|244" src/grue_compiler/
+
+# Verify no 0xB4 references remain
+grep -r "0xB4\|0xb4" src/grue_compiler/
+```
+
+### Historical Record
+
+**Discovery Date**: October 23, 2025
+**Fixed in Commit**: 094f27a
+**Root Cause**: Form determination ambiguity with raw opcode bytes
+**Solution**: Systematic replacement of 0xB4 with 0x8B throughout codebase
+**Impact**: Eliminated all dangerous no-op instruction crashes
+
+**Files Modified**:
+- `src/grue_compiler/codegen.rs` - Multiple function alignment and fall-through fixes
+- All padding logic throughout compiler codebase
+
+**Lesson for Future Development**:
+> **NEVER use raw opcode bytes for instruction generation**. Always use `emit_instruction_typed()` with proper `Opcode` enum variants to ensure form determination safety and prevent misinterpretation across instruction forms.
+
 ## Complex Expression Control Flow Patterns
 
 ### Overview

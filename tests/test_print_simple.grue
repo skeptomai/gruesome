@@ -1,0 +1,4 @@
+fn main() {
+    print("Testing print functionality");
+    print("Second print statement");
+}

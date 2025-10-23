@@ -1,0 +1,9 @@
+fn helper_function() {
+    print("Inside helper function");
+}
+
+fn main() {
+    print("About to call helper");
+    helper_function();
+    print("After calling helper");
+}

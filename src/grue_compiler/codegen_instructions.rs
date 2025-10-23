@@ -2762,7 +2762,7 @@ impl ZMachineCodeGen {
             // 0OP form: bits 7-6 = 11, bits 5-4 = 00, bits 3-0 = opcode
             0xB0 | (opcode & 0x0F)
         } else {
-            // 1OP form: bits 7-6 = 10, bits 5-4 = operand type, bits 3-0 = opcode
+            // 1OP form: bits 7-6 = 10 (Short form), bits 5-4 = operand type, bits 3-0 = opcode
             let op_type = self.get_operand_type(&operands[0]);
             0x80 | ((op_type as u8) << 4) | (opcode & 0x0F)
         };
@@ -2851,10 +2851,12 @@ impl ZMachineCodeGen {
             // 0OP form: bits 7-6 = 11, bits 5-4 = 00, bits 3-0 = opcode
             0xB0 | (opcode & 0x0F)
         } else {
-            // 1OP form: bits 7-6 = 10, bits 5-4 = operand type, bits 3-0 = opcode
+            // 1OP form: bits 7-6 = 10 (Short form), bits 5-4 = operand type, bits 3-0 = opcode
             let op_type = self.get_operand_type(&operands[0]);
             0x80 | ((op_type as u8) << 4) | (opcode & 0x0F)
         };
+
+        // Note: 1OP instructions use Short form (bits 7-6 = 10) per Z-Machine spec section 4.3.1
 
         self.emit_byte(instruction_byte)?;
 
@@ -3235,9 +3237,13 @@ impl ZMachineCodeGen {
             instruction_byte
         );
 
-        // Debug: What opcode is trying to be generated as 0x3E?
+        // Debug: What opcode is trying to be generated as 0x3E or 0x5E?
         if instruction_byte == 0x3E {
             panic!("FOUND THE BUG: Original opcode 0x{:02X} is generating instruction byte 0x3E which decodes to invalid opcode 0x1E. op1_bit=0x{:02X}, op2_bit=0x{:02X}, operands={:?}, address=0x{:04X}",
+                   opcode, op1_bit, op2_bit, operands, self.code_address);
+        }
+        if instruction_byte == 0x5E {
+            panic!("FOUND THE BUG: Original opcode 0x{:02X} is generating instruction byte 0x5E which decodes to invalid 2OP opcode 0x1E (should be VAR PrintTable). op1_bit=0x{:02X}, op2_bit=0x{:02X}, operands={:?}, address=0x{:04X}",
                    opcode, op1_bit, op2_bit, operands, self.code_address);
         }
 

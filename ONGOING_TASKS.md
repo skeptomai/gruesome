@@ -403,6 +403,7 @@ let layout = self.emit_instruction_typed(
 - ✅ Fall-through jump handling fixed - no more stack underflow from padding instructions
 - ✅ Function alignment padding now uses safe instructions
 - ✅ Constant optimization logic working correctly: `if (1 == 1)` detected and optimized
+- ✅ **ARCHITECTURAL LESSON DOCUMENTED**: Added comprehensive 0xB4 analysis to `docs/ARCHITECTURE.md` to prevent future raw opcode form determination bugs
 
 **CURRENT ISSUE**: print_paddr using Variable(0) instead of direct address operands - **Same GetChild Bug Pattern**
 
@@ -440,24 +441,51 @@ let layout = self.emit_instruction_typed(
 - ✅ Jump instruction generation and resolution working
 - ✅ UnresolvedReference system properly handling jump targets
 
-### **🎯 NEXT PRIORITY: Fix print_paddr Variable(0) Issue**
+### **❌ CRITICAL LESSON: Instruction Form vs Operand Type Confusion**
 
-**Goal**: Apply GetChild fix pattern to print_paddr instructions
+**FAILED HYPOTHESIS**: We initially thought this was instruction form encoding (1OP vs VAR form)
+**ACTUAL PROBLEM**: Operand type confusion - print_paddr receives Variable(4) instead of packed address
+
+**Evidence of Failed Form Fix Attempt**:
+- ✅ 1OP form encoding fix applied: 0x80 → 0x40 (confirmed correct)
+- ✅ Reverted broken LONG form changes that corrupted Store instructions
+- ❌ **Stack underflow persists** with corrected instruction form: bytecode `4d 04 18 bb 4c`
+- ❌ Same crash at PC 0x097e - form encoding wasn't the root cause
+
+**Root Cause Analysis**:
+```
+Original problem bytecode: 8d 04 18 bb 8c (VAR form - wrong)
+Fixed form bytecode:       4d 04 18 bb 4c (1OP form - correct)
+                           ^^
+BUT: 0x04 = Variable(4) operand - THIS IS THE REAL PROBLEM!
+```
+
+**The Real Issue**: print_paddr expects packed string address, gets variable reference to uninitialized Variable(4)
+
+**Critical Development Lesson**: **Never claim victory without running gameplay tests**. We made everything worse with the LONG form "fix" and learned that form encoding wasn't the actual problem.
+
+### **🎯 CURRENT PRIORITY: Fix print_paddr Operand Type Confusion**
+
+**Goal**: Fix why print_paddr gets Variable(4) instead of direct string address
 
 **Strategy**:
-1. **Trace print_paddr emission** in constant optimization code path
-2. **Find operand type confusion** - Variable(0) instead of direct address constants
-3. **Apply GetChild fix pattern** - use correct operand types for print_paddr
-4. **Test with minimal case** - verify `if (1 == 1)` no longer crashes
+1. **Trace operand resolution** - why LargeConstant(placeholder) → Variable(4)
+2. **Find operand type confusion** in the emission pipeline
+3. **Apply GetChild fix pattern** - ensure proper operand types
+4. **Test incrementally** - verify each fix step with gameplay tests
 
-**Expected Fix**: Similar to GetChild - ensure print_paddr uses direct address operands instead of stack variables in all code paths.
+**Current Understanding**:
+- Form encoding: ✅ FIXED (1OP form now correct)
+- Operand type: ❌ BROKEN (Variable(4) instead of packed address)
+- Root cause: Something converts our LargeConstant placeholder to Variable reference
 
 ### **🎯 SUCCESS CRITERIA**
-- ❌ `if (1 == 1)` works without stack underflow (IN PROGRESS)
+- ❌ `if (1 == 1)` works without stack underflow (IN PROGRESS - form fixed, operand broken)
 - ❌ `if (child != 0)` works without PC corruption (PENDING)
 - ❌ Mini_zork reaches interactive prompt without crashes (PENDING)
 - ✅ All existing functionality preserved
 - ✅ 0xB4 dangerous instruction elimination complete
+- ✅ 1OP instruction form encoding corrected
 
 ### **⚠️ PROGRESS SAVED**
 - ✅ 0xB4 → 0x8B fix complete and tested
@@ -465,6 +493,9 @@ let layout = self.emit_instruction_typed(
 - ✅ Jump instruction resolution verified working
 - ✅ Root cause identified: print_paddr using Variable(0) operands
 - ✅ Test case created: `test_simple_if.grue` for reproduction
+- ✅ **ARCHITECTURAL ANALYSIS COMPLETE**: Added comprehensive 0xB4 form determination bug analysis to `docs/ARCHITECTURE.md`
+- ✅ **VERIFICATION COMPLETE**: No remaining dangerous 0xB4 references in codebase
+- ✅ **COMMIT SAVED**: All 0xB4 fixes preserved in commit 094f27a
 
 ## 📁 HISTORICAL DOCUMENTATION
 

@@ -1,0 +1,6 @@
+fn test_constant_if() {
+    print("Testing constant comparison if (1 == 1)");
+    if (1 == 1) {
+        print("Constant comparison TRUE branch executed"); // This crashes
+    }
+}

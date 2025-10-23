@@ -1710,11 +1710,24 @@ impl ZMachineCodeGen {
 
             final_pc
         } else {
-            // No init block, PC points to first user function (skip 1-byte header)
-            let final_pc = (self.final_code_base + 1) as u16;
+            // No init block, PC points to first user function
+            // Must skip function header: 1 byte (locals count) + (num_locals * 2 bytes) for default values
+
+            // Read the number of locals from the function header at final_code_base
+            let main_function_locals = if (self.final_code_base as usize) < self.final_data.len() {
+                self.final_data[self.final_code_base as usize]
+            } else {
+                0 // Fallback if address is out of bounds
+            };
+
+            let main_header_size = 1 + (main_function_locals as usize * 2);
+            let final_pc = (self.final_code_base + main_header_size) as u16;
+
             log::debug!(
-                "🎯 PC_CALCULATION_FALLBACK: final_code_base=0x{:04x}, calculated_pc=0x{:04x}",
+                "🎯 PC_CALCULATION_FALLBACK: final_code_base=0x{:04x}, main_locals={}, header_size={}, calculated_pc=0x{:04x}",
                 self.final_code_base,
+                main_function_locals,
+                main_header_size,
                 final_pc
             );
             final_pc
@@ -1900,6 +1913,13 @@ impl ZMachineCodeGen {
                 };
 
                 if patch.branch_offset_location < self.code_space.len() {
+                    // Monitor unusual branch offsets for debugging
+                    if offset_byte == 0x5E {
+                        log::debug!(
+                            "Large branch offset 0x5E at location 0x{:04x}",
+                            patch.branch_offset_location
+                        );
+                    }
                     self.code_space[patch.branch_offset_location] = offset_byte;
                     log::debug!(
                         "Patched 1-byte branch: location=0x{:04x}, value=0x{:02x}",
@@ -1925,6 +1945,14 @@ impl ZMachineCodeGen {
                 let low_byte = (offset as u16) as u8;
 
                 if patch.branch_offset_location + 1 < self.code_space.len() {
+                    // Monitor 2-byte branch offsets for debugging
+                    if high_byte == 0x5E || low_byte == 0x5E {
+                        log::debug!(
+                            "2-byte branch with 0x5E component: high=0x{:02x}, low=0x{:02x}",
+                            high_byte,
+                            low_byte
+                        );
+                    }
                     self.code_space[patch.branch_offset_location] = high_byte;
                     self.code_space[patch.branch_offset_location + 1] = low_byte;
                     log::debug!(
@@ -2203,21 +2231,10 @@ impl ZMachineCodeGen {
         }
 
         // Also track any reference that might resolve TO address 1699
-        let potential_target = match &reference.reference_type {
+        let potential_target: Option<u16> = match &reference.reference_type {
             LegacyReferenceType::FunctionCall => {
-                if let Some(&code_offset) = self
-                    .reference_context
-                    .ir_id_to_address
-                    .get(&reference.target_id)
-                {
-                    if code_offset == 1699 || code_offset + self.final_code_base == 1699 {
-                        Some(code_offset)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
+                // Allow all function calls to proceed to proper resolution logic
+                None
             }
             _ => None,
         };
@@ -12122,6 +12139,9 @@ impl ZMachineCodeGen {
             if byte == 0x3E {
                 panic!("FOUND THE BUG: byte 0x3E being written to generation address 0x0598 (final 0x0B66) - this creates invalid opcode 0x1E!\nStack trace will show the source.");
             }
+            if byte == 0x5E {
+                panic!("FOUND THE BUG: byte 0x5E being written to generation address 0x0598 (final 0x160F) - this creates invalid 2OP opcode 0x1E (should be VAR PrintTable)!\nStack trace will show the source.");
+            }
         }
 
         // Also track writes to the final address if we're in final assembly phase
@@ -12132,6 +12152,20 @@ impl ZMachineCodeGen {
             );
             if byte == 0x3E {
                 panic!("FOUND THE BUG: byte 0x3E being written to FINAL address 0x0B66 - this creates invalid opcode 0x1E!\nStack trace will show the source.");
+            }
+            if byte == 0x5E {
+                panic!("FOUND THE BUG: byte 0x5E being written to FINAL address 0x160F - this creates invalid 2OP opcode 0x1E (should be VAR PrintTable)!\nStack trace will show the source.");
+            }
+        }
+
+        // Track writes to 0x160F where the invalid 0x5E appears
+        if self.code_address == 0x160F {
+            log::debug!(
+                " FINAL_TRACE_160F: Writing byte 0x{:02x} to FINAL address 0x160F",
+                byte
+            );
+            if byte == 0x5E {
+                panic!("FOUND THE BUG: byte 0x5E being written to FINAL address 0x160F - this creates invalid 2OP opcode 0x1E (should be VAR PrintTable)!\nStack trace will show the source.");
             }
         }
 
@@ -12292,6 +12326,13 @@ impl ZMachineCodeGen {
             // Fixed by proper branch offset calculation
 
             // Code generation phase: write to code_space
+            // Track code generation for debugging
+            if byte == 0x5E {
+                log::debug!(
+                    "Generated 1OP Load instruction (0x5E) at code_offset 0x{:04x}",
+                    code_offset
+                );
+            }
             self.code_space[code_offset] = byte;
 
             // TEMPORARY DEBUG: Track problematic sequence in code_space
