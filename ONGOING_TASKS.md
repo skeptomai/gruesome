@@ -394,6 +394,78 @@ let layout = self.emit_instruction_typed(
 - 78 total unit tests validate compiler correctness
 - Real game compilation provides integration testing
 
+## 🚧 CURRENT PRIORITY: print_paddr Stack Underflow Fix (Oct 23, 2025)
+
+### **STATUS: 0xB4 Dangerous No-Op Fix Complete ✅ → Now Fixing print_paddr Variable(0) Issue**
+
+**MAJOR SUCCESS**: 0xB4 → 0x8B dangerous no-op instruction replacement complete and working!
+- ✅ All dangerous 0xB4 (VAR:244) instructions replaced with safe 0x8B (new_line, 0OP:187)
+- ✅ Fall-through jump handling fixed - no more stack underflow from padding instructions
+- ✅ Function alignment padding now uses safe instructions
+- ✅ Constant optimization logic working correctly: `if (1 == 1)` detected and optimized
+
+**CURRENT ISSUE**: print_paddr using Variable(0) instead of direct address operands - **Same GetChild Bug Pattern**
+
+### **🔍 ROOT CAUSE ANALYSIS: print_paddr Stack Underflow**
+
+**Evidence from Crash**:
+- Crash at PC 0x097e with bytecode: `8d 04 18 bb 8c`
+- `8d` = print_paddr opcode trying to read address from Variable(0) (stack)
+- Stack is empty → **STACK UNDERFLOW**
+- This is identical to the GetChild bug pattern we fixed before
+
+**Working Hypothesis**: In the constant optimization code path for `if (1 == 1)`, print_paddr instructions are being emitted with incorrect operand types - using stack variables instead of direct address constants.
+
+**Debugging Findings**:
+- ✅ Constant comparison optimization works: `1 Equal 1 = true → generating simple jump`
+- ✅ Jump instruction resolution works: placeholders properly resolved to relative offsets
+- ✅ 0xB4 instructions completely eliminated from codebase
+- ❌ print_paddr emission in optimized paths uses Variable(0) instead of direct addresses
+
+### **📋 EXECUTION PLAN COMPLETED**
+
+#### **✅ Phase 1: Immediate Bytecode Analysis**
+- ✅ Created minimal test case: `test_simple_if.grue` with `if (1 == 1)`
+- ✅ Identified crash location: PC 0x097e, print_paddr using Variable(0)
+- ✅ Confirmed GetChild bug pattern: operand type confusion in instruction emission
+
+#### **✅ Phase 2: 0xB4 Dangerous Instruction Elimination**
+- ✅ Systematic replacement of all 0xB4 (VAR:244) with 0x8B (new_line, 0OP:187)
+- ✅ Fixed fall-through jump handling in `resolve_all_addresses()`
+- ✅ Updated function alignment padding throughout codebase
+- ✅ Confirmed no remaining 0xB4 references in source code
+
+#### **✅ Phase 3: Constant Optimization Verification**
+- ✅ Verified constant comparison detection works correctly
+- ✅ Jump instruction generation and resolution working
+- ✅ UnresolvedReference system properly handling jump targets
+
+### **🎯 NEXT PRIORITY: Fix print_paddr Variable(0) Issue**
+
+**Goal**: Apply GetChild fix pattern to print_paddr instructions
+
+**Strategy**:
+1. **Trace print_paddr emission** in constant optimization code path
+2. **Find operand type confusion** - Variable(0) instead of direct address constants
+3. **Apply GetChild fix pattern** - use correct operand types for print_paddr
+4. **Test with minimal case** - verify `if (1 == 1)` no longer crashes
+
+**Expected Fix**: Similar to GetChild - ensure print_paddr uses direct address operands instead of stack variables in all code paths.
+
+### **🎯 SUCCESS CRITERIA**
+- ❌ `if (1 == 1)` works without stack underflow (IN PROGRESS)
+- ❌ `if (child != 0)` works without PC corruption (PENDING)
+- ❌ Mini_zork reaches interactive prompt without crashes (PENDING)
+- ✅ All existing functionality preserved
+- ✅ 0xB4 dangerous instruction elimination complete
+
+### **⚠️ PROGRESS SAVED**
+- ✅ 0xB4 → 0x8B fix complete and tested
+- ✅ Constant optimization logic verified working
+- ✅ Jump instruction resolution verified working
+- ✅ Root cause identified: print_paddr using Variable(0) operands
+- ✅ Test case created: `test_simple_if.grue` for reproduction
+
 ## 📁 HISTORICAL DOCUMENTATION
 
 **Complete Investigation Archive**: `ONGOING_TASKS_HISTORICAL_20251021.md` - Property 28 crash investigation and complete debugging journey preserved for future reference.

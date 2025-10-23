@@ -2502,18 +2502,19 @@ impl ZMachineCodeGen {
 
                     // CRITICAL FIX: Offset 2 means jump to next instruction (fall-through)
                     // This happens when LoadImmediate (no code) separates a jump from its target label
-                    // Convert these to NOP instructions (0xB4 opcode) to avoid infinite loops
+                    // CRITICAL FIX: Convert fall-through jumps to safe instructions
+                    // 0xB4 (VAR:244) was causing stack underflow - use 0x8B (new_line) instead
                     if offset == 2 {
                         log::debug!(
-                            "FALL_THROUGH_JUMP: Jump at PC=0x{:04x} to target=0x{:04x} has offset 2 (fall-through) - converting to NOP",
+                            "FALL_THROUGH_JUMP: Jump at PC=0x{:04x} to target=0x{:04x} has offset 2 (fall-through) - converting to safe instructions",
                             instruction_pc, resolved_address
                         );
-                        // Replace the 3-byte jump instruction with 3 NOP instructions
+                        // Replace the 3-byte jump instruction with 3 safe instructions
                         // Jump is: [0x8C] [offset_high] [offset_low]
-                        // Replace with: [0xB4] [0xB4] [0xB4] (three NOP opcodes)
-                        self.write_byte_at(instruction_pc, 0xB4)?; // NOP at jump opcode location
-                        self.write_byte_at(final_location, 0xB4)?; // NOP at offset high byte
-                        self.write_byte_at(final_location + 1, 0xB4)?; // NOP at offset low byte
+                        // Replace with: [0x8B] [0x8B] [0x8B] (three new_line opcodes - safe 0OP instructions)
+                        self.write_byte_at(instruction_pc, 0x8B)?; // new_line (0OP:187) - safe instruction
+                        self.write_byte_at(final_location, 0x8B)?; // new_line (0OP:187) - safe instruction
+                        self.write_byte_at(final_location + 1, 0x8B)?; // new_line (0OP:187) - safe instruction
                         return Ok(());
                     }
 
@@ -3057,13 +3058,13 @@ impl ZMachineCodeGen {
                     // v3: functions must be at even addresses
                     if self.code_address % 2 != 0 {
                         log::debug!(" FUNCTION_ALIGN: Adding padding byte for even alignment");
-                        self.emit_byte(0xB4)?; // nop instruction (safe padding that won't crash)
+                        self.emit_byte(0x8B)?; // new_line instruction (safe 0OP padding)
                     }
                 }
                 ZMachineVersion::V4 | ZMachineVersion::V5 => {
                     // v4/v5: functions must be at 4-byte boundaries
                     while self.code_address % 4 != 0 {
-                        self.emit_byte(0xB4)?; // nop instruction (safe padding that won't crash)
+                        self.emit_byte(0x8B)?; // new_line instruction (safe 0OP padding)
                     }
                 }
             }
@@ -6454,13 +6455,13 @@ impl ZMachineCodeGen {
             ZMachineVersion::V3 => {
                 // v3: functions must be at even addresses
                 if self.code_address % 2 != 0 {
-                    self.emit_byte(0xB4)?; // nop instruction (safe padding that won't crash)
+                    self.emit_byte(0x8B)?; // new_line instruction (safe 0OP padding)
                 }
             }
             ZMachineVersion::V4 | ZMachineVersion::V5 => {
                 // v4/v5: functions must be at 4-byte boundaries
                 while self.code_address % 4 != 0 {
-                    self.emit_byte(0xB4)?; // nop instruction (safe padding that won't crash)
+                    self.emit_byte(0x8B)?; // new_line instruction (safe 0OP padding)
                 }
             }
         }
@@ -8001,13 +8002,13 @@ impl ZMachineCodeGen {
     // v3: functions must be at even addresses
     if self.code_address % 2 != 0 {
     log::debug!(" FUNCTION_ALIGN: Adding padding byte for even alignment");
-    self.emit_byte(0xB4)?; // nop instruction (safe padding that won't crash)
+    self.emit_byte(0x8B)?; // new_line instruction (safe 0OP padding)
     }
     }
     ZMachineVersion::V4 | ZMachineVersion::V5 => {
     // v4/v5: functions must be at 4-byte boundaries
     while self.code_address % 4 != 0 {
-    self.emit_byte(0xB4)?; // nop instruction (safe padding that won't crash)
+    self.emit_byte(0x8B)?; // new_line instruction (safe 0OP padding)
     }
     }
     }
@@ -9267,9 +9268,77 @@ impl ZMachineCodeGen {
         );
         if let Some((op, left, right)) = self.ir_id_to_binary_op.get(&condition).cloned() {
             log::debug!(
- "DIRECT_COMPARISON_BRANCH: Detected BinaryOp {:?} - generating direct Z-Machine branch instruction",
+ "DIRECT_COMPARISON_BRANCH: Detected BinaryOp {:?} - checking for constant optimization first",
  op
  );
+
+            // CRITICAL FIX: Check for constant optimization before generating complex comparison
+            // If both operands are constants, evaluate at compile time and generate simple jump
+            let left_const = self.ir_id_to_integer.get(&left).copied();
+            let right_const = self.ir_id_to_integer.get(&right).copied();
+
+            if let (Some(left_val), Some(right_val)) = (left_const, right_const) {
+                // Evaluate constant comparison at compile time
+                let result = match op {
+                    IrBinaryOp::Equal => left_val == right_val,
+                    IrBinaryOp::NotEqual => left_val != right_val,
+                    IrBinaryOp::Less => left_val < right_val,
+                    IrBinaryOp::LessEqual => left_val <= right_val,
+                    IrBinaryOp::Greater => left_val > right_val,
+                    IrBinaryOp::GreaterEqual => left_val >= right_val,
+                    _ => {
+                        log::debug!("Non-comparison BinaryOp {:?} in branch context", op);
+                        return Err(CompilerError::CodeGenError(format!(
+                            "Non-comparison operation {:?} used in conditional branch",
+                            op
+                        )));
+                    }
+                };
+
+                log::debug!(
+                    "CONSTANT_COMPARISON_OPTIMIZATION: {:?} {:?} {:?} = {} → generating simple jump",
+                    left_val, op, right_val, result
+                );
+
+                // Generate simple jump based on compile-time result, but check for fall-through first
+                let target_label = if result { true_label } else { false_label };
+
+                log::debug!(
+                    "CONSTANT_RESULT: {} → target_label {}",
+                    if result { "TRUE" } else { "FALSE" },
+                    target_label
+                );
+
+                // CRITICAL: For constant TRUE conditions, check if this is a simple if-then with no else
+                // In that case, the true branch naturally follows and needs NO jump at all
+                if result && target_label == true_label {
+                    log::debug!(
+                        "CONSTANT_TRUE_SIMPLE_IF: True branch {} will naturally follow - generating no instructions",
+                        target_label
+                    );
+                    return Ok(()); // No instruction needed - natural fall-through to true branch
+                }
+
+                // CRITICAL: Check if target is next instruction to avoid fall-through jumps
+                if self.is_next_instruction(target_label) {
+                    log::debug!(
+                        "CONSTANT_OPTIMIZATION_FALLTHROUGH: Target label {} is next instruction - no jump needed",
+                        target_label
+                    );
+                    return Ok(()); // No instruction needed - fall through
+                } else {
+                    log::debug!(
+                        "CONSTANT_OPTIMIZATION_JUMP: Target label {} requires actual jump",
+                        target_label
+                    );
+                    return self.translate_jump(target_label);
+                }
+            }
+
+            log::debug!(
+                "NON_CONSTANT_COMPARISON: Generating direct Z-Machine branch instruction for {:?}",
+                op
+            );
 
             // Resolve operands for the comparison
             let left_operand = self.resolve_ir_id_to_operand(left)?;
@@ -12667,7 +12736,7 @@ impl ZMachineCodeGen {
 
         // V3 functions must be at even addresses
         if self.code_address % 2 != 0 {
-            self.emit_byte(0xB4)?; // padding (NOP: print_ret "")
+            self.emit_byte(0x8B)?; // padding (safe new_line instruction)
         }
 
         // Capture function address AFTER alignment check
@@ -12730,7 +12799,7 @@ impl ZMachineCodeGen {
         let func_id: IrId = 1000000 + self.builtin_functions.len() as u32;
 
         if self.code_address % 2 != 0 {
-            self.emit_byte(0xB4)?;
+            self.emit_byte(0x8B)?; // safe new_line padding
         }
 
         let func_addr = self.code_address;
@@ -12787,7 +12856,7 @@ impl ZMachineCodeGen {
                 "value_is_none: Emitting padding byte at 0x{:04x}",
                 self.code_address
             );
-            self.emit_byte(0xB4)?;
+            self.emit_byte(0x8B)?; // safe new_line padding
         }
 
         let func_addr = self.code_address;
@@ -12871,7 +12940,7 @@ impl ZMachineCodeGen {
         let func_id: IrId = 1000000 + self.builtin_functions.len() as u32;
 
         if self.code_address % 2 != 0 {
-            self.emit_byte(0xB4)?;
+            self.emit_byte(0x8B)?; // safe new_line padding
         }
 
         let func_addr = self.code_address;
@@ -12947,7 +13016,7 @@ impl ZMachineCodeGen {
         let func_id: IrId = 1000000 + self.builtin_functions.len() as u32;
 
         if self.code_address % 2 != 0 {
-            self.emit_byte(0xB4)?;
+            self.emit_byte(0x8B)?; // safe new_line padding
         }
 
         let func_addr = self.code_address;
@@ -13049,7 +13118,7 @@ impl ZMachineCodeGen {
                 "get_exit: Emitting padding byte at 0x{:04x}",
                 self.code_address
             );
-            self.emit_byte(0xB4)?;
+            self.emit_byte(0x8B)?; // safe new_line padding
         }
 
         let func_addr = self.code_address;
