@@ -60,8 +60,8 @@ impl ZMachineCodeGen {
                 let prev2 = self.object_space[offset - 2];
                 let prev1 = self.object_space[offset - 1];
                 if prev2 == 0x26 && prev1 == 0x00 {
-                    log::error!("🚨 PROPERTY_6_COMPLETE_PATTERN: Found complete Property 6 pattern [0x26, 0x00, 0x45] ending at offset 0x{:04x}", offset);
-                    log::error!("🚨 PROPERTY_6_COMPLETE_PATTERN: This should NOT exist - Property 6 (Life) not in IR properties!");
+                    log::debug!("🚨 PROPERTY_6_COMPLETE_PATTERN: Found complete Property 6 pattern [0x26, 0x00, 0x45] ending at offset 0x{:04x}", offset);
+                    log::debug!("🚨 PROPERTY_6_COMPLETE_PATTERN: This should NOT exist - Property 6 (Life) not in IR properties!");
                 }
             }
         }

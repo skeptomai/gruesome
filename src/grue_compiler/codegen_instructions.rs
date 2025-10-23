@@ -815,22 +815,50 @@ impl ZMachineCodeGen {
                 object,
                 property_num,
             } => {
-                // Generate property existence test
+                // Generate property existence test using Z-Machine test_attr instruction (2OP:10)
+                // CRITICAL FIX: Z-Machine test_attr is ONLY a branching instruction, never stores a result
+                // We need to synthesize boolean return behavior with proper branching
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
                 let prop_operand = self.resolve_ir_id_to_operand((*property_num).into())?;
 
                 // CRITICAL: Register target for test result
                 self.use_push_pull_for_result(*target, "test_attr operation")?;
 
-                // Use test_attr instruction: 2OP:10 (0x0A) for testing
+                // Create labels for branching logic using string ID space
+                let true_label = self.next_string_id;
+                self.next_string_id += 1;
+                let end_label = self.next_string_id;
+                self.next_string_id += 1;
+
+                log::debug!(
+                    "TestProperty: Generating branch-form test_attr with true_label={}, end_label={}, target={}",
+                    true_label, end_label, target
+                );
+
+                // Generate test_attr instruction (2OP:10) - branch to true_label if attribute is set
                 self.emit_instruction_typed(
                     Opcode::Op2(Op2::TestAttr),
                     &[obj_operand, prop_operand],
-                    Some(0), // Store to stack
-                    None,
-                    None,
+                    None,             // No store_var - this is branch form
+                    None,             // No branch_offset - using target_label_id instead
+                    Some(true_label), // target_label_id - jump if attribute is set
                 )?;
-                log::debug!("TestProperty: IR ID {} -> stack", target);
+
+                // Attribute NOT set - load false (0) and jump to end
+                self.use_push_pull_for_result(0, "test_attr false result")?;
+                self.translate_jump(end_label)?;
+
+                // Attribute IS set - load true (1)
+                self.pending_labels.push(true_label);
+                self.use_push_pull_for_result(1, "test_attr true result")?;
+
+                // End of test_attr logic
+                self.pending_labels.push(end_label);
+
+                log::debug!(
+                    "TestProperty: Branch-form test_attr translated successfully for target {}",
+                    target
+                );
             }
 
             IrInstruction::GetNextProperty {
@@ -1176,22 +1204,33 @@ impl ZMachineCodeGen {
                 // to Je (2OP:1) instead of GetChild (1OP:2). The comment said "get_child opcode (1OP:1)"
                 // but 1OP:1 is actually 0x80, not 0x01.
                 //
-                // SOLUTION: Convert to emit_instruction_typed with correct Opcode::Op1(Op1::GetChild)
-                // and provide target_label_id for proper deferred branch resolution.
-                let _layout = self.emit_instruction_typed(
-                    Opcode::Op1(Op1::GetChild), // FIXED: Use correct GetChild opcode enum
-                    &[obj_operand],
-                    Some(0),                   // Store result to stack
-                    Some(0x7FFF),              // branch-on-FALSE placeholder (bit 15=0)
-                    Some(*branch_if_no_child), // NEW: Target label for deferred resolution
-                )?;
+                // SOLUTION: GetObjectChild needs BOTH result value AND conditional branching.
+                // Z-Machine get_child can EITHER store result OR branch, but NOT both.
+                // FIXED APPROACH: Emit two separate instructions:
+                // 1. Store-form get_child to get the child object number
+                // 2. Separate conditional branch instruction to check if result is zero
 
-                // PHASE 2 CONVERSION: Automatic deferred branch patching
-                // The emit_instruction_typed call now automatically creates DeferredBranchPatch
-                // entries, eliminating the need for manual UnresolvedReference creation.
+                // Step 1: Store-form get_child to get the child object number
+                let _layout = self.emit_instruction_typed(
+                    Opcode::Op1(Op1::GetChild), // GetChild opcode
+                    &[obj_operand],
+                    Some(0), // Store result to stack (Variable 0)
+                    None,    // No branch - pure store form
+                    None,    // No target label
+                )?;
 
                 // Register target as using stack result
                 self.use_push_pull_for_result(*target, "GetObjectChild operation")?;
+
+                // Step 2: Check if result is zero (no child) and branch accordingly
+                // Emit: jz Variable(0) ?(branch_if_no_child)
+                let _branch_layout = self.emit_instruction_typed(
+                    Opcode::Op1(Op1::Jz),      // Jump if zero
+                    &[Operand::Variable(0)],   // Test the result we just stored
+                    None,                      // No store for branch instruction
+                    Some(-1),                  // branch-on-TRUE placeholder (bit 15=1)
+                    Some(*branch_if_no_child), // Target label for deferred resolution
+                )?;
             }
 
             IrInstruction::GetObjectSibling {
@@ -1907,6 +1946,20 @@ impl ZMachineCodeGen {
             );
         }
 
+        // VALIDATION 4: Optional branch support for GetChild/GetSibling
+        // These opcodes CAN branch but don't REQUIRE branches when used in store-only mode
+        use super::opcodes::{Op1, Opcode};
+        let requires_branch = match opcode {
+            Opcode::Op1(Op1::GetChild) | Opcode::Op1(Op1::GetSibling) => {
+                // GetChild/GetSibling only require branch if branch_offset is provided
+                branch_offset.is_some()
+            }
+            _ => {
+                // All other opcodes: if they can branch, they must branch
+                opcode.branches()
+            }
+        };
+
         log::debug!(
             "EMIT_TYPED: addr=0x{:04x} opcode={:?} (0x{:02x}) operands={:?} store={:?} branch={:?}",
             start_address,
@@ -1922,7 +1975,6 @@ impl ZMachineCodeGen {
         // - Op2::Or (0x08) vs OpVar::Push (0x08)
         // - Op2::And (0x09) vs OpVar::Pull (0x09)
         // We must respect the enum variant to choose the correct form
-        use super::opcodes::Opcode;
         let form = match opcode {
             Opcode::Op0(_) => InstructionForm::Short, // 0OP form
             Opcode::Op1(_) => InstructionForm::Short, // 1OP form
@@ -1945,6 +1997,9 @@ impl ZMachineCodeGen {
             Opcode::OpVar(_) => InstructionForm::Variable, // VAR form (0xC0-0xFF)
         };
 
+        // Determine final branch offset based on whether branch is required
+        let final_branch_offset = if requires_branch { branch_offset } else { None };
+
         // Emit using the determined form
         match form {
             InstructionForm::Short => self.emit_short_form_with_layout(
@@ -1952,21 +2007,21 @@ impl ZMachineCodeGen {
                 raw_opcode,
                 operands,
                 store_var,
-                branch_offset,
+                final_branch_offset,
             ),
             InstructionForm::Long => self.emit_long_form_with_layout(
                 start_address,
                 raw_opcode,
                 operands,
                 store_var,
-                branch_offset,
+                final_branch_offset,
             ),
             InstructionForm::Variable => self.emit_variable_form_with_layout(
                 start_address,
                 raw_opcode,
                 operands,
                 store_var,
-                branch_offset,
+                final_branch_offset,
             ),
             InstructionForm::Extended => Err(CompilerError::CodeGenError(format!(
                 "Extended form not yet implemented for opcode {:?} at 0x{:04x}",
@@ -2132,8 +2187,8 @@ impl ZMachineCodeGen {
         // When two-pass mode is enabled AND this is a branch instruction,
         // defer the branch patching by using placeholder branch offset
         let (actual_branch_offset, _deferred_target_label) = if self.two_pass_state.enabled
-            && self.is_branch_instruction(opcode)
             && branch_offset.is_some()
+            && self.is_branch_instruction(opcode)
         {
             // This is a branch instruction in two-pass mode
             let original_offset = branch_offset.unwrap();
@@ -2207,8 +2262,8 @@ impl ZMachineCodeGen {
         // PHASE 2: CREATE DEFERRED BRANCH PATCH
         // If we deferred a branch instruction, create a patch for later resolution
         if self.two_pass_state.enabled
-            && self.is_branch_instruction(opcode)
             && branch_offset.is_some()
+            && self.is_branch_instruction(opcode)
         {
             // Calculate where the branch offset will be written
             let _branch_offset_location = if let Some(branch_loc) = layout.branch_location {
@@ -2842,8 +2897,11 @@ impl ZMachineCodeGen {
             // For direct offsets (0-63): encode immediately with correct sense bit
             // For placeholders (like 0x7FFF): preserve value, will be patched later
 
-            // Check if this is a small hardcoded offset (0-63) that can be encoded directly
-            if offset >= 0 && offset <= 63 {
+            // CRITICAL FIX: Force all branches to use deferred system to account for address space transformation
+            // Previously: offsets 0-63 were encoded immediately, but this doesn't account for runtime address shifts
+            // Now: All branches use placeholders and get resolved through the deferred system which handles address space correctly
+            if false {
+                // Disabled immediate encoding - force all branches to deferred system
                 // Direct offset: extract branch sense from sign convention
                 // By convention: positive = branch on true (this is the common case)
                 let on_true = true; // Direct small offsets default to "branch on true"
@@ -3055,8 +3113,11 @@ impl ZMachineCodeGen {
             // For direct offsets (0-63): encode immediately with correct sense bit
             // For placeholders (like 0x7FFF): preserve value, will be patched later
 
-            // Check if this is a small hardcoded offset (0-63) that can be encoded directly
-            if offset >= 0 && offset <= 63 {
+            // CRITICAL FIX: Force all branches to use deferred system to account for address space transformation
+            // Previously: offsets 0-63 were encoded immediately, but this doesn't account for runtime address shifts
+            // Now: All branches use placeholders and get resolved through the deferred system which handles address space correctly
+            if false {
+                // Disabled immediate encoding - force all branches to deferred system
                 // Direct offset: extract branch sense from sign convention
                 // By convention: positive = branch on true (this is the common case)
                 let on_true = true; // Direct small offsets default to "branch on true"
@@ -3248,8 +3309,11 @@ impl ZMachineCodeGen {
             // For direct offsets (0-63): encode immediately with correct sense bit
             // For placeholders (like 0x7FFF): preserve value, will be patched later
 
-            // Check if this is a small hardcoded offset (0-63) that can be encoded directly
-            if offset >= 0 && offset <= 63 {
+            // CRITICAL FIX: Force all branches to use deferred system to account for address space transformation
+            // Previously: offsets 0-63 were encoded immediately, but this doesn't account for runtime address shifts
+            // Now: All branches use placeholders and get resolved through the deferred system which handles address space correctly
+            if false {
+                // Disabled immediate encoding - force all branches to deferred system
                 // Direct offset: extract branch sense from sign convention
                 // By convention: positive = branch on true (this is the common case)
                 let on_true = true; // Direct small offsets default to "branch on true"

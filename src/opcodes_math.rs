@@ -108,6 +108,18 @@ impl Interpreter {
 
             // 2OP:0x18 - mod (signed modulo)
             (0x18, crate::instruction::OperandCount::OP2) => {
+                log::debug!(
+                    "🔢 MATH_OP: mod instruction with {} operands: {:?}",
+                    operands.len(),
+                    operands
+                );
+                if operands.len() < 2 {
+                    return Err(format!(
+                        "mod operation requires 2 operands, got {}: {:?}",
+                        operands.len(),
+                        operands
+                    ));
+                }
                 debug!("mod {} {}", operands[0], operands[1]);
                 if operands[1] == 0 {
                     return Err("Modulo by zero".to_string());

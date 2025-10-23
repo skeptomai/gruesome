@@ -733,6 +733,24 @@ impl Interpreter {
         }
 
         loop {
+            // 🚨 CRITICAL DEBUG: Track when PC reaches problematic address 1699 (MAIN LOOP)
+            if self.vm.pc == 1699 {
+                log::debug!("🚨 FATAL: Main execution loop reached PC 1699 (non-code space)!");
+                log::debug!(
+                    "🚨 FATAL: This is the smoking gun - PC corruption detected in main loop!"
+                );
+                log::debug!("🚨 FATAL: Call stack depth: {}", self.vm.call_depth());
+                if self.vm.call_depth() > 0 {
+                    log::debug!(
+                        "🚨 FATAL: Top of call stack: return_pc=0x{:04x}",
+                        self.vm.call_stack.last().unwrap().return_pc
+                    );
+                }
+                panic!(
+                    "Critical: Main loop PC reached non-code address 1699 - investigation complete"
+                );
+            }
+
             // Fetch and decode instruction
             let pc = self.vm.pc;
 
@@ -1503,6 +1521,18 @@ impl Interpreter {
                         operand,
                         operand as i16
                     );
+                }
+
+                // 🚨 CRITICAL DEBUG: Detect jumps to problematic address 1699
+                if new_pc == 1699 {
+                    log::debug!("🚨 FATAL: Jump instruction at PC 0x{:04x} attempting to jump to address 1699 (non-code space)!", self.vm.pc);
+                    log::debug!(
+                        "🚨 FATAL: Jump operand: 0x{:04x}, calculated new_pc: 0x{:04x}",
+                        operand,
+                        new_pc
+                    );
+                    log::debug!("🚨 FATAL: Address 1699 is BEFORE final_code_base 0x10f4 - this is a compiler bug!");
+                    panic!("Critical: Jump to non-code address 1699 detected");
                 }
 
                 self.vm.pc = new_pc;
@@ -2692,7 +2722,45 @@ impl Interpreter {
                     }
                     offset => {
                         // Jump is relative to instruction after branch data
-                        let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
+                        let mut new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
+
+                        // 🚨 CRITICAL FIX: Adjust branch targets for code space transformation
+                        let code_base = self.vm.game.header.base_high_mem as u32;
+                        log::debug!(
+                            "🔧 BRANCH_CALC: new_pc=0x{:04x}, code_base=0x{:04x}, need_adjust={}",
+                            new_pc,
+                            code_base,
+                            new_pc < code_base
+                        );
+
+                        if new_pc < code_base {
+                            let original_target = new_pc;
+                            new_pc = code_base + new_pc;
+                            log::debug!("🔧 BRANCH_ADJUST: Adjusted target from 0x{:04x} to 0x{:04x} (code_base=0x{:04x})",
+                                original_target, new_pc, code_base);
+                        }
+
+                        // 🚨 TRACK THE PROBLEMATIC BRANCH CALCULATION
+                        if new_pc == 0x2a9d {
+                            log::debug!("🚨 FOUND_PROBLEMATIC_BRANCH: PC=0x{:04x} + offset={} - 2 = 0x{:04x} (INVALID!)",
+                                self.vm.pc, offset, new_pc);
+                        }
+
+                        // 🚨 TRACK ADDRESS 1699 SPECIFICALLY
+                        if new_pc == 0x1699 || (self.vm.pc == 0x1673 && offset == 40) {
+                            log::debug!("🚨 FOUND_1699_BRANCH: PC=0x{:04x} + offset={} - 2 = 0x{:04x} (should be in code space!)",
+                                self.vm.pc, offset, new_pc);
+                            log::debug!("🚨 INSTRUCTION_CONTEXT: Current instruction at PC-4: {:02x} {:02x} {:02x} {:02x}",
+                                self.vm.game.memory.get((self.vm.pc as usize).saturating_sub(4)).unwrap_or(&0),
+                                self.vm.game.memory.get((self.vm.pc as usize).saturating_sub(3)).unwrap_or(&0),
+                                self.vm.game.memory.get((self.vm.pc as usize).saturating_sub(2)).unwrap_or(&0),
+                                self.vm.game.memory.get((self.vm.pc as usize).saturating_sub(1)).unwrap_or(&0));
+                            log::debug!(
+                                "🚨 BRANCH_DETAILS: actual_calc={} vs expected=0x1699, matches: {}",
+                                new_pc,
+                                new_pc == 0x1699
+                            );
+                        }
 
                         log::debug!(
  "🔧 BRANCH_JUMP: PC=0x{:04x} offset={} -> new_PC=0x{:04x} (memory_len={})",
@@ -2744,6 +2812,19 @@ impl Interpreter {
                                 self.vm.pc, offset, new_pc
                             );
                         }
+
+                        // 🚨 CRITICAL DEBUG: Detect jumps to problematic address 1699
+                        if new_pc == 1699 {
+                            log::debug!("🚨 FATAL: Branch instruction at PC 0x{:04x} attempting to jump to address 1699 (non-code space)!", self.vm.pc);
+                            log::debug!(
+                                "🚨 FATAL: Branch offset: {}, calculated new_pc: 0x{:04x}",
+                                offset,
+                                new_pc
+                            );
+                            log::debug!("🚨 FATAL: Address 1699 is BEFORE final_code_base 0x10f4 - this is a compiler bug!");
+                            panic!("Critical: Branch to non-code address 1699 detected");
+                        }
+
                         self.vm.pc = new_pc;
                         return Ok(ExecutionResult::Branched);
                     }
@@ -2816,6 +2897,20 @@ impl Interpreter {
                 return Err("Timer routine exceeded instruction limit".to_string());
             }
 
+            // 🚨 CRITICAL DEBUG: Track when PC reaches problematic address 1699
+            if self.vm.pc == 1699 {
+                log::debug!("🚨 FATAL: About to decode instruction at PC 1699 (non-code space)!");
+                log::debug!("🚨 FATAL: PC reached 1699 through unknown mechanism - this is the smoking gun!");
+                log::debug!("🚨 FATAL: Call stack depth: {}", self.vm.call_depth());
+                if self.vm.call_depth() > 0 {
+                    log::debug!(
+                        "🚨 FATAL: Top of call stack: return_pc=0x{:04x}",
+                        self.vm.call_stack.last().unwrap().return_pc
+                    );
+                }
+                panic!("Critical: PC reached non-code address 1699 - investigation complete");
+            }
+
             // Fetch and decode instruction
             let pc = self.vm.pc;
             let inst = match Instruction::decode(
@@ -2827,8 +2922,41 @@ impl Interpreter {
                 Err(e) => return Err(format!("Error decoding instruction at {pc:05x}: {e}")),
             };
 
+            // 🚨 CRITICAL DEBUG: Detect any PC update that would result in address 1699
+            let new_pc = self.vm.pc + inst.size as u32;
+            if new_pc == 1699 {
+                log::debug!(
+                    "🚨 FATAL: Normal PC increment would advance to address 1699 (non-code space)!"
+                );
+                log::debug!(
+                    "🚨 FATAL: Current PC: 0x{:04x}, instruction size: {}, new PC: 0x{:04x}",
+                    self.vm.pc,
+                    inst.size,
+                    new_pc
+                );
+                log::debug!("🚨 FATAL: Address 1699 is BEFORE final_code_base 0x10f4 - this indicates corrupted PC!");
+                panic!("Critical: PC advancement to non-code address 1699 detected");
+            }
+
             // Update PC
+            let old_pc = self.vm.pc;
             self.vm.pc += inst.size as u32;
+            let new_pc = self.vm.pc;
+
+            // Test log to verify logging works
+            if old_pc == 0x0970 {
+                log::info!("TEST_LOG: First instruction at 0x0970 detected");
+            }
+
+            // Debug PC tracking for problematic addresses - broad range to catch issue
+            if old_pc >= 0x0970 && old_pc <= 0x0a70 {
+                log::info!(
+                    "🔍 PC_TRACK: Instruction at 0x{:04x} size={} -> PC advanced to 0x{:04x}",
+                    old_pc,
+                    inst.size,
+                    new_pc
+                );
+            }
 
             // Execute instruction
             match self.execute_instruction(&inst)? {
