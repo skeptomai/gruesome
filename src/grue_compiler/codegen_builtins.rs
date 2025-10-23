@@ -547,14 +547,34 @@ impl ZMachineCodeGen {
         // Resolve IR ID to proper operand - CRITICAL FIX
         let object_operand = self.resolve_ir_id_to_operand(object_ir_id)?;
 
-        // Generate Z-Machine get_child instruction (1OP:3, opcode 0x03)
+        // CRITICAL FIX (Oct 23, 2025): GetChild MUST have branch parameter per Z-Machine specification
+        //
+        // ROOT CAUSE: GetChild was being emitted with branch=None, causing "Invalid Long form opcode 0x00"
+        // at address 1699 during mini_zork gameplay. The Z-Machine specification mandates:
+        // get_child object -> (result) ?(label) - requires both store AND branch parameters
+        //
+        // SYMPTOMS: Branch offset calculations were off by 2 bytes, causing execution to land
+        // in function headers (0x1699) instead of function code (0x1697), interpreting
+        // function metadata as invalid opcodes.
+        //
+        // SOLUTION: Create fallthrough labels for proper Z-Machine compliance. GetChild
+        // branches on failure (no child exists), so we provide a label that falls through
+        // to the next instruction when the branch is not taken.
+        let fallthrough_label = self.next_string_id;
+        self.next_string_id += 1;
+
+        // Generate Z-Machine get_child instruction (1OP:130, opcode 0x02) with required branch
         self.emit_instruction_typed(
             Opcode::Op1(Op1::GetChild),
             &[object_operand],
-            Some(0), // Store result on stack
-            None,    // No branch
-            None,
+            Some(0),                 // Store result on stack (child object number or 0)
+            Some(-1),                // Branch on failure (no child) - placeholder for branch offset
+            Some(fallthrough_label), // Branch target - falls through to next instruction
         )?;
+
+        // Define the fallthrough label immediately after GetChild instruction
+        // This ensures deferred branch resolution can find the target during compilation
+        self.define_code_label(fallthrough_label)?;
 
         // Do NOT add return instruction here - this is inline code generation
 
@@ -579,14 +599,28 @@ impl ZMachineCodeGen {
         // Resolve IR ID to proper operand - CRITICAL FIX
         let object_operand = self.resolve_ir_id_to_operand(object_ir_id)?;
 
-        // Generate Z-Machine get_sibling instruction (1OP:2, opcode 0x02)
+        // CRITICAL FIX (Oct 23, 2025): GetSibling MUST have branch parameter per Z-Machine specification
+        //
+        // ROOT CAUSE: Same as GetChild - missing branch parameter caused branch offset miscalculations
+        // The Z-Machine specification mandates: get_sibling object -> (result) ?(label)
+        //
+        // SOLUTION: Provide fallthrough label for proper Z-Machine compliance. GetSibling
+        // branches on failure (no sibling exists), falling through to next instruction.
+        let fallthrough_label = self.next_string_id;
+        self.next_string_id += 1;
+
+        // Generate Z-Machine get_sibling instruction (1OP:129, opcode 0x81) with required branch
         self.emit_instruction_typed(
             Opcode::Op1(Op1::GetSibling),
             &[object_operand],
-            Some(0), // Store result on stack
-            None,    // No branch
-            None,
+            Some(0),                 // Store result on stack (sibling object number or 0)
+            Some(-1), // Branch on failure (no sibling) - placeholder for branch offset
+            Some(fallthrough_label), // Branch target - falls through to next instruction
         )?;
+
+        // Define the fallthrough label immediately after GetSibling instruction
+        // This ensures deferred branch resolution can find the target during compilation
+        self.define_code_label(fallthrough_label)?;
 
         // Do NOT add return instruction here - this is inline code generation
 

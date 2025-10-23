@@ -562,9 +562,22 @@ impl ZMachineCodeGen {
     // All code writes now go through the single-path emit_byte() system
 
     /// Define a label in code space - enables immediate jump/branch resolution
-    fn define_code_label(&mut self, label_id: IrId) -> Result<(), CompilerError> {
+    pub fn define_code_label(&mut self, label_id: IrId) -> Result<(), CompilerError> {
         let label_address = self.code_address;
         self.code_labels.insert(label_id, label_address);
+
+        // CRITICAL FIX (Oct 23, 2025): Synchronize both label storage systems
+        //
+        // ROOT CAUSE: Dynamically created labels (like GetChild/GetSibling fallthrough labels)
+        // were only stored in code_labels but not in two_pass_state.label_addresses.
+        // During deferred branch resolution, the system looks up labels in two_pass_state,
+        // causing "Deferred branch target label X not found" errors.
+        //
+        // SOLUTION: Store labels in both systems to ensure all dynamically created labels
+        // are available during the deferred branch patching phase.
+        self.two_pass_state
+            .label_addresses
+            .insert(label_id, label_address);
 
         log::debug!(
             "🏷️ CODE_LABEL_DEFINED: id={}, addr=0x{:04x}",
@@ -4217,8 +4230,8 @@ impl ZMachineCodeGen {
     /// - Crashes at startup with "Invalid Long form opcode 0x00 at address 1699"
     ///
     /// Fix: Use GetChild in pure store form only. The instruction returns child object number
-    /// (or 0 if no child exists), eliminating need for complex branching logic.
-    /// This matches commercial Infocom compiler behavior and resolves the regression.
+    /// (or 0 if no child exists). Z-Machine GetChild requires both store and branch parameters.
+    /// This follows Z-Machine specification: get_child object -> (result) ?(label)
     fn translate_get_child_builtin_inline(
         &mut self,
         args: &[IrId],
@@ -4237,17 +4250,23 @@ impl ZMachineCodeGen {
 
         let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
 
-        // Generate get_child instruction (1OP:130, opcode 2) in STORE MODE
-        // COMMERCIAL EMULATION: Use GetChild like real Infocom compilers do
-        // GetChild stores child object number (or 0 if no child) to stack
+        // CRITICAL FIX: GetChild MUST have branch parameter per Z-Machine specification
+        // get_child object -> (result) ?(label) - requires both store AND branch
+        // Create a fall-through label for when no child exists (GetChild branches on failure)
+        let fallthrough_label = self.next_string_id;
+        self.next_string_id += 1;
 
+        // Generate get_child instruction (1OP:130, opcode 2) with required branch
         let layout = self.emit_instruction_typed(
             Opcode::Op1(Op1::GetChild),
             &[obj_operand],
-            Some(0), // Store result on stack (child object number or 0)
-            None,    // No branching - use store form only
-            None,    // No target label
+            Some(0),                 // Store result on stack (child object number or 0)
+            Some(-1),                // Branch on failure (no child) - placeholder for branch
+            Some(fallthrough_label), // Branch target - falls through to next instruction
         )?;
+
+        // Emit the fallthrough label immediately after GetChild
+        self.define_code_label(fallthrough_label)?;
 
         // emit_instruction already pushed bytes to code_space
 
@@ -4284,16 +4303,23 @@ impl ZMachineCodeGen {
 
         let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
 
-        // Generate get_sibling instruction (1OP:129, opcode 0x81)
-        // FIXED: Remove branch behavior since we only need the return value
-        // Z-Machine get_sibling can branch on success, but here we just want the result
+        // CRITICAL FIX: GetSibling MUST have branch parameter per Z-Machine specification
+        // get_sibling object -> (result) ?(label) - requires both store AND branch
+        // Create a fall-through label for when no sibling exists (GetSibling branches on failure)
+        let fallthrough_label = self.next_string_id;
+        self.next_string_id += 1;
+
+        // Generate get_sibling instruction (1OP:129, opcode 0x81) with required branch
         let layout = self.emit_instruction_typed(
             Opcode::Op1(Op1::GetSibling),
             &[obj_operand],
-            Some(0), // Store result on stack
-            None,    // No branch - just fall through
-            None,
+            Some(0),                 // Store result on stack (sibling object number or 0)
+            Some(-1),                // Branch on failure (no sibling) - placeholder for branch
+            Some(fallthrough_label), // Branch target - falls through to next instruction
         )?;
+
+        // Emit the fallthrough label immediately after GetSibling
+        self.define_code_label(fallthrough_label)?;
 
         // emit_instruction already pushed bytes to code_space
 

@@ -95,6 +95,8 @@
 
 **Rationale**: The interpreter correctly executes real Zork I and other commercial Z-Machine games. Any execution failures with compiled games are **compiler bugs**, not interpreter bugs.
 
+**CRITICAL GetChild PRINCIPLE**: Commercial Zork I uses ONLY store-form GetChild instructions (3 bytes: `a2 [object] [store_var]`) and NEVER branch-form GetChild. The interpreter expects branch bytes for GetChild based on Z-Machine spec, but commercial games don't use them. Our compiler MUST generate the same patterns as commercial games, not match the spec if they diverge. If the interpreter runs Zork I correctly with store-form GetChild, our compiler should generate store-form GetChild, period.
+
 **EXCEPTION - INCOMPLETE IMPLEMENTATIONS**: You MAY fix incomplete interpreter implementations if:
 1. The feature is documented in Z-Machine spec but not implemented
 2. Commercial Infocom games don't use the feature (so interpreter wasn't tested)
