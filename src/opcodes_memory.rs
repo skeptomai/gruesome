@@ -143,6 +143,21 @@ impl Interpreter {
             (0x02, crate::instruction::OperandCount::VAR) => {
                 // storeb
                 if operands.len() < 3 {
+                    // CRASH INSTRUMENTATION: Capture full context when storeb fails
+                    log::error!("🚨 STOREB CRASH at PC=0x{:04x}", self.vm.pc);
+                    log::error!("📊 Operands received: {} operands: {:?}", operands.len(), operands);
+
+                    // Show bytecode context around PC
+                    let pc = self.vm.pc as usize;
+                    let start = pc.saturating_sub(8);
+                    let end = (pc + 8).min(self.vm.game.memory.len());
+                    let context_bytes: Vec<u8> = self.vm.game.memory[start..end].to_vec();
+                    log::error!("🔍 Bytecode context (PC-8 to PC+8): {:02x?}", context_bytes);
+                    log::error!("📍 PC offset in context: byte {}", pc - start);
+
+                    // Show what instruction was actually decoded
+                    log::error!("🎯 Decoded as: VAR:0x02 (storeb) with {} operands", operands.len());
+
                     return Err("storeb requires 3 operands".to_string());
                 }
                 let addr = operands[0] as u32 + operands[1] as u32;

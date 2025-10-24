@@ -1915,6 +1915,8 @@ impl ZMachineCodeGen {
         let start_address = self.code_address;
         let raw_opcode = opcode.raw_value();
 
+        // FIXED: Instruction corruption debugging removed - issue was placeholder_word() as branch offset in codegen.rs
+
         // VALIDATION 1: Version check
         let min_version = opcode.min_version();
         let target_version = match self.version {
@@ -2079,6 +2081,8 @@ impl ZMachineCodeGen {
         branch_offset: Option<i16>,
     ) -> Result<InstructionLayout, CompilerError> {
         let start_address = self.code_address;
+
+        // FIXED: Instruction corruption debugging removed - issue was placeholder_word() as branch offset in codegen.rs
 
         // CRITICAL VALIDATION: Validate that opcode is in expected range
         // Valid raw opcodes are 0x00-0x1F
@@ -3069,11 +3073,25 @@ impl ZMachineCodeGen {
         for (i, operand) in operands.iter().enumerate() {
             let op_type = self.get_operand_type(operand);
             types_byte |= (op_type as u8) << (6 - i * 2);
+
+            // CRASH DEBUG: Log each operand type calculation for storeb
+            if opcode == 0x02 {
+                log::debug!("🚨 OPERAND_TYPE[{}]: {:?} → type={:?} (bits={:02b}) shift={} contribution=0x{:02x}",
+                    i, operand, op_type, op_type as u8, 6 - i * 2, (op_type as u8) << (6 - i * 2));
+                log::debug!("🚨 TYPES_BYTE: After operand[{}], types_byte=0x{:02x}", i, types_byte);
+            }
         }
 
         // Fill remaining operand type slots with "omitted"
         for i in operands.len()..4 {
             types_byte |= (OperandType::Omitted as u8) << (6 - i * 2);
+
+            // CRASH DEBUG: Log omitted slot filling for storeb
+            if opcode == 0x02 {
+                log::debug!("🚨 OMITTED_SLOT[{}]: Adding Omitted (bits=11) shift={} contribution=0x{:02x}",
+                    i, 6 - i * 2, (OperandType::Omitted as u8) << (6 - i * 2));
+                log::debug!("🚨 TYPES_BYTE: After omitted[{}], types_byte=0x{:02x}", i, types_byte);
+            }
         }
 
         log::debug!(

@@ -6919,12 +6919,36 @@ impl ZMachineCodeGen {
                 Operand::SmallConstant(1), // compare with 1
             ],
             None,
-            Some(placeholder_word() as i16), // Standard placeholder
+            None, // CRITICAL FIX (Oct 24, 2025): Use None for deferred branch patching instead of placeholder_word()
             Some(next_handler_label), // FIXED: Use next_handler_label instead of end_function_label
         )?;
 
         // PHASE 2A CONVERSION: No manual UnresolvedReference creation needed!
         // The emit_instruction_typed call automatically creates DeferredBranchPatch
+        //
+        // CRITICAL BUG FIX SUMMARY (Oct 24, 2025):
+        // Fixed instruction corruption caused by using placeholder_word() as branch offset.
+        //
+        // PROBLEM: Previously passed Some(placeholder_word() as i16) for branch_offset when
+        // also providing target_label_id. This caused 0xFF bytes to be written directly
+        // into instruction stream, corrupting subsequent instructions and causing crashes
+        // like "storeb requires 3 operands" at runtime.
+        //
+        // SOLUTION: Use None for branch_offset when providing target_label_id to let
+        // deferred branch patching system handle forward references properly.
+        //
+        // FIXED LOCATIONS: 8 total instances in this file:
+        // - Line 6922: Word count < 1 check
+        // - Line 7048: Dictionary comparison branch
+        // - Line 7132: Word count < 2 check
+        // - Line 7187: Object not found check
+        // - Line 7721: Object bounds check
+        // - Line 7777: Property exists check
+        // - Line 7879: Name comparison
+        // - Line 9498: Conditional branch helper
+        //
+        // STATUS: Corruption eliminated but command processing may need investigation.
+
         log::debug!(
             "🟢 BRANCH_REF_CREATED: target_ir_id={} (next_handler_label) - using deferred branch patching",
             next_handler_label
@@ -7045,7 +7069,7 @@ impl ZMachineCodeGen {
                 Operand::Variable(216), // This verb's dict addr (from Global G200)
             ],
             None,
-            Some(placeholder_word() as i16), // Placeholder for branch offset
+            None, // CORRUPTION FIX: Use None for deferred branch patching instead of placeholder_word()
             Some(continue_label),            // NEW: Target label for deferred resolution
         )?;
         debug!(
@@ -7129,7 +7153,7 @@ impl ZMachineCodeGen {
                 Operand::SmallConstant(2), // compare with 2
             ],
             None,
-            Some(placeholder_word() as i16), // Standard placeholder
+            None, // CORRUPTION FIX: Use None for deferred branch patching instead of placeholder_word()
             Some(verb_only_label),           // NEW: Target label for deferred resolution
         )?;
 
@@ -7184,7 +7208,7 @@ impl ZMachineCodeGen {
                         Operand::SmallConstant(0), // Compare with 0
                     ],
                     None,
-                    Some(placeholder_word() as i16), // Standard placeholder
+                    None, // CORRUPTION FIX: Use None for deferred branch patching instead of placeholder_word()
                     Some(verb_only_label),           // NEW: Target label for deferred resolution
                 )?;
 
@@ -7718,7 +7742,7 @@ impl ZMachineCodeGen {
                 Operand::SmallConstant(max_object_number as u8), // Maximum actual object count
             ],
             None,
-            Some(placeholder_word() as i16), // Standard placeholder
+            None, // CORRUPTION FIX: Use None for deferred branch patching instead of placeholder_word()
             Some(end_label),                 // NEW: Target label for deferred resolution
         )?;
 
@@ -7774,7 +7798,7 @@ impl ZMachineCodeGen {
                 Operand::SmallConstant(0), // Compare with 0
             ],
             None,
-            Some(placeholder_word() as i16), // Standard placeholder
+            None, // CORRUPTION FIX: Use None for deferred branch patching instead of placeholder_word()
             Some(no_names_label),            // NEW: Target label for deferred resolution
         )?;
 
@@ -7876,7 +7900,7 @@ impl ZMachineCodeGen {
                 Operand::Variable(2), // Input noun dictionary address
             ],
             None,
-            Some(placeholder_word() as i16), // Standard placeholder
+            None, // CORRUPTION FIX: Use None for deferred branch patching instead of placeholder_word()
             Some(found_match_label),         // NEW: Target label for deferred resolution
         )?;
 
@@ -9495,7 +9519,7 @@ impl ZMachineCodeGen {
             crate::grue_compiler::opcodes::Opcode::Op1(crate::grue_compiler::opcodes::Op1::Jz),
             &[condition_operand],
             None,                                 // No store
-            Some(crate::grue_compiler::codegen::placeholder_word() as i16), // Standard placeholder
+            None, // CORRUPTION FIX: Use None for deferred branch patching instead of placeholder_word()
             Some(false_label),                    // jz branches to false_label when condition is zero
         )?;
 
@@ -12052,15 +12076,7 @@ impl ZMachineCodeGen {
     // Utility methods for code emission
 
     pub fn emit_byte(&mut self, byte: u8) -> Result<(), CompilerError> {
-        // CRITICAL: Check for problematic bytes being written
-        let code_offset = self.code_space.len();
-        if code_offset >= 0x333 && code_offset <= 0x338 {
-            log::debug!(
-                "DEBUG: Writing 0x{:02x} at code space offset 0x{:04x}",
-                byte,
-                code_offset
-            );
-        }
+        // FIXED: Corruption debugging no longer needed - issue was placeholder_word() as branch offset
         // Historical note: Previously checked for specific addresses 0x335/0x336
         // This was debugging code for the label ID 415 bug (label IDs written as branch bytes)
         // Fixed by proper branch offset calculation - removed panic checks

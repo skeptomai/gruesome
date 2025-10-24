@@ -998,6 +998,49 @@ impl Interpreter {
                 }
             }
 
+            // CRASH TRACING: Add instrumentation for storeb crash debugging
+            if instruction.opcode == 0x02 && instruction.form == crate::instruction::InstructionForm::Variable {
+                // This is VAR:0x02 (storeb) that might be causing the crash
+                log::debug!("🚨 STOREB_TRACE: About to execute storeb at PC=0x{:04x}", old_pc);
+                log::debug!("🚨 STOREB_TRACE: Raw operands: {:?}", instruction.operands);
+                log::debug!("🚨 STOREB_TRACE: Operand types: {:?}", instruction.operand_types);
+                log::debug!("🚨 STOREB_TRACE: Store var: {:?}", instruction.store_var);
+                log::debug!("🚨 STOREB_TRACE: Branch info: {:?}", instruction.branch);
+
+                // Show raw instruction bytes
+                let end_addr = (old_pc as usize + instruction.size).min(self.vm.game.memory.len());
+                let bytes: Vec<String> = self.vm.game.memory[old_pc as usize..end_addr]
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect();
+                log::debug!("🚨 STOREB_TRACE: Raw instruction bytes: {}", bytes.join(" "));
+
+                // Show call stack state
+                log::debug!("🚨 STOREB_TRACE: Call stack depth: {}", self.vm.call_depth());
+                if self.vm.call_depth() > 0 {
+                    let frame = self.vm.call_stack.last().unwrap();
+                    log::debug!("🚨 STOREB_TRACE: Current routine: return_pc=0x{:04x}, locals={:?}",
+                               frame.return_pc, frame.locals);
+                }
+            }
+
+            // EXECUTION TRACE: Log every instruction during the critical execution phase
+            // Focus on the area around the crash
+            if old_pc >= 0x0950 {
+                log::debug!("🎯 EXEC_TRACE: PC=0x{:04x} opcode=0x{:02x} form={:?} size={}",
+                           old_pc, instruction.opcode, instruction.form, instruction.size);
+            }
+
+            // BRANCH TRACE: Track all branch instructions that might cause PC corruption
+            if instruction.branch.is_some() {
+                log::debug!("🔀 BRANCH_TRACE: PC=0x{:04x} branch_info={:?}", old_pc, instruction.branch);
+            }
+
+            // JUMP TRACE: Track jump instructions (1OP:12)
+            if instruction.opcode == 0x0C && instruction.form == crate::instruction::InstructionForm::Short {
+                log::debug!("🏃 JUMP_TRACE: PC=0x{:04x} operands={:?}", old_pc, instruction.operands);
+            }
+
             // Execute the instruction
             match self.execute_instruction(&instruction)? {
                 ExecutionResult::Continue => {
