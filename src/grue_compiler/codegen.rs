@@ -5297,10 +5297,11 @@ impl ZMachineCodeGen {
 
         // Generate Z-Machine instruction to load constant result
         // Use load immediate to stack (simulate array.empty() result)
-        let _layout = self.emit_instruction(
-            0x8E, // load immediate constant (1OP:142)
+        let _layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::Load), // load immediate constant (1OP:142)
             &[Operand::SmallConstant(empty_value)],
             Some(0), // Store to stack
+            None,
             None,
         )?;
 
@@ -5347,11 +5348,12 @@ impl ZMachineCodeGen {
         if _ir.rooms.is_empty() && _ir.objects.is_empty() && _ir.grammar.is_empty() {
             debug!("Simple test case detected - generating minimal init block");
             // Just generate a simple return (RTRUE)
-            self.emit_instruction(
-                0xB0, // rtrue opcode (0OP form) - FIXED: was 0x00
+            self.emit_instruction_typed(
+                Opcode::Op0(Op0::Rtrue), // rtrue opcode (0OP form) - FIXED: was 0x00
                 &[],  // No operands
                 None, // No store
                 None, // No branch
+                None, // No target label
             )?;
             return Ok(());
         }
@@ -6465,11 +6467,12 @@ impl ZMachineCodeGen {
             self.record_final_address(main_call_id, main_call_routine_address);
 
             // Call the user's main function
-            let layout = self.emit_instruction(
-                0x00, // call_vs raw opcode (emit_instruction expects 0x00-0x1F, not encoded 0xE0)
+            let layout = self.emit_instruction_typed(
+                Opcode::OpVar(OpVar::CallVs), // call_vs opcode (VAR:224)
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder for main function address
                 Some(0x00), // Store result in local variable 0 (discarded)
                 None,       // No branch
+                None,       // No target label
             )?;
 
             // Add unresolved reference for main function call
@@ -6680,26 +6683,8 @@ impl ZMachineCodeGen {
         // 5. Jump back to start of main loop for next command
         debug!("Generating loop-back jump to continue main loop");
 
-        let layout = self.emit_instruction(
-            0x0C,                                          // jump opcode (1OP:12)
-            &[Operand::LargeConstant(placeholder_word())], // Placeholder for loop start address
-            None,                                          // No store
-            None,                                          // No branch
-        )?;
-
-        // Register UnresolvedReference to jump back to main loop start
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Jump,
-                location: layout
-                    .operand_location
-                    .expect("jump instruction must have operand location"),
-                target_id: main_loop_jump_id, // Jump to first instruction after routine header
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        // Jump back to main loop start
+        self.translate_jump(main_loop_jump_id)?;
 
         debug!(
             "Main loop generation complete at 0x{:04x} (with loop-back to 0x{:04x})",
@@ -7078,25 +7063,8 @@ impl ZMachineCodeGen {
             "🔗 VERB_CHAIN: Verb '{}' mismatch will jump to next_handler_label={}",
             verb, next_handler_label
         );
-        let layout = self.emit_instruction(
-            0x0C, // jump (unconditional)
-            &[Operand::LargeConstant(placeholder_word())],
-            None,
-            None,
-        )?;
-
-        if let Some(operand_location) = layout.operand_location {
-            self.reference_context
-                .unresolved_refs
-                .push(UnresolvedReference {
-                    reference_type: LegacyReferenceType::Jump,
-                    location: operand_location,
-                    target_id: next_handler_label, // ✅ Jump to next verb, not end!
-                    is_packed_address: false,
-                    offset_size: 2,
-                    location_space: MemorySpace::Code,
-                });
-        }
+        // Jump to next verb handler in chain
+        self.translate_jump(next_handler_label)?;
 
         // Register continue_label here (after the jump)
         self.label_addresses
@@ -8463,25 +8431,7 @@ impl ZMachineCodeGen {
                 )?;
 
                 // jump label_done
-                let jump_layout = self.emit_instruction(
-                    0x0C,
-                    &[Operand::LargeConstant(placeholder_word())],
-                    None,
-                    None,
-                )?;
-
-                if let Some(operand_loc) = jump_layout.operand_location {
-                    self.reference_context
-                        .unresolved_refs
-                        .push(UnresolvedReference {
-                            reference_type: LegacyReferenceType::Jump,
-                            location: operand_loc,
-                            target_id: label_done,
-                            is_packed_address: false,
-                            offset_size: 2,
-                            location_space: MemorySpace::Code,
-                        });
-                }
+                self.translate_jump(label_done)?;
 
                 // label_true:
                 self.label_addresses.insert(label_true, self.code_address);
@@ -9502,7 +9452,7 @@ impl ZMachineCodeGen {
         &mut self,
         condition: IrId,
         _true_label: IrId,
-        _false_label: IrId,
+        false_label: IrId,
     ) -> Result<(), CompilerError> {
         // CRITICAL FIX: Check if condition is a BinaryOp result that was never generated
         if let Some((op, _left, _right)) = self.ir_id_to_binary_op.get(&condition).cloned() {
@@ -9538,16 +9488,15 @@ impl ZMachineCodeGen {
             }
         };
 
-        // FIXED: Emit jz instruction WITH placeholder branch offset
-        // The emit_instruction function handles placeholder emission properly
-        // jz is opcode 0 in the 1OP group, so it should be encoded as 0x80 (1OP form + opcode 0)
-        // Bit 15 of placeholder = 1 means "branch on true" (when value IS zero, branch to false_label)
-        // Using -1 (0xFFFF) sets bit 15, making branch_on_true = true
-        let layout = self.emit_instruction(
-            0x80, // jz (1OP:0) - jump if zero - correct Z-Machine encoding 0x80 + 0x00
+        // FIXED: Emit jz instruction WITH proper DeferredBranchPatch creation
+        // jz branches when condition IS zero (false), so it branches to false_label
+        // When condition is non-zero (true), execution falls through to true_label
+        let layout = self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op1(crate::grue_compiler::opcodes::Op1::Jz),
             &[condition_operand],
-            None,     // No store
-            Some(-1), // Negative value sets bit 15 = branch on true (jump when zero)
+            None,                                 // No store
+            Some(crate::grue_compiler::codegen::placeholder_word() as i16), // Standard placeholder
+            Some(false_label),                    // jz branches to false_label when condition is zero
         )?;
 
         // Verify branch_location was set (sanity check)
@@ -9558,9 +9507,13 @@ impl ZMachineCodeGen {
         }
 
         // ARCHITECTURAL FIX: Branch instructions should ONLY use DeferredBranchPatch system.
-        // The emit_instruction() call above already handles DeferredBranchPatch creation.
+        // The emit_instruction_typed() call above automatically creates DeferredBranchPatch entry.
         // UnresolvedReference should only handle operand fields, never branch offsets.
-        // Note: _false_label is handled by DeferredBranchPatch, not needed here.
+        // The false_label is properly handled by DeferredBranchPatch system.
+        log::debug!(
+            "🟢 BRANCH_REF_CREATED: target_ir_id={} (false_label) - using deferred branch patching",
+            false_label
+        );
 
         Ok(())
     }
