@@ -12,6 +12,26 @@
 
 ## Recent Fixes (October 2025)
 
+### MAJOR: 2-Byte Branch Implementation ✅ COMPLETED (Oct 24, 2025)
+- **Achievement**: Successfully implemented 2-byte branch format for all Z-Machine branch instructions
+- **Problem Solved**: "1-byte branch offset XX out of range (-64 to +63)" compilation errors
+- **Implementation**: Modified all offset_size calculations in codegen_instructions.rs to force 2-byte format
+  - Lines 2020, 2075, 2264, 2359: `let offset_size = 2; // ALWAYS use 2-byte format for reliability`
+  - All DeferredBranchPatch entries now created with offset_size=2
+- **Result**: Zero branch overflow compilation errors, all branches use 2-byte Z-Machine format
+- **Files**: `src/grue_compiler/codegen_instructions.rs` (offset_size calculations)
+- **Status**: Compilation branch issues completely resolved
+
+### CRITICAL ARCHITECTURAL LESSON: DeferredBranchPatch vs UnresolvedReference Systems DO NOT COLLIDE ✅ VERIFIED (Oct 24, 2025)
+- **Previous False Theory**: Branch patching and string reference systems patch same memory locations
+- **Mathematical Proof**: Systems patch entirely different locations separated by code_base offset
+  - **Branch system**: Patches `code_space[0x0622]` → copied to `final_data[code_base + 0x0622] = final_data[0x1716]`
+  - **UnresolvedReference**: Patches `final_data[0x0622]` (completely different location)
+  - **Separation**: `0x1716 - 0x0622 = 0x10f4` (exactly code_base offset)
+- **Conclusion**: No collision exists. Each system correctly manages its own address space.
+- **Lesson**: Always verify collision theories with mathematical proof before assuming architectural conflicts
+- **Status**: This debugging path is closed - look elsewhere for runtime issues
+
 ### MAJOR: Property 28 Crash Resolution - Property Number Collision Bug ✅ FIXED (Oct 21, 2025)
 - **Issue**: "print_paddr called with invalid packed address 0x0000" crashes when accessing room descriptions
 - **Root Cause**: Property number collision due to Z-Machine 5-bit encoding limits

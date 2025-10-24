@@ -733,81 +733,8 @@ impl Interpreter {
         }
 
         loop {
-            // TARGETED DEBUGGING: Focus on je (jump if equal) instructions for command matching
-            let current_inst = self.vm.read_byte(self.vm.pc);
-
-            // Log je instructions which are critical for command matching
-            if current_inst == 0x41 || current_inst == 0x61 || current_inst == 0xc1 {
-                // je in various forms
-                log::debug!(
-                    "🎯 JE_INSTRUCTION: PC=0x{:04x}, opcode=0x{:02x}",
-                    self.vm.pc,
-                    current_inst
-                );
-
-                // If this might be the critical dictionary comparison, log more detail
-                if self.vm.pc >= 0x0920 && self.vm.pc <= 0x0970 {
-                    if let Ok(var1) = self.vm.read_variable(1) {
-                        if let Ok(var2) = self.vm.read_variable(2) {
-                            log::debug!(
-                                "🎯 JE_CRITICAL: PC=0x{:04x}, var1={}, var2={}",
-                                self.vm.pc,
-                                var1,
-                                var2
-                            );
-                        }
-                    }
-                }
-            }
-
-            // Log function calls and prints as before
-            if current_inst == 0xe0 || current_inst == 0xe1 {
-                // call_vs and call_vn
-                log::debug!(
-                    "🎯 FUNCTION_CALL: PC=0x{:04x}, opcode=0x{:02x}",
-                    self.vm.pc,
-                    current_inst
-                );
-            }
-            if current_inst == 0x8d {
-                // print_paddr
-                log::debug!(
-                    "🎯 PRINT: PC=0x{:04x}, opcode=0x{:02x}",
-                    self.vm.pc,
-                    current_inst
-                );
-            }
-
-            // 🚨 CRITICAL DEBUG: Track when PC reaches problematic address 1699 (MAIN LOOP)
-            if self.vm.pc == 1699 {
-                log::debug!("🚨 FATAL: Main execution loop reached PC 1699 (non-code space)!");
-                log::debug!(
-                    "🚨 FATAL: This is the smoking gun - PC corruption detected in main loop!"
-                );
-                log::debug!("🚨 FATAL: Call stack depth: {}", self.vm.call_depth());
-                if self.vm.call_depth() > 0 {
-                    log::debug!(
-                        "🚨 FATAL: Top of call stack: return_pc=0x{:04x}",
-                        self.vm.call_stack.last().unwrap().return_pc
-                    );
-                }
-                panic!(
-                    "Critical: Main loop PC reached non-code address 1699 - investigation complete"
-                );
-            }
-
             // Fetch and decode instruction
             let pc = self.vm.pc;
-
-            // Debug: Track all PC values and advancement
-            if pc > 0x1000 || pc == 0x1717 || (0x0b70..=0x0b80).contains(&pc) {
-                log::debug!(
-                    " EXECUTION LOOP: PC=0x{:04x} ({}) memory_len={}",
-                    pc,
-                    pc,
-                    self.vm.game.memory.len()
-                );
-            }
 
             // Debug: Show raw bytes at critical addresses and quote area execution flow
             if pc == 0xcc6a {
@@ -3578,22 +3505,5 @@ mod tests {
         assert!(matches!(result, ExecutionResult::Continue));
         // Check that global variable 0x10 now contains 42
         assert_eq!(interp.vm.read_global(0x10).unwrap(), 42);
-    }
-
-    /// Check if an opcode is a stack operation
-    pub fn is_stack_opcode(opcode: u8, operand_count: &crate::instruction::OperandCount) -> bool {
-        matches!(
-            (opcode, operand_count),
-            // 0OP stack operations
-            (0x08, crate::instruction::OperandCount::OP0) |  // ret_popped
-            (0x09, crate::instruction::OperandCount::OP0) |  // pop/catch
-            // 1OP stack operations
-            (0x0B, crate::instruction::OperandCount::OP1) |  // ret
-            (0x08, crate::instruction::OperandCount::OP1) |  // call_1s
-            // VAR stack operations
-            (0x00, crate::instruction::OperandCount::VAR) |  // call
-            (0x08, crate::instruction::OperandCount::VAR) |  // push
-            (0x09, crate::instruction::OperandCount::VAR) // pull
-        )
     }
 }
