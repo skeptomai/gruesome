@@ -40,22 +40,71 @@ Patch 2-byte: location=0x0622 old_value=0xffff -> new_value=0x0fde  ← Unresolv
 
 ---
 
-## NEW TARGET: Property 28 Crash Investigation
+## NEW TARGET: Branch Encoding Bug - IDENTIFIED! ❌
 
-**STATUS**: Collision bug eliminated, but new `print_paddr(0x0000)` crash appears during room description display.
+**STATUS**: Collision bug eliminated, but deferred branch patching is **changing 1-byte branches to 2-byte branches**, corrupting instruction stream.
 
-**Current Error**:
+**Root Cause Pattern**:
+- **Working Version (731a)**: `80 22` (1-byte branch: branch-on-true + offset 0, followed by instruction `0x22`)
+- **Broken Version**: `ff e2` (2-byte branch: high/low bytes, but **wrong encoding type**)
+
+**Critical Discovery**:
 ```
-🚨 COMPILER BUG: print_paddr called with invalid packed address 0x0000 at PC 01303!
-This indicates the compiler generated an invalid string reference.
+Working:  42 01 01 80 22 4f 6e 01 02 e1 13 01  (1-byte branch)
+Broken:   42 01 01 ff e2 4f 6e 01 02 e1 13 01  (2-byte branch)
+           ^         ^  ^
+           |         |  |__ Next instruction moved!
+           |         |__ Should be 0x80 (1-byte)
+           |__ Same instruction prefix
 ```
 
-**Progress**:
-- ✅ Game banner displays correctly
-- ✅ Initial room description starts: "You are standing in an open field west of a white house..."
-- ❌ Crashes during property access for room description
+**The Bug**: Deferred branch patching system had two issues:
+1. ✅ **FIXED**: Converting 1-byte branches to 2-byte branches (hardcoded `offset_size = 2`)
+2. ❌ **ACTIVE**: Wrong offset calculation - generating offset 99 instead of 0
 
-**Next Steps**: Investigate Property 28 crash as mentioned in CLAUDE.md - likely separate issue from collision bug.
+**Analysis**:
+- **Two Paths in emit_instruction_typed**:
+  - **New Path** (lines 2043-2089): Handles branches with `target_label_id` (modern deferred branches)
+  - **Legacy Path** (lines 2330+): Handles branches without `target_label_id` (old immediate branches for unit test compatibility)
+- **Current Issue**: Working version has `80` (offset 0), our version has `e3` (offset 99), causing PC to point to wrong instruction
+
+**PC Corruption Pattern**:
+```
+Working:  80 22  (PC=0x0958 → 0x22 = call_2s)
+Current:  e3 ff  (PC=0x0958 → 0xff = VAR:0x1f unimplemented)
+          ^  ^
+          |  |__ PC points here due to wrong offset
+          |__ Should be 0x80 (offset 0)
+```
+
+**Next Steps**: Fix offset calculation in deferred branch patching.
+
+### BRANCH TARGET ANALYSIS - ROOT CAUSE IDENTIFIED ⚡
+
+**What Label 9001 Actually Is**:
+- **Label 9001** = `end_function_label` = hash-generated unique label for end of "test" verb handler function
+- **Generated at**: `let end_function_label = 90000 + (hasher.finish() % 9999) as u32;` (line 6931)
+- **Recorded at**: `self.record_final_address(end_function_label, self.code_address);` (line 7590)
+- **Points to address 0x00cd** = the end of the verb handler function
+
+**The Problem**:
+- **Branch at 0x00e6 targets label 9001** = trying to jump to end of function
+- **Working version had offset 0** = branch was effectively a no-op (fall-through)
+- **Current version has offset -29** = function end is now 29 bytes before branch location
+- **Code layout changed between versions** = what was a fall-through is now a backward jump
+
+**Branch Intent Analysis**:
+- This branch should be **removed entirely** or **target next instruction** (offset +1 or +2)
+- In working version: `80` (offset 0) = fall-through/no-op behavior
+- Current broken behavior: Jumps backward to function end, corrupting control flow
+
+**Two-Path Architecture Explanation**:
+- **New Path** (lines 2043-2089): Handles branches with `target_label_id` (modern deferred branches) ← Our case
+- **Legacy Path** (lines 2330+): Handles branches without `target_label_id` (unit test compatibility)
+- **Historical Fix**: Line 6979 comment shows `end_function_label` was replaced with `next_handler_label` elsewhere
+- **Our bug**: This branch still targets `end_function_label` and should be updated/removed
+
+**Immediate Fix Strategy**: Make branch target next instruction (offset calculation to next address) with comment for future optimization/removal.
 
 ### COMPREHENSIVE FIX STRATEGY
 
@@ -135,6 +184,61 @@ This indicates the compiler generated an invalid string reference.
 - `examples/collision_test.grue` - Minimal test case
 
 **Status**: Ready to commit collision detection infrastructure before proceeding with bug fix.
+
+---
+
+## INSTRUCTION CORRUPTION BUG - COMPLETELY FIXED! ✅ (October 24, 2025)
+
+**BREAKTHROUGH**: Architectural fix eliminated instruction corruption through proper branch placeholder emission.
+
+### Final Root Cause
+**Two-phase compilation issue**: The deferred branch patching system was emitting incorrect number of placeholder bytes initially, then attempting to "fix" them afterward:
+
+1. **Wrong Initial Emission**: `emit_long_form_with_layout` always emitted 2-byte placeholders (`0xFFFF`) regardless of actual branch size
+2. **Failed After-the-Fact Patching**: Deferred branch resolution tried to patch 1-byte branches into 2-byte placeholder space
+3. **Instruction Corruption**: Extra `0xFF` bytes shifted instruction boundaries, causing crashes
+
+### The Architectural Fix
+**Modified `emit_long_form_with_layout` to emit correct placeholder size initially**:
+```rust
+// OLD: Always emit 2-byte placeholder
+self.emit_word(placeholder_value)?;
+
+// NEW: Emit correct size based on branch_offset_size parameter
+match branch_offset_size {
+    Some(1) => self.emit_byte(0xFF)?,     // 1-byte placeholder
+    Some(2) => self.emit_word(placeholder_value)?, // 2-byte placeholder
+}
+```
+
+**Updated call sites to calculate and pass `offset_size`**:
+- Both `emit_instruction_typed` and `emit_instruction` calculate offset size (-64 to +63 = 1 byte, else 2 bytes)
+- Pass calculated size to `emit_long_form_with_layout` via new `branch_offset_size` parameter
+
+**Removed temporary "after the fact" fixes**:
+- Label 9001 adjustment hack
+- "Clearing 2-byte remainder" patch
+- All band-aid solutions that tried to fix wrong initial emission
+
+### Results - Complete Success
+- ✅ **Compilation successful**: No errors, clean build
+- ✅ **Instruction corruption eliminated**: No more `ff e2` patterns causing `storeb requires 3 operands` crashes
+- ✅ **Game executes**: Test case starts and runs without fatal instruction corruption
+- ✅ **Clean bytecode**: Proper branch encoding at runtime addresses
+- ✅ **Architectural cleanliness**: Emit correct bytes initially instead of patching afterward
+
+### Technical Details
+**Bytecode Verification**:
+```
+Previous (broken): ff e2 4f 6e 01 02 e1  (2-byte branch corrupting instruction stream)
+Current (fixed):   01 a3 4f 6e 01 02 e1  (clean 1-byte branch with proper encoding)
+```
+
+**Files Modified**:
+- `src/grue_compiler/codegen_instructions.rs`: Updated `emit_long_form_with_layout` signature and branch emission logic
+- `src/grue_compiler/codegen.rs`: Removed temporary label 9001 and 2-byte remainder fixes
+
+**Status**: Instruction corruption bug completely resolved. The compiler now emits architecturally correct Z-Machine bytecode with proper branch encoding.
 
 ---
 

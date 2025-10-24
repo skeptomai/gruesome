@@ -1837,34 +1837,52 @@ impl ZMachineCodeGen {
         log::debug!("Resolving {} deferred branch patches", branch_count);
 
         for (i, patch) in self.two_pass_state.deferred_branches.iter().enumerate() {
-            log::debug!(
-                "DEFERRED_BRANCH[{}]: instruction=0x{:04x}, offset_location=0x{:04x}, target={}, branch_on_true={}",
+            log::error!("🔍 DEFERRED_BRANCH[{}]: instruction=0x{:04x}, offset_location=0x{:04x}, target={}, branch_on_true={}",
                 i, patch.instruction_address, patch.branch_offset_location,
                 patch.target_label_id, patch.branch_on_true
             );
 
             // Look up the target label address
+            log::error!(
+                "🔍 LABEL_LOOKUP: Searching for target_label_id={}",
+                patch.target_label_id
+            );
+            log::error!(
+                "🔍 AVAILABLE_LABELS: {:?}",
+                self.two_pass_state
+                    .label_addresses
+                    .keys()
+                    .collect::<Vec<_>>()
+            );
+
             let target_address = self
                 .two_pass_state
                 .label_addresses
                 .get(&patch.target_label_id)
                 .ok_or_else(|| {
+                    log::error!(
+                        "🚨 LABEL_NOT_FOUND: target_label_id={} missing from label_addresses!",
+                        patch.target_label_id
+                    );
                     CompilerError::CodeGenError(format!(
                         "Deferred branch target label {} not found",
                         patch.target_label_id
                     ))
                 })?;
 
+            let adjusted_target_address = *target_address;
+
             // 🚨 TRACK PROBLEMATIC ADDRESSES
-            log::debug!(
-                "🔍 BRANCH_LOOKUP: target_label_id={} -> address=0x{:04x}",
+            log::error!(
+                "🔍 BRANCH_LOOKUP: target_label_id={} -> address=0x{:04x} (adjusted=0x{:04x})",
                 patch.target_label_id,
-                target_address
+                target_address,
+                adjusted_target_address
             );
 
-            if *target_address > 0x2000 {
+            if adjusted_target_address > 0x2000 {
                 log::debug!("🚨 SUSPICIOUS_TARGET: Label {} resolves to very high address 0x{:04x} (> 0x2000)",
-                    patch.target_label_id, target_address);
+                    patch.target_label_id, adjusted_target_address);
             }
 
             // Calculate branch offset
@@ -1874,12 +1892,12 @@ impl ZMachineCodeGen {
             // CRITICAL FIX: Calculate offset for runtime execution
             // At runtime, the branch instruction executes at: branch_from + code_base
             // The target must be in final address space
-            let final_target_address = if *target_address < self.final_code_base {
+            let final_target_address = if adjusted_target_address < self.final_code_base {
                 log::debug!("🔧 BRANCH_TARGET_ADJUST: Converting target from code space 0x{:04x} to final space",
-                    *target_address);
-                self.final_code_base + *target_address
+                    adjusted_target_address);
+                self.final_code_base + adjusted_target_address
             } else {
-                *target_address
+                adjusted_target_address
             };
 
             // Runtime branch executes at compilation address + code_base
@@ -1892,26 +1910,32 @@ impl ZMachineCodeGen {
                 -((runtime_branch_from - final_target_address) as i16)
             };
 
-            log::debug!(
+            log::error!(
                 "🔧 BRANCH_OFFSET_CALC: target=0x{:04x} runtime_branch_from=0x{:04x} offset={}",
                 final_target_address,
                 runtime_branch_from,
                 offset
             );
 
+            // Track our specific problematic branch
+            if patch.branch_offset_location == 0x00e9 {
+                log::error!("🚨 TRACKING_PROBLEMATIC_BRANCH: offset_location=0x{:04x}, target_label={}, final_target=0x{:04x}, offset={}",
+                    patch.branch_offset_location, patch.target_label_id, final_target_address, offset);
+            }
+
             // 🚨 CRITICAL: Track branches targeting problematic address
             if final_target_address == 1699
                 || final_target_address == 0x1797
-                || *target_address == 1699
-                || *target_address == 0x1797
+                || adjusted_target_address == 1699
+                || adjusted_target_address == 0x1797
             {
                 log::debug!("🚨 PROBLEMATIC_BRANCH_DETECTED: Branch at 0x{:04x} targeting address 0x{:04x} (final: 0x{:04x}) with offset {}",
-                    patch.branch_offset_location, *target_address, final_target_address, offset);
+                    patch.branch_offset_location, adjusted_target_address, final_target_address, offset);
             }
 
             log::debug!(
                 "BRANCH_CALC: target=0x{:04x}, from=0x{:04x}, offset={}",
-                target_address,
+                adjusted_target_address,
                 branch_from,
                 offset
             );
@@ -1919,13 +1943,43 @@ impl ZMachineCodeGen {
             // Patch the branch offset in code_space
             if patch.offset_size == 1 {
                 // 1-byte offset with branch_on_true bit
-                let offset_byte = if patch.branch_on_true {
-                    (offset as u8) | 0x80 // Set bit 7 for "branch on true"
+                // Z-Machine 1-byte branch: bit 7 = polarity, bits 5-0 = signed offset (-64 to +63)
+                let offset_6bit = if offset >= -64 && offset <= 63 {
+                    // Convert to 6-bit two's complement
+                    if offset >= 0 {
+                        offset as u8 & 0x3F // Positive: just mask to 6 bits
+                    } else {
+                        // Negative: 6-bit two's complement
+                        (64 + offset) as u8 & 0x3F // -1 becomes 63, -2 becomes 62, etc.
+                    }
                 } else {
-                    (offset as u8) & 0x7F // Clear bit 7 for "branch on false"
+                    return Err(CompilerError::CodeGenError(format!(
+                        "1-byte branch offset {} out of range (-64 to +63) at location 0x{:04x}",
+                        offset, patch.branch_offset_location
+                    )));
+                };
+
+                let offset_byte = if patch.branch_on_true {
+                    offset_6bit | 0x80 // Set bit 7 for "branch on true"
+                } else {
+                    offset_6bit & 0x7F // Clear bit 7 for "branch on false"
                 };
 
                 if patch.branch_offset_location < self.code_space.len() {
+                    // Track our specific problematic branch patching
+                    if patch.branch_offset_location == 0x00e9 {
+                        log::error!(
+                            "🚨 PATCHING_0xe9: Writing offset_byte=0x{:02x} at location=0x{:04x}",
+                            offset_byte,
+                            patch.branch_offset_location
+                        );
+                        log::error!(
+                            "🚨 BEFORE_PATCH: code_space[0x{:04x}] = 0x{:02x}",
+                            patch.branch_offset_location,
+                            self.code_space[patch.branch_offset_location]
+                        );
+                    }
+
                     // Monitor unusual branch offsets for debugging
                     if offset_byte == 0x5E {
                         log::debug!(
@@ -1934,6 +1988,16 @@ impl ZMachineCodeGen {
                         );
                     }
                     self.code_space[patch.branch_offset_location] = offset_byte;
+
+                    // Track our specific problematic branch patching
+                    if patch.branch_offset_location == 0x00e9 {
+                        log::error!(
+                            "🚨 AFTER_PATCH: code_space[0x{:04x}] = 0x{:02x}",
+                            patch.branch_offset_location,
+                            self.code_space[patch.branch_offset_location]
+                        );
+                    }
+
                     log::debug!(
                         "Patched 1-byte branch: location=0x{:04x}, value=0x{:02x}",
                         patch.branch_offset_location,
@@ -1958,6 +2022,15 @@ impl ZMachineCodeGen {
                 let low_byte = (offset as u16) as u8;
 
                 if patch.branch_offset_location + 1 < self.code_space.len() {
+                    // Track our specific problematic branch patching for 2-byte branches
+                    if patch.branch_offset_location == 0x00e9 {
+                        log::error!("🚨 PATCHING_0xe9_2BYTE: Writing high_byte=0x{:02x}, low_byte=0x{:02x} at location=0x{:04x}",
+                            high_byte, low_byte, patch.branch_offset_location);
+                        log::error!("🚨 BEFORE_PATCH_2BYTE: code_space[0x{:04x}] = 0x{:02x}, code_space[0x{:04x}] = 0x{:02x}",
+                            patch.branch_offset_location, self.code_space[patch.branch_offset_location],
+                            patch.branch_offset_location + 1, self.code_space[patch.branch_offset_location + 1]);
+                    }
+
                     // Monitor 2-byte branch offsets for debugging
                     if high_byte == 0x5E || low_byte == 0x5E {
                         log::debug!(
@@ -1968,6 +2041,13 @@ impl ZMachineCodeGen {
                     }
                     self.code_space[patch.branch_offset_location] = high_byte;
                     self.code_space[patch.branch_offset_location + 1] = low_byte;
+
+                    // Track our specific problematic branch patching for 2-byte branches
+                    if patch.branch_offset_location == 0x00e9 {
+                        log::error!("🚨 AFTER_PATCH_2BYTE: code_space[0x{:04x}] = 0x{:02x}, code_space[0x{:04x}] = 0x{:02x}",
+                            patch.branch_offset_location, self.code_space[patch.branch_offset_location],
+                            patch.branch_offset_location + 1, self.code_space[patch.branch_offset_location + 1]);
+                    }
                     log::debug!(
                         "Patched 2-byte branch: location=0x{:04x}, value=0x{:02x}{:02x}",
                         patch.branch_offset_location,
@@ -5350,10 +5430,10 @@ impl ZMachineCodeGen {
             // Just generate a simple return (RTRUE)
             self.emit_instruction_typed(
                 Opcode::Op0(Op0::Rtrue), // rtrue opcode (0OP form) - FIXED: was 0x00
-                &[],  // No operands
-                None, // No store
-                None, // No branch
-                None, // No target label
+                &[],                     // No operands
+                None,                    // No store
+                None,                    // No branch
+                None,                    // No target label
             )?;
             return Ok(());
         }
@@ -7070,7 +7150,7 @@ impl ZMachineCodeGen {
             ],
             None,
             Some(-1), // POLARITY FIX: Branch on true (dictionary match) to continue processing command
-            Some(continue_label),            // NEW: Target label for deferred resolution
+            Some(continue_label), // NEW: Target label for deferred resolution
         )?;
         debug!(
             "je emitted, now at code_address=0x{:04x}",
@@ -7154,7 +7234,7 @@ impl ZMachineCodeGen {
             ],
             None,
             Some(-1), // POLARITY FIX: Branch on true (word count < 2) to handle verb-only case
-            Some(verb_only_label),           // NEW: Target label for deferred resolution
+            Some(verb_only_label), // NEW: Target label for deferred resolution
         )?;
 
         // PHASE 2A CONVERSION: No manual UnresolvedReference creation needed!
@@ -7209,7 +7289,7 @@ impl ZMachineCodeGen {
                     ],
                     None,
                     Some(-1), // POLARITY FIX: Branch on true (object ID = 0) to handle verb-only case
-                    Some(verb_only_label),           // NEW: Target label for deferred resolution
+                    Some(verb_only_label), // NEW: Target label for deferred resolution
                 )?;
 
                 // PHASE 2A CONVERSION: No manual UnresolvedReference creation needed!
@@ -7743,7 +7823,7 @@ impl ZMachineCodeGen {
             ],
             None,
             Some(-1), // POLARITY FIX: Branch on true (object > max) to skip invalid objects
-            Some(end_label),                 // NEW: Target label for deferred resolution
+            Some(end_label), // NEW: Target label for deferred resolution
         )?;
 
         // PHASE 2B CONVERSION: No manual UnresolvedReference creation needed!
@@ -7799,7 +7879,7 @@ impl ZMachineCodeGen {
             ],
             None,
             Some(-1), // POLARITY FIX: Branch on true (property address = 0) when no names property
-            Some(no_names_label),            // NEW: Target label for deferred resolution
+            Some(no_names_label), // NEW: Target label for deferred resolution
         )?;
 
         // PHASE 2B CONVERSION: No manual UnresolvedReference creation needed!
@@ -7864,8 +7944,8 @@ impl ZMachineCodeGen {
                 Operand::Variable(6), // property length
             ],
             None,
-            Some(0x3FFF_u16 as i16), // Keep original encoding (branch-on-FALSE)
-            Some(no_names_label),    // NEW: Target label for deferred resolution
+            Some(0), // POLARITY FIX: Branch on false (jl branches when index < names_count)
+            Some(no_names_label), // NEW: Target label for deferred resolution
         )?;
 
         // PHASE 2B CONVERSION: No manual UnresolvedReference creation needed!
@@ -7901,7 +7981,7 @@ impl ZMachineCodeGen {
             ],
             None,
             Some(-1), // POLARITY FIX: Branch on true (dictionary addresses match) to found match
-            Some(found_match_label),         // NEW: Target label for deferred resolution
+            Some(found_match_label), // NEW: Target label for deferred resolution
         )?;
 
         // PHASE 2B CONVERSION: No manual UnresolvedReference creation needed!
@@ -8439,7 +8519,7 @@ impl ZMachineCodeGen {
                     Opcode::Op2(Op2::Je),
                     &[operand, Operand::Constant(0)],
                     None,             // No store
-                    Some(0x7FFF),     // branch-on-FALSE placeholder
+                    Some(0), // POLARITY FIX: Branch on false (je branches when operand == 0)
                     Some(label_true), // NEW: Target label for deferred resolution
                 )?;
 
@@ -9518,9 +9598,9 @@ impl ZMachineCodeGen {
         let layout = self.emit_instruction_typed(
             crate::grue_compiler::opcodes::Opcode::Op1(crate::grue_compiler::opcodes::Op1::Jz),
             &[condition_operand],
-            None,                                 // No store
-            Some(-1), // POLARITY FIX: Branch on true (jz branches when condition is zero)
-            Some(false_label),                    // jz branches to false_label when condition is zero
+            None,              // No store
+            Some(-1),          // POLARITY FIX: Branch on true (jz branches when condition is zero)
+            Some(false_label), // jz branches to false_label when condition is zero
         )?;
 
         // Verify branch_location was set (sanity check)
@@ -9583,8 +9663,8 @@ impl ZMachineCodeGen {
             }
         };
 
-        // PHASE 2: Use placeholder word for branch offset (for legacy compatibility during migration)
-        let placeholder = placeholder_word() as i16;
+        // POLARITY FIX: Use branch_on_true parameter to set correct polarity instead of placeholder
+        let polarity = if branch_on_true { -1 } else { 0 };
 
         log::debug!("EMIT_COMPARISON_BRANCH: Using emit_instruction_typed with target_label_id={} (branch_on_true={}) at code_address=0x{:04x}",
             target_label, branch_on_true, self.code_address);
@@ -9595,7 +9675,7 @@ impl ZMachineCodeGen {
             typed_opcode,
             operands,
             None,               // No store
-            Some(placeholder),  // Placeholder for branch offset
+            Some(polarity),     // POLARITY FIX: Use proper branch polarity instead of placeholder
             Some(target_label), // NEW: Target label for deferred resolution
         )?;
 
@@ -11127,10 +11207,20 @@ impl ZMachineCodeGen {
         log::debug!("🔧 BRANCH_PATCH: location=0x{:04x} placeholder=0x{:04x} branch_on_true={} target=0x{:04x} offset={} encoded=[0x{:02x} 0x{:02x}]",
             location, placeholder, branch_on_true, target_address, offset_2byte, first_byte, second_byte);
 
-        // TEMPORARY: Check what we're writing
-        if first_byte == 0x01 && second_byte == 0x9f {
-            panic!("FOUND THE BUG: patch_branch_offset is writing 0x01 0x9f at location 0x{:04x}! offset_2byte={}, target_address=0x{:04x}", 
- location, offset_2byte, target_address);
+        // SYSTEMATIC BREAKPOINT: Check for 0xff placeholder corruption
+        if location == 0x0957 || (first_byte == 0xff || second_byte == 0xff) {
+            log::error!(
+                "🚨 PATCH_BREAKPOINT: location=0x{:04x} placeholder=0x{:04x} branch_on_true={}",
+                location,
+                placeholder,
+                branch_on_true
+            );
+            log::error!(
+                "🚨 Writing: first_byte=0x{:02x} second_byte=0x{:02x}",
+                first_byte,
+                second_byte
+            );
+            log::error!("🚨 If this is 0xff, we found the unpatched placeholder source!");
         }
 
         self.write_byte_at(location, first_byte)?;
@@ -12076,10 +12166,19 @@ impl ZMachineCodeGen {
     // Utility methods for code emission
 
     pub fn emit_byte(&mut self, byte: u8) -> Result<(), CompilerError> {
-        // FIXED: Corruption debugging no longer needed - issue was placeholder_word() as branch offset
-        // Historical note: Previously checked for specific addresses 0x335/0x336
-        // This was debugging code for the label ID 415 bug (label IDs written as branch bytes)
-        // Fixed by proper branch offset calculation - removed panic checks
+        // SYSTEMATIC BREAKPOINT: Track corruption region in code space (0x0957 - 0x086e = 0x00E9)
+        if self.code_address >= 0x00E5 && self.code_address <= 0x00EC {
+            log::error!(
+                "🚨 CORRUPTION_REGION: Writing byte 0x{:02x} at address 0x{:04x}",
+                byte,
+                self.code_address
+            );
+            if byte == 0xff {
+                log::error!("🚨 FOUND_FF_PLACEHOLDER: This is the unpatched placeholder!");
+                log::error!("🚨 This means a branch instruction used placeholder_word() instead of proper polarity!");
+                // Don't panic yet - let's see the full debugging output first
+            }
+        }
 
         // Clear labels at current address when we emit actual instruction bytes
         // (but not for padding or alignment bytes)
@@ -13311,7 +13410,7 @@ impl ZMachineCodeGen {
                 Operand::Variable(7), // local_7 (num_exits)
             ],
             None,
-            Some(0x7FFF),          // Keep original encoding (branch on false)
+            Some(0), // POLARITY FIX: Branch on false (jl branches when index < num_exits)
             Some(not_found_label), // NEW: Target label for deferred resolution
         )?;
 

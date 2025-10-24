@@ -1915,7 +1915,20 @@ impl ZMachineCodeGen {
         let start_address = self.code_address;
         let raw_opcode = opcode.raw_value();
 
-        // FIXED: Instruction corruption debugging removed - issue was placeholder_word() as branch offset in codegen.rs
+        // SYSTEMATIC PROOF: Check what parameters line 6915 is actually passing
+        if self.code_address >= 0x00e5 && self.code_address <= 0x00ec {
+            log::error!(
+                "🔍 EMIT_INSTRUCTION_TYPED: code_address=0x{:04x}",
+                self.code_address
+            );
+            log::error!(
+                "🔍 Parameters: opcode={:?}, branch_offset={:?}, target_label_id={:?}",
+                raw_opcode,
+                branch_offset,
+                target_label_id_param
+            );
+            log::error!("🔍 This will prove if the problem is in the call site or in emit_instruction_typed");
+        }
 
         // VALIDATION 1: Version check
         let min_version = opcode.min_version();
@@ -2002,6 +2015,19 @@ impl ZMachineCodeGen {
         // Determine final branch offset based on whether branch is required
         let final_branch_offset = if requires_branch { branch_offset } else { None };
 
+        // Calculate offset_size for branch instructions (needed for emit_long_form_with_layout)
+        let offset_size = if let Some(offset) = final_branch_offset {
+            if offset == -1 {
+                1 // Placeholder defaults to 1-byte
+            } else if offset >= -64 && offset <= 63 {
+                1 // Short offsets fit in 1 byte
+            } else {
+                2 // Long offsets need 2 bytes
+            }
+        } else {
+            1 // Default when no branch (won't be used)
+        };
+
         // Emit using the determined form
         match form {
             InstructionForm::Short => self.emit_short_form_with_layout(
@@ -2017,6 +2043,7 @@ impl ZMachineCodeGen {
                 operands,
                 store_var,
                 final_branch_offset,
+                if final_branch_offset.is_some() { Some(offset_size) } else { None },  // Only pass offset_size for branch instructions
             ),
             InstructionForm::Variable => self.emit_variable_form_with_layout(
                 start_address,
@@ -2049,8 +2076,24 @@ impl ZMachineCodeGen {
                         };
 
                         // PHASE 2: Determine offset_size from branch_offset value
-                        // For now, use 2 bytes (will be optimized during resolution)
-                        let offset_size = 2;
+                        // Z-Machine branch encoding: 1-byte for -64 to +63, 2-byte otherwise
+                        let original_offset = branch_offset.unwrap_or(-1);
+                        let offset_size = if original_offset == -1 {
+                            // Placeholder should default to 1-byte offset
+                            1
+                        } else if original_offset >= -64 && original_offset <= 63 {
+                            // Short offsets fit in 1 byte
+                            1
+                        } else {
+                            // Long offsets need 2 bytes
+                            2
+                        };
+
+                        // SYSTEMATIC DEBUG: Track deferred patch creation
+                        if start_address >= 0x00e5 && start_address <= 0x00ec {
+                            log::error!("🔍 CREATING_DEFERRED_PATCH: target_label_id={}, branch_location=0x{:04x}, branch_on_true={}, offset_size={}",
+                                       target_label_id, branch_location, branch_on_true, offset_size);
+                        }
 
                         self.two_pass_state
                             .deferred_branches
@@ -2231,6 +2274,19 @@ impl ZMachineCodeGen {
             form
         );
 
+        // Calculate offset_size for branch instructions (needed for emit_long_form_with_layout)
+        let offset_size = if let Some(offset) = actual_branch_offset {
+            if offset == -1 {
+                1 // Placeholder defaults to 1-byte
+            } else if offset >= -64 && offset <= 63 {
+                1 // Short offsets fit in 1 byte
+            } else {
+                2 // Long offsets need 2 bytes
+            }
+        } else {
+            1 // Default when no branch (won't be used)
+        };
+
         let layout = match form {
             InstructionForm::Long => self.emit_long_form_with_layout(
                 instruction_start,
@@ -2238,6 +2294,7 @@ impl ZMachineCodeGen {
                 operands,
                 actual_store_var,
                 actual_branch_offset,
+                Some(offset_size), // Pass the calculated offset_size from legacy path too
             )?,
             InstructionForm::Short => self.emit_short_form_with_layout(
                 instruction_start,
@@ -3078,7 +3135,11 @@ impl ZMachineCodeGen {
             if opcode == 0x02 {
                 log::debug!("🚨 OPERAND_TYPE[{}]: {:?} → type={:?} (bits={:02b}) shift={} contribution=0x{:02x}",
                     i, operand, op_type, op_type as u8, 6 - i * 2, (op_type as u8) << (6 - i * 2));
-                log::debug!("🚨 TYPES_BYTE: After operand[{}], types_byte=0x{:02x}", i, types_byte);
+                log::debug!(
+                    "🚨 TYPES_BYTE: After operand[{}], types_byte=0x{:02x}",
+                    i,
+                    types_byte
+                );
             }
         }
 
@@ -3088,9 +3149,17 @@ impl ZMachineCodeGen {
 
             // CRASH DEBUG: Log omitted slot filling for storeb
             if opcode == 0x02 {
-                log::debug!("🚨 OMITTED_SLOT[{}]: Adding Omitted (bits=11) shift={} contribution=0x{:02x}",
-                    i, 6 - i * 2, (OperandType::Omitted as u8) << (6 - i * 2));
-                log::debug!("🚨 TYPES_BYTE: After omitted[{}], types_byte=0x{:02x}", i, types_byte);
+                log::debug!(
+                    "🚨 OMITTED_SLOT[{}]: Adding Omitted (bits=11) shift={} contribution=0x{:02x}",
+                    i,
+                    6 - i * 2,
+                    (OperandType::Omitted as u8) << (6 - i * 2)
+                );
+                log::debug!(
+                    "🚨 TYPES_BYTE: After omitted[{}], types_byte=0x{:02x}",
+                    i,
+                    types_byte
+                );
             }
         }
 
@@ -3185,10 +3254,14 @@ impl ZMachineCodeGen {
         })
     }
 
-    /// Emit long form instruction with layout tracking
+    /// Emit Z-Machine long form instruction with proper branch placeholder sizing
     ///
     /// This is the layout-aware version of emit_long_form that tracks where
     /// each instruction component is placed for accurate reference resolution.
+    ///
+    /// ARCHITECTURAL FIX (Oct 24, 2025): Added branch_offset_size parameter to emit
+    /// correct number of placeholder bytes initially, eliminating instruction corruption
+    /// caused by 2-byte placeholders being patched with 1-byte branch offsets.
     fn emit_long_form_with_layout(
         &mut self,
         instruction_start: usize,
@@ -3196,6 +3269,7 @@ impl ZMachineCodeGen {
         operands: &[Operand],
         store_var: Option<u8>,
         branch_offset: Option<i16>,
+        branch_offset_size: Option<u8>, // NEW: 1 or 2 bytes for branch, None if no branch
     ) -> Result<InstructionLayout, CompilerError> {
         // CRITICAL CHECK: Are we emitting an instruction with operand 415?
         if self.code_address >= 0x334 && self.code_address <= 0x340 {
@@ -3334,43 +3408,39 @@ impl ZMachineCodeGen {
             None
         };
 
-        // Handle branch encoding - distinguish between hardcoded offsets and label references
+        // ARCHITECTURAL FIX (Oct 24, 2025): Emit correct number of placeholder bytes initially
+        //
+        // PROBLEM SOLVED: Previous implementation always emitted 2-byte placeholders (0xFFFF)
+        // regardless of actual branch size, then tried to "fix" them during deferred patching.
+        // This caused instruction corruption when 1-byte branches left extra 0xFF bytes.
+        //
+        // SOLUTION: Use branch_offset_size parameter to emit exactly the right number of
+        // placeholder bytes from the start. No "after the fact" fixes needed.
         let branch_location = if let Some(offset) = branch_offset {
-            // CRITICAL BUG FIX (Oct 8, 2025): Extract branch sense from offset value
-            // For direct offsets (0-63): encode immediately with correct sense bit
-            // For placeholders (like 0x7FFF): preserve value, will be patched later
+            let loc = self.code_address;
 
-            // CRITICAL FIX: Force all branches to use deferred system to account for address space transformation
-            // Previously: offsets 0-63 were encoded immediately, but this doesn't account for runtime address shifts
-            // Now: All branches use placeholders and get resolved through the deferred system which handles address space correctly
-            if false {
-                // Disabled immediate encoding - force all branches to deferred system
-                // Direct offset: extract branch sense from sign convention
-                // By convention: positive = branch on true (this is the common case)
-                let on_true = true; // Direct small offsets default to "branch on true"
-
-                log::debug!(
-                    "BRANCH_DIRECT: Encoding offset {} as single byte (on_true={})",
-                    offset,
-                    on_true
-                );
-                // Encode as single-byte branch:
-                // Bit 7 = branch sense (1=branch on true, 0=branch on false)
-                // Bit 6 = 1 (single-byte format)
-                // Bits 0-5 = offset
-                let sense_bit = if on_true { 0x80 } else { 0x00 };
-                let branch_byte = sense_bit | 0x40 | (offset as u8 & 0x3F);
-                self.emit_byte(branch_byte)?;
-                None // No placeholder needed
-            } else {
-                // This is either a large offset or a label reference - emit placeholder
-                // Preserve the original offset value (bit 15 encodes branch sense for placeholders)
-                let loc = self.code_address;
-                let placeholder_value = offset as u16;
-                log::debug!("🔵 BRANCH_PLACEHOLDER: Emitting 0x{:04x} at code_address=0x{:04x} for branch (offset={}) [INSTRUCTION WILL NEED PATCHING]",
-                    placeholder_value, loc, offset);
-                self.emit_word(placeholder_value)?; // Will be replaced during branch resolution
-                Some(loc)
+            match branch_offset_size {
+                Some(1) => {
+                    // Z-Machine 1-byte branch format: Offset -64 to +63 fits in 6 bits
+                    log::debug!("🔵 BRANCH_PLACEHOLDER_1BYTE: Emitting 0xFF at code_address=0x{:04x} for 1-byte branch (offset={})",
+                        loc, offset);
+                    self.emit_byte(0xFF)?; // Single placeholder byte - will be patched during resolution
+                    Some(loc)
+                }
+                Some(2) => {
+                    // Z-Machine 2-byte branch format: Large offsets require full word
+                    let placeholder_value = offset as u16;
+                    log::debug!("🔵 BRANCH_PLACEHOLDER_2BYTE: Emitting 0x{:04x} at code_address=0x{:04x} for 2-byte branch (offset={})",
+                        placeholder_value, loc, offset);
+                    self.emit_word(placeholder_value)?; // Word placeholder - will be patched during resolution
+                    Some(loc)
+                }
+                _ => {
+                    return Err(CompilerError::CodeGenError(format!(
+                        "Invalid branch_offset_size: {:?} for branch with offset {}. Must be Some(1) or Some(2)",
+                        branch_offset_size, offset
+                    )));
+                }
             }
         } else {
             None

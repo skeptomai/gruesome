@@ -145,7 +145,11 @@ impl Interpreter {
                 if operands.len() < 3 {
                     // CRASH INSTRUMENTATION: Capture full context when storeb fails
                     log::error!("🚨 STOREB CRASH at PC=0x{:04x}", self.vm.pc);
-                    log::error!("📊 Operands received: {} operands: {:?}", operands.len(), operands);
+                    log::error!(
+                        "📊 Operands received: {} operands: {:?}",
+                        operands.len(),
+                        operands
+                    );
 
                     // Show bytecode context around PC
                     let pc = self.vm.pc as usize;
@@ -156,7 +160,10 @@ impl Interpreter {
                     log::error!("📍 PC offset in context: byte {}", pc - start);
 
                     // Show what instruction was actually decoded
-                    log::error!("🎯 Decoded as: VAR:0x02 (storeb) with {} operands", operands.len());
+                    log::error!(
+                        "🎯 Decoded as: VAR:0x02 (storeb) with {} operands",
+                        operands.len()
+                    );
 
                     return Err("storeb requires 3 operands".to_string());
                 }

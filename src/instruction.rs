@@ -196,9 +196,19 @@ impl Instruction {
 
                 // CRASH TRACE: Debug Variable form operand count determination
                 if addr == 0x0958 {
-                    debug!("🚨 VAR_FORM_DEBUG: addr=0x{:04x} opcode_byte=0x{:02x} (binary: {:08b})", addr, opcode_byte, opcode_byte);
-                    debug!("🚨 VAR_FORM_DEBUG: bit5_check: opcode_byte & 0x20 = 0x{:02x} (== 0? {})", opcode_byte & 0x20, opcode_byte & 0x20 == 0);
-                    debug!("🚨 VAR_FORM_DEBUG: determined op_count = {:?}, opcode = 0x{:02x}", op_count, opcode);
+                    debug!(
+                        "🚨 VAR_FORM_DEBUG: addr=0x{:04x} opcode_byte=0x{:02x} (binary: {:08b})",
+                        addr, opcode_byte, opcode_byte
+                    );
+                    debug!(
+                        "🚨 VAR_FORM_DEBUG: bit5_check: opcode_byte & 0x20 = 0x{:02x} (== 0? {})",
+                        opcode_byte & 0x20,
+                        opcode_byte & 0x20 == 0
+                    );
+                    debug!(
+                        "🚨 VAR_FORM_DEBUG: determined op_count = {:?}, opcode = 0x{:02x}",
+                        op_count, opcode
+                    );
                 }
 
                 (opcode, None, op_count)
@@ -292,12 +302,25 @@ impl Instruction {
 
         // CRASH TRACE: Special logging for storeb instruction
         if addr == 0x0958 || (opcode == 0x02 && form == InstructionForm::Variable) {
-            debug!("🚨 STOREB_DECODE: addr=0x{:04x} opcode=0x{:02x} form={:?}", addr, opcode, form);
-            debug!("🚨 STOREB_DECODE: operand_types={:?} (count={})", operand_types, operand_types.len());
-            debug!("🚨 STOREB_DECODE: expected_count={:?} operand_limit={}", expected_count, operand_limit);
+            debug!(
+                "🚨 STOREB_DECODE: addr=0x{:04x} opcode=0x{:02x} form={:?}",
+                addr, opcode, form
+            );
+            debug!(
+                "🚨 STOREB_DECODE: operand_types={:?} (count={})",
+                operand_types,
+                operand_types.len()
+            );
+            debug!(
+                "🚨 STOREB_DECODE: expected_count={:?} operand_limit={}",
+                expected_count, operand_limit
+            );
             if addr >= 2 && addr - 2 < memory.len() {
                 let type_byte = memory[addr + 1]; // Type byte comes after opcode byte
-                debug!("🚨 STOREB_DECODE: type_byte=0x{:02x} (binary: {:08b})", type_byte, type_byte);
+                debug!(
+                    "🚨 STOREB_DECODE: type_byte=0x{:02x} (binary: {:08b})",
+                    type_byte, type_byte
+                );
                 // Decode the type byte manually for verification
                 for i in 0..4 {
                     let op_type_bits = (type_byte >> (6 - i * 2)) & 0x03;
@@ -306,10 +329,15 @@ impl Instruction {
                         0b01 => "SmallConstant",
                         0b10 => "Variable",
                         0b11 => "Omitted",
-                        _ => "Invalid"
+                        _ => "Invalid",
                     };
-                    debug!("🚨 STOREB_DECODE: operand[{}] type_bits={:02b} = {}", i, op_type_bits, op_type);
-                    if op_type_bits == 0b11 { break; } // Stop at first omitted
+                    debug!(
+                        "🚨 STOREB_DECODE: operand[{}] type_bits={:02b} = {}",
+                        i, op_type_bits, op_type
+                    );
+                    if op_type_bits == 0b11 {
+                        break;
+                    } // Stop at first omitted
                 }
             }
         }

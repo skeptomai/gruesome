@@ -737,25 +737,45 @@ impl Interpreter {
             let current_inst = self.vm.read_byte(self.vm.pc);
 
             // Log je instructions which are critical for command matching
-            if current_inst == 0x41 || current_inst == 0x61 || current_inst == 0xc1 { // je in various forms
-                log::debug!("🎯 JE_INSTRUCTION: PC=0x{:04x}, opcode=0x{:02x}", self.vm.pc, current_inst);
+            if current_inst == 0x41 || current_inst == 0x61 || current_inst == 0xc1 {
+                // je in various forms
+                log::debug!(
+                    "🎯 JE_INSTRUCTION: PC=0x{:04x}, opcode=0x{:02x}",
+                    self.vm.pc,
+                    current_inst
+                );
 
                 // If this might be the critical dictionary comparison, log more detail
                 if self.vm.pc >= 0x0920 && self.vm.pc <= 0x0970 {
                     if let Ok(var1) = self.vm.read_variable(1) {
                         if let Ok(var2) = self.vm.read_variable(2) {
-                            log::debug!("🎯 JE_CRITICAL: PC=0x{:04x}, var1={}, var2={}", self.vm.pc, var1, var2);
+                            log::debug!(
+                                "🎯 JE_CRITICAL: PC=0x{:04x}, var1={}, var2={}",
+                                self.vm.pc,
+                                var1,
+                                var2
+                            );
                         }
                     }
                 }
             }
 
             // Log function calls and prints as before
-            if current_inst == 0xe0 || current_inst == 0xe1 { // call_vs and call_vn
-                log::debug!("🎯 FUNCTION_CALL: PC=0x{:04x}, opcode=0x{:02x}", self.vm.pc, current_inst);
+            if current_inst == 0xe0 || current_inst == 0xe1 {
+                // call_vs and call_vn
+                log::debug!(
+                    "🎯 FUNCTION_CALL: PC=0x{:04x}, opcode=0x{:02x}",
+                    self.vm.pc,
+                    current_inst
+                );
             }
-            if current_inst == 0x8d { // print_paddr
-                log::debug!("🎯 PRINT: PC=0x{:04x}, opcode=0x{:02x}", self.vm.pc, current_inst);
+            if current_inst == 0x8d {
+                // print_paddr
+                log::debug!(
+                    "🎯 PRINT: PC=0x{:04x}, opcode=0x{:02x}",
+                    self.vm.pc,
+                    current_inst
+                );
             }
 
             // 🚨 CRITICAL DEBUG: Track when PC reaches problematic address 1699 (MAIN LOOP)
@@ -1024,11 +1044,19 @@ impl Interpreter {
             }
 
             // CRASH TRACING: Add instrumentation for storeb crash debugging
-            if instruction.opcode == 0x02 && instruction.form == crate::instruction::InstructionForm::Variable {
+            if instruction.opcode == 0x02
+                && instruction.form == crate::instruction::InstructionForm::Variable
+            {
                 // This is VAR:0x02 (storeb) that might be causing the crash
-                log::debug!("🚨 STOREB_TRACE: About to execute storeb at PC=0x{:04x}", old_pc);
+                log::debug!(
+                    "🚨 STOREB_TRACE: About to execute storeb at PC=0x{:04x}",
+                    old_pc
+                );
                 log::debug!("🚨 STOREB_TRACE: Raw operands: {:?}", instruction.operands);
-                log::debug!("🚨 STOREB_TRACE: Operand types: {:?}", instruction.operand_types);
+                log::debug!(
+                    "🚨 STOREB_TRACE: Operand types: {:?}",
+                    instruction.operand_types
+                );
                 log::debug!("🚨 STOREB_TRACE: Store var: {:?}", instruction.store_var);
                 log::debug!("🚨 STOREB_TRACE: Branch info: {:?}", instruction.branch);
 
@@ -1038,32 +1066,56 @@ impl Interpreter {
                     .iter()
                     .map(|b| format!("{b:02x}"))
                     .collect();
-                log::debug!("🚨 STOREB_TRACE: Raw instruction bytes: {}", bytes.join(" "));
+                log::debug!(
+                    "🚨 STOREB_TRACE: Raw instruction bytes: {}",
+                    bytes.join(" ")
+                );
 
                 // Show call stack state
-                log::debug!("🚨 STOREB_TRACE: Call stack depth: {}", self.vm.call_depth());
+                log::debug!(
+                    "🚨 STOREB_TRACE: Call stack depth: {}",
+                    self.vm.call_depth()
+                );
                 if self.vm.call_depth() > 0 {
                     let frame = self.vm.call_stack.last().unwrap();
-                    log::debug!("🚨 STOREB_TRACE: Current routine: return_pc=0x{:04x}, locals={:?}",
-                               frame.return_pc, frame.locals);
+                    log::debug!(
+                        "🚨 STOREB_TRACE: Current routine: return_pc=0x{:04x}, locals={:?}",
+                        frame.return_pc,
+                        frame.locals
+                    );
                 }
             }
 
             // EXECUTION TRACE: Log every instruction during the critical execution phase
             // Focus on the area around the crash
             if old_pc >= 0x0950 {
-                log::debug!("🎯 EXEC_TRACE: PC=0x{:04x} opcode=0x{:02x} form={:?} size={}",
-                           old_pc, instruction.opcode, instruction.form, instruction.size);
+                log::debug!(
+                    "🎯 EXEC_TRACE: PC=0x{:04x} opcode=0x{:02x} form={:?} size={}",
+                    old_pc,
+                    instruction.opcode,
+                    instruction.form,
+                    instruction.size
+                );
             }
 
             // BRANCH TRACE: Track all branch instructions that might cause PC corruption
             if instruction.branch.is_some() {
-                log::debug!("🔀 BRANCH_TRACE: PC=0x{:04x} branch_info={:?}", old_pc, instruction.branch);
+                log::debug!(
+                    "🔀 BRANCH_TRACE: PC=0x{:04x} branch_info={:?}",
+                    old_pc,
+                    instruction.branch
+                );
             }
 
             // JUMP TRACE: Track jump instructions (1OP:12)
-            if instruction.opcode == 0x0C && instruction.form == crate::instruction::InstructionForm::Short {
-                log::debug!("🏃 JUMP_TRACE: PC=0x{:04x} operands={:?}", old_pc, instruction.operands);
+            if instruction.opcode == 0x0C
+                && instruction.form == crate::instruction::InstructionForm::Short
+            {
+                log::debug!(
+                    "🏃 JUMP_TRACE: PC=0x{:04x} operands={:?}",
+                    old_pc,
+                    instruction.operands
+                );
             }
 
             // Execute the instruction
