@@ -19,6 +19,7 @@ pub mod opcodes;
 #[cfg(test)]
 mod opcodes_tests;
 pub mod parser;
+pub mod patch_collision_detector;
 #[cfg(test)]
 mod push_pull_branch_integration_tests;
 #[cfg(test)]

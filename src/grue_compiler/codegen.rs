@@ -12486,7 +12486,7 @@ impl ZMachineCodeGen {
     }
 
     /// Translate space-relative address to final assembly layout address (DETERMINISTIC)
-    fn translate_space_address_to_final(
+    pub fn translate_space_address_to_final(
         &self,
         space: MemorySpace,
         space_offset: usize,

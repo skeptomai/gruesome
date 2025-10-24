@@ -1,0 +1,51 @@
+// Minimal test case to reproduce patch collisions
+// This should trigger memory overlap between DeferredBranchPatch and UnresolvedReference
+
+game "Collision Test" by "Test Author"
+
+room start_room: "Test Room" {
+    description: "This is a test room designed to trigger patch collisions."
+
+    // Create a condition with branches (DeferredBranchPatch)
+    // followed by string references (UnresolvedReference)
+    if (random(2) == 1) {
+        print("Branch test string")
+    } else {
+        print("Alternative branch string")
+    }
+}
+
+action look {
+    // More conditions to increase branch patching
+    if (current_room == start_room) {
+        print("You are in the test room.")
+    }
+}
+
+action inventory {
+    print("You are carrying nothing special.")
+}
+
+init {
+    current_room = start_room
+    print("Welcome to the collision test.")
+}
+
+main_loop {
+    look
+    print("> ")
+    input
+
+    if (player_input == "look") {
+        look
+    } else if (player_input == "inventory" || player_input == "i") {
+        inventory
+    } else if (player_input == "quit") {
+        print("Goodbye!")
+        quit
+    } else {
+        print("I don't understand that.")
+    }
+
+    main_loop
+}
