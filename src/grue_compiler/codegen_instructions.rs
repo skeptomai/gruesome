@@ -2016,14 +2016,9 @@ impl ZMachineCodeGen {
         let final_branch_offset = if requires_branch { branch_offset } else { None };
 
         // Calculate offset_size for branch instructions (needed for emit_long_form_with_layout)
-        let offset_size = if let Some(offset) = final_branch_offset {
-            if offset == -1 {
-                1 // Placeholder defaults to 1-byte
-            } else if offset >= -64 && offset <= 63 {
-                1 // Short offsets fit in 1 byte
-            } else {
-                2 // Long offsets need 2 bytes
-            }
+        // PHASE 2: Converting all branches to 2-byte format for reliability
+        let offset_size = if let Some(_offset) = final_branch_offset {
+            2 // ALWAYS use 2-byte format for reliability
         } else {
             1 // Default when no branch (won't be used)
         };
@@ -2075,19 +2070,9 @@ impl ZMachineCodeGen {
                             true // Default for non-encoded offsets
                         };
 
-                        // PHASE 2: Determine offset_size from branch_offset value
-                        // Z-Machine branch encoding: 1-byte for -64 to +63, 2-byte otherwise
-                        let original_offset = branch_offset.unwrap_or(-1);
-                        let offset_size = if original_offset == -1 {
-                            // Placeholder should default to 1-byte offset
-                            1
-                        } else if original_offset >= -64 && original_offset <= 63 {
-                            // Short offsets fit in 1 byte
-                            1
-                        } else {
-                            // Long offsets need 2 bytes
-                            2
-                        };
+                        // PHASE 2: Converting all branches to 2-byte format for reliability
+                        let _original_offset = branch_offset.unwrap_or(-1);
+                        let offset_size = 2; // ALWAYS use 2-byte format for reliability
 
                         // SYSTEMATIC DEBUG: Track deferred patch creation
                         if start_address >= 0x00e5 && start_address <= 0x00ec {
@@ -2275,14 +2260,9 @@ impl ZMachineCodeGen {
         );
 
         // Calculate offset_size for branch instructions (needed for emit_long_form_with_layout)
-        let offset_size = if let Some(offset) = actual_branch_offset {
-            if offset == -1 {
-                1 // Placeholder defaults to 1-byte
-            } else if offset >= -64 && offset <= 63 {
-                1 // Short offsets fit in 1 byte
-            } else {
-                2 // Long offsets need 2 bytes
-            }
+        // PHASE 2: Converting all branches to 2-byte format for reliability
+        let offset_size = if let Some(_offset) = actual_branch_offset {
+            2 // ALWAYS use 2-byte format for reliability
         } else {
             1 // Default when no branch (won't be used)
         };
@@ -2375,18 +2355,8 @@ impl ZMachineCodeGen {
                 instruction_start
             );
 
-            // Calculate offset_size based on original branch offset value
-            // Z-Machine branch encoding: 1-byte for -64 to +63, 2-byte otherwise
-            let offset_size = if original_offset == -1 {
-                // Placeholder should default to 1-byte offset
-                1
-            } else if original_offset >= -64 && original_offset <= 63 {
-                // Short offsets fit in 1 byte
-                1
-            } else {
-                // Long offsets need 2 bytes
-                2
-            };
+            // PHASE 2: Converting all branches to 2-byte format for reliability
+            let offset_size = 2; // ALWAYS use 2-byte format for reliability
 
             // Create legacy deferred branch patch for backward compatibility
             let patch = DeferredBranchPatch {

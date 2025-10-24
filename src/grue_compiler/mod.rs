@@ -25,6 +25,14 @@ mod push_pull_branch_integration_tests;
 #[cfg(test)]
 mod push_pull_unit_tests;
 pub mod semantic;
+// #[cfg(test)]
+// mod two_pass_tests;
+#[cfg(test)]
+mod branch_offset_overflow_tests;
+#[cfg(test)]
+mod compilation_verification_tests;
+#[cfg(test)]
+mod gameplay_regression_tests;
 #[cfg(test)]
 mod unresolved_reference_tests;
 

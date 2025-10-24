@@ -1837,22 +1837,9 @@ impl ZMachineCodeGen {
         log::debug!("Resolving {} deferred branch patches", branch_count);
 
         for (i, patch) in self.two_pass_state.deferred_branches.iter().enumerate() {
-            log::error!("🔍 DEFERRED_BRANCH[{}]: instruction=0x{:04x}, offset_location=0x{:04x}, target={}, branch_on_true={}",
+            log::debug!("🔍 DEFERRED_BRANCH[{}]: instruction=0x{:04x}, offset_location=0x{:04x}, target={}, branch_on_true={}",
                 i, patch.instruction_address, patch.branch_offset_location,
                 patch.target_label_id, patch.branch_on_true
-            );
-
-            // Look up the target label address
-            log::error!(
-                "🔍 LABEL_LOOKUP: Searching for target_label_id={}",
-                patch.target_label_id
-            );
-            log::error!(
-                "🔍 AVAILABLE_LABELS: {:?}",
-                self.two_pass_state
-                    .label_addresses
-                    .keys()
-                    .collect::<Vec<_>>()
             );
 
             let target_address = self
@@ -1860,10 +1847,6 @@ impl ZMachineCodeGen {
                 .label_addresses
                 .get(&patch.target_label_id)
                 .ok_or_else(|| {
-                    log::error!(
-                        "🚨 LABEL_NOT_FOUND: target_label_id={} missing from label_addresses!",
-                        patch.target_label_id
-                    );
                     CompilerError::CodeGenError(format!(
                         "Deferred branch target label {} not found",
                         patch.target_label_id
@@ -1872,69 +1855,24 @@ impl ZMachineCodeGen {
 
             let adjusted_target_address = *target_address;
 
-            // 🚨 TRACK PROBLEMATIC ADDRESSES
-            log::error!(
-                "🔍 BRANCH_LOOKUP: target_label_id={} -> address=0x{:04x} (adjusted=0x{:04x})",
-                patch.target_label_id,
-                target_address,
-                adjusted_target_address
-            );
-
-            if adjusted_target_address > 0x2000 {
-                log::debug!("🚨 SUSPICIOUS_TARGET: Label {} resolves to very high address 0x{:04x} (> 0x2000)",
-                    patch.target_label_id, adjusted_target_address);
-            }
-
             // Calculate branch offset
             // Z-Machine branch offset is calculated from the byte AFTER the branch offset field
             let branch_from = patch.branch_offset_location + patch.offset_size as usize;
 
-            // CRITICAL FIX: Calculate offset for runtime execution
-            // At runtime, the branch instruction executes at: branch_from + code_base
-            // The target must be in final address space
-            let final_target_address = if adjusted_target_address < self.final_code_base {
-                log::debug!("🔧 BRANCH_TARGET_ADJUST: Converting target from code space 0x{:04x} to final space",
-                    adjusted_target_address);
-                self.final_code_base + adjusted_target_address
-            } else {
-                adjusted_target_address
-            };
+            // CRITICAL FIX: Calculate branch offset in code space (NOT final address space)
+            // Z-Machine branch offsets are relative to the address after the branch offset bytes
+            // Both target and source should be in the same address space for correct calculation
+            let offset = (adjusted_target_address as i16) - (branch_from as i16);
 
-            // Runtime branch executes at compilation address + code_base
-            let runtime_branch_from = branch_from + self.final_code_base;
-
-            let offset = if final_target_address >= runtime_branch_from {
-                (final_target_address - runtime_branch_from) as i16
-            } else {
-                // Backward branch - calculate negative offset
-                -((runtime_branch_from - final_target_address) as i16)
-            };
-
-            log::error!(
-                "🔧 BRANCH_OFFSET_CALC: target=0x{:04x} runtime_branch_from=0x{:04x} offset={}",
-                final_target_address,
-                runtime_branch_from,
+            log::debug!(
+                "🔧 BRANCH_OFFSET_CALC: target=0x{:04x} branch_from=0x{:04x} offset={}",
+                adjusted_target_address,
+                branch_from,
                 offset
             );
 
-            // Track our specific problematic branch
-            if patch.branch_offset_location == 0x00e9 {
-                log::error!("🚨 TRACKING_PROBLEMATIC_BRANCH: offset_location=0x{:04x}, target_label={}, final_target=0x{:04x}, offset={}",
-                    patch.branch_offset_location, patch.target_label_id, final_target_address, offset);
-            }
-
-            // 🚨 CRITICAL: Track branches targeting problematic address
-            if final_target_address == 1699
-                || final_target_address == 0x1797
-                || adjusted_target_address == 1699
-                || adjusted_target_address == 0x1797
-            {
-                log::debug!("🚨 PROBLEMATIC_BRANCH_DETECTED: Branch at 0x{:04x} targeting address 0x{:04x} (final: 0x{:04x}) with offset {}",
-                    patch.branch_offset_location, adjusted_target_address, final_target_address, offset);
-            }
-
             log::debug!(
-                "BRANCH_CALC: target=0x{:04x}, from=0x{:04x}, offset={}",
+                "Branch calc: target=0x{:04x}, from=0x{:04x}, offset={}",
                 adjusted_target_address,
                 branch_from,
                 offset
@@ -1966,38 +1904,7 @@ impl ZMachineCodeGen {
                 };
 
                 if patch.branch_offset_location < self.code_space.len() {
-                    // Track our specific problematic branch patching
-                    if patch.branch_offset_location == 0x00e9 {
-                        log::error!(
-                            "🚨 PATCHING_0xe9: Writing offset_byte=0x{:02x} at location=0x{:04x}",
-                            offset_byte,
-                            patch.branch_offset_location
-                        );
-                        log::error!(
-                            "🚨 BEFORE_PATCH: code_space[0x{:04x}] = 0x{:02x}",
-                            patch.branch_offset_location,
-                            self.code_space[patch.branch_offset_location]
-                        );
-                    }
-
-                    // Monitor unusual branch offsets for debugging
-                    if offset_byte == 0x5E {
-                        log::debug!(
-                            "Large branch offset 0x5E at location 0x{:04x}",
-                            patch.branch_offset_location
-                        );
-                    }
                     self.code_space[patch.branch_offset_location] = offset_byte;
-
-                    // Track our specific problematic branch patching
-                    if patch.branch_offset_location == 0x00e9 {
-                        log::error!(
-                            "🚨 AFTER_PATCH: code_space[0x{:04x}] = 0x{:02x}",
-                            patch.branch_offset_location,
-                            self.code_space[patch.branch_offset_location]
-                        );
-                    }
-
                     log::debug!(
                         "Patched 1-byte branch: location=0x{:04x}, value=0x{:02x}",
                         patch.branch_offset_location,
@@ -2012,42 +1919,18 @@ impl ZMachineCodeGen {
                 }
             } else if patch.offset_size == 2 {
                 // 2-byte offset with Z-Machine branch encoding format
-                // Z-Machine spec: bit 7 = branch_on_true, bit 6 = 2-byte indicator (MUST be set for 2-byte)
-                // CRITICAL FIX: Missing 0x40 bit caused test failures - 2-byte branches need bit 6 set
+                // Z-Machine spec: bit 7 = branch_on_true, bit 6 = format (0 = 2-byte, 1 = 1-byte)
+                // CRITICAL FIX: Bit 6 must be CLEAR (0) for 2-byte branches
                 let high_byte = if patch.branch_on_true {
-                    ((offset as u16) >> 8) as u8 | 0x80 | 0x40 // Set bit 7 (branch on true) + bit 6 (2-byte indicator)
+                    ((offset as u16) >> 8) as u8 | 0x80 // Set bit 7 (branch on true), clear bit 6 (2-byte format)
                 } else {
-                    ((offset as u16) >> 8) as u8 | 0x40 // Set bit 6 (2-byte indicator), clear bit 7 (branch on false)
+                    ((offset as u16) >> 8) as u8 & 0x7F // Clear bit 7 (branch on false) and bit 6 (2-byte format)
                 };
                 let low_byte = (offset as u16) as u8;
 
                 if patch.branch_offset_location + 1 < self.code_space.len() {
-                    // Track our specific problematic branch patching for 2-byte branches
-                    if patch.branch_offset_location == 0x00e9 {
-                        log::error!("🚨 PATCHING_0xe9_2BYTE: Writing high_byte=0x{:02x}, low_byte=0x{:02x} at location=0x{:04x}",
-                            high_byte, low_byte, patch.branch_offset_location);
-                        log::error!("🚨 BEFORE_PATCH_2BYTE: code_space[0x{:04x}] = 0x{:02x}, code_space[0x{:04x}] = 0x{:02x}",
-                            patch.branch_offset_location, self.code_space[patch.branch_offset_location],
-                            patch.branch_offset_location + 1, self.code_space[patch.branch_offset_location + 1]);
-                    }
-
-                    // Monitor 2-byte branch offsets for debugging
-                    if high_byte == 0x5E || low_byte == 0x5E {
-                        log::debug!(
-                            "2-byte branch with 0x5E component: high=0x{:02x}, low=0x{:02x}",
-                            high_byte,
-                            low_byte
-                        );
-                    }
                     self.code_space[patch.branch_offset_location] = high_byte;
                     self.code_space[patch.branch_offset_location + 1] = low_byte;
-
-                    // Track our specific problematic branch patching for 2-byte branches
-                    if patch.branch_offset_location == 0x00e9 {
-                        log::error!("🚨 AFTER_PATCH_2BYTE: code_space[0x{:04x}] = 0x{:02x}, code_space[0x{:04x}] = 0x{:02x}",
-                            patch.branch_offset_location, self.code_space[patch.branch_offset_location],
-                            patch.branch_offset_location + 1, self.code_space[patch.branch_offset_location + 1]);
-                    }
                     log::debug!(
                         "Patched 2-byte branch: location=0x{:04x}, value=0x{:02x}{:02x}",
                         patch.branch_offset_location,
