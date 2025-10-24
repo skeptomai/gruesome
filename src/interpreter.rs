@@ -3579,4 +3579,21 @@ mod tests {
         // Check that global variable 0x10 now contains 42
         assert_eq!(interp.vm.read_global(0x10).unwrap(), 42);
     }
+
+    /// Check if an opcode is a stack operation
+    pub fn is_stack_opcode(opcode: u8, operand_count: &crate::instruction::OperandCount) -> bool {
+        matches!(
+            (opcode, operand_count),
+            // 0OP stack operations
+            (0x08, crate::instruction::OperandCount::OP0) |  // ret_popped
+            (0x09, crate::instruction::OperandCount::OP0) |  // pop/catch
+            // 1OP stack operations
+            (0x0B, crate::instruction::OperandCount::OP1) |  // ret
+            (0x08, crate::instruction::OperandCount::OP1) |  // call_1s
+            // VAR stack operations
+            (0x00, crate::instruction::OperandCount::VAR) |  // call
+            (0x08, crate::instruction::OperandCount::VAR) |  // push
+            (0x09, crate::instruction::OperandCount::VAR) // pull
+        )
+    }
 }
