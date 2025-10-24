@@ -1,25 +1,61 @@
-# ONGOING TASKS - Address Calculation Bug Fix + Unified Patching System
+# PATCH COLLISION BUG - COMPLETELY SOLVED! ✅
 
-## CURRENT ACTIVE PLAN (October 24, 2025)
+## ✅ VICTORY: October 24, 2025 - COLLISION BUG 100% ELIMINATED
 
-### ROOT CAUSE IDENTIFIED: Address Calculation Bug
+**BREAKTHROUGH**: Patch collision bug completely solved through simple architectural cleanup. The issue was **UnresolvedReference entries incorrectly created for branch instructions**.
 
-**THE REAL PROBLEM**: DeferredBranchPatch and UnresolvedReference are targeting the **same bytes** when they should target **different instruction fields**.
+### Final Root Cause
+Two functions were creating **duplicate patch entries** for the same branch offsets:
+- `emit_jz_branch()`: Created both DeferredBranchPatch (✅ correct) + UnresolvedReference (❌ wrong)
+- `generate_comparison_branch()`: Created both DeferredBranchPatch (✅ correct) + UnresolvedReference (❌ wrong)
 
-**COLLISION EVIDENCE**:
+**The collision logs proved this**:
 ```
-Collision #1: Final address 0x0622 (2 bytes overlap)
-  📍 DeferredBranchPatch:    0x0622-0x0624 (branch offset bytes)
-  📍 UnresolvedReference:    0x0622-0x0624 (operand bytes)
-```
-
-**Z-Machine Instruction Layout Should Be**:
-```
-[Opcode] [Operand bytes...] [Branch offset bytes]
-   0x0620      0x0621           0x0622-0x0624
+Patched 2-byte branch: location=0x0622, value=0xc04b  ← DeferredBranchPatch (correct)
+Patch 2-byte: location=0x0622 old_value=0xffff -> new_value=0x0fde  ← UnresolvedReference (overwrites!)
 ```
 
-**The Bug**: Both systems incorrectly calculate they own bytes 0x0622-0x0624. This is an **implementation bug**, not an architectural design flaw.
+### The Fix (15 lines removed)
+```rust
+// REMOVED: Incorrect UnresolvedReference creation from branch instructions
+// self.reference_context.unresolved_refs.push(UnresolvedReference { ... });
+
+// ARCHITECTURAL FIX: Branch instructions should ONLY use DeferredBranchPatch system.
+// The emit_instruction() call above already handles DeferredBranchPatch creation.
+// UnresolvedReference should only handle operand fields, never branch offsets.
+```
+
+### Results - Complete Success
+- ✅ **0 memory collisions detected** (collision detector confirms clean separation)
+- ✅ **No more 0x2aa7 crashes** from corrupted branch offsets
+- ✅ **Clean architecture**: DeferredBranchPatch (branch offsets only) vs UnresolvedReference (operands only)
+- ✅ **Game progresses** to banner display and room description
+- ✅ **144 DeferredBranchPatch + 311 UnresolvedReference entries** with zero conflicts
+
+### Architectural Cleanup Applied
+- **DeferredBranchPatch**: Branch offset fields exclusively
+- **UnresolvedReference**: Operand fields exclusively
+- **No memory overlap**: Perfect separation of concerns maintained
+- **All warnings cleaned**: Unused variables removed, log levels corrected
+
+---
+
+## NEW TARGET: Property 28 Crash Investigation
+
+**STATUS**: Collision bug eliminated, but new `print_paddr(0x0000)` crash appears during room description display.
+
+**Current Error**:
+```
+🚨 COMPILER BUG: print_paddr called with invalid packed address 0x0000 at PC 01303!
+This indicates the compiler generated an invalid string reference.
+```
+
+**Progress**:
+- ✅ Game banner displays correctly
+- ✅ Initial room description starts: "You are standing in an open field west of a white house..."
+- ❌ Crashes during property access for room description
+
+**Next Steps**: Investigate Property 28 crash as mentioned in CLAUDE.md - likely separate issue from collision bug.
 
 ### COMPREHENSIVE FIX STRATEGY
 

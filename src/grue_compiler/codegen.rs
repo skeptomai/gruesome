@@ -3821,6 +3821,11 @@ impl ZMachineCodeGen {
                         } else if self.ir_id_to_string.contains_key(&arg_id) {
                             // String literals: Create placeholder + unresolved reference
                             let operand_location = self.code_address + 1 + operands.len() * 2;
+                            // 🔍 DEBUG: Log UnresolvedReference location calculation
+                            log::debug!(
+                                "🔍 UNRESOLVED_CALC: StringRef code_address=0x{:04x} operands_len={} operand_location=0x{:04x}",
+                                self.code_address, operands.len(), operand_location
+                            );
                             operands.push(Operand::LargeConstant(placeholder_word()));
                             let reference = UnresolvedReference {
                                 reference_type: LegacyReferenceType::StringRef,
@@ -5671,18 +5676,18 @@ impl ZMachineCodeGen {
         // Property table address (word) - bytes 7-8 of object entry
         // INSTRUMENTATION: Track property table pointer being written to object entry
         if object.short_name == "West of House" {
-            log::error!(
+            log::debug!(
                 "🎯 PROP_TABLE_PTR_WRITE: Object '{}' (obj_num={}, name='{}') writing prop_table_addr=0x{:04x} to obj_offset+7-8=0x{:04x}, has_prop7={}",
                 object.short_name, obj_num, object.name, prop_table_addr, obj_offset + 7,
                 object.properties.properties.contains_key(&7)
             );
             if object.properties.properties.contains_key(&7) {
-                log::error!(
+                log::debug!(
                     "🎯 PROP_TABLE_PTR_WRITE: Property 7 value = {:?}",
                     object.properties.properties.get(&7)
                 );
             } else {
-                log::error!(
+                log::debug!(
                     "🎯 PROP_TABLE_PTR_WRITE: Properties available: {:?}",
                     object.properties.properties.keys().collect::<Vec<_>>()
                 );
@@ -5797,7 +5802,7 @@ impl ZMachineCodeGen {
 
         // INSTRUMENTATION: Track addr progression for West of House
         if object.short_name == "West of House" {
-            log::error!(
+            log::debug!(
                 "🎯 WEST_HOUSE_ADDR_START: prop_table_addr=0x{:04x}, addr=0x{:04x}, object_table_addr=0x{:04x}",
                 prop_table_addr, addr, self.object_table_addr
             );
@@ -5805,14 +5810,14 @@ impl ZMachineCodeGen {
 
         // INSTRUMENTATION: Track exact properties for West of House
         if object.short_name == "West of House" {
-            log::error!(
+            log::debug!(
                 "🎯 PROP_TABLE_START: Object '{}' has {} properties to encode: {:?}",
                 object.short_name,
                 properties.len(),
                 properties.iter().map(|(n, _)| **n).collect::<Vec<_>>()
             );
             for (&prop_num, prop_value) in &properties {
-                log::error!(
+                log::debug!(
                     "🎯 PROP_TABLE_START: Property {} = {:?}",
                     prop_num,
                     prop_value
@@ -6107,7 +6112,7 @@ impl ZMachineCodeGen {
 
             // INSTRUMENTATION: Track addr after each property for West of House
             if object.short_name == "West of House" {
-                log::error!(
+                log::debug!(
                     "🎯 WEST_HOUSE_AFTER_PROP{}: addr=0x{:04x}, prop_size={}, total_written={}",
                     prop_num,
                     addr,
@@ -6123,7 +6128,7 @@ impl ZMachineCodeGen {
 
         // INSTRUMENTATION: Track terminator location for West of House
         if object.short_name == "West of House" {
-            log::error!(
+            log::debug!(
                 "🎯 WEST_HOUSE_TERMINATOR: addr=0x{:04x}, terminator_offset=0x{:04x}, total_table_size={}",
                 addr, terminator_offset, addr - prop_table_addr
             );
@@ -6736,6 +6741,12 @@ impl ZMachineCodeGen {
         // FIXED: Use layout.operand_location instead of hardcoded offset calculation
         // This was previously using self.code_address - 2 which caused placeholder resolution failures
         if let Some(operand_location) = layout.operand_location {
+            // 🔍 DEBUG: Log UnresolvedReference layout operand location
+            log::debug!(
+                "🔍 UNRESOLVED_LAYOUT: StringRef layout.operand_location=0x{:04x} layout={:?}",
+                operand_location,
+                layout
+            );
             self.reference_context
                 .unresolved_refs
                 .push(UnresolvedReference {
@@ -9491,7 +9502,7 @@ impl ZMachineCodeGen {
         &mut self,
         condition: IrId,
         _true_label: IrId,
-        false_label: IrId,
+        _false_label: IrId,
     ) -> Result<(), CompilerError> {
         // CRITICAL FIX: Check if condition is a BinaryOp result that was never generated
         if let Some((op, _left, _right)) = self.ir_id_to_binary_op.get(&condition).cloned() {
@@ -9539,28 +9550,17 @@ impl ZMachineCodeGen {
             Some(-1), // Negative value sets bit 15 = branch on true (jump when zero)
         )?;
 
-        // Use the branch_location from layout (calculated correctly by emit_instruction)
-        if let Some(branch_location) = layout.branch_location {
-            log::debug!(
-                " JZ_BRANCH_REF_CREATE: branch_location=0x{:04x} target_id={}",
-                branch_location,
-                false_label
-            );
-            self.reference_context
-                .unresolved_refs
-                .push(UnresolvedReference {
-                    reference_type: LegacyReferenceType::Branch,
-                    location: branch_location, // Use exact location from emit_instruction
-                    target_id: false_label,    // jz jumps on false condition
-                    is_packed_address: false,
-                    offset_size: 1, // Branch offset size depends on the actual offset value
-                    location_space: MemorySpace::Code,
-                });
-        } else {
+        // Verify branch_location was set (sanity check)
+        if layout.branch_location.is_none() {
             return Err(CompilerError::CodeGenError(
                 "jz instruction must have branch_location".to_string(),
             ));
         }
+
+        // ARCHITECTURAL FIX: Branch instructions should ONLY use DeferredBranchPatch system.
+        // The emit_instruction() call above already handles DeferredBranchPatch creation.
+        // UnresolvedReference should only handle operand fields, never branch offsets.
+        // Note: _false_label is handled by DeferredBranchPatch, not needed here.
 
         Ok(())
     }

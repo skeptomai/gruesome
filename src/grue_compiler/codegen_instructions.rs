@@ -2266,14 +2266,21 @@ impl ZMachineCodeGen {
             && self.is_branch_instruction(opcode)
         {
             // Calculate where the branch offset will be written
-            let _branch_offset_location = if let Some(branch_loc) = layout.branch_location {
-                branch_loc
-            } else {
-                return Err(CompilerError::CodeGenError(format!(
-                    "Branch instruction 0x{:02x} at 0x{:04x} has no branch_location in layout",
-                    opcode, instruction_start
-                )));
-            };
+            let _branch_offset_location =
+                if let Some(branch_loc) = layout.branch_location {
+                    // 🔍 DEBUG: Log branch offset location calculation
+                    log::debug!(
+                    "🔍 BRANCH_CALC: opcode=0x{:02x} inst_start=0x{:04x} branch_location=0x{:04x}",
+                    opcode, instruction_start, branch_loc
+                );
+                    log::debug!("🔍 BRANCH_LAYOUT: {:?}", layout);
+                    branch_loc
+                } else {
+                    return Err(CompilerError::CodeGenError(format!(
+                        "Branch instruction 0x{:02x} at 0x{:04x} has no branch_location in layout",
+                        opcode, instruction_start
+                    )));
+                };
 
             // Determine branch polarity (branch_on_true) from the original offset
             // Z-Machine branch encoding: bit 7 of first byte indicates polarity
@@ -3728,7 +3735,7 @@ impl ZMachineCodeGen {
     fn generate_comparison_branch(
         &mut self,
         expr: &crate::grue_compiler::ast::Expr,
-        branch_label: crate::grue_compiler::ir::IrId,
+        _branch_label: crate::grue_compiler::ir::IrId,
         branch_on_false: bool,
     ) -> Result<(), CompilerError> {
         match expr {
@@ -3791,8 +3798,8 @@ impl ZMachineCodeGen {
                 // Note: This value is calculated but not currently used in the implementation
                 let _branch_condition = branch_on_false ^ should_invert;
 
-                // Create unresolved reference for the branch
-                let layout = self.emit_instruction_typed(
+                // Emit comparison branch instruction
+                let _layout = self.emit_instruction_typed(
                     opcode,
                     &[left_operand, right_operand],
                     None,
@@ -3800,21 +3807,10 @@ impl ZMachineCodeGen {
                     None,
                 )?;
 
-                // Register branch reference for later resolution
-                if let Some(branch_location) = layout.branch_location {
-                    self.reference_context.unresolved_refs.push(
-                        crate::grue_compiler::codegen_headers::UnresolvedReference {
-                            reference_type:
-                                crate::grue_compiler::codegen::LegacyReferenceType::Branch,
-                            location: branch_location,
-                            target_id: branch_label,
-                            is_packed_address: false,
-                            offset_size: 2,
-                            location_space:
-                                crate::grue_compiler::codegen_headers::MemorySpace::Code,
-                        },
-                    );
-                }
+                // ARCHITECTURAL FIX: Branch instructions should ONLY use DeferredBranchPatch system.
+                // The emit_instruction_typed() call above already handles DeferredBranchPatch creation.
+                // UnresolvedReference should only handle operand fields, never branch offsets.
+                // Note: _branch_label is handled by DeferredBranchPatch, not needed here.
 
                 Ok(())
             }

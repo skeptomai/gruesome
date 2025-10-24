@@ -3,9 +3,8 @@
 /// This utility detects memory overlap between DeferredBranchPatch and UnresolvedReference
 /// patching systems to identify the root cause of the 0x2aa7 crash and validate
 /// unified patching system requirements.
-
 use crate::grue_compiler::codegen::{
-    ZMachineCodeGen, DeferredBranchPatch, UnresolvedReference, MemorySpace
+    DeferredBranchPatch, MemorySpace, UnresolvedReference, ZMachineCodeGen,
 };
 use crate::grue_compiler::error::CompilerError;
 use std::collections::HashMap;
@@ -36,23 +35,39 @@ impl ZMachineCodeGen {
         let mut reference_patches: HashMap<usize, Vec<&UnresolvedReference>> = HashMap::new();
         let mut collisions = Vec::new();
 
-        // Map all DeferredBranchPatch locations (already in final address space)
+        // Map all DeferredBranchPatch locations (translate Code space to final address space)
         for patch in &self.two_pass_state.deferred_branches {
-            let start_addr = patch.branch_offset_location;
+            // CRITICAL FIX: DeferredBranchPatch uses Code space addresses, must translate to final
+            let final_branch_location = match self
+                .translate_space_address_to_final(MemorySpace::Code, patch.branch_offset_location)
+            {
+                Ok(addr) => addr,
+                Err(e) => {
+                    log::warn!(
+                        "Could not translate branch patch location for collision detection: {:?}",
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            let start_addr = final_branch_location;
             let end_addr = start_addr + patch.offset_size as usize;
 
             for addr in start_addr..end_addr {
-                branch_patches.entry(addr).or_insert_with(Vec::new).push(patch);
+                branch_patches
+                    .entry(addr)
+                    .or_insert_with(Vec::new)
+                    .push(patch);
             }
         }
 
         // Map all UnresolvedReference locations (translate to final address space)
         for reference in &self.reference_context.unresolved_refs {
             // Translate space address to final address
-            let final_location = match self.translate_space_address_to_final(
-                reference.location_space,
-                reference.location
-            ) {
+            let final_location = match self
+                .translate_space_address_to_final(reference.location_space, reference.location)
+            {
                 Ok(addr) => addr,
                 Err(e) => {
                     log::warn!(
@@ -67,7 +82,10 @@ impl ZMachineCodeGen {
             let end_addr = start_addr + reference.offset_size as usize;
 
             for addr in start_addr..end_addr {
-                reference_patches.entry(addr).or_insert_with(Vec::new).push(reference);
+                reference_patches
+                    .entry(addr)
+                    .or_insert_with(Vec::new)
+                    .push(reference);
             }
         }
 
@@ -77,12 +95,16 @@ impl ZMachineCodeGen {
                 // Collision detected at this address
                 for &branch_patch in branch_list {
                     for &reference_patch in reference_list {
-                        // Calculate overlap size
-                        let branch_start = branch_patch.branch_offset_location;
+                        // Calculate overlap size (translate branch address to final space)
+                        let branch_final_location = self.translate_space_address_to_final(
+                            MemorySpace::Code,
+                            branch_patch.branch_offset_location,
+                        )?;
+                        let branch_start = branch_final_location;
                         let branch_end = branch_start + branch_patch.offset_size as usize;
                         let ref_final_location = self.translate_space_address_to_final(
                             reference_patch.location_space,
-                            reference_patch.location
+                            reference_patch.location,
                         )?;
                         let ref_start = ref_final_location;
                         let ref_end = ref_start + reference_patch.offset_size as usize;
@@ -117,8 +139,14 @@ impl ZMachineCodeGen {
         let report = self.detect_patch_collisions()?;
 
         println!("=== PATCH COLLISION ANALYSIS ===");
-        println!("Total DeferredBranchPatch entries: {}", report.total_branch_patches);
-        println!("Total UnresolvedReference entries: {}", report.total_reference_patches);
+        println!(
+            "Total DeferredBranchPatch entries: {}",
+            report.total_branch_patches
+        );
+        println!(
+            "Total UnresolvedReference entries: {}",
+            report.total_reference_patches
+        );
         println!("Memory collisions detected: {}", report.collision_count);
 
         if report.collisions.is_empty() {
@@ -128,16 +156,22 @@ impl ZMachineCodeGen {
 
         println!("\n❌ COLLISION DETAILS:");
         for (i, collision) in report.collisions.iter().enumerate() {
-            println!("\nCollision #{}: Final address 0x{:04x} ({} bytes overlap)",
-                     i + 1, collision.final_address, collision.overlap_bytes);
+            println!(
+                "\nCollision #{}: Final address 0x{:04x} ({} bytes overlap)",
+                i + 1,
+                collision.final_address,
+                collision.overlap_bytes
+            );
 
             if let Some(branch) = &collision.branch_patch {
                 println!("  📍 DeferredBranchPatch:");
                 println!("    - Instruction at: 0x{:04x}", branch.instruction_address);
-                println!("    - Branch location: 0x{:04x}-0x{:04x} ({} bytes)",
-                         branch.branch_offset_location,
-                         branch.branch_offset_location + branch.offset_size as usize,
-                         branch.offset_size);
+                println!(
+                    "    - Branch location: 0x{:04x}-0x{:04x} ({} bytes)",
+                    branch.branch_offset_location,
+                    branch.branch_offset_location + branch.offset_size as usize,
+                    branch.offset_size
+                );
                 println!("    - Target label: {}", branch.target_label_id);
                 println!("    - Branch on true: {}", branch.branch_on_true);
             }
@@ -145,16 +179,20 @@ impl ZMachineCodeGen {
             if let Some(reference) = &collision.reference_patch {
                 let final_location = self.translate_space_address_to_final(
                     reference.location_space,
-                    reference.location
+                    reference.location,
                 )?;
                 println!("  📍 UnresolvedReference:");
                 println!("    - Type: {:?}", reference.reference_type);
-                println!("    - Space location: {:?}[0x{:04x}]",
-                         reference.location_space, reference.location);
-                println!("    - Final location: 0x{:04x}-0x{:04x} ({} bytes)",
-                         final_location,
-                         final_location + reference.offset_size as usize,
-                         reference.offset_size);
+                println!(
+                    "    - Space location: {:?}[0x{:04x}]",
+                    reference.location_space, reference.location
+                );
+                println!(
+                    "    - Final location: 0x{:04x}-0x{:04x} ({} bytes)",
+                    final_location,
+                    final_location + reference.offset_size as usize,
+                    reference.offset_size
+                );
                 println!("    - Target ID: {}", reference.target_id);
                 println!("    - Is packed: {}", reference.is_packed_address);
             }
@@ -211,7 +249,10 @@ impl CollisionStats {
     pub fn print_summary(&self) {
         println!("=== COLLISION STATISTICS ===");
         println!("Total collisions: {}", self.total_collisions);
-        println!("Unique addresses affected: {}", self.unique_addresses_affected);
+        println!(
+            "Unique addresses affected: {}",
+            self.unique_addresses_affected
+        );
         println!("Collision rate: {:.2}%", self.collision_rate);
 
         if !self.collision_by_reference_type.is_empty() {
@@ -226,7 +267,7 @@ impl CollisionStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::grue_compiler::codegen::{TwoPassState, ReferenceContext, LegacyReferenceType};
+    use crate::grue_compiler::codegen::{LegacyReferenceType, ReferenceContext, TwoPassState};
 
     fn create_test_codegen() -> ZMachineCodeGen {
         // Create minimal test ZMachineCodeGen for collision testing
@@ -252,13 +293,16 @@ mod tests {
         let mut codegen = create_test_codegen();
 
         // Add a branch patch at final address 0x1000
-        codegen.two_pass_state.deferred_branches.push(DeferredBranchPatch {
-            instruction_address: 0x0ffe,
-            branch_offset_location: 0x1000,
-            target_label_id: 42,
-            branch_on_true: true,
-            offset_size: 2,
-        });
+        codegen
+            .two_pass_state
+            .deferred_branches
+            .push(DeferredBranchPatch {
+                instruction_address: 0x0ffe,
+                branch_offset_location: 0x1000,
+                target_label_id: 42,
+                branch_on_true: true,
+                offset_size: 2,
+            });
 
         // Add a reference patch that translates to overlapping final address
         // For Code space, final address = final_code_base + space_offset
@@ -270,14 +314,17 @@ mod tests {
             return; // Skip test if setup isn't feasible
         };
 
-        codegen.reference_context.unresolved_refs.push(UnresolvedReference {
-            reference_type: LegacyReferenceType::FunctionCall,
-            location: space_offset,
-            target_id: 100,
-            is_packed_address: false,
-            offset_size: 2,
-            location_space: MemorySpace::Code,
-        });
+        codegen
+            .reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::FunctionCall,
+                location: space_offset,
+                target_id: 100,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            });
 
         let report = codegen.detect_patch_collisions().unwrap();
 
