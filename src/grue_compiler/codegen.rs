@@ -6919,7 +6919,7 @@ impl ZMachineCodeGen {
                 Operand::SmallConstant(1), // compare with 1
             ],
             None,
-            None, // CRITICAL FIX (Oct 24, 2025): Use None for deferred branch patching instead of placeholder_word()
+            Some(-1), // POLARITY FIX: Branch on true (word count >= 1) to continue processing command
             Some(next_handler_label), // FIXED: Use next_handler_label instead of end_function_label
         )?;
 
@@ -7069,7 +7069,7 @@ impl ZMachineCodeGen {
                 Operand::Variable(216), // This verb's dict addr (from Global G200)
             ],
             None,
-            None, // CORRUPTION FIX: Use None for deferred branch patching instead of placeholder_word()
+            Some(-1), // POLARITY FIX: Branch on true (dictionary match) to continue processing command
             Some(continue_label),            // NEW: Target label for deferred resolution
         )?;
         debug!(
@@ -7153,7 +7153,7 @@ impl ZMachineCodeGen {
                 Operand::SmallConstant(2), // compare with 2
             ],
             None,
-            None, // CORRUPTION FIX: Use None for deferred branch patching instead of placeholder_word()
+            Some(-1), // POLARITY FIX: Branch on true (word count < 2) to handle verb-only case
             Some(verb_only_label),           // NEW: Target label for deferred resolution
         )?;
 
@@ -7208,7 +7208,7 @@ impl ZMachineCodeGen {
                         Operand::SmallConstant(0), // Compare with 0
                     ],
                     None,
-                    None, // CORRUPTION FIX: Use None for deferred branch patching instead of placeholder_word()
+                    Some(-1), // POLARITY FIX: Branch on true (object ID = 0) to handle verb-only case
                     Some(verb_only_label),           // NEW: Target label for deferred resolution
                 )?;
 
@@ -7742,7 +7742,7 @@ impl ZMachineCodeGen {
                 Operand::SmallConstant(max_object_number as u8), // Maximum actual object count
             ],
             None,
-            None, // CORRUPTION FIX: Use None for deferred branch patching instead of placeholder_word()
+            Some(-1), // POLARITY FIX: Branch on true (object > max) to skip invalid objects
             Some(end_label),                 // NEW: Target label for deferred resolution
         )?;
 
@@ -7798,7 +7798,7 @@ impl ZMachineCodeGen {
                 Operand::SmallConstant(0), // Compare with 0
             ],
             None,
-            None, // CORRUPTION FIX: Use None for deferred branch patching instead of placeholder_word()
+            Some(-1), // POLARITY FIX: Branch on true (property address = 0) when no names property
             Some(no_names_label),            // NEW: Target label for deferred resolution
         )?;
 
@@ -7900,7 +7900,7 @@ impl ZMachineCodeGen {
                 Operand::Variable(2), // Input noun dictionary address
             ],
             None,
-            None, // CORRUPTION FIX: Use None for deferred branch patching instead of placeholder_word()
+            Some(-1), // POLARITY FIX: Branch on true (dictionary addresses match) to found match
             Some(found_match_label),         // NEW: Target label for deferred resolution
         )?;
 
@@ -9519,7 +9519,7 @@ impl ZMachineCodeGen {
             crate::grue_compiler::opcodes::Opcode::Op1(crate::grue_compiler::opcodes::Op1::Jz),
             &[condition_operand],
             None,                                 // No store
-            None, // CORRUPTION FIX: Use None for deferred branch patching instead of placeholder_word()
+            Some(-1), // POLARITY FIX: Branch on true (jz branches when condition is zero)
             Some(false_label),                    // jz branches to false_label when condition is zero
         )?;
 

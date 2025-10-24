@@ -733,6 +733,31 @@ impl Interpreter {
         }
 
         loop {
+            // TARGETED DEBUGGING: Focus on je (jump if equal) instructions for command matching
+            let current_inst = self.vm.read_byte(self.vm.pc);
+
+            // Log je instructions which are critical for command matching
+            if current_inst == 0x41 || current_inst == 0x61 || current_inst == 0xc1 { // je in various forms
+                log::debug!("🎯 JE_INSTRUCTION: PC=0x{:04x}, opcode=0x{:02x}", self.vm.pc, current_inst);
+
+                // If this might be the critical dictionary comparison, log more detail
+                if self.vm.pc >= 0x0920 && self.vm.pc <= 0x0970 {
+                    if let Ok(var1) = self.vm.read_variable(1) {
+                        if let Ok(var2) = self.vm.read_variable(2) {
+                            log::debug!("🎯 JE_CRITICAL: PC=0x{:04x}, var1={}, var2={}", self.vm.pc, var1, var2);
+                        }
+                    }
+                }
+            }
+
+            // Log function calls and prints as before
+            if current_inst == 0xe0 || current_inst == 0xe1 { // call_vs and call_vn
+                log::debug!("🎯 FUNCTION_CALL: PC=0x{:04x}, opcode=0x{:02x}", self.vm.pc, current_inst);
+            }
+            if current_inst == 0x8d { // print_paddr
+                log::debug!("🎯 PRINT: PC=0x{:04x}, opcode=0x{:02x}", self.vm.pc, current_inst);
+            }
+
             // 🚨 CRITICAL DEBUG: Track when PC reaches problematic address 1699 (MAIN LOOP)
             if self.vm.pc == 1699 {
                 log::debug!("🚨 FATAL: Main execution loop reached PC 1699 (non-code space)!");
