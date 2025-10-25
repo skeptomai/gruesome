@@ -225,6 +225,23 @@ fn look_around() {
 
 fn examine(obj) {
     clear_quit_state();
+
+    // CRITICAL FIX (Oct 24, 2025): Handle object 0 (not found) gracefully
+    //
+    // PROBLEM: Commands like "examine tree" or "examine house" for non-existent objects
+    // cause object lookup to return 0, then examine(0) crashes when accessing obj.desc
+    // on a non-existent object (objects start from 1, not 0).
+    //
+    // SYMPTOMS: Control character output followed by program crash when examining
+    // objects that don't exist in the game world.
+    //
+    // SOLUTION: Check for object 0 before attempting property access and provide
+    // appropriate "not found" message instead of crashing.
+    if obj == 0 {
+        print("You can't see any such thing.");
+        return;
+    }
+
     if obj.location == player.location || obj.location == player {
         print(obj.desc);
     } else {

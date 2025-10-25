@@ -534,12 +534,20 @@ impl ZMachineCodeGen {
         // Resolve IR ID to proper operand - CRITICAL FIX
         let object_operand = self.resolve_ir_id_to_operand(object_ir_id)?;
 
-        // Generate Z-Machine get_child instruction (1OP:3, opcode 0x03)
+        // CRITICAL FIX (Oct 25, 2025): GetChild MUST have branch parameter per Z-Machine specification
+        //
+        // ROOT CAUSE: GetChild was being emitted with branch=None, causing "Invalid Long form opcode 0x00"
+        // The Z-Machine specification mandates: get_child object -> (result) ?(label)
+        //
+        // SOLUTION: Add required branch parameter. For now, use simple fallthrough branch
+        // that doesn't change execution flow but satisfies Z-Machine instruction format.
+
+        // Generate Z-Machine get_child instruction (1OP:130, opcode 0x02) with required branch
         self.emit_instruction_typed(
             Opcode::Op1(Op1::GetChild),
             &[object_operand],
-            Some(0), // Store result on stack
-            None,    // No branch
+            Some(0), // Store result on stack (child object number or 0)
+            Some(2), // Branch offset: skip 2 bytes ahead (fallthrough to next instruction)
         )?;
 
         // Do NOT add return instruction here - this is inline code generation
@@ -561,12 +569,19 @@ impl ZMachineCodeGen {
         // Resolve IR ID to proper operand - CRITICAL FIX
         let object_operand = self.resolve_ir_id_to_operand(object_ir_id)?;
 
-        // Generate Z-Machine get_sibling instruction (1OP:2, opcode 0x02)
+        // CRITICAL FIX (Oct 25, 2025): GetSibling MUST have branch parameter per Z-Machine specification
+        //
+        // ROOT CAUSE: Same as GetChild - missing branch parameter caused branch offset miscalculations
+        // The Z-Machine specification mandates: get_sibling object -> (result) ?(label)
+        //
+        // SOLUTION: Add required branch parameter. Use simple fallthrough branch.
+
+        // Generate Z-Machine get_sibling instruction (1OP:129, opcode 0x81) with required branch
         self.emit_instruction_typed(
             Opcode::Op1(Op1::GetSibling),
             &[object_operand],
-            Some(0), // Store result on stack
-            None,    // No branch
+            Some(0), // Store result on stack (sibling object number or 0)
+            Some(2), // Branch offset: skip 2 bytes ahead (fallthrough to next instruction)
         )?;
 
         // Do NOT add return instruction here - this is inline code generation
