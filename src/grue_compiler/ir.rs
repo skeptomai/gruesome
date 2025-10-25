@@ -2948,6 +2948,25 @@ impl IrGenerator {
                             property_number
                         );
                     }
+                    "contents" => {
+                        // contents() method: return object tree contents for iteration
+                        let builtin_id = self.next_id();
+                        self.builtin_functions
+                            .insert(builtin_id, "get_object_contents".to_string());
+
+                        let mut call_args = vec![object_temp];
+                        call_args.extend(arg_temps);
+
+                        block.add_instruction(IrInstruction::Call {
+                            target: Some(result_temp),
+                            function: builtin_id,
+                            args: call_args,
+                        });
+
+                        // Track that this result came from an object tree traversal
+                        self.variable_sources
+                            .insert(result_temp, VariableSource::ObjectTreeRoot(object_temp));
+                    }
                     _ => {
                         // For truly unknown methods, return safe non-zero value to prevent object 0 errors
                         // This prevents "Cannot insert object 0" crashes while providing a detectable placeholder
