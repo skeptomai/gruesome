@@ -25,6 +25,7 @@ fn main() {
     let mut verbose = false;
     let mut print_ir = false;
     let mut dump_mapping = false;
+    let mut debug_objects = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -103,6 +104,10 @@ fn main() {
             }
             "--dump-mapping" => {
                 dump_mapping = true;
+                i += 1;
+            }
+            "--debug-objects" => {
+                debug_objects = true;
                 i += 1;
             }
             "-h" | "--help" => {
@@ -197,6 +202,12 @@ fn main() {
                 code_generator.dump_pc_mapping();
             }
 
+            if debug_objects {
+                println!("=== COMPILER: Object Table Debug ===");
+                code_generator.debug_object_table();
+                println!("=== End Object Table Debug ===");
+            }
+
             if verbose {
                 println!(
                     "Successfully compiled {} bytes to {}",
@@ -220,6 +231,7 @@ fn print_usage(program_name: &str) {
     println!("  -v, --verbose          Verbose output");
     println!("  --print-ir             Print intermediate representation and exit");
     println!("  --dump-mapping         Dump PC→IR mapping after compilation");
+    println!("  --debug-objects        Dump object table after compilation");
     println!("  -h, --help             Show this help message");
     println!();
     println!("Z-Machine Version Support:");

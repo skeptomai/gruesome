@@ -4913,9 +4913,9 @@ impl ZMachineCodeGen {
 
         // Write object name (short description) as Z-Machine encoded string
         let name_bytes = self.encode_object_name(&object.short_name);
-        // For now, set text_length to 0 (no object name text) to fix property access
-        // TODO: Implement proper Z-Machine text encoding for object names
-        let text_length = 0;
+        // FIXED: Use actual encoded name length instead of hardcoded 0
+        // This ensures object names are actually written to the object table
+        let text_length = name_bytes.len();
 
         // Text length byte
         let text_offset = addr - self.object_table_addr;
@@ -10745,6 +10745,71 @@ impl ZMachineCodeGen {
             );
         }
         eprintln!();
+    }
+
+    /// Dump object table for debugging and regression testing
+    pub fn debug_object_table(&self) {
+        println!("=== OBJECT TABLE DEBUG ===");
+        println!("Object count: {}", self.object_numbers.len());
+        println!("Object table address: 0x{:04x}", self.object_table_addr);
+        println!();
+
+        // Display object numbers and names mapping
+        let mut objects: Vec<(&String, &u16)> = self.object_numbers.iter().collect();
+        objects.sort_by_key(|(_, &obj_num)| obj_num);
+
+        for (name, &obj_num) in objects {
+            println!("Object #{}: '{}'", obj_num, name);
+
+            // Show properties for this object if available
+            if let Some(properties) = self.object_properties.get(name) {
+                for prop_name in properties {
+                    if let Some(&prop_num) = self.property_numbers.get(prop_name) {
+                        println!("  Property #{}: {}", prop_num, prop_name);
+                    }
+                }
+            }
+            println!();
+        }
+        println!("=== END OBJECT TABLE DEBUG ===");
+    }
+
+    /// Decode object name bytes using Z-Machine text decoding
+    fn decode_object_name(&self, name_bytes: &[u8]) -> String {
+        // Simple Z-Machine text decoder for debugging
+        // This mimics what the interpreter does
+        let mut result = String::new();
+        let mut i = 0;
+
+        while i + 1 < name_bytes.len() {
+            let word = ((name_bytes[i] as u16) << 8) | (name_bytes[i + 1] as u16);
+            let is_end = (word & 0x8000) != 0;
+
+            // Extract 3 Z-characters (5 bits each) from the word
+            let z1 = ((word >> 10) & 0x1F) as u8;
+            let z2 = ((word >> 5) & 0x1F) as u8;
+            let z3 = (word & 0x1F) as u8;
+
+            // Decode each Z-character
+            for &z_char in &[z1, z2, z3] {
+                match z_char {
+                    0 => result.push(' '),        // Space
+                    6..=31 => {
+                        // Lowercase letters: a-z = 6-31
+                        let ch = (b'a' + z_char - 6) as char;
+                        result.push(ch);
+                    }
+                    _ => result.push('?'),         // Unknown/unsupported
+                }
+            }
+
+            i += 2;
+            if is_end {
+                break;
+            }
+        }
+
+        result.trim_end().to_string()
     }
 
     // Z-Machine instruction encoding methods now moved to codegen_instructions.rs

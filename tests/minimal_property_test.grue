@@ -1,0 +1,12 @@
+world {
+    room test_room "Test Room" {
+        desc: "Test room"
+    }
+}
+
+init {
+    player.location = test_room;
+    print("Before setting visited");
+    test_room.visited = true;
+    print("After setting visited");
+}
