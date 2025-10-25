@@ -4900,7 +4900,7 @@ impl ZMachineCodeGen {
     }
 
     /// Create a property table for an object using IR property data
-    fn create_property_table_from_ir(
+    pub fn create_property_table_from_ir(
         &mut self,
         obj_num: u8,
         object: &ObjectData,

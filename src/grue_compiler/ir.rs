@@ -310,14 +310,22 @@ pub struct PropertyManager {
     standard_properties: IndexMap<StandardProperty, u8>,
     /// Next available property number
     next_property_number: u8,
+    /// Z-Machine version for property number limits
+    version: crate::grue_compiler::ZMachineVersion,
 }
 
 impl PropertyManager {
     pub fn new() -> Self {
+        // Default to V3 for backward compatibility
+        Self::new_with_version(crate::grue_compiler::ZMachineVersion::V3)
+    }
+
+    pub fn new_with_version(version: crate::grue_compiler::ZMachineVersion) -> Self {
         let mut manager = Self {
             property_numbers: IndexMap::new(),
             standard_properties: IndexMap::new(),
             next_property_number: 1,
+            version,
         };
 
         // Register standard properties
@@ -334,6 +342,30 @@ impl PropertyManager {
         manager.register_standard_property(StandardProperty::Article);
         manager.register_standard_property(StandardProperty::Adjective);
         // Location registration removed - uses object tree only (Oct 12, 2025)
+
+        // Pre-register exit system properties (not accessed during IR generation, only during codegen)
+        // These MUST be registered here to avoid property number collisions with runtime-generated properties
+        manager.get_property_number("exit_directions"); // Parallel array of dictionary addresses (2 bytes each)
+        manager.get_property_number("exit_types"); // Parallel array of exit types (1 byte each): 0=room, 1=blocked
+        manager.get_property_number("exit_data"); // Parallel array of exit data (2 bytes each): room_id or message_addr
+
+        // CRITICAL: Pre-assign Property 27 to "names" for architectural consistency
+        //
+        // Background: The grammar system requires object names to be stored as dictionary
+        // addresses for efficient lookup. This was initially causing "Property 27 not found"
+        // errors because objects with names arrays weren't getting Property 27 created.
+        //
+        // Solution: Manually assign Property 27 to "names" before auto-assignment begins,
+        // ensuring consistent property numbers across IR generation and codegen phases.
+        //
+        // Why Property 27:
+        // - Matches hardcoded assignment in codegen.rs:385
+        // - Avoids conflicts with standard properties (1-15)
+        // - Avoids conflicts with other hardcoded properties (7, 20, 21, 22)
+        // - Ensures predictable property layout across compilations
+        //
+        // All panic conditions verified: out-of-bounds (0, 32+), conflicts, and limit exhaustion
+        manager.assign_property_number("names", 27);
 
         manager
     }
@@ -372,6 +404,66 @@ impl PropertyManager {
                 .insert(property_name.to_string(), new_num);
             self.next_property_number += 1;
             new_num
+        }
+    }
+
+    /// Manually assign a specific property number to a property name
+    ///
+    /// This function validates that the property number is within Z-Machine version limits
+    /// and panics if there are conflicts or out-of-bounds assignments.
+    ///
+    /// # Panics
+    /// - If property_number is 0 or exceeds version limits
+    /// - If property_number is already assigned to another property
+    pub fn assign_property_number(&mut self, property_name: &str, property_number: u8) {
+        let max_prop = self.max_property_number();
+
+        // Validate property number is within Z-Machine version limits
+        if property_number == 0 || property_number > max_prop {
+            panic!(
+                "CRITICAL: Invalid property number assignment! Trying to manually assign property '{}' number {}, but Z-Machine {:?} only supports properties 1-{}.",
+                property_name,
+                property_number,
+                self.version,
+                max_prop
+            );
+        }
+
+        // Check for conflicts with existing assignments
+        if let Some(existing_name) = self
+            .property_numbers
+            .iter()
+            .find(|(_, &num)| num == property_number)
+            .map(|(name, _)| name.clone())
+        {
+            panic!(
+                "CRITICAL: Property number conflict! Trying to assign property '{}' to number {}, but it's already assigned to property '{}'.",
+                property_name,
+                property_number,
+                existing_name
+            );
+        }
+
+        log::debug!(
+            "🔢 PROPERTY_MANUAL_ASSIGN: '{}' → #{} (max: {})",
+            property_name,
+            property_number,
+            max_prop
+        );
+
+        self.property_numbers
+            .insert(property_name.to_string(), property_number);
+
+        // Update next_property_number if this assignment would conflict
+        if property_number >= self.next_property_number {
+            self.next_property_number = property_number + 1;
+        }
+    }
+
+    fn max_property_number(&self) -> u8 {
+        match self.version {
+            crate::grue_compiler::ZMachineVersion::V3 => 31, // 5-bit property encoding
+            crate::grue_compiler::ZMachineVersion::V4 | crate::grue_compiler::ZMachineVersion::V5 => 63, // 6-bit property encoding
         }
     }
 

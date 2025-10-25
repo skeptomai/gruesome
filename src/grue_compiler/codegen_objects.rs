@@ -139,8 +139,32 @@ impl ZMachineCodeGen {
                 self.write_to_object_space(offset, 0)?;
                 offset += 1; // Child object (none)
 
-                // Properties pointer - points to property table right after this object
-                let prop_table_offset = default_props_count * 2 + 9; // After default props + this object
+                // Properties pointer - create actual property table using proper system
+                // Create minimal object data for player object (object #1)
+                use crate::grue_compiler::codegen_objects::ObjectData;
+                use crate::grue_compiler::ir::IrProperties;
+                let mut player_properties = IrProperties::new();
+                // Player needs basic properties that games might access
+                if let Some(&location_prop) = self.property_numbers.get("location") {
+                    player_properties.set_byte(location_prop, 0); // No initial location
+                }
+                if let Some(&quit_pending_prop) = self.property_numbers.get("quit_pending") {
+                    player_properties.set_byte(quit_pending_prop, 0); // Not pending quit
+                }
+
+                let player_object = ObjectData {
+                    id: 9999, // Synthetic player object ID
+                    name: "yourself".to_string(),
+                    short_name: "yourself".to_string(),
+                    attributes: crate::grue_compiler::ir::IrAttributes::new(),
+                    properties: player_properties,
+                    parent: None,
+                    sibling: None,
+                    child: None,
+                };
+
+                // Use proper property table creation system
+                let prop_table_offset = self.create_property_table_from_ir(1, &player_object)?;
                 self.write_to_object_space(offset, (prop_table_offset >> 8) as u8)?;
                 offset += 1; // High byte
                 self.write_to_object_space(offset, (prop_table_offset & 0xFF) as u8)?;
@@ -165,8 +189,32 @@ impl ZMachineCodeGen {
                 self.write_to_object_space(offset, 0)?;
                 offset += 1; // Child object (none) low
 
-                // Properties pointer
-                let prop_table_offset = default_props_count * 2 + 14; // After default props + this object
+                // Properties pointer - create actual property table using proper system
+                // Create minimal object data for player object (object #1)
+                use crate::grue_compiler::codegen_objects::ObjectData;
+                use crate::grue_compiler::ir::IrProperties;
+                let mut player_properties = IrProperties::new();
+                // Player needs basic properties that games might access
+                if let Some(&location_prop) = self.property_numbers.get("location") {
+                    player_properties.set_byte(location_prop, 0); // No initial location
+                }
+                if let Some(&quit_pending_prop) = self.property_numbers.get("quit_pending") {
+                    player_properties.set_byte(quit_pending_prop, 0); // Not pending quit
+                }
+
+                let player_object = ObjectData {
+                    id: 9999, // Synthetic player object ID
+                    name: "yourself".to_string(),
+                    short_name: "yourself".to_string(),
+                    attributes: crate::grue_compiler::ir::IrAttributes::new(),
+                    properties: player_properties,
+                    parent: None,
+                    sibling: None,
+                    child: None,
+                };
+
+                // Use proper property table creation system
+                let prop_table_offset = self.create_property_table_from_ir(1, &player_object)?;
                 self.write_to_object_space(offset, (prop_table_offset >> 8) as u8)?;
                 offset += 1; // High byte
                 self.write_to_object_space(offset, (prop_table_offset & 0xFF) as u8)?;
