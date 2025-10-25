@@ -1084,7 +1084,10 @@ impl ZMachineCodeGen {
                 self.use_stack_for_result(*target);
             }
 
-            IrInstruction::InsertObj { object, destination } => {
+            IrInstruction::InsertObj {
+                object,
+                destination,
+            } => {
                 // Z-Machine insert_obj opcode: sets object's parent, updates tree structure
                 // (Oct 12, 2025): Used for .location = assignment
                 // This removes object from current parent and inserts as first child of destination
@@ -1125,8 +1128,8 @@ impl ZMachineCodeGen {
                 self.emit_instruction_typed(
                     Opcode::Op2(Op2::InsertObj),
                     &[obj_operand, dest_operand],
-                    None,    // No result
-                    None,    // No branch
+                    None, // No result
+                    None, // No branch
                 )?;
             }
 

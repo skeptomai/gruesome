@@ -99,6 +99,12 @@ impl ZMachineCodeGen {
     }
 
     /// Write minimal object table structure required by Z-Machine
+    ///
+    /// DEAD CODE: This function is not called for programs with objects. When IR contains
+    /// objects, the full object generation path (create_object_entries_from_ir) is used instead.
+    /// This function is only called when no objects exist in IR, which doesn't happen in practice.
+    /// Analysis: Neither main nor this branch calls this function for mini_zork.
+    #[allow(dead_code)]
     pub fn write_minimal_object_table(&mut self) -> Result<(), CompilerError> {
         log::debug!("📝 Writing minimal object table structure");
         let mut offset = 0;
@@ -258,7 +264,7 @@ impl ZMachineCodeGen {
 
         // Step 2: Add essential properties that player object always needs
         all_properties.insert("description".to_string()); // Player description property
-        // location removed - uses object tree parent only (Oct 12, 2025)
+                                                          // location removed - uses object tree parent only (Oct 12, 2025)
 
         // Use property numbers from IR's PropertyManager to ensure consistency
         // This ensures object table generation uses the same property numbers as IR code generation
@@ -420,7 +426,7 @@ impl ZMachineCodeGen {
             // Set default property values for rooms
             room_properties.set_string(desc_prop, room.description.clone());
             room_properties.set_byte(visited_prop, 0); // Initially not visited
-            // location property removed - rooms use object tree containment (Oct 12, 2025)
+                                                       // location property removed - rooms use object tree containment (Oct 12, 2025)
             room_properties.set_byte(on_look_prop, 0); // No special on_look handler by default
 
             // Generate exit properties for room navigation using parallel arrays
@@ -683,6 +689,43 @@ impl ZMachineCodeGen {
             "Object table generation complete, object_address updated to: 0x{:04x}",
             self.object_address
         );
+
+        // COMPREHENSIVE OBJECT TABLE DUMP FOR DEBUGGING
+        log::warn!("=== COMPLETE OBJECT TABLE GENERATION DUMP ===");
+        for (index, object) in all_objects.iter().enumerate() {
+            let obj_num = (index + 1) as u8;
+            log::warn!(
+                "🏠 OBJECT #{}: '{}' (ID: {}, short: '{}')",
+                obj_num,
+                object.name,
+                object.id,
+                object.short_name
+            );
+            log::warn!(
+                "   Properties ({} total):",
+                object.properties.properties.len()
+            );
+
+            for (&prop_num, prop_value) in &object.properties.properties {
+                match prop_value {
+                    crate::grue_compiler::ir::IrPropertyValue::String(s) => {
+                        log::warn!("     Property {}: String = \"{}\"", prop_num, s);
+                    }
+                    crate::grue_compiler::ir::IrPropertyValue::Word(w) => {
+                        log::warn!("     Property {}: Word = {}", prop_num, w);
+                    }
+                    crate::grue_compiler::ir::IrPropertyValue::Byte(b) => {
+                        log::warn!("     Property {}: Byte = {}", prop_num, b);
+                    }
+                    crate::grue_compiler::ir::IrPropertyValue::Bytes(bytes) => {
+                        log::warn!("     Property {}: Bytes = {:?}", prop_num, bytes);
+                    }
+                }
+            }
+            log::warn!("");
+        }
+        log::warn!("=== END OBJECT TABLE GENERATION DUMP ===");
+
         Ok(())
     }
 }

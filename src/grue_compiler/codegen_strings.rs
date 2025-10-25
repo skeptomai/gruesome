@@ -813,20 +813,23 @@ impl ZMachineCodeGen {
 
     /// Encode object name for Z-Machine object table
     pub fn encode_object_name(&self, name: &str) -> Vec<u8> {
-        // Encode object name using Z-Machine text encoding
-        // This is a simplified version - in full implementation would use ZSCII
-        let mut encoded = Vec::new();
-        for byte in name.bytes().take(8) {
-            // Z-Machine object names are limited
-            encoded.push(byte);
+        // Encode object name using proper Z-Machine text encoding
+        // Per Z-Machine specification section 12.4: object names limited to 765 Z-characters
+        match self.encode_string(name) {
+            Ok(encoded) => {
+                // Prepend text-length as required by Z-Machine spec
+                // text-length is number of 2-byte words making up the text
+                let text_length = (encoded.len() + 1) / 2; // Round up for odd lengths
+                let mut result = vec![text_length as u8];
+                result.extend(encoded);
+                result
+            }
+            Err(_) => {
+                // Fallback to empty name if encoding fails
+                log::warn!("Failed to encode object name '{}', using empty name", name);
+                vec![0] // text-length = 0
+            }
         }
-
-        // Pad to minimum length if needed
-        while encoded.len() < 4 {
-            encoded.push(0);
-        }
-
-        encoded
     }
 
     /// Encode property value with proper size calculation

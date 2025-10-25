@@ -349,23 +349,25 @@ impl PropertyManager {
         manager.get_property_number("exit_types"); // Parallel array of exit types (1 byte each): 0=room, 1=blocked
         manager.get_property_number("exit_data"); // Parallel array of exit data (2 bytes each): room_id or message_addr
 
-        // CRITICAL: Pre-assign Property 27 to "names" for architectural consistency
-        //
-        // Background: The grammar system requires object names to be stored as dictionary
-        // addresses for efficient lookup. This was initially causing "Property 27 not found"
-        // errors because objects with names arrays weren't getting Property 27 created.
-        //
-        // Solution: Manually assign Property 27 to "names" before auto-assignment begins,
-        // ensuring consistent property numbers across IR generation and codegen phases.
-        //
-        // Why Property 27:
-        // - Matches hardcoded assignment in codegen.rs:385
-        // - Avoids conflicts with standard properties (1-15)
-        // - Avoids conflicts with other hardcoded properties (7, 20, 21, 22)
-        // - Ensures predictable property layout across compilations
-        //
-        // All panic conditions verified: out-of-bounds (0, 32+), conflicts, and limit exhaustion
+        // Pre-assign game-specific properties to fit within V3 limits (1-31)
+        // This prevents property number overflow by packing commonly used properties
+        // into available slots between standard properties and version limits
+        manager.assign_property_number("openable", 16);
+        manager.assign_property_number("open", 17);
+        manager.assign_property_number("container", 18);
+        manager.assign_property_number("visited", 19);
+        manager.assign_property_number("valuable", 20);
+        manager.assign_property_number("takeable", 21);
+        manager.assign_property_number("location", 22);
+        manager.assign_property_number("contents", 23);
+        manager.assign_property_number("on_look", 24);
+        manager.assign_property_number("on_enter", 25);
+        manager.assign_property_number("on_exit", 26);
         manager.assign_property_number("names", 27);
+        manager.assign_property_number("quit_pending", 28);
+
+        // Set next_property_number to continue after pre-assigned ones
+        manager.next_property_number = 29;
 
         manager
     }
@@ -400,6 +402,19 @@ impl PropertyManager {
             existing_num
         } else {
             let new_num = self.next_property_number;
+            let max_prop = self.max_property_number();
+
+            // Validate property number is within Z-Machine version limits
+            if new_num > max_prop {
+                panic!(
+                    "CRITICAL: Property number overflow! Trying to assign property '{}' number {}, but Z-Machine {:?} only supports properties 1-{}. Consider using fewer properties or upgrading to V4/V5.",
+                    property_name,
+                    new_num,
+                    self.version,
+                    max_prop
+                );
+            }
+
             self.property_numbers
                 .insert(property_name.to_string(), new_num);
             self.next_property_number += 1;
@@ -463,7 +478,8 @@ impl PropertyManager {
     fn max_property_number(&self) -> u8 {
         match self.version {
             crate::grue_compiler::ZMachineVersion::V3 => 31, // 5-bit property encoding
-            crate::grue_compiler::ZMachineVersion::V4 | crate::grue_compiler::ZMachineVersion::V5 => 63, // 6-bit property encoding
+            crate::grue_compiler::ZMachineVersion::V4
+            | crate::grue_compiler::ZMachineVersion::V5 => 63, // 6-bit property encoding
         }
     }
 
@@ -546,7 +562,7 @@ pub enum StandardProperty {
     Size = 10,       // Object size
     Article = 11,    // Article to use with object
     Adjective = 12,  // Adjectives for parsing
-    // Location removed - now uses object tree parent only (Oct 12, 2025)
+                     // Location removed - now uses object tree parent only (Oct 12, 2025)
 }
 
 /// Exit target in IR
@@ -2656,6 +2672,10 @@ impl IrGenerator {
                         target: temp_id,
                         value: IrValue::Integer(object_number as i16),
                     });
+                    log::debug!(
+                        "🔧 OBJECT_REF: Object '{}' → LoadImmediate temp_id {} with object number {}",
+                        name, temp_id, object_number
+                    );
                     Ok(temp_id)
                 } else if let Some(&var_id) = self.symbol_ids.get(&name) {
                     // This is an existing variable - return its original ID directly

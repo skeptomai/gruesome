@@ -316,6 +316,49 @@ impl Interpreter {
         debug!("=== END GAME STATE DUMP ===");
     }
 
+    /// Dump complete object table at startup for debugging property issues
+    fn dump_complete_object_table_at_startup(&self) -> Result<(), String> {
+        log::warn!("=== COMPLETE INTERPRETER OBJECT TABLE DUMP ===");
+
+        // Check up to 20 objects (should be enough for mini_zork)
+        let max_objects = 20;
+        log::warn!("📊 Checking up to {} objects", max_objects);
+
+        for obj_num in 1..=max_objects {
+            match self.vm.get_object_name(obj_num) {
+                Ok(name) => {
+                    log::warn!("🏠 INTERPRETER OBJECT #{}: '{}'", obj_num, name);
+
+                    // Get all properties for this object
+                    log::warn!("   Properties for object {}:", obj_num);
+
+                    // Try to enumerate properties by checking property numbers 1-63
+                    for prop_num in 1..=63 {
+                        match self.vm.get_property(obj_num, prop_num) {
+                            Ok(value) => {
+                                if value != 0 {
+                                    // Only show non-zero properties
+                                    log::warn!("     Property {}: Value = {}", prop_num, value);
+                                }
+                            }
+                            Err(_) => {
+                                // Property doesn't exist - that's normal
+                            }
+                        }
+                    }
+                    log::warn!("");
+                }
+                Err(_) => {
+                    // Object doesn't exist - stop checking
+                    break;
+                }
+            }
+        }
+
+        log::warn!("=== END INTERPRETER OBJECT TABLE DUMP ===");
+        Ok(())
+    }
+
     pub fn run_with_limit(&mut self, max_instructions: Option<u64>) -> Result<(), String> {
         info!("Starting Z-Machine interpreter...");
         info!("Initial PC: {:05x}", self.vm.pc);
@@ -348,6 +391,13 @@ impl Interpreter {
             // Byte 0x21: Screen width in characters
             self.vm.write_byte(0x21, width as u8)?;
         }
+
+        // COMPREHENSIVE OBJECT TABLE DUMP FOR DEBUGGING
+        log::warn!("📋 STARTUP: About to call object table dump");
+        if let Err(e) = self.dump_complete_object_table_at_startup() {
+            log::warn!("❌ Object table dump failed: {}", e);
+        }
+        log::warn!("✅ STARTUP: Object table dump completed");
 
         loop {
             // Fetch and decode instruction

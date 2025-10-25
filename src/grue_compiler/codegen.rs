@@ -1093,7 +1093,11 @@ impl ZMachineCodeGen {
                 }
             }
 
-            self.final_data[object_base..dictionary_base].copy_from_slice(&self.object_space);
+            // CRITICAL FIX: Use actual object_space.len() instead of pre-calculated dictionary_base
+            // dictionary_base was calculated BEFORE property tables expanded object_space
+            let actual_object_size = self.object_space.len();
+            self.final_data[object_base..object_base + actual_object_size]
+                .copy_from_slice(&self.object_space);
 
             // Show West of House property table AFTER copy
             let final_obj2_offset = object_base + obj2_offset;
@@ -1124,23 +1128,61 @@ impl ZMachineCodeGen {
 
             // CRITICAL FIX: Patch property table addresses from object space relative to absolute addresses
             self.patch_property_table_addresses(object_base)?;
+
+            // CRITICAL FIX: Recalculate all addresses after object space expansion
+            // The original addresses were calculated before property tables expanded object_space
+            let size_delta = actual_object_size.saturating_sub(object_size);
+            let new_dictionary_base = object_base + actual_object_size;
+            let new_string_base = self.final_string_base + size_delta;
+            let new_code_base = self.final_code_base + size_delta;
+            let new_total_size = total_size + size_delta;
+
+            log::debug!(
+                " Addresses recalculated after object space expansion by {} bytes:",
+                size_delta
+            );
+            log::debug!(
+                " - Dictionary base: 0x{:04x} → 0x{:04x}",
+                self.dictionary_addr,
+                new_dictionary_base
+            );
+            log::debug!(
+                " - String base: 0x{:04x} → 0x{:04x}",
+                self.final_string_base,
+                new_string_base
+            );
+            log::debug!(
+                " - Code base: 0x{:04x} → 0x{:04x}",
+                self.final_code_base,
+                new_code_base
+            );
+            log::debug!(
+                " - Total size: 0x{:04x} → 0x{:04x}",
+                total_size,
+                new_total_size
+            );
+
+            self.dictionary_addr = new_dictionary_base;
+            self.final_string_base = new_string_base;
+            self.final_code_base = new_code_base;
+            let total_size = new_total_size;
         }
 
         // Copy dictionary space
         if !self.dictionary_space.is_empty() {
-            let dictionary_end = dictionary_base + self.dictionary_space.len();
-            self.final_data[dictionary_base..dictionary_end]
+            let dictionary_end = self.dictionary_addr + self.dictionary_space.len();
+            self.final_data[self.dictionary_addr..dictionary_end]
                 .copy_from_slice(&self.dictionary_space);
             log::debug!(
                 " Dictionary space copied: {} bytes at 0x{:04x}",
                 self.dictionary_space.len(),
-                dictionary_base
+                self.dictionary_addr
             );
         }
 
         // Copy string space
         if !self.string_space.is_empty() {
-            let allocated_size = code_base - string_base;
+            let allocated_size = self.final_code_base - self.final_string_base;
             let actual_size = self.string_space.len();
 
             if actual_size != allocated_size {
@@ -1166,20 +1208,21 @@ impl ZMachineCodeGen {
             );
 
             // Copy only actual_size bytes, not the full allocated slice
-            self.final_data[string_base..string_base + actual_size]
+            self.final_data[self.final_string_base..self.final_string_base + actual_size]
                 .copy_from_slice(&self.string_space);
 
             // DEBUG: Verify what got copied
             log::debug!(
                 " STRING_SPACE_DEBUG: First 16 bytes at final_data[0x{:04x}]: {:02x?}",
-                string_base,
-                &self.final_data[string_base..string_base + 16.min(actual_size)]
+                self.final_string_base,
+                &self.final_data
+                    [self.final_string_base..self.final_string_base + 16.min(actual_size)]
             );
 
             log::debug!(
                 " String space copied: {} bytes at 0x{:04x} (allocated: {} bytes)",
                 actual_size,
-                string_base,
+                self.final_string_base,
                 allocated_size
             );
         }
@@ -1188,15 +1231,15 @@ impl ZMachineCodeGen {
         if !self.code_space.is_empty() {
             log::debug!(
                 " CODE_COPY_DEBUG: code_base=0x{:04x}, total_size=0x{:04x}, code_space.len()={}",
-                code_base,
+                self.final_code_base,
                 total_size,
                 self.code_space.len()
             );
             log::debug!(
                 " CODE_COPY_DEBUG: Slice bounds [{}..{}] = {} bytes",
-                code_base,
+                self.final_code_base,
                 total_size,
-                total_size - code_base
+                total_size - self.final_code_base
             );
 
             log::debug!(
@@ -1219,12 +1262,12 @@ impl ZMachineCodeGen {
  );
             }
 
-            self.final_data[code_base..total_size].copy_from_slice(&self.code_space);
+            self.final_data[self.final_code_base..total_size].copy_from_slice(&self.code_space);
 
             log::debug!(
                 " Code space copied: {} bytes at 0x{:04x}",
                 code_size,
-                code_base
+                self.final_code_base
             );
 
             // DEBUG: Check test() function header after copy
@@ -1533,7 +1576,7 @@ impl ZMachineCodeGen {
                 // Calculate final address: base + header + (position * entry_size)
                 let final_addr = dict_base + header_size + (position * entry_size);
 
-                log::error!(
+                log::debug!(
                     "📖 DICT_RESOLVE: Word '{}' position {} -> dict_base=0x{:04x} + {} + ({} * {}) = 0x{:04x}, will patch location=0x{:04x}",
                     word, position, dict_base, header_size, position, entry_size, final_addr, reference.location
                 );
@@ -4695,20 +4738,23 @@ impl ZMachineCodeGen {
 
         // PHASE 2 (Oct 12, 2025): Check initial_locations_by_number for compile-time parent setting
         // If this object had .location = X in init block, use that as parent
-        let parent = if let Some(&parent_num) = self.initial_locations_by_number.get(&(obj_num as u16)) {
-            log::warn!(
-                "🏗️ INITIAL_LOCATION_SET: Object {} ('{}') parent set to {} at compile time",
-                obj_num, object.short_name, parent_num
-            );
-            parent_num as u8
-        } else {
-            // No initial location - use default from IR (typically 0)
-            object
-                .parent
-                .and_then(|id| object_id_to_number.get(&id))
-                .copied()
-                .unwrap_or(0)
-        };
+        let parent =
+            if let Some(&parent_num) = self.initial_locations_by_number.get(&(obj_num as u16)) {
+                log::warn!(
+                    "🏗️ INITIAL_LOCATION_SET: Object {} ('{}') parent set to {} at compile time",
+                    obj_num,
+                    object.short_name,
+                    parent_num
+                );
+                parent_num as u8
+            } else {
+                // No initial location - use default from IR (typically 0)
+                object
+                    .parent
+                    .and_then(|id| object_id_to_number.get(&id))
+                    .copied()
+                    .unwrap_or(0)
+            };
 
         let sibling = object
             .sibling
@@ -4729,7 +4775,11 @@ impl ZMachineCodeGen {
         // When object A has parent B set at compile time, we need to:
         // 1. Make A the first child of B (or add to sibling chain if B already has children)
         // This mirrors what insert_obj does at runtime
-        if parent != 0 && self.initial_locations_by_number.contains_key(&(obj_num as u16)) {
+        if parent != 0
+            && self
+                .initial_locations_by_number
+                .contains_key(&(obj_num as u16))
+        {
             let parent_offset = defaults_size + ((parent - 1) as usize) * obj_entry_size;
 
             // Read parent's current child pointer
@@ -4740,7 +4790,8 @@ impl ZMachineCodeGen {
                 self.write_to_object_space(parent_offset + 6, obj_num)?;
                 log::warn!(
                     "🏗️ TREE_UPDATE: Parent {} child pointer set to {} (was 0)",
-                    parent, obj_num
+                    parent,
+                    obj_num
                 );
             } else {
                 // Parent already has a child - insert this object at the beginning of sibling chain
@@ -4911,47 +4962,30 @@ impl ZMachineCodeGen {
 
         let mut addr = prop_table_addr;
 
-        // Write object name (short description) as Z-Machine encoded string
+        // CRITICAL FIX: Write object name (short description) as Z-Machine encoded string
+        // encode_object_name() returns complete encoded string including text_length byte as first byte
+        // We must NOT write an additional text_length byte here to avoid duplicate length corruption
         let name_bytes = self.encode_object_name(&object.short_name);
-        // FIXED: Use actual encoded name length instead of hardcoded 0
-        // This ensures object names are actually written to the object table
-        let text_length = name_bytes.len();
 
-        // Text length byte
-        let text_offset = addr - self.object_table_addr;
-        self.write_to_object_space(text_offset, text_length as u8)?;
         debug!(
-            "PROP TABLE DEBUG: Writing text_length={} at addr=0x{:04x} for object '{}'",
-            text_length, addr, object.short_name
-        );
-        debug!(
-            "Object '{}': name_bytes.len()={}, text_length={}, addr=0x{:04x}",
-            object.short_name,
+            "📝 Writing {} name bytes for object '{}' at addr=0x{:04x}",
             name_bytes.len(),
-            text_length,
-            addr
-        );
-        addr += 1;
-        debug!(
-            "PROP TABLE DEBUG: After text_length, addr=0x{:04x}, about to write properties",
+            object.short_name,
             addr
         );
 
-        // Only write name bytes if text_length > 0
-        if text_length > 0 {
-            // Write encoded name bytes and pad to word boundary
-            for &byte in &name_bytes {
-                let name_offset = addr - self.object_table_addr;
-                self.write_to_object_space(name_offset, byte)?;
-                addr += 1;
-            }
-            // Pad to word boundary if necessary
-            if name_bytes.len() % 2 == 1 {
-                let pad_offset = addr - self.object_table_addr;
-                self.write_to_object_space(pad_offset, 0)?; // Pad byte
-                addr += 1;
-            }
+        // Write the complete encoded name (text_length byte + encoded Z-chars)
+        // This replaces the previous buggy pattern that wrote duplicate text_length bytes
+        for &byte in &name_bytes {
+            let name_offset = addr - self.object_table_addr;
+            self.write_to_object_space(name_offset, byte)?;
+            addr += 1;
         }
+
+        debug!(
+            "📝 After writing name, addr=0x{:04x}, about to write properties",
+            addr
+        );
 
         // Write properties in descending order (required by Z-Machine spec)
         let mut properties: Vec<_> = object.properties.properties.iter().collect();
@@ -7802,7 +7836,9 @@ impl ZMachineCodeGen {
             self.ir_id_to_object_number.insert(player.id, object_num);
             log::warn!(
                 "🗺️ OBJ_MAPPING: Player '{}' (IR ID {}) -> Object #{}",
-                player.name, player.id, object_num
+                player.name,
+                player.id,
+                object_num
             );
             object_num += 1;
         }
@@ -7812,7 +7848,9 @@ impl ZMachineCodeGen {
             self.ir_id_to_object_number.insert(room.id, object_num);
             log::warn!(
                 "🗺️ OBJ_MAPPING: Room '{}' (IR ID {}) -> Object #{}",
-                room.name, room.id, object_num
+                room.name,
+                room.id,
+                object_num
             );
             object_num += 1;
         }
@@ -7822,7 +7860,9 @@ impl ZMachineCodeGen {
             self.ir_id_to_object_number.insert(object.id, object_num);
             log::warn!(
                 "🗺️ OBJ_MAPPING: Object '{}' (IR ID {}) -> Object #{}",
-                object.name, object.id, object_num
+                object.name,
+                object.id,
+                object_num
             );
             object_num += 1;
         }
@@ -10793,13 +10833,13 @@ impl ZMachineCodeGen {
             // Decode each Z-character
             for &z_char in &[z1, z2, z3] {
                 match z_char {
-                    0 => result.push(' '),        // Space
+                    0 => result.push(' '), // Space
                     6..=31 => {
                         // Lowercase letters: a-z = 6-31
                         let ch = (b'a' + z_char - 6) as char;
                         result.push(ch);
                     }
-                    _ => result.push('?'),         // Unknown/unsupported
+                    _ => result.push('?'), // Unknown/unsupported
                 }
             }
 
