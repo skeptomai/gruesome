@@ -470,6 +470,9 @@ init {
     // Set up initial game state
     player.location = west_of_house;
     west_of_house.visited = true;
+
+    // Set up object locations explicitly
+    mailbox.location = west_of_house;
     
     // Print game banner
     print("DORK I: The Last Great Empire");

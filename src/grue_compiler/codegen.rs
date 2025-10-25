@@ -328,6 +328,10 @@ pub struct ZMachineCodeGen {
     pub room_exit_messages: IndexMap<String, Vec<(usize, u32)>>,
     /// Room handler function IDs: room_name -> (on_enter_id, on_exit_id, on_look_id)
     pub room_handlers: IndexMap<String, (Option<IrId>, Option<IrId>, Option<IrId>)>,
+    /// Object vocabulary names for DictionaryRef UnresolvedReferences
+    /// Maps object_name -> Vec<vocabulary_word> (ALL names from object.names)
+    /// Used when writing names property to property table
+    pub object_vocabulary_names: IndexMap<String, Vec<String>>,
     /// Global property registry: property name -> property number
     pub property_numbers: IndexMap<String, u8>,
     /// Properties used by each object: object_name -> set of property names
@@ -498,6 +502,7 @@ impl ZMachineCodeGen {
             room_exit_directions: IndexMap::new(),
             room_exit_messages: IndexMap::new(),
             room_handlers: IndexMap::new(),
+            object_vocabulary_names: IndexMap::new(),
             property_numbers,
             object_properties: IndexMap::new(),
             object_table_addr: 0,
@@ -695,6 +700,21 @@ impl ZMachineCodeGen {
         self.setup_comprehensive_id_mappings(&ir);
         // CRITICAL: Transfer object numbers from IR early so they're available when generating object tables
         self.object_numbers = ir.object_numbers.clone();
+
+        // Collect object vocabulary names for DictionaryRef resolution
+        for object in &ir.objects {
+            if !object.names.is_empty() {
+                self.object_vocabulary_names
+                    .insert(object.name.clone(), object.names.clone());
+                log::debug!(
+                    "🔍 OBJECT_VOCAB: Collected {} names for object '{}': {:?}",
+                    object.names.len(),
+                    object.name,
+                    object.names
+                );
+            }
+        }
+
         self.analyze_properties(&ir)?;
         self.collect_strings(&ir)?;
         let (prompt_id, unknown_command_id) = self.add_main_loop_strings()?;
@@ -2340,8 +2360,6 @@ impl ZMachineCodeGen {
             }
         }
     }
-
-    /// Generate dictionary space with word parsing dictionary
 
     /// Generate global variables space (240 variables * 2 bytes = 480 bytes)
     fn generate_globals_space(&mut self, _ir: &IrProgram) -> Result<(), CompilerError> {
@@ -5330,6 +5348,61 @@ impl ZMachineCodeGen {
                                 break;
                             }
                         }
+                    }
+                }
+
+                // If this is names property (property 27), create DictionaryRef for each name
+                let names_prop = *self.property_numbers.get("names").unwrap_or(&27);
+                if prop_num == names_prop && i % 2 == 0 && i < prop_data.len() - 1 {
+                    // Check if this object has vocabulary names mapped
+                    if let Some(vocab_words) = self.object_vocabulary_names.get(&object.name) {
+                        // Calculate which name this is (i / 2 gives us the index in the names array)
+                        let name_index = i / 2;
+
+                        if name_index < vocab_words.len() {
+                            let vocab_word = &vocab_words[name_index];
+
+                            // Find position of this word in sorted dictionary
+                            let position = self
+                                .dictionary_words
+                                .iter()
+                                .position(|w| w == &vocab_word.to_lowercase())
+                                .unwrap_or(0) as u32;
+
+                            log::debug!(
+                                "🔍 NAMES_DICT: Found names property (#{}) for object '{}' at byte offset {} (name #{}/{}: '{}')",
+                                prop_num, object.name, i, name_index + 1, vocab_words.len(), vocab_word
+                            );
+
+                            log::debug!(
+                                "🔍 NAMES_DICT: Looking up vocab word '{}' (lowercase: '{}') in dictionary, found at position {}",
+                                vocab_word, vocab_word.to_lowercase(), position
+                            );
+
+                            // Create UnresolvedReference for dictionary address
+                            self.reference_context
+                                .unresolved_refs
+                                .push(UnresolvedReference {
+                                    reference_type: LegacyReferenceType::DictionaryRef {
+                                        word: vocab_word.clone(),
+                                    },
+                                    location: data_offset, // Location in object_space
+                                    target_id: position,
+                                    is_packed_address: false,
+                                    offset_size: 2,
+                                    location_space: MemorySpace::Objects,
+                                });
+
+                            log::debug!(
+                                "🔍 NAMES_DICT: Created DictionaryRef #{} for names property: object='{}', word='{}', dict_position={}, object_space offset=0x{:04x}",
+                                name_index + 1, object.name, vocab_word, position, data_offset
+                            );
+                        }
+                    } else {
+                        log::warn!(
+                            "⚠️ NAMES_DICT: Object '{}' has names property but no vocabulary word mapping!",
+                            object.name
+                        );
                     }
                 }
 

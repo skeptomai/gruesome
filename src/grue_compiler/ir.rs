@@ -335,6 +335,24 @@ impl PropertyManager {
         manager.register_standard_property(StandardProperty::Adjective);
         // Location registration removed - uses object tree only (Oct 12, 2025)
 
+        // CRITICAL: Pre-assign Property 27 to "names" for architectural consistency
+        //
+        // Background: The grammar system requires object names to be stored as dictionary
+        // addresses for efficient lookup. This was initially causing "Property 27 not found"
+        // errors because objects with names arrays weren't getting Property 27 created.
+        //
+        // Solution: Manually assign Property 27 to "names" before auto-assignment begins,
+        // ensuring consistent property numbers across IR generation and codegen phases.
+        //
+        // Why Property 27:
+        // - Matches hardcoded assignment in codegen.rs:385
+        // - Avoids conflicts with standard properties (1-15)
+        // - Avoids conflicts with other hardcoded properties (7, 20, 21, 22)
+        // - Ensures predictable property layout across compilations
+        //
+        // This enables: "examine mailbox", "get box", "take leaflet" etc.
+        manager.assign_property_number("names", 27); // Dictionary addresses for grammar lookup
+
         manager
     }
 
@@ -361,6 +379,16 @@ impl PropertyManager {
         self.property_numbers
             .insert(prop_name.to_string(), prop_num);
         self.next_property_number += 1;
+    }
+
+    /// Manually assign a specific property number to a property name
+    pub fn assign_property_number(&mut self, property_name: &str, property_number: u8) {
+        self.property_numbers
+            .insert(property_name.to_string(), property_number);
+        // Update next_property_number if this assignment would conflict
+        if property_number >= self.next_property_number {
+            self.next_property_number = property_number + 1;
+        }
     }
 
     pub fn get_property_number(&mut self, property_name: &str) -> u8 {
@@ -1620,6 +1648,32 @@ impl IrGenerator {
         // Set standard properties
         properties.set_string(StandardProperty::ShortName as u8, obj.identifier.clone());
         properties.set_string(StandardProperty::LongName as u8, obj.description.clone());
+
+        // CRITICAL: Set names property (property 27) - dictionary addresses for grammar object lookup
+        // This enables the grammar system to match user input words against object names
+        //
+        // Architecture:
+        // - Each object with names: ["word1", "word2", ...] gets Property 27
+        // - Property 27 contains multiple 2-byte dictionary addresses (one per name)
+        // - Grammar system reads Property 27 to check if input word matches any object name
+        // - DictionaryRef UnresolvedReferences resolve placeholders to actual addresses
+        //
+        // Example: mailbox with names: ["small mailbox", "mailbox", "box"]
+        // → Property 27 = [addr1_hi, addr1_lo, addr2_hi, addr2_lo, addr3_hi, addr3_lo]
+        if !obj.names.is_empty() {
+            let names_prop = self.property_manager.get_property_number("names");
+            // Create placeholder bytes for each name (2 bytes per dictionary address)
+            let mut placeholder_bytes = Vec::new();
+            for _name in &obj.names {
+                placeholder_bytes.push(0xFF); // High byte placeholder (resolved by DictionaryRef)
+                placeholder_bytes.push(0xFF); // Low byte placeholder (resolved by DictionaryRef)
+            }
+            properties.set_bytes(names_prop, placeholder_bytes);
+            log::debug!(
+                "🔍 NAMES_PROPERTY: Object '{}' - created property {} with {} dictionary address placeholders for names: {:?}",
+                obj.identifier, names_prop, obj.names.len(), obj.names
+            );
+        }
 
         // Convert AST properties to Z-Machine properties using property manager
         for (prop_name, prop_value) in &obj.properties {

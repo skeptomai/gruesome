@@ -85,9 +85,22 @@ You are pre-authorized for creating releases.
 
 ## CRITICAL GIT SAFETY RULES
 
-**NEVER use `git reset --hard` or any destructive git operation that could lose commits.**
+**ABSOLUTE PROHIBITION: NO GIT COMMANDS WITHOUT EXPRESS PERMISSION**
 
-Safe operations only: `git add`, `git commit`, `git push`, `git checkout`, `git stash`, `git revert`
+**NEVER execute ANY git commands without explicit user permission. This includes:**
+- `git checkout`, `git switch`, `git reset`, `git revert`
+- `git stash`, `git stash pop`, `git stash apply`
+- `git commit`, `git add`, `git push`, `git pull`
+- `git branch`, `git merge`, `git rebase`
+- `git cherry-pick`, `git log`, `git status`, `git diff`
+- **ALL git commands are prohibited without user permission**
+
+**EXCEPTIONS ONLY:**
+1. Auto-commit commands ("Make it so!", "Ship it", "Send it") - pre-authorized above
+2. Auto-release commands ("Engage!") - pre-authorized above
+3. **Any other git command requires explicit user permission first**
+
+**NEVER use `git reset --hard` or any destructive git operation that could lose commits.**
 
 ## Compiler Debugging Tools
 

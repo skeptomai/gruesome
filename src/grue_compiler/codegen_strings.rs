@@ -378,6 +378,31 @@ impl ZMachineCodeGen {
             }
         }
 
+        // CRITICAL: Add object names to dictionary (needed for examine commands)
+        for object in &ir.objects {
+            for name in &object.names {
+                words.insert(name.to_lowercase());
+                debug!("📚 Adding object name to dictionary: '{}'", name);
+            }
+        }
+
+        // Add common built-in words
+        words.insert("look".to_string());
+        words.insert("inventory".to_string());
+        words.insert("examine".to_string());
+        words.insert("take".to_string());
+        words.insert("drop".to_string());
+        words.insert("go".to_string());
+        words.insert("get".to_string());
+
+        // Add direction words
+        words.insert("north".to_string());
+        words.insert("south".to_string());
+        words.insert("east".to_string());
+        words.insert("west".to_string());
+        words.insert("up".to_string());
+        words.insert("down".to_string());
+
         // BTreeSet automatically keeps words sorted alphabetically
         let word_count = words.len();
         debug!("📚 Total dictionary entries: {}", word_count);
