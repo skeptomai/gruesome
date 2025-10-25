@@ -216,6 +216,28 @@ pub struct DeferredBranchPatch {
     pub offset_size: u8,
 }
 
+/// Two-pass compilation state for delayed branch patching
+///
+/// LIFECYCLE:
+/// 1. Phase 1: Infrastructure created, enabled=false (backward compatible)
+/// 2. Phase 2: Branch deferral implemented, enabled during branch-heavy operations
+/// 3. Phase 3: Push/pull integration, enabled for get_child/get_sibling
+/// 4. Phase 4: Global enablement, replaces single-pass branch system
+///
+/// THREAD SAFETY: Not thread-safe (single-threaded compilation assumed)
+#[derive(Debug, Clone)]
+pub struct TwoPassState {
+    /// Master switch: when true, branch instructions are deferred instead of immediately resolved
+    /// When false, compilation behaves exactly as before (backward compatibility)
+    pub enabled: bool,
+    /// Collection of branch patches waiting for resolution
+    /// Populated during instruction emission, resolved in resolve_deferred_branches()
+    pub deferred_branches: Vec<DeferredBranchPatch>,
+    /// Final addresses of all labels after instruction emission complete
+    /// Used to calculate correct branch offsets during resolution
+    pub label_addresses: IndexMap<IrId, usize>,
+}
+
 /// Constant value types for control flow optimization
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConstantValue {
@@ -250,7 +272,7 @@ pub struct ZMachineCodeGen {
     // Code generation state
     pub label_addresses: IndexMap<IrId, usize>, // IR label ID -> byte address
     string_addresses: IndexMap<IrId, usize>,    // IR string ID -> byte address
-    function_addresses: IndexMap<IrId, usize>,  // IR function ID -> function header byte address
+    pub function_addresses: IndexMap<IrId, usize>, // IR function ID -> function header byte address
     function_names: IndexMap<IrId, String>,     // IR function ID -> function name (for debugging)
     function_locals_count: IndexMap<IrId, usize>, // IR function ID -> locals count (for header size calculation)
     builtin_functions: IndexMap<String, IrId>, // Builtin name -> pseudo function ID for address lookup
@@ -304,6 +326,14 @@ pub struct ZMachineCodeGen {
     pub object_table_addr: usize,
     pub property_table_addr: usize,
     pub current_property_addr: usize, // Current property table allocation pointer
+    /// Fixed boundary between object entries and property tables for address translation.
+    ///
+    /// CRITICAL FIX (Bug #23): This field stores the initial value of current_property_addr
+    /// and never changes, providing a stable boundary for translate_space_address_to_final().
+    /// Problem was that current_property_addr changes during compilation (e.g., 0x00c5 → 0x0236)
+    /// causing address translation to use wrong boundary conditions and misclassify property
+    /// table addresses as object entry addresses, leading to incorrect final addresses.
+    pub initial_property_addr: usize,
     dictionary_addr: usize,
     global_vars_addr: usize,
 
@@ -387,6 +417,20 @@ pub struct ZMachineCodeGen {
     /// Dictionary words in alphabetically sorted order (for word position lookup)
     /// Populated during generate_dictionary_space(), used by lookup_word_in_dictionary()
     pub dictionary_words: Vec<String>,
+    /// Set of IR IDs that should use push/pull sequence for stack discipline
+    /// Phase C1.1: Track values that need actual VAR:232/233 push/pull opcodes
+    push_pull_ir_ids: IndexSet<IrId>,
+
+    /// Two-pass compilation state for delayed branch patching (Option A)
+    ///
+    /// INTEGRATION: This field enables the optional two-pass compilation system
+    /// that solves branch target address calculation bugs without breaking existing code.
+    ///
+    /// CURRENT STATE (Phase 1): Infrastructure complete, disabled by default
+    /// NEXT PHASES: Will be selectively enabled for problematic instruction sequences
+    ///
+    /// BACKWARD COMPATIBILITY: When enabled=false, zero impact on existing compilation
+    pub two_pass_state: TwoPassState,
 }
 
 impl ZMachineCodeGen {
@@ -437,6 +481,7 @@ impl ZMachineCodeGen {
             object_table_addr: 0,
             property_table_addr: 0,
             current_property_addr: 0,
+            initial_property_addr: 0, // Fixed boundary for address translation
             dictionary_addr: 0,
             global_vars_addr: 0,
             strings: Vec::new(),
@@ -480,6 +525,14 @@ impl ZMachineCodeGen {
             final_string_base: 0,
             final_object_base: 0,
             dictionary_words: Vec::new(),
+            push_pull_ir_ids: IndexSet::new(),
+
+            // Initialize two-pass compilation state (disabled by default for backward compatibility)
+            two_pass_state: TwoPassState {
+                enabled: false, // CRITICAL: Start disabled to maintain current behavior
+                deferred_branches: Vec::new(),
+                label_addresses: IndexMap::new(),
+            },
         }
     }
 
