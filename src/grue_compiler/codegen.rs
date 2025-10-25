@@ -46,6 +46,9 @@ pub const fn placeholder_word() -> u16 {
 /// Convert byte addresses to Z-Machine word addresses
 /// In Z-Machine V3, word addresses are byte addresses divided by 2
 /// This helper makes the intent explicit and prevents calculation errors
+///
+/// INTEGRATION NOTE (Oct 25, 2025): Added during main branch infrastructure integration
+/// to resolve import compilation errors in codegen_headers.rs and codegen_strings.rs
 pub const fn z_words(byte_count: usize) -> usize {
     byte_count / 2
 }
@@ -199,6 +202,10 @@ pub struct ArrayInfo {
 ///
 /// SOLUTION: Store branch patch information during instruction emission, calculate
 /// correct offsets after ALL instructions are emitted in resolve_deferred_branches().
+///
+/// INTEGRATION NOTE (Oct 25, 2025): Added during main branch infrastructure integration
+/// to resolve import compilation errors in codegen_instructions.rs and patch_collision_detector.rs
+/// Infrastructure is present but two-pass system remains disabled by default for backward compatibility.
 #[derive(Debug, Clone)]
 pub struct DeferredBranchPatch {
     /// Address where the branch instruction starts in code_space
@@ -225,6 +232,10 @@ pub struct DeferredBranchPatch {
 /// 4. Phase 4: Global enablement, replaces single-pass branch system
 ///
 /// THREAD SAFETY: Not thread-safe (single-threaded compilation assumed)
+///
+/// INTEGRATION NOTE (Oct 25, 2025): Added during main branch infrastructure integration.
+/// Currently disabled (enabled=false) to maintain backward compatibility with working runtime.
+/// Can be selectively enabled in future when two-pass compilation is needed.
 #[derive(Debug, Clone)]
 pub struct TwoPassState {
     /// Master switch: when true, branch instructions are deferred instead of immediately resolved
@@ -333,6 +344,9 @@ pub struct ZMachineCodeGen {
     /// Problem was that current_property_addr changes during compilation (e.g., 0x00c5 → 0x0236)
     /// causing address translation to use wrong boundary conditions and misclassify property
     /// table addresses as object entry addresses, leading to incorrect final addresses.
+    ///
+    /// INTEGRATION NOTE (Oct 25, 2025): Added during main branch infrastructure integration
+    /// to preserve critical Bug #23 address translation fix from main branch.
     pub initial_property_addr: usize,
     dictionary_addr: usize,
     global_vars_addr: usize,
@@ -419,6 +433,10 @@ pub struct ZMachineCodeGen {
     pub dictionary_words: Vec<String>,
     /// Set of IR IDs that should use push/pull sequence for stack discipline
     /// Phase C1.1: Track values that need actual VAR:232/233 push/pull opcodes
+    ///
+    /// INTEGRATION NOTE (Oct 25, 2025): Added during main branch infrastructure integration.
+    /// Provides stack discipline tracking infrastructure for enhanced Variable(0) handling.
+    /// Currently unused but available for future stack discipline improvements.
     push_pull_ir_ids: IndexSet<IrId>,
 
     /// Two-pass compilation state for delayed branch patching (Option A)
@@ -426,10 +444,14 @@ pub struct ZMachineCodeGen {
     /// INTEGRATION: This field enables the optional two-pass compilation system
     /// that solves branch target address calculation bugs without breaking existing code.
     ///
-    /// CURRENT STATE (Phase 1): Infrastructure complete, disabled by default
+    /// CURRENT STATE (Oct 25, 2025): Infrastructure complete, disabled by default
     /// NEXT PHASES: Will be selectively enabled for problematic instruction sequences
     ///
     /// BACKWARD COMPATIBILITY: When enabled=false, zero impact on existing compilation
+    ///
+    /// INTEGRATION NOTE (Oct 25, 2025): Added during main branch infrastructure integration.
+    /// Preserves two-pass compilation architecture from main branch but keeps it disabled
+    /// to maintain compatibility with working runtime from good commit 97ae503.
     pub two_pass_state: TwoPassState,
 }
 
@@ -528,6 +550,8 @@ impl ZMachineCodeGen {
             push_pull_ir_ids: IndexSet::new(),
 
             // Initialize two-pass compilation state (disabled by default for backward compatibility)
+            // INTEGRATION NOTE (Oct 25, 2025): Infrastructure from main branch integrated but disabled
+            // to preserve working runtime behavior from good commit 97ae503. Can be enabled selectively.
             two_pass_state: TwoPassState {
                 enabled: false, // CRITICAL: Start disabled to maintain current behavior
                 deferred_branches: Vec::new(),
