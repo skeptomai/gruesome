@@ -43,6 +43,13 @@ pub const fn placeholder_word() -> u16 {
     ((PLACEHOLDER_BYTE as u16) << 8) | (PLACEHOLDER_BYTE as u16)
 }
 
+/// Convert byte addresses to Z-Machine word addresses
+/// In Z-Machine V3, word addresses are byte addresses divided by 2
+/// This helper makes the intent explicit and prevents calculation errors
+pub const fn z_words(byte_count: usize) -> usize {
+    byte_count / 2
+}
+
 /// Memory space types for the separated compilation model
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MemorySpace {
@@ -179,6 +186,34 @@ pub struct ArrayInfo {
     pub capacity: i32,
     pub current_size: i32,         // For simulation - tracks number of items
     pub base_address: Option<u16>, // For future Z-Machine memory implementation
+}
+
+/// Deferred branch patch for two-pass compilation (Option A implementation)
+///
+/// ARCHITECTURAL PURPOSE: Solves the branch target address calculation bug where
+/// instruction insertion (like push/pull) shifts addresses and invalidates branch offsets.
+///
+/// PROBLEM SOLVED: In single-pass compilation, branch offsets are calculated during
+/// instruction emission. If subsequent push/pull instructions are inserted, the branch
+/// targets become incorrect, leading to runtime crashes with "Invalid Long form opcode 0x00".
+///
+/// SOLUTION: Store branch patch information during instruction emission, calculate
+/// correct offsets after ALL instructions are emitted in resolve_deferred_branches().
+#[derive(Debug, Clone)]
+pub struct DeferredBranchPatch {
+    /// Address where the branch instruction starts in code_space
+    pub instruction_address: usize,
+    /// Exact byte offset in code_space where the branch offset field is located
+    /// This is where we'll write the calculated offset during resolution
+    pub branch_offset_location: usize,
+    /// IR ID of the target label that this branch jumps to
+    pub target_label_id: IrId,
+    /// Z-Machine branch polarity: true = branch on true, false = branch on false
+    /// Controls bit 7 of the branch offset encoding
+    pub branch_on_true: bool,
+    /// Size of the branch offset field: 1 or 2 bytes
+    /// Determines whether we write a single byte or 16-bit offset
+    pub offset_size: u8,
 }
 
 /// Constant value types for control flow optimization
