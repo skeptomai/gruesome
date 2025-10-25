@@ -302,6 +302,24 @@ pub enum IrPropertyValue {
 }
 
 /// Property manager for handling inheritance and dynamic property access
+///
+/// CRITICAL BUG RESOLUTION (Oct 25, 2025): Version-aware property number allocation
+///
+/// This PropertyManager implements Z-Machine version-aware property allocation to prevent
+/// Property 28 collision bugs that caused "Property 28 not found for object X" crashes.
+///
+/// ROOT CAUSE: Z-Machine V3 uses 5-bit property encoding (properties 1-31 only), but the
+/// previous simple sequential allocation could assign properties > 31, causing collisions
+/// when property numbers wrapped due to bit-field limitations.
+///
+/// SOLUTION: Intelligent allocation that respects Z-Machine version limits:
+/// - V3: Properties 1-31 (5-bit encoding)
+/// - V4/V5: Properties 1-63 (6-bit encoding)
+/// - Smart allocation finds first available number in valid range
+/// - Comprehensive validation with panic handling for conflicts and out-of-bounds
+///
+/// This ensures property numbers like [26, 25, 24, 22, 15, 14, 13, 7] instead of
+/// problematic [38, 37, 36, 34] that would encode as [6, 5, 4, 2] due to masking.
 #[derive(Debug, Clone)]
 pub struct PropertyManager {
     /// Property name to number mapping
@@ -310,14 +328,22 @@ pub struct PropertyManager {
     standard_properties: IndexMap<StandardProperty, u8>,
     /// Next available property number
     next_property_number: u8,
+    /// Z-Machine version for property number limits
+    version: crate::grue_compiler::ZMachineVersion,
 }
 
 impl PropertyManager {
     pub fn new() -> Self {
+        // Default to V3 for backward compatibility
+        Self::new_with_version(crate::grue_compiler::ZMachineVersion::V3)
+    }
+
+    pub fn new_with_version(version: crate::grue_compiler::ZMachineVersion) -> Self {
         let mut manager = Self {
             property_numbers: IndexMap::new(),
             standard_properties: IndexMap::new(),
             next_property_number: 1,
+            version,
         };
 
         // Register standard properties
@@ -382,23 +408,132 @@ impl PropertyManager {
     }
 
     /// Manually assign a specific property number to a property name
+    ///
+    /// This function validates that the property number is within Z-Machine version limits
+    /// and panics if there are conflicts or out-of-bounds assignments.
+    ///
+    /// # Panics
+    /// - If property_number is 0 or exceeds version limits
+    /// - If property_number is already assigned to another property
     pub fn assign_property_number(&mut self, property_name: &str, property_number: u8) {
+        let max_prop = self.max_property_number();
+
+        // Validate property number is within Z-Machine version limits
+        if property_number == 0 || property_number > max_prop {
+            panic!(
+                "CRITICAL: Invalid property number assignment! Trying to manually assign property '{}' number {}, but Z-Machine {:?} only supports properties 1-{}.",
+                property_name,
+                property_number,
+                self.version,
+                max_prop
+            );
+        }
+
+        // Check for conflicts with existing assignments
+        if let Some(existing_name) = self
+            .property_numbers
+            .iter()
+            .find(|(_, &num)| num == property_number)
+            .map(|(name, _)| name.clone())
+        {
+            panic!(
+                "CRITICAL: Property number conflict! Trying to assign property '{}' to number {}, but it's already assigned to property '{}'.",
+                property_name,
+                property_number,
+                existing_name
+            );
+        }
+
+        log::debug!(
+            "🔢 PROPERTY_MANUAL_ASSIGN: '{}' → #{} (max: {})",
+            property_name,
+            property_number,
+            max_prop
+        );
+
         self.property_numbers
             .insert(property_name.to_string(), property_number);
+
         // Update next_property_number if this assignment would conflict
         if property_number >= self.next_property_number {
             self.next_property_number = property_number + 1;
         }
     }
 
+    /// Get the maximum property number supported by the current Z-Machine version
+    fn max_property_number(&self) -> u8 {
+        match self.version {
+            crate::grue_compiler::ZMachineVersion::V3 => 31, // 5-bit property numbers (1-31)
+            crate::grue_compiler::ZMachineVersion::V4
+            | crate::grue_compiler::ZMachineVersion::V5 => 63, // 6-bit property numbers (1-63)
+        }
+    }
+
+    /// Get the property number for a property name, allocating a new one if needed
+    ///
+    /// This function intelligently allocates property numbers within Z-Machine version limits,
+    /// finding the first available number in the valid range.
+    ///
+    /// # Panics
+    /// - If all valid property numbers (1-31 for V3, 1-63 for V4+) are exhausted
     pub fn get_property_number(&mut self, property_name: &str) -> u8 {
         if let Some(&existing_num) = self.property_numbers.get(property_name) {
             existing_num
         } else {
-            let new_num = self.next_property_number;
+            let max_prop = self.max_property_number();
+
+            // Find the next available property number within version limits
+            let mut new_num = 1;
+            let used_numbers: std::collections::HashSet<u8> =
+                self.property_numbers.values().copied().collect();
+
+            while new_num <= max_prop {
+                if !used_numbers.contains(&new_num) {
+                    break;
+                }
+                new_num += 1;
+            }
+
+            if new_num > max_prop {
+                // Generate a detailed property usage report
+                let mut sorted_props: Vec<_> = self.property_numbers.iter().collect();
+                sorted_props.sort_by_key(|(_, &num)| num);
+
+                let prop_list = sorted_props
+                    .iter()
+                    .map(|(name, &num)| format!("#{}: {}", num, name))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                panic!(
+                    "CRITICAL: Property number limit exceeded! Trying to assign property '{}' but all numbers 1-{} are used.\n\
+                     Z-Machine {:?} only supports properties 1-{}. Total properties: {}\n\
+                     Current assignments: {}",
+                    property_name,
+                    max_prop,
+                    self.version,
+                    max_prop,
+                    self.property_numbers.len(),
+                    prop_list
+                );
+            }
+
+            log::debug!(
+                "🔢 PROPERTY_ASSIGN: '{}' → #{} (total: {}, max: {})",
+                property_name,
+                new_num,
+                self.property_numbers.len() + 1,
+                max_prop
+            );
+
             self.property_numbers
                 .insert(property_name.to_string(), new_num);
-            self.next_property_number += 1;
+
+            // Update next_property_number for sequential allocation
+            if new_num >= self.next_property_number {
+                self.next_property_number = new_num + 1;
+            }
+
             new_num
         }
     }
