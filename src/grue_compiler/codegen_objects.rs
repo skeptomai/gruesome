@@ -2,6 +2,9 @@
 //
 // Handles object table generation, property processing, and core object management
 // for the Z-Machine bytecode compiler.
+//
+// NOTE: Oct 2025 - Updated logging levels: debug patterns use log::debug!(),
+// recoverable warnings use log::warn!(), only true faults use log::error!()
 
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
@@ -548,7 +551,7 @@ impl ZMachineCodeGen {
                                 .get(room_ir_id)
                                 .copied()
                                 .unwrap_or_else(|| {
-                                    log::error!(
+                                    log::warn!(
                                         "Exit system: Room '{}' exit direction '{}' references IR ID {} which has no object number mapping, using 0",
                                         room.name,
                                         direction,
@@ -579,7 +582,7 @@ impl ZMachineCodeGen {
                             let string_id = match self.find_or_create_string_id(message) {
                                 Ok(id) => id,
                                 Err(e) => {
-                                    log::error!(
+                                    log::warn!(
                                         "Failed to get string ID for blocked exit message in room '{}': {:?}",
                                         room.name,
                                         e
@@ -647,7 +650,7 @@ impl ZMachineCodeGen {
                             stored_data
                         );
                     } else {
-                        log::error!(
+                        log::debug!(
                             "❌ EXIT_PROPS: Room '{}' - Property {} NOT FOUND after set_bytes!",
                             room.name,
                             exit_data_prop

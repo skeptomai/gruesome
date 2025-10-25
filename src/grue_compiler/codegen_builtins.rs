@@ -1,6 +1,9 @@
 // Builtin function implementations for Z-Machine code generation
 // Extracted from codegen.rs for better maintainability
 // These are implementation methods that extend ZMachineCodeGen
+//
+// NOTE: Oct 2025 - Updated all diagnostic logging to use log::debug!()
+// instead of log::error!() per project logging standards
 
 use crate::grue_compiler::codegen::{
     placeholder_word, ConstantValue, LegacyReferenceType, MemorySpace, Operand,
@@ -217,7 +220,7 @@ impl ZMachineCodeGen {
 
                     let placeholder_string = format!("?Complex expression IR ID {}?", arg_id);
                     let string_id = self.find_or_create_string_id(&placeholder_string)?;
-                    log::error!(
+                    log::debug!(
                         "🔧 COMPLEX_EXPRESSION_PATH: IR ID {} -> placeholder string '{}'",
                         arg_id,
                         placeholder_string
@@ -386,7 +389,7 @@ impl ZMachineCodeGen {
         let object_ir_id = args[0];
         let destination_ir_id = args[1];
 
-        log::error!(
+        log::debug!(
             "🔧 MOVE_BUILTIN_DEBUG: args[0]={}, args[1]={}",
             object_ir_id,
             destination_ir_id
@@ -394,9 +397,9 @@ impl ZMachineCodeGen {
 
         // Resolve IR IDs to proper operands - CRITICAL FIX
         let object_operand = self.resolve_ir_id_to_operand(object_ir_id)?;
-        log::error!("🔧 MOVE_BUILTIN_DEBUG: object_operand={:?}", object_operand);
+        log::debug!("🔧 MOVE_BUILTIN_DEBUG: object_operand={:?}", object_operand);
         let destination_operand = self.resolve_ir_id_to_operand(destination_ir_id)?;
-        log::error!(
+        log::debug!(
             "🔧 MOVE_BUILTIN_DEBUG: destination_operand={:?}",
             destination_operand
         );
@@ -901,7 +904,7 @@ impl ZMachineCodeGen {
             )?;
         }
 
-        log::error!(
+        log::debug!(
             "🔍 GET_EXIT: Function completed successfully, final PC 0x{:04x}",
             self.code_address
         );

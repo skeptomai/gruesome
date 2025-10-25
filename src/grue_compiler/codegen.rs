@@ -952,45 +952,45 @@ impl ZMachineCodeGen {
         total_size += padding_bytes;
 
         // Log complete memory layout
-        log::error!("📐 MEMORY_LAYOUT:");
-        log::error!("  Header:        0x0000-0x003f (64 bytes)");
-        log::error!(
+        log::debug!("📐 MEMORY_LAYOUT:");
+        log::debug!("  Header:        0x0000-0x003f (64 bytes)");
+        log::debug!(
             "  Globals:       0x{:04x}-0x{:04x} ({} bytes)",
             globals_base,
             globals_base + globals_size,
             globals_size
         );
-        log::error!(
+        log::debug!(
             "  Abbreviations: 0x{:04x}-0x{:04x} ({} bytes)",
             abbreviations_base,
             abbreviations_base + abbreviations_size,
             abbreviations_size
         );
-        log::error!(
+        log::debug!(
             "  Objects:       0x{:04x}-0x{:04x} ({} bytes)",
             object_base,
             object_base + object_size,
             object_size
         );
-        log::error!(
+        log::debug!(
             "  Dictionary:    0x{:04x}-0x{:04x} ({} bytes)",
             dictionary_base,
             dictionary_base + dictionary_size,
             dictionary_size
         );
-        log::error!(
+        log::debug!(
             "  Strings:       0x{:04x}-0x{:04x} ({} bytes)",
             string_base,
             string_base + string_size,
             string_size
         );
-        log::error!(
+        log::debug!(
             "  Code:          0x{:04x}-0x{:04x} ({} bytes)",
             code_base,
             code_base + code_size,
             code_size
         );
-        log::error!(
+        log::debug!(
             "  Total:         {} bytes{}",
             total_size,
             if padding_bytes > 0 {
@@ -1033,7 +1033,7 @@ impl ZMachineCodeGen {
                 absolute_addr,
                 self.final_code_base
             );
-            log::error!(
+            log::debug!(
                 "🎯 USER_FUNCTION_FINAL: '{}' at runtime address 0x{:04x}",
                 func_name,
                 absolute_addr
@@ -1243,7 +1243,7 @@ impl ZMachineCodeGen {
                 let byte1 = self.final_data[obj2_prop_ptr_addr];
                 let byte2 = self.final_data[obj2_prop_ptr_addr + 1];
                 let prop_ptr = ((byte1 as u16) << 8) | (byte2 as u16);
-                log::error!(
+                log::debug!(
                     "🔍 VERIFY_AFTER_PATCH: Object #2 prop ptr at 0x{:04x} = 0x{:02x} 0x{:02x} = 0x{:04x}",
                     obj2_prop_ptr_addr, byte1, byte2, prop_ptr
                 );
@@ -1507,7 +1507,7 @@ impl ZMachineCodeGen {
 
             // DEBUG: Check if this reference is trying to write to Object #2's property table pointer
             if adjusted_reference.location == 0x040A || adjusted_reference.location == 0x040B {
-                log::error!(
+                log::debug!(
                     "⚠️  DETECTED WRITE TO 0x040A: Reference at 0x{:04x} target_id={} type={:?}",
                     adjusted_reference.location,
                     adjusted_reference.target_id,
@@ -2031,9 +2031,9 @@ impl ZMachineCodeGen {
                     );
                     return result;
                 } else {
-                    log::error!("🔴 MISSING_BRANCH_TARGET: Branch at location 0x{:04x} → target_id {} NOT FOUND in ir_id_to_address table!",
+                    log::debug!("🔴 MISSING_BRANCH_TARGET: Branch at location 0x{:04x} → target_id {} NOT FOUND in ir_id_to_address table!",
                         reference.location, reference.target_id);
-                    log::error!(
+                    log::debug!(
                         "🔴 This branch placeholder was NEVER PATCHED - will cause runtime crash!"
                     );
                     log::debug!(
@@ -2223,7 +2223,7 @@ impl ZMachineCodeGen {
                 Ok(())
             }
             Err(e) => {
-                log::error!(" Failed to resolve legacy fixup: {}", e);
+                log::debug!(" Failed to resolve legacy fixup: {}", e);
                 Err(e)
             }
         }
@@ -2679,7 +2679,7 @@ impl ZMachineCodeGen {
     fn translate_load_var(&mut self, target: IrId, var_id: IrId) -> Result<(), CompilerError> {
         log::debug!("LOAD_VAR: target={}, var_id={}", target, var_id);
 
-        log::error!(
+        log::debug!(
             "📝 VAR1_WRITE: LoadVar at 0x{:04x} - HARDCODED storing to Variable(1) (BUG?)",
             self.code_address
         );
@@ -3436,11 +3436,11 @@ impl ZMachineCodeGen {
             ));
         }
 
-        log::error!("🔧 MOVE_DEBUG: args[0]={}, args[1]={}", args[0], args[1]);
+        log::debug!("🔧 MOVE_DEBUG: args[0]={}, args[1]={}", args[0], args[1]);
         let obj_operand = self.resolve_ir_id_to_operand(args[0])?;
-        log::error!("🔧 MOVE_DEBUG: obj_operand={:?}", obj_operand);
+        log::debug!("🔧 MOVE_DEBUG: obj_operand={:?}", obj_operand);
         let dest_operand = self.resolve_ir_id_to_operand(args[1])?;
-        log::error!("🔧 MOVE_DEBUG: dest_operand={:?}", dest_operand);
+        log::debug!("🔧 MOVE_DEBUG: dest_operand={:?}", dest_operand);
 
         // Generate insert_obj instruction (2OP:14)
         let layout = self.emit_instruction_typed(
@@ -4911,7 +4911,7 @@ impl ZMachineCodeGen {
         );
 
         if written_addr != prop_table_addr as u16 {
-            log::error!(
+            log::debug!(
                 "❌ OBJ_PTR_MISMATCH: obj_num={} Expected 0x{:04x} but wrote 0x{:04x}!",
                 obj_num,
                 prop_table_addr,
@@ -5969,7 +5969,7 @@ impl ZMachineCodeGen {
             self.code_address
         );
 
-        log::error!(
+        log::debug!(
             "📝 VAR1_WRITE: '{}' at 0x{:04x} - storing word count to Variable(1)",
             verb,
             self.code_address
@@ -6260,7 +6260,7 @@ impl ZMachineCodeGen {
  func_id, verb, self.code_address
  );
 
-                log::error!(
+                log::debug!(
                     "📍 PATTERN_HANDLER: '{}' noun pattern at 0x{:04x}",
                     verb,
                     self.code_address
@@ -6362,7 +6362,7 @@ impl ZMachineCodeGen {
                     func_id, verb, args.len()
                 );
 
-                log::error!(
+                log::debug!(
                     "📍 PATTERN_HANDLER: '{}' default pattern at 0x{:04x} (args={})",
                     verb,
                     self.code_address,
@@ -6595,7 +6595,7 @@ impl ZMachineCodeGen {
         // End of verb matching function - register the label for jump resolution
         self.record_final_address(end_function_label, self.code_address);
 
-        log::error!(
+        log::debug!(
             "📍 VERB_HANDLER: '{}' code range 0x{:04x}-0x{:04x}",
             verb,
             verb_start_address,
@@ -6697,15 +6697,15 @@ impl ZMachineCodeGen {
     /// Output: Variable 3 contains the matching object ID (or 0 if not found)
     fn generate_object_lookup_from_noun(&mut self) -> Result<(), CompilerError> {
         let lookup_start_address = self.code_address;
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP_START: Starting at 0x{:04x}",
             lookup_start_address
         );
         log::debug!("🔍 OBJECT_LOOKUP: Variable usage plan:");
-        log::error!("    - Variable(2) = noun dictionary address (INPUT)");
-        log::error!("    - Variable(3) = result object ID (OUTPUT)");
-        log::error!("    - Variable(4) = loop counter");
-        log::error!("    - Variable(5) = property value during comparison");
+        log::debug!("    - Variable(2) = noun dictionary address (INPUT)");
+        log::debug!("    - Variable(3) = result object ID (OUTPUT)");
+        log::debug!("    - Variable(4) = loop counter");
+        log::debug!("    - Variable(5) = property value during comparison");
 
         debug!(" OBJECT_LOOKUP_START: Generating dynamic object lookup from noun dictionary address at 0x{:04x}", self.code_address);
 
@@ -6718,7 +6718,9 @@ impl ZMachineCodeGen {
         // PROPER FLOW: noun lookup → dictionary→object mapping → Variable(3)=objectID → clear_attr(objectID, 1)
 
         // Initialize result variable to 0 (not found)
-        log::error!(
+        // NOTE: All logging in this section uses log::debug!() for diagnostic output
+        // as per project logging standards (Oct 2025 cleanup)
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Initializing Variable(3)=0 at 0x{:04x}",
             self.code_address
         );
@@ -6734,7 +6736,7 @@ impl ZMachineCodeGen {
 
         // Dynamic object lookup loop - check all objects for name match
         // Initialize loop counter (Variable 4) to 1 (first object)
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Initializing Variable(4)=1 (loop counter) at 0x{:04x}",
             self.code_address
         );
@@ -6762,7 +6764,7 @@ impl ZMachineCodeGen {
         );
 
         // Mark loop start at current address
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Loop start at 0x{:04x}",
             self.code_address
         );
@@ -6771,7 +6773,7 @@ impl ZMachineCodeGen {
         self.record_final_address(loop_start_label, self.code_address);
 
         // Check if current object number exceeds maximum (68 for mini_zork actual count)
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Checking Variable(4) > 68 at 0x{:04x}",
             self.code_address
         );
@@ -6801,7 +6803,7 @@ impl ZMachineCodeGen {
         }
 
         // Get property 7 (names) for current object
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Getting property 7 (names) from Variable(4) → Variable(5) at 0x{:04x}",
             self.code_address
         );
@@ -6816,7 +6818,7 @@ impl ZMachineCodeGen {
         )?;
 
         // Compare property value with noun dictionary address
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Comparing Variable(5) == Variable(2) at 0x{:04x}",
             self.code_address
         );
@@ -6846,7 +6848,7 @@ impl ZMachineCodeGen {
         }
 
         // Increment loop counter
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Incrementing Variable(4) at 0x{:04x}",
             self.code_address
         );
@@ -6858,7 +6860,7 @@ impl ZMachineCodeGen {
         )?;
 
         // Jump back to loop start
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Jump back to loop start at 0x{:04x}",
             self.code_address
         );
@@ -6885,14 +6887,14 @@ impl ZMachineCodeGen {
         }
 
         // Found match - store current object number as result
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Found match label at 0x{:04x}",
             self.code_address
         );
         self.label_addresses
             .insert(found_match_label, self.code_address);
         self.record_final_address(found_match_label, self.code_address);
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Storing Variable(4) → Variable(3) at 0x{:04x}",
             self.code_address
         );
@@ -6911,7 +6913,7 @@ impl ZMachineCodeGen {
         self.label_addresses.insert(end_label, self.code_address);
         self.record_final_address(end_label, self.code_address);
 
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP_END: Complete at 0x{:04x} (size={} bytes)",
             self.code_address,
             self.code_address - lookup_start_address
@@ -7067,7 +7069,7 @@ impl ZMachineCodeGen {
 
                 // CRITICAL DEBUG: Track slot 2 allocations for handle_go
                 if function.name == "handle_go" && local.slot == 2 {
-                    log::error!(
+                    log::debug!(
                         "🔍 SLOT_2_ALLOC: Function 'handle_go' allocated slot 2 to '{}' (IR ID {})",
                         local.name,
                         local.ir_id
@@ -7106,7 +7108,7 @@ impl ZMachineCodeGen {
             self.current_function_locals
         );
 
-        log::error!(
+        log::debug!(
             "🎯 USER_FUNCTION: '{}' starts at 0x{:04x} (code space, will be adjusted)",
             function.name,
             self.code_address
@@ -8268,7 +8270,7 @@ impl ZMachineCodeGen {
                     location: branch_location, // Use exact location from emit_instruction
                     target_id: false_label,    // jz jumps on false condition
                     is_packed_address: false,
-                    offset_size: 1, // Branch offset size depends on the actual offset value
+                    offset_size: 2, // ALWAYS use 2-byte format for reliability
                     location_space: MemorySpace::Code,
                 });
         } else {
@@ -8343,7 +8345,7 @@ impl ZMachineCodeGen {
                     location_space: MemorySpace::Code,
                 });
         } else {
-            log::error!("ERROR: emit_comparison_branch: layout.branch_location is None! This means emit_instruction didn't create a branch placeholder");
+            log::debug!("ERROR: emit_comparison_branch: layout.branch_location is None! This means emit_instruction didn't create a branch placeholder");
             return Err(CompilerError::CodeGenError(
                 "Comparison branch instruction must have branch_location".to_string(),
             ));
