@@ -1,0 +1,692 @@
+   Compiling gruesome v0.6.0 (/Users/cb/Projects/infocom-testing-old/infocom)
+warning: unused imports: `ReferenceContext` and `TwoPassState`
+   --> src/grue_compiler/patch_collision_detector.rs:270:62
+    |
+270 |     use crate::grue_compiler::codegen::{LegacyReferenceType, ReferenceContext, TwoPassState};
+    |                                                              ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` on by default
+
+warning: unused `Result` that must be used
+  --> tests/dictionary_parser_test.rs:50:5
+   |
+50 |     vm.write_byte(text_buffer_addr, 40);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this `Result` may be an `Err` variant, which should be handled
+   = note: `#[warn(unused_must_use)]` on by default
+help: use `let _ = ...` to ignore the resulting value
+   |
+50 |     let _ = vm.write_byte(text_buffer_addr, 40);
+   |     +++++++
+
+warning: unused `Result` that must be used
+  --> tests/dictionary_parser_test.rs:53:5
+   |
+53 |     vm.write_byte(parse_buffer_addr, 10);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+   |
+53 |     let _ = vm.write_byte(parse_buffer_addr, 10);
+   |     +++++++
+
+warning: unused `Result` that must be used
+  --> tests/dictionary_parser_test.rs:59:5
+   |
+59 |     vm.write_byte(text_buffer_addr + 1, input.len() as u8);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+   |
+59 |     let _ = vm.write_byte(text_buffer_addr + 1, input.len() as u8);
+   |     +++++++
+
+warning: unused `Result` that must be used
+  --> tests/dictionary_parser_test.rs:61:9
+   |
+61 |         vm.write_byte(text_buffer_addr + 2 + (i as u32), ch);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+   |
+61 |         let _ = vm.write_byte(text_buffer_addr + 2 + (i as u32), ch);
+   |         +++++++
+
+warning: `gruesome` (test "dictionary_parser_test") generated 4 warnings
+warning: `gruesome` (lib test) generated 1 warning (run `cargo fix --lib -p gruesome --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.96s
+     Running unittests src/lib.rs (target/debug/deps/gruesome-4f7713d17cf1f413)
+
+running 260 tests
+test disassembler::tests::test_unpack_address ... ok
+test display_ratatui::tests::test_process_text_with_backspace ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_complex_control_flow_resolution ... ignored
+test grue_compiler::codegen::tests::codegen_tests::test_comprehensive_instruction_generation ... ignored
+test disassembler::tests::test_disassemble_instruction ... ok
+test debug_symbols::tests::test_routine_names ... ok
+test disassembler::tests::test_disassemble_range ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_address_patching ... ok
+test debug_symbols::tests::test_global_names ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_function_with_jumps_and_calls ... ignored
+test grue_compiler::codegen::tests::codegen_tests::test_address_resolution_system ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_empty_string_encoding ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_init_block_generation ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_complex_program_generation ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_function_generation ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_memory_corruption_prevention ... ignored
+test grue_compiler::codegen::tests::codegen_tests::test_instruction_form_detection ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_long_form_instruction_encoding ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_separated_spaces_architecture ... ignored
+test grue_compiler::codegen::tests::codegen_tests::test_header_generation ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_packed_address_alignment ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_packed_address_calculation ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_minimal_code_generation ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_string_encoding ... ok
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_branch_offset_calculation_backward ... ignored
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_branch_offset_calculation_forward ... ignored
+test grue_compiler::codegen::tests::codegen_tests::test_operand_encoding ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_unresolved_reference_tracking ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_room_without_exits ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_v5_code_generation ... ok
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_branch_instruction_identification ... ok
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_branch_instruction_without_branch_parameter ... ok
+test grue_compiler::codegen::tests::codegen_tests::test_minimal_grammar_generation ... FAILED
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_branch_offset_size_detection ... ok
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_branch_polarity_detection ... ok
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_emit_instruction_current_behavior ... ok
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_deferred_branch_memory_growth ... ok
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_resolve_deferred_branches_bounds_check ... ignored
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_resolve_deferred_branches_missing_label ... ignored
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_resolve_deferred_branches_simple ... ignored
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_resolve_deferred_branches_disabled ... ok
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_two_pass_state_integration ... ok
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_emit_instruction_non_branch_not_deferred ... ok
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_emit_instruction_two_pass_mode_enabled ... ok
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_mixed_compilation_modes ... ok
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_mixed_mode_compilation ... ok
+test grue_compiler::codegen::two_pass_tests::data_structure_tests::test_deferred_branch_patch_creation ... ok
+test grue_compiler::codegen::two_pass_tests::branch_deferral_tests::test_non_branch_with_branch_parameter ... ok
+test grue_compiler::codegen::two_pass_tests::data_structure_tests::test_two_pass_state_enabled ... ok
+test grue_compiler::codegen::two_pass_tests::integration_tests::test_real_branch_with_push_pull_insertion ... ok
+test grue_compiler::codegen::two_pass_tests::integration_tests::test_real_2byte_branch_offset_correctness ... ok
+test grue_compiler::codegen::two_pass_tests::integration_tests::test_real_multiple_branches_same_target ... ok
+test grue_compiler::codegen::two_pass_tests::data_structure_tests::test_two_pass_state_initialization ... ok
+test grue_compiler::codegen::two_pass_tests::integration_tests::test_phase3_resolve_integration ... ok
+test grue_compiler::codegen::two_pass_tests::integration_tests::test_phase3_two_pass_enabled_by_default ... ok
+test grue_compiler::codegen::two_pass_tests::integration_tests::test_real_backward_branch_correctness ... ok
+test grue_compiler::codegen::two_pass_tests::integration_tests::test_real_forward_branch_patching_correctness ... ok
+test grue_compiler::codegen_instructions::opcode_encoding_tests::test_call_vs_encoding ... ok
+test grue_compiler::codegen_instructions::opcode_encoding_tests::test_rejects_encoded_opcode_0x20 ... ok
+test grue_compiler::codegen_instructions::opcode_encoding_tests::test_call_2s_encoding ... ok
+test grue_compiler::codegen_instructions::opcode_encoding_tests::test_rejects_encoded_opcode_0x_e0 ... ok
+test grue_compiler::codegen_strings::tests::test_encode_word_to_zchars_west ... ok
+test grue_compiler::codegen_instructions::opcode_encoding_tests::test_or_instruction_encoding ... ok
+test grue_compiler::codegen_utils::tests::test_calculate_checksum ... ok
+test grue_compiler::codegen_instructions::opcode_encoding_tests::test_print_paddr_encoding ... ok
+test grue_compiler::codegen_instructions::opcode_encoding_tests::test_put_prop_encoding ... ok
+test grue_compiler::codegen_instructions::opcode_encoding_tests::test_rejects_encoded_opcode_0x21 ... ok
+test grue_compiler::codegen_strings::tests::test_encode_word_to_zchars_matches_interpreter_format ... ok
+test grue_compiler::codegen_strings::tests::test_encode_word_to_zchars_produces_correct_length ... ok
+test grue_compiler::codegen_utils::tests::test_validate_ir_input_empty ... ok
+test grue_compiler::codegen_utils::tests::test_count_total_ir_instructions ... ok
+test grue_compiler::ir::tests::ir_tests::test_binary_expression_ir ... ok
+test grue_compiler::ir::tests::ir_tests::test_assignment_statement_ir ... ok
+test grue_compiler::ir::tests::ir_tests::test_comparison_operators_ir ... ok
+test grue_compiler::ir::tests::ir_tests::test_for_loop_ir ... ok
+test grue_compiler::ir::tests::ir_tests::test_if_statement_ir ... ok
+test grue_compiler::ir::tests::ir_tests::test_init_block_ir ... ok
+test grue_compiler::ir::tests::ir_tests::test_ir_id_generation ... ok
+test grue_compiler::ir::tests::ir_tests::test_function_with_parameters ... ok
+test grue_compiler::ir::tests::ir_tests::test_complex_program_ir ... ok
+test grue_compiler::ir::tests::ir_tests::test_literals_ir ... ok
+test grue_compiler::ir::tests::ir_tests::test_grammar_ir ... ok
+test grue_compiler::ir::tests::ir_tests::test_property_access_ir ... ok
+test grue_compiler::ir::tests::ir_tests::test_return_statement_ir ... ok
+test grue_compiler::ir::tests::ir_tests::test_simple_function_ir ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_comments ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_complex_program ... ok
+test grue_compiler::ir::tests::ir_tests::test_unary_expression_ir ... ok
+test grue_compiler::ir::tests::ir_tests::test_world_with_rooms_ir ... ok
+test grue_compiler::ir::tests::ir_tests::test_ternary_expression_ir ... ok
+test grue_compiler::ir::tests::ir_tests::test_while_loop_ir ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_empty_input ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_escape_sequences ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_identifiers ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_keyword_vs_identifier_boundary ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_multi_character_operators ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_keywords ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_newlines ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_multiline_position_tracking ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_number_boundaries ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_numbers ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_position_tracking ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_single_ampersand_error ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_single_pipe_error ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_strings ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_unexpected_character ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_single_tokens ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_unterminated_string ... ok
+test grue_compiler::lexer::tests::lexer_tests::test_whitespace_handling ... ok
+test grue_compiler::object_system::tests::test_create_simple_item ... ok
+test grue_compiler::object_system::tests::test_create_container ... ok
+test grue_compiler::object_system::tests::test_zmachine_attributes ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_basic_form_0_operands ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_basic_form_2_operands_long ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_basic_form_2_operands_variable ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_basic_form_1_operand ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_basic_form_boundary_operand_counts ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_basic_form_3_plus_operands ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_boundary_always_var_opcodes_override ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_basic_form_edge_case_opcodes ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_boundary_exact_2_operands_form_selection ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_boundary_large_constant_operand_constraints ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_basic_form_always_var_opcodes ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_conflicting_form_requirements_placeholder ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_boundary_form_sensitive_opcodes ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_boundary_operand_count_transitions ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_context_0x0d_output_stream_3_operands ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_context_0x0d_regression_scenarios ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_context_0x0d_store_1_operand ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_context_0x0d_print_paddr ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_error_handling_placeholder ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_context_non_0x0d_opcodes ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_error_message_quality_placeholder ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_integration_emit_instruction_typed_placeholder ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_context_0x0d_store_2_operands ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_integration_real_instruction_sequences_placeholder ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_integration_form_affects_bytecode_placeholder ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_invalid_operand_counts_placeholder ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_regression_0x0d_context_bug ... ok
+test grue_compiler::opcodes_tests::tests::test_all_op0_opcodes_unique ... ok
+test grue_compiler::opcode_form_unit_tests::opcode_form_tests::test_regression_compilation_failure_scenarios ... ok
+test grue_compiler::opcodes_tests::tests::test_all_op2_opcodes_unique ... ok
+test grue_compiler::opcodes_tests::tests::test_combined_opcode_enum ... ok
+test grue_compiler::opcodes_tests::tests::test_branches_metadata ... ok
+test grue_compiler::opcodes_tests::tests::test_convenience_constants ... ok
+test grue_compiler::opcodes_tests::tests::test_const_fn_evaluation ... ok
+test grue_compiler::opcodes_tests::tests::test_hash_and_eq ... ok
+test grue_compiler::opcodes_tests::tests::test_instruction_forms ... ok
+test grue_compiler::opcodes_tests::tests::test_op0_raw_values ... ok
+test grue_compiler::opcodes_tests::tests::test_op1_raw_values ... ok
+test grue_compiler::opcodes_tests::tests::test_op2_raw_values ... ok
+test grue_compiler::opcodes_tests::tests::test_opcode_0x13_disambiguation ... ok
+test grue_compiler::opcodes_tests::tests::test_opcode_metadata_trait ... ok
+test grue_compiler::opcodes_tests::tests::test_opvar_raw_values ... ok
+test grue_compiler::opcodes_tests::tests::test_stores_result_metadata ... ok
+test grue_compiler::opcodes_tests::tests::test_version_requirements ... ok
+test grue_compiler::parser::tests::parser_tests::test_empty_program ... ok
+test grue_compiler::parser::tests::parser_tests::test_complex_expressions ... ok
+test grue_compiler::parser::tests::parser_tests::test_function_with_return_type ... ok
+test grue_compiler::parser::tests::parser_tests::test_grammar_with_parameters ... ok
+test grue_compiler::parser::tests::parser_tests::test_control_flow ... ok
+test grue_compiler::parser::tests::parser_tests::test_parse_error_invalid_expression ... ok
+test grue_compiler::parser::tests::parser_tests::test_function_declaration ... ok
+test grue_compiler::parser::tests::parser_tests::test_object_with_properties ... ok
+test grue_compiler::parser::tests::parser_tests::test_method_calls_and_property_access ... ok
+test grue_compiler::parser::tests::parser_tests::test_parse_error_missing_brace ... ok
+test grue_compiler::parser::tests::parser_tests::test_parse_error_unexpected_token ... ok
+test grue_compiler::parser::tests::parser_tests::test_nested_objects ... ok
+test grue_compiler::parser::tests::parser_tests::test_simple_grammar ... ok
+test grue_compiler::parser::tests::parser_tests::test_room_event_handlers ... ok
+test grue_compiler::parser::tests::parser_tests::test_simple_init ... ok
+test grue_compiler::parser::tests::parser_tests::test_variable_declarations ... ok
+test grue_compiler::parser::tests::parser_tests::test_simple_room ... ok
+test grue_compiler::parser::tests::parser_tests::test_room_with_exits ... ok
+test grue_compiler::patch_collision_detector::tests::test_collision_detection_basic ... ok
+test grue_compiler::patch_collision_detector::tests::test_no_collisions_empty_state ... ok
+test grue_compiler::push_pull_unit_tests::core_push_pull_behavior_tests::test_double_registration_is_idempotent ... ok
+test grue_compiler::push_pull_unit_tests::core_push_pull_behavior_tests::test_push_pull_registration_creates_temporary_global_operand ... ok
+test grue_compiler::push_pull_unit_tests::edge_case_tests::test_ir_id_zero_edge_case ... ok
+test grue_compiler::push_pull_unit_tests::edge_case_tests::test_code_emission_pattern ... ok
+test grue_compiler::push_pull_branch_integration_tests::test_real_high_stress_push_pull_branch_integration ... FAILED
+test grue_compiler::push_pull_branch_integration_tests::test_real_complex_control_flow_with_nested_push_pull ... FAILED
+test grue_compiler::push_pull_branch_integration_tests::test_real_push_insertion_affects_branch_offset ... FAILED
+test grue_compiler::push_pull_unit_tests::core_push_pull_behavior_tests::test_resolve_with_existing_literal_mapping ... ok
+test grue_compiler::push_pull_branch_integration_tests::test_real_three_system_integration ... FAILED
+test grue_compiler::push_pull_unit_tests::edge_case_tests::test_large_ir_id_edge_case ... ok
+test grue_compiler::push_pull_unit_tests::integration_pattern_tests::test_push_pull_code_generation_observable_effects ... ok
+test grue_compiler::push_pull_unit_tests::core_push_pull_behavior_tests::test_unregistered_ir_id_behavior ... ok
+test grue_compiler::push_pull_unit_tests::integration_pattern_tests::test_typical_arithmetic_expression_pattern ... ok
+test grue_compiler::push_pull_unit_tests::temporary_global_allocation_behavior_tests::test_high_stress_temporary_global_allocation ... ok
+test grue_compiler::push_pull_unit_tests::temporary_global_allocation_behavior_tests::test_same_ir_id_gets_different_temporaries_with_multiple_pulls ... ok
+test grue_compiler::push_pull_unit_tests::temporary_global_allocation_behavior_tests::test_sequential_temporary_global_allocation ... ok
+test grue_compiler::push_pull_unit_tests::variable_collision_prevention_tests::test_nested_function_call_scenarios ... ok
+test grue_compiler::push_pull_unit_tests::variable_collision_prevention_tests::test_multiple_push_pull_operations_get_unique_variables ... ok
+test grue_compiler::push_pull_unit_tests::variable_collision_prevention_tests::test_complex_expression_evaluation_no_collision ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_array_type_consistency ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_complex_program ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_control_flow_statements ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_duplicate_object_definition ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_duplicate_room_definition ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_for_loop_variable_scoping ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_function_call_validation ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_duplicate_function_definition ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_duplicate_variable_in_same_scope ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_function_call_argument_count_mismatch ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_function_parameter_scoping ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_function_with_typed_parameters ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_grammar_with_function_references ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_grammar_with_undefined_function ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_init_block_semantic_analysis ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_nested_scopes ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_property_access ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_invalid_condition_types ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_objects_in_rooms ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_simple_world_and_rooms ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_room_with_undefined_exit ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_room_event_handlers ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_simple_function_definition ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_type_mismatch_in_variable_declaration ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_ternary_expression ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_undefined_function_call ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_ternary_with_non_boolean_condition ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_undefined_identifier ... ok
+test grue_compiler::semantic::tests::semantic_tests::test_variable_declarations ... ok
+test grue_compiler::unresolved_reference_tests::test_real_jump_branch_resolution_correctness ... ok
+test grue_compiler::unresolved_reference_tests::test_real_function_call_resolution_correctness ... ok
+test instruction::tests::test_decode_long_form ... ok
+test grue_compiler::unresolved_reference_tests::test_real_memory_space_translation_correctness ... ok
+test instruction::tests::test_decode_short_form ... ok
+test instruction::tests::test_decode_variable_form ... ok
+test instruction::tests::test_operand_type_from_bits ... ok
+test grue_compiler::unresolved_reference_tests::test_real_string_reference_resolution_correctness ... ok
+test grue_compiler::unresolved_reference_tests::test_real_mixed_reference_types_integration ... ok
+test parser_engine::tests::test_object_addition ... ok
+test parser_engine::tests::test_parser_creation ... ok
+test quetzal::compressed_memory::tests::test_compress_decompress ... ok
+test quetzal::compressed_memory::tests::test_long_run_of_zeros ... ok
+test parser_engine::tests::test_simple_parsing ... ok
+test runtime_parser::tests::test_object_addition ... ok
+test runtime_parser::tests::test_runtime_parser_creation ... ok
+test runtime_parser::tests::test_advanced_parsing ... ok
+test tests::test_disassembler_with_zork ... ok
+test tests::read_zork1 ... ok
+test tests::test_object_debug_dump ... ok
+test tests::test_vm_with_zork ... ok
+[2J[1;1H[2J[1;1H     Running unittests src/bin/analyze_extra_routines.rs (target/debug/deps/analyze_extra_routines-f1d37f63ebf2d4da)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/analyze_false_positives.rs (target/debug/deps/analyze_false_positives-31f92ba18a0d27bc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/analyze_nested_difference.rs (target/debug/deps/analyze_nested_difference-b275a80868bd311b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/analyze_routine_patterns.rs (target/debug/deps/analyze_routine_patterns-5399a957c360b052)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/analyze_txd_heuristics.rs (target/debug/deps/analyze_txd_heuristics-64ac5804a1e1648f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/analyze_txd_nested.rs (target/debug/deps/analyze_txd_nested-4937812b03a3ca5c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/categorize_missing.rs (target/debug/deps/categorize_missing-ae1ed9ce56b060a0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check_fallthrough.rs (target/debug/deps/check_fallthrough-54aaf4c974d069b4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check_nested_calls.rs (target/debug/deps/check_nested_calls-5b2e43886a0c5ca8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check_routine_references.rs (target/debug/deps/check_routine_references-1740585f69113b08)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check_addr.rs (target/debug/deps/check_addr-f317e8cdd84503a8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/compare_routine_validity.rs (target/debug/deps/compare_routine_validity-88ada0fbc1b333c5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/compare_games_summary.rs (target/debug/deps/compare_games_summary-da19fc2fd7110c07)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/debug_12a04.rs (target/debug/deps/debug_12a04-d8abdbca4587b794)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/debug_call_graph.rs (target/debug/deps/debug_call_graph-1f554aeb766f55b4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/debug_e114_validation.rs (target/debug/deps/debug_e114_validation-aa97254c364cf71b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/debug_bytecode.rs (target/debug/deps/debug_bytecode-aca6a4d0f4e3a336)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/demo_missing_features.rs (target/debug/deps/demo_missing_features-265e1e08bdb186fb)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/demo_window_ops.rs (target/debug/deps/demo_window_ops-32dbf6fe4e3fa4e7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/detect_collisions.rs (target/debug/deps/detect_collisions-b3eb312c943e62ba)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/disasm_amfv.rs (target/debug/deps/disasm_amfv-e844888233fa2794)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/dump_our_routines.rs (target/debug/deps/dump_our_routines-1fe059cd64ebd3cc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/filter_nested_routines.rs (target/debug/deps/filter_nested_routines-4be1a63b8e80a24b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/find_data_routines.rs (target/debug/deps/find_data_routines-c7b4d0274076d47b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/find_missing_13.rs (target/debug/deps/find_missing_13-c03fa2f1992b1bed)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/fix_alternate_entries.rs (target/debug/deps/fix_alternate_entries-caa9e0705822b456)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests scripts/generate_opcodes.rs (target/debug/deps/generate_opcodes-e0737de4be0d448f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/grue_compiler.rs (target/debug/deps/grue_compiler-7a6afa34a955d47f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/gruedasm-txd.rs (target/debug/deps/gruedasm_txd-bee5e34d649b407d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/gruesome-40b321ec41034cdf)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/implement_txd_filters.rs (target/debug/deps/implement_txd_filters-983e93fc6fa9d1ef)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/list_txd_routines.rs (target/debug/deps/list_txd_routines-a085b2d331bf587a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/search_read_char.rs (target/debug/deps/search_read_char-2e0e8932b2b441d0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/search_read_char_v4.rs (target/debug/deps/search_read_char_v4-fb08fd3a97514f9f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_opcode_validation.rs (target/debug/deps/test_opcode_validation-d3fb31333040bdfa)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_orphan_v4.rs (target/debug/deps/test_orphan_v4-52b98a942a433908)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_v3_regression.rs (target/debug/deps/test_v3_regression-13759bc509651097)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_amfv_opening.rs (target/debug/deps/test_amfv_opening-6689c97ce48a6552)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_amfv_part_i.rs (target/debug/deps/test_amfv_part_i-cbfa64a5727579a1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_amfv_status.rs (target/debug/deps/test_amfv_status-7d1e36336d62358e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_crossterm_coords.rs (target/debug/deps/test_crossterm_coords-5839abd333d3ec2c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_dec_chk.rs (target/debug/deps/test_dec_chk-2542ab810176889d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_lantern_timer.rs (target/debug/deps/test_lantern_timer-1f383b06fca6f2e1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_orphan_detection.rs (target/debug/deps/test_orphan_detection-21b26e56a7a33e56)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_random.rs (target/debug/deps/test_random-d7632c82a985048b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_read_char.rs (target/debug/deps/test_read_char-3f88adf0c4757f7b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_save_restore.rs (target/debug/deps/test_save_restore-cca1163582279054)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_save_restore_flow.rs (target/debug/deps/test_save_restore_flow-71d10b949bbc3875)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_seastalker.rs (target/debug/deps/test_seastalker-8b0d947ca89443a4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_selective_status.rs (target/debug/deps/test_selective_status-fdda5ff8f27bff09)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_status_overflow.rs (target/debug/deps/test_status_overflow-fc14bf6fc5571052)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_terminal_ops.rs (target/debug/deps/test_terminal_ops-db4dd11a5f732a04)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_timed_input.rs (target/debug/deps/test_timed_input-960ee36a6c1818fd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_v4_styled_text.rs (target/debug/deps/test_v4_styled_text-62733c75fc187ea5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/test_v4_window_selection.rs (target/debug/deps/test_v4_window_selection-2b98d2cc9f7923a2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/trace_false_positive.rs (target/debug/deps/trace_false_positive-fedc221c6b3e9747)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/validate_extra_routines.rs (target/debug/deps/validate_extra_routines-1f16955fcdd9e6a3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/verify_cafc_rejected.rs (target/debug/deps/verify_cafc_rejected-795d6d37ea5e1d2e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/verify_strict_superset.rs (target/debug/deps/verify_strict_superset-b7f30022682bf3c6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/buffer_globals_test.rs (target/debug/deps/buffer_globals_test-e47698071bd6332d)
+
+running 1 test
+test test_buffer_addresses_stored_in_globals ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/dictionary_lookup_test.rs (target/debug/deps/dictionary_lookup_test-1c9893be7a130cf3)
+
+running 1 test
+test test_dictionary_word_positions ... FAILED
+
+failures:
+
+---- test_dictionary_word_positions stdout ----
+
+thread 'test_dictionary_word_positions' panicked at tests/dictionary_lookup_test.rs:24:10:
+Compilation should succeed: CodeGenError("1-byte branch offset -67 out of range (-64 to +63) at location 0x010b")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    test_dictionary_word_positions
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--test dictionary_lookup_test`
+=== BASELINE CAPTURED ===
+Fri Oct 24 08:25:19 PDT 2025

@@ -1,0 +1,10 @@
+inventory
+look
+north
+open mailbox
+read leaflet
+south
+east
+open window
+enter house
+look
