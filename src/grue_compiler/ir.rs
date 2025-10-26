@@ -2679,7 +2679,7 @@ impl IrGenerator {
 
                 // Check if this is a known built-in pseudo-method that doesn't require property lookup
                 let is_builtin_pseudo_method =
-                    matches!(method.as_str(), "get_exit" | "empty" | "none");
+                    matches!(method.as_str(), "get_exit" | "empty" | "none" | "contents");
 
                 if is_builtin_pseudo_method {
                     // For built-in pseudo-methods, generate direct call without property check
@@ -2721,6 +2721,19 @@ impl IrGenerator {
 
                             let mut call_args = vec![object_temp];
                             call_args.extend(arg_temps);
+
+                            block.add_instruction(IrInstruction::Call {
+                                target: Some(result_temp),
+                                function: builtin_id,
+                                args: call_args,
+                            });
+                        }
+                        "contents" => {
+                            let builtin_id = self.next_id();
+                            self.builtin_functions
+                                .insert(builtin_id, "get_object_contents".to_string());
+
+                            let call_args = vec![object_temp];
 
                             block.add_instruction(IrInstruction::Call {
                                 target: Some(result_temp),
@@ -3289,6 +3302,19 @@ impl IrGenerator {
         match expr {
             Expr::Array(_) => true,
             Expr::Identifier(name) => {
+                // First, check if this variable is tracked in variable_sources
+                // This takes precedence over name-based heuristics
+                if let Some(&var_id) = self.symbol_ids.get(name) {
+                    if let Some(source) = self.variable_sources.get(&var_id) {
+                        return match source {
+                            VariableSource::Array(_) => true,           // Explicitly an array
+                            VariableSource::ObjectTreeRoot(_) => false, // Contents result - NOT an array
+                            VariableSource::Scalar(_) => false,         // Scalar value - NOT an array
+                        };
+                    }
+                }
+
+                // Fall back to name-based heuristic for untracked variables
                 // Only consider identifiers that are likely to be arrays
                 // This is a simplified heuristic - in a full implementation,
                 // we'd track variable types through semantic analysis

@@ -1,0 +1,28 @@
+// Test for contents() builtin method registration
+// This should now call get_object_contents instead of returning placeholder 1
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room."
+
+        object test_object {
+            names: ["test", "object"]
+            desc: "A test object."
+        }
+
+        exits: {}
+    }
+}
+
+fn test_contents() {
+    print("Testing player.contents() method...");
+    let items = player.contents();
+    print("Contents call completed.");
+    // Don't try to use .empty() yet - that's Phase 2
+}
+
+init {
+    print("Contents() Test");
+    test_contents();
+    print("Test completed!");
+}

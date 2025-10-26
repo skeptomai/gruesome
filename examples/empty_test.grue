@@ -1,0 +1,30 @@
+// Test for .empty() method support on contents() result
+// This tests Phase 2.1 of the collection interface
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room."
+        exits: {}
+    }
+}
+
+fn test_empty_method() {
+    print("Testing .empty() method on contents() result...");
+    let items = player.contents();
+    print("Contents call completed.");
+
+    // Test .empty() method - this should work now
+    if items.empty() {
+        print("Player inventory is empty (as expected).");
+    } else {
+        print("Player inventory has items.");
+    }
+
+    print("Empty method test completed.");
+}
+
+init {
+    print("Empty() Method Test");
+    test_empty_method();
+    print("Test completed!");
+}

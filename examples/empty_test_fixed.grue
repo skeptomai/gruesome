@@ -1,0 +1,30 @@
+// Test for .empty() method support with non-array variable name
+// This tests if the "items" variable name was triggering array detection
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room."
+        exits: {}
+    }
+}
+
+fn test_empty_method() {
+    print("Testing .empty() method on contents() result...");
+    let player_contents = player.contents();  // Avoid "items" name
+    print("Contents call completed.");
+
+    // Test .empty() method - this should work now
+    if player_contents.empty() {
+        print("Player inventory is empty (as expected).");
+    } else {
+        print("Player inventory has things.");
+    }
+
+    print("Empty method test completed.");
+}
+
+init {
+    print("Empty() Method Test (Fixed Variable Name)");
+    test_empty_method();
+    print("Test completed!");
+}
