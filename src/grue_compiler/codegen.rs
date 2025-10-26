@@ -3520,6 +3520,11 @@ impl ZMachineCodeGen {
 
         // emit_instruction already pushed bytes to code_space
 
+        // Phase C2: Convert test_attr to use push/pull stack discipline
+        if let Some(target_id) = _target {
+            self.use_push_pull_for_result(target_id, "test_attr builtin")?;
+        }
+
         log::debug!(
             " PHASE2_TEST_ATTR: Test_attr builtin translated successfully ({} bytes)",
             layout.total_size
@@ -3879,7 +3884,7 @@ impl ZMachineCodeGen {
         // emit_instruction already pushed bytes to code_space
 
         if let Some(target_id) = target {
-            self.use_stack_for_result(target_id);
+            self.use_push_pull_for_result(target_id, "object_is_empty builtin")?;
         }
 
         log::debug!(
@@ -7239,7 +7244,7 @@ impl ZMachineCodeGen {
                 // Z-Machine arithmetic negation - subtract operand from 0
                 let operands = vec![Operand::Constant(0), operand];
                 self.emit_instruction_typed(Opcode::Op2(Op2::Sub), &operands, Some(0), None)?; // sub instruction
-                self.use_stack_for_result(target);
+                self.use_push_pull_for_result(target, "arithmetic unary operation")?;
             }
         }
         Ok(())

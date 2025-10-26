@@ -775,9 +775,10 @@ impl ZMachineCodeGen {
                     self.emit_instruction_typed(
                         Opcode::Op2(Op2::Or),
                         &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
-                        Some(store_var as u8),
+                        Some(0),
                         None, // No branch
                     )?;
+                    self.use_push_pull_for_result(store_var, "get_object_contents builtin")?;
 
                     log::debug!(
                         "get_object_contents: generated store instruction for object {}",
@@ -800,9 +801,10 @@ impl ZMachineCodeGen {
                     self.emit_instruction_typed(
                         Opcode::Op2(Op2::Or),
                         &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
-                        Some(store_var as u8),
+                        Some(0),
                         None, // No branch
                     )?;
+                    self.use_push_pull_for_result(store_var, "get_object_contents builtin")?;
                 }
             }
         }
@@ -824,13 +826,15 @@ impl ZMachineCodeGen {
         }
 
         // For now, always return false (object is not empty) as a safe placeholder
-        if let Some(store_var) = target {
+        if let Some(target_id) = target {
+            // Use stack discipline for builtin result
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
                 &[Operand::LargeConstant(0), Operand::SmallConstant(0)], // 0 | 0 = 0 (false)
-                Some(store_var as u8),
+                Some(0), // Store to stack
                 None,
             )?;
+            self.use_push_pull_for_result(target_id, "object_is_empty builtin")?;
         }
 
         Ok(())
@@ -1101,9 +1105,10 @@ impl ZMachineCodeGen {
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::And),
                 &[exit_value_operand, Operand::LargeConstant(0x3FFF)],
-                Some(store_var as u8),
+                Some(0),
                 None,
             )?;
+            self.use_push_pull_for_result(store_var, "exit_get_message builtin")?;
 
             // BUG FIX (Oct 9, 2025): DO NOT mark exit_get_message result as property
             // The ir_id_from_property flag is too broad - it affects ALL uses of this IR ID,
@@ -1543,9 +1548,10 @@ impl ZMachineCodeGen {
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
                 &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
-                Some(store_var as u8),
+                Some(0),
                 None,
             )?;
+            self.use_push_pull_for_result(store_var, "get_object_size builtin")?;
         }
 
         log::error!(

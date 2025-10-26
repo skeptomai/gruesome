@@ -306,37 +306,37 @@ impl ZMachineCodeGen {
                 }
             }
 
-            IrInstruction::CallIndirect {
-                target,
-                function_addr,
-                args,
-            } => {
-                // CallIndirect: Call a function whose address is stored in a variable/property
-                // Used for property-based dispatch (e.g., room.on_look() where on_look is a property)
-                // The function address comes from a property value resolved at runtime
-                log::debug!(
-                    "📞 CALL_INDIRECT function address from IR ID {} with {} args",
-                    function_addr,
-                    args.len()
-                );
-
-                // Build operands: [function_address, arg1, arg2, ...]
-                let func_addr_operand = self.resolve_ir_id_to_operand(*function_addr)?;
-                let mut operands = vec![func_addr_operand];
-
-                for arg_id in args {
-                    let arg_operand = self.resolve_ir_id_to_operand(*arg_id)?;
-                    operands.push(arg_operand);
-                }
-                }
-
-                // CRITICAL: Register call result target for proper LoadVar resolution
-                // Use stack for call results (per Z-Machine specification)
-                if let Some(target_id) = target {
-                    self.use_push_pull_for_result(*target_id, "indirect function call")?;
-                    log::debug!("CallIndirect result: IR ID {} -> push/pull stack", target_id);
-                }
-            }
+            // TODO: CallIndirect is not implemented in current IR - will be needed for advanced features
+            // IrInstruction::CallIndirect {
+            //     target,
+            //     function_addr,
+            //     args,
+            // } => {
+            //     // CallIndirect: Call a function whose address is stored in a variable/property
+            //     // Used for property-based dispatch (e.g., room.on_look() where on_look is a property)
+            //     // The function address comes from a property value resolved at runtime
+            //     log::debug!(
+            //         "📞 CALL_INDIRECT function address from IR ID {} with {} args",
+            //         function_addr,
+            //         args.len()
+            //     );
+            //
+            //     // Build operands: [function_address, arg1, arg2, ...]
+            //     let func_addr_operand = self.resolve_ir_id_to_operand(*function_addr)?;
+            //     let mut operands = vec![func_addr_operand];
+            //
+            //     for arg_id in args {
+            //         let arg_operand = self.resolve_ir_id_to_operand(*arg_id)?;
+            //         operands.push(arg_operand);
+            //     }
+            //
+            //     // CRITICAL: Register call result target for proper LoadVar resolution
+            //     // Use stack for call results (per Z-Machine specification)
+            //     if let Some(target_id) = target {
+            //         self.use_push_pull_for_result(*target_id, "indirect function call")?;
+            //         log::debug!("CallIndirect result: IR ID {} -> push/pull stack", target_id);
+            //     }
+            // }
 
             IrInstruction::Return { value } => {
                 if let Some(ir_value) = value {
@@ -1526,37 +1526,38 @@ impl ZMachineCodeGen {
                 self.generate_debug_break_builtin(label)?;
             }
 
-            IrInstruction::LogicalComparisonOp {
-                target,
-                op,
-                left_expr,
-                right_expr,
-            } => {
-                // Generate proper short-circuit evaluation for logical operations on comparisons
-                log::debug!(
-                    "LogicalComparisonOp: Generating short-circuit {:?} logic for target IR ID {}",
-                    op,
-                    target
-                );
-
-                // Use stack for result storage
-                self.use_push_pull_for_result(*target, "string operation")?;
-
-                match op {
-                    crate::grue_compiler::ir::IrBinaryOp::And => {
-                        self.generate_short_circuit_and(target, left_expr, right_expr)?;
-                    }
-                    crate::grue_compiler::ir::IrBinaryOp::Or => {
-                        self.generate_short_circuit_or(target, left_expr, right_expr)?;
-                    }
-                    _ => {
-                        return Err(CompilerError::CodeGenError(format!(
-                            "LogicalComparisonOp: unsupported operation {:?}",
-                            op
-                        )));
-                    }
-                }
-            }
+            // TODO: LogicalComparisonOp is not implemented in current IR - will be needed for advanced features
+            // IrInstruction::LogicalComparisonOp {
+            //     target,
+            //     op,
+            //     left_expr,
+            //     right_expr,
+            // } => {
+            //     // Generate proper short-circuit evaluation for logical operations on comparisons
+            //     log::debug!(
+            //         "LogicalComparisonOp: Generating short-circuit {:?} logic for target IR ID {}",
+            //         op,
+            //         target
+            //     );
+            //
+            //     // Use stack for result storage
+            //     self.use_push_pull_for_result(*target, "string operation")?;
+            //
+            //     match op {
+            //         crate::grue_compiler::ir::IrBinaryOp::And => {
+            //             self.generate_short_circuit_and(target, left_expr, right_expr)?;
+            //         }
+            //         crate::grue_compiler::ir::IrBinaryOp::Or => {
+            //             self.generate_short_circuit_or(target, left_expr, right_expr)?;
+            //         }
+            //         _ => {
+            //             return Err(CompilerError::CodeGenError(format!(
+            //                 "LogicalComparisonOp: unsupported operation {:?}",
+            //                 op
+            //             )));
+            //         }
+            //     }
+            // }
             _ => {
                 // Handle other instruction types that are not yet implemented in the extracted code
                 return Err(CompilerError::CodeGenError(format!(
