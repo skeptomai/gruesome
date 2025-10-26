@@ -390,16 +390,25 @@ impl ZMachineCodeGen {
 
                 let var_operand = Operand::SmallConstant(var_num);
 
-                // Use load instruction (0x0E) to load variable to stack
-                self.emit_instruction_typed(LOAD, &[var_operand], Some(0), None)?;
+                // Allocate a global variable for the loaded value using existing allocation method
+                let result_var = self.allocate_global_for_ir_id(*target as u32);
 
-                // Map the target to stack access
-                self.use_stack_for_result(*target);
+                // CRITICAL FIX (Oct 19, 2025): Store to allocated global variable, NOT stack
+                // Bug: Commit 48fccdf accidentally changed this to Some(0), causing all LoadVar
+                // operations to store to Variable(0) (stack) instead of unique global variables.
+                // This broke navigation because player object resolved to Variable(0) instead of Variable(217).
+                self.emit_instruction_typed(LOAD, &[var_operand], Some(result_var as u8), None)?;
+
+                // Track this IR ID as using the allocated global (NOT stack)
+                // CRITICAL FIX (Oct 19, 2025): Map to allocated global variable, NOT Variable(0)
+                // Bug: This was accidentally changed to 0, breaking variable resolution for all loaded objects
+                self.ir_id_to_stack_var.insert(*target, result_var as u8);
                 log::debug!(
-                    "LoadVar: IR ID {} loaded from Z-Machine variable {} -> stack (target IR ID {})",
+                    "LoadVar: IR ID {} loaded from Z-Machine variable {} -> Variable({}) [Allocated global G{}]",
                     var_id,
                     var_num,
-                    target
+                    result_var,
+                    result_var - 16
                 );
             }
 
