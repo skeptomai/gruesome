@@ -2138,14 +2138,13 @@ impl ZMachineCodeGen {
             0x06 => true, // print_num (raw opcode 6)
             0x07 => true, // random (raw opcode 7)
             0x08 => true, // push (raw opcode 8) - MUST be VAR form (0xE8), NOT 2OP:or (0x08/0xC8)
-            0x09 => true, // pull (raw opcode 9) - MUST be VAR form (0xE9), NOT 2OP:and (0x09/0xC9)
-            // CRITICAL FIX: This resolves PC corruption where PULL was encoded as 0xC9 (2OP AND)
-            // instead of 0xE9 (VAR PULL), causing interpreter to route to wrong opcode handler
-            // NOTE: Opcode 0x09 is BOTH 2OP:AND and VAR:pull
-            // - For 2OP:AND in VAR form, bit 5 should be 0 (0xC9)
-            // - For VAR:pull, bit 5 should be 1 (0xE9)
-            // We distinguish based on context: emit_instruction_typed() for 2OP:AND won't call is_true_var_opcode
-            // The Opcode enum variant (Op2(And) vs Var(Pull)) determines which form to use
+            // CRITICAL OPCODE 0x09 CONFLICT: Op2(And) vs Var(Pull)
+            // Problem: Both Op2(And) and Var(Pull) use raw opcode 0x09 but need different encoding:
+            // - Op2(And) in VAR mode should be 0xC9 (bit 5 = 0)
+            // - Var(Pull) should be 0xE9 (bit 5 = 1)
+            // Solution: Do NOT list 0x09 here - let Op2(And) encode as 0xC9
+            // Var(Pull) will still work via emit_instruction_typed forcing VAR form
+            // REMOVED: 0x09 => true, // This caused both And and Pull to encode as 0xE9
             _ => false,
         }
     }

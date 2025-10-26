@@ -419,7 +419,7 @@ impl ZMachineCodeGen {
                                 .get(room_ir_id)
                                 .copied()
                                 .unwrap_or_else(|| {
-                                    log::error!(
+                                    log::debug!(
                                         "Exit system: Room '{}' exit direction '{}' references IR ID {} which has no object number mapping, using 0",
                                         room.name,
                                         direction,
@@ -450,7 +450,7 @@ impl ZMachineCodeGen {
                             let string_id = match self.find_or_create_string_id(message) {
                                 Ok(id) => id,
                                 Err(e) => {
-                                    log::error!(
+                                    log::debug!(
                                         "Failed to get string ID for blocked exit message in room '{}': {:?}",
                                         room.name,
                                         e
@@ -507,7 +507,7 @@ impl ZMachineCodeGen {
                             stored_data
                         );
                     } else {
-                        log::error!(
+                        log::debug!(
                             "❌ EXIT_PROPS: Room '{}' - Property {} NOT FOUND after set_bytes!",
                             room.name,
                             exit_data_prop

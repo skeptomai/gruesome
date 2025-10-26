@@ -241,6 +241,8 @@ pub struct ZMachineCodeGen {
     ir_id_to_binary_op: IndexMap<IrId, (IrBinaryOp, IrId, IrId)>, // (operator, left_operand, right_operand)
     /// Mapping from function IDs to builtin function names
     builtin_function_names: IndexMap<IrId, String>,
+    /// Mapping from builtin name to pseudo function ID for address lookup
+    builtin_functions: IndexMap<String, IrId>,
     /// Mapping from IR IDs to array metadata (for dynamic lists)
     ir_id_to_array_info: IndexMap<IrId, ArrayInfo>,
     /// Set of IR IDs that come from GetProperty instructions (for print() type detection)
@@ -352,6 +354,9 @@ pub struct ZMachineCodeGen {
     pub final_string_base: usize,
     pub final_object_base: usize,
 
+    /// Offset within code_space where main program starts (after builtin functions)
+    pub main_program_offset: usize,
+
     /// Dictionary words in alphabetically sorted order (for word position lookup)
     /// Populated during generate_dictionary_space(), used by lookup_word_in_dictionary()
     pub dictionary_words: Vec<String>,
@@ -393,6 +398,7 @@ impl ZMachineCodeGen {
             ir_id_to_local_var: IndexMap::new(),
             ir_id_to_binary_op: IndexMap::new(),
             builtin_function_names: IndexMap::new(),
+            builtin_functions: IndexMap::new(),
             ir_id_to_array_info: IndexMap::new(),
             ir_id_from_property: IndexSet::new(),
             object_numbers: IndexMap::new(),
@@ -448,6 +454,7 @@ impl ZMachineCodeGen {
             final_code_base: 0,
             final_string_base: 0,
             final_object_base: 0,
+            main_program_offset: 0,
             dictionary_words: Vec::new(),
             push_pull_ir_ids: IndexSet::new(),
         }
@@ -1256,14 +1263,15 @@ impl ZMachineCodeGen {
         log::debug!(" Step 3e: Updating header address fields with final memory layout");
         // ARCHITECTURAL FIX: PC calculation for main program with proper routine header
         // PC must point to first instruction AFTER the routine header (header size = 1 byte for local count)
-        let calculated_pc = (self.final_code_base + 1) as u16;
+        // CRITICAL FIX: Account for builtin functions that precede the main program in code_space
+        let calculated_pc = (self.final_code_base + self.main_program_offset + 1) as u16;
         log::debug!(
- " PC_CALCULATION_DEBUG: final_code_base=0x{:04x}, calculated_pc=0x{:04x} (skips routine header)",
- self.final_code_base, calculated_pc
+ " PC_CALCULATION_DEBUG: final_code_base=0x{:04x}, main_program_offset=0x{:04x}, calculated_pc=0x{:04x}",
+ self.final_code_base, self.main_program_offset, calculated_pc
  );
         log::debug!(
- " PC_CALCULATION_DEBUG: PC will point to first instruction at 0x{:04x} (after routine header at 0x{:04x})",
- calculated_pc, self.final_code_base
+ " PC_CALCULATION_DEBUG: PC will point to first instruction at 0x{:04x} (after routine header)",
+ calculated_pc
  );
         self.fixup_header_addresses(
             calculated_pc,                 // pc_start (points after routine header)
@@ -2121,9 +2129,16 @@ impl ZMachineCodeGen {
         debug!("Setting up object mappings for IR → Z-Machine object resolution");
         self.setup_object_mappings(ir);
 
+        // Generate builtin functions as real Z-Machine functions
+        // This must happen before main code generation so the functions exist when called
+        log::debug!("Generating builtin functions before main code generation");
+        self.generate_builtin_functions()?;
+
         // CRITICAL ARCHITECTURE FIX: Use code_address to track code_space positions
         // During code generation, we track positions within code_space using code_address
         // This eliminates any ambiguity about which address space we're working in
+        self.main_program_offset = self.code_address;
+        log::debug!("🎯 MAIN_PROGRAM_OFFSET: Main program will start at code_space[0x{:04x}] after builtin functions", self.main_program_offset);
         self.code_address = self.code_space.len(); // Set to current code_space position
         log::info!(
  "🏁 Code generation phase: Using code_address to track code_space position - starting at offset 0x{:04x}",
@@ -2494,7 +2509,7 @@ impl ZMachineCodeGen {
     fn translate_load_var(&mut self, target: IrId, var_id: IrId) -> Result<(), CompilerError> {
         log::debug!("LOAD_VAR: target={}, var_id={}", target, var_id);
 
-        log::error!(
+        log::debug!(
             "📝 VAR1_WRITE: LoadVar at 0x{:04x} - HARDCODED storing to Variable(1) (BUG?)",
             self.code_address
         );
@@ -5525,7 +5540,10 @@ impl ZMachineCodeGen {
 
     /// Generate the automatic main game loop
     fn generate_main_loop(&mut self, _ir: &IrProgram) -> Result<(), CompilerError> {
-        debug!("Generating automatic main game loop");
+        debug!(
+            "🎯 MAIN_LOOP: Starting main loop generation at code_address 0x{:04x}",
+            self.code_address
+        );
 
         // Align function address according to Z-Machine version requirements
         self.align_function_address()?;
@@ -5533,6 +5551,10 @@ impl ZMachineCodeGen {
         // Record main loop routine address for function calls
         let main_loop_id = 9000u32; // Use high ID to avoid conflicts
         let main_loop_routine_address = self.code_address;
+        debug!(
+            "🎯 MAIN_LOOP: Recording main loop routine at address 0x{:04x} (ID {})",
+            main_loop_routine_address, main_loop_id
+        );
 
         debug!(
             "Main loop routine starts at address 0x{:04x}",
@@ -6566,11 +6588,11 @@ impl ZMachineCodeGen {
             "🔍 OBJECT_LOOKUP_START: Starting at 0x{:04x}",
             lookup_start_address
         );
-        log::error!("🔍 OBJECT_LOOKUP: Variable usage plan:");
-        log::error!("    - Variable(2) = noun dictionary address (INPUT)");
-        log::error!("    - Variable(3) = result object ID (OUTPUT)");
-        log::error!("    - Variable(4) = loop counter");
-        log::error!("    - Variable(5) = property value during comparison");
+        log::debug!("🔍 OBJECT_LOOKUP: Variable usage plan:");
+        log::debug!("    - Variable(2) = noun dictionary address (INPUT)");
+        log::debug!("    - Variable(3) = result object ID (OUTPUT)");
+        log::debug!("    - Variable(4) = loop counter");
+        log::debug!("    - Variable(5) = property value during comparison");
 
         debug!(" OBJECT_LOOKUP_START: Generating dynamic object lookup from noun dictionary address at 0x{:04x}", self.code_address);
 
@@ -6772,7 +6794,7 @@ impl ZMachineCodeGen {
         )?;
 
         // End of function
-        log::error!("🔍 OBJECT_LOOKUP: End label at 0x{:04x}", self.code_address);
+        log::debug!("🔍 OBJECT_LOOKUP: End label at 0x{:04x}", self.code_address);
         self.label_addresses.insert(end_label, self.code_address);
         self.record_final_address(end_label, self.code_address);
 
@@ -9828,7 +9850,12 @@ impl ZMachineCodeGen {
             "get_object_contents" => self.generate_get_object_contents_builtin(args, target),
             "object_is_empty" => self.generate_object_is_empty_builtin(args, target),
             "value_is_none" => self.generate_value_is_none_builtin(args, target),
-            "get_exit" => self.generate_get_exit_builtin(args, target),
+            "get_exit" => {
+                log::debug!("🚪 GET_EXIT_FUNCTION_CALL: Converting to real Z-Machine function call at PC 0x{:04x}", self.code_address);
+                // Convert inline builtin to real Z-Machine function call
+                self.call_builtin_function("get_exit", args, target)?;
+                Ok(())
+            }
             "exit_is_blocked" => self.generate_exit_is_blocked_builtin(args, target),
             "exit_get_destination" => self.generate_exit_get_data_builtin(args, target),
             "exit_get_message" => self.generate_exit_get_message_builtin(args, target),
@@ -10963,6 +10990,478 @@ impl ZMachineCodeGen {
 
     // PLACEHOLDER: Instruction emission functions moved to codegen_instructions.rs module
     // This comment preserves the section organization while the functions are now extracted
+
+    // ============================================================================
+    // BUILTIN FUNCTION GENERATION
+    // ============================================================================
+    // These methods create real Z-Machine functions for exit system builtins
+    // instead of inlining the code at each call site. This provides:
+    // - Clear calling conventions (no stack/variable confusion)
+    // - Code size reduction (generate once, call many times)
+    // - Proper function frames with local variables
+
+    /// Generate all builtin functions as real Z-Machine functions
+    /// Called during code generation initialization to create function implementations
+    /// that can be called via call_vs instead of being inlined
+    pub fn generate_builtin_functions(&mut self) -> Result<(), CompilerError> {
+        log::debug!("🏗️ BUILTIN_GEN: Starting builtin function generation");
+        log::debug!(
+            "🏗️ BUILTIN_GEN: code_address before generation: 0x{:04x}",
+            self.code_address
+        );
+        log::debug!(
+            "🏗️ BUILTIN_GEN: code_space.len() before generation: {}",
+            self.code_space.len()
+        );
+
+        // Check if we have any main function mapping yet
+        if let Some((main_addr, _)) = self
+            .reference_context
+            .ir_id_to_address
+            .iter()
+            .find(|(_, &addr)| addr > 0)
+        {
+            log::debug!(
+                "🏗️ BUILTIN_GEN: Found existing main function mapping at address 0x{:04x}",
+                main_addr
+            );
+        } else {
+            log::debug!("🏗️ BUILTIN_GEN: No main function mappings found yet");
+        }
+
+        // Generate only get_exit for now
+        self.create_builtin_get_exit()?;
+
+        log::debug!(
+            "🏗️ BUILTIN_GEN: code_address after generation: 0x{:04x}",
+            self.code_address
+        );
+        log::debug!(
+            "🏗️ BUILTIN_GEN: code_space.len() after generation: {}",
+            self.code_space.len()
+        );
+        log::debug!(
+            "🏗️ BUILTIN_GEN: Generated {} builtin functions",
+            self.builtin_functions.len()
+        );
+        Ok(())
+    }
+
+    /// Call a builtin function using call_vs
+    /// This replaces the old inline code generation with proper function calls
+    fn call_builtin_function(
+        &mut self,
+        name: &str,
+        args: &[IrId],
+        target: Option<IrId>,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "Calling builtin function '{}' with {} args at PC 0x{:04x}",
+            name,
+            args.len(),
+            self.code_address
+        );
+
+        // Get the function's address
+        let func_id = self.builtin_functions.get(name).ok_or_else(|| {
+            CompilerError::CodeGenError(format!("Builtin function '{}' not found", name))
+        })?;
+
+        // Copy function address to avoid borrowing conflicts
+        let func_addr = *self.function_addresses.get(func_id).ok_or_else(|| {
+            CompilerError::CodeGenError(format!(
+                "Address not found for builtin function '{}'",
+                name
+            ))
+        })?;
+
+        // Convert arguments to operands
+        let mut arg_operands = Vec::new();
+        for &arg_id in args {
+            arg_operands.push(self.resolve_ir_id_to_operand(arg_id)?);
+        }
+
+        // Determine result storage
+        let store_var = if let Some(target_id) = target {
+            let result_var = self.allocate_global_for_ir_id(target_id);
+            self.ir_id_to_stack_var.insert(target_id, result_var);
+            Some(result_var)
+        } else {
+            None
+        };
+
+        // Emit call_vs instruction
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::OpVar(
+                crate::grue_compiler::opcodes::OpVar::CallVs,
+            ),
+            &{
+                let mut operands = vec![crate::grue_compiler::codegen::Operand::LargeConstant(
+                    (func_addr / 2) as u16,
+                )];
+                operands.extend(arg_operands);
+                operands
+            },
+            store_var,
+            None,
+        )?;
+
+        // Push result to stack for immediate consumption if target exists
+        if let Some(target_id) = target {
+            self.use_push_pull_for_result(target_id, &format!("{} builtin function call", name))?;
+        }
+
+        log::debug!(
+            "Called builtin function '{}', result stored, PC now 0x{:04x}",
+            name,
+            self.code_address
+        );
+
+        Ok(())
+    }
+
+    /// Create get_exit builtin function as a real Z-Machine function
+    ///
+    /// Signature: get_exit(room, direction) -> u16
+    ///
+    /// Algorithm:
+    /// 1. Get addresses of three parallel array properties: exit_directions, exit_types, exit_data
+    /// 2. Calculate num_exits from exit_directions property length (bytes / 2)
+    /// 3. Loop through exit_directions array comparing each direction with input parameter
+    /// 4. When match found at index N:
+    ///    - Load type byte from exit_types[N] (0=normal, 1=blocked)
+    ///    - Load data word from exit_data[N] (room_id or message_addr)
+    ///    - Pack result as: (type << 14) | data
+    /// 5. Return 0 if no match found
+    ///
+    /// Return value encoding:
+    /// - 0x0000: No exit found
+    /// - 0x0000-0x3FFF: Normal exit (type=0, data=room_id)
+    /// - 0x4000-0x7FFF: Blocked exit (type=1, data=message_addr)
+    ///
+    /// Local variables:
+    /// - 1: room (argument), 2: direction (argument)
+    /// - 3: directions_addr, 4: types_addr, 5: data_addr
+    /// - 6: index (loop counter), 7: num_exits, 8: type_byte/temp, 9: result
+    fn create_builtin_get_exit(&mut self) -> Result<(), CompilerError> {
+        log::debug!(
+            "🚪 GET_EXIT_CREATE: Starting creation at code_address 0x{:04x}",
+            self.code_address
+        );
+        log::debug!(
+            "🚪 GET_EXIT_CREATE: code_space range will be 0x{:04x}-0x{:04x}",
+            self.code_address,
+            self.code_address + 500
+        ); // Estimate ~500 bytes for function
+
+        let func_id: IrId = 1000000 + self.builtin_functions.len() as u32;
+
+        if self.code_address % 2 != 0 {
+            log::debug!(
+                "get_exit: Emitting padding byte at 0x{:04x}",
+                self.code_address
+            );
+            self.emit_byte(0xB4)?;
+        }
+
+        let func_addr = self.code_address;
+
+        // Need 9 locals for the complex loop logic
+        let num_locals = 9;
+        log::debug!(
+            "get_exit: Emitting function header (num_locals={}) at 0x{:04x}",
+            num_locals,
+            self.code_address
+        );
+        self.emit_byte(num_locals)?;
+        for _i in 0..num_locals {
+            self.emit_word(0)?;
+        }
+
+        // Get property numbers for parallel arrays
+        let exit_directions_prop = *self.property_numbers.get("exit_directions").unwrap_or(&20);
+        let exit_types_prop = *self.property_numbers.get("exit_types").unwrap_or(&21);
+        let exit_data_prop = *self.property_numbers.get("exit_data").unwrap_or(&22);
+
+        // Allocate labels for control flow
+        let not_found_label = self.next_string_id;
+        self.next_string_id += 1;
+        let found_label = self.next_string_id;
+        self.next_string_id += 1;
+        let loop_start_label = self.next_string_id;
+        self.next_string_id += 1;
+
+        // Step 1: Get address of exit_directions property -> local_3
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(
+                crate::grue_compiler::opcodes::Op2::GetPropAddr,
+            ),
+            &[
+                crate::grue_compiler::codegen::Operand::Variable(1), // room (local_1)
+                crate::grue_compiler::codegen::Operand::SmallConstant(exit_directions_prop),
+            ],
+            Some(3), // store in local_3 (directions_addr)
+            None,
+        )?;
+
+        // Step 2: Get address of exit_types property -> local_4
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(
+                crate::grue_compiler::opcodes::Op2::GetPropAddr,
+            ),
+            &[
+                crate::grue_compiler::codegen::Operand::Variable(1), // room (local_1)
+                crate::grue_compiler::codegen::Operand::SmallConstant(exit_types_prop),
+            ],
+            Some(4), // store in local_4 (types_addr)
+            None,
+        )?;
+
+        // Step 3: Get address of exit_data property -> local_5
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(
+                crate::grue_compiler::opcodes::Op2::GetPropAddr,
+            ),
+            &[
+                crate::grue_compiler::codegen::Operand::Variable(1), // room (local_1)
+                crate::grue_compiler::codegen::Operand::SmallConstant(exit_data_prop),
+            ],
+            Some(5), // store in local_5 (data_addr)
+            None,
+        )?;
+
+        // Step 4: Calculate num_exits = directions_length / 2 -> local_7
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op1(
+                crate::grue_compiler::opcodes::Op1::GetPropLen,
+            ),
+            &[crate::grue_compiler::codegen::Operand::Variable(3)], // directions_addr (local_3)
+            Some(8),                                                // temp storage in local_8
+            None,
+        )?;
+
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Div),
+            &[
+                crate::grue_compiler::codegen::Operand::Variable(8), // temp result
+                crate::grue_compiler::codegen::Operand::SmallConstant(2),
+            ],
+            Some(7), // store in local_7 (num_exits)
+            None,
+        )?;
+
+        // Step 5: Initialize index = 0 -> local_6
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Or),
+            &[
+                crate::grue_compiler::codegen::Operand::SmallConstant(0),
+                crate::grue_compiler::codegen::Operand::SmallConstant(0),
+            ],
+            Some(6), // store in local_6 (index)
+            None,
+        )?;
+
+        // Step 6: Loop start label
+        self.label_addresses
+            .insert(loop_start_label, self.code_address);
+        self.record_final_address(loop_start_label, self.code_address);
+
+        // Step 7: Check if index >= num_exits, if so jump to not_found
+        // Since there's no Jge, use inverted Jl (if NOT index < num_exits, then jump)
+        let layout = self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Jl),
+            &[
+                crate::grue_compiler::codegen::Operand::Variable(6), // index (local_6)
+                crate::grue_compiler::codegen::Operand::Variable(7), // num_exits (local_7)
+            ],
+            None,
+            Some(0x7FFF), // Placeholder for branch-on-FALSE (when index >= num_exits)
+        )?;
+
+        // Create unresolved reference for branch target
+        if let Some(branch_location) = layout.branch_location {
+            self.reference_context.unresolved_refs.push(
+                crate::grue_compiler::codegen::UnresolvedReference {
+                    reference_type: crate::grue_compiler::codegen::LegacyReferenceType::Branch,
+                    location: branch_location,
+                    target_id: not_found_label,
+                    is_packed_address: false,
+                    offset_size: 2, // 2-byte branch offset
+                    location_space: crate::grue_compiler::codegen::MemorySpace::Code,
+                },
+            );
+        }
+
+        // Step 8: Read direction word from directions[index] -> local_8
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Mul),
+            &[
+                crate::grue_compiler::codegen::Operand::Variable(6), // index
+                crate::grue_compiler::codegen::Operand::SmallConstant(2),
+            ],
+            Some(8), // temp storage
+            None,
+        )?;
+
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Add),
+            &[
+                crate::grue_compiler::codegen::Operand::Variable(3), // directions_addr
+                crate::grue_compiler::codegen::Operand::Variable(8), // offset
+            ],
+            Some(8), // temp storage
+            None,
+        )?;
+
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op1(crate::grue_compiler::opcodes::Op1::Load),
+            &[crate::grue_compiler::codegen::Operand::Variable(8)], // address
+            Some(8), // store current direction in local_8
+            None,
+        )?;
+
+        // Step 9: Compare current direction with input direction
+        let layout = self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Je),
+            &[
+                crate::grue_compiler::codegen::Operand::Variable(8), // current direction
+                crate::grue_compiler::codegen::Operand::Variable(2), // input direction (local_2)
+            ],
+            None,
+            Some(-1), // Placeholder for branch-on-TRUE (when directions match)
+        )?;
+
+        // Create unresolved reference for branch target
+        if let Some(branch_location) = layout.branch_location {
+            self.reference_context.unresolved_refs.push(
+                crate::grue_compiler::codegen::UnresolvedReference {
+                    reference_type: crate::grue_compiler::codegen::LegacyReferenceType::Branch,
+                    location: branch_location,
+                    target_id: found_label,
+                    is_packed_address: false,
+                    offset_size: 2, // 2-byte branch offset
+                    location_space: crate::grue_compiler::codegen::MemorySpace::Code,
+                },
+            );
+        }
+
+        // Step 10: Increment index and continue loop
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Add),
+            &[
+                crate::grue_compiler::codegen::Operand::Variable(6), // index
+                crate::grue_compiler::codegen::Operand::SmallConstant(1),
+            ],
+            Some(6), // store back in local_6
+            None,
+        )?;
+
+        self.translate_jump(loop_start_label)?;
+
+        // Step 11: Found label - pack result
+        self.label_addresses.insert(found_label, self.code_address);
+        self.record_final_address(found_label, self.code_address);
+
+        // Get type byte from types[index]
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Add),
+            &[
+                crate::grue_compiler::codegen::Operand::Variable(4), // types_addr
+                crate::grue_compiler::codegen::Operand::Variable(6), // index
+            ],
+            Some(8), // temp storage
+            None,
+        )?;
+
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op1(crate::grue_compiler::opcodes::Op1::Load),
+            &[crate::grue_compiler::codegen::Operand::Variable(8)], // address
+            Some(8),                                                // store type byte in local_8
+            None,
+        )?;
+
+        // Get data word from data[index]
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Mul),
+            &[
+                crate::grue_compiler::codegen::Operand::Variable(6), // index
+                crate::grue_compiler::codegen::Operand::SmallConstant(2),
+            ],
+            Some(9), // temp storage
+            None,
+        )?;
+
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Add),
+            &[
+                crate::grue_compiler::codegen::Operand::Variable(5), // data_addr
+                crate::grue_compiler::codegen::Operand::Variable(9), // offset
+            ],
+            Some(9), // temp storage
+            None,
+        )?;
+
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op1(crate::grue_compiler::opcodes::Op1::Load),
+            &[crate::grue_compiler::codegen::Operand::Variable(9)], // address
+            Some(9), // store data in local_9 (result)
+            None,
+        )?;
+
+        // Pack result: (type << 14) | data
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Mul),
+            &[
+                crate::grue_compiler::codegen::Operand::Variable(8), // type byte
+                crate::grue_compiler::codegen::Operand::LargeConstant(0x4000), // shift left 14 bits
+            ],
+            Some(8), // temp storage
+            None,
+        )?;
+
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Or),
+            &[
+                crate::grue_compiler::codegen::Operand::Variable(8), // shifted type
+                crate::grue_compiler::codegen::Operand::Variable(9), // data
+            ],
+            Some(9), // store final result in local_9
+            None,
+        )?;
+
+        // Return result
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op1(crate::grue_compiler::opcodes::Op1::Ret),
+            &[crate::grue_compiler::codegen::Operand::Variable(9)], // return local_9 (result)
+            None,
+            None,
+        )?;
+
+        // Step 12: Not found label - return 0
+        self.label_addresses
+            .insert(not_found_label, self.code_address);
+        self.record_final_address(not_found_label, self.code_address);
+
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op1(crate::grue_compiler::opcodes::Op1::Ret),
+            &[crate::grue_compiler::codegen::Operand::SmallConstant(0)], // return 0 (not found)
+            None,
+            None,
+        )?;
+
+        self.builtin_functions
+            .insert("get_exit".to_string(), func_id);
+        self.function_addresses.insert(func_id, func_addr);
+        self.record_final_address(func_id, func_addr);
+
+        log::debug!(
+            "Created get_exit at address 0x{:04x} (packed: 0x{:04x})",
+            func_addr,
+            func_addr / 2
+        );
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

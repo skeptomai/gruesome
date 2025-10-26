@@ -204,7 +204,7 @@ impl ZMachineCodeGen {
 
                     let placeholder_string = format!("?Complex expression IR ID {}?", arg_id);
                     let string_id = self.find_or_create_string_id(&placeholder_string)?;
-                    log::error!(
+                    log::debug!(
                         "🔧 COMPLEX_EXPRESSION_PATH: IR ID {} -> placeholder string '{}'",
                         arg_id,
                         placeholder_string
@@ -847,7 +847,7 @@ impl ZMachineCodeGen {
         args: &[IrId],
         target: Option<u32>,
     ) -> Result<(), CompilerError> {
-        log::error!(
+        log::debug!(
             "🚪 VALUE_IS_NONE: Generating at PC 0x{:04x}",
             self.code_address
         );
@@ -933,7 +933,7 @@ impl ZMachineCodeGen {
         args: &[IrId],
         target: Option<u32>,
     ) -> Result<(), CompilerError> {
-        log::error!(
+        log::debug!(
             "🚪 EXIT_IS_BLOCKED: Generating at PC 0x{:04x}",
             self.code_address
         );
@@ -1036,7 +1036,7 @@ impl ZMachineCodeGen {
         args: &[IrId],
         target: Option<u32>,
     ) -> Result<(), CompilerError> {
-        log::error!(
+        log::debug!(
             "🚪 EXIT_GET_DATA: Generating at PC 0x{:04x}",
             self.code_address
         );
@@ -1050,7 +1050,7 @@ impl ZMachineCodeGen {
         let exit_value_id = args[0];
         let exit_value_operand = self.resolve_ir_id_to_operand(exit_value_id)?;
 
-        log::error!(
+        log::debug!(
             "🚪 EXIT_GET_DATA: exit_value_id={}, operand={:?}",
             exit_value_id,
             exit_value_operand
@@ -1063,7 +1063,7 @@ impl ZMachineCodeGen {
             let result_var = self.allocate_global_for_ir_id(target_ir_id);
             self.ir_id_to_stack_var.insert(target_ir_id, result_var);
 
-            log::error!(
+            log::debug!(
                 "🚪 EXIT_GET_DATA: target_ir_id={}, result_var={}",
                 target_ir_id,
                 result_var
@@ -1182,13 +1182,13 @@ impl ZMachineCodeGen {
         let exit_types_prop = *self.property_numbers.get("exit_types").unwrap_or(&21);
         let exit_data_prop = *self.property_numbers.get("exit_data").unwrap_or(&22);
 
-        log::error!(
+        log::debug!(
             "🔍 get_exit: Using property numbers: directions={}, types={}, data={}",
             exit_directions_prop,
             exit_types_prop,
             exit_data_prop
         );
-        log::error!(
+        log::debug!(
             "🔍 GET_EXIT: About to generate get_property_addr for directions at PC 0x{:04x}",
             self.code_address
         );
@@ -1222,7 +1222,7 @@ impl ZMachineCodeGen {
             Some(directions_addr_var),
             None,
         )?;
-        log::error!(
+        log::debug!(
             "🔍 GET_EXIT: Generated get_property_addr, now at PC 0x{:04x}",
             self.code_address
         );
@@ -1231,7 +1231,7 @@ impl ZMachineCodeGen {
         // CRITICAL: Use negative placeholder (-1) to encode "branch on true"
         // Bit 15 of placeholder encodes branch sense: 1=true, 0=false
         // 0x7FFF has bit 15=0 (branch on false), -1 (0xFFFF) has bit 15=1 (branch on true)
-        log::error!(
+        log::debug!(
             "🔍 GET_EXIT: About to emit je branch at PC 0x{:04x}",
             self.code_address
         );
@@ -1244,7 +1244,7 @@ impl ZMachineCodeGen {
             None,
             Some(-1), // Negative = branch on true
         )?;
-        log::error!(
+        log::debug!(
             "🔍 GET_EXIT: Emitted je branch, now at PC 0x{:04x}",
             self.code_address
         );
@@ -1261,7 +1261,7 @@ impl ZMachineCodeGen {
                 offset_size: 2,
                 location_space: MemorySpace::Code,
             });
-        log::error!(
+        log::debug!(
             "🔍 GET_EXIT: About to emit get_property_addr for types at PC 0x{:04x}",
             self.code_address
         );
@@ -1514,6 +1514,30 @@ impl ZMachineCodeGen {
         self.label_addresses.insert(end_label, self.code_address);
         self.record_final_address(end_label, self.code_address);
 
+        // CRITICAL FIX: Add return instruction for standalone function calls
+        // When this builtin is called as a real Z-Machine function (not inline),
+        // it must return its result via 'ret' instruction to maintain stack discipline
+        if let Some(var) = result_var {
+            log::debug!(
+                "🔍 GET_EXIT: Returning result from variable {} via ret instruction",
+                var
+            );
+            self.emit_instruction_typed(
+                crate::grue_compiler::opcodes::Opcode::Op1(crate::grue_compiler::opcodes::Op1::Ret),
+                &[crate::grue_compiler::codegen::Operand::Variable(var)],
+                None, // ret doesn't use store_var
+                None,
+            )?;
+        } else {
+            log::debug!("🔍 GET_EXIT: No return variable - returning 0 via ret instruction");
+            self.emit_instruction_typed(
+                crate::grue_compiler::opcodes::Opcode::Op1(crate::grue_compiler::opcodes::Op1::Ret),
+                &[crate::grue_compiler::codegen::Operand::SmallConstant(0)],
+                None, // ret doesn't use store_var
+                None,
+            )?;
+        }
+
         Ok(())
     }
 
@@ -1563,7 +1587,7 @@ impl ZMachineCodeGen {
             self.use_push_pull_for_result(store_var, "get_object_size builtin")?;
         }
 
-        log::error!(
+        log::debug!(
             "🔍 GET_EXIT: Function completed successfully, final PC 0x{:04x}",
             self.code_address
         );
