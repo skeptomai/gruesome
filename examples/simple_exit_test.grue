@@ -3,7 +3,7 @@ world {
     room start_room "Test Room" {
         desc: "A simple test room."
 
-        // One exit going north to another room
+        // Original format - let's see if the issue is elsewhere
         exits: {
             north: end_room
         }

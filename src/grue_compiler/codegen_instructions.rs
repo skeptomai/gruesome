@@ -1806,6 +1806,12 @@ impl ZMachineCodeGen {
         // - Op2::And (0x09) vs OpVar::Pull (0x09)
         // We must respect the enum variant to choose the correct form
         use super::opcodes::Opcode;
+
+        // DEBUG: Log ALL AND instructions
+        if let Opcode::Op2(Op2::And) = opcode {
+            log::error!("🔍 AND_EMIT: Emitting Op2(And) at 0x{:04x} with operands={:?}", self.code_address, operands);
+        }
+
         let form = match opcode {
             Opcode::Op0(_) => InstructionForm::Short, // 0OP form
             Opcode::Op1(_) => InstructionForm::Short, // 1OP form
@@ -1819,9 +1825,17 @@ impl ZMachineCodeGen {
                     if can_use_long {
                         InstructionForm::Long
                     } else {
+                        // DEBUG: Log when 2OP AND uses VAR form due to large constants
+                        if let Opcode::Op2(Op2::And) = opcode {
+                            log::error!("🚨 AND_VAR_FORM: Op2(And) using VAR form due to large constants! operands={:?}", operands);
+                        }
                         InstructionForm::Variable
                     }
                 } else {
+                    // DEBUG: Log when 2OP falls back to VAR form due to wrong operand count
+                    if let Opcode::Op2(Op2::And) = opcode {
+                        log::error!("🚨 AND_FALLBACK: Op2(And) with {} operands falling back to VAR form! operands={:?}", operands.len(), operands);
+                    }
                     InstructionForm::Variable // Fallback to VAR for unusual cases
                 }
             }
@@ -2258,7 +2272,9 @@ impl ZMachineCodeGen {
             (0x06, _) => Ok(InstructionForm::Variable), // print_num is always VAR
             (0x07, _) => Ok(InstructionForm::Variable), // random is always VAR
             (0x08, _) => Ok(InstructionForm::Variable), // push (VAR:0x08) is always VAR - conflicts with 1OP:call_1s
-            (0x09, _) => Ok(InstructionForm::Variable), // pull (VAR:0x09) is always VAR - conflicts with 2OP:and
+            // CRITICAL OPCODE 0x09 CONFLICT FIX: Op2(And) vs Var(Pull)
+            // REMOVED: (0x09, _) => Ok(InstructionForm::Variable) - This forced both And and Pull to VAR form
+            // Now Op2(And) can use proper 2OP encoding while Var(Pull) uses emit_instruction_typed
             (0x20, _) => Ok(InstructionForm::Variable), // call_1n is always VAR
             (0x8b, _) => Ok(InstructionForm::Variable), // quit (0OP:139) - too large for short form
             (0x8f, _) => Ok(InstructionForm::Variable), // call_1n (1OP:143) - too large for short form
