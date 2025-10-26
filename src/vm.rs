@@ -134,7 +134,7 @@ impl VM {
 
         // Optional stack tracing (enable with TRACE_STACK=1)
         if std::env::var("TRACE_STACK").is_ok() {
-            log::error!(
+            log::debug!(
                 "📥 PUSH: value=0x{:04x} ({}), PC=0x{:04x}, depth={}",
                 value,
                 value,
@@ -150,7 +150,7 @@ impl VM {
             } else {
                 "unknown".to_string()
             };
-            log::error!(
+            log::debug!(
                 "📥 PUSH_INTERESTING: value=0x{:04x} ({}), executing_inst_pc=0x{:04x}, depth={}, inst: {}",
                 value, value, self.current_instruction_pc.unwrap_or(self.pc), self.stack.len(), executing_inst
             );
@@ -163,17 +163,17 @@ impl VM {
     /// Pop a value from the evaluation stack
     pub fn pop(&mut self) -> Result<u16, String> {
         if self.stack.is_empty() {
-            log::error!(
+            log::debug!(
                 " STACK UNDERFLOW: Attempted to pop from empty stack at PC 0x{:04x}",
                 self.pc
             );
-            log::error!(
+            log::debug!(
                 " Stack state: depth={}, call_stack_depth={}",
                 self.stack.len(),
                 self.call_stack.len()
             );
             if let Some(frame) = self.call_stack.last() {
-                log::error!(
+                log::debug!(
                     " Current routine: return_PC={:04x}, locals={}",
                     frame.return_pc,
                     frame.locals.len()
@@ -181,7 +181,7 @@ impl VM {
             }
 
             // Add bytecode analysis at underflow point
-            log::error!(
+            log::debug!(
                 " Bytecode at PC 0x{:04x}: {:02x} {:02x} {:02x} {:02x} {:02x}",
                 self.pc,
                 self.game.memory.get(self.pc as usize).unwrap_or(&0xff),
@@ -204,9 +204,9 @@ impl VM {
             );
 
             // Add stack trace to see what's calling pop()
-            log::error!(" STACK UNDERFLOW BACKTRACE:");
+            log::debug!(" STACK UNDERFLOW BACKTRACE:");
             let backtrace = std::backtrace::Backtrace::capture();
-            log::error!("{}", backtrace);
+            log::debug!("{}", backtrace);
 
             return Err("Stack underflow".to_string());
         }
@@ -215,7 +215,7 @@ impl VM {
 
         // Optional stack tracing (enable with TRACE_STACK=1)
         if std::env::var("TRACE_STACK").is_ok() {
-            log::error!(
+            log::debug!(
                 "📤 POP: value=0x{:04x} ({}), PC=0x{:04x}, depth={}",
                 value,
                 value,
@@ -226,7 +226,7 @@ impl VM {
 
         // Also log specific interesting values (including 3 which becomes 0xC000)
         if value == 0xC000 || value == 0x0300 || value == 0xC300 || value == 3 {
-            log::error!(
+            log::debug!(
                 "📤 POP_INTERESTING: value=0x{:04x} ({}), PC=0x{:04x}, depth={}",
                 value,
                 value,
@@ -241,17 +241,17 @@ impl VM {
     /// Peek at the top of the stack without removing it
     pub fn peek(&self) -> Result<u16, String> {
         if self.stack.is_empty() {
-            log::error!(
+            log::debug!(
                 "STACK UNDERFLOW: Stack peek attempted on empty stack. PC: 0x{:04x}",
                 self.pc
             );
-            log::error!(" Call stack depth: {}", self.call_stack.len());
-            log::error!(" Last few instructions executed would help debug this...");
+            log::debug!(" Call stack depth: {}", self.call_stack.len());
+            log::debug!(" Last few instructions executed would help debug this...");
 
             // Try to decode the current instruction to understand what caused this
             if self.pc < self.game.memory.len() as u32 {
                 let opcode = self.game.memory[self.pc as usize];
-                log::error!(
+                log::debug!(
                     " Current instruction opcode: 0x{:02x} at PC 0x{:04x}",
                     opcode,
                     self.pc
@@ -302,21 +302,21 @@ impl VM {
     pub fn write_word(&mut self, addr: u32, value: u16) -> Result<(), String> {
         // Track writes to score/moves globals at 0x42 (score) and 0x44 (moves)
         if addr == 0x42 {
-            log::error!(
+            log::debug!(
                 "🚨 SCORE CORRUPTION: Writing 0x{:04x} ({}) to addr 0x{:04x} at PC=0x{:04x}",
                 value,
                 value,
                 addr,
                 self.pc
             );
-            log::error!(
+            log::debug!(
                 "   Stack depth: {}, top 5 values: {:?}",
                 self.stack.len(),
                 self.stack.iter().rev().take(5).collect::<Vec<_>>()
             );
-            log::error!("   Call stack depth: {}", self.call_stack.len());
+            log::debug!("   Call stack depth: {}", self.call_stack.len());
             if let Some(frame) = self.call_stack.last() {
-                log::error!(
+                log::debug!(
                     "   Current function: PC start=0x{:04x}, locals: {:?}",
                     frame.return_pc,
                     &frame.locals[0..frame.num_locals as usize]
@@ -367,7 +367,7 @@ impl VM {
         // Debug logging for critical globals
         // Track writes to score (global 17 = var 0x11) and moves (global 18 = var 0x12)
         if var == 0x11 || var == 0x12 {
-            log::error!(
+            log::debug!(
                 "🚨 SCORE/MOVES WRITE_GLOBAL: var=0x{:02x} (G{:02}), addr=0x{:04x}, value=0x{:04x} ({}), PC=0x{:04x}",
                 var,
                 var - 0x10,
@@ -429,7 +429,7 @@ impl VM {
         // Log reads of variables used in exit corruption chain
         if var == 236 || var == 237 || var == 239 {
             if let Ok(val) = result {
-                log::error!(
+                log::debug!(
                     "🔍 READ_VAR_{}: value=0x{:04x} ({}), PC=0x{:04x}",
                     var,
                     val,
@@ -458,7 +458,7 @@ impl VM {
     pub fn write_variable(&mut self, var: u8, value: u16) -> Result<(), String> {
         // Track writes to score (variable 17 = 0x11 = global G01)
         if var == 0x11 {
-            log::error!(
+            log::debug!(
                 "🚨 SCORE WRITE: var=0x{:02x} (G01/score), value=0x{:04x} ({}), PC=0x{:04x}",
                 var,
                 value,
@@ -478,7 +478,7 @@ impl VM {
             };
             // Show call stack depth to distinguish frames
             let stack_depth = self.call_stack.len();
-            log::error!(
+            log::debug!(
                 "🔍 WRITE_VAR_2: value=0x{:04x} ({}), PC=0x{:04x}, frame_depth={}, inst_bytes={:02x?}",
                 value,
                 value,
@@ -488,9 +488,9 @@ impl VM {
             );
 
             // Dump entire call stack with return addresses to "weave together" execution flow
-            log::error!("🔍 CALL_STACK (depth={}):", self.call_stack.len());
+            log::debug!("🔍 CALL_STACK (depth={}):", self.call_stack.len());
             for (i, frame) in self.call_stack.iter().enumerate() {
-                log::error!(
+                log::debug!(
                     "  Frame[{}]: return_pc=0x{:04x}, num_locals={}, stack_base={}, return_store={:?}",
                     i,
                     frame.return_pc,
@@ -504,7 +504,7 @@ impl VM {
             if self.pc >= 10 && (self.pc as usize) < self.game.memory.len() {
                 let start = (self.pc as usize) - 10;
                 let end = ((self.pc as usize) + 10).min(self.game.memory.len());
-                log::error!(
+                log::debug!(
                     "🔍 MEMORY_CONTEXT (PC-10 to PC+10): {:02x?}",
                     &self.game.memory[start..end]
                 );
@@ -515,7 +515,7 @@ impl VM {
             // Decode the instruction at current PC
             let inst_str = self.format_instruction_at(self.pc);
 
-            log::error!(
+            log::debug!(
                 "🔍 WRITE_VAR_216: value=0x{:04x} ({}), PC=0x{:04x}, frame_depth={}, next_inst: {}",
                 value,
                 value,
@@ -526,7 +526,7 @@ impl VM {
         }
         // Log writes to Variables 236 and 239 (used in loadb that reads value 3 from address 0)
         if var == 236 || var == 239 {
-            log::error!(
+            log::debug!(
                 "🔍 WRITE_VAR_{}: value=0x{:04x} ({}), PC=0x{:04x}",
                 var,
                 value,
@@ -588,7 +588,7 @@ impl VM {
             65535
         };
         if obj_num > max_objects {
-            log::error!(
+            log::debug!(
                 "Object validation error at PC 0x{:04x}: invalid object {} exceeds maximum {}",
                 self.pc,
                 obj_num,
@@ -680,7 +680,7 @@ impl VM {
             65535
         };
         if obj_num > max_objects {
-            log::error!(
+            log::debug!(
                 "Object validation error at PC 0x{:04x}: invalid object {} exceeds maximum {}",
                 self.pc,
                 obj_num,
@@ -717,7 +717,7 @@ impl VM {
             if size_byte == 0 {
                 // Log when we hit terminator while searching for properties 20-22
                 if prop_num >= 20 && prop_num <= 22 {
-                    log::error!("🔍 get_property_addr: obj={}, prop={} -> NOT FOUND (hit terminator at addr=0x{:04x})",
+                    log::debug!("🔍 get_property_addr: obj={}, prop={} -> NOT FOUND (hit terminator at addr=0x{:04x})",
                         obj_num, prop_num, prop_addr);
                 }
                 return Ok(0); // Property not found
@@ -727,7 +727,7 @@ impl VM {
 
             // Log each property we encounter when searching for properties 20-22
             if prop_num >= 20 && prop_num <= 22 {
-                log::error!("🔍 PROP_SEARCH: obj={}, looking_for={}, found_prop={} at addr=0x{:04x}, size_byte=0x{:02x}, prop_size={}, size_bytes={}",
+                log::debug!("🔍 PROP_SEARCH: obj={}, looking_for={}, found_prop={} at addr=0x{:04x}, size_byte=0x{:02x}, prop_size={}, size_bytes={}",
                     obj_num, prop_num, prop_id, prop_addr, size_byte, prop_size, size_bytes);
             }
 
@@ -735,7 +735,7 @@ impl VM {
                 // Found the property - return address of data
                 let data_addr = prop_addr + size_bytes;
                 if prop_num >= 20 && prop_num <= 22 {
-                    log::error!(
+                    log::debug!(
                         "🔍 get_property_addr: obj={}, prop={} -> addr=0x{:04x}, size={}",
                         obj_num,
                         prop_num,
@@ -761,7 +761,7 @@ impl VM {
             65535
         };
         if obj_num == 0 || obj_num > max_objects {
-            log::error!(
+            log::debug!(
                 "Object validation error at PC 0x{:04x}: invalid object {} (zero or exceeds maximum {})",
                 self.pc,
                 obj_num,
@@ -849,7 +849,7 @@ impl VM {
             65535
         };
         if obj_num > max_objects {
-            log::error!(
+            log::debug!(
                 "Object validation error at PC 0x{:04x}: invalid object {} exceeds maximum {}",
                 self.pc,
                 obj_num,
@@ -1023,7 +1023,7 @@ impl VM {
             65535
         };
         if obj_num == 0 || obj_num > max_objects {
-            log::error!(
+            log::debug!(
                 "Object validation error at PC 0x{:04x}: invalid object {} (zero or exceeds maximum {})",
                 self.pc,
                 obj_num,
@@ -1214,7 +1214,7 @@ impl VM {
             65535
         };
         if obj_num > max_objects {
-            log::error!(
+            log::debug!(
                 "Object validation error at PC 0x{:04x}: invalid object {} exceeds maximum {}",
                 self.pc,
                 obj_num,
@@ -1265,7 +1265,7 @@ impl VM {
 
         // Bounds check BEFORE accessing memory
         if prop_table_addr >= self.game.memory.len() {
-            log::error!(
+            log::debug!(
                 " BOUNDS ERROR: prop_table_addr 0x{:04x} >= file size {}",
                 prop_table_addr,
                 self.game.memory.len()

@@ -1,0 +1,47 @@
+// Simple test: one room, one exit
+world {
+    room start_room "Test Room" {
+        desc: "A simple test room."
+
+        // One exit going north to another room
+        exits: {
+            north: end_room
+        }
+    }
+
+    room end_room "End Room" {
+        desc: "The destination room."
+    }
+
+}
+
+// Simple movement handler
+fn handle_go(direction) {
+    let exit = player.location.get_exit(direction);
+
+    if exit.none() {
+        print("You can't go that way.");
+        return;
+    }
+
+    move(player, exit.destination);
+    print("You moved.");
+}
+
+fn look_around() {
+    print(player.location.desc);
+}
+
+grammar {
+    verb "north" {
+        default => handle_go("north")
+    }
+
+    verb "look" {
+        default => look_around()
+    }
+}
+
+init {
+    player.location = start_room;
+}

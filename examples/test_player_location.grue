@@ -1,0 +1,21 @@
+// Test just player.location access
+world {
+    room start_room "Test Room" {
+        desc: "A simple test room."
+    }
+}
+
+fn test_location() {
+    let current_room = player.location;
+    print("Player location accessed successfully!");
+}
+
+grammar {
+    verb "test" {
+        default => test_location()
+    }
+}
+
+init {
+    player.location = start_room;
+}
