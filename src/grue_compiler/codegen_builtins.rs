@@ -831,7 +831,7 @@ impl ZMachineCodeGen {
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
                 &[Operand::LargeConstant(0), Operand::SmallConstant(0)], // 0 | 0 = 0 (false)
-                Some(0), // Store to stack
+                Some(0),                                                 // Store to stack
                 None,
             )?;
             self.use_push_pull_for_result(target_id, "object_is_empty builtin")?;
@@ -1164,8 +1164,8 @@ impl ZMachineCodeGen {
         // locals would require updating function header, which is already written.
         // Globals (variables 16+) are distinct from function locals (1-15).
 
-        log::warn!("🔍 GET_EXIT: Runtime direction lookup using parallel arrays + globals");
-        log::warn!(
+        log::debug!("🔍 GET_EXIT: Runtime direction lookup using parallel arrays + globals");
+        log::debug!(
             "🔍 GET_EXIT: room_id={}, direction_id={}, target={:?}",
             room_id,
             direction_id,
@@ -1173,9 +1173,9 @@ impl ZMachineCodeGen {
         );
 
         let room_operand = self.resolve_ir_id_to_operand(room_id)?;
-        log::warn!("🔍 GET_EXIT: room_operand={:?}", room_operand);
+        log::debug!("🔍 GET_EXIT: room_operand={:?}", room_operand);
         let direction_operand = self.resolve_ir_id_to_operand(direction_id)?;
-        log::warn!("🔍 GET_EXIT: direction_operand={:?}", direction_operand);
+        log::debug!("🔍 GET_EXIT: direction_operand={:?}", direction_operand);
 
         // Get property numbers for parallel arrays
         let exit_directions_prop = *self.property_numbers.get("exit_directions").unwrap_or(&20);

@@ -46,14 +46,25 @@ impl Interpreter {
             // 1OP:0x03 - get_parent
             (0x03, crate::instruction::OperandCount::OP1) => {
                 // get_parent
-                debug!(
-                    "get_parent: obj_num={} at PC {:05x}",
+                log::debug!(
+                    "🏃 RUNTIME get_parent: obj_num={} at PC {:05x}",
                     operands[0],
                     self.vm.pc - inst.size as u32
                 );
                 let parent = self.vm.get_parent(operands[0])?;
+                log::debug!(
+                    "🏃 RUNTIME get_parent: obj_num={} -> parent={}, store_var={:?}",
+                    operands[0],
+                    parent,
+                    inst.store_var
+                );
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, parent)?;
+                    log::debug!(
+                        "🏃 RUNTIME get_parent: Stored parent={} to variable {}",
+                        parent,
+                        store_var
+                    );
                 }
                 Ok(ExecutionResult::Continue)
             }

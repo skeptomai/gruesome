@@ -4717,20 +4717,23 @@ impl ZMachineCodeGen {
 
         // PHASE 2 (Oct 12, 2025): Check initial_locations_by_number for compile-time parent setting
         // If this object had .location = X in init block, use that as parent
-        let parent = if let Some(&parent_num) = self.initial_locations_by_number.get(&(obj_num as u16)) {
-            log::warn!(
-                "🏗️ INITIAL_LOCATION_SET: Object {} ('{}') parent set to {} at compile time",
-                obj_num, object.short_name, parent_num
-            );
-            parent_num as u8
-        } else {
-            // No initial location - use default from IR (typically 0)
-            object
-                .parent
-                .and_then(|id| object_id_to_number.get(&id))
-                .copied()
-                .unwrap_or(0)
-        };
+        let parent =
+            if let Some(&parent_num) = self.initial_locations_by_number.get(&(obj_num as u16)) {
+                log::warn!(
+                    "🏗️ INITIAL_LOCATION_SET: Object {} ('{}') parent set to {} at compile time",
+                    obj_num,
+                    object.short_name,
+                    parent_num
+                );
+                parent_num as u8
+            } else {
+                // No initial location - use default from IR (typically 0)
+                object
+                    .parent
+                    .and_then(|id| object_id_to_number.get(&id))
+                    .copied()
+                    .unwrap_or(0)
+            };
 
         let sibling = object
             .sibling
@@ -4751,7 +4754,11 @@ impl ZMachineCodeGen {
         // When object A has parent B set at compile time, we need to:
         // 1. Make A the first child of B (or add to sibling chain if B already has children)
         // This mirrors what insert_obj does at runtime
-        if parent != 0 && self.initial_locations_by_number.contains_key(&(obj_num as u16)) {
+        if parent != 0
+            && self
+                .initial_locations_by_number
+                .contains_key(&(obj_num as u16))
+        {
             let parent_offset = defaults_size + ((parent - 1) as usize) * obj_entry_size;
 
             // Read parent's current child pointer
@@ -4762,7 +4769,8 @@ impl ZMachineCodeGen {
                 self.write_to_object_space(parent_offset + 6, obj_num)?;
                 log::warn!(
                     "🏗️ TREE_UPDATE: Parent {} child pointer set to {} (was 0)",
-                    parent, obj_num
+                    parent,
+                    obj_num
                 );
             } else {
                 // Parent already has a child - insert this object at the beginning of sibling chain
@@ -7844,7 +7852,9 @@ impl ZMachineCodeGen {
             self.ir_id_to_object_number.insert(player.id, object_num);
             log::warn!(
                 "🗺️ OBJ_MAPPING: Player '{}' (IR ID {}) -> Object #{}",
-                player.name, player.id, object_num
+                player.name,
+                player.id,
+                object_num
             );
             object_num += 1;
         }
@@ -7854,7 +7864,9 @@ impl ZMachineCodeGen {
             self.ir_id_to_object_number.insert(room.id, object_num);
             log::warn!(
                 "🗺️ OBJ_MAPPING: Room '{}' (IR ID {}) -> Object #{}",
-                room.name, room.id, object_num
+                room.name,
+                room.id,
+                object_num
             );
             object_num += 1;
         }
@@ -7864,7 +7876,9 @@ impl ZMachineCodeGen {
             self.ir_id_to_object_number.insert(object.id, object_num);
             log::warn!(
                 "🗺️ OBJ_MAPPING: Object '{}' (IR ID {}) -> Object #{}",
-                object.name, object.id, object_num
+                object.name,
+                object.id,
+                object_num
             );
             object_num += 1;
         }
@@ -8526,7 +8540,11 @@ impl ZMachineCodeGen {
 
     /// Resolve IR ID to operand with automatic pull instruction for push-marked values
     /// Phase C1.1: This combines pull emission and operand resolution
-    pub fn resolve_ir_id_with_pull(&mut self, ir_id: IrId, context: &str) -> Result<Operand, CompilerError> {
+    pub fn resolve_ir_id_with_pull(
+        &mut self,
+        ir_id: IrId,
+        context: &str,
+    ) -> Result<Operand, CompilerError> {
         // Emit pull instruction if this IR ID was previously pushed
         self.emit_pull_for_ir_id(ir_id, context)?;
 
@@ -8607,7 +8625,11 @@ impl ZMachineCodeGen {
 
             // Phase C2: Convert binary operations to use push/pull stack discipline
             self.use_push_pull_for_result(target, "binary operation")?;
-            log::debug!("BinaryOp ({:?}) result: IR ID {} -> push/pull stack", op, target);
+            log::debug!(
+                "BinaryOp ({:?}) result: IR ID {} -> push/pull stack",
+                op,
+                target
+            );
         }
 
         Ok(())

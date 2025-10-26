@@ -454,7 +454,7 @@ pub enum StandardProperty {
     Size = 10,       // Object size
     Article = 11,    // Article to use with object
     Adjective = 12,  // Adjectives for parsing
-    // Location removed - now uses object tree parent only (Oct 12, 2025)
+                     // Location removed - now uses object tree parent only (Oct 12, 2025)
 }
 
 /// Exit target in IR

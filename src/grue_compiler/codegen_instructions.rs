@@ -337,7 +337,6 @@ impl ZMachineCodeGen {
             //         log::debug!("CallIndirect result: IR ID {} -> push/pull stack", target_id);
             //     }
             // }
-
             IrInstruction::Return { value } => {
                 if let Some(ir_value) = value {
                     // Return with value - use ret opcode with operand
@@ -1112,6 +1111,13 @@ impl ZMachineCodeGen {
                 // BUG FIX (Oct 11, 2025): player.location must read parent from object tree
                 // because move() uses insert_obj which updates the tree, not properties
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
+                log::debug!(
+                    "🏃 DEBUG GetObjectParent: object={}, obj_operand={:?}, target={}, PC=0x{:04x}",
+                    object,
+                    obj_operand,
+                    target,
+                    self.code_address
+                );
 
                 // Emit get_parent instruction (1OP:3)
                 self.emit_instruction_typed(
@@ -1120,12 +1126,19 @@ impl ZMachineCodeGen {
                     Some(0), // Store result to stack
                     None,    // No branch
                 )?;
+                log::debug!(
+                    "🏃 DEBUG GetObjectParent: Emitted get_parent instruction, now at PC=0x{:04x}",
+                    self.code_address
+                );
 
                 // Register target as using stack result
                 self.use_stack_for_result(*target);
             }
 
-            IrInstruction::InsertObj { object, destination } => {
+            IrInstruction::InsertObj {
+                object,
+                destination,
+            } => {
                 // Z-Machine insert_obj opcode: sets object's parent, updates tree structure
                 // (Oct 12, 2025): Used for .location = assignment
                 // This removes object from current parent and inserts as first child of destination
@@ -1166,8 +1179,8 @@ impl ZMachineCodeGen {
                 self.emit_instruction_typed(
                     Opcode::Op2(Op2::InsertObj),
                     &[obj_operand, dest_operand],
-                    None,    // No result
-                    None,    // No branch
+                    None, // No result
+                    None, // No branch
                 )?;
             }
 
@@ -2125,6 +2138,9 @@ impl ZMachineCodeGen {
             0x06 => true, // print_num (raw opcode 6)
             0x07 => true, // random (raw opcode 7)
             0x08 => true, // push (raw opcode 8) - MUST be VAR form (0xE8), NOT 2OP:or (0x08/0xC8)
+            0x09 => true, // pull (raw opcode 9) - MUST be VAR form (0xE9), NOT 2OP:and (0x09/0xC9)
+            // CRITICAL FIX: This resolves PC corruption where PULL was encoded as 0xC9 (2OP AND)
+            // instead of 0xE9 (VAR PULL), causing interpreter to route to wrong opcode handler
             // NOTE: Opcode 0x09 is BOTH 2OP:AND and VAR:pull
             // - For 2OP:AND in VAR form, bit 5 should be 0 (0xC9)
             // - For VAR:pull, bit 5 should be 1 (0xE9)
@@ -3184,8 +3200,6 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-
-
     /// Generate short-circuit AND logic for logical operations on comparison expressions
     /// Pattern: if left is false, result = false; if left is true, result = right
     fn generate_short_circuit_and(
@@ -3486,7 +3500,6 @@ impl ZMachineCodeGen {
         // Simple implementation - use current address as unique ID
         self.code_address as crate::grue_compiler::ir::IrId
     }
-
 }
 
 #[cfg(test)]
