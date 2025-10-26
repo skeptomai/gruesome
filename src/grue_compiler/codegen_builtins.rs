@@ -1193,13 +1193,14 @@ impl ZMachineCodeGen {
             self.code_address
         );
 
-        // CRITICAL: Use high global variables (235-239) for temporaries
+        // CRITICAL: Use high global variables (235-240) for temporaries
         // These are unlikely to conflict with user globals
         let directions_addr_var = 235u8; // Global variable for directions address
         let types_addr_var = 236u8; // Global variable for types address
         let data_addr_var = 237u8; // Global variable for data address
         let num_exits_var = 238u8; // Global variable for exit count
         let index_var = 239u8; // Global variable for loop index
+        let current_dir_var = 240u8; // Global variable for current direction (pulled from stack)
 
         // Allocate labels for control flow
         let not_found_label = self.next_string_id;
@@ -1355,11 +1356,19 @@ impl ZMachineCodeGen {
             None,
         )?;
 
+        // Step 7.5: Pull current direction from stack to allocated variable (proper stack discipline)
+        self.emit_instruction_typed(
+            Opcode::OpVar(OpVar::Pull),
+            &[Operand::Variable(current_dir_var)],
+            None, // Pull stores to operand, not store_var
+            None,
+        )?;
+
         // Step 8: Compare current direction with parameter -> found_label
         let compare_layout = self.emit_instruction_typed(
             Opcode::Op2(Op2::Je),
             &[
-                Operand::Variable(0), // Current dir on stack
+                Operand::Variable(current_dir_var), // Use allocated variable instead of consuming stack
                 direction_operand.clone(),
             ],
             None,
