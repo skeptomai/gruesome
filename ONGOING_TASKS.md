@@ -218,6 +218,44 @@ Based on commit analysis, these are the legitimate architectural improvements th
 
 ---
 
+## 🔍 CURRENT ANALYSIS: Stack Underflow Root Cause (October 26, 2025)
+
+**CONTEXT**: After fixing PULL instruction encoding (commit 51fc485), PC corruption is resolved but navigation fails with "Stack underflow" error.
+
+### Problem Analysis
+**Symptom**: Navigation command "north" causes stack underflow at PC 0x11ba
+**Root Issue**: JE instruction consuming stack values intended for subsequent PULL instruction
+
+### Stack Operation Sequence (Identified)
+1. **PUSH value=3** at PC=0x1181 (stack_depth becomes 1)
+2. **PUSH value=0xc000** at PC=0x1185 (stack_depth becomes 2)
+3. **JE at PC=0x119d**: compares op1=49152 (0xc000) vs op2=0 (stack_depth becomes 0)
+4. **PULL at PC=0x11ba**: tries to pop from empty stack → **UNDERFLOW**
+
+### Critical Discovery
+- The JE instruction at PC=0x119d is reading op1 from the stack (Variable 0)
+- This consumes the 0xc000 value that was pushed for the PULL operation
+- JE instruction bytes: `41 02 00` - appears to be reading from Variable(0) incorrectly
+
+### The Core Bug
+**JE instruction is incorrectly reading from stack when it should read from allocated variable**
+- This suggests compiler is generating JE instructions with Variable(0) operands
+- Should be using allocated global variables (200+) instead of stack variables
+- This is a stack discipline violation - operations consuming stack values meant for push/pull system
+
+### Next Investigation Steps
+1. **Find what compiler code generated the problematic JE instruction**
+2. **Identify why JE is reading from Variable(0) instead of allocated variable**
+3. **Fix the variable allocation in the code that generates this JE**
+4. **Verify stack push/pull balance is maintained**
+
+### Technical Context
+- PC 0x119d: JE instruction `41 02 00` (reads Variable(0) vs constant 0)
+- PC 0x11ba: PULL instruction `e9 8f 02` (pulls to Variable(2))
+- Missing: The JE should read from an allocated variable, not consume stack
+
+---
+
 # HISTORICAL: BRANCH OFFSET OVERFLOW ANALYSIS
 
 *Previous branch offset overflow analysis preserved below for reference...*
