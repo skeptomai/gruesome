@@ -547,6 +547,34 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
+    /// Generate get_location builtin function - gets parent/location of an object
+    pub fn generate_get_location_builtin(&mut self, args: &[IrId], _target: Option<IrId>) -> Result<(), CompilerError> {
+        if args.len() != 1 {
+            return Err(CompilerError::CodeGenError(format!(
+                "get_location expects 1 argument, got {}",
+                args.len()
+            )));
+        }
+
+        let object_ir_id = args[0];
+
+        // Resolve IR ID to proper operand
+        let object_operand = self.resolve_ir_id_to_operand(object_ir_id)?;
+
+        // Generate Z-Machine get_parent instruction (1OP:3, opcode 0x83)
+        // This gets the parent/location of an object
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::GetParent),
+            &[object_operand],
+            Some(0), // Store result on stack
+            None,    // No branch
+        )?;
+
+        // Do NOT add return instruction here - this is inline code generation
+
+        Ok(())
+    }
+
     /// Generate player_can_see builtin function - checks if player can see an object
     pub fn generate_player_can_see_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
         if args.len() != 1 {
@@ -1201,6 +1229,7 @@ impl ZMachineCodeGen {
         let num_exits_var = 238u8; // Global variable for exit count
         let index_var = 239u8; // Global variable for loop index
         let current_dir_var = 240u8; // Global variable for current direction (pulled from stack)
+        let type_shifted_var = 241u8; // Global variable for type_shifted value (avoid stack discipline violations)
 
         // Allocate labels for control flow
         let not_found_label = self.next_string_id;
@@ -1421,22 +1450,22 @@ impl ZMachineCodeGen {
         self.label_addresses.insert(found_label, self.code_address);
         self.record_final_address(found_label, self.code_address);
 
-        // loadb types_addr, index -> stack (type byte)
+        // loadb types_addr, index -> type_shifted_var (type byte)
         self.emit_instruction_typed(
             Opcode::Op2(Op2::Loadb),
             &[
                 Operand::Variable(types_addr_var),
                 Operand::Variable(index_var),
             ],
-            Some(0), // Temp on stack
+            Some(type_shifted_var), // Store directly to variable
             None,
         )?;
 
-        // mul type, 16384 -> stack (type_shifted, 16384 = 2^14)
+        // mul type, 16384 -> type_shifted_var (type_shifted, 16384 = 2^14)
         self.emit_instruction_typed(
             Opcode::Op2(Op2::Mul),
-            &[Operand::Variable(0), Operand::LargeConstant(16384)],
-            Some(0), // Keep on stack
+            &[Operand::Variable(type_shifted_var), Operand::LargeConstant(16384)],
+            Some(type_shifted_var), // Store back to same variable
             None,
         )?;
 
@@ -1466,10 +1495,10 @@ impl ZMachineCodeGen {
                 None,
             )?;
 
-            // or type_shifted (stack), data (result_var) -> result
+            // or type_shifted (variable), data (result_var) -> result
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
-                &[Operand::Variable(0), Operand::Variable(result_var.unwrap())],
+                &[Operand::Variable(type_shifted_var), Operand::Variable(result_var.unwrap())],
                 Some(result_var.unwrap()),
                 None,
             )?;

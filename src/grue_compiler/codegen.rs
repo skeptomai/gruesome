@@ -2795,58 +2795,8 @@ impl ZMachineCodeGen {
                     log::debug!(" SINGLE_PATH: {} builtin in IR translation", name);
                     match name.as_str() {
                         // TIER 1: Basic functions (completed)
-                        "print" => return self.generate_print_builtin(args),
-                        "print_ret" => self.translate_print_ret_builtin_inline(args)?,
-                        "new_line" => self.translate_new_line_builtin_inline(args)?,
-                        "quit" => return self.generate_quit_builtin(args),
-                        "move" => self.translate_move_builtin_inline(args)?,
-                        "get_location" => {
-                            self.translate_get_location_builtin_inline(args, target)?
-                        }
-                        "to_string" => self.translate_to_string_builtin_inline(args, target)?,
-
-                        // TIER 2: Object system functions (migrating now)
-                        "get_child" => self.translate_get_child_builtin_inline(args, target)?,
-                        "get_sibling" => self.translate_get_sibling_builtin_inline(args, target)?,
-                        "get_prop" => self.translate_get_prop_builtin_inline(args, target)?,
-                        "test_attr" => self.translate_test_attr_builtin_inline(args, target)?,
-                        "set_attr" => self.translate_set_attr_builtin_inline(args, target)?,
-                        "clear_attr" => self.translate_clear_attr_builtin_inline(args, target)?,
-
-                        // TIER 3: Advanced functions (migrating now)
-                        "random" => self.translate_random_builtin_inline(args, target)?,
-                        "player_can_see" => {
-                            self.translate_player_can_see_builtin_inline(args, target)?
-                        }
-                        "list_objects" => self.translate_list_objects_builtin_inline(args)?,
-                        "list_contents" => self.translate_list_contents_builtin_inline(args)?,
-                        "get_object_contents" => {
-                            self.translate_get_object_contents_builtin_inline(args, target)?
-                        }
-                        "object_is_empty" => {
-                            self.translate_object_is_empty_builtin_inline(args, target)?
-                        }
-                        "value_is_none" => {
-                            self.translate_value_is_none_builtin_inline(args, target)?
-                        }
-                        "get_object_size" => {
-                            self.translate_get_object_size_builtin_inline(args, target)?
-                        }
-                        "array_add_item" => {
-                            self.translate_array_add_item_builtin_inline(args, target)?
-                        }
-
-                        // TIER 4: String functions (basic implementations)
-                        "indexOf" => return self.generate_index_of_builtin(args, target),
-                        "slice" => return self.generate_slice_builtin(args, target),
-                        "substring" => return self.generate_substring_builtin(args, target),
-                        "toLowerCase" => return self.generate_to_lower_case_builtin(args, target),
-                        "toUpperCase" => return self.generate_to_upper_case_builtin(args, target),
-                        "trim" => return self.generate_trim_builtin(args, target),
-                        "charAt" => return self.generate_char_at_builtin(args, target),
-                        "replace" => return self.generate_replace_builtin(args, target),
-                        "startsWith" => return self.generate_starts_with_builtin(args, target),
-                        "endsWith" => return self.generate_ends_with_builtin(args, target),
+                        // ALL EARLY RETURNS REMOVED - FORCE ALL BUILTINS THROUGH REAL FUNCTION SYSTEM
+                        // This eliminates the hybrid inline/function system that caused routing conflicts
 
                         _ => {
                             // Fallback to legacy system for remaining builtins (Tier 3 only)
@@ -9832,7 +9782,7 @@ impl ZMachineCodeGen {
             "new_line" => self.generate_new_line_builtin(args),
             "quit" => self.generate_quit_builtin(args),
             "move" => self.generate_move_builtin(args),
-            "get_location" => self.translate_get_location_builtin_inline(args, target),
+            "get_location" => self.generate_get_location_builtin(args, target),
             "to_string" => self.generate_to_string_builtin(args, target),
             // Core Z-Machine object primitives
             "get_child" => self.generate_get_child_builtin(args),

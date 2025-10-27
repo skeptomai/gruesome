@@ -77,22 +77,73 @@ Solution: Convert ALL builtins to real Z-Machine functions
 
 ---
 
-## 🎯 NEXT STEPS: Architecture Migration to Real Z-Machine Functions
+## 🎯 PRIMARY MISSION: Architecture Migration to Real Z-Machine Functions
 
-### **Migration Plan**
-1. **Audit Current Hybrid System**: Identify all `translate_*_builtin_inline()` functions
-2. **Convert Inline to Real Functions**: Migrate each inline builtin to `generate_*_builtin()` pattern
-3. **Update Call Sites**: Convert all `translate_*_builtin_inline()` calls to `call_builtin_function()`
-4. **Fix get_exit Address Issue**: Resolve function creation failing (address 0x0000)
-5. **Verify with Canary Tests**: Ensure no regressions in basic functionality
-6. **Test Complex Commands**: Verify inventory/contents functionality works
+### 📋 **COMPREHENSIVE MIGRATION PLAN - ACTIVE EXECUTION**
 
-### **Success Criteria**
-- ✅ All canary tests continue working (regression prevention)
-- ✅ Zero `translate_*_builtin_inline()` functions remain in codebase
-- ✅ All builtins use real Z-Machine function architecture
-- ✅ Mini_zork `inventory` command works without crashes
-- ✅ Complete object traversal functionality restored
+**MISSION OBJECTIVE**: Eliminate all inline builtin functions and convert to unified real Z-Machine function architecture.
+
+**AUDIT RESULTS**:
+- **Inline Functions (TO BE ELIMINATED)**: 19 functions
+- **Real Functions (TARGET ARCHITECTURE)**: 35+ functions
+- **Call Site Locations**: `codegen.rs:2798-2851` (early returns) and `codegen.rs:9830-9875` (real functions)
+
+### **PHASE 1: PREPARATION (LOW RISK) - IN PROGRESS** 🚧
+**Objective**: Create missing real function implementations and register them
+
+**Tasks**:
+1. ✅ **Audit Complete**: Identified 19 inline functions to eliminate
+2. 🚧 **Create generate_get_location_builtin**: Only remaining function without real implementation
+3. ⏳ **Add get_location registration**: Register in real function system (`codegen.rs:9875`)
+4. ⏳ **Test canary verification**: Ensure new function works with 3 canary tests
+
+**Expected Outcome**: All builtins have real function implementations ready
+
+### **PHASE 2: ROUTE CONVERSION (MEDIUM RISK) - PENDING**
+**Objective**: Force all builtin calls to use real functions by removing early returns
+
+**Tasks**:
+1. **Remove early return routes**: Delete all `translate_*_builtin_inline()` calls in `codegen.rs:2798-2851`
+2. **Route verification**: Test that all builtins now go through `call_builtin_function()`
+3. **Canary regression test**: Verify no "unknown builtin" errors occur
+
+**Expected Outcome**: Single routing path through real function system
+
+### **PHASE 3: CLEANUP (LOW RISK) - PENDING**
+**Objective**: Remove all inline function code and dependencies
+
+**Tasks**:
+1. **Delete inline function definitions**: Remove all 19 `translate_*_builtin_inline` functions
+2. **Remove unused imports**: Clean up dependencies no longer needed
+3. **Final canary verification**: Ensure codebase still compiles and works
+
+**Expected Outcome**: Clean codebase with zero inline function implementations
+
+### **PHASE 4: COMPLEX COMMAND TESTING (HIGH VALUE) - PENDING**
+**Objective**: Verify that routing conflicts are resolved for complex commands
+
+**Tasks**:
+1. **Test mini_zork inventory**: The current failure point that triggers routing conflicts
+2. **Test object iteration**: Verify contents(), for...in loops work correctly
+3. **Test complex property access**: Ensure no more address 0x0000 failures
+4. **Performance verification**: Confirm real functions don't impact performance
+
+**Expected Outcome**: All complex commands work reliably without routing conflicts
+
+### **SUCCESS CRITERIA MATRIX**
+
+| Phase | Code Quality | Functional | Architecture |
+|-------|-------------|------------|--------------|
+| **Phase 1** | ✅ New function created | ✅ Canary tests pass | ✅ All builtins have real implementations |
+| **Phase 2** | ✅ No early returns | ✅ All builtins route correctly | ✅ Single routing system |
+| **Phase 3** | ✅ Zero inline functions | ✅ Canary tests still pass | ✅ Clean unified system |
+| **Phase 4** | ✅ No routing conflicts | ✅ Complex commands work | ✅ Address resolution works |
+
+### **RISK MITIGATION**
+- **Commit after each phase**: Enables immediate rollback if issues occur
+- **Canary test gating**: Each phase requires canary tests to pass before proceeding
+- **Incremental changes**: Small, focused changes reduce risk of introducing bugs
+- **Functional verification**: Test actual command execution, not just compilation
 
 ---
 

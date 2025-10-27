@@ -308,7 +308,9 @@ fn handle_drop(obj) {
 }
 
 fn show_inventory() {
+    print("Before player.contents() call");
     let items = player.contents();
+    print("After player.contents() call");
     if items.empty() {
         print("You are empty-handed.");
     } else {
