@@ -364,12 +364,16 @@ impl ZMachineCodeGen {
 
             // Add essential room properties that games commonly access
             // Get property numbers from the global property registry
+            let short_name_prop = *self.property_numbers.get("short_name").unwrap_or(&1);
             let desc_prop = *self.property_numbers.get("description").unwrap_or(&7);
             let visited_prop = *self.property_numbers.get("visited").unwrap_or(&2);
             // location_prop removed - uses object tree parent only (Oct 12, 2025)
             let on_look_prop = *self.property_numbers.get("on_look").unwrap_or(&13);
 
             // Set default property values for rooms
+            // CRITICAL FIX (Oct 27, 2025): Add room display name as short_name property
+            // When game accesses player.location.name, it reads property 1 (short_name)
+            room_properties.set_string(short_name_prop, room.display_name.clone());
             room_properties.set_string(desc_prop, room.description.clone());
             room_properties.set_byte(visited_prop, 0); // Initially not visited
                                                        // location property removed - rooms use object tree containment (Oct 12, 2025)

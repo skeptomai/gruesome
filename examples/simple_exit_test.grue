@@ -32,6 +32,12 @@ fn look_around() {
     print(player.location.desc);
 }
 
+fn test_room_properties() {
+    print("Testing room properties:");
+    print("Room desc: " + player.location.desc);
+    print("Room name: " + player.location.name);
+}
+
 grammar {
     verb "north" {
         default => handle_go("north")
@@ -39,6 +45,10 @@ grammar {
 
     verb "look" {
         default => look_around()
+    }
+
+    verb "test" {
+        default => test_room_properties()
     }
 }
 

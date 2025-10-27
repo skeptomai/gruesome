@@ -107,17 +107,82 @@ let direction_operand = Operand::Variable(2); // Second parameter
 
 **Technical Outcome**: The simple_exit_test now demonstrates fully working player movement between rooms.
 
-### **REMAINING ENHANCEMENT**: Room Description Display
+---
 
-**Current Behavior**: After movement, only "You moved." is displayed
-**Expected Behavior**: Room description should automatically display after movement
-**Issue**: `look_around()` function shows garbled output when executed after movement
-**Status**: Core navigation works, room description enhancement needed
+# ROOM DESCRIPTION DISPLAY AFTER MOVEMENT: IN PROGRESS 🔧 (October 27, 2025)
 
-**Evidence**:
-- ✅ Movement: `north` successfully moves player to end_room
-- ✅ Look in start_room: "A simple test room." displays correctly
-- ❌ Look after movement: Garbled output instead of "The destination room."
+## 🎯 CURRENT ISSUE: Property Access After Player Movement
+
+**Problem**: Room descriptions show garbled output when accessed after player movement, preventing proper room description display.
+
+**Status**: Navigation system works perfectly, but room description display needs fixing for complete user experience.
+
+### **Current Evidence**
+- ✅ **Movement works**: 'north' successfully moves player from start_room to end_room
+- ✅ **Look in start_room works**: "A simple test room." displays correctly
+- ❌ **Look after movement fails**: Garbled output instead of "The destination room."
+
+### **Root Cause Analysis**
+
+The issue is in property access after the player's location has changed. When `look_around()` calls `player.location.desc`, something fails with:
+
+1. **Property Resolution**: The property might not be resolving to the correct string address
+2. **String Address Calculation**: The string might be stored correctly but address calculation is wrong
+3. **Memory Corruption**: The room change might be corrupting string storage
+
+### **Investigation Plan**
+
+#### **Phase 1: Isolate the Problem** 🔧
+1. **Test property access without movement**:
+   - Add a test command like `"test"` that prints `player.location.desc` without moving
+   - Verify if property access works when player is still in start_room
+
+2. **Test other properties**:
+   - Try accessing `player.location.name` (room title) after movement
+   - See if the issue is specific to `desc` or affects all room properties
+
+#### **Phase 2: Debug Property Access**
+1. **Add property access logging**:
+   - Add debug output in property access code to show what object ID and property number are being accessed
+   - Log the raw bytes being read from property tables
+
+2. **Verify object state after movement**:
+   - Confirm that `player.location` correctly points to end_room (object 10) after movement
+   - Check if the property table for end_room is intact
+
+#### **Phase 3: Fix Implementation**
+Based on findings, likely fixes:
+
+1. **If property resolution is broken**:
+   - Fix object property lookup to handle room objects correctly after movement
+   - Ensure player.location relationship is properly updated
+
+2. **If string address calculation is wrong**:
+   - Fix string address resolution for room property strings
+   - Ensure packed addresses are calculated correctly for room descriptions
+
+3. **If memory corruption**:
+   - Check for buffer overruns in room switching code
+   - Verify property table integrity after object movement
+
+### **Expected Outcome**
+After the fix, typing:
+```
+> north
+You moved.
+The destination room.
+```
+
+Or if we enhance handle_go to automatically show descriptions:
+```
+> north
+The destination room.
+```
+
+### **Next Steps**
+- Start with Phase 1: Create diagnostic test to isolate property access vs movement-specific issues
+- Add comprehensive property access instrumentation
+- Verify end_room property data integrity in compiled Z3 file
 
 ### **Technical Debt: HOTFIX vs Proper Registration**
 
