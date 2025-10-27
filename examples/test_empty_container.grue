@@ -1,0 +1,35 @@
+// Test empty container iteration (should complete without errors)
+// This tests the fixed get_object_contents implementation
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room."
+    }
+}
+
+init {
+    player.location = test_room;
+    main();
+}
+
+fn main() {
+    print("Testing empty container iteration...");
+
+    // Test direct iteration (this should work)
+    for item in player.contents() {
+        print("Found item: " + item.name);
+    }
+
+    print("Direct iteration completed successfully.");
+
+    // Test indirect iteration (this should also work now)
+    let items = player.contents();
+    print("Got contents result, testing iteration...");
+
+    for item in items {
+        print("Found item: " + item.name);
+    }
+
+    print("Indirect iteration completed successfully.");
+    print("All tests passed!");
+}

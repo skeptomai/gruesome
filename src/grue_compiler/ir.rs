@@ -2163,8 +2163,15 @@ impl IrGenerator {
                         source: init_temp,
                     });
 
-                    // Propagate variable source tracking from initializer to variable
+                    // Copy variable source from initializer to variable for iteration tracking
+                    // This enables for-loops to detect object tree iteration even with variable assignments
                     if let Some(source) = self.variable_sources.get(&init_temp).cloned() {
+                        log::debug!(
+                            "VarDecl: copying variable source {:?} from init_temp {} to var_id {}",
+                            source,
+                            init_temp,
+                            var_id
+                        );
                         self.variable_sources.insert(var_id, source);
                     }
                 }
@@ -2740,6 +2747,16 @@ impl IrGenerator {
                                 function: builtin_id,
                                 args: call_args,
                             });
+
+                            // Track contents() results as object tree roots for iteration
+                            // This enables for-loops to detect object tree iteration even with variable indirection
+                            self.variable_sources
+                                .insert(result_temp, VariableSource::ObjectTreeRoot(object_temp));
+                            log::debug!(
+                                "Builtin contents(): tracking result_temp {} as ObjectTreeRoot({})",
+                                result_temp,
+                                object_temp
+                            );
                         }
                         _ => unreachable!(),
                     }

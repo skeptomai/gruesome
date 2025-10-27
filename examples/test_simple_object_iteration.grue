@@ -1,0 +1,38 @@
+// Simplified test - check if basic object tree traversal works at all
+// This focuses on whether get_object_contents can find ANY objects
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room."
+    }
+}
+
+init {
+    player.location = test_room;
+    main();
+}
+
+fn main() {
+    print("Testing basic object tree traversal...");
+
+    // Check room contents first (should contain player)
+    print("Room contents:");
+    for obj in test_room.contents() {
+        print("Room contains: " + obj.name);
+    }
+
+    // Check if player shows up as having any children
+    let player_contents = player.contents();
+    print("Player contents result: " + player_contents);
+
+    if player_contents == 0 {
+        print("Player has no children (expected for empty inventory)");
+    } else {
+        print("Player has children - iterating:");
+        for item in player.contents() {
+            print("Found: " + item.name);
+        }
+    }
+
+    print("Test completed.");
+}

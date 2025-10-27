@@ -1,0 +1,31 @@
+// Test just the get_object_contents function without iteration
+// This isolates our fix to verify it's working
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room."
+    }
+}
+
+init {
+    player.location = test_room;
+    main();
+}
+
+fn main() {
+    print("Testing get_object_contents function...");
+
+    // Just call contents() and print the result - no iteration
+    let result = player.contents();
+
+    print("Contents returned, checking result...");
+
+    // The result should be 0 for an empty container
+    if result == 0 {
+        print("SUCCESS: Empty container correctly returned 0.");
+    } else {
+        print("ERROR: Expected 0 but got something else.");
+    }
+
+    print("Test completed.");
+}

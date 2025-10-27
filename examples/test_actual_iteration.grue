@@ -1,0 +1,57 @@
+// Test object iteration with actual items in container
+// This properly tests the get_object_contents fix with real object tree traversal
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room."
+
+        object coin {
+            name: "coin"
+            desc: "A shiny gold coin."
+        }
+
+        object key {
+            name: "brass key"
+            desc: "An old brass key."
+        }
+
+        object book {
+            name: "spell book"
+            desc: "A leather-bound spell book."
+        }
+    }
+}
+
+init {
+    player.location = test_room;
+
+    // Put items in player's inventory
+    coin.location = player;
+    key.location = player;
+    book.location = player;
+
+    main();
+}
+
+fn main() {
+    print("Testing object iteration with actual items...");
+
+    // Debug: Check what get_object_contents returns
+    let contents_result = player.contents();
+    print("Player contents result: " + contents_result);
+
+    // Test direct iteration
+    print("Direct iteration:");
+    for item in player.contents() {
+        print("Found: " + item.name);
+    }
+
+    print("Indirect iteration:");
+    // Test indirect iteration (the original bug case)
+    let items = player.contents();
+    for item in items {
+        print("Found: " + item.name);
+    }
+
+    print("All tests completed successfully!");
+}

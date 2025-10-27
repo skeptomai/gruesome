@@ -798,49 +798,62 @@ impl ZMachineCodeGen {
             );
         }
 
-        match container_operand {
-            Operand::LargeConstant(obj_num) => {
-                // BROKEN: This placeholder OR instruction breaks object iteration
-                // Proper implementation should use GetObjectChild to find first child object
-                // Return 0 if no children, or first child object ID for iteration
-                if let Some(store_var) = target {
-                    // PLACEHOLDER: This dummy value (1) causes stack underflow in for-loops
-                    // Should be replaced with actual object tree traversal
-                    self.emit_instruction_typed(
-                        Opcode::Op2(Op2::Or),
-                        &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
-                        Some(0),
-                        None, // No branch
-                    )?;
-                    self.use_push_pull_for_result(store_var, "get_object_contents builtin")?;
+        // FIXED: Replace broken placeholder with proper GetObjectChild object tree traversal
+        if let Some(store_var) = target {
+            // Generate labels for branch handling
+            let no_child_label = self.next_string_id;
+            self.next_string_id += 1;
+            let end_label = self.next_string_id;
+            self.next_string_id += 1;
 
-                    log::debug!(
-                        "get_object_contents: generated store instruction for object {}",
-                        obj_num
-                    );
-                }
-                log::debug!(
-                    "get_object_contents: returning placeholder value 1 for object {}",
-                    obj_num
-                );
+            // Emit GetObjectChild instruction: get first child of container
+            // CRITICAL FIX (Oct 27, 2025): Was 0x01 (get_sibling) - now 0x02 (get_child)
+            // Z-Machine get_child opcode (1OP:2) branches when NO child exists (returns 0)
+            let layout = self.emit_instruction(
+                0x02, // get_child opcode (1OP:2) - FIXED: was 0x01 (get_sibling)
+                &[container_operand.clone()],
+                Some(0),      // Store result to stack (Variable 0)
+                Some(0x7FFF), // Branch on FALSE (no child) - placeholder offset
+            )?;
+
+            // Create UnresolvedReference for branch to no_child_label
+            if let Some(branch_location) = layout.branch_location {
+                self.reference_context
+                    .unresolved_refs
+                    .push(UnresolvedReference {
+                        reference_type: LegacyReferenceType::Branch,
+                        location: branch_location,
+                        target_id: no_child_label,
+                        is_packed_address: false,
+                        offset_size: 2,
+                        location_space: MemorySpace::Code,
+                    });
             }
-            _ => {
-                // Handle other operand types by treating them as valid placeholders
-                log::warn!(
-                    "get_object_contents: object resolved to {:?}, using placeholder",
-                    container_operand
-                );
-                if let Some(store_var) = target {
-                    // Store a placeholder value for non-constant operands
-                    self.emit_instruction_typed(
-                        Opcode::Op2(Op2::Or),
-                        &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
-                        Some(0),
-                        None, // No branch
-                    )?;
-                    self.use_push_pull_for_result(store_var, "get_object_contents builtin")?;
-                }
-            }
+
+            // Child exists path: result is already on stack from get_child
+            // Jump to end (skip the no-child case)
+            self.translate_jump(end_label)?;
+
+            // No child path: store 0 (empty container)
+            self.label_addresses
+                .insert(no_child_label, self.code_address);
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Or),
+                &[Operand::SmallConstant(0), Operand::SmallConstant(0)], // 0 | 0 = 0
+                Some(0),                                                 // Store to stack
+                None,
+            )?;
+
+            // End label: both paths converge here
+            self.label_addresses.insert(end_label, self.code_address);
+
+            // Use push/pull to move result from stack to target variable
+            self.use_push_pull_for_result(store_var, "get_object_contents builtin")?;
+
+            log::debug!(
+                "get_object_contents: generated GetObjectChild instruction for container operand {:?}",
+                container_operand
+            );
         }
 
         Ok(())
