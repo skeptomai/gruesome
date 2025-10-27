@@ -1817,7 +1817,6 @@ impl ZMachineCodeGen {
                     reference.location
                 );
 
-
                 // Historical note: Previously tracked label 415 branch resolution
                 // This was temporary debugging code for systematic branch calculation bugs
                 // Fixed by proper UnresolvedReference system

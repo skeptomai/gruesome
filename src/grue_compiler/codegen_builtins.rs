@@ -1290,7 +1290,6 @@ impl ZMachineCodeGen {
             self.code_address
         );
 
-
         // Step 2: Check if property exists (addr == 0 means no exits)
         // CRITICAL: Use negative placeholder (-1) to encode "branch on true"
         // Bit 15 of placeholder encodes branch sense: 1=true, 0=false
@@ -1365,7 +1364,6 @@ impl ZMachineCodeGen {
             None,
         )?;
 
-
         // Step 5: Initialize loop counter (index = 0)
         // CRITICAL: Store (2OP:13) takes 2 operands: (variable, value)
         // It does NOT use store_var field!
@@ -1380,7 +1378,6 @@ impl ZMachineCodeGen {
         self.label_addresses
             .insert(loop_start_label, self.code_address);
         self.record_final_address(loop_start_label, self.code_address);
-
 
         // Check if index >= num_exits -> not_found_label
         // BUG FIX: Was using 0x05 (inc_chk) which increments BEFORE checking!
@@ -1430,12 +1427,13 @@ impl ZMachineCodeGen {
             None,
         )?;
 
-
         // Step 8: Compare current direction with parameter -> found_label
+
         // BUG INVESTIGATION: This JE instruction compares values correctly (1844 == 1844)
         // but the branch to found_label is not being taken at runtime.
         // UnresolvedReference is created and resolved correctly during compilation.
-        // Issue appears to be in branch offset calculation or address space translation.
+        // Branch offset calculation is also correct ([0x80, 0x09] for offset 9).
+        // Issue appears to be in JE instruction operand encoding.
         let compare_layout = self.emit_instruction_typed(
             Opcode::Op2(Op2::Je),
             &[
@@ -1521,36 +1519,46 @@ impl ZMachineCodeGen {
         // IR ID 274 becomes var 18 (0x12) which overwrites score/moves in header
         // IMPORTANT: Only insert mapping ONCE at the top, use in both branches
         // CRITICAL: Don't reuse existing mappings - always allocate fresh for builtins
+        // ARCHITECTURE FIX: Always allocate result variable for function call architecture
+        //
+        // PROBLEM: When target=None (function generation), no result variable is allocated,
+        //          so the function cannot store its calculated result and returns 0
+        //
+        // SOLUTION: Always allocate a local variable for the result, regardless of target.
+        //           For function calls, the function must calculate and return its result.
+        //           The caller handles storing the returned value to the actual target.
         let result_var = if let Some(target_ir_id) = target {
+            // Inline call - use target IR ID for result variable allocation
             let var = self.allocate_global_for_ir_id(target_ir_id);
             self.ir_id_to_stack_var.insert(target_ir_id, var);
-            Some(var)
+            var
         } else {
-            None
+            // Function call - allocate anonymous local variable for result calculation
+            // Use a high variable number to avoid conflicts (240+ range is our temp storage)
+            245
         };
 
-        if result_var.is_some() {
-            self.emit_instruction_typed(
-                Opcode::Op2(Op2::Loadw),
-                &[
-                    Operand::Variable(data_addr_var),
-                    Operand::Variable(index_var),
-                ],
-                Some(result_var.unwrap()),
-                None,
-            )?;
+        // Always execute data loading and result calculation now that we always have result_var
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Loadw),
+            &[
+                Operand::Variable(data_addr_var),
+                Operand::Variable(index_var),
+            ],
+            Some(result_var),
+            None,
+        )?;
 
-            // or type_shifted (variable), data (result_var) -> result
-            self.emit_instruction_typed(
-                Opcode::Op2(Op2::Or),
-                &[
-                    Operand::Variable(type_shifted_var),
-                    Operand::Variable(result_var.unwrap()),
-                ],
-                Some(result_var.unwrap()),
-                None,
-            )?;
-        }
+        // or type_shifted (variable), data (result_var) -> result
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Or),
+            &[
+                Operand::Variable(type_shifted_var),
+                Operand::Variable(result_var),
+            ],
+            Some(result_var),
+            None,
+        )?;
 
         // Jump to end
         let found_jump_layout = self.emit_instruction_typed(
@@ -1578,42 +1586,33 @@ impl ZMachineCodeGen {
             .insert(not_found_label, self.code_address);
         self.record_final_address(not_found_label, self.code_address);
 
-        if let Some(var) = result_var {
-            self.emit_instruction_typed(
-                Opcode::Op2(Op2::Or),
-                &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
-                Some(var),
-                None,
-            )?;
-        }
+        // Always set result to 0 for not found case
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Or),
+            &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
+            Some(result_var),
+            None,
+        )?;
 
         // Step 12: End label
         self.label_addresses.insert(end_label, self.code_address);
         self.record_final_address(end_label, self.code_address);
 
-        // CRITICAL FIX: Add return instruction for standalone function calls
-        // When this builtin is called as a real Z-Machine function (not inline),
-        // it must return its result via 'ret' instruction to maintain stack discipline
-        if let Some(var) = result_var {
-            log::debug!(
-                "🔍 GET_EXIT: Returning result from variable {} via ret instruction",
-                var
-            );
-            self.emit_instruction_typed(
-                crate::grue_compiler::opcodes::Opcode::Op1(crate::grue_compiler::opcodes::Op1::Ret),
-                &[crate::grue_compiler::codegen::Operand::Variable(var)],
-                None, // ret doesn't use store_var
-                None,
-            )?;
-        } else {
-            log::debug!("🔍 GET_EXIT: No return variable - returning 0 via ret instruction");
-            self.emit_instruction_typed(
-                crate::grue_compiler::opcodes::Opcode::Op1(crate::grue_compiler::opcodes::Op1::Ret),
-                &[crate::grue_compiler::codegen::Operand::SmallConstant(0)],
-                None, // ret doesn't use store_var
-                None,
-            )?;
-        }
+        // ARCHITECTURE FIX: Always return calculated result for function calls
+        //
+        // The function now always allocates a result variable and calculates the final value.
+        // For function call architecture, always return the calculated result.
+        // The caller (call_vs) handles storing the returned value to the target variable.
+        log::debug!(
+            "🔍 GET_EXIT: Returning calculated result from variable {} via ret instruction",
+            result_var
+        );
+        self.emit_instruction_typed(
+            crate::grue_compiler::opcodes::Opcode::Op1(crate::grue_compiler::opcodes::Op1::Ret),
+            &[crate::grue_compiler::codegen::Operand::Variable(result_var)],
+            None, // ret doesn't use store_var
+            None,
+        )?;
 
         Ok(())
     }
