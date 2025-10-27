@@ -1551,7 +1551,7 @@ impl ZMachineCodeGen {
                 // Calculate final address: base + header + (position * entry_size)
                 let final_addr = dict_base + header_size + (position * entry_size);
 
-                log::error!(
+                log::debug!(
                     "📖 DICT_RESOLVE: Word '{}' position {} -> dict_base=0x{:04x} + {} + ({} * {}) = 0x{:04x}, will patch location=0x{:04x}",
                     word, position, dict_base, header_size, position, entry_size, final_addr, reference.location
                 );
@@ -4996,7 +4996,7 @@ impl ZMachineCodeGen {
             self.code_address
         );
 
-        log::error!(
+        log::debug!(
             "📝 VAR1_WRITE: '{}' at 0x{:04x} - storing word count to Variable(1)",
             verb,
             self.code_address
@@ -5290,7 +5290,7 @@ impl ZMachineCodeGen {
  func_id, verb, self.code_address
  );
 
-                log::error!(
+                log::debug!(
                     "📍 PATTERN_HANDLER: '{}' noun pattern at 0x{:04x}",
                     verb,
                     self.code_address
@@ -5392,7 +5392,7 @@ impl ZMachineCodeGen {
                     func_id, verb, args.len()
                 );
 
-                log::error!(
+                log::debug!(
                     "📍 PATTERN_HANDLER: '{}' default pattern at 0x{:04x} (args={})",
                     verb,
                     self.code_address,
@@ -5625,7 +5625,7 @@ impl ZMachineCodeGen {
         // End of verb matching function - register the label for jump resolution
         self.record_final_address(end_function_label, self.code_address);
 
-        log::error!(
+        log::debug!(
             "📍 VERB_HANDLER: '{}' code range 0x{:04x}-0x{:04x}",
             verb,
             verb_start_address,
@@ -5727,7 +5727,7 @@ impl ZMachineCodeGen {
     /// Output: Variable 3 contains the matching object ID (or 0 if not found)
     fn generate_object_lookup_from_noun(&mut self) -> Result<(), CompilerError> {
         let lookup_start_address = self.code_address;
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP_START: Starting at 0x{:04x}",
             lookup_start_address
         );
@@ -5748,7 +5748,7 @@ impl ZMachineCodeGen {
         // PROPER FLOW: noun lookup → dictionary→object mapping → Variable(3)=objectID → clear_attr(objectID, 1)
 
         // Initialize result variable to 0 (not found)
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Initializing Variable(3)=0 at 0x{:04x}",
             self.code_address
         );
@@ -5764,7 +5764,7 @@ impl ZMachineCodeGen {
 
         // Dynamic object lookup loop - check all objects for name match
         // Initialize loop counter (Variable 4) to 1 (first object)
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Initializing Variable(4)=1 (loop counter) at 0x{:04x}",
             self.code_address
         );
@@ -5792,7 +5792,7 @@ impl ZMachineCodeGen {
         );
 
         // Mark loop start at current address
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Loop start at 0x{:04x}",
             self.code_address
         );
@@ -5801,7 +5801,7 @@ impl ZMachineCodeGen {
         self.record_final_address(loop_start_label, self.code_address);
 
         // Check if current object number exceeds maximum (68 for mini_zork actual count)
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Checking Variable(4) > 68 at 0x{:04x}",
             self.code_address
         );
@@ -5831,7 +5831,7 @@ impl ZMachineCodeGen {
         }
 
         // Get property 7 (names) for current object
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Getting property 7 (names) from Variable(4) → Variable(5) at 0x{:04x}",
             self.code_address
         );
@@ -5846,7 +5846,7 @@ impl ZMachineCodeGen {
         )?;
 
         // Compare property value with noun dictionary address
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Comparing Variable(5) == Variable(2) at 0x{:04x}",
             self.code_address
         );
@@ -5876,7 +5876,7 @@ impl ZMachineCodeGen {
         }
 
         // Increment loop counter
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Incrementing Variable(4) at 0x{:04x}",
             self.code_address
         );
@@ -5888,7 +5888,7 @@ impl ZMachineCodeGen {
         )?;
 
         // Jump back to loop start
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Jump back to loop start at 0x{:04x}",
             self.code_address
         );
@@ -5915,14 +5915,14 @@ impl ZMachineCodeGen {
         }
 
         // Found match - store current object number as result
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Found match label at 0x{:04x}",
             self.code_address
         );
         self.label_addresses
             .insert(found_match_label, self.code_address);
         self.record_final_address(found_match_label, self.code_address);
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP: Storing Variable(4) → Variable(3) at 0x{:04x}",
             self.code_address
         );
@@ -5941,7 +5941,7 @@ impl ZMachineCodeGen {
         self.label_addresses.insert(end_label, self.code_address);
         self.record_final_address(end_label, self.code_address);
 
-        log::error!(
+        log::debug!(
             "🔍 OBJECT_LOOKUP_END: Complete at 0x{:04x} (size={} bytes)",
             self.code_address,
             self.code_address - lookup_start_address
@@ -6097,7 +6097,7 @@ impl ZMachineCodeGen {
 
                 // CRITICAL DEBUG: Track slot 2 allocations for handle_go
                 if function.name == "handle_go" && local.slot == 2 {
-                    log::error!(
+                    log::debug!(
                         "🔍 SLOT_2_ALLOC: Function 'handle_go' allocated slot 2 to '{}' (IR ID {})",
                         local.name,
                         local.ir_id
@@ -6131,7 +6131,7 @@ impl ZMachineCodeGen {
             self.current_function_locals
         );
 
-        log::error!(
+        log::debug!(
             "🎯 USER_FUNCTION: '{}' starts at 0x{:04x}",
             function.name,
             self.code_address

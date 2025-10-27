@@ -1824,7 +1824,7 @@ impl ZMachineCodeGen {
 
         // DEBUG: Log ALL AND instructions
         if let Opcode::Op2(Op2::And) = opcode {
-            log::error!(
+            log::debug!(
                 "🔍 AND_EMIT: Emitting Op2(And) at 0x{:04x} with operands={:?}",
                 self.code_address,
                 operands
@@ -1846,14 +1846,14 @@ impl ZMachineCodeGen {
                     } else {
                         // DEBUG: Log when 2OP AND uses VAR form due to large constants
                         if let Opcode::Op2(Op2::And) = opcode {
-                            log::error!("🚨 AND_VAR_FORM: Op2(And) using VAR form due to large constants! operands={:?}", operands);
+                            log::debug!("🚨 AND_VAR_FORM: Op2(And) using VAR form due to large constants! operands={:?}", operands);
                         }
                         InstructionForm::Variable
                     }
                 } else {
                     // DEBUG: Log when 2OP falls back to VAR form due to wrong operand count
                     if let Opcode::Op2(Op2::And) = opcode {
-                        log::error!("🚨 AND_FALLBACK: Op2(And) with {} operands falling back to VAR form! operands={:?}", operands.len(), operands);
+                        log::debug!("🚨 AND_FALLBACK: Op2(And) with {} operands falling back to VAR form! operands={:?}", operands.len(), operands);
                     }
                     InstructionForm::Variable // Fallback to VAR for unusual cases
                 }
