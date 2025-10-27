@@ -51,9 +51,41 @@ data=[00, 03, 00, 04, ff, ff]
 - ✅ Runtime: `call routine at packed address 001a`
 - ✅ Debug output: `DEBUG: handle_go entry` appears, proving navigation system reaches get_exit call
 
-**Remaining Issue**: `get_exit` function implementation has bytecode error "Invalid Long form opcode 0x00 at address 0035". The function is being called correctly, but the function body itself needs debugging.
+### **FINAL ISSUE IDENTIFIED** 🎯 (Oct 27, 2025): Parameter Access Architecture Mismatch
 
-**Next Steps**: Fix bytecode generation issue in `create_builtin_get_exit` function implementation.
+**COMPLETE ROOT CAUSE**: The `get_exit` function bytecode generation problem has been fully analyzed and the issue identified.
+
+**Issue**: Function generates correct header but empty body (null bytes), causing "Invalid opcode 0x00 at address 0035"
+
+**Root Cause**: **Architectural mismatch between inlined and standalone function parameter handling**
+1. **Function Design**: `create_builtin_get_exit` was originally designed for **inlined** builtin calls where parameters come from `args` array containing IR IDs
+2. **Current Usage**: Function is now called as **standalone Z-Machine function** where parameters are passed via Z-Machine calling convention (stack → local variables)
+3. **Parameter Access Failure**:
+   ```rust
+   let room_id = args[0];  // ❌ Fails in standalone context
+   let room_operand = self.resolve_ir_id_to_operand(room_id)?; // ❌ Early return
+   ```
+4. **Silent Failure**: The `?` operator causes function to return early when operand resolution fails, leaving function body empty
+
+**Evidence Chain**:
+- ✅ Navigation works: `call routine at packed address 001a` shows function calls work
+- ✅ Header generated: Function header with `num_locals=9` correctly emitted at 0x0034
+- ❌ Body empty: Immediately after header, null bytes (0x0000) written instead of instructions
+- ❌ No debug logs: None of the instruction generation debug logs appear, confirming early return
+- ❌ Runtime failure: Interpreter hits null bytes at 0x0035 → "Invalid opcode 0x00"
+
+**Fix Required**: Modify `create_builtin_get_exit` to handle standalone function parameter access:
+```rust
+// Instead of IR ID resolution:
+let room_id = args[0];
+let room_operand = self.resolve_ir_id_to_operand(room_id)?;
+
+// Use direct local variable access:
+let room_operand = Operand::Variable(1);      // First parameter
+let direction_operand = Operand::Variable(2); // Second parameter
+```
+
+**Impact**: Once fixed, navigation system will be **100% functional** with complete player movement between rooms.
 
 ### **Technical Debt: HOTFIX vs Proper Registration**
 
