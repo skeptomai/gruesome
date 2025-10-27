@@ -3074,7 +3074,8 @@ impl ZMachineCodeGen {
 
     /// PHASE 1: Single-path print_ret builtin implementation
     /// Generates Z-Machine print_ret instruction (print + newline + return true)
-    fn translate_print_ret_builtin_inline(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+    // REMOVED: translate_print_ret_builtin_inline - Dead code (architectural migration)
+    fn _translate_print_ret_builtin_inline_REMOVED(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
         if args.len() != 1 {
             return Err(CompilerError::CodeGenError(format!(
                 "print_ret expects 1 argument, got {}",
@@ -3177,7 +3178,8 @@ impl ZMachineCodeGen {
 
     /// new_line builtin implementation
     /// Generates Z-Machine new_line instruction (0OP:187, opcode 0x8B)
-    fn translate_new_line_builtin_inline(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+    // REMOVED: translate_new_line_builtin_inline - Dead code (architectural migration)
+    fn _translate_new_line_builtin_inline_REMOVED(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
         if !args.is_empty() {
             return Err(CompilerError::CodeGenError(format!(
                 "new_line expects 0 arguments, got {}",
@@ -3207,7 +3209,8 @@ impl ZMachineCodeGen {
     /// This replaces delegation to generate_move_builtin()
     /// SINGLE-PATH MIGRATION: Phase 1 - Move function (Tier 1 builtin)
     /// Generates Z-Machine insert_obj instruction directly from IR
-    fn translate_move_builtin_inline(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+    // REMOVED: translate_move_builtin_inline - Dead code (architectural migration)
+    fn _translate_move_builtin_inline_REMOVED(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
         log::debug!(
             " PHASE2_MOVE: Translating move builtin inline with {} args",
             args.len()
@@ -3241,7 +3244,8 @@ impl ZMachineCodeGen {
 
     /// Generate get_location builtin function - unified implementation
     /// Returns the parent object of an object using Z-Machine get_parent instruction
-    fn translate_get_location_builtin_inline(
+    // REMOVED: translate_get_location_builtin_inline - Dead code (architectural migration)
+    fn _translate_get_location_builtin_inline_REMOVED(
         &mut self,
         args: &[IrId],
         target: Option<IrId>,
@@ -3287,7 +3291,8 @@ impl ZMachineCodeGen {
 
     /// SINGLE-PATH MIGRATION: Phase 2 - Object system builtin (Tier 2)
     /// Generates Z-Machine get_child instruction directly from IR
-    fn translate_get_child_builtin_inline(
+    // REMOVED: translate_get_child_builtin_inline - Dead code (architectural migration)
+    fn _translate_get_child_builtin_inline_REMOVED(
         &mut self,
         args: &[IrId],
         target: Option<IrId>,
@@ -3332,7 +3337,7 @@ impl ZMachineCodeGen {
 
     /// PHASE 2: Single-path get_sibling builtin implementation
     /// This replaces delegation to generate_get_sibling_builtin()
-    fn translate_get_sibling_builtin_inline(
+    fn _translate_get_sibling_builtin_inline_REMOVED(
         &mut self,
         args: &[IrId],
         _target: Option<IrId>,
@@ -3376,7 +3381,7 @@ impl ZMachineCodeGen {
 
     /// PHASE 2: Single-path get_prop builtin implementation
     /// This replaces delegation to generate_get_prop_builtin()
-    fn translate_get_prop_builtin_inline(
+    fn _translate_get_prop_builtin_inline_REMOVED(
         &mut self,
         args: &[IrId],
         _target: Option<IrId>,
@@ -3419,7 +3424,7 @@ impl ZMachineCodeGen {
 
     /// PHASE 2: Single-path test_attr builtin implementation
     /// This replaces delegation to generate_test_attr_builtin()
-    fn translate_test_attr_builtin_inline(
+    fn _translate_test_attr_builtin_inline_REMOVED(
         &mut self,
         args: &[IrId],
         _target: Option<IrId>,
@@ -3499,7 +3504,7 @@ impl ZMachineCodeGen {
 
     /// PHASE 2: Single-path set_attr builtin implementation
     /// This replaces delegation to generate_set_attr_builtin()
-    fn translate_set_attr_builtin_inline(
+    fn _translate_set_attr_builtin_inline_REMOVED(
         &mut self,
         args: &[IrId],
         _target: Option<IrId>,
@@ -3560,7 +3565,7 @@ impl ZMachineCodeGen {
 
     /// PHASE 2: Single-path clear_attr builtin implementation
     /// This replaces delegation to generate_clear_attr_builtin()
-    fn translate_clear_attr_builtin_inline(
+    fn _translate_clear_attr_builtin_inline_REMOVED(
         &mut self,
         args: &[IrId],
         _target: Option<IrId>,
@@ -3621,7 +3626,7 @@ impl ZMachineCodeGen {
 
     /// SINGLE-PATH MIGRATION: Phase 3 - Random number generation (Tier 3)
     /// Generates Z-Machine random instruction directly from IR
-    fn translate_random_builtin_inline(
+    fn _translate_random_builtin_inline_REMOVED(
         &mut self,
         args: &[IrId],
         target: Option<IrId>,
@@ -3664,7 +3669,7 @@ impl ZMachineCodeGen {
 
     /// SINGLE-PATH MIGRATION: Phase 3 - Visibility checking (Tier 3)
     /// Generates complex Z-Machine visibility checking logic
-    fn translate_player_can_see_builtin_inline(
+    fn _translate_player_can_see_builtin_inline_REMOVED(
         &mut self,
         args: &[IrId],
         target: Option<IrId>,
@@ -3704,7 +3709,7 @@ impl ZMachineCodeGen {
     }
 
     /// SINGLE-PATH MIGRATION: Phase 3 - List all objects (Tier 3)
-    fn translate_list_objects_builtin_inline(
+    fn _translate_list_objects_builtin_inline_REMOVED(
         &mut self,
         _args: &[IrId],
     ) -> Result<(), CompilerError> {
@@ -3743,7 +3748,7 @@ impl ZMachineCodeGen {
     }
 
     /// SINGLE-PATH MIGRATION: Phase 3 - List container contents (Tier 3)
-    fn translate_list_contents_builtin_inline(
+    fn _translate_list_contents_builtin_inline_REMOVED(
         &mut self,
         args: &[IrId],
     ) -> Result<(), CompilerError> {
@@ -3789,7 +3794,7 @@ impl ZMachineCodeGen {
     }
 
     /// SINGLE-PATH MIGRATION: Phase 3 - Get object contents (Tier 3)
-    fn translate_get_object_contents_builtin_inline(
+    fn _translate_get_object_contents_builtin_inline_REMOVED(
         &mut self,
         args: &[IrId],
         target: Option<IrId>,
@@ -3821,7 +3826,7 @@ impl ZMachineCodeGen {
     }
 
     /// SINGLE-PATH MIGRATION: Phase 3 - Check if object is empty (Tier 3)
-    fn translate_object_is_empty_builtin_inline(
+    fn _translate_object_is_empty_builtin_inline_REMOVED(
         &mut self,
         args: &[IrId],
         target: Option<IrId>,
@@ -3860,7 +3865,7 @@ impl ZMachineCodeGen {
     }
 
     /// SINGLE-PATH MIGRATION: Phase 3 - Check if value is none/null (Tier 3)
-    fn translate_value_is_none_builtin_inline(
+    fn _translate_value_is_none_builtin_inline_REMOVED(
         &mut self,
         args: &[IrId],
         target: Option<IrId>,
@@ -3901,7 +3906,7 @@ impl ZMachineCodeGen {
     }
 
     /// SINGLE-PATH MIGRATION: Phase 3 - Get object size/capacity (Tier 3)
-    fn translate_get_object_size_builtin_inline(
+    fn _translate_get_object_size_builtin_inline_REMOVED(
         &mut self,
         args: &[IrId],
         target: Option<IrId>,
@@ -3941,7 +3946,7 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    fn translate_array_add_item_builtin_inline(
+    fn _translate_array_add_item_builtin_inline_REMOVED(
         &mut self,
         _args: &[IrId],
         target: Option<IrId>,
@@ -8035,9 +8040,7 @@ impl ZMachineCodeGen {
                 right,
                 right_operand
             );
-            if right == 415 || left == 415 {
-                panic!("ERROR: Label ID 415 is being used as an operand in comparison!");
-            }
+            // Removed debugging panic - label IDs may legitimately be used as operands in some contexts
 
             // Generate the appropriate Z-Machine branch instruction
             let (opcode, branch_on_true) = match op {
@@ -9800,12 +9803,7 @@ impl ZMachineCodeGen {
             "get_object_contents" => self.generate_get_object_contents_builtin(args, target),
             "object_is_empty" => self.generate_object_is_empty_builtin(args, target),
             "value_is_none" => self.generate_value_is_none_builtin(args, target),
-            "get_exit" => {
-                log::debug!("🚪 GET_EXIT_FUNCTION_CALL: Converting to real Z-Machine function call at PC 0x{:04x}", self.code_address);
-                // Convert inline builtin to real Z-Machine function call
-                self.call_builtin_function("get_exit", args, target)?;
-                Ok(())
-            }
+            "get_exit" => self.generate_get_exit_builtin(args, target),
             "exit_is_blocked" => self.generate_exit_is_blocked_builtin(args, target),
             "exit_get_destination" => self.generate_exit_get_data_builtin(args, target),
             "exit_get_message" => self.generate_exit_get_message_builtin(args, target),
@@ -10979,8 +10977,8 @@ impl ZMachineCodeGen {
             log::debug!("🏗️ BUILTIN_GEN: No main function mappings found yet");
         }
 
-        // Generate only get_exit for now
-        self.create_builtin_get_exit()?;
+        // REMOVED: Special get_exit creation - now uses unified real function system
+        // All builtins use on-demand generation via call_builtin_function()
 
         log::debug!(
             "🏗️ BUILTIN_GEN: code_address after generation: 0x{:04x}",

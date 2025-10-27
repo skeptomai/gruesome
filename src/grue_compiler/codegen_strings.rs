@@ -672,7 +672,7 @@ impl ZMachineCodeGen {
     /// String Processing Functions for IR Translation
 
     /// Translate to_string builtin function calls
-    pub fn translate_to_string_builtin_inline(
+    pub fn _translate_to_string_builtin_inline_REMOVED(
         &mut self,
         args: &[IrId],
         target: Option<IrId>,

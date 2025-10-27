@@ -1168,7 +1168,7 @@ impl ZMachineCodeGen {
     pub fn generate_get_exit_builtin(
         &mut self,
         args: &[IrId],
-        target: Option<u32>,
+        target: Option<IrId>,
     ) -> Result<(), CompilerError> {
         if args.len() != 2 {
             return Err(CompilerError::CodeGenError(format!(
