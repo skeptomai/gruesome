@@ -690,3 +690,30 @@ Development history archived to `CLAUDE_HISTORICAL.md` for reference.
 - Never give percentages of completion or time estimates
 - Use IndexSet and IndexMap rather than HashSet or HashMap for determinism
 - **NEVER compile test files to `/tmp`** - Always use `tests/` directory in the repository for compiled Z3 files
+
+## CRITICAL ARCHITECTURE DIRECTIVE: NO INLINE BUILTIN FUNCTIONS
+
+**ALL builtin functions MUST be implemented as real Z-Machine functions, NOT inline generation.**
+
+**CORRECT Architecture** (like `get_exit`):
+- Builtin functions created in `generate_builtin_functions()` as real Z-Machine routines
+- Called via `call_builtin_function()` using `call_vs` instructions
+- Each builtin has proper function header, local variables, and return instruction
+
+**INCORRECT Architecture** (to be eliminated):
+- Inline generation via `generate_*_builtin()` methods
+- Code generated directly into calling function
+- No proper function boundaries or local variable scoping
+
+**Implementation Requirements**:
+1. Move ALL `generate_*_builtin()` implementations to `generate_builtin_functions()`
+2. Convert ALL inline calls to use `call_builtin_function()`
+3. Each builtin MUST be a complete Z-Machine function with header and locals
+4. NO exceptions - even simple builtins like `print` must be real functions
+
+**Benefits**:
+- Proper function call semantics and stack discipline
+- Local variable scoping eliminates global variable conflicts
+- Code size reduction (generate once, call many times)
+- Consistent architecture across all builtins
+- Easier debugging with proper call stack frames
