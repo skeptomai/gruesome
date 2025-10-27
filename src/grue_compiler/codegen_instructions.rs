@@ -583,8 +583,10 @@ impl ZMachineCodeGen {
                     prop_num
                 );
 
-                // CRITICAL: Register target for property result
-                self.use_stack_for_result(*target);
+                // STACK DISCIPLINE MIGRATION (Oct 27, 2025): Migrated from use_stack_for_result()
+                // to eliminate Variable(0) collisions that caused Property 28 bugs
+                // use_push_pull_for_result() uses proper Z-Machine push/pull operations
+                self.use_push_pull_for_result(*target, "GetProperty operation")?;
 
                 // Track that this IR ID comes from a property access (for print() type detection)
                 self.ir_id_from_property.insert(*target);
@@ -1131,8 +1133,10 @@ impl ZMachineCodeGen {
                     self.code_address
                 );
 
-                // Register target as using stack result
-                self.use_stack_for_result(*target);
+                // STACK DISCIPLINE MIGRATION (Oct 27, 2025): Migrated from use_stack_for_result()
+                // to eliminate Variable(0) collisions. GetObjectParent for player.location access
+                // now uses proper Z-Machine push/pull operations instead of direct Variable(0)
+                self.use_push_pull_for_result(*target, "GetObjectParent operation")?;
             }
 
             IrInstruction::InsertObj {
