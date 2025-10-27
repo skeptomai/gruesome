@@ -672,30 +672,7 @@ impl ZMachineCodeGen {
     /// String Processing Functions for IR Translation
 
     /// Translate to_string builtin function calls
-    pub fn _translate_to_string_builtin_inline_REMOVED(
-        &mut self,
-        args: &[IrId],
-        target: Option<IrId>,
-    ) -> Result<(), CompilerError> {
-        if args.len() != 1 {
-            return Err(CompilerError::CodeGenError(
-                "to_string() requires exactly 1 argument".to_string(),
-            ));
-        }
-
-        // For now, implement as a placeholder that converts the argument to string
-        // This is a simplified implementation
-        let arg_operand = self.resolve_ir_id_to_operand(args[0])?;
-
-        if let Some(target_id) = target {
-            // Store result in IR mapping
-            self.ir_id_to_string
-                .insert(target_id, format!("{:?}", arg_operand));
-            debug!("🔤 to_string builtin: IR {} -> string mapping", target_id);
-        }
-
-        Ok(())
-    }
+    // Removed dead code: _translate_to_string_builtin_inline_REMOVED
 
     /// Translate string concatenation operations
     pub fn translate_string_concatenation(
