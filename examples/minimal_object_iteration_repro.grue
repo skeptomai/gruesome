@@ -1,0 +1,31 @@
+// Minimal reproduction for object iteration bug
+// Demonstrates broken get_object_contents placeholder causing stack underflow
+//
+// Expected behavior: Should iterate over player contents (empty) without errors
+// Actual behavior: Stack underflow at PC 0x07d4 during for-loop iteration
+// Root cause: get_object_contents returns placeholder OR(1|0=1) instead of proper object tree traversal
+
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room."
+    }
+}
+
+init {
+    player.location = test_room;
+    main();
+}
+
+fn main() {
+    print("Testing object iteration...");
+
+    // This triggers the bug - get_object_contents placeholder breaks iteration
+    let items = player.contents();
+    print("Got contents, now iterating...");
+
+    for item in items {
+        print("Found item: " + item.name);
+    }
+
+    print("Done.");
+}

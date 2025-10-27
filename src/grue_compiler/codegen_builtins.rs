@@ -775,9 +775,10 @@ impl ZMachineCodeGen {
             object_id
         );
 
-        // For now, return a simple array containing just the container object ID
-        // TODO: Implement proper object tree traversal to find child objects
-        // This is a placeholder that prevents the "Cannot insert object 0" error
+        // BROKEN PLACEHOLDER IMPLEMENTATION - CAUSES OBJECT ITERATION BUG
+        // TODO: Implement proper object tree traversal using GetObjectChild/GetObjectSibling
+        // Current placeholder (OR 1|0=1) breaks for-loop iteration, causing stack underflow
+        // See: examples/minimal_object_iteration_repro.grue for reproduction test case
 
         // Get the object operand
         let container_operand = self.resolve_ir_id_to_operand(object_id)?;
@@ -799,11 +800,12 @@ impl ZMachineCodeGen {
 
         match container_operand {
             Operand::LargeConstant(obj_num) => {
-                // For now, just return a simple integer representing "non-empty container"
-                // This prevents the object 0 error while we implement proper array support
+                // BROKEN: This placeholder OR instruction breaks object iteration
+                // Proper implementation should use GetObjectChild to find first child object
+                // Return 0 if no children, or first child object ID for iteration
                 if let Some(store_var) = target {
-                    // Store a placeholder value (non-zero = success, represents empty array)
-                    // Use store instruction: 1OP:33 (0x21)
+                    // PLACEHOLDER: This dummy value (1) causes stack underflow in for-loops
+                    // Should be replaced with actual object tree traversal
                     self.emit_instruction_typed(
                         Opcode::Op2(Op2::Or),
                         &[Operand::LargeConstant(1), Operand::SmallConstant(0)], // 1 | 0 = 1
