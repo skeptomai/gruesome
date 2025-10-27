@@ -432,13 +432,20 @@ fn player_can_see(obj) -> bool {
 }
 
 fn list_objects(location) {
+    print("DEBUG: list_objects called for location " + to_string(location));
     let objects = location.contents();
+    print("DEBUG: contents() returned " + to_string(objects));
 
     for obj in objects {
+        print("DEBUG: checking object " + to_string(obj));
         if obj != player {
+            print("DEBUG: displaying object " + to_string(obj));
             print("There is " + obj.name + " here.");
+        } else {
+            print("DEBUG: skipping player object");
         }
     }
+    print("DEBUG: list_objects finished");
 }
 
 fn list_contents(container) {

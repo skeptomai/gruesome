@@ -3875,23 +3875,30 @@ impl ZMachineCodeGen {
 
         // PHASE 2 (Oct 12, 2025): Check initial_locations_by_number for compile-time parent setting
         // If this object had .location = X in init block, use that as parent
-        let parent =
-            if let Some(&parent_num) = self.initial_locations_by_number.get(&(obj_num as u16)) {
-                log::warn!(
-                    "🏗️ INITIAL_LOCATION_SET: Object {} ('{}') parent set to {} at compile time",
+        let parent = if let Some(&parent_num) =
+            self.initial_locations_by_number.get(&(obj_num as u16))
+        {
+            log::warn!(
+                "🏗️ INITIAL_LOCATION_SET: Object {} ('{}') parent set to {} at compile time",
+                obj_num,
+                object.short_name,
+                parent_num
+            );
+            parent_num as u8
+        } else {
+            // No initial location - use default from IR (typically 0)
+            log::warn!(
+                    "🔍 MAILBOX_DEBUG: Object {} ('{}') NOT found in initial_locations_by_number. initial_locations_by_number contents: {:?}",
                     obj_num,
                     object.short_name,
-                    parent_num
+                    self.initial_locations_by_number
                 );
-                parent_num as u8
-            } else {
-                // No initial location - use default from IR (typically 0)
-                object
-                    .parent
-                    .and_then(|id| object_id_to_number.get(&id))
-                    .copied()
-                    .unwrap_or(0)
-            };
+            object
+                .parent
+                .and_then(|id| object_id_to_number.get(&id))
+                .copied()
+                .unwrap_or(0)
+        };
 
         let sibling = object
             .sibling

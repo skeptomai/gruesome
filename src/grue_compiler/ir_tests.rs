@@ -622,4 +622,264 @@ mod ir_tests {
             "Should have branch instruction for loop condition"
         );
     }
+
+    // Tests for room object containment foundation (Phase 1a)
+    #[test]
+    fn test_room_object_info_creation() {
+        // Test basic RoomObjectInfo creation
+        let mailbox = RoomObjectInfo {
+            name: "mailbox".to_string(),
+            nested_objects: vec![],
+        };
+
+        assert_eq!(mailbox.name, "mailbox");
+        assert!(mailbox.nested_objects.is_empty());
+    }
+
+    #[test]
+    fn test_room_object_info_with_nested_objects() {
+        // Test RoomObjectInfo with nested objects (like leaflet inside mailbox)
+        let leaflet = RoomObjectInfo {
+            name: "leaflet".to_string(),
+            nested_objects: vec![],
+        };
+
+        let mailbox = RoomObjectInfo {
+            name: "mailbox".to_string(),
+            nested_objects: vec![leaflet],
+        };
+
+        assert_eq!(mailbox.name, "mailbox");
+        assert_eq!(mailbox.nested_objects.len(), 1);
+        assert_eq!(mailbox.nested_objects[0].name, "leaflet");
+        assert!(mailbox.nested_objects[0].nested_objects.is_empty());
+    }
+
+    #[test]
+    fn test_room_object_info_deep_nesting() {
+        // Test deep nesting: chest contains box, box contains key
+        let key = RoomObjectInfo {
+            name: "key".to_string(),
+            nested_objects: vec![],
+        };
+
+        let box_obj = RoomObjectInfo {
+            name: "box".to_string(),
+            nested_objects: vec![key],
+        };
+
+        let chest = RoomObjectInfo {
+            name: "chest".to_string(),
+            nested_objects: vec![box_obj],
+        };
+
+        assert_eq!(chest.name, "chest");
+        assert_eq!(chest.nested_objects.len(), 1);
+        assert_eq!(chest.nested_objects[0].name, "box");
+        assert_eq!(chest.nested_objects[0].nested_objects.len(), 1);
+        assert_eq!(chest.nested_objects[0].nested_objects[0].name, "key");
+        assert!(chest.nested_objects[0].nested_objects[0]
+            .nested_objects
+            .is_empty());
+    }
+
+    #[test]
+    fn test_room_object_info_multiple_objects_same_level() {
+        // Test multiple objects at same level (mailbox and tree in same room)
+        let leaflet = RoomObjectInfo {
+            name: "leaflet".to_string(),
+            nested_objects: vec![],
+        };
+
+        let mailbox = RoomObjectInfo {
+            name: "mailbox".to_string(),
+            nested_objects: vec![leaflet],
+        };
+
+        let tree = RoomObjectInfo {
+            name: "tree".to_string(),
+            nested_objects: vec![],
+        };
+
+        let room_objects = vec![mailbox, tree];
+
+        assert_eq!(room_objects.len(), 2);
+        assert_eq!(room_objects[0].name, "mailbox");
+        assert_eq!(room_objects[0].nested_objects.len(), 1);
+        assert_eq!(room_objects[1].name, "tree");
+        assert!(room_objects[1].nested_objects.is_empty());
+    }
+
+    #[test]
+    fn test_ir_generator_room_objects_field() {
+        // Test IrGenerator room_objects field operations
+        let mut ir_generator = IrGenerator::new();
+
+        // Verify field is initialized empty
+        let room_objects = ir_generator.get_room_objects();
+        assert!(room_objects.is_empty());
+
+        // Test that we can access the field (compilation test)
+        assert_eq!(room_objects.len(), 0);
+    }
+
+    #[test]
+    fn test_room_object_info_clone() {
+        // Test that RoomObjectInfo implements Clone correctly
+        let original = RoomObjectInfo {
+            name: "mailbox".to_string(),
+            nested_objects: vec![RoomObjectInfo {
+                name: "leaflet".to_string(),
+                nested_objects: vec![],
+            }],
+        };
+
+        let cloned = original.clone();
+
+        assert_eq!(original.name, cloned.name);
+        assert_eq!(original.nested_objects.len(), cloned.nested_objects.len());
+        assert_eq!(
+            original.nested_objects[0].name,
+            cloned.nested_objects[0].name
+        );
+
+        // Verify it's a deep clone - changes to clone don't affect original
+        // (Rust's Clone for String and Vec creates deep copies)
+    }
+
+    #[test]
+    fn test_room_object_info_debug() {
+        // Test that RoomObjectInfo implements Debug correctly
+        let obj = RoomObjectInfo {
+            name: "test".to_string(),
+            nested_objects: vec![],
+        };
+
+        let debug_str = format!("{:?}", obj);
+        assert!(debug_str.contains("test"));
+        assert!(debug_str.contains("RoomObjectInfo"));
+    }
+
+    #[test]
+    fn test_multiple_rooms_with_objects() {
+        // Test scenario with multiple rooms each having different object configurations
+        let leaflet = RoomObjectInfo {
+            name: "leaflet".to_string(),
+            nested_objects: vec![],
+        };
+
+        let mailbox = RoomObjectInfo {
+            name: "mailbox".to_string(),
+            nested_objects: vec![leaflet],
+        };
+
+        let sword = RoomObjectInfo {
+            name: "sword".to_string(),
+            nested_objects: vec![],
+        };
+
+        let shield = RoomObjectInfo {
+            name: "shield".to_string(),
+            nested_objects: vec![],
+        };
+
+        // west_of_house has mailbox (with leaflet inside)
+        let west_house_objects = vec![mailbox];
+
+        // armory has sword and shield
+        let armory_objects = vec![sword, shield];
+
+        assert_eq!(west_house_objects.len(), 1);
+        assert_eq!(west_house_objects[0].name, "mailbox");
+        assert_eq!(west_house_objects[0].nested_objects.len(), 1);
+        assert_eq!(west_house_objects[0].nested_objects[0].name, "leaflet");
+
+        assert_eq!(armory_objects.len(), 2);
+        assert_eq!(armory_objects[0].name, "sword");
+        assert_eq!(armory_objects[1].name, "shield");
+        assert!(armory_objects[0].nested_objects.is_empty());
+        assert!(armory_objects[1].nested_objects.is_empty());
+    }
+
+    #[test]
+    fn test_room_object_info_empty_vs_populated() {
+        // Test distinction between empty and populated nested_objects
+        let empty_container = RoomObjectInfo {
+            name: "empty_chest".to_string(),
+            nested_objects: vec![],
+        };
+
+        let full_container = RoomObjectInfo {
+            name: "full_chest".to_string(),
+            nested_objects: vec![RoomObjectInfo {
+                name: "gold".to_string(),
+                nested_objects: vec![],
+            }],
+        };
+
+        assert!(empty_container.nested_objects.is_empty());
+        assert!(!full_container.nested_objects.is_empty());
+        assert_eq!(full_container.nested_objects.len(), 1);
+        assert_eq!(full_container.nested_objects[0].name, "gold");
+    }
+
+    #[test]
+    fn test_phase_1b_integration_with_mini_zork() {
+        // Integration test: Verify Phase 1b works with actual mini_zork.grue parsing
+        let source = r#"
+            world {
+                room west_of_house "West of House" {
+                    desc: "You are standing in an open field west of a white house."
+
+                    object mailbox {
+                        names: ["small mailbox", "mailbox", "box"]
+                        desc: "The small mailbox is closed."
+                        openable: true
+                        container: true
+
+                        contains {
+                            object leaflet {
+                                names: ["leaflet", "paper"]
+                                desc: "Welcome to Zork!"
+                            }
+                        }
+                    }
+                }
+
+                room empty_room "Empty Room" {
+                    desc: "This room has no objects."
+                }
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        // Verify rooms were created
+        assert_eq!(ir.rooms.len(), 2);
+
+        // Create IrGenerator to test Phase 1b functionality
+        let mut ir_generator = IrGenerator::new();
+        let mut lexer = crate::grue_compiler::lexer::Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = crate::grue_compiler::parser::Parser::new(tokens);
+        let ast = parser.parse().unwrap();
+        let _ = ir_generator.generate(ast).unwrap();
+
+        // Verify Phase 1b: Check room_objects mapping
+        let room_objects = ir_generator.get_room_objects();
+
+        // Should have recorded objects for west_of_house but not empty_room
+        assert!(room_objects.contains_key("west_of_house"));
+        assert!(!room_objects.contains_key("empty_room"));
+
+        // Verify west_of_house has mailbox with leaflet nested inside
+        let west_house_objects = &room_objects["west_of_house"];
+        assert_eq!(west_house_objects.len(), 1);
+        assert_eq!(west_house_objects[0].name, "mailbox");
+        assert_eq!(west_house_objects[0].nested_objects.len(), 1);
+        assert_eq!(west_house_objects[0].nested_objects[0].name, "leaflet");
+        assert!(west_house_objects[0].nested_objects[0]
+            .nested_objects
+            .is_empty());
+    }
 }

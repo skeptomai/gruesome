@@ -1049,10 +1049,16 @@ impl ZMachineCodeGen {
                 // Branches when child does NOT exist (returns 0)
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
 
-                // Emit with placeholder branch offset (branch on FALSE, when no child)
+                // CRITICAL BUG FIX (Oct 27, 2025): Z-Machine opcode confusion
+                // PROBLEM: Was using 0x01 (get_sibling) instead of 0x02 (get_child)
+                // IMPACT: Object tree iteration never found children, always returned 0
+                // SYMPTOM: For-loops skipped entirely, no objects listed in rooms
+                // FIX: Use correct Z-Machine opcodes per specification:
+                //   - 1OP:1 (0x01) = get_sibling
+                //   - 1OP:2 (0x02) = get_child
                 let placeholder = 0x7FFF_u16 as i16; // bit 15=0 for branch-on-FALSE
                 let layout = self.emit_instruction(
-                    0x01, // get_child opcode (1OP:1)
+                    0x02, // get_child opcode (1OP:2) - FIXED: was 0x01 (get_sibling)
                     &[obj_operand],
                     Some(0),           // Store result to stack
                     Some(placeholder), // Placeholder encodes branch polarity
@@ -1088,10 +1094,12 @@ impl ZMachineCodeGen {
                 // Branches when sibling does NOT exist (returns 0)
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
 
-                // Emit with placeholder branch offset (branch on FALSE, when no sibling)
+                // CRITICAL BUG FIX (Oct 27, 2025): Both GetObjectChild and GetObjectSibling
+                // were using wrong opcodes - they were swapped!
+                // This completely broke object tree iteration in for-loops
                 let placeholder = 0x7FFF_u16 as i16; // bit 15=0 for branch-on-FALSE
                 let layout = self.emit_instruction(
-                    0x02, // get_sibling opcode (1OP:2)
+                    0x01, // get_sibling opcode (1OP:1) - FIXED: was 0x02 (get_child)
                     &[obj_operand],
                     Some(0),           // Store result to stack
                     Some(placeholder), // Placeholder encodes branch polarity
@@ -1153,6 +1161,11 @@ impl ZMachineCodeGen {
                 object,
                 destination,
             } => {
+                log::warn!(
+                    "🔍 MAILBOX_DEBUG: Processing InsertObj instruction - IR {} -> IR {}",
+                    object,
+                    destination
+                );
                 // Z-Machine insert_obj opcode: sets object's parent, updates tree structure
                 // (Oct 12, 2025): Used for .location = assignment
                 // This removes object from current parent and inserts as first child of destination
@@ -1185,6 +1198,10 @@ impl ZMachineCodeGen {
                         log::warn!(
                             "🏗️ INITIAL_LOCATION_TRACKED: Object #{} -> Parent #{} (IR {} -> IR {}) at compile time",
                             obj, parent, object, destination
+                        );
+                        log::warn!(
+                            "🔍 MAILBOX_DEBUG: InsertObj tracking - initial_locations_by_number now contains: {:?}",
+                            self.initial_locations_by_number
                         );
                     }
                 }

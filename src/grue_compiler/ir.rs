@@ -12,6 +12,16 @@ use std::collections::HashMap;
 /// Unique identifier for IR instructions, labels, and temporary variables
 pub type IrId = u32;
 
+/// Information about objects contained within a room for automatic placement
+/// Used to generate InsertObj instructions during init block generation
+#[derive(Debug, Clone)]
+pub struct RoomObjectInfo {
+    /// Name of the object (for symbol lookup)
+    pub name: String,
+    /// Nested objects contained within this object (e.g., leaflet inside mailbox)
+    pub nested_objects: Vec<RoomObjectInfo>,
+}
+
 /// IR Program - top-level container for all IR elements
 /// Registry for tracking all IR IDs and their types/purposes
 #[derive(Debug, Clone)]
@@ -1002,6 +1012,9 @@ pub struct IrGenerator {
     property_manager: PropertyManager,  // Manages property numbering and inheritance
     id_registry: IrIdRegistry,          // NEW: Track all IR IDs for debugging and mapping
     variable_sources: IndexMap<IrId, VariableSource>, // Track variable origins for iteration strategy
+    /// Mapping of room names to objects contained within them
+    /// Used for automatic object placement during init block generation
+    room_objects: IndexMap<String, Vec<RoomObjectInfo>>,
 }
 
 impl Default for IrGenerator {
@@ -1027,6 +1040,7 @@ impl IrGenerator {
             property_manager: PropertyManager::new(),
             id_registry: IrIdRegistry::new(), // NEW: Initialize ID registry
             variable_sources: IndexMap::new(), // NEW: Initialize variable source tracking
+            room_objects: IndexMap::new(),    // NEW: Initialize room object mapping
         }
     }
 
@@ -1290,7 +1304,11 @@ impl IrGenerator {
                 ir_program.grammar.extend(ir_grammar);
             }
             Item::Init(init) => {
-                let ir_block = self.generate_block(init.body)?;
+                let mut ir_block = self.generate_block(init.body)?;
+
+                // Phase 1c: Inject object placement instructions after user's init code
+                self.generate_object_placement_instructions(&mut ir_block)?;
+
                 ir_program.init_block = Some(ir_block);
 
                 // Save local variables declared in init block (e.g., let statements)
@@ -1718,6 +1736,98 @@ impl IrGenerator {
         Ok(())
     }
 
+    /// Extract object hierarchy from AST ObjectDecl for room object mapping
+    /// Converts ObjectDecl and its nested objects into RoomObjectInfo structure
+    fn extract_object_hierarchy(
+        &self,
+        obj: &crate::grue_compiler::ast::ObjectDecl,
+    ) -> RoomObjectInfo {
+        // Extract nested objects recursively
+        let nested_objects: Vec<RoomObjectInfo> = obj
+            .contains
+            .iter()
+            .map(|nested_obj| self.extract_object_hierarchy(nested_obj))
+            .collect();
+
+        RoomObjectInfo {
+            name: obj.identifier.clone(),
+            nested_objects,
+        }
+    }
+
+    /// Generate InsertObj instructions from room_objects mapping for init block
+    /// Converts room object hierarchies to InsertObj instructions to establish object tree
+    fn generate_object_placement_instructions(
+        &self,
+        block: &mut IrBlock,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "Phase 1c: Generating object placement instructions for {} rooms",
+            self.room_objects.len()
+        );
+
+        for (room_name, objects) in &self.room_objects {
+            // Look up room IR ID from symbol table
+            let room_ir_id = *self.symbol_ids.get(room_name).ok_or_else(|| {
+                CompilerError::CodeGenError(format!(
+                    "Room '{}' not found in symbol table during object placement",
+                    room_name
+                ))
+            })?;
+
+            log::debug!(
+                "Phase 1c: Placing {} objects in room '{}' (IR ID {})",
+                objects.len(),
+                room_name,
+                room_ir_id
+            );
+
+            // Generate placement instructions for each object in this room
+            for object_info in objects {
+                self.generate_placement_for_object(object_info, room_ir_id, block)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Generate InsertObj instructions for a single object and its nested objects
+    /// Recursively handles object containment hierarchy
+    fn generate_placement_for_object(
+        &self,
+        object_info: &RoomObjectInfo,
+        container_ir_id: u32,
+        block: &mut IrBlock,
+    ) -> Result<(), CompilerError> {
+        // Look up object IR ID from symbol table
+        let object_ir_id = *self.symbol_ids.get(&object_info.name).ok_or_else(|| {
+            CompilerError::CodeGenError(format!(
+                "Object '{}' not found in symbol table during placement",
+                object_info.name
+            ))
+        })?;
+
+        // Generate InsertObj instruction to place this object in its container
+        block.instructions.push(IrInstruction::InsertObj {
+            object: object_ir_id,
+            destination: container_ir_id,
+        });
+
+        log::debug!(
+            "Phase 1c: Generated InsertObj for '{}' (IR {}) into container (IR {})",
+            object_info.name,
+            object_ir_id,
+            container_ir_id
+        );
+
+        // Recursively handle nested objects (they go inside this object)
+        for nested_object in &object_info.nested_objects {
+            self.generate_placement_for_object(nested_object, object_ir_id, block)?;
+        }
+
+        Ok(())
+    }
+
     /// Add synthetic player object to IR program
     /// The player is always object #1 and has standard properties
     fn add_player_object(&mut self, ir_program: &mut IrProgram) -> Result<(), CompilerError> {
@@ -1856,8 +1966,40 @@ impl IrGenerator {
             room.objects.len(),
             room.identifier
         );
+        log::warn!(
+            "🔍 MAILBOX_DEBUG: Room '{}' contains {} objects: {:?}",
+            room.identifier,
+            room.objects.len(),
+            room.objects
+                .iter()
+                .map(|o| &o.identifier)
+                .collect::<Vec<_>>()
+        );
+
+        // Phase 1b: Record object hierarchy in room_objects mapping
+        let mut room_object_infos = Vec::new();
         for obj in &room.objects {
+            log::warn!(
+                "🔍 MAILBOX_DEBUG: Registering object '{}' for room '{}'",
+                obj.identifier,
+                room.identifier
+            );
             self.register_object_and_nested(obj)?;
+
+            // Extract object hierarchy and add to room mapping
+            let object_info = self.extract_object_hierarchy(obj);
+            room_object_infos.push(object_info);
+        }
+
+        // Store the complete object hierarchy for this room
+        if !room_object_infos.is_empty() {
+            self.room_objects
+                .insert(room.identifier.clone(), room_object_infos);
+            log::debug!(
+                "Phase 1b: Recorded {} object hierarchies for room '{}'",
+                self.room_objects[&room.identifier].len(),
+                room.identifier
+            );
         }
 
         // Now process handlers - objects are available for reference
@@ -2133,6 +2275,20 @@ impl IrGenerator {
         Ok(())
     }
 
+    /// Generate InsertObj instructions to place room objects in their containing rooms
+    /// Phase 1: Place objects defined inside rooms (e.g., mailbox in west_of_house)
+    fn generate_room_object_placement(&mut self, block: &mut IrBlock) -> Result<(), CompilerError> {
+        log::debug!("🏠 Generating room object placement instructions");
+
+        // We need access to room data, but it's not stored in self after generation
+        // For now, implement a simple approach: track room->objects during generation
+
+        // TODO: Implement room object placement logic
+        log::warn!("🚧 generate_room_object_placement: Not yet implemented");
+
+        Ok(())
+    }
+
     fn generate_statement(
         &mut self,
         stmt: crate::grue_compiler::ast::Stmt,
@@ -2195,6 +2351,21 @@ impl IrGenerator {
                                 var_id,
                                 source: value_temp,
                             });
+
+                            // CRITICAL FIX (Oct 27, 2025): Copy variable source tracking from value_temp to var_id
+                            // This enables for-loop detection to work with variable indirection
+                            // e.g., let items = obj.contents(); for item in items
+                            // Without this, ObjectTreeRoot source is lost during assignment and for-loop
+                            // falls back to array iteration instead of object tree iteration
+                            if let Some(source) = self.variable_sources.get(&value_temp).cloned() {
+                                log::debug!(
+                                    "Assignment: copying variable source {:?} from value_temp {} to var_id {}",
+                                    source,
+                                    value_temp,
+                                    var_id
+                                );
+                                self.variable_sources.insert(var_id, source);
+                            }
                         } else {
                             // Variable not found - this should be caught in semantic analysis
                             return Err(CompilerError::SemanticError(
@@ -3898,6 +4069,12 @@ impl IrGenerator {
         }
 
         Ok(temp_id)
+    }
+
+    /// Testing method to expose room_objects mapping for integration tests
+    #[cfg(test)]
+    pub fn get_room_objects(&self) -> &IndexMap<String, Vec<RoomObjectInfo>> {
+        &self.room_objects
     }
 }
 
