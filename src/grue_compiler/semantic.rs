@@ -115,6 +115,8 @@ impl SemanticAnalyzer {
             ("test_attr", vec![Type::Any, Type::Int], Some(Type::Bool)),
             ("set_attr", vec![Type::Any, Type::Int], None),
             ("clear_attr", vec![Type::Any, Type::Int], None),
+            // Navigation system - room exit resolution
+            ("get_exit", vec![Type::Any, Type::String], Some(Type::Any)),
             // String utility functions - COMPILE-TIME ONLY
             // These functions only work with string literals and compile-time constants.
             // They cannot operate on runtime variables due to Z-Machine limitations.

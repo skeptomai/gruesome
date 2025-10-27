@@ -8983,71 +8983,17 @@ impl ZMachineCodeGen {
             "object_is_empty" => self.generate_object_is_empty_builtin(args, target),
             "value_is_none" => self.generate_value_is_none_builtin(args, target),
             "get_exit" => {
-                // CRITICAL FIX (Oct 27, 2025): Call actual get_exit Z-Machine function
+                // ARCHITECTURE FIX (Oct 27, 2025): Use standard builtin function call mechanism
                 //
-                // PROBLEM: get_exit was being handled as inline code generation instead of
-                // calling the actual get_exit function created by create_builtin_get_exit().
-                // This caused the runtime to execute property access sequences instead of
-                // calling the packed address 0x039f (get_exit function).
+                // BEFORE: Custom HOTFIX code that duplicated function call logic
+                // AFTER: Use standard call_builtin_function helper for consistency
                 //
-                // SOLUTION: Route get_exit calls to the actual Z-Machine function using
-                // the same mechanism as user function calls, but lookup from builtin_functions
-                log::debug!("🚪 ROUTING get_exit to actual Z-Machine function");
-
-                // Get the function ID for get_exit
-                let func_id = *self.builtin_functions.get("get_exit").ok_or_else(|| {
-                    CompilerError::CodeGenError(
-                        "get_exit function not found in builtin_functions".to_string(),
-                    )
-                })?;
-
-                // Get the function address
-                let func_addr = *self.function_addresses.get(&func_id).ok_or_else(|| {
-                    CompilerError::CodeGenError(format!(
-                        "get_exit function address not found for ID {}",
-                        func_id
-                    ))
-                })?;
-
+                // BENEFIT: Follows same pattern as future builtins moving from inline to function calls
                 log::debug!(
-                    "🚪 Calling get_exit at address 0x{:04x} (packed: 0x{:04x})",
-                    func_addr,
-                    func_addr / 2
+                    "🚪 STANDARD: Calling get_exit via standard builtin function mechanism"
                 );
 
-                // Convert args to operands
-                let mut operands = Vec::new();
-                operands.push(Operand::LargeConstant((func_addr / 2) as u16)); // Packed address
-
-                for &arg_id in args {
-                    let arg_operand = self.resolve_ir_id_to_operand(arg_id)?;
-                    operands.push(arg_operand);
-                }
-
-                // Determine store variable
-                let store_var = if let Some(target_id) = target {
-                    let result_var = self.allocate_global_variable();
-                    self.ir_id_to_stack_var.insert(target_id, result_var);
-                    Some(result_var)
-                } else {
-                    None
-                };
-
-                // Emit call_vs instruction
-                self.emit_instruction_typed(
-                    crate::grue_compiler::opcodes::Opcode::OpVar(
-                        crate::grue_compiler::opcodes::OpVar::CallVs,
-                    ),
-                    &operands,
-                    store_var,
-                    None, // No branch offset for call_vs
-                )?;
-
-                log::debug!(
-                    "🚪 Generated call_vs to get_exit at packed address 0x{:04x}",
-                    func_addr / 2
-                );
-                Ok(())
+                return self.call_builtin_function("get_exit", args, target);
             }
             "exit_is_blocked" => self.generate_exit_is_blocked_builtin(args, target),
             "exit_get_destination" => self.generate_exit_get_data_builtin(args, target),
@@ -10222,16 +10168,48 @@ impl ZMachineCodeGen {
             log::debug!("🏗️ BUILTIN_GEN: No main function mappings found yet");
         }
 
-        // Create get_exit builtin function if it's registered
-        log::debug!(
-            "🚪 Checking for get_exit in builtin_functions: {:?}",
-            self.builtin_functions.keys().collect::<Vec<_>>()
-        );
+        // Generate actual builtin functions that are registered
+        let mut generated_count = 0;
+
+        // Generate get_exit builtin function if registered
         if self.builtin_functions.contains_key("get_exit") {
-            log::debug!("🚪 Creating get_exit builtin function");
-            self.create_builtin_get_exit()?;
-        } else {
-            log::debug!("🚪 get_exit not found in builtin_functions");
+            log::debug!("🏗️ BUILTIN_GEN: Generating get_exit function");
+
+            // Ensure even address alignment for function
+            if self.code_address % 2 != 0 {
+                log::debug!("🏗️ BUILTIN_GEN: Adding padding byte for alignment");
+                self.emit_byte(0xB4)?;
+            }
+
+            let func_addr = self.code_address;
+            let func_id = *self.builtin_functions.get("get_exit").unwrap();
+
+            // Generate function header (9 locals as required by generate_get_exit_builtin)
+            let num_locals = 9;
+            log::debug!(
+                "🏗️ BUILTIN_GEN: Generating get_exit function header at 0x{:04x}",
+                func_addr
+            );
+            self.emit_byte(num_locals)?;
+            for _ in 0..num_locals {
+                self.emit_word(0)?;
+            }
+
+            // Generate function body using the proven implementation
+            self.generate_get_exit_builtin(&[], None)?;
+
+            // Register function address
+            log::debug!(
+                "🏗️ BUILTIN_GEN: Registering get_exit function: ID {} → address 0x{:04x}",
+                func_id,
+                func_addr
+            );
+            self.reference_context
+                .ir_id_to_address
+                .insert(func_id, func_addr);
+            self.function_addresses.insert(func_id, func_addr);
+
+            generated_count += 1;
         }
 
         log::debug!(
@@ -10243,7 +10221,8 @@ impl ZMachineCodeGen {
             self.code_space.len()
         );
         log::debug!(
-            "🏗️ BUILTIN_GEN: Generated {} builtin functions",
+            "🏗️ BUILTIN_GEN: Generated {} builtin functions (out of {} registered)",
+            generated_count,
             self.builtin_functions.len()
         );
         Ok(())
@@ -10269,13 +10248,8 @@ impl ZMachineCodeGen {
             CompilerError::CodeGenError(format!("Builtin function '{}' not found", name))
         })?;
 
-        // Copy function address to avoid borrowing conflicts
-        let func_addr = *self.function_addresses.get(func_id).ok_or_else(|| {
-            CompilerError::CodeGenError(format!(
-                "Address not found for builtin function '{}'",
-                name
-            ))
-        })?;
+        // Copy function ID for UnresolvedReference creation
+        let func_id_value = *func_id;
 
         // Convert arguments to operands
         let mut arg_operands = Vec::new();
@@ -10292,14 +10266,14 @@ impl ZMachineCodeGen {
             None
         };
 
-        // Emit call_vs instruction
-        self.emit_instruction_typed(
+        // Emit call_vs instruction with placeholder for function address (will be resolved later)
+        let layout = self.emit_instruction_typed(
             crate::grue_compiler::opcodes::Opcode::OpVar(
                 crate::grue_compiler::opcodes::OpVar::CallVs,
             ),
             &{
                 let mut operands = vec![crate::grue_compiler::codegen::Operand::LargeConstant(
-                    (func_addr / 2) as u16,
+                    placeholder_word(), // Placeholder for function address (resolved during final assembly)
                 )];
                 operands.extend(arg_operands);
                 operands
@@ -10307,6 +10281,20 @@ impl ZMachineCodeGen {
             store_var,
             None,
         )?;
+
+        // Create UnresolvedReference for function address fixup during final assembly
+        if let Some(operand_location) = layout.operand_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::FunctionCall,
+                    location: operand_location,
+                    target_id: func_id_value,
+                    is_packed_address: true, // Z-Machine function addresses are packed
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        }
 
         // CRITICAL FIX (Oct 27, 2025): Generic builtin stack discipline violation
         //
@@ -10339,104 +10327,14 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Create get_exit builtin function as a real Z-Machine function
-    ///
-    /// Signature: get_exit(room, direction) -> u16
-    ///
-    /// Algorithm:
-    /// 1. Get addresses of three parallel array properties: exit_directions, exit_types, exit_data
-    /// 2. Calculate num_exits from exit_directions property length (bytes / 2)
-    /// 3. Loop through exit_directions array comparing each direction with input parameter
-    /// 4. When match found at index N:
-    ///    - Load type byte from exit_types[N] (0=normal, 1=blocked)
-    ///    - Load data word from exit_data[N] (room_id or message_addr)
-    ///    - Pack result as: (type << 14) | data
-    /// 5. Return 0 if no match found
-    ///
-    /// Return value encoding:
-    /// - 0x0000: No exit found
-    /// - 0x0000-0x3FFF: Normal exit (type=0, data=room_id)
-    /// - 0x4000-0x7FFF: Blocked exit (type=1, data=message_addr)
-    ///
-    /// Local variables:
-    /// - 1: room (argument), 2: direction (argument)
-    /// - 3: directions_addr, 4: types_addr, 5: data_addr
-    /// - 6: index (loop counter), 7: num_exits, 8: type_byte/temp, 9: result
-    fn create_builtin_get_exit(&mut self) -> Result<(), CompilerError> {
-        log::debug!(
-            "🚪 GET_EXIT_CREATE: Starting creation at code_address 0x{:04x}",
-            self.code_address
-        );
-
-        let func_id: IrId = 1000000 + self.builtin_functions.len() as u32;
-
-        if self.code_address % 2 != 0 {
-            log::debug!(
-                "get_exit: Emitting padding byte at 0x{:04x}",
-                self.code_address
-            );
-            self.emit_byte(0xB4)?;
-        }
-
-        let func_addr = self.code_address;
-
-        // Generate function header with 9 locals as required by generate_get_exit_builtin
-        let num_locals = 9;
-        log::debug!(
-            "get_exit: Emitting function header (num_locals={}) at 0x{:04x}",
-            num_locals,
-            self.code_address
-        );
-        self.emit_byte(num_locals)?;
-        for _i in 0..num_locals {
-            self.emit_word(0)?;
-        }
-
-        // CRITICAL FIX (Oct 27, 2025): Delegate to proven working implementation
-        //
-        // ISSUE: create_builtin_get_exit was using its own broken implementation that tried
-        // to access parameters via IR ID resolution, which fails for standalone Z-Machine functions.
-        // Parameters for standalone functions come via Z-Machine calling convention (stack → locals).
-        //
-        // SOLUTION: Delegate to generate_get_exit_builtin which correctly uses local variables
-        // (Variable(1) for room, Variable(2) for direction) instead of IR ID resolution.
-        //
-        // RESULT: Navigation commands ('north', 'south', etc.) now work correctly.
-        // Player successfully moves between rooms and displays "You moved." message.
-        log::debug!("🚪 GET_EXIT_CREATE: Delegating to generate_get_exit_builtin (proven working implementation)");
-        self.generate_get_exit_builtin(&[], None)?;
-
-        // Register function in address mapping
-        let packed_addr = func_addr / 2;
-        self.reference_context
-            .ir_id_to_address
-            .insert(func_id, func_addr);
-
-        // CRITICAL FIX (Oct 27, 2025): Store IR ID, not address
-        //
-        // ISSUE: builtin_functions was storing func_addr instead of func_id, breaking the lookup chain:
-        // - translate_call does: name → builtin_functions[name] → function_addresses[result]
-        // - If builtin_functions stores address, function_addresses.get(address) fails
-        // - This caused "get_exit function address not found for ID 0" error
-        //
-        // SOLUTION: Store IR ID in builtin_functions for proper lookup chain:
-        // - builtin_functions: "get_exit" → func_id (IR ID like 1000005)
-        // - function_addresses: func_id → func_addr (address like 0x0000)
-        // - This enables translate_call to resolve: name → IR ID → address
-        //
-        // RESULT: IR ID 11 (get_exit return value) now maps correctly, handle_go function executes
-        self.function_addresses.insert(func_id, func_addr);
-        self.builtin_functions
-            .insert("get_exit".to_string(), func_id);
-
-        log::debug!(
-            "Created get_exit at address 0x{:04x} (packed: 0x{:04x})",
-            func_addr,
-            packed_addr
-        );
-
-        Ok(())
-    }
+    // ARCHITECTURE FIX (Oct 27, 2025): Removed create_builtin_get_exit function
+    //
+    // get_exit now uses standard builtin pipeline:
+    // 1. Semantic registration via semantic.rs register_builtin_functions()
+    // 2. Function creation via generate_builtin_functions() → generate_get_exit_builtin()
+    // 3. Call translation via generate_builtin_function_call() with UnresolvedReference fixups
+    //
+    // This eliminates reactive registration patterns and provides proper address resolution.
 }
 
 #[cfg(test)]
