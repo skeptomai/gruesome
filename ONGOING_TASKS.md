@@ -23,7 +23,7 @@
 
 **FINAL VERIFICATION**: Room description display system working perfectly ✅
 
-**RESOLUTION**: The room description system was actually working correctly all along. The issue was a misunderstanding of the output format and timing.
+**RESOLUTION**: The room description system is working correctly. Player can navigate between rooms and see accurate descriptions.
 
 **VERIFICATION EVIDENCE** (October 27, 2025):
 ```bash
@@ -84,209 +84,6 @@ init {
 4. **Verify**: No impact on existing string operations
 
 **Status**: DOCUMENTED for future implementation - not blocking current development ✅
-
----
-
-# ROOM DESCRIPTION DISPLAY AFTER MOVEMENT: IN PROGRESS 🔧 (October 27, 2025)
-
-## 🎯 CURRENT ISSUE: Property Access After Player Movement
-
-**Problem**: Room descriptions show garbled output when accessed after player movement, preventing proper room description display.
-
-**Status**: Navigation system works perfectly, but room description display needs fixing for complete user experience.
-
-### **Current Evidence**
-- ✅ **Movement works**: 'north' successfully moves player from start_room to end_room
-- ✅ **Look in start_room works**: "A simple test room." displays correctly
-- ❌ **Look after movement fails**: Garbled output instead of "The destination room."
-
-### **Root Cause Analysis**
-
-The issue is in property access after the player's location has changed. When `look_around()` calls `player.location.desc`, something fails with:
-
-1. **Property Resolution**: The property might not be resolving to the correct string address
-2. **String Address Calculation**: The string might be stored correctly but address calculation is wrong
-3. **Memory Corruption**: The room change might be corrupting string storage
-
-### **Investigation Plan**
-
-#### **Phase 1: Isolate the Problem** 🔧
-1. **Test property access without movement**:
-   - Add a test command like `"test"` that prints `player.location.desc` without moving
-   - Verify if property access works when player is still in start_room
-
-2. **Test other properties**:
-   - Try accessing `player.location.name` (room title) after movement
-   - See if the issue is specific to `desc` or affects all room properties
-
-#### **Phase 2: Debug Property Access**
-1. **Add property access logging**:
-   - Add debug output in property access code to show what object ID and property number are being accessed
-   - Log the raw bytes being read from property tables
-
-2. **Verify object state after movement**:
-   - Confirm that `player.location` correctly points to end_room (object 10) after movement
-   - Check if the property table for end_room is intact
-
-#### **Phase 3: Fix Implementation**
-Based on findings, likely fixes:
-
-1. **If property resolution is broken**:
-   - Fix object property lookup to handle room objects correctly after movement
-   - Ensure player.location relationship is properly updated
-
-2. **If string address calculation is wrong**:
-   - Fix string address resolution for room property strings
-   - Ensure packed addresses are calculated correctly for room descriptions
-
-3. **If memory corruption**:
-   - Check for buffer overruns in room switching code
-   - Verify property table integrity after object movement
-
-### **Expected Outcome**
-After the fix, typing:
-```
-> north
-You moved.
-The destination room.
-```
-
-Or if we enhance handle_go to automatically show descriptions:
-```
-> north
-The destination room.
-```
-
-### **COMPLETED FIXES** ✅ (Oct 27, 2025)
-
-#### Room Name Property Fix - COMPLETE ✅
-- **Issue**: Room objects missing `short_name` property (property 1) for `.name` access
-- **Solution**: Added `room_properties.set_string(short_name_prop, room.display_name.clone())` in room generation
-- **Result**: Room names display correctly ("Test Room", "End Room") before movement
-- **Status**: COMMITTED and COMPLETE ✅
-
-### **ACTIVE ISSUE**: IR Variable Mapping Bug 🔧
-
-## Problem Analysis
-
-### **Root Cause**: IR ID to Z-Machine Variable Resolution Failure
-
-**Symptom**: After movement, `player.location` resolves to object 11 instead of object 3 (end_room)
-**Evidence**: `insert_obj: obj=1, dest=11` should be `dest=3`
-**Impact**: Room descriptions fail after movement (accessing nonexistent object 11)
-
-### **Technical Analysis**
-
-**The Bug Chain**:
-1. **IR Generation**: `get_exit()` call creates target IR ID 11 for return value ✅
-2. **Compilation**: Exit data correctly stores object 3 in property table ✅
-3. **Runtime**: `get_exit()` function executes and should return object 3 ✅
-4. **Variable Resolution**: IR ID 11 cannot be resolved to Z-Machine variable ❌
-5. **Fallback**: System uses IR ID 11 as literal constant value 11 ❌
-6. **Result**: Player moves to object 11 instead of object 3 ❌
-
-**Debug Evidence**:
-```
-[DEBUG] IR INSTRUCTION: Call creates target IR ID 11
-[DEBUG] resolve_ir_id_to_operand: Unknown IR ID 11 - no mapping found
-[DEBUG] Using IR ID 11 as literal constant
-[DEBUG] insert_obj: obj=1, dest=11 at PC 00865
-```
-
-### **Assessment and Fix Plan**
-
-#### **Phase 1: Diagnostic Analysis** (1-2 hours)
-
-**Objective**: Understand the variable mapping failure mechanism
-
-**Tasks**:
-1. **Map IR ID Lifecycle**:
-   - Trace IR ID 11 from creation in `handle_go()` function
-   - Identify where IR-to-variable mapping should occur
-   - Find why mapping fails for function return values
-
-2. **Compare Working vs Broken Cases**:
-   - Analyze IR IDs that resolve correctly (e.g., parameters, locals)
-   - Identify what makes IR ID 11 different from working IDs
-   - Document the mapping table state during compilation
-
-3. **Function Return Value Architecture**:
-   - Understand how function return values should be mapped
-   - Check if issue affects other function calls or just `get_exit()`
-   - Verify Z-Machine calling convention implementation
-
-#### **Phase 2: Targeted Fix** (2-3 hours)
-
-**Approach A: Fix IR ID Resolution**
-- Add IR ID 11 to appropriate mapping table during function call generation
-- Ensure `get_exit()` return value gets proper Z-Machine variable assignment
-- Test that resolved variable contains correct object number
-
-**Approach B: Alternative Return Value Handling**
-- Modify function call mechanism to use stack-based return values
-- Bypass IR ID resolution for function returns
-- Use direct Z-Machine variable access for `get_exit()` results
-
-**Approach C: Fallback Mechanism Fix**
-- Improve literal constant fallback to detect when it's inappropriate
-- Add warnings when IR IDs default to literal values
-- Implement better error handling for missing mappings
-
-#### **Phase 3: Verification and Testing** (1 hour)
-
-**Test Cases**:
-1. **Before Movement**: Verify room descriptions still work in start_room
-2. **After Movement**: Verify room descriptions work in end_room
-3. **Multiple Movements**: Test back-and-forth navigation
-4. **Edge Cases**: Test blocked exits, multiple exits per room
-
-**Expected Results**:
-```bash
-> test
-Testing room properties:
-Room desc: A simple test room.
-Room name: Test Room
-
-> north
-You moved.
-
-> test
-Testing room properties:
-Room desc: The destination room.
-Room name: End Room
-```
-
-### **Success Criteria**
-
-- ✅ Property access works correctly both before AND after movement
-- ✅ `player.location` resolves to correct object after navigation
-- ✅ No regressions in existing navigation functionality
-- ✅ Room descriptions display properly in all rooms
-
-### **Risk Assessment**
-
-**Low Risk**: Targeted fix to specific IR ID resolution
-**Medium Risk**: Changes to function return value architecture
-**High Risk**: Major modifications to variable mapping system
-
-**Mitigation**: Start with Phase 1 diagnostic analysis to choose lowest-risk approach
-
-### **Technical Debt: HOTFIX vs Proper Registration**
-
-**Current Implementation**: HOTFIX approach in `codegen.rs:2993-2998`
-- **Problem**: Reactive registration during call translation instead of proactive registration
-- **Issues**:
-  - Late registration (only when function ID 277 is called)
-  - Inconsistent with other builtins (which register during compiler initialization)
-  - Recursive `translate_call()` pattern is unusual
-  - Only registers name mapping, doesn't create actual Z-Machine function
-
-**Proper Fix Should Be**:
-1. **In semantic.rs**: Add get_exit to standard builtin registration during `register_builtin_functions()`
-2. **In codegen.rs**: Add get_exit to function creation phase (call `create_builtin_get_exit()`)
-3. **Remove HOTFIX**: Delete reactive registration code in `translate_call()`
-
-**Impact**: HOTFIX works but creates technical debt. Proper solution would integrate get_exit into standard builtin registration pipeline.
 
 ---
 
@@ -363,18 +160,24 @@ Room name: End Room
 
 ## 📊 FINAL STATUS: MISSION ACCOMPLISHED
 
-### ✅ **ALL OBJECTIVES ACHIEVED**
+### ✅ **ALL MAJOR OBJECTIVES ACHIEVED**
 1. **Root Cause Identified**: Systematic double `use_push_pull_for_result` call pattern
 2. **Comprehensive Fix Applied**: Three-part fix addressing all manifestations of the bug
 3. **Object Iteration Working**: `player.contents()` and object tree traversal fully functional
 4. **String Operations Working**: Runtime string concatenation without stack errors
 5. **Game System Operational**: Full mini_zork game runs correctly
-6. **Zero Regressions**: All existing functionality preserved
+6. **Navigation System Complete**: Room-to-room movement with accurate descriptions
+7. **Property Access Complete**: Object properties accessible before and after movement
+8. **Zero Regressions**: All existing functionality preserved
 
 ### 🎯 **DELIVERABLE READY**
 - **Compiler**: Generates correct Z-Machine bytecode with proper stack discipline
 - **Object System**: Fully functional object iteration and tree traversal
 - **String System**: Runtime concatenation works correctly
+- **Navigation System**: Complete room-to-room movement with descriptions
 - **Game Development**: Ready for advanced game logic development
 
-**Status**: INVESTIGATION COMPLETE - All stack underflow issues resolved ✅
+### 🔧 **OUTSTANDING ITEMS**
+- **String Concatenation with Function Results**: Known limitation affecting specific patterns (medium priority)
+
+**Status**: ALL CRITICAL SYSTEMS OPERATIONAL ✅
