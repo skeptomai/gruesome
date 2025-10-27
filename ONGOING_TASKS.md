@@ -1,3 +1,79 @@
+# NAVIGATION SYSTEM DEBUGGING: IN PROGRESS 🔧 (October 27, 2025)
+
+## 🎯 CURRENT ISSUE: get_exit Builtin Returns Wrong Destination
+
+**Problem**: Navigation commands (`north`, `south`, etc.) are processed without errors, but player doesn't move to the correct room.
+
+**Status**: Room-to-object mapping inconsistency FIXED ✅, but runtime destination resolution still incorrect.
+
+### **Root Cause Analysis**
+
+**Fixed Issue ✅**: `setup_room_to_object_mapping()` was using wrong object numbering
+- **Problem**: Room mapping started from object #1, but object #1 is reserved for player
+- **Fix**: Updated mapping to start from object #2 (`let object_number = (index + 2) as u16`)
+- **Result**: Correct mappings now: `west_of_house` → object #2, `north_of_house` → object #3
+
+**Remaining Issue 🔧**: `get_exit` builtin returns wrong destination at runtime
+- **Expected**: `north` from `west_of_house` should return destination object #3 (`north_of_house`)
+- **Actual**: Runtime shows `insert_obj: obj=1, dest=2` (trying to move player to `west_of_house`)
+- **Impact**: Player movement fails, stays in same room
+
+### **Exit Array Data Verification** ✅
+
+Property 22 (exit_directions) for `west_of_house` correctly contains:
+```
+data=[00, 03, 00, 04, ff, ff]
+- Index 0: direction pointing to object 3 (north_of_house) ✅
+- Index 1: direction pointing to object 4 (south_of_house) ✅
+- Index 2: blocked exit (ff, ff) ✅
+```
+
+### **Investigation Status**
+
+- ✅ Room-to-object ID mapping fixed
+- ✅ Exit array data verified correct
+- ✅ Object generation produces correct mappings
+- 🔧 `get_exit` builtin runtime behavior needs investigation
+
+### **MAJOR BREAKTHROUGH** ✅ (Oct 27, 2025): Function Call Mechanism Fixed
+
+**SUCCESS**: The `get_exit` function call mechanism is now working correctly!
+
+**Root Cause Found**: The `generate_builtin_function_call` method was routing `get_exit` calls to inline code generation (`generate_get_exit_builtin`) instead of calling the actual Z-Machine function created by `create_builtin_get_exit`.
+
+**Fix Applied**:
+1. **Modified `generate_builtin_function_call`** (`codegen.rs:8955-9009`): Changed "get_exit" case to call actual Z-Machine function instead of generating inline code
+2. **Moved builtin function generation** (`codegen.rs:2209-2212`): Generate builtin functions after pre-registration but before main code generation (Phase 2A.5)
+3. **Result**: `call routine at packed address 001a` now appears in runtime logs ✅
+
+**Verification**:
+- ✅ Compilation: `🚪 Generated call_vs to get_exit at packed address 0x001a`
+- ✅ Runtime: `call routine at packed address 001a`
+- ✅ Debug output: `DEBUG: handle_go entry` appears, proving navigation system reaches get_exit call
+
+**Remaining Issue**: `get_exit` function implementation has bytecode error "Invalid Long form opcode 0x00 at address 0035". The function is being called correctly, but the function body itself needs debugging.
+
+**Next Steps**: Fix bytecode generation issue in `create_builtin_get_exit` function implementation.
+
+### **Technical Debt: HOTFIX vs Proper Registration**
+
+**Current Implementation**: HOTFIX approach in `codegen.rs:2993-2998`
+- **Problem**: Reactive registration during call translation instead of proactive registration
+- **Issues**:
+  - Late registration (only when function ID 277 is called)
+  - Inconsistent with other builtins (which register during compiler initialization)
+  - Recursive `translate_call()` pattern is unusual
+  - Only registers name mapping, doesn't create actual Z-Machine function
+
+**Proper Fix Should Be**:
+1. **In semantic.rs**: Add get_exit to standard builtin registration during `register_builtin_functions()`
+2. **In codegen.rs**: Add get_exit to function creation phase (call `create_builtin_get_exit()`)
+3. **Remove HOTFIX**: Delete reactive registration code in `translate_call()`
+
+**Impact**: HOTFIX works but creates technical debt. Proper solution would integrate get_exit into standard builtin registration pipeline.
+
+---
+
 # STACK UNDERFLOW INVESTIGATION: COMPLETE ✅ (October 27, 2025)
 
 ## 🎯 FINAL RESOLUTION: Systematic Stack Underflow Bug Fixed

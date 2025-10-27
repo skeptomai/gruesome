@@ -323,7 +323,15 @@ fn show_inventory() {
 
 fn handle_go(direction) {
     clear_quit_state();
+    print("DEBUG: handle_go entry");
     let exit = player.location.get_exit(direction);
+    print("DEBUG: get_exit returned value");
+    if exit {
+        print("DEBUG: exit exists");
+    } else {
+        print("DEBUG: exit is none/null");
+        return;
+    }
 
     if exit.none() {
         print("You can't go that way.");
