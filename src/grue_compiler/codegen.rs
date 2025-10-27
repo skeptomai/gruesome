@@ -2797,7 +2797,6 @@ impl ZMachineCodeGen {
                         // TIER 1: Basic functions (completed)
                         // ALL EARLY RETURNS REMOVED - FORCE ALL BUILTINS THROUGH REAL FUNCTION SYSTEM
                         // This eliminates the hybrid inline/function system that caused routing conflicts
-
                         _ => {
                             // Fallback to legacy system for remaining builtins (Tier 3 only)
                             log::debug!(" LEGACY: {} delegating to legacy builtin system", name);
@@ -3125,7 +3124,7 @@ impl ZMachineCodeGen {
     /// SINGLE-PATH MIGRATION: Phase 3 - Get object contents (Tier 3)
 
     /// SINGLE-PATH MIGRATION: Phase 3 - Check if object is empty (Tier 3)
- 
+
     /// SINGLE-PATH MIGRATION: Phase 3 - Check if value is none/null (Tier 3)
 
     /// SINGLE-PATH MIGRATION: Phase 3 - Get object size/capacity (Tier 3)
@@ -5164,7 +5163,7 @@ impl ZMachineCodeGen {
         );
 
         // Step 2: Now check word count for pattern selection (noun vs default)
-        for (i, pattern) in patterns.iter().enumerate() {}
+        for (_i, _pattern) in patterns.iter().enumerate() {}
 
         // Step 2: Check if we have at least 2 words (verb + noun)
         // If word_count >= 2, extract noun and call handler with object parameter

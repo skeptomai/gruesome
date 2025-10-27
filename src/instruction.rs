@@ -254,9 +254,33 @@ impl Instruction {
 
                 // Parse operand types from type bytes
                 for type_byte in type_bytes {
+                    // DEBUG: Log types byte decoding for opcode 0x09
+                    if opcode == 0x09 {
+                        log::debug!(
+                            "🔍 TYPES_BYTE_DEBUG: opcode=9, type_byte=0x{:02x}",
+                            type_byte
+                        );
+                    }
+
                     for i in 0..4 {
-                        let op_type = OperandType::from_bits(type_byte >> (6 - i * 2));
+                        let shifted_bits = type_byte >> (6 - i * 2);
+                        let op_type = OperandType::from_bits(shifted_bits);
+
+                        // DEBUG: Log each operand type extraction for opcode 0x09
+                        if opcode == 0x09 {
+                            log::debug!(
+                                "🔍 OP_TYPE_DEBUG: opcode=9, i={}, shifted_bits=0x{:02x}, op_type={:?}",
+                                i, shifted_bits, op_type
+                            );
+                        }
+
                         if op_type == OperandType::Omitted {
+                            if opcode == 0x09 {
+                                log::debug!(
+                                    "🔍 OMITTED_DEBUG: opcode=9, breaking at i={}, final operand_types.len()={}",
+                                    i, operand_types.len()
+                                );
+                            }
                             break;
                         }
                         operand_types.push(op_type);
@@ -274,9 +298,30 @@ impl Instruction {
             version,
         );
 
+        // DEBUG: Log operand count limiting for opcode 0x09 (AND/pull disambiguation)
+        if opcode == 0x09 {
+            log::debug!(
+                "🔍 OPCODE_0x09_DEBUG: opcode={}, form={:?}, operand_count={:?}, expected_count={:?}, operand_types.len()={}",
+                opcode, form, operand_count, expected_count, operand_types.len()
+            );
+        }
+
         let operand_limit = if let Some(count) = expected_count {
-            operand_types.len().min(count)
+            let limit = operand_types.len().min(count);
+            if opcode == 0x09 {
+                log::debug!(
+                    "🔍 OPCODE_0x09_LIMIT: expected_count=Some({}), operand_types.len()={}, operand_limit={}",
+                    count, operand_types.len(), limit
+                );
+            }
+            limit
         } else {
+            if opcode == 0x09 {
+                log::debug!(
+                    "🔍 OPCODE_0x09_NO_LIMIT: expected_count=None, using operand_types.len()={}",
+                    operand_types.len()
+                );
+            }
             operand_types.len()
         };
 

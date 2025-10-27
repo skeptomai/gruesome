@@ -548,7 +548,11 @@ impl ZMachineCodeGen {
     }
 
     /// Generate get_location builtin function - gets parent/location of an object
-    pub fn generate_get_location_builtin(&mut self, args: &[IrId], _target: Option<IrId>) -> Result<(), CompilerError> {
+    pub fn generate_get_location_builtin(
+        &mut self,
+        args: &[IrId],
+        _target: Option<IrId>,
+    ) -> Result<(), CompilerError> {
         if args.len() != 1 {
             return Err(CompilerError::CodeGenError(format!(
                 "get_location expects 1 argument, got {}",
@@ -1464,7 +1468,10 @@ impl ZMachineCodeGen {
         // mul type, 16384 -> type_shifted_var (type_shifted, 16384 = 2^14)
         self.emit_instruction_typed(
             Opcode::Op2(Op2::Mul),
-            &[Operand::Variable(type_shifted_var), Operand::LargeConstant(16384)],
+            &[
+                Operand::Variable(type_shifted_var),
+                Operand::LargeConstant(16384),
+            ],
             Some(type_shifted_var), // Store back to same variable
             None,
         )?;
@@ -1498,7 +1505,10 @@ impl ZMachineCodeGen {
             // or type_shifted (variable), data (result_var) -> result
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
-                &[Operand::Variable(type_shifted_var), Operand::Variable(result_var.unwrap())],
+                &[
+                    Operand::Variable(type_shifted_var),
+                    Operand::Variable(result_var.unwrap()),
+                ],
                 Some(result_var.unwrap()),
                 None,
             )?;

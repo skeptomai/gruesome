@@ -3309,7 +3309,7 @@ impl IrGenerator {
                         return match source {
                             VariableSource::Array(_) => true,           // Explicitly an array
                             VariableSource::ObjectTreeRoot(_) => false, // Contents result - NOT an array
-                            VariableSource::Scalar(_) => false,         // Scalar value - NOT an array
+                            VariableSource::Scalar(_) => false, // Scalar value - NOT an array
                         };
                     }
                 }
