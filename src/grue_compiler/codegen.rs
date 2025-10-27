@@ -7707,8 +7707,20 @@ impl ZMachineCodeGen {
                     let right_is_string = self.ir_id_to_string.contains_key(&right);
 
                     if left_is_string || right_is_string {
-                        // This is string concatenation
+                        // This is string concatenation - handle differently from arithmetic
                         self.translate_string_concatenation(left, right, target)?;
+
+                        // CRITICAL FIX (Oct 27, 2025): String concatenation stack discipline
+                        // String concatenation uses runtime multi-part print instructions, NOT stack operations.
+                        // The concatenation result exists only as a sequence of print instructions,
+                        // never as a single value on the Z-Machine stack.
+                        //
+                        // BUG PATTERN: use_push_pull_for_result was called here, emitting "push Variable(0)"
+                        // before any value was placed on the stack → immediate stack underflow at runtime.
+                        //
+                        // SOLUTION: Skip use_push_pull_for_result entirely for string concatenation.
+                        // The target IR ID is handled by the print system, not stack/variable system.
+                        return Ok(());
                     } else {
                         // Regular arithmetic addition - resolve operands now
                         let left_op = self.resolve_ir_id_to_operand(left)?;
@@ -10180,10 +10192,27 @@ impl ZMachineCodeGen {
             None,
         )?;
 
-        // Push result to stack for immediate consumption if target exists
-        if let Some(target_id) = target {
-            self.use_push_pull_for_result(target_id, &format!("{} builtin function call", name))?;
-        }
+        // CRITICAL FIX (Oct 27, 2025): Generic builtin stack discipline violation
+        //
+        // PROBLEM: This generic wrapper was calling use_push_pull_for_result BEFORE individual
+        // builtin functions executed, while individual builtins also called it AFTER emitting
+        // their instructions. This created a double call pattern:
+        //
+        // 1. Generic wrapper: use_push_pull_for_result() → emits "push Variable(0)"
+        // 2. Individual builtin: emits actual instruction (get_child, get_prop, etc.)
+        // 3. Individual builtin: use_push_pull_for_result() → emits another push
+        //
+        // RESULT: First push executed before any value was on stack → stack underflow crash
+        //
+        // ROOT CAUSE: Generic wrapper violated Z-Machine stack discipline by calling
+        // use_push_pull_for_result prematurely. Individual builtins already handle
+        // stack operations correctly after instruction emission.
+        //
+        // SOLUTION: Remove generic call entirely. Let individual builtins handle their
+        // own stack discipline correctly (after instruction emission, not before).
+        //
+        // AFFECTED FUNCTIONS: get_object_contents, all property access, string operations
+        // IMPACT: Eliminates systematic stack underflow in object iteration system
 
         log::debug!(
             "Called builtin function '{}', result stored, PC now 0x{:04x}",

@@ -583,11 +583,6 @@ impl ZMachineCodeGen {
                     prop_num
                 );
 
-                // STACK DISCIPLINE MIGRATION (Oct 27, 2025): Migrated from use_stack_for_result()
-                // to eliminate Variable(0) collisions that caused Property 28 bugs
-                // use_push_pull_for_result() uses proper Z-Machine push/pull operations
-                self.use_push_pull_for_result(*target, "GetProperty operation")?;
-
                 // Track that this IR ID comes from a property access (for print() type detection)
                 self.ir_id_from_property.insert(*target);
 
@@ -615,6 +610,21 @@ impl ZMachineCodeGen {
                     Some(0), // Store to stack
                     None,
                 )?;
+
+                // CRITICAL FIX (Oct 27, 2025): Property access stack discipline
+                //
+                // STACK ORDERING: use_push_pull_for_result MUST be called AFTER instruction emission.
+                // The get_prop instruction stores its result to Variable(0) (stack), then
+                // use_push_pull_for_result emits "push Variable(0)" to transfer the value.
+                //
+                // BUG PATTERN: Originally called BEFORE emit_instruction_typed(), causing:
+                // 1. push Variable(0) emitted (tries to push from empty stack)
+                // 2. get_prop instruction executed (puts result on stack)
+                // Result: Stack underflow when push executed before value available
+                //
+                // CORRECT ORDER: emit_instruction_typed() → use_push_pull_for_result()
+                // This ensures the stack has a value before we try to push it.
+                self.use_push_pull_for_result(*target, "GetProperty operation")?;
                 log::debug!("GetProperty: IR ID {} -> stack", target);
             }
 
