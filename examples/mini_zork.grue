@@ -74,14 +74,21 @@ world {
     
     room forest_path "Forest Path" {
         desc: "This is a path winding through a dimly lit forest. The path heads north-south here. One particularly large tree with some low branches stands at the edge of the path."
+
+        object tree {
+            names: ["tree", "large tree"]
+            desc: "The tree has low branches that look climbable."
+            takeable: false
+        }
+
         exits: {
             north: north_of_house,
             south: forest,
-            up: tree
+            up: up_a_tree
         }
     }
     
-    room tree "Up a Tree" {
+    room up_a_tree "Up a Tree" {
         desc: "You are about 10 feet above the ground nestled among some large branches. The nearest branch above you is above your reach."
         
         object nest {
@@ -225,11 +232,13 @@ fn look_around() {
 
 fn examine(obj) {
     clear_quit_state();
-    if obj.location == player.location || obj.location == player {
-        print(obj.desc);
-    } else {
+
+    if !player_can_see(obj) {
         print("You can't see any such thing.");
+        return;
     }
+
+    print(obj.desc);
 }
 
 fn handle_open(obj) {
@@ -402,18 +411,23 @@ fn clear_quit_state() {
 }
 
 fn player_can_see(obj) -> bool {
+    // Handle null/invalid object (object 0)
+    if obj == 0 {
+        return false;
+    }
+
     // Player can see objects in current location or in inventory
     if obj.location == player.location || obj.location == player {
         return true;
     }
-    
+
     // Can see objects in open containers in current location
-    if obj.location.container && 
-       obj.location.open && 
+    if obj.location.container &&
+       obj.location.open &&
        obj.location.location == player.location {
         return true;
     }
-    
+
     return false;
 }
 
