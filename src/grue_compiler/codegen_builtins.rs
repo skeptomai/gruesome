@@ -1023,15 +1023,29 @@ impl ZMachineCodeGen {
             self.next_string_id += 1;
 
             // Test: value >= 0x4000? (check if bit 14 is set)
-            // Note: Opcode 0x05 with 2 operands is inc_chk (2OP form), which increments
-            // a variable and branches if result > value. For simple comparison we use this
-            // pattern: inc_chk with first operand as the value to test.
-            let branch_layout = self.emit_instruction(
-                0x05, // inc_chk - will be encoded as 2OP form (LONG) due to 2 operands
+            // CRITICAL FIX (Oct 27, 2025): Z-Machine has no >= operator, and inc_chk corrupts values
+            //
+            // PROBLEM with inc_chk (0x05):
+            // - inc_chk increments the variable BEFORE checking, corrupting exit values
+            // - inc_chk checks (value + 1) > 0x4000, not value >= 0x4000
+            // - This caused ALL exits to be marked as blocked
+            //
+            // SOLUTION: Use jl (jump if less than) with inverted logic
+            // - jl provides pure comparison without side effects
+            // - Logic: if value < 0x4000 jump to false path (not blocked)
+            // - Otherwise continue to true path (blocked)
+            // - This correctly implements value >= 0x4000 check
+            let branch_layout = self.emit_instruction_typed(
+                Opcode::Op2(Op2::Jl), // Jump if less than - no side effects, pure comparison
                 &[exit_value_operand, Operand::LargeConstant(0x4000)],
                 None,
-                Some(-1), // Placeholder for forward branch (true path)
+                Some(-1), // Placeholder for forward branch (false path - value < 0x4000)
             )?;
+
+            // INVERTED LOGIC: jl branches to false path (value < 0x4000 = not blocked)
+            // Create a false_label for the jl branch target
+            let false_label = self.next_string_id;
+            self.next_string_id += 1;
 
             self.reference_context
                 .unresolved_refs
@@ -1039,31 +1053,31 @@ impl ZMachineCodeGen {
                     reference_type: LegacyReferenceType::Branch,
                     location: branch_layout
                         .branch_location
-                        .expect("je needs branch location"),
-                    target_id: true_label,
+                        .expect("jl needs branch location"),
+                    target_id: false_label, // Branch to false path when value < 0x4000
                     is_packed_address: false,
                     offset_size: 2,
                     location_space: MemorySpace::Code,
                 });
 
-            // False path: store 0 (false) and jump to end
+            // True path (fall through): value >= 0x4000, store 1 (blocked) and jump to end
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
-                &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
+                &[Operand::SmallConstant(1), Operand::SmallConstant(0)],
                 Some(result_var),
                 None,
             )?;
 
-            // Jump to end_label (skipping the true path)
+            // Jump to end_label (skipping the false path)
             // BUG #18 FIX: Use translate_jump instead of emit_instruction
             // Jump is 1OP:12, not 0OP, and takes offset as operand, not as branch
             self.translate_jump(end_label)?;
 
-            // True path: store 1 (true)
-            self.label_addresses.insert(true_label, self.code_address);
+            // False path: store 0 (not blocked) - target of jl branch
+            self.label_addresses.insert(false_label, self.code_address);
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::Or),
-                &[Operand::SmallConstant(1), Operand::SmallConstant(0)],
+                &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
                 Some(result_var),
                 None,
             )?;
