@@ -1817,6 +1817,7 @@ impl ZMachineCodeGen {
                     reference.location
                 );
 
+
                 // Historical note: Previously tracked label 415 branch resolution
                 // This was temporary debugging code for systematic branch calculation bugs
                 // Fixed by proper UnresolvedReference system
@@ -1845,6 +1846,7 @@ impl ZMachineCodeGen {
                         reference.target_id,
                         code_offset
                     );
+
                     log::debug!(" Found target address: 0x{:04x}", code_offset);
                     // ARCHITECTURE FIX: Check if address is already absolute or relative
                     let resolved_address = if code_offset >= self.final_code_base {

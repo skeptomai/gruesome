@@ -1209,6 +1209,12 @@ impl ZMachineCodeGen {
         // This matches Z-Machine calling convention where function parameters are
         // automatically placed in local variables 1, 2, 3, etc.
 
+        // ARCHITECTURE: Parameters correctly passed via Z-Machine calling convention
+        // - room parameter in Variable(1)
+        // - direction parameter in Variable(2)
+
+        // Debug code will be added later after variables are defined
+
         log::debug!("🔍 GET_EXIT: Standalone Z-Machine function using local variable parameters");
         log::debug!(
             "🔍 GET_EXIT: Using direct parameter access - room=Variable(1), direction=Variable(2)"
@@ -1284,6 +1290,7 @@ impl ZMachineCodeGen {
             self.code_address
         );
 
+
         // Step 2: Check if property exists (addr == 0 means no exits)
         // CRITICAL: Use negative placeholder (-1) to encode "branch on true"
         // Bit 15 of placeholder encodes branch sense: 1=true, 0=false
@@ -1358,6 +1365,7 @@ impl ZMachineCodeGen {
             None,
         )?;
 
+
         // Step 5: Initialize loop counter (index = 0)
         // CRITICAL: Store (2OP:13) takes 2 operands: (variable, value)
         // It does NOT use store_var field!
@@ -1372,6 +1380,7 @@ impl ZMachineCodeGen {
         self.label_addresses
             .insert(loop_start_label, self.code_address);
         self.record_final_address(loop_start_label, self.code_address);
+
 
         // Check if index >= num_exits -> not_found_label
         // BUG FIX: Was using 0x05 (inc_chk) which increments BEFORE checking!
@@ -1421,7 +1430,12 @@ impl ZMachineCodeGen {
             None,
         )?;
 
+
         // Step 8: Compare current direction with parameter -> found_label
+        // BUG INVESTIGATION: This JE instruction compares values correctly (1844 == 1844)
+        // but the branch to found_label is not being taken at runtime.
+        // UnresolvedReference is created and resolved correctly during compilation.
+        // Issue appears to be in branch offset calculation or address space translation.
         let compare_layout = self.emit_instruction_typed(
             Opcode::Op2(Op2::Je),
             &[
