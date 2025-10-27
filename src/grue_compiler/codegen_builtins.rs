@@ -1186,18 +1186,40 @@ impl ZMachineCodeGen {
     /// Returns: room ID for normal exits, string address for blocked exits, 0 if no exit
     pub fn generate_get_exit_builtin(
         &mut self,
-        args: &[IrId],
+        _args: &[IrId], // Unused in standalone Z-Machine function context
         target: Option<IrId>,
     ) -> Result<(), CompilerError> {
-        if args.len() != 2 {
-            return Err(CompilerError::CodeGenError(format!(
-                "get_exit expects 2 arguments (room, direction), got {}",
-                args.len()
-            )));
-        }
+        // CRITICAL FIX (Oct 27, 2025): Standalone Z-Machine Function Parameter Access
+        //
+        // PROBLEM: This function was designed for inlined builtin calls where parameters
+        // come from the args[] array containing IR IDs. However, it's now being used as
+        // a standalone Z-Machine function where parameters are passed via the Z-Machine
+        // calling convention (stack → local variables).
+        //
+        // FAILURE MODE:
+        // - args[0] and args[1] are invalid/empty in standalone context
+        // - resolve_ir_id_to_operand() fails with ? operator
+        // - Function returns early, leaving empty body (null bytes)
+        // - Runtime gets "Invalid opcode 0x00 at address 0035"
+        //
+        // SOLUTION: Use direct local variable access for standalone Z-Machine functions
+        // - Parameter 1 (room) → Local Variable 1
+        // - Parameter 2 (direction) → Local Variable 2
+        //
+        // This matches Z-Machine calling convention where function parameters are
+        // automatically placed in local variables 1, 2, 3, etc.
 
-        let room_id = args[0];
-        let direction_id = args[1];
+        log::debug!("🔍 GET_EXIT: Standalone Z-Machine function using local variable parameters");
+        log::debug!(
+            "🔍 GET_EXIT: Using direct parameter access - room=Variable(1), direction=Variable(2)"
+        );
+
+        // FIXED: Use direct local variable access instead of IR ID resolution
+        let room_operand = Operand::Variable(1); // First parameter in local variable 1
+        let direction_operand = Operand::Variable(2); // Second parameter in local variable 2
+
+        log::debug!("🔍 GET_EXIT: room_operand={:?}", room_operand);
+        log::debug!("🔍 GET_EXIT: direction_operand={:?}", direction_operand);
 
         // ALWAYS use runtime path with parallel arrays (exit_directions, exit_types, exit_data)
         // The compile-time optimization path using exit_north/exit_south properties
@@ -1210,19 +1232,6 @@ impl ZMachineCodeGen {
         // Reason: Inlined builtins share caller's local variable space. Allocating
         // locals would require updating function header, which is already written.
         // Globals (variables 16+) are distinct from function locals (1-15).
-
-        log::debug!("🔍 GET_EXIT: Runtime direction lookup using parallel arrays + globals");
-        log::debug!(
-            "🔍 GET_EXIT: room_id={}, direction_id={}, target={:?}",
-            room_id,
-            direction_id,
-            target
-        );
-
-        let room_operand = self.resolve_ir_id_to_operand(room_id)?;
-        log::debug!("🔍 GET_EXIT: room_operand={:?}", room_operand);
-        let direction_operand = self.resolve_ir_id_to_operand(direction_id)?;
-        log::debug!("🔍 GET_EXIT: direction_operand={:?}", direction_operand);
 
         // Get property numbers for parallel arrays
         let exit_directions_prop = *self.property_numbers.get("exit_directions").unwrap_or(&20);

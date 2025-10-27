@@ -87,6 +87,22 @@ let direction_operand = Operand::Variable(2); // Second parameter
 
 **Impact**: Once fixed, navigation system will be **100% functional** with complete player movement between rooms.
 
+### **CRITICAL DISCOVERY** 🚨 (Oct 27, 2025): File Writing Integration Bug
+
+**STATUS**: Parameter fix completed ✅, but discovered deeper file writing issue ❌
+
+**PROBLEM**: Builtin functions generated correctly in memory but not saved to output file
+- **Evidence**: Debug logs show function generation at 0x0034 → 0x009a (102 bytes)
+- **File Reality**: Address 0x0034 contains all zeros in final output file
+- **Result**: Interpreter finds function call but null bytes in function body
+
+**Root Cause**: Disconnect between builtin function generation and file writing process
+- Builtin functions generated into separate memory space
+- File writing doesn't include builtin function code space
+- Main code generation and builtin generation not properly merged
+
+**Fix Required**: Ensure builtin functions are integrated into main code space before file saving
+
 ### **Technical Debt: HOTFIX vs Proper Registration**
 
 **Current Implementation**: HOTFIX approach in `codegen.rs:2993-2998`

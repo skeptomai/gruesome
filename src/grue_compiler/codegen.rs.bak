@@ -10385,16 +10385,6 @@ impl ZMachineCodeGen {
         self.next_string_id += 1;
 
         // Step 1: Get address of exit_directions property -> local_3
-        log::debug!(
-            "🚪 GET_EXIT_CREATE: About to emit first instruction (GetPropAddr) at 0x{:04x}",
-            self.code_address
-        );
-        log::debug!(
-            "🚪 GET_EXIT_CREATE: Property numbers: directions={}, types={}, data={}",
-            exit_directions_prop,
-            exit_types_prop,
-            exit_data_prop
-        );
         self.emit_instruction_typed(
             crate::grue_compiler::opcodes::Opcode::Op2(
                 crate::grue_compiler::opcodes::Op2::GetPropAddr,
