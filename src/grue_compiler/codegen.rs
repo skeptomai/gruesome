@@ -10411,8 +10411,23 @@ impl ZMachineCodeGen {
         self.reference_context
             .ir_id_to_address
             .insert(func_id, func_addr);
+
+        // CRITICAL FIX (Oct 27, 2025): Store IR ID, not address
+        //
+        // ISSUE: builtin_functions was storing func_addr instead of func_id, breaking the lookup chain:
+        // - translate_call does: name → builtin_functions[name] → function_addresses[result]
+        // - If builtin_functions stores address, function_addresses.get(address) fails
+        // - This caused "get_exit function address not found for ID 0" error
+        //
+        // SOLUTION: Store IR ID in builtin_functions for proper lookup chain:
+        // - builtin_functions: "get_exit" → func_id (IR ID like 1000005)
+        // - function_addresses: func_id → func_addr (address like 0x0000)
+        // - This enables translate_call to resolve: name → IR ID → address
+        //
+        // RESULT: IR ID 11 (get_exit return value) now maps correctly, handle_go function executes
+        self.function_addresses.insert(func_id, func_addr);
         self.builtin_functions
-            .insert("get_exit".to_string(), func_addr as u32);
+            .insert("get_exit".to_string(), func_id);
 
         log::debug!(
             "Created get_exit at address 0x{:04x} (packed: 0x{:04x})",

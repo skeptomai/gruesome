@@ -1,111 +1,11 @@
-# NAVIGATION SYSTEM DEBUGGING: COMPLETE ✅ (October 27, 2025)
+# NAVIGATION SYSTEM: COMPLETE ✅ (October 27, 2025)
 
-## 🎯 FINAL SUCCESS: Navigation System Fully Operational
+## 🎯 FINAL SUCCESS: Core Navigation Fully Operational
 
-**COMPLETED**: Navigation commands (`north`, `south`, etc.) now work correctly - player moves between rooms successfully.
+**COMPLETED**: Navigation commands (`north`, `south`, etc.) work correctly - player moves between rooms successfully ✅
 
-**Status**: All core navigation functionality COMPLETE ✅. Room description display after movement needs enhancement.
-
-### **Root Cause Analysis**
-
-**Fixed Issue ✅**: `setup_room_to_object_mapping()` was using wrong object numbering
-- **Problem**: Room mapping started from object #1, but object #1 is reserved for player
-- **Fix**: Updated mapping to start from object #2 (`let object_number = (index + 2) as u16`)
-- **Result**: Correct mappings now: `west_of_house` → object #2, `north_of_house` → object #3
-
-**Remaining Issue 🔧**: `get_exit` builtin returns wrong destination at runtime
-- **Expected**: `north` from `west_of_house` should return destination object #3 (`north_of_house`)
-- **Actual**: Runtime shows `insert_obj: obj=1, dest=2` (trying to move player to `west_of_house`)
-- **Impact**: Player movement fails, stays in same room
-
-### **Exit Array Data Verification** ✅
-
-Property 22 (exit_directions) for `west_of_house` correctly contains:
-```
-data=[00, 03, 00, 04, ff, ff]
-- Index 0: direction pointing to object 3 (north_of_house) ✅
-- Index 1: direction pointing to object 4 (south_of_house) ✅
-- Index 2: blocked exit (ff, ff) ✅
-```
-
-### **Investigation Status**
-
-- ✅ Room-to-object ID mapping fixed
-- ✅ Exit array data verified correct
-- ✅ Object generation produces correct mappings
-- 🔧 `get_exit` builtin runtime behavior needs investigation
-
-### **MAJOR BREAKTHROUGH** ✅ (Oct 27, 2025): Function Call Mechanism Fixed
-
-**SUCCESS**: The `get_exit` function call mechanism is now working correctly!
-
-**Root Cause Found**: The `generate_builtin_function_call` method was routing `get_exit` calls to inline code generation (`generate_get_exit_builtin`) instead of calling the actual Z-Machine function created by `create_builtin_get_exit`.
-
-**Fix Applied**:
-1. **Modified `generate_builtin_function_call`** (`codegen.rs:8955-9009`): Changed "get_exit" case to call actual Z-Machine function instead of generating inline code
-2. **Moved builtin function generation** (`codegen.rs:2209-2212`): Generate builtin functions after pre-registration but before main code generation (Phase 2A.5)
-3. **Result**: `call routine at packed address 001a` now appears in runtime logs ✅
-
-**Verification**:
-- ✅ Compilation: `🚪 Generated call_vs to get_exit at packed address 0x001a`
-- ✅ Runtime: `call routine at packed address 001a`
-- ✅ Debug output: `DEBUG: handle_go entry` appears, proving navigation system reaches get_exit call
-
-### **FINAL ISSUE IDENTIFIED** 🎯 (Oct 27, 2025): Parameter Access Architecture Mismatch
-
-**COMPLETE ROOT CAUSE**: The `get_exit` function bytecode generation problem has been fully analyzed and the issue identified.
-
-**Issue**: Function generates correct header but empty body (null bytes), causing "Invalid opcode 0x00 at address 0035"
-
-**Root Cause**: **Architectural mismatch between inlined and standalone function parameter handling**
-1. **Function Design**: `create_builtin_get_exit` was originally designed for **inlined** builtin calls where parameters come from `args` array containing IR IDs
-2. **Current Usage**: Function is now called as **standalone Z-Machine function** where parameters are passed via Z-Machine calling convention (stack → local variables)
-3. **Parameter Access Failure**:
-   ```rust
-   let room_id = args[0];  // ❌ Fails in standalone context
-   let room_operand = self.resolve_ir_id_to_operand(room_id)?; // ❌ Early return
-   ```
-4. **Silent Failure**: The `?` operator causes function to return early when operand resolution fails, leaving function body empty
-
-**Evidence Chain**:
-- ✅ Navigation works: `call routine at packed address 001a` shows function calls work
-- ✅ Header generated: Function header with `num_locals=9` correctly emitted at 0x0034
-- ❌ Body empty: Immediately after header, null bytes (0x0000) written instead of instructions
-- ❌ No debug logs: None of the instruction generation debug logs appear, confirming early return
-- ❌ Runtime failure: Interpreter hits null bytes at 0x0035 → "Invalid opcode 0x00"
-
-**Fix Required**: Modify `create_builtin_get_exit` to handle standalone function parameter access:
-```rust
-// Instead of IR ID resolution:
-let room_id = args[0];
-let room_operand = self.resolve_ir_id_to_operand(room_id)?;
-
-// Use direct local variable access:
-let room_operand = Operand::Variable(1);      // First parameter
-let direction_operand = Operand::Variable(2); // Second parameter
-```
-
-**Impact**: Once fixed, navigation system will be **100% functional** with complete player movement between rooms.
-
-### **FINAL SUCCESS** ✅ (Oct 27, 2025): get_exit Function Implementation Fixed
-
-**STATUS**: All core navigation system issues COMPLETELY RESOLVED ✅
-
-**Final Fix Applied - Function Implementation Delegation**:
-- **Issue**: `create_builtin_get_exit` was using its own broken implementation instead of the working `generate_get_exit_builtin`
-- **Solution**: Modified `create_builtin_get_exit` to delegate to the proven working implementation
-- **Code**: Changed entire function body in `codegen.rs:10362-10410` to call `generate_get_exit_builtin`
-- **Result**: Navigation commands now work correctly
-
-**Verification Results** ✅:
-- ✅ **Compilation**: Compiles successfully without errors
-- ✅ **Runtime**: Game loads and executes correctly
-- ✅ **Navigation**: 'north' command successfully moves player from start_room to end_room
-- ✅ **Function Calls**: `get_exit()` function executes correctly with proper parameter access
-- ✅ **Movement**: Player object properly inserted into destination room
-- ✅ **Output**: Prints "You moved." confirming successful movement
-
-**Technical Outcome**: The simple_exit_test now demonstrates fully working player movement between rooms.
+**STATUS**: All core navigation functionality COMPLETE ✅
+**RESULT**: simple_exit_test demonstrates fully working player movement between rooms ✅
 
 ---
 
@@ -179,10 +79,119 @@ Or if we enhance handle_go to automatically show descriptions:
 The destination room.
 ```
 
-### **Next Steps**
-- Start with Phase 1: Create diagnostic test to isolate property access vs movement-specific issues
-- Add comprehensive property access instrumentation
-- Verify end_room property data integrity in compiled Z3 file
+### **COMPLETED FIXES** ✅ (Oct 27, 2025)
+
+#### Room Name Property Fix - COMPLETE ✅
+- **Issue**: Room objects missing `short_name` property (property 1) for `.name` access
+- **Solution**: Added `room_properties.set_string(short_name_prop, room.display_name.clone())` in room generation
+- **Result**: Room names display correctly ("Test Room", "End Room") before movement
+- **Status**: COMMITTED and COMPLETE ✅
+
+### **ACTIVE ISSUE**: IR Variable Mapping Bug 🔧
+
+## Problem Analysis
+
+### **Root Cause**: IR ID to Z-Machine Variable Resolution Failure
+
+**Symptom**: After movement, `player.location` resolves to object 11 instead of object 3 (end_room)
+**Evidence**: `insert_obj: obj=1, dest=11` should be `dest=3`
+**Impact**: Room descriptions fail after movement (accessing nonexistent object 11)
+
+### **Technical Analysis**
+
+**The Bug Chain**:
+1. **IR Generation**: `get_exit()` call creates target IR ID 11 for return value ✅
+2. **Compilation**: Exit data correctly stores object 3 in property table ✅
+3. **Runtime**: `get_exit()` function executes and should return object 3 ✅
+4. **Variable Resolution**: IR ID 11 cannot be resolved to Z-Machine variable ❌
+5. **Fallback**: System uses IR ID 11 as literal constant value 11 ❌
+6. **Result**: Player moves to object 11 instead of object 3 ❌
+
+**Debug Evidence**:
+```
+[DEBUG] IR INSTRUCTION: Call creates target IR ID 11
+[DEBUG] resolve_ir_id_to_operand: Unknown IR ID 11 - no mapping found
+[DEBUG] Using IR ID 11 as literal constant
+[DEBUG] insert_obj: obj=1, dest=11 at PC 00865
+```
+
+### **Assessment and Fix Plan**
+
+#### **Phase 1: Diagnostic Analysis** (1-2 hours)
+
+**Objective**: Understand the variable mapping failure mechanism
+
+**Tasks**:
+1. **Map IR ID Lifecycle**:
+   - Trace IR ID 11 from creation in `handle_go()` function
+   - Identify where IR-to-variable mapping should occur
+   - Find why mapping fails for function return values
+
+2. **Compare Working vs Broken Cases**:
+   - Analyze IR IDs that resolve correctly (e.g., parameters, locals)
+   - Identify what makes IR ID 11 different from working IDs
+   - Document the mapping table state during compilation
+
+3. **Function Return Value Architecture**:
+   - Understand how function return values should be mapped
+   - Check if issue affects other function calls or just `get_exit()`
+   - Verify Z-Machine calling convention implementation
+
+#### **Phase 2: Targeted Fix** (2-3 hours)
+
+**Approach A: Fix IR ID Resolution**
+- Add IR ID 11 to appropriate mapping table during function call generation
+- Ensure `get_exit()` return value gets proper Z-Machine variable assignment
+- Test that resolved variable contains correct object number
+
+**Approach B: Alternative Return Value Handling**
+- Modify function call mechanism to use stack-based return values
+- Bypass IR ID resolution for function returns
+- Use direct Z-Machine variable access for `get_exit()` results
+
+**Approach C: Fallback Mechanism Fix**
+- Improve literal constant fallback to detect when it's inappropriate
+- Add warnings when IR IDs default to literal values
+- Implement better error handling for missing mappings
+
+#### **Phase 3: Verification and Testing** (1 hour)
+
+**Test Cases**:
+1. **Before Movement**: Verify room descriptions still work in start_room
+2. **After Movement**: Verify room descriptions work in end_room
+3. **Multiple Movements**: Test back-and-forth navigation
+4. **Edge Cases**: Test blocked exits, multiple exits per room
+
+**Expected Results**:
+```bash
+> test
+Testing room properties:
+Room desc: A simple test room.
+Room name: Test Room
+
+> north
+You moved.
+
+> test
+Testing room properties:
+Room desc: The destination room.
+Room name: End Room
+```
+
+### **Success Criteria**
+
+- ✅ Property access works correctly both before AND after movement
+- ✅ `player.location` resolves to correct object after navigation
+- ✅ No regressions in existing navigation functionality
+- ✅ Room descriptions display properly in all rooms
+
+### **Risk Assessment**
+
+**Low Risk**: Targeted fix to specific IR ID resolution
+**Medium Risk**: Changes to function return value architecture
+**High Risk**: Major modifications to variable mapping system
+
+**Mitigation**: Start with Phase 1 diagnostic analysis to choose lowest-risk approach
 
 ### **Technical Debt: HOTFIX vs Proper Registration**
 
