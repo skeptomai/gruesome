@@ -1161,11 +1161,6 @@ impl ZMachineCodeGen {
                 object,
                 destination,
             } => {
-                log::warn!(
-                    "🔍 MAILBOX_DEBUG: Processing InsertObj instruction - IR {} -> IR {}",
-                    object,
-                    destination
-                );
                 // Z-Machine insert_obj opcode: sets object's parent, updates tree structure
                 // (Oct 12, 2025): Used for .location = assignment
                 // This removes object from current parent and inserts as first child of destination
@@ -1198,10 +1193,6 @@ impl ZMachineCodeGen {
                         log::warn!(
                             "🏗️ INITIAL_LOCATION_TRACKED: Object #{} -> Parent #{} (IR {} -> IR {}) at compile time",
                             obj, parent, object, destination
-                        );
-                        log::warn!(
-                            "🔍 MAILBOX_DEBUG: InsertObj tracking - initial_locations_by_number now contains: {:?}",
-                            self.initial_locations_by_number
                         );
                     }
                 }

@@ -1017,7 +1017,7 @@ impl ZMachineCodeGen {
             self.ir_id_to_stack_var.insert(target_ir_id, result_var);
 
             // Create labels for branching logic
-            let true_label = self.next_string_id;
+            let _true_label = self.next_string_id;
             self.next_string_id += 1;
             let end_label = self.next_string_id;
             self.next_string_id += 1;

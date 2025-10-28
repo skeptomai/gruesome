@@ -708,6 +708,9 @@ impl ZMachineCodeGen {
         if ir.has_objects() {
             log::debug!("Generating full object table for Interactive program");
             self.setup_object_table_generation();
+            // CRITICAL FIX (Oct 28, 2025): Pre-process InsertObj instructions before object generation
+            // This populates initial_locations_by_number so objects can be created with correct parent relationships
+            self.preprocess_insertobj_instructions(ir)?;
             self.generate_object_tables(ir)?;
         } else {
             log::debug!("Generating minimal object table for Script program");
@@ -2233,7 +2236,7 @@ impl ZMachineCodeGen {
 
         // PHASE 2A.8: Generate init block AFTER builtin functions (CRITICAL FIX)
         // The init block was previously generated before builtins, causing memory conflict
-        let init_locals_count = if let Some(init_block) = &ir.init_block {
+        let _init_locals_count = if let Some(init_block) = &ir.init_block {
             log::info!(
                 " GENERATING: Init block as proper Z-Machine routine ({} instructions) - AFTER builtins",
                 init_block.instructions.len()
@@ -3900,12 +3903,6 @@ impl ZMachineCodeGen {
             parent_num as u8
         } else {
             // No initial location - use default from IR (typically 0)
-            log::warn!(
-                    "🔍 MAILBOX_DEBUG: Object {} ('{}') NOT found in initial_locations_by_number. initial_locations_by_number contents: {:?}",
-                    obj_num,
-                    object.short_name,
-                    self.initial_locations_by_number
-                );
             object
                 .parent
                 .and_then(|id| object_id_to_number.get(&id))
@@ -7071,6 +7068,80 @@ impl ZMachineCodeGen {
         log::info!(
             "IR ID to object mapping complete: {} objects mapped",
             self.ir_id_to_object_number.len()
+        );
+        Ok(())
+    }
+
+    /// Pre-process InsertObj instructions to populate initial_locations_by_number
+    /// CRITICAL FIX (Oct 28, 2025): This must be called before object generation
+    /// so that objects can be created with correct initial parent relationships
+    /// OBJECT CONTAINMENT FIX (Phase 1c): Pre-process InsertObj instructions before object generation
+    ///
+    /// **CRITICAL TIMING FIX**: This function resolves the timing issue where InsertObj instructions
+    /// were processed AFTER object generation, causing all objects to start with parent=0, sibling=0, child=0
+    /// relationships. Objects would only appear in rooms after the first runtime InsertObj execution.
+    ///
+    /// **The Problem**:
+    /// - Object generation happens in Step 2c of compilation
+    /// - InsertObj instructions are processed during IR translation (later in pipeline)
+    /// - Result: All objects generated with no parent relationships (mailbox invisible in west_of_house)
+    /// - Mailbox would only appear after first "look" command triggered runtime InsertObj
+    ///
+    /// **The Solution**:
+    /// - Scan ALL IR functions for InsertObj instructions BEFORE object generation
+    /// - Populate initial_locations_by_number with correct parent relationships
+    /// - Objects now start with proper parent relationships from compilation time
+    /// - Mailbox appears immediately when entering west_of_house room
+    ///
+    /// **Fixed Issues**:
+    /// - Mailbox now visible immediately in west_of_house starting room
+    /// - All room objects (window, tree, nest, etc.) properly placed at game start
+    /// - No more "missing objects until first look" timing bug
+    ///
+    /// **Implementation**: Called from line 713 before generate_object_tables() in Step 2c
+    fn preprocess_insertobj_instructions(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
+        log::info!("🔍 Pre-processing InsertObj instructions for initial object placement");
+
+        // Scan all IR functions for InsertObj instructions
+        for function in &ir.functions {
+            for instruction in &function.body.instructions {
+                if let IrInstruction::InsertObj { object, destination } = instruction {
+                    // Resolve IR IDs to object numbers using the established mapping
+                    if let (Some(&obj_num), Some(&parent_num)) = (
+                        self.ir_id_to_object_number.get(object),
+                        self.ir_id_to_object_number.get(destination)
+                    ) {
+                        self.initial_locations_by_number.insert(obj_num, parent_num);
+                        log::warn!(
+                            "🏗️ PREPROCESS_INSERTOBJ: Object #{} -> Parent #{} (IR {} -> IR {})",
+                            obj_num, parent_num, object, destination
+                        );
+                    }
+                }
+            }
+        }
+
+        // Also check init block if it exists
+        if let Some(init_block) = &ir.init_block {
+            for instruction in &init_block.instructions {
+                if let IrInstruction::InsertObj { object, destination } = instruction {
+                    if let (Some(&obj_num), Some(&parent_num)) = (
+                        self.ir_id_to_object_number.get(object),
+                        self.ir_id_to_object_number.get(destination)
+                    ) {
+                        self.initial_locations_by_number.insert(obj_num, parent_num);
+                        log::warn!(
+                            "🏗️ PREPROCESS_INSERTOBJ: Object #{} -> Parent #{} (IR {} -> IR {}) [from init block]",
+                            obj_num, parent_num, object, destination
+                        );
+                    }
+                }
+            }
+        }
+
+        log::info!(
+            "Pre-processing complete: {} initial object placements found",
+            self.initial_locations_by_number.len()
         );
         Ok(())
     }

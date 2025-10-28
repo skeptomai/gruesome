@@ -1966,24 +1966,10 @@ impl IrGenerator {
             room.objects.len(),
             room.identifier
         );
-        log::warn!(
-            "🔍 MAILBOX_DEBUG: Room '{}' contains {} objects: {:?}",
-            room.identifier,
-            room.objects.len(),
-            room.objects
-                .iter()
-                .map(|o| &o.identifier)
-                .collect::<Vec<_>>()
-        );
 
         // Phase 1b: Record object hierarchy in room_objects mapping
         let mut room_object_infos = Vec::new();
         for obj in &room.objects {
-            log::warn!(
-                "🔍 MAILBOX_DEBUG: Registering object '{}' for room '{}'",
-                obj.identifier,
-                room.identifier
-            );
             self.register_object_and_nested(obj)?;
 
             // Extract object hierarchy and add to room mapping
@@ -2277,7 +2263,7 @@ impl IrGenerator {
 
     /// Generate InsertObj instructions to place room objects in their containing rooms
     /// Phase 1: Place objects defined inside rooms (e.g., mailbox in west_of_house)
-    fn generate_room_object_placement(&mut self, block: &mut IrBlock) -> Result<(), CompilerError> {
+    fn generate_room_object_placement(&mut self, _block: &mut IrBlock) -> Result<(), CompilerError> {
         log::debug!("🏠 Generating room object placement instructions");
 
         // We need access to room data, but it's not stored in self after generation
