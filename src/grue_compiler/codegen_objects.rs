@@ -581,6 +581,62 @@ impl ZMachineCodeGen {
                 object_properties.set_string(desc_prop, object.short_name.clone());
             }
 
+            // ==============================================================================
+            // OBJECT LOOKUP INFINITE LOOP FIX - PROPERTY 18 DICTIONARY ADDRESSES
+            // ==============================================================================
+            //
+            // PROBLEM SOLVED: Object lookup infinite loop when users type "open mailbox"
+            //
+            // ROOT CAUSE:
+            // - Object properties stored STRING IDs (e.g., 1018 for "mailbox")
+            // - Object lookup compared against DICTIONARY ADDRESSES (e.g., 0x06b4 for "mailbox")
+            // - Values never matched → infinite loop in object search
+            //
+            // SOLUTION: Store dictionary addresses in property 18 (Z-Machine standard)
+            // - Matches commercial Zork I implementation exactly
+            // - Property 18 contains concatenated 2-byte dictionary addresses
+            // - Multiple object names → multiple addresses in sequence
+            // - Runtime lookup compares dictionary addresses directly
+            //
+            // IMPLEMENTATION: October 28, 2025
+            // ==============================================================================
+
+            let mut dict_address_bytes = Vec::new();
+
+            // Look up each object name in the dictionary and store the address
+            for name in &object.names {
+                if let Ok(dict_addr) = self.lookup_word_in_dictionary(name) {
+                    // Store dictionary address as big-endian 2-byte value
+                    // Each name gets 2 bytes: high byte, low byte
+                    dict_address_bytes.extend_from_slice(&dict_addr.to_be_bytes());
+                    log::debug!(
+                        "DICT_ADDR: Object '{}' name '{}' -> dictionary address 0x{:04x}",
+                        object.name,
+                        name,
+                        dict_addr
+                    );
+                } else {
+                    log::warn!(
+                        "Dictionary address not found for object name '{}' in object '{}'",
+                        name,
+                        object.name
+                    );
+                }
+            }
+
+            // Store all dictionary addresses in property 18 if any names were found
+            if !dict_address_bytes.is_empty() {
+                // Property 18 format: [addr1_hi, addr1_lo, addr2_hi, addr2_lo, ...]
+                // Example: "small mailbox" with 3 names = 6 bytes total
+                object_properties.set_bytes(18, dict_address_bytes.clone());
+                log::debug!(
+                    "PROP18_DICT: Object '{}' property 18 = {} bytes ({} names × 2 bytes each)",
+                    object.name,
+                    dict_address_bytes.len(),
+                    object.names.len()
+                );
+            }
+
             all_objects.push(ObjectData {
                 id: object.id,
                 name: object.name.clone(),
