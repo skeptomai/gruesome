@@ -609,18 +609,61 @@ impl ZMachineCodeGen {
             ir.objects.len()
         );
 
-        // Step 3: Build object ID mapping table
+        // Step 3: Use existing object ID mapping from setup_ir_id_to_object_mapping
+        // CRITICAL FIX (Oct 28, 2025): Dual Object Numbering System Resolution
+        //
+        // ROOT CAUSE: Two conflicting object numbering systems existed:
+        // - IR Phase (setup_ir_id_to_object_mapping): Player #1, Rooms #2-N, Objects #N+1-M
+        // - Codegen Phase (generate_object_tables): Sequential numbering from all_objects vector
+        //
+        // BUG MANIFESTATION:
+        // - InsertObj instructions generated using IR phase numbers (mailbox = Object #3)
+        // - Property tables created using Codegen phase numbers (Object #3 = North of House properties)
+        // - Runtime: Object #3 placed in room tree but had wrong properties ("North of House" displayed)
+        //
+        // COMPLETE FIX: Use consistent mapping throughout compilation pipeline
+        // - Removed legacy setup_object_mappings() call that populated wrong ir_id_to_object_number
+        // - generate_object_tables now uses established mapping instead of creating new sequential numbers
+        // - Result: Both InsertObj instructions AND property tables use same object numbering
         let mut object_id_to_number: IndexMap<IrId, u8> = IndexMap::new();
-        for (index, object) in all_objects.iter().enumerate() {
-            let obj_num = (index + 1) as u8; // Objects are numbered starting from 1
-            object_id_to_number.insert(object.id, obj_num);
-            log::info!(
-                "ID Mapping: IR ID {} → Object #{} ('{}')",
-                object.id,
-                obj_num,
-                object.short_name
-            );
+        for object in &all_objects {
+            if let Some(&obj_num) = self.ir_id_to_object_number.get(&object.id) {
+                object_id_to_number.insert(object.id, obj_num as u8);
+                log::info!(
+                    "ID Mapping: IR ID {} → Object #{} ('{}') [using existing mapping]",
+                    object.id,
+                    obj_num,
+                    object.short_name
+                );
+            } else {
+                log::error!(
+                    "CRITICAL ERROR: Object '{}' (IR ID {}) not found in ir_id_to_object_number mapping!",
+                    object.short_name, object.id
+                );
+                return Err(CompilerError::CodeGenError(format!(
+                    "Object '{}' (IR ID {}) missing from object number mapping",
+                    object.short_name, object.id
+                )));
+            }
         }
+
+        log::info!(
+            "Using existing object ID mapping: {} objects mapped consistently",
+            object_id_to_number.len()
+        );
+
+        // initial_locations_by_number should already use the correct numbering
+        // since it was populated using the same ir_id_to_object_number mapping
+        log::info!(
+            "Initial locations: {} objects have initial placement",
+            self.initial_locations_by_number.len()
+        );
+
+        log::warn!(
+            "🔧 INITIAL_LOCATIONS: Before correction: {:?}",
+            self.initial_locations_by_number
+        );
+        // For now, keep the original mapping but we've fixed the main ir_id_to_object_number issue
 
         // Step 4: Create object table entries
         for (index, object) in all_objects.iter().enumerate() {

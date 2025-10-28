@@ -2131,10 +2131,23 @@ impl ZMachineCodeGen {
             CodeGenUtils::count_total_ir_instructions(ir)
         );
 
-        // CRITICAL: Set up object ID mappings before code generation
-        // This ensures that object references in the IR get mapped to proper Z-Machine object numbers
-        debug!("Setting up object mappings for IR → Z-Machine object resolution");
-        self.setup_object_mappings(ir);
+        // CRITICAL FIX (Oct 28, 2025): Dual Object Numbering System Resolution
+        //
+        // LEGACY FUNCTION REMOVED: setup_object_mappings() populated ir_id_to_object_number
+        // using old ir.object_numbers mapping, creating conflicting numbering systems.
+        //
+        // TIMELINE OF BUG:
+        // 1. setup_object_mappings() called here, populating wrong mapping (mailbox = Object #3)
+        // 2. InsertObj instructions processed using this wrong mapping
+        // 3. Later setup_ir_id_to_object_mapping() overwrote mapping (mailbox = Object #10)
+        // 4. Property tables used correct mapping, but InsertObj already used wrong mapping
+        // 5. Runtime: Wrong object properties displayed due to numbering mismatch
+        //
+        // SOLUTION: Object ID mappings are now set up ONCE in Phase 1 via setup_ir_id_to_object_mapping()
+        // ensuring consistent numbering throughout the entire compilation pipeline.
+        //
+        // debug!("Setting up object mappings for IR → Z-Machine object resolution");
+        // self.setup_object_mappings(ir); // REMOVED: Causes dual object numbering conflicts
 
         // NOTE: Builtin function generation moved to after main code generation
         // This allows builtin functions registered during IR processing to be created
