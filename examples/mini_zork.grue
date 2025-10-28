@@ -8,7 +8,7 @@ world {
         desc: "You are standing in an open field west of a white house, with a boarded front door."
 
         object mailbox {
-            names: ["small mailbox", "mailbox", "box"]
+            names: ["a small mailbox", "mailbox", "box"]
             desc: "The small mailbox is " + (mailbox.open ? "open" : "closed") + "."
             openable: true
             container: true

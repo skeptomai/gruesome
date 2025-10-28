@@ -321,9 +321,13 @@ impl ZMachineCodeGen {
             bytes.push(word as u8);
         } else {
             while i < zchars.len() {
-                let z1 = zchars.get(i).copied().unwrap_or(0);
-                let z2 = zchars.get(i + 1).copied().unwrap_or(0);
-                let z3 = zchars.get(i + 2).copied().unwrap_or(0);
+                // CRITICAL FIX (Oct 28, 2025): String padding bug causing extra spaces
+                // Z-Machine packs 3 Z-chars per 2-byte word. If string doesn't fill last word,
+                // it needs padding. Previously used 0 (space char) causing "small mailbox  "
+                // Fix: Use 5 (shift to A2) which gets ignored at end, preventing trailing spaces
+                let z1 = zchars.get(i).copied().unwrap_or(5);
+                let z2 = zchars.get(i + 1).copied().unwrap_or(5);
+                let z3 = zchars.get(i + 2).copied().unwrap_or(5);
 
                 // Pack: [z1: 5 bits][z2: 5 bits][z3: 5 bits][end: 1 bit] = 16 bits
                 let mut word = ((z1 as u16) << 10) | ((z2 as u16) << 5) | (z3 as u16);

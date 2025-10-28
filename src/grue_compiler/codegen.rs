@@ -3891,24 +3891,23 @@ impl ZMachineCodeGen {
 
         // PHASE 2 (Oct 12, 2025): Check initial_locations_by_number for compile-time parent setting
         // If this object had .location = X in init block, use that as parent
-        let parent = if let Some(&parent_num) =
-            self.initial_locations_by_number.get(&(obj_num as u16))
-        {
-            log::warn!(
-                "🏗️ INITIAL_LOCATION_SET: Object {} ('{}') parent set to {} at compile time",
-                obj_num,
-                object.short_name,
-                parent_num
-            );
-            parent_num as u8
-        } else {
-            // No initial location - use default from IR (typically 0)
-            object
-                .parent
-                .and_then(|id| object_id_to_number.get(&id))
-                .copied()
-                .unwrap_or(0)
-        };
+        let parent =
+            if let Some(&parent_num) = self.initial_locations_by_number.get(&(obj_num as u16)) {
+                log::warn!(
+                    "🏗️ INITIAL_LOCATION_SET: Object {} ('{}') parent set to {} at compile time",
+                    obj_num,
+                    object.short_name,
+                    parent_num
+                );
+                parent_num as u8
+            } else {
+                // No initial location - use default from IR (typically 0)
+                object
+                    .parent
+                    .and_then(|id| object_id_to_number.get(&id))
+                    .copied()
+                    .unwrap_or(0)
+            };
 
         let sibling = object
             .sibling
@@ -7105,16 +7104,23 @@ impl ZMachineCodeGen {
         // Scan all IR functions for InsertObj instructions
         for function in &ir.functions {
             for instruction in &function.body.instructions {
-                if let IrInstruction::InsertObj { object, destination } = instruction {
+                if let IrInstruction::InsertObj {
+                    object,
+                    destination,
+                } = instruction
+                {
                     // Resolve IR IDs to object numbers using the established mapping
                     if let (Some(&obj_num), Some(&parent_num)) = (
                         self.ir_id_to_object_number.get(object),
-                        self.ir_id_to_object_number.get(destination)
+                        self.ir_id_to_object_number.get(destination),
                     ) {
                         self.initial_locations_by_number.insert(obj_num, parent_num);
                         log::warn!(
                             "🏗️ PREPROCESS_INSERTOBJ: Object #{} -> Parent #{} (IR {} -> IR {})",
-                            obj_num, parent_num, object, destination
+                            obj_num,
+                            parent_num,
+                            object,
+                            destination
                         );
                     }
                 }
@@ -7124,10 +7130,14 @@ impl ZMachineCodeGen {
         // Also check init block if it exists
         if let Some(init_block) = &ir.init_block {
             for instruction in &init_block.instructions {
-                if let IrInstruction::InsertObj { object, destination } = instruction {
+                if let IrInstruction::InsertObj {
+                    object,
+                    destination,
+                } = instruction
+                {
                     if let (Some(&obj_num), Some(&parent_num)) = (
                         self.ir_id_to_object_number.get(object),
-                        self.ir_id_to_object_number.get(destination)
+                        self.ir_id_to_object_number.get(destination),
                     ) {
                         self.initial_locations_by_number.insert(obj_num, parent_num);
                         log::warn!(

@@ -1567,11 +1567,21 @@ impl IrGenerator {
             }
         }
 
+        // CRITICAL FIX (Oct 28, 2025): Object name property must use first name from names array
+        // Previously used obj.identifier which caused "mailbox" instead of "small mailbox"
+        // Bug: obj.name accessed short_name property which was set incorrectly
+        // Fix: Use first name from names array, falling back to identifier if names is empty
+        let short_name = obj
+            .names
+            .first()
+            .cloned()
+            .unwrap_or_else(|| obj.identifier.clone());
+
         // Convert properties to Z-Machine properties
         let mut properties = IrProperties::new();
 
-        // Set standard properties
-        properties.set_string(StandardProperty::ShortName as u8, obj.identifier.clone());
+        // Set standard properties using computed short_name (not obj.identifier!)
+        properties.set_string(StandardProperty::ShortName as u8, short_name.clone());
         properties.set_string(StandardProperty::LongName as u8, obj.description.clone());
 
         // Convert AST properties to Z-Machine properties using property manager
@@ -1669,12 +1679,6 @@ impl IrGenerator {
                 child.sibling = next_sibling;
             }
         }
-
-        let short_name = obj
-            .names
-            .first()
-            .cloned()
-            .unwrap_or_else(|| obj.identifier.clone());
 
         let ir_object = IrObject {
             id: obj_id,
@@ -2263,7 +2267,10 @@ impl IrGenerator {
 
     /// Generate InsertObj instructions to place room objects in their containing rooms
     /// Phase 1: Place objects defined inside rooms (e.g., mailbox in west_of_house)
-    fn generate_room_object_placement(&mut self, _block: &mut IrBlock) -> Result<(), CompilerError> {
+    fn generate_room_object_placement(
+        &mut self,
+        _block: &mut IrBlock,
+    ) -> Result<(), CompilerError> {
         log::debug!("🏠 Generating room object placement instructions");
 
         // We need access to room data, but it's not stored in self after generation
