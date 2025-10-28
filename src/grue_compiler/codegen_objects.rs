@@ -601,38 +601,35 @@ impl ZMachineCodeGen {
             // IMPLEMENTATION: October 28, 2025
             // ==============================================================================
 
-            let mut dict_address_bytes = Vec::new();
+            // PHASE 2: Store object names for later DictionaryRef UnresolvedReference creation
+            // Write placeholder bytes (0xFFFF per name) and store names for later resolution
+            let mut placeholder_bytes = Vec::new();
+            let mut object_name_list = Vec::new();
 
-            // Look up each object name in the dictionary and store the address
+            // For each object name, write a 2-byte placeholder and store the name
             for name in &object.names {
-                if let Ok(dict_addr) = self.lookup_word_in_dictionary(name) {
-                    // Store dictionary address as big-endian 2-byte value
-                    // Each name gets 2 bytes: high byte, low byte
-                    dict_address_bytes.extend_from_slice(&dict_addr.to_be_bytes());
-                    log::debug!(
-                        "DICT_ADDR: Object '{}' name '{}' -> dictionary address 0x{:04x}",
-                        object.name,
-                        name,
-                        dict_addr
-                    );
-                } else {
-                    log::warn!(
-                        "Dictionary address not found for object name '{}' in object '{}'",
-                        name,
-                        object.name
-                    );
-                }
+                // Write placeholder 0xFFFF for this dictionary address (will be patched later)
+                placeholder_bytes.extend_from_slice(&0xFFFFu16.to_be_bytes());
+                object_name_list.push(name.clone());
+
+                log::debug!(
+                    "PLACEHOLDER: Object '{}' name '{}' -> placeholder 0xFFFF (will resolve via DictionaryRef)",
+                    object.name,
+                    name
+                );
             }
 
-            // Store all dictionary addresses in property 18 if any names were found
-            if !dict_address_bytes.is_empty() {
-                // Property 18 format: [addr1_hi, addr1_lo, addr2_hi, addr2_lo, ...]
-                // Example: "small mailbox" with 3 names = 6 bytes total
-                object_properties.set_bytes(18, dict_address_bytes.clone());
+            // Store object names for later DictionaryRef UnresolvedReference creation
+            if !object_name_list.is_empty() {
+                self.object_names.insert(object.name.clone(), object_name_list);
+                // Property 18 format: [placeholder1_hi, placeholder1_lo, placeholder2_hi, placeholder2_lo, ...]
+                // Example: "small mailbox" with 3 names = 6 bytes of placeholders (0xFFFF each)
+                let placeholder_len = placeholder_bytes.len(); // Get length before move
+                object_properties.set_bytes(18, placeholder_bytes);
                 log::debug!(
-                    "PROP18_DICT: Object '{}' property 18 = {} bytes ({} names × 2 bytes each)",
+                    "PROP18_PLACEHOLDERS: Object '{}' property 18 = {} placeholder bytes ({} names × 2 bytes each)",
                     object.name,
-                    dict_address_bytes.len(),
+                    placeholder_len,
                     object.names.len()
                 );
             }

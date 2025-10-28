@@ -1180,6 +1180,19 @@ impl Interpreter {
                     } else {
                         None
                     });
+
+                // Check if these are dictionary addresses and decode to strings
+                let op1_string = self.try_decode_dictionary_address(op1);
+                let op2_string = self.try_decode_dictionary_address(op2);
+
+                if op1_string.is_some() || op2_string.is_some() {
+                    log::warn!("🔤 DICT_COMPARE at PC=0x{:04x}: \"{}\" vs \"{}\" (0x{:04x} vs 0x{:04x})",
+                        pc,
+                        op1_string.unwrap_or_else(|| format!("0x{:04x}", op1)),
+                        op2_string.unwrap_or_else(|| format!("0x{:04x}", op2)),
+                        op1, op2);
+                }
+
                 let condition = op1 == op2;
                 debug!("JE: condition={} (equal={})", condition, op1 == op2);
                 // Log comparisons involving likely exit-related addresses (0x03b0-0x03d0)
@@ -2815,6 +2828,72 @@ impl Interpreter {
                     log::debug!("      L{:02} = 0x{:04x} ({})", i + 1, value, value);
                 }
             }
+        }
+    }
+
+    /// Try to decode a dictionary address back to its string representation
+    /// Returns Some(string) if the address appears to be a valid dictionary entry
+    fn try_decode_dictionary_address(&self, addr: u16) -> Option<String> {
+        // Dictionary is stored at header offset 0x08
+        let dict_addr = self.vm.game.header.dictionary as u16;
+
+        // Dictionary structure:
+        // - Number of word separators (1 byte)
+        // - Word separators (variable length)
+        // - Entry length (1 byte)
+        // - Number of entries (2 bytes)
+        // - Dictionary entries (sorted array)
+
+        if addr < dict_addr + 4 {
+            return None; // Address is too early to be a dictionary entry
+        }
+
+        // Get dictionary metadata
+        let num_separators = self.vm.game.memory[dict_addr as usize];
+        let entry_length_offset = dict_addr + 1 + num_separators as u16;
+
+        if entry_length_offset as usize >= self.vm.game.memory.len() {
+            return None;
+        }
+
+        let entry_length = self.vm.game.memory[entry_length_offset as usize];
+        let num_entries_offset = entry_length_offset + 1;
+
+        if num_entries_offset as usize + 1 >= self.vm.game.memory.len() {
+            return None;
+        }
+
+        let num_entries = u16::from_be_bytes([
+            self.vm.game.memory[num_entries_offset as usize],
+            self.vm.game.memory[num_entries_offset as usize + 1]
+        ]);
+
+        let entries_start = num_entries_offset + 2;
+        let entries_end = entries_start + (num_entries as u16 * entry_length as u16);
+
+        // Check if addr falls within the dictionary entries range
+        if addr < entries_start || addr >= entries_end {
+            return None;
+        }
+
+        // Check if addr is aligned to entry boundaries
+        if (addr - entries_start) % entry_length as u16 != 0 {
+            return None;
+        }
+
+        // Decode the Z-Machine text at this address
+        let abbrev_addr = self.vm.game.header.abbrev_table;
+        match crate::text::decode_string(&self.vm.game.memory, addr as usize, abbrev_addr) {
+            Ok((decoded_string, _length)) => {
+                // Only return if it looks like a reasonable dictionary word
+                if decoded_string.len() > 0 && decoded_string.len() <= 20 &&
+                   decoded_string.chars().all(|c| c.is_ascii_alphanumeric() || c.is_ascii_whitespace() || c.is_ascii_punctuation()) {
+                    Some(decoded_string)
+                } else {
+                    None
+                }
+            }
+            Err(_) => None
         }
     }
 }

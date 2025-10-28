@@ -603,6 +603,31 @@ Common errors when emitting Jump:
 
 **Prevention:** Search codebase for `emit_instruction(0x0C` and verify operands are present
 
+## CRITICAL: Branch Encoding and Instruction Emission Standards
+
+**ALL BRANCHES MUST BE 2-BYTE ENCODING:**
+- ❌ NEVER allow 1-byte branch format in compiler output (e.g., `0x80` single-byte)
+- ❌ NEVER let branch resolution convert 2-byte placeholders to 1-byte format
+- ✅ ALWAYS emit 2-byte branch placeholders (`0xFFFF`) for forward branches
+- ✅ ALWAYS resolve to 2-byte branch format (bit 7=0 in first branch byte)
+- ✅ ALWAYS verify compiled instructions have correct 5-byte size for branches
+
+**Rationale:** The codebase explicitly states "Always emit 2-byte placeholder for branches" and size calculations assume 2-byte format. Mixed 1-byte/2-byte encoding causes instruction alignment issues and systematic loop structure emission problems.
+
+**ALL INSTRUCTION EMISSION MUST USE emit_instruction_typed:**
+- ❌ NEVER use raw `emit_instruction()` except for placeholder+UnresolvedReference patterns
+- ❌ NEVER pass raw opcode numbers without type safety validation
+- ✅ ALWAYS use `emit_instruction_typed(Opcode::Op2(Op2::Je), operands, store_var, branch_offset)`
+- ✅ ALWAYS leverage type-safe opcode enums (Op1, Op2, OpVar) for validation
+- ✅ ALWAYS let emit_instruction_typed handle form determination and encoding
+
+**Branch Resolution Verification:**
+- Before: `41 05 00 FF FF` (5 bytes with 2-byte placeholder)
+- After: `41 05 00 40 XX` (5 bytes with 2-byte branch, bit 7=0)
+- NEVER: `41 05 00 80` (4 bytes with 1-byte branch, bit 7=1)
+
+**Impact:** Fixes systematic loop structure emission problems and instruction alignment issues throughout the compiler.
+
 ## Code Quality: emit_instruction vs emit_instruction_typed
 
 **Current state (post-Bug #18 analysis):**

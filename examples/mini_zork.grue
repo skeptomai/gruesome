@@ -317,9 +317,7 @@ fn handle_drop(obj) {
 }
 
 fn show_inventory() {
-    print("Before player.contents() call");
     let items = player.contents();
-    print("After player.contents() call");
     if items.empty() {
         print("You are empty-handed.");
     } else {
@@ -417,7 +415,11 @@ fn player_can_see(obj) -> bool {
     }
 
     // Player can see objects in current location or in inventory
-    if obj.location == player.location || obj.location == player {
+    if obj.location == player.location {
+        return true;
+    }
+
+    if obj.location == player {
         return true;
     }
 
