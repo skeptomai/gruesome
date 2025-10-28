@@ -389,6 +389,17 @@ impl ZMachineCodeGen {
             }
         }
 
+        // CRITICAL FIX (Oct 28, 2025): Add object names to dictionary for grammar lookup
+        // Grammar system needs to find object names like "mailbox", "box" when parsing "open mailbox"
+        // Without this, object lookup gets stuck in infinite loop trying to find unrecognized words
+        for object in &ir.objects {
+            // Add all names from the names array (primary and alternate names)
+            for name in &object.names {
+                words.insert(name.to_lowercase());
+                debug!("📚 Adding object name to dictionary: '{}'", name);
+            }
+        }
+
         // BTreeSet automatically keeps words sorted alphabetically
         let word_count = words.len();
         debug!("📚 Total dictionary entries: {}", word_count);
