@@ -1186,11 +1186,14 @@ impl Interpreter {
                 let op2_string = self.try_decode_dictionary_address(op2);
 
                 if op1_string.is_some() || op2_string.is_some() {
-                    log::warn!("🔤 DICT_COMPARE at PC=0x{:04x}: \"{}\" vs \"{}\" (0x{:04x} vs 0x{:04x})",
+                    log::warn!(
+                        "🔤 DICT_COMPARE at PC=0x{:04x}: \"{}\" vs \"{}\" (0x{:04x} vs 0x{:04x})",
                         pc,
                         op1_string.unwrap_or_else(|| format!("0x{:04x}", op1)),
                         op2_string.unwrap_or_else(|| format!("0x{:04x}", op2)),
-                        op1, op2);
+                        op1,
+                        op2
+                    );
                 }
 
                 let condition = op1 == op2;
@@ -2865,7 +2868,7 @@ impl Interpreter {
 
         let num_entries = u16::from_be_bytes([
             self.vm.game.memory[num_entries_offset as usize],
-            self.vm.game.memory[num_entries_offset as usize + 1]
+            self.vm.game.memory[num_entries_offset as usize + 1],
         ]);
 
         let entries_start = num_entries_offset + 2;
@@ -2886,14 +2889,20 @@ impl Interpreter {
         match crate::text::decode_string(&self.vm.game.memory, addr as usize, abbrev_addr) {
             Ok((decoded_string, _length)) => {
                 // Only return if it looks like a reasonable dictionary word
-                if decoded_string.len() > 0 && decoded_string.len() <= 20 &&
-                   decoded_string.chars().all(|c| c.is_ascii_alphanumeric() || c.is_ascii_whitespace() || c.is_ascii_punctuation()) {
+                if decoded_string.len() > 0
+                    && decoded_string.len() <= 20
+                    && decoded_string.chars().all(|c| {
+                        c.is_ascii_alphanumeric()
+                            || c.is_ascii_whitespace()
+                            || c.is_ascii_punctuation()
+                    })
+                {
                     Some(decoded_string)
                 } else {
                     None
                 }
             }
-            Err(_) => None
+            Err(_) => None,
         }
     }
 }

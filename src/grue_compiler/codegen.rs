@@ -1692,7 +1692,8 @@ impl ZMachineCodeGen {
                 // CRITICAL FIX: Determine if reference.location is code space or final space
                 // Code space addresses are 0x0000 to code_space.len()
                 // Final space addresses are final_code_base and above
-                let final_location = if reference.location < self.final_code_base { // Use final_code_base as threshold
+                let final_location = if reference.location < self.final_code_base {
+                    // Use final_code_base as threshold
                     // This is a code space address, translate to final address
                     let translated = self.final_code_base + reference.location;
                     log::debug!("Jump reference: Translating code address 0x{:04x} -> final address 0x{:04x} (final_code_base=0x{:04x})",
@@ -1700,7 +1701,10 @@ impl ZMachineCodeGen {
                     translated
                 } else {
                     // This might already be a final address
-                    log::debug!("Jump reference: Using address 0x{:04x} as-is (might be final address)", reference.location);
+                    log::debug!(
+                        "Jump reference: Using address 0x{:04x} as-is (might be final address)",
+                        reference.location
+                    );
                     reference.location
                 };
 
@@ -1794,8 +1798,12 @@ impl ZMachineCodeGen {
                         );
                     }
 
-                    log::debug!("JUMP_RESOLVE: Writing offset bytes 0x{:02x} 0x{:02x} at location 0x{:04x}",
-                              offset_bytes[0], offset_bytes[1], final_location);
+                    log::debug!(
+                        "JUMP_RESOLVE: Writing offset bytes 0x{:02x} 0x{:02x} at location 0x{:04x}",
+                        offset_bytes[0],
+                        offset_bytes[1],
+                        final_location
+                    );
 
                     // CRITICAL: Track the culprit writing to 0x1735
                     if final_location == 0x1735 {
@@ -2724,7 +2732,10 @@ impl ZMachineCodeGen {
 
         if let Some(_ret_value) = value {
             // Return with value (for now, just return 1)
-            log::warn!("🔄 RETURN: Compiling return with value {} - hardcoded to return 1 (true)", _ret_value);
+            log::warn!(
+                "🔄 RETURN: Compiling return with value {} - hardcoded to return 1 (true)",
+                _ret_value
+            );
             let operand = Operand::SmallConstant(1); // Return 1 (true)
 
             self.emit_instruction_typed(
@@ -4368,7 +4379,11 @@ impl ZMachineCodeGen {
 
                     // Look up which object name string this corresponds to
                     if let Some(object_names) = self.object_names.get(&object.name) {
-                        log::warn!("🔗 PROP18_DICTREF: Found object_names for '{}': {:?}", object.name, object_names);
+                        log::warn!(
+                            "🔗 PROP18_DICTREF: Found object_names for '{}': {:?}",
+                            object.name,
+                            object_names
+                        );
                         if let Some(object_name) = object_names.get(name_index) {
                             log::warn!("🔗 PROP18_DICTREF: Creating DictionaryRef for '{}' name '{}' at index {}", object.name, object_name, name_index);
                             // Find position of this word in dictionary
@@ -6171,7 +6186,8 @@ impl ZMachineCodeGen {
         // If no match found, continue to next object (fall through to increment)
 
         // Mark the end label (no match found - property 18 doesn't exist)
-        self.label_addresses.insert(simple_test_end_label, self.code_address);
+        self.label_addresses
+            .insert(simple_test_end_label, self.code_address);
         self.record_final_address(simple_test_end_label, self.code_address);
 
         // PHASE 2 COMPLETE: Proper dictionary address comparison implemented
@@ -6678,7 +6694,9 @@ impl ZMachineCodeGen {
 
                 // true_label: operand was 0 (false), so store 1 (NOT false = true)
                 // Register label in ir_id_to_address for branch resolution
-                self.reference_context.ir_id_to_address.insert(true_label, self.code_address);
+                self.reference_context
+                    .ir_id_to_address
+                    .insert(true_label, self.code_address);
                 let _layout3 = self.emit_instruction_typed(
                     Opcode::Op2(Op2::Store),
                     &[Operand::Variable(0), Operand::SmallConstant(1)], // Store 1 to stack
@@ -6688,7 +6706,9 @@ impl ZMachineCodeGen {
 
                 // end_label:
                 // Register label in ir_id_to_address for branch resolution
-                self.reference_context.ir_id_to_address.insert(end_label, self.code_address);
+                self.reference_context
+                    .ir_id_to_address
+                    .insert(end_label, self.code_address);
 
                 // Phase C2: Convert boolean operation to use push/pull stack discipline
                 self.use_push_pull_for_result(target, "V3-compatible boolean NOT operation")?;
@@ -9121,10 +9141,10 @@ impl ZMachineCodeGen {
 
         let offset_u16 = offset_2byte as u16;
         let polarity_bit = if branch_on_true { 0x80 } else { 0x00 }; // Bit 7
-        // CRITICAL FIX: Force bit 6=0 for 2-byte format by masking with 0xBF (10111111)
-        // This prevents accidentally creating 1-byte format when offset=0
-        // Bug: offset_u16=0 with polarity_bit=0x80 created first_byte=0x80 (bit 6=1 = 1-byte format)
-        // Fix: Ensure bit 6 is always 0 for consistent 2-byte format
+                                                                     // CRITICAL FIX: Force bit 6=0 for 2-byte format by masking with 0xBF (10111111)
+                                                                     // This prevents accidentally creating 1-byte format when offset=0
+                                                                     // Bug: offset_u16=0 with polarity_bit=0x80 created first_byte=0x80 (bit 6=1 = 1-byte format)
+                                                                     // Fix: Ensure bit 6 is always 0 for consistent 2-byte format
         let first_byte = (polarity_bit | ((offset_u16 >> 8) as u8 & 0x3F)) & 0xBF; // Force bit 6=0
         let second_byte = (offset_u16 & 0xFF) as u8;
 

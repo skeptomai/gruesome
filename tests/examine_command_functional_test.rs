@@ -68,7 +68,10 @@ fn test_examine_command_compiles_successfully() {
     let result = compiler.compile(source, ZMachineVersion::V3);
 
     // The primary test is successful compilation without boolean NOT errors
-    assert!(result.is_ok(), "Examine command with boolean operations should compile successfully");
+    assert!(
+        result.is_ok(),
+        "Examine command with boolean operations should compile successfully"
+    );
 
     let (_story_data, _codegen) = result.unwrap();
 
@@ -137,7 +140,10 @@ fn test_complex_boolean_visibility_logic_compiles() {
     let compiler = GrueCompiler::new();
     let result = compiler.compile(source, ZMachineVersion::V3);
 
-    assert!(result.is_ok(), "Complex boolean visibility logic should compile successfully");
+    assert!(
+        result.is_ok(),
+        "Complex boolean visibility logic should compile successfully"
+    );
 
     let (_story_data, _codegen) = result.unwrap();
 

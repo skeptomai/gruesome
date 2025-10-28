@@ -107,7 +107,10 @@ fn test_boolean_comparison_visibility_function() {
     let result = compiler.compile(source, ZMachineVersion::V3);
 
     // The main test is that boolean comparison compilation succeeds without errors
-    assert!(result.is_ok(), "Boolean comparison compilation should succeed");
+    assert!(
+        result.is_ok(),
+        "Boolean comparison compilation should succeed"
+    );
 
     let (_story_data, _codegen) = result.unwrap();
     // If we reach here, boolean comparison operations are working correctly

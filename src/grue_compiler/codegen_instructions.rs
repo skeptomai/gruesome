@@ -37,6 +37,7 @@ impl ZMachineCodeGen {
             IrInstruction::Call { target, .. } => target.unwrap_or(0),
             IrInstruction::GetProperty { target, .. } => *target,
             IrInstruction::GetPropertyByNumber { target, .. } => *target,
+            IrInstruction::TestAttribute { target, .. } => *target,
             IrInstruction::UnaryOp { target, .. } => *target,
             _ => 0,
         };
@@ -86,6 +87,12 @@ impl ZMachineCodeGen {
             IrInstruction::GetPropertyByNumber { target, .. } => {
                 log::debug!(
                     "IR INSTRUCTION: GetPropertyByNumber creates target IR ID {}",
+                    target
+                );
+            }
+            IrInstruction::TestAttribute { target, .. } => {
+                log::debug!(
+                    "IR INSTRUCTION: TestAttribute creates target IR ID {}",
                     target
                 );
             }
@@ -707,6 +714,74 @@ impl ZMachineCodeGen {
                     "Generated put_prop for property number {} with resolved object",
                     property_num
                 );
+            }
+
+            IrInstruction::TestAttribute {
+                target,
+                object,
+                attribute_num,
+            } => {
+                // INCOMPLETE: Z-Machine test_attr is a BRANCH instruction, not a STORE instruction
+                // This codegen is temporarily disabled because test_attr doesn't store results.
+                // The proper implementation requires branch logic handling in boolean expressions.
+                //
+                // Current approach (WRONG):
+                // test_attr obj, attr -> store result in variable
+                //
+                // Correct approach (TODO):
+                // test_attr obj, attr ? branch_to_then : fall_through_to_else
+                //
+                // See: Z-Machine Standard Document section on conditional branches
+
+                log::debug!(
+                    "TestAttribute codegen: INCOMPLETE - needs branch logic for object={}, attr={}",
+                    object,
+                    attribute_num
+                );
+
+                // TODO: Remove this temporary error once branch logic is implemented
+                return Err(CodegenError::NotImplemented(
+                    "TestAttribute requires branch logic implementation for Z-Machine test_attr"
+                        .to_string(),
+                ));
+            }
+
+            IrInstruction::SetAttribute {
+                object,
+                attribute_num,
+                value,
+            } => {
+                // Generate Z-Machine set_attr or clear_attr instruction
+                let obj_operand = self.resolve_ir_id_to_operand(*object)?;
+                let attr_operand = Operand::SmallConstant(*attribute_num);
+
+                if *value {
+                    log::debug!(
+                        "Generated set_attr: object={:?} attribute={:?}",
+                        obj_operand,
+                        attr_operand
+                    );
+                    // set_attr (2OP:11, opcode 0x0B)
+                    self.emit_instruction_typed(
+                        Opcode::Op2(Op2::SetAttr),
+                        &[obj_operand, attr_operand],
+                        None,
+                        None,
+                    )?;
+                } else {
+                    log::debug!(
+                        "Generated clear_attr: object={:?} attribute={:?}",
+                        obj_operand,
+                        attr_operand
+                    );
+                    // clear_attr (2OP:12, opcode 0x0C)
+                    self.emit_instruction_typed(
+                        Opcode::Op2(Op2::ClearAttr),
+                        &[obj_operand, attr_operand],
+                        None,
+                        None,
+                    )?;
+                }
             }
 
             IrInstruction::TestProperty {

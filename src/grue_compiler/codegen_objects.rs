@@ -621,7 +621,8 @@ impl ZMachineCodeGen {
 
             // Store object names for later DictionaryRef UnresolvedReference creation
             if !object_name_list.is_empty() {
-                self.object_names.insert(object.name.clone(), object_name_list);
+                self.object_names
+                    .insert(object.name.clone(), object_name_list);
                 // Property 18 format: [placeholder1_hi, placeholder1_lo, placeholder2_hi, placeholder2_lo, ...]
                 // Example: "small mailbox" with 3 names = 6 bytes of placeholders (0xFFFF each)
                 let placeholder_len = placeholder_bytes.len(); // Get length before move
