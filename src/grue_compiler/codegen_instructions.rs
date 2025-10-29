@@ -739,11 +739,14 @@ impl ZMachineCodeGen {
                     attribute_num
                 );
 
-                // TODO: Remove this temporary error once branch logic is implemented
-                return Err(CodegenError::NotImplemented(
-                    "TestAttribute requires branch logic implementation for Z-Machine test_attr"
-                        .to_string(),
-                ));
+                // WORKING IMPLEMENTATION: Use existing working builtin
+                log::debug!("Phase 2B: Using working generate_test_attr_builtin");
+
+                // Call the working builtin function
+                self.generate_test_attr_builtin(&[*object, (*attribute_num).into()])?;
+
+                // Track the result on stack
+                self.ir_id_to_stack_var.insert(*target, 0);
             }
 
             IrInstruction::SetAttribute {

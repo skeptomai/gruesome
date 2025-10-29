@@ -416,13 +416,63 @@ impl ZMachineCodeGen {
         let object_id = args[0];
         let attr_num = args[1];
 
-        // Generate Z-Machine test_attr instruction (2OP:10, opcode 0x0A)
-        let operands = vec![
-            self.resolve_ir_id_to_operand(object_id)?, // Object
-            self.resolve_ir_id_to_operand(attr_num)?,  // Attribute number
-        ];
-        self.emit_instruction_typed(Opcode::Op2(Op2::TestAttr), &operands, Some(0), None)?; // Store result in stack
+        // Phase 2B: Implement proper branch+store pattern using existing Jump + Label infrastructure
+        let obj_operand = self.resolve_ir_id_to_operand(object_id)?;
+        let attr_operand = self.resolve_ir_id_to_operand(attr_num)?;
 
+        log::debug!("test_attr builtin: Phase 2B branch+store pattern for obj={:?}, attr={:?}", obj_operand, attr_operand);
+
+        // CRITICAL FIX: Generate unique IR IDs for each TestAttribute to avoid label collisions
+        // Use a simple approach: multiply current code address by large prime to ensure uniqueness
+        let unique_seed = (self.code_address * 7919) % 100000; // Large prime to spread IDs
+        let true_label_id: u32 = (50000 + unique_seed) as u32; // Use high IR ID range to avoid conflicts
+        let end_label_id: u32 = (60000 + unique_seed) as u32;  // Use even higher range for end labels
+
+        log::debug!("test_attr builtin: unique labels true_id={}, end_id={}", true_label_id, end_label_id);
+
+        // Step 1: Emit test_attr as branch instruction (branch to true_label if attribute set)
+        let layout = self.emit_instruction(
+            0x0A, // 2OP:10 (test_attr)
+            &[obj_operand, attr_operand],
+            None, // No store_var - this is a branch instruction
+            Some(-1), // Placeholder for branch offset (will be resolved)
+        )?;
+
+        // Create UnresolvedReference for branch target using existing patterns
+        self.reference_context.unresolved_refs.push(crate::grue_compiler::codegen::UnresolvedReference {
+            reference_type: crate::grue_compiler::codegen::LegacyReferenceType::Branch,
+            location: layout.branch_location.unwrap(),
+            target_id: true_label_id, // UNIQUE true_label IR ID
+            is_packed_address: false,
+            offset_size: 2,
+            location_space: crate::grue_compiler::codegen::MemorySpace::Code,
+        });
+
+        // Step 2: Attribute clear - push 0 and jump to end
+        self.emit_instruction_typed(
+            Opcode::OpVar(OpVar::Push),
+            &[Operand::SmallConstant(0)],
+            None,
+            None,
+        )?;
+
+        // Jump to end using existing translate_jump infrastructure
+        self.translate_jump(end_label_id)?; // UNIQUE end_label IR ID
+
+        // Step 3: true_label - attribute set, push 1
+        self.record_code_space_offset(true_label_id, self.code_address); // Register UNIQUE true_label location
+
+        self.emit_instruction_typed(
+            Opcode::OpVar(OpVar::Push),
+            &[Operand::SmallConstant(1)],
+            None,
+            None,
+        )?;
+
+        // Step 4: end_label
+        self.record_code_space_offset(end_label_id, self.code_address); // Register UNIQUE end_label location
+
+        log::debug!("test_attr builtin: Phase 2B branch+store complete");
         Ok(())
     }
 

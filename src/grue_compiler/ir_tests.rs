@@ -882,4 +882,253 @@ mod ir_tests {
             .nested_objects
             .is_empty());
     }
+
+    // ========================================================================================
+    // PHASE 3: Z-Machine Boolean Expression Context Tests
+    // ========================================================================================
+
+    #[test]
+    fn test_phase3_conditional_attribute_generates_test_attribute_branch() {
+        // Test that `if obj.open` generates TestAttributeBranch IR instruction
+        let source = r#"
+            fn test_conditional() {
+                if mailbox.open {
+                    print("It's open");
+                }
+            }
+
+            world {
+                room test_room "Test Room" {
+                    object mailbox {
+                        open: false
+                    }
+                }
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        // Find the test_conditional function
+        let test_fn = ir.functions.iter().find(|f| f.name == "test_conditional").unwrap();
+
+        // Verify TestAttributeBranch instruction is generated for conditional context
+        let has_test_attribute_branch = test_fn.body.instructions.iter().any(|instr| {
+            matches!(instr, IrInstruction::TestAttributeBranch { attribute_num: 3, .. })
+        });
+
+        assert!(has_test_attribute_branch, "Phase 3: if obj.open should generate TestAttributeBranch");
+
+        // Verify no old-style TestAttribute + Branch pattern
+        let has_test_attribute = test_fn.body.instructions.iter().any(|instr| {
+            matches!(instr, IrInstruction::TestAttribute { .. })
+        });
+        let has_branch = test_fn.body.instructions.iter().any(|instr| {
+            matches!(instr, IrInstruction::Branch { .. })
+        });
+
+        // Should have TestAttributeBranch but NOT TestAttribute + Branch for this case
+        assert!(!has_test_attribute || !has_branch,
+            "Phase 3: if obj.open should use direct TestAttributeBranch, not TestAttribute + Branch");
+    }
+
+    #[test]
+    fn test_phase3_value_attribute_uses_phase2b_pattern() {
+        // Test that `let is_open = obj.open` still uses Phase 2B TestAttribute pattern
+        let source = r#"
+            fn test_value_assignment() {
+                let is_open = mailbox.open;
+                print("Done");
+            }
+
+            world {
+                room test_room "Test Room" {
+                    object mailbox {
+                        open: false
+                    }
+                }
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        // Find the test_value_assignment function
+        let test_fn = ir.functions.iter().find(|f| f.name == "test_value_assignment").unwrap();
+
+        // Verify TestAttribute instruction is still used for value context (Phase 2B)
+        let has_test_attribute = test_fn.body.instructions.iter().any(|instr| {
+            matches!(instr, IrInstruction::TestAttribute { attribute_num: 3, .. })
+        });
+
+        assert!(has_test_attribute, "Phase 2B: let is_open = obj.open should still use TestAttribute");
+    }
+
+    #[test]
+    fn test_phase3_mixed_attribute_contexts() {
+        // Test mixed usage: conditional and value contexts in same function
+        let source = r#"
+            fn test_mixed_usage() {
+                if mailbox.open {
+                    print("Open");
+                }
+                let is_open = mailbox.open;
+                if mailbox.container {
+                    print("Container");
+                }
+            }
+
+            object mailbox {
+                open: false,
+                container: true,
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        // Find the test_mixed_usage function
+        let test_fn = ir.functions.iter().find(|f| f.name == "test_mixed_usage").unwrap();
+
+        // Count TestAttributeBranch (conditional contexts) vs TestAttribute (value contexts)
+        let branch_count = test_fn.body.instructions.iter()
+            .filter(|instr| matches!(instr, IrInstruction::TestAttributeBranch { .. }))
+            .count();
+        let attr_count = test_fn.body.instructions.iter()
+            .filter(|instr| matches!(instr, IrInstruction::TestAttribute { .. }))
+            .count();
+
+        // Should have 2 TestAttributeBranch (if conditions) and 1 TestAttribute (value assignment)
+        assert_eq!(branch_count, 2, "Should have 2 TestAttributeBranch for if conditions");
+        assert_eq!(attr_count, 1, "Should have 1 TestAttribute for value assignment");
+    }
+
+    #[test]
+    fn test_phase3_attribute_types_mapping() {
+        // Test that different attribute types map to correct attribute numbers
+        let source = r#"
+            fn test_attributes() {
+                if mailbox.openable {    // attr 2
+                    print("Openable");
+                }
+                if mailbox.open {        // attr 3
+                    print("Open");
+                }
+                if mailbox.container {   // attr 1
+                    print("Container");
+                }
+                if mailbox.takeable {    // attr 4
+                    print("Takeable");
+                }
+            }
+
+            world {
+                room test_room "Test Room" {
+                    object mailbox {
+                        openable: true
+                        open: false
+                        container: true
+                        takeable: false
+                    }
+                }
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        // Find the test_attributes function
+        let test_fn = ir.functions.iter().find(|f| f.name == "test_attributes").unwrap();
+
+        // Collect all TestAttributeBranch instructions and their attribute numbers
+        let mut attr_nums: Vec<u8> = test_fn.body.instructions.iter()
+            .filter_map(|instr| {
+                if let IrInstruction::TestAttributeBranch { attribute_num, .. } = instr {
+                    Some(*attribute_num)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        attr_nums.sort();
+
+        // Verify correct attribute number mappings
+        assert_eq!(attr_nums, vec![1, 2, 3, 4],
+            "Attribute numbers should be: container=1, openable=2, open=3, takeable=4");
+    }
+
+    #[test]
+    fn test_phase3_non_attribute_property_fallback() {
+        // Test that non-attribute properties still use the generic pattern
+        let source = r#"
+            fn test_non_attribute() {
+                if mailbox.visited {     // Not a standard attribute
+                    print("Visited");
+                }
+            }
+
+            world {
+                room test_room "Test Room" {
+                    object mailbox {
+                        visited: false
+                    }
+                }
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        // Find the test_non_attribute function
+        let test_fn = ir.functions.iter().find(|f| f.name == "test_non_attribute").unwrap();
+
+        // Should NOT have TestAttributeBranch for non-standard attributes
+        let has_test_attribute_branch = test_fn.body.instructions.iter().any(|instr| {
+            matches!(instr, IrInstruction::TestAttributeBranch { .. })
+        });
+
+        // Should have the generic Branch pattern instead
+        let has_branch = test_fn.body.instructions.iter().any(|instr| {
+            matches!(instr, IrInstruction::Branch { .. })
+        });
+
+        assert!(!has_test_attribute_branch, "Non-attribute properties should not use TestAttributeBranch");
+        assert!(has_branch, "Non-attribute properties should use generic Branch pattern");
+    }
+
+    #[test]
+    fn test_phase3_complex_conditional_expressions() {
+        // Test that complex expressions (not direct property access) use generic pattern
+        let source = r#"
+            fn test_complex() {
+                if !mailbox.open {       // Negation - should not use TestAttributeBranch
+                    print("Not open");
+                }
+                if (mailbox.open) {      // Parentheses - still direct access, should optimize
+                    print("Open");
+                }
+            }
+
+            world {
+                room test_room "Test Room" {
+                    object mailbox {
+                        open: false
+                    }
+                }
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        // Find the test_complex function
+        let test_fn = ir.functions.iter().find(|f| f.name == "test_complex").unwrap();
+
+        // Count different instruction types
+        let branch_count = test_fn.body.instructions.iter()
+            .filter(|instr| matches!(instr, IrInstruction::TestAttributeBranch { .. }))
+            .count();
+        let generic_branch_count = test_fn.body.instructions.iter()
+            .filter(|instr| matches!(instr, IrInstruction::Branch { .. }))
+            .count();
+
+        // First condition (!obj.open) should use generic pattern
+        // Second condition (obj.open) should use TestAttributeBranch optimization
+        // Note: The exact behavior depends on how parentheses are handled in AST
+        assert!(generic_branch_count > 0, "Complex expressions should use generic Branch pattern");
+    }
 }

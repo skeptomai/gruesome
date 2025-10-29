@@ -1,0 +1,43 @@
+// Phase 3 Proof Test - Demonstrates conditional attribute optimization
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room."
+
+        object box {
+            names: ["box", "container"]
+            desc: "A simple box."
+            openable: true
+            open: false
+            container: true
+        }
+    }
+}
+
+fn test_conditional_attributes() {
+    // Phase 3: These should generate TestAttributeBranch instructions
+    if box.openable {
+        print("Box can be opened");
+    }
+
+    if box.open {
+        print("Box is open");
+    } else {
+        print("Box is closed");
+    }
+
+    if box.container {
+        print("Box is a container");
+    }
+
+    // Phase 2B: These should generate TestAttribute instructions
+    let is_openable = box.openable;
+    let is_open = box.open;
+    let is_container = box.container;
+
+    print("Test complete");
+}
+
+init {
+    player.location = test_room;
+    test_conditional_attributes();
+}

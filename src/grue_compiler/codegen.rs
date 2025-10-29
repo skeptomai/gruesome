@@ -7764,7 +7764,7 @@ impl ZMachineCodeGen {
     }
 
     /// Emit a Z-Machine comparison branch instruction (je, jl, jg, etc.)
-    fn emit_comparison_branch(
+    pub fn emit_comparison_branch(
         &mut self,
         opcode: u8,
         operands: &[Operand],

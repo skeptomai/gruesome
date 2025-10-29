@@ -3,11 +3,28 @@
 // The IR is designed to be a lower-level representation that's closer to Z-Machine
 // instructions while still maintaining some high-level constructs for optimization.
 
-use crate::grue_compiler::ast::{Program, ProgramMode, Type};
+use crate::grue_compiler::ast::{Program, ProgramMode, Type, Expr};
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::object_system::ComprehensiveObject;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
+
+/// Context for expression generation to distinguish different usage patterns
+/// This is critical for Z-Machine branch instruction handling
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExpressionContext {
+    /// Expression used for its value (e.g., let x = obj.open)
+    /// Requires generating a boolean result value
+    Value,
+
+    /// Expression used in conditional context (e.g., if obj.open)
+    /// Can use direct branch instructions for efficiency
+    Conditional,
+
+    /// Expression used in assignment context (e.g., obj.open = true)
+    /// Uses set_attr/clear_attr directly
+    Assignment,
+}
 
 /// Unique identifier for IR instructions, labels, and temporary variables
 pub type IrId = u32;
@@ -628,9 +645,28 @@ pub enum IrInstruction {
 
     /// Test attribute (Z-Machine style) - generates branch instruction
     /// NOTE: Z-Machine test_attr is a branch instruction, not a store instruction
-    /// This needs special handling in boolean expression contexts
+    /// DEPRECATED: Use TestAttributeBranch or TestAttributeValue instead
     TestAttribute {
         target: IrId,
+        object: IrId,
+        attribute_num: u8,
+    },
+
+    /// Direct conditional branch for Z-Machine branch instructions
+    /// Used in conditional contexts like: if obj.open { ... }
+    /// Generates: test_attr obj, attr -> branch to then_label if true, fall through to else_label if false
+    TestAttributeBranch {
+        object: IrId,
+        attribute_num: u8,
+        then_label: IrId,    // Branch target if attribute is set
+        else_label: IrId,    // Fall-through target if attribute is clear
+    },
+
+    /// Boolean value extraction from attributes (complex case)
+    /// Used in value contexts like: let is_open = obj.open
+    /// Generates: test_attr -> branch -> store 1 -> jump end -> store 0 -> end pattern
+    TestAttributeValue {
+        target: IrId,        // Store boolean result (0 or 1)
         object: IrId,
         attribute_num: u8,
     },
@@ -1276,6 +1312,8 @@ impl IrGenerator {
             IrInstruction::GetProperty { target, .. } => Some(*target),
             IrInstruction::GetPropertyByNumber { target, .. } => Some(*target),
             IrInstruction::TestAttribute { target, .. } => Some(*target),
+            IrInstruction::TestAttributeBranch { .. } => None, // Branch instructions don't produce values
+            IrInstruction::TestAttributeValue { target, .. } => Some(*target),
             IrInstruction::SetProperty { .. } => None,
             IrInstruction::SetPropertyByNumber { .. } => None,
             IrInstruction::SetAttribute { .. } => None,
@@ -1298,6 +1336,8 @@ impl IrGenerator {
                 IrInstruction::GetProperty { .. } => "GetProperty",
                 IrInstruction::GetPropertyByNumber { .. } => "GetPropertyByNumber",
                 IrInstruction::TestAttribute { .. } => "TestAttribute",
+                IrInstruction::TestAttributeBranch { .. } => "TestAttributeBranch",
+                IrInstruction::TestAttributeValue { .. } => "TestAttributeValue",
                 IrInstruction::CreateArray { .. } => "CreateArray",
                 _ => "Other",
             };
@@ -2374,8 +2414,8 @@ impl IrGenerator {
                 }
             }
             Stmt::Assignment(assign) => {
-                // Generate the value expression
-                let value_temp = self.generate_expression(assign.value, block)?;
+                // Generate the value expression with value context
+                let value_temp = self.generate_expression_with_context(assign.value, block, ExpressionContext::Value)?;
 
                 // Handle different types of assignment targets
                 match assign.target {
@@ -2411,7 +2451,7 @@ impl IrGenerator {
                     }
                     crate::grue_compiler::ast::Expr::PropertyAccess { object, property } => {
                         // Property assignment: object.property = value
-                        let object_temp = self.generate_expression(*object, block)?;
+                        let object_temp = self.generate_expression_with_context(*object, block, ExpressionContext::Value)?;
 
                         // Special handling for .location assignment - use insert_obj instead of property
                         // (Oct 12, 2025): Location is object tree containment only, not a property
@@ -2479,11 +2519,6 @@ impl IrGenerator {
                 }
             }
             Stmt::If(if_stmt) => {
-                // Generate condition expression
-                let condition_temp = self.generate_expression(if_stmt.condition, block)?;
-
-                log::debug!("IF condition temp: {}", condition_temp);
-
                 // Create labels for control flow
                 let then_label = self.next_id();
                 let else_label = self.next_id();
@@ -2496,12 +2531,58 @@ impl IrGenerator {
                     end_label
                 );
 
-                // Branch based on condition
-                block.add_instruction(IrInstruction::Branch {
-                    condition: condition_temp,
-                    true_label: then_label,
-                    false_label: else_label,
-                });
+                // PHASE 3: Context-aware IR generation for if statements
+                // Check if condition is attribute access for direct TestAttributeBranch optimization
+                match &if_stmt.condition {
+                    Expr::PropertyAccess { object, property } => {
+                        if let Some(standard_attr) = self.get_standard_attribute(&property) {
+                            let object_temp = self.generate_expression_with_context((**object).clone(), block, ExpressionContext::Value)?;
+                            let attr_num = standard_attr as u8;
+
+                            log::debug!(
+                                "🎯 PHASE 3: Direct TestAttributeBranch optimization for if {}.{} (attr={})",
+                                object_temp,
+                                property,
+                                attr_num
+                            );
+
+                            // Generate direct TestAttributeBranch (single Z-Machine instruction)
+                            block.add_instruction(IrInstruction::TestAttributeBranch {
+                                object: object_temp,
+                                attribute_num: attr_num,
+                                then_label,
+                                else_label,
+                            });
+
+                            // Skip the generic Branch instruction - TestAttributeBranch handles branching directly
+                        } else {
+                            // Non-attribute property: use generic pattern
+                            let condition_temp = self.generate_expression_with_context(if_stmt.condition.clone(), block, ExpressionContext::Conditional)?;
+
+                            log::debug!("IF condition temp (non-attribute property): {}", condition_temp);
+
+                            // Branch based on condition
+                            block.add_instruction(IrInstruction::Branch {
+                                condition: condition_temp,
+                                true_label: then_label,
+                                false_label: else_label,
+                            });
+                        }
+                    }
+                    _ => {
+                        // Non-property-access condition: use generic pattern
+                        let condition_temp = self.generate_expression_with_context(if_stmt.condition.clone(), block, ExpressionContext::Conditional)?;
+
+                        log::debug!("IF condition temp (non-property): {}", condition_temp);
+
+                        // Branch based on condition
+                        block.add_instruction(IrInstruction::Branch {
+                            condition: condition_temp,
+                            true_label: then_label,
+                            false_label: else_label,
+                        });
+                    }
+                }
 
                 // Then branch
                 log::debug!("IR if: Adding then label {}", then_label);
@@ -2744,6 +2825,17 @@ impl IrGenerator {
         &mut self,
         expr: crate::grue_compiler::ast::Expr,
         block: &mut IrBlock,
+    ) -> Result<IrId, CompilerError> {
+        // Default context for backward compatibility
+        self.generate_expression_with_context(expr, block, ExpressionContext::Value)
+    }
+
+    /// Generate expression with explicit context for Z-Machine branch instruction handling
+    fn generate_expression_with_context(
+        &mut self,
+        expr: crate::grue_compiler::ast::Expr,
+        block: &mut IrBlock,
+        context: ExpressionContext,
     ) -> Result<IrId, CompilerError> {
         use crate::grue_compiler::ast::Expr;
 
@@ -3119,13 +3211,14 @@ impl IrGenerator {
             Expr::PropertyAccess { object, property } => {
                 // Property access: object.property
                 let is_array = self.is_array_type(&object);
-                let object_temp = self.generate_expression(*object, block)?;
+                let object_temp = self.generate_expression_with_context(*object, block, ExpressionContext::Value)?;
                 let temp_id = self.next_id();
 
                 log::debug!(
-                    "🔍 PropertyAccess: property='{}', object_temp={}",
+                    "🔍 PropertyAccess: property='{}', object_temp={}, context={:?}",
                     property,
-                    object_temp
+                    object_temp,
+                    context
                 );
 
                 // Check if this is an exit value property access (bit manipulation)
@@ -3241,18 +3334,53 @@ impl IrGenerator {
                         object: object_temp,
                     });
                 } else if let Some(standard_attr) = self.get_standard_attribute(&property) {
-                    // This is a Z-Machine attribute, not a property - use test_attr
-                    // NOTE: test_attr is a branch instruction - this needs branch logic handling
+                    // Phase 2A: Z-Machine attribute access using Option B-2 (reuse existing Branch pattern)
                     let attr_num = standard_attr as u8;
-                    block.add_instruction(IrInstruction::TestAttribute {
-                        target: temp_id,
-                        object: object_temp,
-                        attribute_num: attr_num,
-                    });
-                    log::debug!(
-                        "🔍 ATTRIBUTE ACCESS: {} -> test_attr(object={}, attr={}) [NEEDS BRANCH LOGIC]",
-                        property, object_temp, attr_num
-                    );
+
+                    match context {
+                        ExpressionContext::Conditional => {
+                            // OPTION B-2: Reuse existing Branch instruction pattern
+                            log::debug!(
+                                "🔍 ATTRIBUTE ACCESS (CONDITIONAL): {} -> using existing Branch pattern",
+                                property
+                            );
+
+                            // Generate TestAttribute for condition (like if statements do)
+                            let condition_temp = self.next_id();
+                            block.add_instruction(IrInstruction::TestAttribute {
+                                target: condition_temp,
+                                object: object_temp,
+                                attribute_num: attr_num,
+                            });
+
+                            // Return the condition temp - the if statement will handle the Branch
+                            return Ok(condition_temp);
+                        }
+
+                        ExpressionContext::Value => {
+                            // PHASE 2B: Will implement TestAttributeValue pattern
+                            log::debug!(
+                                "🔍 ATTRIBUTE ACCESS (VALUE): {} -> TestAttributeValue pattern (Phase 2B)",
+                                property
+                            );
+
+                            // For now, fall back to existing TestAttribute
+                            let temp_id = self.next_id();
+                            block.add_instruction(IrInstruction::TestAttribute {
+                                target: temp_id,
+                                object: object_temp,
+                                attribute_num: attr_num,
+                            });
+                            return Ok(temp_id);
+                        }
+
+                        ExpressionContext::Assignment => {
+                            return Err(CompilerError::SemanticError(
+                                format!("Cannot read attribute '{}' in assignment context", property),
+                                0
+                            ));
+                        }
+                    }
                 } else if let Some(standard_prop) = self.get_standard_property(&property) {
                     // Check if this is a standard property that should use numbered access
                     if let Some(prop_num) = self
@@ -3296,7 +3424,7 @@ impl IrGenerator {
             Expr::NullSafePropertyAccess { object, property } => {
                 // Null-safe property access: object?.property
                 let is_array = self.is_array_type(&object);
-                let object_temp = self.generate_expression(*object, block)?;
+                let object_temp = self.generate_expression_with_context(*object, block, ExpressionContext::Value)?;
                 let temp_id = self.next_id();
 
                 // For null-safe access, we need to check if the object is null/valid first
