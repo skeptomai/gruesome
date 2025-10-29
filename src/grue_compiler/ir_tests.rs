@@ -909,22 +909,39 @@ mod ir_tests {
         let ir = generate_ir_from_source(source).unwrap();
 
         // Find the test_conditional function
-        let test_fn = ir.functions.iter().find(|f| f.name == "test_conditional").unwrap();
+        let test_fn = ir
+            .functions
+            .iter()
+            .find(|f| f.name == "test_conditional")
+            .unwrap();
 
         // Verify TestAttributeBranch instruction is generated for conditional context
         let has_test_attribute_branch = test_fn.body.instructions.iter().any(|instr| {
-            matches!(instr, IrInstruction::TestAttributeBranch { attribute_num: 3, .. })
+            matches!(
+                instr,
+                IrInstruction::TestAttributeBranch {
+                    attribute_num: 3,
+                    ..
+                }
+            )
         });
 
-        assert!(has_test_attribute_branch, "Phase 3: if obj.open should generate TestAttributeBranch");
+        assert!(
+            has_test_attribute_branch,
+            "Phase 3: if obj.open should generate TestAttributeBranch"
+        );
 
         // Verify no old-style TestAttribute + Branch pattern
-        let has_test_attribute = test_fn.body.instructions.iter().any(|instr| {
-            matches!(instr, IrInstruction::TestAttribute { .. })
-        });
-        let has_branch = test_fn.body.instructions.iter().any(|instr| {
-            matches!(instr, IrInstruction::Branch { .. })
-        });
+        let has_test_attribute = test_fn
+            .body
+            .instructions
+            .iter()
+            .any(|instr| matches!(instr, IrInstruction::TestAttribute { .. }));
+        let has_branch = test_fn
+            .body
+            .instructions
+            .iter()
+            .any(|instr| matches!(instr, IrInstruction::Branch { .. }));
 
         // Should have TestAttributeBranch but NOT TestAttribute + Branch for this case
         assert!(!has_test_attribute || !has_branch,
@@ -952,14 +969,27 @@ mod ir_tests {
         let ir = generate_ir_from_source(source).unwrap();
 
         // Find the test_value_assignment function
-        let test_fn = ir.functions.iter().find(|f| f.name == "test_value_assignment").unwrap();
+        let test_fn = ir
+            .functions
+            .iter()
+            .find(|f| f.name == "test_value_assignment")
+            .unwrap();
 
         // Verify TestAttribute instruction is still used for value context (Phase 2B)
         let has_test_attribute = test_fn.body.instructions.iter().any(|instr| {
-            matches!(instr, IrInstruction::TestAttribute { attribute_num: 3, .. })
+            matches!(
+                instr,
+                IrInstruction::TestAttribute {
+                    attribute_num: 3,
+                    ..
+                }
+            )
         });
 
-        assert!(has_test_attribute, "Phase 2B: let is_open = obj.open should still use TestAttribute");
+        assert!(
+            has_test_attribute,
+            "Phase 2B: let is_open = obj.open should still use TestAttribute"
+        );
     }
 
     #[test]
@@ -985,19 +1015,35 @@ mod ir_tests {
         let ir = generate_ir_from_source(source).unwrap();
 
         // Find the test_mixed_usage function
-        let test_fn = ir.functions.iter().find(|f| f.name == "test_mixed_usage").unwrap();
+        let test_fn = ir
+            .functions
+            .iter()
+            .find(|f| f.name == "test_mixed_usage")
+            .unwrap();
 
         // Count TestAttributeBranch (conditional contexts) vs TestAttribute (value contexts)
-        let branch_count = test_fn.body.instructions.iter()
+        let branch_count = test_fn
+            .body
+            .instructions
+            .iter()
             .filter(|instr| matches!(instr, IrInstruction::TestAttributeBranch { .. }))
             .count();
-        let attr_count = test_fn.body.instructions.iter()
+        let attr_count = test_fn
+            .body
+            .instructions
+            .iter()
             .filter(|instr| matches!(instr, IrInstruction::TestAttribute { .. }))
             .count();
 
         // Should have 2 TestAttributeBranch (if conditions) and 1 TestAttribute (value assignment)
-        assert_eq!(branch_count, 2, "Should have 2 TestAttributeBranch for if conditions");
-        assert_eq!(attr_count, 1, "Should have 1 TestAttribute for value assignment");
+        assert_eq!(
+            branch_count, 2,
+            "Should have 2 TestAttributeBranch for if conditions"
+        );
+        assert_eq!(
+            attr_count, 1,
+            "Should have 1 TestAttribute for value assignment"
+        );
     }
 
     #[test]
@@ -1034,10 +1080,17 @@ mod ir_tests {
         let ir = generate_ir_from_source(source).unwrap();
 
         // Find the test_attributes function
-        let test_fn = ir.functions.iter().find(|f| f.name == "test_attributes").unwrap();
+        let test_fn = ir
+            .functions
+            .iter()
+            .find(|f| f.name == "test_attributes")
+            .unwrap();
 
         // Collect all TestAttributeBranch instructions and their attribute numbers
-        let mut attr_nums: Vec<u8> = test_fn.body.instructions.iter()
+        let mut attr_nums: Vec<u8> = test_fn
+            .body
+            .instructions
+            .iter()
             .filter_map(|instr| {
                 if let IrInstruction::TestAttributeBranch { attribute_num, .. } = instr {
                     Some(*attribute_num)
@@ -1049,8 +1102,11 @@ mod ir_tests {
         attr_nums.sort();
 
         // Verify correct attribute number mappings
-        assert_eq!(attr_nums, vec![1, 2, 3, 4],
-            "Attribute numbers should be: container=1, openable=2, open=3, takeable=4");
+        assert_eq!(
+            attr_nums,
+            vec![1, 2, 3, 4],
+            "Attribute numbers should be: container=1, openable=2, open=3, takeable=4"
+        );
     }
 
     #[test]
@@ -1075,20 +1131,34 @@ mod ir_tests {
         let ir = generate_ir_from_source(source).unwrap();
 
         // Find the test_non_attribute function
-        let test_fn = ir.functions.iter().find(|f| f.name == "test_non_attribute").unwrap();
+        let test_fn = ir
+            .functions
+            .iter()
+            .find(|f| f.name == "test_non_attribute")
+            .unwrap();
 
         // Should NOT have TestAttributeBranch for non-standard attributes
-        let has_test_attribute_branch = test_fn.body.instructions.iter().any(|instr| {
-            matches!(instr, IrInstruction::TestAttributeBranch { .. })
-        });
+        let has_test_attribute_branch = test_fn
+            .body
+            .instructions
+            .iter()
+            .any(|instr| matches!(instr, IrInstruction::TestAttributeBranch { .. }));
 
         // Should have the generic Branch pattern instead
-        let has_branch = test_fn.body.instructions.iter().any(|instr| {
-            matches!(instr, IrInstruction::Branch { .. })
-        });
+        let has_branch = test_fn
+            .body
+            .instructions
+            .iter()
+            .any(|instr| matches!(instr, IrInstruction::Branch { .. }));
 
-        assert!(!has_test_attribute_branch, "Non-attribute properties should not use TestAttributeBranch");
-        assert!(has_branch, "Non-attribute properties should use generic Branch pattern");
+        assert!(
+            !has_test_attribute_branch,
+            "Non-attribute properties should not use TestAttributeBranch"
+        );
+        assert!(
+            has_branch,
+            "Non-attribute properties should use generic Branch pattern"
+        );
     }
 
     #[test]
@@ -1116,19 +1186,32 @@ mod ir_tests {
         let ir = generate_ir_from_source(source).unwrap();
 
         // Find the test_complex function
-        let test_fn = ir.functions.iter().find(|f| f.name == "test_complex").unwrap();
+        let test_fn = ir
+            .functions
+            .iter()
+            .find(|f| f.name == "test_complex")
+            .unwrap();
 
         // Count different instruction types
-        let branch_count = test_fn.body.instructions.iter()
+        let branch_count = test_fn
+            .body
+            .instructions
+            .iter()
             .filter(|instr| matches!(instr, IrInstruction::TestAttributeBranch { .. }))
             .count();
-        let generic_branch_count = test_fn.body.instructions.iter()
+        let generic_branch_count = test_fn
+            .body
+            .instructions
+            .iter()
             .filter(|instr| matches!(instr, IrInstruction::Branch { .. }))
             .count();
 
         // First condition (!obj.open) should use generic pattern
         // Second condition (obj.open) should use TestAttributeBranch optimization
         // Note: The exact behavior depends on how parentheses are handled in AST
-        assert!(generic_branch_count > 0, "Complex expressions should use generic Branch pattern");
+        assert!(
+            generic_branch_count > 0,
+            "Complex expressions should use generic Branch pattern"
+        );
     }
 }

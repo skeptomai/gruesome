@@ -1321,6 +1321,16 @@ impl Interpreter {
                 self.vm.set_attribute(obj_num, attr_num, false)?;
                 Ok(ExecutionResult::Continue)
             }
+            0x0D => {
+                // store - Store value to variable
+                // Z-Machine spec: store variable value
+                let var_num = op1 as u8;
+                let value = op2;
+
+                debug!("store: variable {} <- value {}", var_num, value);
+                self.vm.write_variable(var_num, value)?;
+                Ok(ExecutionResult::Continue)
+            }
             0x0E => {
                 // insert_obj - Insert object into hierarchy
                 // Z-Machine spec: insert_obj object destination

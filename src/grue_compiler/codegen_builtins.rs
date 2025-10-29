@@ -420,33 +420,43 @@ impl ZMachineCodeGen {
         let obj_operand = self.resolve_ir_id_to_operand(object_id)?;
         let attr_operand = self.resolve_ir_id_to_operand(attr_num)?;
 
-        log::debug!("test_attr builtin: Phase 2B branch+store pattern for obj={:?}, attr={:?}", obj_operand, attr_operand);
+        log::debug!(
+            "test_attr builtin: Phase 2B branch+store pattern for obj={:?}, attr={:?}",
+            obj_operand,
+            attr_operand
+        );
 
         // CRITICAL FIX: Generate unique IR IDs for each TestAttribute to avoid label collisions
         // Use a simple approach: multiply current code address by large prime to ensure uniqueness
         let unique_seed = (self.code_address * 7919) % 100000; // Large prime to spread IDs
         let true_label_id: u32 = (50000 + unique_seed) as u32; // Use high IR ID range to avoid conflicts
-        let end_label_id: u32 = (60000 + unique_seed) as u32;  // Use even higher range for end labels
+        let end_label_id: u32 = (60000 + unique_seed) as u32; // Use even higher range for end labels
 
-        log::debug!("test_attr builtin: unique labels true_id={}, end_id={}", true_label_id, end_label_id);
+        log::debug!(
+            "test_attr builtin: unique labels true_id={}, end_id={}",
+            true_label_id,
+            end_label_id
+        );
 
         // Step 1: Emit test_attr as branch instruction (branch to true_label if attribute set)
         let layout = self.emit_instruction(
             0x0A, // 2OP:10 (test_attr)
             &[obj_operand, attr_operand],
-            None, // No store_var - this is a branch instruction
+            None,     // No store_var - this is a branch instruction
             Some(-1), // Placeholder for branch offset (will be resolved)
         )?;
 
         // Create UnresolvedReference for branch target using existing patterns
-        self.reference_context.unresolved_refs.push(crate::grue_compiler::codegen::UnresolvedReference {
-            reference_type: crate::grue_compiler::codegen::LegacyReferenceType::Branch,
-            location: layout.branch_location.unwrap(),
-            target_id: true_label_id, // UNIQUE true_label IR ID
-            is_packed_address: false,
-            offset_size: 2,
-            location_space: crate::grue_compiler::codegen::MemorySpace::Code,
-        });
+        self.reference_context.unresolved_refs.push(
+            crate::grue_compiler::codegen::UnresolvedReference {
+                reference_type: crate::grue_compiler::codegen::LegacyReferenceType::Branch,
+                location: layout.branch_location.unwrap(),
+                target_id: true_label_id, // UNIQUE true_label IR ID
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: crate::grue_compiler::codegen::MemorySpace::Code,
+            },
+        );
 
         // Step 2: Attribute clear - push 0 and jump to end
         self.emit_instruction_typed(

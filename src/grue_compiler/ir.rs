@@ -3,7 +3,7 @@
 // The IR is designed to be a lower-level representation that's closer to Z-Machine
 // instructions while still maintaining some high-level constructs for optimization.
 
-use crate::grue_compiler::ast::{Program, ProgramMode, Type, Expr};
+use crate::grue_compiler::ast::{Expr, Program, ProgramMode, Type};
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::object_system::ComprehensiveObject;
 use indexmap::{IndexMap, IndexSet};
@@ -658,15 +658,15 @@ pub enum IrInstruction {
     TestAttributeBranch {
         object: IrId,
         attribute_num: u8,
-        then_label: IrId,    // Branch target if attribute is set
-        else_label: IrId,    // Fall-through target if attribute is clear
+        then_label: IrId, // Branch target if attribute is set
+        else_label: IrId, // Fall-through target if attribute is clear
     },
 
     /// Boolean value extraction from attributes (complex case)
     /// Used in value contexts like: let is_open = obj.open
     /// Generates: test_attr -> branch -> store 1 -> jump end -> store 0 -> end pattern
     TestAttributeValue {
-        target: IrId,        // Store boolean result (0 or 1)
+        target: IrId, // Store boolean result (0 or 1)
         object: IrId,
         attribute_num: u8,
     },
@@ -2415,7 +2415,11 @@ impl IrGenerator {
             }
             Stmt::Assignment(assign) => {
                 // Generate the value expression with value context
-                let value_temp = self.generate_expression_with_context(assign.value, block, ExpressionContext::Value)?;
+                let value_temp = self.generate_expression_with_context(
+                    assign.value,
+                    block,
+                    ExpressionContext::Value,
+                )?;
 
                 // Handle different types of assignment targets
                 match assign.target {
@@ -2451,7 +2455,11 @@ impl IrGenerator {
                     }
                     crate::grue_compiler::ast::Expr::PropertyAccess { object, property } => {
                         // Property assignment: object.property = value
-                        let object_temp = self.generate_expression_with_context(*object, block, ExpressionContext::Value)?;
+                        let object_temp = self.generate_expression_with_context(
+                            *object,
+                            block,
+                            ExpressionContext::Value,
+                        )?;
 
                         // Special handling for .location assignment - use insert_obj instead of property
                         // (Oct 12, 2025): Location is object tree containment only, not a property
@@ -2536,7 +2544,11 @@ impl IrGenerator {
                 match &if_stmt.condition {
                     Expr::PropertyAccess { object, property } => {
                         if let Some(standard_attr) = self.get_standard_attribute(&property) {
-                            let object_temp = self.generate_expression_with_context((**object).clone(), block, ExpressionContext::Value)?;
+                            let object_temp = self.generate_expression_with_context(
+                                (**object).clone(),
+                                block,
+                                ExpressionContext::Value,
+                            )?;
                             let attr_num = standard_attr as u8;
 
                             log::debug!(
@@ -2557,9 +2569,16 @@ impl IrGenerator {
                             // Skip the generic Branch instruction - TestAttributeBranch handles branching directly
                         } else {
                             // Non-attribute property: use generic pattern
-                            let condition_temp = self.generate_expression_with_context(if_stmt.condition.clone(), block, ExpressionContext::Conditional)?;
+                            let condition_temp = self.generate_expression_with_context(
+                                if_stmt.condition.clone(),
+                                block,
+                                ExpressionContext::Conditional,
+                            )?;
 
-                            log::debug!("IF condition temp (non-attribute property): {}", condition_temp);
+                            log::debug!(
+                                "IF condition temp (non-attribute property): {}",
+                                condition_temp
+                            );
 
                             // Branch based on condition
                             block.add_instruction(IrInstruction::Branch {
@@ -2571,7 +2590,11 @@ impl IrGenerator {
                     }
                     _ => {
                         // Non-property-access condition: use generic pattern
-                        let condition_temp = self.generate_expression_with_context(if_stmt.condition.clone(), block, ExpressionContext::Conditional)?;
+                        let condition_temp = self.generate_expression_with_context(
+                            if_stmt.condition.clone(),
+                            block,
+                            ExpressionContext::Conditional,
+                        )?;
 
                         log::debug!("IF condition temp (non-property): {}", condition_temp);
 
@@ -3211,7 +3234,11 @@ impl IrGenerator {
             Expr::PropertyAccess { object, property } => {
                 // Property access: object.property
                 let is_array = self.is_array_type(&object);
-                let object_temp = self.generate_expression_with_context(*object, block, ExpressionContext::Value)?;
+                let object_temp = self.generate_expression_with_context(
+                    *object,
+                    block,
+                    ExpressionContext::Value,
+                )?;
                 let temp_id = self.next_id();
 
                 log::debug!(
@@ -3376,8 +3403,11 @@ impl IrGenerator {
 
                         ExpressionContext::Assignment => {
                             return Err(CompilerError::SemanticError(
-                                format!("Cannot read attribute '{}' in assignment context", property),
-                                0
+                                format!(
+                                    "Cannot read attribute '{}' in assignment context",
+                                    property
+                                ),
+                                0,
                             ));
                         }
                     }
@@ -3424,7 +3454,11 @@ impl IrGenerator {
             Expr::NullSafePropertyAccess { object, property } => {
                 // Null-safe property access: object?.property
                 let is_array = self.is_array_type(&object);
-                let object_temp = self.generate_expression_with_context(*object, block, ExpressionContext::Value)?;
+                let object_temp = self.generate_expression_with_context(
+                    *object,
+                    block,
+                    ExpressionContext::Value,
+                )?;
                 let temp_id = self.next_id();
 
                 // For null-safe access, we need to check if the object is null/valid first
