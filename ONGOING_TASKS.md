@@ -770,3 +770,120 @@ There is a small mailbox here.
 4. ✅ Stack underflow analysis revealed deeper compiler issues
 
 **Status**: **STORE INSTRUCTION IMPLEMENTATION COMPLETE** ✅ - **PRODUCTION READY**
+
+---
+
+# STACK UNDERFLOW ROOT CAUSE: COMPILER STACK DISCIPLINE FAILURE ❌ (October 28, 2025)
+
+## 🎯 CRITICAL DISCOVERY: Systematic Stack Management Bug in Compiler
+
+**PROBLEM**: Compiler generates more stack consumers than producers, causing systematic stack underflow
+**ROOT CAUSE**: Code generation phase lacks proper stack depth tracking and balanced push/pop operations
+**EVIDENCE**: Systematic instrumented debugging analysis reveals fatal execution sequence
+
+### **Systematic Analysis Results** ✅
+
+**Stack Underflow Migration Pattern**:
+- **Original location**: PC 0x102a (call_vs instruction)
+- **After Store fix**: PC 0x101c → PC 0x102a (still occurs, just moves)
+- **Pattern**: Stack underflow persists regardless of individual instruction fixes
+- **Conclusion**: Systemic compiler issue, not isolated instruction problem
+
+### **Fatal Execution Sequence Identified** ❌
+
+**Evidence from TRACE_STACK=1 instrumentation**:
+```
+PC 0x1016: PUSH value=0x0000, depth=0  // Stack: [0x0000]
+PC 0x1021: POP  value=0x0000, depth=0  // Stack: [] (EMPTY)
+PC 0x102a: STACK UNDERFLOW             // Attempt to pop from empty stack
+```
+
+**Bytecode Sequence Analysis**:
+```
+0x1021: 0x4d 0x00 0x00  // Store: Variable(0) ← Stack (CONSUMES stack value)
+0x1024: 0x8c 0x00 0x05  // Jump: Variable(0) operand (NO stack impact)
+0x1027: 0x4d 0x00 0x01  // Store: Variable(1) ← Stack (TRIES TO CONSUME from empty stack)
+0x102a: 0xe8            // call_vs: Function address from stack (UNDERFLOW!)
+```
+
+### **Compiler Code Generation Bug Pattern** ❌
+
+**What Compiler Generates** (BROKEN):
+```assembly
+push 0x0000           // 1 value produced
+store variable(0)     // 1 value consumed  ← stack now empty
+store variable(1)     // 1 value consumed  ← UNDERFLOW!
+call_vs               // 1 value consumed  ← UNDERFLOW!
+```
+
+**What Should Be Generated** (CORRECT):
+```assembly
+push 0x0000           // 1 value produced
+store variable(0)     // 1 value consumed
+push some_value       // 1 value produced  ← MISSING!
+store variable(1)     // 1 value consumed
+push function_addr    // 1 value produced  ← MISSING!
+call_vs               // 1 value consumed
+```
+
+### **Technical Analysis** ✅
+
+**Stack Discipline Failures**:
+1. **Multiple consecutive Store instructions** without intermediate Push operations
+2. **Missing stack producers** for values that need to be stored
+3. **call_vs without function address** pushed to stack beforehand
+4. **No compiler stack depth tracking** during code generation
+
+**Instruction Decoding**:
+- `0x8c = 10001100` → SHORT form (1OP) Jump with Variable(0) operand
+- Jump instruction uses Variable operand, doesn't affect stack
+- Confirms stack consumption pattern is pure Store + call_vs issue
+
+### **Impact Assessment**
+
+**Severity**: **CRITICAL** - Fundamental compiler architecture bug
+**Scope**: All compiled games using variable assignments and function calls
+**Pattern**: Systematic stack accounting failure throughout code generation
+**User Impact**: Most game commands beyond basic navigation fail with stack underflow
+
+### **Root Cause Classification**
+
+**NOT an interpreter bug**: ✅ Store instruction implementation correct and working
+**NOT an isolated instruction bug**: ✅ Multiple different instructions affected
+**IS a compiler bug**: ❌ **Code generation phase lacks stack discipline**
+
+**Evidence**:
+- Store instruction works correctly when stack has values
+- call_vs instruction works correctly when stack has function addresses
+- Problem is compiler generates **consumers without producers**
+
+### **Investigation Requirements**
+
+**Next Phase: Compiler Stack Management Analysis**
+
+**Files to Investigate**:
+1. **Code Generation Phase**: How IR instructions map to Z-Machine stack operations
+2. **Stack Depth Tracking**: Whether compiler maintains stack balance accounting
+3. **Expression Evaluation**: How complex expressions manage temporary stack values
+4. **Function Call Generation**: How call_vs gets function addresses onto stack
+
+**Specific Questions**:
+1. Does compiler track stack depth during code generation?
+2. Are Store instructions generated with corresponding Push instructions?
+3. How does call_vs get function addresses - from stack or direct operand?
+4. Is there a systematic pattern of missing Push instructions?
+
+**Debug Approaches**:
+1. **Compiler Stack Tracing**: Log every push/pop generation during compilation
+2. **IR to Z-Machine Mapping**: Trace how IR instructions become stack operations
+3. **Stack Balance Validation**: Add compiler-time stack depth verification
+4. **Code Generation Audit**: Review Store and call_vs generation patterns
+
+### **Priority Assessment**
+
+**Urgency**: **HIGH** - Blocks all meaningful gameplay in compiled games
+**Complexity**: **HIGH** - Requires deep compiler architecture analysis
+**Risk**: **MEDIUM** - Changes to code generation could affect all functionality
+**Approach**: **SYSTEMATIC** - Requires instrumentation and methodical analysis
+
+**Status**: **ROOT CAUSE IDENTIFIED** ✅ - **COMPILER INVESTIGATION REQUIRED** ⚠️
