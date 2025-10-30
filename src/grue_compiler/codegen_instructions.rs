@@ -303,12 +303,16 @@ impl ZMachineCodeGen {
 
                     // Generate user function call with proper reference registration
                     self.generate_user_function_call(*function, args, *target)?;
-                    // CRITICAL: Register call result target for proper LoadVar resolution
-                    // Use stack for call results (per Z-Machine specification)
-                    // This is ONLY for user function calls, not builtins
+                    // Phase 1: Track user function call results in Variable(0)
                     if let Some(target_id) = target {
-                        self.use_push_pull_for_result(*target_id, "user function call")?;
-                        log::debug!("Call result: IR ID {} -> push/pull stack", target_id);
+                        // Mark this as a function call result stored in Variable(0)
+                        self.function_call_results.insert(*target_id);
+                        // Map the result directly to Variable(0) without generating extra store
+                        self.ir_id_to_stack_var.insert(*target_id, 0);
+                        log::debug!(
+                            "Call result: IR ID {} -> function call result in Variable(0)",
+                            target_id
+                        );
                     }
                 }
             }
@@ -721,32 +725,77 @@ impl ZMachineCodeGen {
                 object,
                 attribute_num,
             } => {
-                // INCOMPLETE: Z-Machine test_attr is a BRANCH instruction, not a STORE instruction
-                // This codegen is temporarily disabled because test_attr doesn't store results.
-                // The proper implementation requires branch logic handling in boolean expressions.
-                //
-                // Current approach (WRONG):
-                // test_attr obj, attr -> store result in variable
-                //
-                // Correct approach (TODO):
-                // test_attr obj, attr ? branch_to_then : fall_through_to_else
-                //
-                // See: Z-Machine Standard Document section on conditional branches
-
+                // FIXED IMPLEMENTATION: Direct Z-Machine test_attr with corrected operand and stack discipline
                 log::debug!(
-                    "TestAttribute codegen: INCOMPLETE - needs branch logic for object={}, attr={}",
+                    "TestAttribute codegen: Direct Z-Machine with corrected operand for object={}, attr={}",
                     object,
                     attribute_num
                 );
 
-                // WORKING IMPLEMENTATION: Use existing working builtin
-                log::debug!("Phase 2B: Using working generate_test_attr_builtin");
+                // ATTRIBUTE FIX: Pass attribute_num as direct SmallConstant, not as IR ID
+                // The problem was (*attribute_num).into() converts 2 to an IR ID which resolves
+                // to LargeConstant(262) instead of SmallConstant(2)
+                let obj_operand = self.resolve_ir_id_to_operand(*object)?;
+                let attr_operand = Operand::SmallConstant(*attribute_num as u8);
 
-                // Call the working builtin function
-                self.generate_test_attr_builtin(&[*object, (*attribute_num).into()])?;
+                log::debug!(
+                    "TestAttribute FIX: obj={:?}, attr={:?} (fixed from LargeConstant(262))",
+                    obj_operand,
+                    attr_operand
+                );
 
-                // Track the result on stack
-                self.ir_id_to_stack_var.insert(*target, 0);
+                // Step 1: Generate unique labels for branch logic
+                let unique_seed = (self.code_address * 7919) % 100000;
+                let true_label_id: u32 = (50000 + unique_seed) as u32;
+                let end_label_id: u32 = (60000 + unique_seed) as u32;
+
+                // Step 2: Emit test_attr as branch instruction with CORRECT SmallConstant
+                let layout = self.emit_instruction(
+                    0x0A, // 2OP:10 (test_attr)
+                    &[obj_operand, attr_operand],
+                    None,     // No store_var - this is a branch instruction
+                    Some(-1), // Placeholder for branch offset
+                )?;
+
+                // Step 4: Create UnresolvedReference for branch target
+                self.reference_context.unresolved_refs.push(
+                    crate::grue_compiler::codegen::UnresolvedReference {
+                        reference_type: crate::grue_compiler::codegen::LegacyReferenceType::Branch,
+                        location: layout.branch_location.unwrap(),
+                        target_id: true_label_id,
+                        is_packed_address: false,
+                        offset_size: 2,
+                        location_space: crate::grue_compiler::codegen::MemorySpace::Code,
+                    },
+                );
+
+                // Step 5: Attribute false - store 0 to Variable(0) using push/pull architecture
+                self.emit_instruction(
+                    0x94, // 2OP:20 (add)
+                    &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
+                    Some(0), // Store result to Variable(0)
+                    None,
+                )?;
+                self.translate_jump(end_label_id)?;
+
+                // Step 6: true_label - attribute true, store 1 to Variable(0)
+                self.record_code_space_offset(true_label_id, self.code_address);
+                self.emit_instruction(
+                    0x94, // 2OP:20 (add)
+                    &[Operand::SmallConstant(0), Operand::SmallConstant(1)],
+                    Some(0), // Store result to Variable(0)
+                    None,
+                )?;
+
+                // Step 7: end_label - value is in Variable(0), use push/pull for stack discipline
+                self.record_code_space_offset(end_label_id, self.code_address);
+
+                // STACK DISCIPLINE FIX (Oct 30, 2025): TestAttribute stores to Variable(0)
+                // Treat it like a function call to use the Phase 1 path in use_push_pull_for_result
+                if !self.function_call_results.contains(target) {
+                    self.function_call_results.insert(*target);
+                }
+                self.use_push_pull_for_result(*target, "TestAttribute result")?;
             }
 
             IrInstruction::SetAttribute {
@@ -1229,9 +1278,11 @@ impl ZMachineCodeGen {
                     self.code_address
                 );
 
-                // STACK DISCIPLINE MIGRATION (Oct 27, 2025): Migrated from use_stack_for_result()
-                // to eliminate Variable(0) collisions. GetObjectParent for player.location access
-                // now uses proper Z-Machine push/pull operations instead of direct Variable(0)
+                // STACK DISCIPLINE FIX (Oct 30, 2025): GetObjectParent stores to Variable(0)
+                // Treat it like a function call to use the Phase 1 path in use_push_pull_for_result
+                if !self.function_call_results.contains(target) {
+                    self.function_call_results.insert(*target);
+                }
                 self.use_push_pull_for_result(*target, "GetObjectParent operation")?;
             }
 

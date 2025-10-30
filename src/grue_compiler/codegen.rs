@@ -239,6 +239,10 @@ pub struct ZMachineCodeGen {
     pub ir_id_to_local_var: IndexMap<IrId, u8>,
     /// Mapping from IR IDs to binary operations (for conditional branch optimization)
     ir_id_to_binary_op: IndexMap<IrId, (IrBinaryOp, IrId, IrId)>, // (operator, left_operand, right_operand)
+    /// Analysis of comparison operations usage patterns
+    /// Contains IR IDs of comparison operations that are used as values (need push/pull)
+    /// vs those used only in direct branches (no push/pull needed)
+    comparison_ids_used_as_values: IndexSet<IrId>,
     /// Mapping from function IDs to builtin function names
     builtin_function_names: IndexMap<IrId, String>,
     /// Mapping from builtin name to pseudo function ID for address lookup
@@ -372,6 +376,12 @@ pub struct ZMachineCodeGen {
     /// Set of IR IDs that should use push/pull sequence for stack discipline
     /// Phase C1.1: Track values that need actual VAR:232/233 push/pull opcodes
     push_pull_ir_ids: IndexSet<IrId>,
+    /// Mapping from IR ID to temporary global variable for already-pulled values
+    /// Prevents multiple pull operations for the same IR ID
+    pulled_ir_id_to_global: IndexMap<IrId, u8>,
+    /// Set of IR IDs that represent function call results stored in Variable(0)
+    /// Phase 1: Track function calls that store results to Variable(0) for proper consumption
+    pub function_call_results: IndexSet<IrId>,
 }
 
 impl ZMachineCodeGen {
@@ -406,6 +416,7 @@ impl ZMachineCodeGen {
             ir_id_to_object_number: IndexMap::new(),
             ir_id_to_local_var: IndexMap::new(),
             ir_id_to_binary_op: IndexMap::new(),
+            comparison_ids_used_as_values: IndexSet::new(),
             builtin_function_names: IndexMap::new(),
             builtin_functions: IndexMap::new(),
             ir_id_to_array_info: IndexMap::new(),
@@ -469,6 +480,8 @@ impl ZMachineCodeGen {
             main_program_offset: 0,
             dictionary_words: Vec::new(),
             push_pull_ir_ids: IndexSet::new(),
+            pulled_ir_id_to_global: IndexMap::new(),
+            function_call_results: IndexSet::new(),
         }
     }
 
@@ -658,6 +671,14 @@ impl ZMachineCodeGen {
     /// 6. Abbreviations space - string compression abbreviations
     fn generate_all_zmachine_sections(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
         log::info!("Phase 2: Generating ALL Z-Machine sections to separated memory spaces");
+
+        // STACK DISCIPLINE FIX (Oct 30, 2025): Analyze comparison usage patterns before code generation
+        log::debug!("🔍 Step 2-pre: Analyzing comparison operation usage patterns");
+        self.comparison_ids_used_as_values = self.analyze_comparison_usage_patterns(ir);
+        log::info!(
+            "🔍 USAGE_ANALYSIS: Identified {} comparison operations that need push/pull mechanism",
+            self.comparison_ids_used_as_values.len()
+        );
 
         // Phase 2a: Generate strings to string_space
         log::debug!("📝 Step 2a: Generating string space");
@@ -1490,30 +1511,6 @@ impl ZMachineCodeGen {
             reference.offset_size
         );
 
-        // CRITICAL INSTRUMENTATION: Check for any writes overlapping with corrupted branch at 0x124d-0x124f
-        let write_start = reference.location;
-        let write_end = reference.location + reference.offset_size as usize - 1;
-        let critical_start = 0x124d;
-        let critical_end = 0x124f;
-
-        if write_start <= critical_end && write_end >= critical_start {
-            log::error!("🚨 CORRUPTION_DETECTION: UnresolvedReference writing to CRITICAL RANGE!");
-            log::error!("  - Reference: {:?}", reference.reference_type);
-            log::error!("  - Target ID: {}", reference.target_id);
-            log::error!(
-                "  - Write range: 0x{:04x}-0x{:04x} (size={})",
-                write_start,
-                write_end,
-                reference.offset_size
-            );
-            log::error!(
-                "  - Critical range: 0x{:04x}-0x{:04x}",
-                critical_start,
-                critical_end
-            );
-            log::error!("  - OVERLAP: This write may corrupt the branch instruction at 0x124d!");
-        }
-
         // DEBUG: Check current state before resolution
         log::debug!(
  " RESOLVE_REF_STATE: code_space.len()={}, final_data.len()={}, final_code_base=0x{:04x}",
@@ -1838,26 +1835,6 @@ impl ZMachineCodeGen {
                                    instruction_pc, pc_after_instruction, offset);
                     }
 
-                    // CRITICAL INSTRUMENTATION: Track writes to corrupted area
-                    if (final_location <= 0x124f && final_location >= 0x124d)
-                        || (final_location + 1 <= 0x124f && final_location + 1 >= 0x124d)
-                    {
-                        log::error!(
-                            "🚨 JUMP_CORRUPTION: Jump instruction writing to critical area!"
-                        );
-                        log::error!(
-                            "  - Writing 0x{:02x} 0x{:02x} at location 0x{:04x}",
-                            offset_bytes[0],
-                            offset_bytes[1],
-                            final_location
-                        );
-                        log::error!(
-                            "  - Target ID: {}, Resolved address: 0x{:04x}",
-                            reference.target_id,
-                            resolved_address
-                        );
-                    }
-
                     self.write_byte_at(final_location, offset_bytes[0])?;
                     self.write_byte_at(final_location + 1, offset_bytes[1])?;
                     log::debug!("JUMP_RESOLVE: Successfully wrote Jump instruction operand");
@@ -2065,24 +2042,6 @@ impl ZMachineCodeGen {
                 let old_high = self.final_data[reference.location];
                 let old_low = self.final_data[reference.location + 1];
                 debug!("Patch 2-byte: location=0x{:04x} old_value=0x{:02x}{:02x} -> new_value=0x{:04x}", reference.location, old_high, old_low, target_address);
-
-                // CRITICAL INSTRUMENTATION: Check for writes to corrupted area
-                let write_start = reference.location;
-                let write_end = reference.location + 1;
-                if (write_start >= 0x124d && write_start <= 0x124f)
-                    || (write_end >= 0x124d && write_end <= 0x124f)
-                {
-                    log::error!("🚨 LEGACY_CORRUPTION: 2-byte patch writing to critical area!");
-                    log::error!("  - Reference: {:?}", reference.reference_type);
-                    log::error!("  - Target ID: {}", reference.target_id);
-                    log::error!(
-                        "  - Writing 0x{:04x} at location 0x{:04x}-0x{:04x}",
-                        target_address,
-                        write_start,
-                        write_end
-                    );
-                    log::error!("  - Old value was: 0x{:02x}{:02x}", old_high, old_low);
-                }
 
                 // CRITICAL FIX: For string references, we need to pack the address
                 let final_value =
@@ -7017,6 +6976,19 @@ impl ZMachineCodeGen {
             ir_id
         );
 
+        // Track the 17 problematic IR IDs
+        if [
+            132, 181, 203, 224, 334, 337, 358, 408, 417, 425, 439, 441, 443, 464, 515, 518, 535,
+        ]
+        .contains(&ir_id)
+        {
+            log::error!(
+                "RESOLVE_PROBLEMATIC: Resolving unpulled IR ID {} - in push_pull_ir_ids: {}",
+                ir_id,
+                self.push_pull_ir_ids.contains(&ir_id)
+            );
+        }
+
         // Check if it's an integer literal
         if let Some(literal_value) = self.get_literal_value(ir_id) {
             log::debug!(
@@ -7035,14 +7007,40 @@ impl ZMachineCodeGen {
 
         // Phase C2: Check if this IR ID was marked for push/pull sequence
         // If so, emit pull instruction to temporary global and return that global
+        log::debug!(
+            "RESOLVE_DEBUG: IR ID {} - checking push_pull_ir_ids set (contains: {})",
+            ir_id,
+            self.push_pull_ir_ids.contains(&ir_id)
+        );
         if self.push_pull_ir_ids.contains(&ir_id) {
-            // Allocate a temporary global variable for pull operation
+            // Check if we already pulled this IR ID (prevent duplicate pulls)
+            if let Some(&existing_global) = self.pulled_ir_id_to_global.get(&ir_id) {
+                log::error!(
+                    "STACK_REUSE: IR ID {} reusing existing Variable({}) - no pull needed",
+                    ir_id,
+                    existing_global
+                );
+                return Ok(Operand::Variable(existing_global));
+            }
+
+            // First time accessing this IR ID - allocate temporary global and emit pull
             let temp_global = self.allocate_global_variable();
 
             // VAR:233 pull(variable) - pops value from Z-Machine stack into temporary global
             // Pull takes the target variable as an operand, not as store_var
             let pull_operands = vec![Operand::Variable(temp_global)];
             self.emit_instruction_typed(Opcode::OpVar(OpVar::Pull), &pull_operands, None, None)?;
+
+            // Cache this mapping to prevent duplicate pulls
+            self.pulled_ir_id_to_global.insert(ir_id, temp_global);
+
+            // STACK INSTRUMENTATION: Track pull operation
+            log::error!(
+                "STACK_PULL: IR ID {} at PC 0x{:04x} - pulled from stack to Variable({})",
+                ir_id,
+                self.current_address() - 2,
+                temp_global
+            );
 
             log::debug!(
                 "PHASE_C2: IR ID {} resolved via pull to Variable({}) [Temporary global for stack value]",
@@ -7665,46 +7663,74 @@ impl ZMachineCodeGen {
             self.ir_id_to_binary_op.contains_key(&condition)
         );
         if let Some((op, left, right)) = self.ir_id_to_binary_op.get(&condition).cloned() {
-            log::debug!(
- "DIRECT_COMPARISON_BRANCH: Detected BinaryOp {:?} - generating direct Z-Machine branch instruction",
- op
- );
-
-            // Resolve operands for the comparison
-            let left_operand = self.resolve_ir_id_to_operand(left)?;
-            let right_operand = self.resolve_ir_id_to_operand(right)?;
-            log::debug!(
-                "🔍 COMPARISON: left_id={} -> {:?}, right_id={} -> {:?}",
-                left,
-                left_operand,
-                right,
-                right_operand
-            );
-            // Removed debugging panic - label IDs may legitimately be used as operands in some contexts
-
-            // Generate the appropriate Z-Machine branch instruction
-            let (opcode, branch_on_true) = match op {
-                IrBinaryOp::Equal => (0x01, true),         // je - branch if equal
-                IrBinaryOp::NotEqual => (0x01, false),     // je - branch if NOT equal
-                IrBinaryOp::Less => (0x02, true),          // jl - branch if less
-                IrBinaryOp::LessEqual => (0x03, false),    // jg - branch if NOT greater
-                IrBinaryOp::Greater => (0x03, true),       // jg - branch if greater
-                IrBinaryOp::GreaterEqual => (0x02, false), // jl - branch if NOT less
-                _ => {
-                    return Err(CompilerError::CodeGenError(format!(
-                        "Unsupported comparison operation in direct branch: {:?}",
-                        op
-                    )));
+            // CRITICAL FIX: Only comparison operations should take the direct branch path
+            // Logical operations (And, Or) should use the normal resolve path to pull from stack
+            match op {
+                IrBinaryOp::Equal
+                | IrBinaryOp::NotEqual
+                | IrBinaryOp::Less
+                | IrBinaryOp::LessEqual
+                | IrBinaryOp::Greater
+                | IrBinaryOp::GreaterEqual => {
+                    log::debug!(
+         "DIRECT_COMPARISON_BRANCH: Detected comparison BinaryOp {:?} - generating direct Z-Machine branch instruction",
+         op
+         );
                 }
-            };
+                _ => {
+                    log::debug!(
+         "NON_COMPARISON_BINARYOP: Detected logical BinaryOp {:?} - using normal stack resolution path",
+         op
+         );
+                    // Skip direct branch path, let it fall through to normal resolution
+                }
+            }
 
-            // CRITICAL FIX: We want to skip the THEN block when the condition is FALSE
-            // So we branch to false_label (skip) when the condition is FALSE
-            // This means we need to INVERT branch_on_true
-            let branch_target = false_label; // Always branch to the skip-THEN label
-            let emit_branch_on_true = !branch_on_true; // Invert the sense
+            // Only handle comparison operations in direct branch path
+            if matches!(
+                op,
+                IrBinaryOp::Equal
+                    | IrBinaryOp::NotEqual
+                    | IrBinaryOp::Less
+                    | IrBinaryOp::LessEqual
+                    | IrBinaryOp::Greater
+                    | IrBinaryOp::GreaterEqual
+            ) {
+                // Resolve operands for the comparison
+                let left_operand = self.resolve_ir_id_to_operand(left)?;
+                let right_operand = self.resolve_ir_id_to_operand(right)?;
+                log::debug!(
+                    "🔍 COMPARISON: left_id={} -> {:?}, right_id={} -> {:?}",
+                    left,
+                    left_operand,
+                    right,
+                    right_operand
+                );
+                // Removed debugging panic - label IDs may legitimately be used as operands in some contexts
 
-            log::debug!(
+                // Generate the appropriate Z-Machine branch instruction
+                let (opcode, branch_on_true) = match op {
+                    IrBinaryOp::Equal => (0x01, true),         // je - branch if equal
+                    IrBinaryOp::NotEqual => (0x01, false),     // je - branch if NOT equal
+                    IrBinaryOp::Less => (0x02, true),          // jl - branch if less
+                    IrBinaryOp::LessEqual => (0x03, false),    // jg - branch if NOT greater
+                    IrBinaryOp::Greater => (0x03, true),       // jg - branch if greater
+                    IrBinaryOp::GreaterEqual => (0x02, false), // jl - branch if NOT less
+                    _ => {
+                        return Err(CompilerError::CodeGenError(format!(
+                            "Unsupported comparison operation in direct branch: {:?}",
+                            op
+                        )));
+                    }
+                };
+
+                // CRITICAL FIX: We want to skip the THEN block when the condition is FALSE
+                // So we branch to false_label (skip) when the condition is FALSE
+                // This means we need to INVERT branch_on_true
+                let branch_target = false_label; // Always branch to the skip-THEN label
+                let emit_branch_on_true = !branch_on_true; // Invert the sense
+
+                log::debug!(
                 "GENERATING_DIRECT_BRANCH: {:?} with opcode 0x{:02x}, branching to {} on {} (inverted)",
                 op,
                 opcode,
@@ -7712,22 +7738,23 @@ impl ZMachineCodeGen {
                 if emit_branch_on_true { "true" } else { "false" }
             );
 
-            // Generate the comparison branch instruction
-            self.emit_comparison_branch(
-                opcode,
-                &[left_operand, right_operand],
-                branch_target,
-                emit_branch_on_true,
-            )?;
+                // Generate the comparison branch instruction
+                self.emit_comparison_branch(
+                    opcode,
+                    &[left_operand, right_operand],
+                    branch_target,
+                    emit_branch_on_true,
+                )?;
 
-            let after_addr = self.code_address;
-            log::debug!(
+                let after_addr = self.code_address;
+                log::debug!(
  " EMIT_CONDITIONAL_BRANCH_INSTRUCTION: Generated {} bytes (0x{:04x} -> 0x{:04x}) via comparison branch",
  after_addr - before_addr,
  before_addr,
  after_addr
  );
-            return Ok(());
+                return Ok(());
+            } // End of comparison operation handling
         }
 
         // Fallback for non-comparison conditions (use jz branch approach)
@@ -7753,24 +7780,33 @@ impl ZMachineCodeGen {
         _true_label: IrId,
         false_label: IrId,
     ) -> Result<(), CompilerError> {
-        // CRITICAL FIX: Check if condition is a BinaryOp result that was never generated
+        // CRITICAL FIX: Check if condition is a comparison BinaryOp that should have been handled directly
         if let Some((op, _left, _right)) = self.ir_id_to_binary_op.get(&condition).cloned() {
-            log::debug!(
- " MISSING_BINARYOP_FIX: Detected ungenerated BinaryOp {:?} for condition {}, but this is wrong!",
- op, condition
- );
-
-            // FUNDAMENTAL FIX: This is the root cause of the stack underflow problem!
-            // Z-Machine comparisons are BRANCH instructions, not value-producing instructions.
-            // They should never store 0/1 to stack - they should branch directly to code blocks.
-            //
-            // The correct approach is to generate the comparison as a branch instruction
-            // that directly controls program flow, not as a value-producing operation.
-
-            return Err(CompilerError::CodeGenError(format!(
- "emit_jz_branch: Comparison {:?} should not generate standalone instructions with stack storage - comparisons should be handled by proper conditional branching logic directly",
- op
- )));
+            // Only return an error for comparison operations - logical operations are legitimate here
+            match op {
+                IrBinaryOp::Equal
+                | IrBinaryOp::NotEqual
+                | IrBinaryOp::Less
+                | IrBinaryOp::LessEqual
+                | IrBinaryOp::Greater
+                | IrBinaryOp::GreaterEqual => {
+                    log::debug!(
+         " MISSING_COMPARISON_FIX: Detected ungenerated comparison BinaryOp {:?} for condition {}, this should have been handled directly!",
+         op, condition
+         );
+                    return Err(CompilerError::CodeGenError(format!(
+         "emit_jz_branch: Comparison {:?} should not generate standalone instructions with stack storage - comparisons should be handled by proper conditional branching logic directly",
+         op
+         )));
+                }
+                _ => {
+                    log::debug!(
+         " LOGICAL_BINARYOP_OK: Detected logical BinaryOp {:?} for condition {} - this is legitimate for jz branch",
+         op, condition
+         );
+                    // Logical operations (And, Or) are fine here - they produce values that should be resolved from stack
+                }
+            }
         }
 
         // Resolve condition operand
@@ -8096,11 +8132,42 @@ impl ZMachineCodeGen {
             return Ok(());
         }
 
-        // Phase C2: Emit actual push instruction for stack discipline
+        // Phase 1: Check if this is a function call result already in Variable(0)
+        if self.function_call_results.contains(&target_id) {
+            // This is a function call result - Variable(0) already contains the value
+            // Move from Variable(0) to allocated global variable
+            let target_var = self.allocate_global_for_ir_id(target_id);
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Store),
+                &[Operand::SmallConstant(target_var), Operand::Variable(0)],
+                None,
+                None,
+            )?;
+
+            // Map this IR ID to the global variable
+            self.ir_id_to_stack_var.insert(target_id, target_var);
+
+            log::debug!(
+                "PHASE_1: Function call result IR ID {} moved from Variable(0) to Variable({}) - no push needed",
+                target_id, target_var
+            );
+
+            return Ok(());
+        }
+
+        // Phase C2: Emit actual push instruction for stack discipline (non-function-call expressions)
         // VAR:232 push(value) - pushes current Variable(0) content onto Z-Machine stack
         // This implements proper LIFO stack discipline to eliminate Variable(0) collisions
         let push_operand = Operand::Variable(0);
         self.emit_instruction_typed(Opcode::OpVar(OpVar::Push), &[push_operand], None, None)?;
+
+        // STACK INSTRUMENTATION: Track push operation
+        log::error!(
+            "STACK_PUSH: IR ID {} at PC 0x{:04x} in '{}' - pushed Variable(0) to stack",
+            target_id,
+            self.current_address() - 2,
+            context
+        );
 
         // Track this IR ID as using push/pull sequence - DO NOT map to Variable(0)
         // Instead, this IR ID will trigger pull operations when consumed via resolve_ir_id_to_operand
@@ -8182,13 +8249,26 @@ impl ZMachineCodeGen {
         );
 
         if is_comparison {
-            // Phase C2: For comparison operations, use push/pull stack discipline
-            // The actual Z-Machine branch instruction will be generated by direct branch logic
-            self.use_push_pull_for_result(target, "comparison operation")?;
-            log::debug!(
- "Comparison BinaryOp registered: IR ID {} -> stack, bytecode deferred to branch generation",
- target
- );
+            // STACK DISCIPLINE FIX (Oct 30, 2025): Use usage pattern analysis to determine handling
+            // 1. If comparison is used as a value (operand in other operations) -> generate accessible result
+            // 2. If comparison is used only in direct branches -> skip result generation (handled by branch emission)
+            if self.comparison_ids_used_as_values.contains(&target) {
+                log::debug!(
+                    "Comparison BinaryOp (IR ID {}) used as VALUE -> generating accessible result with push/pull",
+                    target
+                );
+
+                // Generate comparison instruction that stores boolean result
+                self.generate_comparison_with_result(op, left, right, target)?;
+                self.use_push_pull_for_result(target, "Comparison operation result")?;
+            } else {
+                log::debug!(
+                    "Comparison BinaryOp (IR ID {}) used only for BRANCHING -> no result generation needed",
+                    target
+                );
+                // Direct branch comparisons are handled during branch instruction emission
+                // No push/pull mechanism needed since result is never accessed as a value
+            }
         } else {
             // For non-comparison operations (arithmetic, logical), generate bytecode
             // Handle different binary operations
@@ -8236,6 +8316,317 @@ impl ZMachineCodeGen {
                 target
             );
         }
+
+        Ok(())
+    }
+
+    /// Analyze how comparison operations are used throughout the IR
+    /// Returns a set of comparison IR IDs that are used as values (need push/pull)
+    /// vs those used directly in branches (no push/pull needed)
+    fn analyze_comparison_usage_patterns(&self, ir: &IrProgram) -> IndexSet<IrId> {
+        let mut comparison_ids_used_as_values = IndexSet::new();
+
+        // First, identify all comparison operation IR IDs
+        let mut all_comparison_ids = IndexSet::new();
+        for func in &ir.functions {
+            for instruction in &func.body.instructions {
+                if let IrInstruction::BinaryOp { target, op, .. } = instruction {
+                    if matches!(
+                        op,
+                        IrBinaryOp::Equal
+                            | IrBinaryOp::NotEqual
+                            | IrBinaryOp::Less
+                            | IrBinaryOp::LessEqual
+                            | IrBinaryOp::Greater
+                            | IrBinaryOp::GreaterEqual
+                    ) {
+                        all_comparison_ids.insert(*target);
+                    }
+                }
+            }
+        }
+
+        // Now analyze how each comparison ID is used
+        for func in &ir.functions {
+            for instruction in &func.body.instructions {
+                match instruction {
+                    // Check if comparison results are used as operands in other operations
+                    IrInstruction::BinaryOp { left, right, .. } => {
+                        if all_comparison_ids.contains(left) {
+                            comparison_ids_used_as_values.insert(*left);
+                            log::debug!("USAGE_ANALYSIS: IR ID {} (comparison) used as LEFT operand in BinaryOp - needs push/pull", left);
+                        }
+                        if all_comparison_ids.contains(right) {
+                            comparison_ids_used_as_values.insert(*right);
+                            log::debug!("USAGE_ANALYSIS: IR ID {} (comparison) used as RIGHT operand in BinaryOp - needs push/pull", right);
+                        }
+                    }
+                    IrInstruction::UnaryOp { operand, .. } => {
+                        if all_comparison_ids.contains(operand) {
+                            comparison_ids_used_as_values.insert(*operand);
+                            log::debug!("USAGE_ANALYSIS: IR ID {} (comparison) used as operand in UnaryOp - needs push/pull", operand);
+                        }
+                    }
+                    // Check for direct branch usage (should NOT use push/pull)
+                    IrInstruction::Branch { condition, .. } => {
+                        if all_comparison_ids.contains(condition) {
+                            log::debug!("USAGE_ANALYSIS: IR ID {} (comparison) used directly in Branch - no push/pull needed", condition);
+                            // Note: we don't add to comparison_ids_used_as_values
+                        }
+                    }
+                    // Check other potential usage patterns
+                    IrInstruction::StoreVar { source, .. } => {
+                        if all_comparison_ids.contains(source) {
+                            comparison_ids_used_as_values.insert(*source);
+                            log::debug!("USAGE_ANALYSIS: IR ID {} (comparison) used in StoreVar - needs push/pull", source);
+                        }
+                    }
+                    IrInstruction::Call { args, .. } => {
+                        for arg in args {
+                            if all_comparison_ids.contains(arg) {
+                                comparison_ids_used_as_values.insert(*arg);
+                                log::debug!("USAGE_ANALYSIS: IR ID {} (comparison) used as function argument - needs push/pull", arg);
+                            }
+                        }
+                    }
+                    _ => {
+                        // Other instruction types don't typically use comparison results
+                    }
+                }
+            }
+        }
+
+        log::debug!(
+            "USAGE_ANALYSIS: Found {} comparison operations total",
+            all_comparison_ids.len()
+        );
+        log::debug!(
+            "USAGE_ANALYSIS: {} comparisons used as values (need push/pull): {:?}",
+            comparison_ids_used_as_values.len(),
+            comparison_ids_used_as_values.iter().collect::<Vec<_>>()
+        );
+        log::debug!(
+            "USAGE_ANALYSIS: {} comparisons used only in branches (no push/pull): {:?}",
+            all_comparison_ids.len() - comparison_ids_used_as_values.len(),
+            all_comparison_ids
+                .difference(&comparison_ids_used_as_values)
+                .collect::<Vec<_>>()
+        );
+
+        comparison_ids_used_as_values
+    }
+
+    /// Generate comparison operation that stores boolean result to Variable(0)
+    /// This method handles comparison operations that need to produce accessible results
+    /// for use in logical operations (And, Or) rather than direct branching
+    fn generate_comparison_with_result(
+        &mut self,
+        op: &IrBinaryOp,
+        left: IrId,
+        right: IrId,
+        target: IrId,
+    ) -> Result<(), CompilerError> {
+        log::debug!(
+            "COMPARISON_WITH_RESULT: Generating {:?} comparison for IR ID {} (left={}, right={})",
+            op,
+            target,
+            left,
+            right
+        );
+
+        // Resolve operands for the comparison
+        let left_operand = self.resolve_ir_id_to_operand(left)?;
+        let right_operand = self.resolve_ir_id_to_operand(right)?;
+
+        // The Z-Machine approach: Use branch instructions to set Variable(0) to 1 or 0
+        // 1. Branch instruction: if comparison_true then jump to set_true_label
+        // 2. Set Variable(0) = 0 (false case)
+        // 3. Jump to end_label
+        // 4. set_true_label: Set Variable(0) = 1 (true case)
+        // 5. end_label: continue
+
+        let set_true_label = self.next_string_id;
+        self.next_string_id += 1;
+        let end_label = self.next_string_id;
+        self.next_string_id += 1;
+
+        // Generate comparison branch instruction
+        match op {
+            IrBinaryOp::Equal => {
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::Je),
+                    &[left_operand, right_operand],
+                    None,
+                    Some(-1), // Placeholder for set_true_label
+                )?;
+                self.add_unresolved_reference(
+                    LegacyReferenceType::Branch,
+                    set_true_label,
+                    false,
+                    MemorySpace::Code,
+                )?;
+            }
+            IrBinaryOp::NotEqual => {
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::Je),
+                    &[left_operand, right_operand],
+                    None,
+                    Some(-1), // Placeholder for end_label (branch when equal, i.e., false case)
+                )?;
+                self.add_unresolved_reference(
+                    LegacyReferenceType::Branch,
+                    end_label,
+                    false,
+                    MemorySpace::Code,
+                )?;
+            }
+            IrBinaryOp::Less => {
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::Jl),
+                    &[left_operand, right_operand],
+                    None,
+                    Some(-1), // Placeholder for set_true_label
+                )?;
+                self.add_unresolved_reference(
+                    LegacyReferenceType::Branch,
+                    set_true_label,
+                    false,
+                    MemorySpace::Code,
+                )?;
+            }
+            IrBinaryOp::Greater => {
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::Jg),
+                    &[left_operand, right_operand],
+                    None,
+                    Some(-1), // Placeholder for set_true_label
+                )?;
+                self.add_unresolved_reference(
+                    LegacyReferenceType::Branch,
+                    set_true_label,
+                    false,
+                    MemorySpace::Code,
+                )?;
+            }
+            IrBinaryOp::LessEqual => {
+                // Less or equal: Use jg and invert logic (branch to false case)
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::Jg),
+                    &[left_operand, right_operand],
+                    None,
+                    Some(-1), // Placeholder for end_label (branch when greater, i.e., false case)
+                )?;
+                self.add_unresolved_reference(
+                    LegacyReferenceType::Branch,
+                    end_label,
+                    false,
+                    MemorySpace::Code,
+                )?;
+            }
+            IrBinaryOp::GreaterEqual => {
+                // Greater or equal: Use jl and invert logic (branch to false case)
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::Jl),
+                    &[left_operand, right_operand],
+                    None,
+                    Some(-1), // Placeholder for end_label (branch when less, i.e., false case)
+                )?;
+                self.add_unresolved_reference(
+                    LegacyReferenceType::Branch,
+                    end_label,
+                    false,
+                    MemorySpace::Code,
+                )?;
+            }
+            _ => {
+                return Err(CompilerError::CodeGenError(format!(
+                    "generate_comparison_with_result: Unsupported comparison operation {:?}",
+                    op
+                )));
+            }
+        }
+
+        // False case: Set Variable(0) = 0
+        if matches!(
+            op,
+            IrBinaryOp::Equal | IrBinaryOp::Less | IrBinaryOp::Greater
+        ) {
+            // Direct comparison: false case falls through
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Store),
+                &[Operand::Variable(0), Operand::SmallConstant(0)],
+                None,
+                None,
+            )?;
+            // Jump to end
+            self.emit_instruction_typed(
+                Opcode::Op1(Op1::Jump),
+                &[Operand::LargeConstant(placeholder_word())],
+                None,
+                None,
+            )?;
+            self.add_unresolved_reference(
+                LegacyReferenceType::Jump,
+                end_label,
+                false,
+                MemorySpace::Code,
+            )?;
+        }
+
+        // True case label
+        if matches!(
+            op,
+            IrBinaryOp::Equal | IrBinaryOp::Less | IrBinaryOp::Greater
+        ) {
+            self.reference_context
+                .ir_id_to_address
+                .insert(set_true_label, self.code_address);
+        } else {
+            // For inverted comparisons (NotEqual, LessEqual, GreaterEqual), true case falls through
+            // Set Variable(0) = 1
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Store),
+                &[Operand::Variable(0), Operand::SmallConstant(1)],
+                None,
+                None,
+            )?;
+            // Jump to end
+            self.emit_instruction_typed(
+                Opcode::Op1(Op1::Jump),
+                &[Operand::LargeConstant(placeholder_word())],
+                None,
+                None,
+            )?;
+            self.add_unresolved_reference(
+                LegacyReferenceType::Jump,
+                end_label,
+                false,
+                MemorySpace::Code,
+            )?;
+        }
+
+        // True case: Set Variable(0) = 1 (for direct comparisons)
+        if matches!(
+            op,
+            IrBinaryOp::Equal | IrBinaryOp::Less | IrBinaryOp::Greater
+        ) {
+            self.emit_instruction_typed(
+                Opcode::Op2(Op2::Store),
+                &[Operand::Variable(0), Operand::SmallConstant(1)],
+                None,
+                None,
+            )?;
+        }
+
+        // End label
+        self.reference_context
+            .ir_id_to_address
+            .insert(end_label, self.code_address);
+
+        log::debug!(
+            "COMPARISON_WITH_RESULT: Generated comparison {:?} for IR ID {} - result stored in Variable(0)",
+            op, target
+        );
 
         Ok(())
     }
@@ -9217,29 +9608,6 @@ impl ZMachineCodeGen {
         if first_byte == 0x01 && second_byte == 0x9f {
             panic!("FOUND THE BUG: patch_branch_offset is writing 0x01 0x9f at location 0x{:04x}! offset_2byte={}, target_address=0x{:04x}", 
  location, offset_2byte, target_address);
-        }
-
-        // CRITICAL INSTRUMENTATION: Track writes to corrupted area
-        if (location <= 0x124f && location >= 0x124d)
-            || (location + 1 <= 0x124f && location + 1 >= 0x124d)
-        {
-            log::error!("🚨 BRANCH_CORRUPTION: Branch instruction writing to critical area!");
-            log::error!(
-                "  - Writing 0x{:02x} 0x{:02x} at location 0x{:04x}",
-                first_byte,
-                second_byte,
-                location
-            );
-            log::error!(
-                "  - Target address: 0x{:04x}, Offset: {}",
-                target_address,
-                offset_2byte
-            );
-            log::error!(
-                "  - Placeholder was: 0x{:04x}, Branch on true: {}",
-                placeholder,
-                branch_on_true
-            );
         }
 
         self.write_byte_at(location, first_byte)?;
@@ -10493,25 +10861,6 @@ impl ZMachineCodeGen {
             debug!("Write to string area 0x{:04x}: 0x{:02x}", addr, byte);
         }
 
-        // CRITICAL: Track writes to the corrupted branch area 0x124d-0x124f
-        if addr >= 0x124d && addr <= 0x124f {
-            log::error!("🚨 CRITICAL_WRITE: Writing byte 0x{:02x} to address 0x{:04x} in CORRUPTED BRANCH AREA!", byte, addr);
-            log::error!("  - This may be the source of branch corruption!");
-            log::error!(
-                "  - Old value: 0x{:02x}",
-                if addr < self.final_data.len() {
-                    self.final_data[addr]
-                } else {
-                    0xFF
-                }
-            );
-        }
-
-        // Legacy tracking for other areas
-        if addr >= 0x1732 && addr <= 0x1736 {
-            log::debug!("CRITICAL_WRITE: Writing byte 0x{:02x} to address 0x{:04x} in problematic Jump instruction area", byte, addr);
-        }
-
         // Direct write to final_data during address patching phase
         if addr < self.final_data.len() {
             // Warn about potentially problematic writes
@@ -10750,11 +11099,19 @@ impl ZMachineCodeGen {
             arg_operands.push(self.resolve_ir_id_to_operand(arg_id)?);
         }
 
-        // Determine result storage
+        // Phase 1: Store function results in Variable(0) for Z-Machine compliance
+        // CHANGE: Always store to Variable(0) when result needed, following Z-Machine spec
         let store_var = if let Some(target_id) = target {
-            let result_var = self.allocate_global_for_ir_id(target_id);
-            self.ir_id_to_stack_var.insert(target_id, result_var);
-            Some(result_var)
+            // Track this as a function call result for use_push_pull_for_result
+            if !self.function_call_results.contains(&target_id) {
+                self.function_call_results.insert(target_id);
+            }
+
+            // CRITICAL: Still need to create a mapping for this IR ID so other instructions can find it
+            // The mapping will point to Variable(0) initially, then use_push_pull_for_result will update it
+            self.ir_id_to_stack_var.insert(target_id, 0);
+
+            Some(0) // ✅ Always store to Variable(0) for stack discipline
         } else {
             None
         };
