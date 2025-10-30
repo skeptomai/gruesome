@@ -1208,8 +1208,9 @@ impl ZMachineCodeGen {
                         });
                 }
 
-                // Register target as using stack result
-                self.use_push_pull_for_result(*target, "LoadVar operation")?;
+                // Stack result already available via get_child instruction storing to Variable(0)
+                // No need for additional push - would cause stack imbalance
+                self.ir_id_to_stack_var.insert(*target, 0);
             }
 
             IrInstruction::GetObjectSibling {
@@ -1249,8 +1250,9 @@ impl ZMachineCodeGen {
                         });
                 }
 
-                // Register target as using stack result
-                self.use_push_pull_for_result(*target, "GetObjectSibling operation")?;
+                // Stack result already available via get_sibling instruction storing to Variable(0)
+                // No need for additional push - would cause stack imbalance
+                self.ir_id_to_stack_var.insert(*target, 0);
             }
 
             IrInstruction::GetObjectParent { target, object } => {
@@ -1278,12 +1280,10 @@ impl ZMachineCodeGen {
                     self.code_address
                 );
 
-                // STACK DISCIPLINE FIX (Oct 30, 2025): GetObjectParent stores to Variable(0)
-                // Treat it like a function call to use the Phase 1 path in use_push_pull_for_result
-                if !self.function_call_results.contains(target) {
-                    self.function_call_results.insert(*target);
-                }
-                self.use_push_pull_for_result(*target, "GetObjectParent operation")?;
+                // STACK DISCIPLINE FIX (Oct 30, 2025): GetObjectParent stores result to Variable(0)
+                // Stack result already available via get_parent instruction storing to Variable(0)
+                // No need for additional push - would cause stack imbalance
+                self.ir_id_to_stack_var.insert(*target, 0);
             }
 
             IrInstruction::InsertObj {

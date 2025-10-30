@@ -1,19 +1,22 @@
-# Z-Machine Specification Analysis: Stack vs Locals for Store Instruction
+# Z-Machine Stack Imbalance Analysis: "look" Command Investigation
 
-## Variable Number Ranges (sect06.html, sect04.html)
-- **$00**: Stack pointer - reading pulls value off, writing pushes value on
-- **$01 to $0F**: Local variables (1-15) - routine-specific, preserved across calls
-- **$10 to $FF**: Global variables (16-255) - stored in dynamic memory table
+## Stack Operation Count During "look" Command
 
-## Store Instruction Definition (sect15.html)
-```
-2OP:13   D     store (variable) value
-Set the variable referenced by the operand to value.
-```
+**Discovered Pattern:**
+- "look" command: 6 push operations, 0 pop operations (net +6)
+- "open mailbox" direct: 4 push operations, 0 pop operations (net +4)
+- "open mailbox" after "look": Works correctly due to +6 stack compensation
 
-**Key insight**: Store is an "indirect variable reference" instruction - it takes the target variable NUMBER as an operand, not a fixed variable slot.
+## Root Cause: Systematic Stack Discipline Violation
 
-## Critical Stack vs Locals Usage Guidance (sect06.html)
+The "look" command is accidentally masking systematic stack imbalance throughout the compiler by leaving 6 extra values on the stack. This explains the state-dependent behavior:
+
+1. **Functions systematically consume more values than they produce**
+2. **"look" provides unintentional stack repair (+6 values)**
+3. **Subsequent commands work because stack has been "pre-loaded"**
+4. **Direct commands fail due to stack underflow**
+
+## Critical Stack vs Locals Usage Guidance (Z-Machine Specification)
 
 ### Stack ($00) - Section 6.3:
 - "Writing to the stack pointer pushes a value onto the stack; reading from it pulls a value off"
@@ -27,38 +30,39 @@ Set the variable referenced by the operand to value.
 - "Arguments are written into the local variables (argument 1 into local 1 and so on)"
 - **Persistent scope**: Locals survive across the entire routine call
 
-### Special Stack Behavior for Store - Section 6.3.4:
-- "In the seven opcodes that take indirect variable references (inc, dec, inc_chk, dec_chk, load, **store**, pull), an indirect reference to the stack pointer does not push or pull the top item of the stack - it is read or written in place."
+## The 6 Push Operations in "look" Command
 
-## Root Cause Analysis for Our Stack Underflow
+During "look" execution, these push operations occur:
+1. `push 1` at PC 0x14b9
+2. `push 1` at PC 0x14c7
+3. `push 10` at PC 0x14f3
+4. `push 10` at PC 0x14b9 (second iteration)
+5. `push 10` at PC 0x14c7 (second iteration)
+6. `push 1` at PC 0x14f3 (second iteration)
 
-### Problem:
-Our compiler is using `emit_instruction(0x0D, [SmallConstant(0)], Some(239), None)` which:
-1. Stores Variable(239) **TO** Variable(0) (stack pointer)
-2. This writes **in place** to stack top (doesn't push new value)
-3. But Variable(239) isn't necessarily on the stack to begin with!
+**Problem**: These pushes are never balanced with corresponding pops, violating Z-Machine stack discipline that requires stack to be empty at routine end.
 
-### Z-Machine Store semantics:
-`store (variable) value` means:
-- **First operand** = target variable NUMBER to store TO
-- **Second operand** = source value to store FROM
-- Our code: `store 0 239` = "store Variable(239)'s value into Variable(0)"
+## Function Call Architecture Issues
 
-### The Correct Approach:
-Instead of `store 0 239` (storing TO stack), we should be using:
-- `store 239 0` = "store Variable(0)'s value into Variable(239)"
-- OR better: `store 1 0` = "store Variable(0)'s value into Local Variable 1"
+The logs show multiple function calls with `return_store=Some(0)`, indicating functions are supposed to return values to the stack, but the systematic imbalance suggests:
 
-### Why Zork I doesn't have Store instructions:
-Zork I was hand-optimized Z-Machine code that directly manipulated local variables and globals without intermediate storage to stack. Our compiler generates intermediate stack operations that then need to be moved to persistent storage - a pattern that requires Store instructions.
+1. **Function calls are pushing arguments but not properly consuming them**
+2. **Return values are being left on stack instead of being consumed**
+3. **Local variable usage is bypassed in favor of stack operations**
+4. **Stack is being treated as persistent storage rather than temporary evaluation space**
 
-### The Real Fix:
-Our get_exit builtin should store the loop counter in a LOCAL variable (1-15), not try to store TO the stack. The current approach violates Z-Machine stack discipline by treating the stack as persistent storage rather than temporary expression evaluation space.
+## Required Fixes
 
-## Z-Machine Stack vs Local Variable Specification Compliance
+1. **Identify the 6 specific push operations in "look" command**
+2. **Determine which pushes should have corresponding pops**
+3. **Fix function call argument/return value discipline**
+4. **Ensure stack is empty at end of each routine per Z-Machine spec**
+5. **Use local variables (1-15) for persistent storage, not stack**
+
+## Z-Machine Stack Discipline Compliance
 
 **STACK (Variable 0) MUST be used for:**
-1. Function call return values
+1. Function call return values (immediate consumption)
 2. Function call arguments (before moving to locals)
 3. Immediate consumption values
 4. Expression evaluation
@@ -71,24 +75,10 @@ Our get_exit builtin should store the loop counter in a LOCAL variable (1-15), n
 4. Loop counters
 5. **Intermediate values that need to persist across multiple Z-Machine instructions**
 
-## Critical Discovery: Store Instruction Operand Order
+## Next Steps
 
-Our current implementation has the operands **backwards**:
-- Current: `store target_var source_var`
-- Z-Machine spec: `store (variable) value` = first operand is target variable NUMBER
-
-**Example of correct Store usage:**
-```
-store 1 0     ; Store stack top (Variable 0) into Local 1 (Variable 1)
-store 17 5    ; Store constant 5 into Global G01 (Variable 17)
-store local_var_num stack_value  ; General pattern
-```
-
-**Our bug**: We're doing `store 0 239` which stores Global Variable 239 into the stack top in-place, violating stack discipline by not actually pushing/pulling values.
-
-## Action Required
-
-1. **Fix Store instruction operand order** in get_exit builtin
-2. **Use local variables (1-15) for persistent storage** instead of trying to store TO stack
-3. **Reserve stack (Variable 0) only for immediate expression evaluation** per Z-Machine specification
-4. **Update all builtin functions** that violate stack discipline by using stack for persistent storage
+Debug the "look" command specifically to:
+1. Find the exact 6 push locations and their purpose
+2. Determine proper stack balancing for each push
+3. Fix the systematic stack discipline violation
+4. Verify stack is empty at routine completion per Z-Machine specification
