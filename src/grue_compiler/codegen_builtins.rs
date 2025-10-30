@@ -662,6 +662,7 @@ impl ZMachineCodeGen {
     }
 
     /// Generate list_objects builtin function - lists all objects in a location
+    /// NOTE: This builtin should NOT be called - user-defined list_objects function should be used instead
     pub fn generate_list_objects_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
         if args.len() != 1 {
             return Err(CompilerError::CodeGenError(format!(
@@ -932,16 +933,17 @@ impl ZMachineCodeGen {
             )));
         }
 
-        // For now, always return false (object is not empty) as a safe placeholder
+        // PLACEHOLDER IMPLEMENTATION: Always return false (object is not empty)
+        // This is a safe fallback until proper object tree traversal is implemented
         if let Some(target_id) = target {
-            // Use stack discipline for builtin result
-            self.emit_instruction_typed(
-                Opcode::Op2(Op2::Or),
-                &[Operand::LargeConstant(0), Operand::SmallConstant(0)], // 0 | 0 = 0 (false)
-                Some(0),                                                 // Store to stack
-                None,
-            )?;
-            self.use_push_pull_for_result(target_id, "object_is_empty builtin")?;
+            // Directly assign constant false value to avoid stack discipline issues
+            self.constant_values
+                .insert(target_id, ConstantValue::Integer(0));
+            self.ir_id_to_integer.insert(target_id, 0);
+            log::debug!(
+                "PLACEHOLDER: object_is_empty assigned constant false (0) to IR ID {}",
+                target_id
+            );
         }
 
         Ok(())
@@ -1343,15 +1345,16 @@ impl ZMachineCodeGen {
             self.code_address
         );
 
-        // CRITICAL: Use high global variables (235-240) for temporaries
-        // These are unlikely to conflict with user globals
-        let directions_addr_var = 235u8; // Global variable for directions address
-        let types_addr_var = 236u8; // Global variable for types address
-        let data_addr_var = 237u8; // Global variable for data address
-        let num_exits_var = 238u8; // Global variable for exit count
-        let index_var = 239u8; // Global variable for loop index
-        let current_dir_var = 240u8; // Global variable for current direction (pulled from stack)
-        let type_shifted_var = 241u8; // Global variable for type_shifted value (avoid stack discipline violations)
+        // CRITICAL: Use LOCAL variables (3-9) for persistent storage per Z-Machine specification
+        // Variables 1-2 are reserved for function parameters (room, direction)
+        // Stack (Variable 0) is only for immediate consumption, locals for persistent storage
+        let directions_addr_var = 3u8; // Local variable 3 for directions address
+        let types_addr_var = 4u8; // Local variable 4 for types address
+        let data_addr_var = 5u8; // Local variable 5 for data address
+        let num_exits_var = 6u8; // Local variable 6 for exit count
+        let index_var = 7u8; // Local variable 7 for loop index
+        let current_dir_var = 8u8; // Local variable 8 for current direction (pulled from stack)
+        let type_shifted_var = 9u8; // Local variable 9 for type_shifted value
 
         // Allocate labels for control flow
         let not_found_label = self.next_string_id;

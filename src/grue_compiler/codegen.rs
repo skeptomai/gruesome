@@ -1490,6 +1490,30 @@ impl ZMachineCodeGen {
             reference.offset_size
         );
 
+        // CRITICAL INSTRUMENTATION: Check for any writes overlapping with corrupted branch at 0x124d-0x124f
+        let write_start = reference.location;
+        let write_end = reference.location + reference.offset_size as usize - 1;
+        let critical_start = 0x124d;
+        let critical_end = 0x124f;
+
+        if write_start <= critical_end && write_end >= critical_start {
+            log::error!("🚨 CORRUPTION_DETECTION: UnresolvedReference writing to CRITICAL RANGE!");
+            log::error!("  - Reference: {:?}", reference.reference_type);
+            log::error!("  - Target ID: {}", reference.target_id);
+            log::error!(
+                "  - Write range: 0x{:04x}-0x{:04x} (size={})",
+                write_start,
+                write_end,
+                reference.offset_size
+            );
+            log::error!(
+                "  - Critical range: 0x{:04x}-0x{:04x}",
+                critical_start,
+                critical_end
+            );
+            log::error!("  - OVERLAP: This write may corrupt the branch instruction at 0x124d!");
+        }
+
         // DEBUG: Check current state before resolution
         log::debug!(
  " RESOLVE_REF_STATE: code_space.len()={}, final_data.len()={}, final_code_base=0x{:04x}",
@@ -1814,6 +1838,26 @@ impl ZMachineCodeGen {
                                    instruction_pc, pc_after_instruction, offset);
                     }
 
+                    // CRITICAL INSTRUMENTATION: Track writes to corrupted area
+                    if (final_location <= 0x124f && final_location >= 0x124d)
+                        || (final_location + 1 <= 0x124f && final_location + 1 >= 0x124d)
+                    {
+                        log::error!(
+                            "🚨 JUMP_CORRUPTION: Jump instruction writing to critical area!"
+                        );
+                        log::error!(
+                            "  - Writing 0x{:02x} 0x{:02x} at location 0x{:04x}",
+                            offset_bytes[0],
+                            offset_bytes[1],
+                            final_location
+                        );
+                        log::error!(
+                            "  - Target ID: {}, Resolved address: 0x{:04x}",
+                            reference.target_id,
+                            resolved_address
+                        );
+                    }
+
                     self.write_byte_at(final_location, offset_bytes[0])?;
                     self.write_byte_at(final_location + 1, offset_bytes[1])?;
                     log::debug!("JUMP_RESOLVE: Successfully wrote Jump instruction operand");
@@ -2021,6 +2065,24 @@ impl ZMachineCodeGen {
                 let old_high = self.final_data[reference.location];
                 let old_low = self.final_data[reference.location + 1];
                 debug!("Patch 2-byte: location=0x{:04x} old_value=0x{:02x}{:02x} -> new_value=0x{:04x}", reference.location, old_high, old_low, target_address);
+
+                // CRITICAL INSTRUMENTATION: Check for writes to corrupted area
+                let write_start = reference.location;
+                let write_end = reference.location + 1;
+                if (write_start >= 0x124d && write_start <= 0x124f)
+                    || (write_end >= 0x124d && write_end <= 0x124f)
+                {
+                    log::error!("🚨 LEGACY_CORRUPTION: 2-byte patch writing to critical area!");
+                    log::error!("  - Reference: {:?}", reference.reference_type);
+                    log::error!("  - Target ID: {}", reference.target_id);
+                    log::error!(
+                        "  - Writing 0x{:04x} at location 0x{:04x}-0x{:04x}",
+                        target_address,
+                        write_start,
+                        write_end
+                    );
+                    log::error!("  - Old value was: 0x{:02x}{:02x}", old_high, old_low);
+                }
 
                 // CRITICAL FIX: For string references, we need to pack the address
                 let final_value =
@@ -9157,6 +9219,29 @@ impl ZMachineCodeGen {
  location, offset_2byte, target_address);
         }
 
+        // CRITICAL INSTRUMENTATION: Track writes to corrupted area
+        if (location <= 0x124f && location >= 0x124d)
+            || (location + 1 <= 0x124f && location + 1 >= 0x124d)
+        {
+            log::error!("🚨 BRANCH_CORRUPTION: Branch instruction writing to critical area!");
+            log::error!(
+                "  - Writing 0x{:02x} 0x{:02x} at location 0x{:04x}",
+                first_byte,
+                second_byte,
+                location
+            );
+            log::error!(
+                "  - Target address: 0x{:04x}, Offset: {}",
+                target_address,
+                offset_2byte
+            );
+            log::error!(
+                "  - Placeholder was: 0x{:04x}, Branch on true: {}",
+                placeholder,
+                branch_on_true
+            );
+        }
+
         self.write_byte_at(location, first_byte)?;
         self.write_byte_at(location + 1, second_byte)?;
         log::debug!(
@@ -10408,7 +10493,21 @@ impl ZMachineCodeGen {
             debug!("Write to string area 0x{:04x}: 0x{:02x}", addr, byte);
         }
 
-        // CRITICAL: Track writes to the problematic 0x1734 area where Jump instruction is corrupted
+        // CRITICAL: Track writes to the corrupted branch area 0x124d-0x124f
+        if addr >= 0x124d && addr <= 0x124f {
+            log::error!("🚨 CRITICAL_WRITE: Writing byte 0x{:02x} to address 0x{:04x} in CORRUPTED BRANCH AREA!", byte, addr);
+            log::error!("  - This may be the source of branch corruption!");
+            log::error!(
+                "  - Old value: 0x{:02x}",
+                if addr < self.final_data.len() {
+                    self.final_data[addr]
+                } else {
+                    0xFF
+                }
+            );
+        }
+
+        // Legacy tracking for other areas
         if addr >= 0x1732 && addr <= 0x1736 {
             log::debug!("CRITICAL_WRITE: Writing byte 0x{:02x} to address 0x{:04x} in problematic Jump instruction area", byte, addr);
         }

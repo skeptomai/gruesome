@@ -2290,7 +2290,7 @@ impl IrGenerator {
         let loop_end = self.next_id();
 
         // Get first child: current = get_child(container)
-        // Z-Machine GET_CHILD branches when there's NO child (returns 0)
+        // IR GetObjectChild branches when there's NO child (parameter semantics)
         let first_child_temp = self.next_id();
         block.add_instruction(IrInstruction::GetObjectChild {
             target: first_child_temp,
@@ -2321,7 +2321,7 @@ impl IrGenerator {
         self.generate_statement(body, block)?;
 
         // Get next sibling: current = get_sibling(current)
-        // Z-Machine GET_SIBLING branches when there's NO sibling (returns 0)
+        // IR GetObjectSibling branches when there's NO sibling (parameter semantics)
         let current_for_sibling = self.next_id();
         block.add_instruction(IrInstruction::LoadVar {
             target: current_for_sibling,

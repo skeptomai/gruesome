@@ -1124,7 +1124,7 @@ impl ZMachineCodeGen {
                 branch_if_no_child,
             } => {
                 // Z-Machine get_child opcode: returns first child object
-                // Branches when child does NOT exist (returns 0)
+                // Branches when child EXISTS (returns ≠ 0) per Z-Machine specification
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
 
                 // CRITICAL BUG FIX (Oct 27, 2025): Z-Machine opcode confusion
@@ -1169,7 +1169,7 @@ impl ZMachineCodeGen {
                 branch_if_no_sibling,
             } => {
                 // Z-Machine get_sibling opcode: returns next sibling object
-                // Branches when sibling does NOT exist (returns 0)
+                // Branches when sibling EXISTS (returns ≠ 0) per Z-Machine specification
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
 
                 // CRITICAL BUG FIX (Oct 27, 2025): Both GetObjectChild and GetObjectSibling
