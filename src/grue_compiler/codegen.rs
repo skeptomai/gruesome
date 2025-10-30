@@ -3993,7 +3993,9 @@ impl ZMachineCodeGen {
         );
 
         // Attributes (4 bytes for V3)
-        // Convert IR attributes to Z-Machine format
+        // Convert IR attributes to Z-Machine format and write to object table
+        // Each object has 32 attribute bits stored as 4 bytes in big-endian format
+        // StandardAttribute enums (Openable=2, Container=1, etc.) map to specific bit positions
         let attrs = object.attributes.flags;
         self.write_to_object_space(obj_offset, ((attrs >> 24) & 0xFF) as u8)?; // Bits 31-24
         self.write_to_object_space(obj_offset + 1, ((attrs >> 16) & 0xFF) as u8)?; // Bits 23-16

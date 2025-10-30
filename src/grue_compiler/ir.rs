@@ -1605,6 +1605,7 @@ impl IrGenerator {
             .ok_or_else(|| CompilerError::UndefinedSymbol(obj.identifier.clone(), 0))?;
 
         // Convert named attributes to Z-Machine attributes
+        // These are attributes declared with syntax: attributes: ["openable", "container"]
         let mut attributes = IrAttributes::new();
         for attr_name in &obj.attributes {
             match attr_name.as_str() {
@@ -1628,6 +1629,8 @@ impl IrGenerator {
         }
 
         // Set attributes based on properties (for backward compatibility)
+        // These are boolean properties declared with syntax: openable: true
+        // This allows both attribute and property syntax to set the same Z-Machine attributes
         for (prop_name, prop_value) in &obj.properties {
             match prop_name.as_str() {
                 "openable" => {
