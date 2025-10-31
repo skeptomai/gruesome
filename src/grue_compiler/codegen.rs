@@ -3997,10 +3997,16 @@ impl ZMachineCodeGen {
         // Each object has 32 attribute bits stored as 4 bytes in big-endian format
         // StandardAttribute enums (Openable=2, Container=1, etc.) map to specific bit positions
         let attrs = object.attributes.flags;
-        self.write_to_object_space(obj_offset, ((attrs >> 24) & 0xFF) as u8)?; // Bits 31-24
-        self.write_to_object_space(obj_offset + 1, ((attrs >> 16) & 0xFF) as u8)?; // Bits 23-16
-        self.write_to_object_space(obj_offset + 2, ((attrs >> 8) & 0xFF) as u8)?; // Bits 15-8
-        self.write_to_object_space(obj_offset + 3, (attrs & 0xFF) as u8)?; // Bits 7-0
+
+        let byte3 = ((attrs >> 24) & 0xFF) as u8;
+        let byte2 = ((attrs >> 16) & 0xFF) as u8;
+        let byte1 = ((attrs >> 8) & 0xFF) as u8;
+        let byte0 = (attrs & 0xFF) as u8;
+
+        self.write_to_object_space(obj_offset, byte3)?; // Bits 31-24
+        self.write_to_object_space(obj_offset + 1, byte2)?; // Bits 23-16
+        self.write_to_object_space(obj_offset + 2, byte1)?; // Bits 15-8
+        self.write_to_object_space(obj_offset + 3, byte0)?; // Bits 7-0
 
         // Parent/sibling/child relationships (V3 uses 1 byte each)
         // Resolve IR IDs to actual Z-Machine object numbers
@@ -5939,16 +5945,16 @@ impl ZMachineCodeGen {
         )?;
 
         // Dynamic object lookup loop - check all objects for name match
-        // OBJECT NUMBERING MISMATCH FIX: Start from object 10 since that's where mailbox property 18 actually is
+        // FIXED: Start from object 1 to check all objects for Property 18 dictionary addresses
         log::debug!(
-            "🔍 OBJECT_LOOKUP: Initializing Variable(4)=10 (loop counter) at 0x{:04x}",
+            "🔍 OBJECT_LOOKUP: Initializing Variable(4)=1 (loop counter) at 0x{:04x}",
             self.code_address
         );
         self.emit_instruction(
             0x0D, // store
             &[
-                Operand::Variable(4),       // Loop counter variable 4
-                Operand::SmallConstant(10), // Start at object 10 where mailbox actually is
+                Operand::Variable(4),      // Loop counter variable 4
+                Operand::SmallConstant(1), // Start at object 1 to check all objects
             ],
             None,
             None,
@@ -8164,7 +8170,9 @@ impl ZMachineCodeGen {
 
         log::debug!(
             "UNIVERSAL SURGICAL FIX: IR ID {} in '{}' -> global var {} (eliminated push/pull)",
-            target_id, context, store_var
+            target_id,
+            context,
+            store_var
         );
 
         Ok(())

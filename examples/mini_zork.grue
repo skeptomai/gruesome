@@ -12,6 +12,7 @@ world {
             desc: "The small mailbox is " + (mailbox.open ? "open" : "closed") + "."
             openable: true
             container: true
+            open: false
             
             contains {
                 object leaflet {

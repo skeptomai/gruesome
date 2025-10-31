@@ -1322,7 +1322,8 @@ impl Interpreter {
                 Ok(ExecutionResult::Continue)
             }
             0x0D => {
-                // store - Store value to variable
+                // store - Store value to variable (2OP:13)
+                // CRITICAL FIX: This instruction was completely missing from interpreter
                 // Z-Machine spec: store variable value
                 let var_num = op1 as u8;
                 let value = op2;

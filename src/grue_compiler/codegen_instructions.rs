@@ -630,7 +630,11 @@ impl ZMachineCodeGen {
                     None,
                 )?;
 
-                log::debug!("GetProperty SURGICAL FIX: IR ID {} -> global var {}", target, store_var);
+                log::debug!(
+                    "GetProperty SURGICAL FIX: IR ID {} -> global var {}",
+                    target,
+                    store_var
+                );
             }
 
             IrInstruction::SetProperty {
@@ -801,7 +805,7 @@ impl ZMachineCodeGen {
             } => {
                 // CRITICAL FIX: Implement missing TestAttributeBranch codegen
                 // This instruction was being silently skipped, causing wrong branch behavior
-                log::debug!(
+                log::error!(
                     "🎯 PHASE 3: TestAttributeBranch codegen for object={}, attr={}, then={}, else={}",
                     object, attribute_num, then_label, else_label
                 );
@@ -810,38 +814,57 @@ impl ZMachineCodeGen {
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
                 let attr_operand = Operand::SmallConstant(*attribute_num as u8);
 
-                log::debug!(
+                log::error!(
                     "TestAttributeBranch: obj={:?}, attr={:?}",
                     obj_operand,
                     attr_operand
                 );
 
                 // Emit test_attr as branch instruction
-                // If attribute is SET, branch to then_label; if CLEAR, fall through to else_label
-                let layout = self.emit_instruction(
-                    0x0A, // 2OP:10 (test_attr)
+                // CRITICAL FIX: Z-Machine test_attr branches when attribute is SET
+                // But in IR: then_label = else branch content, else_label = then branch content
+                // So when attribute is SET, branch to else_label (which contains then-branch content)
+                log::error!("🔧 About to call emit_instruction_typed with TestAttr");
+                log::error!(
+                    "🔧 OBJECT MAPPING: IR object={}, resolved to operand={:?}",
+                    object,
+                    obj_operand
+                );
+                log::error!(
+                    "🔧 ATTRIBUTE: attr_num={}, operand={:?}",
+                    attribute_num,
+                    attr_operand
+                );
+                let layout = self.emit_instruction_typed(
+                    Opcode::Op2(Op2::TestAttr),
                     &[obj_operand, attr_operand],
                     None,     // No store_var - this is a branch instruction
                     Some(-1), // Placeholder for branch offset
                 )?;
+                log::error!("🔧 emit_instruction_typed returned layout: {:?}", layout);
 
-                // Create UnresolvedReference for the "then" branch (attribute is SET)
+                // Create UnresolvedReference: when attribute is SET, branch to else_label
+                // (because else_label contains the then-branch content in IR layout)
                 self.reference_context.unresolved_refs.push(
                     crate::grue_compiler::codegen::UnresolvedReference {
                         reference_type: crate::grue_compiler::codegen::LegacyReferenceType::Branch,
                         location: layout.branch_location.unwrap(),
-                        target_id: *then_label,
+                        target_id: *else_label, // FIXED: was *then_label
                         is_packed_address: false,
                         offset_size: 2,
                         location_space: crate::grue_compiler::codegen::MemorySpace::Code,
                     },
                 );
 
-                // If attribute is CLEAR, fall through to else_label (no explicit branch needed)
-                // Control flow will naturally continue to the else_label
-                log::debug!(
-                    "TestAttributeBranch: SET -> branch to L{}, CLEAR -> fall through to L{}",
+                // If attribute is CLEAR, fall through to then_label (which contains else-branch content)
+                log::error!(
+                    "TestAttributeBranch: SET -> branch to L{} (then-branch content), CLEAR -> fall through to L{} (else-branch content)",
                     then_label, else_label
+                );
+                log::error!(
+                    "TestAttributeBranch: Emitted instruction at PC=0x{:04x}, branch_location={:?}",
+                    layout.instruction_start,
+                    layout.branch_location
                 );
             }
 
@@ -1329,7 +1352,7 @@ impl ZMachineCodeGen {
                     Opcode::Op1(Op1::GetParent),
                     &[obj_operand],
                     Some(store_var), // Store result to global variable
-                    None,    // No branch
+                    None,            // No branch
                 )?;
                 log::debug!(
                     "🏃 DEBUG GetObjectParent: Emitted get_parent instruction, now at PC=0x{:04x}",

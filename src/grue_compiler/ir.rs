@@ -472,14 +472,14 @@ pub enum StandardAttribute {
     Readable = 15,   // Object can be read
 
     // Game state attributes (16-31)
-    Moved = 16,        // Object has been moved from initial location
-    Worn = 17,         // Object is being worn
-    LightSource = 18,  // Object provides light
-    Visited = 19,      // Room has been visited
-    Treasure = 20,     // Object is a treasure for scoring
-    Special = 21,      // Object has special behavior
-    Transparent = 22,  // Can see through object to contents
-    Workflag = 23,     // Temporary flag for game logic
+    Moved = 16,       // Object has been moved from initial location
+    Worn = 17,        // Object is being worn
+    LightSource = 18, // Object provides light
+    Visited = 19,     // Room has been visited
+    Treasure = 20,    // Object is a treasure for scoring
+    Special = 21,     // Object has special behavior
+    Transparent = 22, // Can see through object to contents
+    Workflag = 23,    // Temporary flag for game logic
 }
 
 /// Standard Z-Machine property numbers
