@@ -375,7 +375,7 @@ pub struct ZMachineCodeGen {
     pub dictionary_words: Vec<String>,
     /// Set of IR IDs that should use push/pull sequence for stack discipline
     /// Phase C1.1: Track values that need actual VAR:232/233 push/pull opcodes
-    push_pull_ir_ids: IndexSet<IrId>,
+    pub push_pull_ir_ids: IndexSet<IrId>,
     /// Mapping from IR ID to temporary global variable for already-pulled values
     /// Prevents multiple pull operations for the same IR ID
     pulled_ir_id_to_global: IndexMap<IrId, u8>,
@@ -8082,7 +8082,7 @@ impl ZMachineCodeGen {
     /// - Variables 16+: Global variables (persistent, safe for function results)
     ///
     /// This method ensures each allocated global is unique by tracking allocation count.
-    fn allocate_global_variable(&mut self) -> u8 {
+    pub fn allocate_global_variable(&mut self) -> u8 {
         // Global variables start at 16 (0x10) after locals (0-15)
         // Continue from allocated_globals_count to ensure uniqueness
         let global_var = 16 + (self.allocated_globals_count as u8);
@@ -8157,27 +8157,14 @@ impl ZMachineCodeGen {
             return Ok(());
         }
 
-        // Phase C2: Emit actual push instruction for stack discipline (non-function-call expressions)
-        // VAR:232 push(value) - pushes current Variable(0) content onto Z-Machine stack
-        // This implements proper LIFO stack discipline to eliminate Variable(0) collisions
-        let push_operand = Operand::Variable(0);
-        self.emit_instruction_typed(Opcode::OpVar(OpVar::Push), &[push_operand], None, None)?;
-
-        // STACK INSTRUMENTATION: Track push operation
-        log::error!(
-            "STACK_PUSH: IR ID {} at PC 0x{:04x} in '{}' - pushed Variable(0) to stack",
-            target_id,
-            self.current_address() - 2,
-            context
-        );
-
-        // Track this IR ID as using push/pull sequence - DO NOT map to Variable(0)
-        // Instead, this IR ID will trigger pull operations when consumed via resolve_ir_id_to_operand
-        self.push_pull_ir_ids.insert(target_id);
+        // UNIVERSAL SURGICAL FIX (Oct 31, 2025): Use global variables instead of push/pull system
+        // This prevents all producer→consumer chain mismatches by eliminating Variable(0) conflicts
+        let store_var = self.allocate_global_variable();
+        self.ir_id_to_stack_var.insert(target_id, store_var);
 
         log::debug!(
-            "PHASE_C2: IR ID {} marked for push/pull in {} - value pushed to Z-Machine stack, will use temporary global on consumption",
-            target_id, context
+            "UNIVERSAL SURGICAL FIX: IR ID {} in '{}' -> global var {} (eliminated push/pull)",
+            target_id, context, store_var
         );
 
         Ok(())

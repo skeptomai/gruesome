@@ -453,23 +453,33 @@ impl Default for PropertyManager {
 /// Standard Z-Machine attribute definitions
 #[derive(Debug, Clone, Copy)]
 pub enum StandardAttribute {
-    // Common attributes used in Zork and other games
-    Invisible = 0,    // Object is not listed in room descriptions
-    Container = 1,    // Object can contain other objects
-    Openable = 2,     // Object can be opened/closed
-    Open = 3,         // Object is currently open
-    Takeable = 4,     // Object can be picked up
-    Moved = 5,        // Object has been moved from initial location
-    Worn = 6,         // Object is being worn
-    LightSource = 7,  // Object provides light
-    Visited = 8,      // Room has been visited
-    Locked = 9,       // Object is locked
-    Edible = 10,      // Object can be eaten
-    Treasure = 11,    // Object is a treasure for scoring
-    Special = 12,     // Object has special behavior
-    Transparent = 13, // Can see through object to contents
-    On = 14,          // Object is switched on (for light sources, etc.)
-    Workflag = 15,    // Temporary flag for game logic
+    // Core object attributes (0-15) - SYNCHRONIZED with object_system.rs
+    Invisible = 0,   // Object cannot be seen
+    Takeable = 1,    // Object can be taken by player
+    Wearable = 2,    // Object can be worn
+    Container = 3,   // Object can contain other objects
+    Openable = 4,    // Object can be opened/closed
+    Open = 5,        // Object is currently open
+    Lockable = 6,    // Object can be locked/unlocked
+    Locked = 7,      // Object is currently locked
+    Edible = 8,      // Object can be eaten
+    Drinkable = 9,   // Object can be drunk
+    Pushable = 10,   // Object can be pushed
+    Pullable = 11,   // Object can be pulled
+    Turnable = 12,   // Object can be turned
+    Switchable = 13, // Object can be switched on/off
+    On = 14,         // Object is currently on
+    Readable = 15,   // Object can be read
+
+    // Game state attributes (16-31)
+    Moved = 16,        // Object has been moved from initial location
+    Worn = 17,         // Object is being worn
+    LightSource = 18,  // Object provides light
+    Visited = 19,      // Room has been visited
+    Treasure = 20,     // Object is a treasure for scoring
+    Special = 21,      // Object has special behavior
+    Transparent = 22,  // Can see through object to contents
+    Workflag = 23,     // Temporary flag for game logic
 }
 
 /// Standard Z-Machine property numbers

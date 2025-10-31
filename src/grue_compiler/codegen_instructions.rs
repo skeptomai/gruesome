@@ -615,28 +615,22 @@ impl ZMachineCodeGen {
                 //
                 // RESOLUTION: Reverted to correct opcode 0x11 (get_prop per Z-Machine spec)
                 // IMPACT: Property access now works without branch errors, mini_zork reaches command prompt
+                // SURGICAL FIX (Oct 31, 2025): GetProperty stores to global variable, not Variable(0)
+                // This prevents stack underflow in subsequent operations that read the result
+                let store_var = self.allocate_global_variable();
+                self.ir_id_to_stack_var.insert(*target, store_var);
+
+                // SURGICAL FIX: Remove from push_pull_ir_ids to prevent stack lookup conflict
+                self.push_pull_ir_ids.remove(target);
+
                 self.emit_instruction_typed(
                     Opcode::Op2(Op2::GetProp),
                     &[obj_operand, Operand::SmallConstant(prop_num)],
-                    Some(0), // Store to stack
+                    Some(store_var), // Store to global variable instead of Variable(0)
                     None,
                 )?;
 
-                // CRITICAL FIX (Oct 27, 2025): Property access stack discipline
-                //
-                // STACK ORDERING: use_push_pull_for_result MUST be called AFTER instruction emission.
-                // The get_prop instruction stores its result to Variable(0) (stack), then
-                // use_push_pull_for_result emits "push Variable(0)" to transfer the value.
-                //
-                // BUG PATTERN: Originally called BEFORE emit_instruction_typed(), causing:
-                // 1. push Variable(0) emitted (tries to push from empty stack)
-                // 2. get_prop instruction executed (puts result on stack)
-                // Result: Stack underflow when push executed before value available
-                //
-                // CORRECT ORDER: emit_instruction_typed() → use_push_pull_for_result()
-                // This ensures the stack has a value before we try to push it.
-                self.use_push_pull_for_result(*target, "GetProperty operation")?;
-                log::debug!("GetProperty: IR ID {} -> stack", target);
+                log::debug!("GetProperty SURGICAL FIX: IR ID {} -> global var {}", target, store_var);
             }
 
             IrInstruction::SetProperty {
@@ -769,33 +763,86 @@ impl ZMachineCodeGen {
                     },
                 );
 
-                // Step 5: Attribute false - store 0 to Variable(0) using push/pull architecture
+                // SURGICAL FIX (Oct 31, 2025): TestAttribute stores to global variable, not Variable(0)
+                // This prevents stack underflow in subsequent operations that read the result
+                let store_var = self.allocate_global_variable();
+                self.ir_id_to_stack_var.insert(*target, store_var);
+
+                // SURGICAL FIX: Remove from push_pull_ir_ids to prevent stack lookup conflict
+                self.push_pull_ir_ids.remove(target);
+
+                // Step 5: Attribute false - store 0 to allocated global variable
                 self.emit_instruction(
                     0x94, // 2OP:20 (add)
                     &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
-                    Some(0), // Store result to Variable(0)
+                    Some(store_var), // Store result to allocated global variable
                     None,
                 )?;
                 self.translate_jump(end_label_id)?;
 
-                // Step 6: true_label - attribute true, store 1 to Variable(0)
+                // Step 6: true_label - attribute true, store 1 to allocated global variable
                 self.record_code_space_offset(true_label_id, self.code_address);
                 self.emit_instruction(
                     0x94, // 2OP:20 (add)
                     &[Operand::SmallConstant(0), Operand::SmallConstant(1)],
-                    Some(0), // Store result to Variable(0)
+                    Some(store_var), // Store result to allocated global variable
                     None,
                 )?;
 
-                // Step 7: end_label - value is in Variable(0), use push/pull for stack discipline
+                // Step 7: end_label - value is now in allocated global variable
                 self.record_code_space_offset(end_label_id, self.code_address);
+            }
 
-                // STACK DISCIPLINE FIX (Oct 30, 2025): TestAttribute stores to Variable(0)
-                // Treat it like a function call to use the Phase 1 path in use_push_pull_for_result
-                if !self.function_call_results.contains(target) {
-                    self.function_call_results.insert(*target);
-                }
-                self.use_push_pull_for_result(*target, "TestAttribute result")?;
+            IrInstruction::TestAttributeBranch {
+                object,
+                attribute_num,
+                then_label,
+                else_label,
+            } => {
+                // CRITICAL FIX: Implement missing TestAttributeBranch codegen
+                // This instruction was being silently skipped, causing wrong branch behavior
+                log::debug!(
+                    "🎯 PHASE 3: TestAttributeBranch codegen for object={}, attr={}, then={}, else={}",
+                    object, attribute_num, then_label, else_label
+                );
+
+                // Resolve object operand and use attribute_num as direct SmallConstant
+                let obj_operand = self.resolve_ir_id_to_operand(*object)?;
+                let attr_operand = Operand::SmallConstant(*attribute_num as u8);
+
+                log::debug!(
+                    "TestAttributeBranch: obj={:?}, attr={:?}",
+                    obj_operand,
+                    attr_operand
+                );
+
+                // Emit test_attr as branch instruction
+                // If attribute is SET, branch to then_label; if CLEAR, fall through to else_label
+                let layout = self.emit_instruction(
+                    0x0A, // 2OP:10 (test_attr)
+                    &[obj_operand, attr_operand],
+                    None,     // No store_var - this is a branch instruction
+                    Some(-1), // Placeholder for branch offset
+                )?;
+
+                // Create UnresolvedReference for the "then" branch (attribute is SET)
+                self.reference_context.unresolved_refs.push(
+                    crate::grue_compiler::codegen::UnresolvedReference {
+                        reference_type: crate::grue_compiler::codegen::LegacyReferenceType::Branch,
+                        location: layout.branch_location.unwrap(),
+                        target_id: *then_label,
+                        is_packed_address: false,
+                        offset_size: 2,
+                        location_space: crate::grue_compiler::codegen::MemorySpace::Code,
+                    },
+                );
+
+                // If attribute is CLEAR, fall through to else_label (no explicit branch needed)
+                // Control flow will naturally continue to the else_label
+                log::debug!(
+                    "TestAttributeBranch: SET -> branch to L{}, CLEAR -> fall through to L{}",
+                    then_label, else_label
+                );
             }
 
             IrInstruction::SetAttribute {
@@ -1268,11 +1315,20 @@ impl ZMachineCodeGen {
                     self.code_address
                 );
 
+                // SURGICAL FIX (Oct 31, 2025): Store to global variable, not Variable(0)
+                // This prevents stack underflow in subsequent GetPropertyByNumber operations
+                let store_var = self.allocate_global_variable();
+                log::debug!(
+                    "🔧 GetObjectParent: Allocated global variable {} for IR ID {}",
+                    store_var,
+                    target
+                );
+
                 // Emit get_parent instruction (1OP:3)
                 self.emit_instruction_typed(
                     Opcode::Op1(Op1::GetParent),
                     &[obj_operand],
-                    Some(0), // Store result to stack
+                    Some(store_var), // Store result to global variable
                     None,    // No branch
                 )?;
                 log::debug!(
@@ -1280,10 +1336,11 @@ impl ZMachineCodeGen {
                     self.code_address
                 );
 
-                // STACK DISCIPLINE FIX (Oct 30, 2025): GetObjectParent stores result to Variable(0)
-                // Stack result already available via get_parent instruction storing to Variable(0)
-                // No need for additional push - would cause stack imbalance
-                self.ir_id_to_stack_var.insert(*target, 0);
+                // Map IR ID to the allocated global variable
+                self.ir_id_to_stack_var.insert(*target, store_var);
+
+                // SURGICAL FIX: Remove from push_pull_ir_ids to prevent stack lookup conflict
+                self.push_pull_ir_ids.remove(target);
             }
 
             IrInstruction::InsertObj {
