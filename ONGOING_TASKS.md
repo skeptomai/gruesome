@@ -1,9 +1,16 @@
 # ONGOING TASKS - PROJECT STATUS
 
-## ✅ **CURRENT STATUS: ALL MAJOR SYSTEMS FUNCTIONAL** (October 31, 2025)
+## ✅ **VERB DISPATCH INFINITE LOOP FIXED** (November 1, 2025)
 
-**CRITICAL SYSTEMS OPERATIONAL**:
-- ✅ **Object Attribute Bug**: Fixed object lookup loop in `generate_object_lookup_from_noun()` - "open mailbox" now works correctly
+**ISSUE RESOLVED**:
+- ✅ **Root Cause**: Increment instruction used deprecated `emit_instruction()` instead of `emit_instruction_typed()`
+- ✅ **Fix Applied**: Changed to type-safe `emit_instruction_typed(Opcode::Op1(Op1::Inc), ...)` for correct Z-Machine bytecode
+- ✅ **Verification**: "open mailbox" command now executes correctly without infinite loop
+
+**NEW ISSUE IDENTIFIED**:
+- ❌ **Mailbox Default State**: Mailbox defaults to open state, should default to closed (`open: false`)
+
+**FUNCTIONAL SYSTEMS**:
 - ✅ **TestAttributeBranch**: Complete IR instruction implementation with proper Z-Machine codegen
 - ✅ **Store Instruction**: Missing 2OP:13 (opcode 0x0D) implemented in interpreter
 - ✅ **Stack Discipline**: Major architecture fixes implemented, significant balance improvement
@@ -29,10 +36,22 @@
 
 ## 🎯 **ACTIVE DEVELOPMENT AREAS**
 
-### **Object Resolution System** ✅ **FIXED**
-- **Issue**: "open mailbox" resolved to wrong object (Object #2 instead of #10)
-- **Fix**: Changed object lookup loop from `SmallConstant(10)` to `SmallConstant(1)`
-- **Status**: Production ready - mailbox commands work correctly
+### **Verb Dispatch Infinite Loop** ✅ **FIXED**
+- **Issue**: "open mailbox" caused infinite loop due to incorrect increment instruction compilation
+- **Root Cause**: Increment instruction used deprecated `emit_instruction()` generating malformed Z-Machine bytecode
+- **Fix**: Changed to `emit_instruction_typed(Opcode::Op1(Op1::Inc), ...)` for correct bytecode generation
+- **Status**: RESOLVED - Object lookup loop now works correctly
+
+### **Mailbox Default State** ❌ **NEW ISSUE**
+- **Issue**: Mailbox defaults to open state, responds "It's already open"
+- **Expected**: Mailbox should default to closed (`open: false`)
+- **Investigation**: Check previous research in markdown files and commit messages
+- **Status**: Needs investigation - low priority, game is functional
+
+### **Object Resolution System** ✅ **WORKING**
+- **Status**: Object lookup now functions correctly after increment instruction fix
+- **Verification**: "open mailbox" correctly resolves mailbox object and executes verb command
+- **Architecture**: Uses Property 18 dictionary address comparison for proper object matching
 
 ### **Dynamic Descriptions** ✅ **USING CONDITIONAL PRINT APPROACH**
 - **Issue**: "examine mailbox" needs to show dynamic state (open/closed)
@@ -67,8 +86,13 @@
 
 ## 📋 **MAINTENANCE NOTES**
 
-**Recent Critical Fixes**:
-- Object lookup loop range corrected (src/grue_compiler/codegen.rs:5959)
+**Recent Critical Findings (November 1, 2025)**:
+- **Verb Dispatch Infinite Loop**: "open mailbox" causes infinite loop on both systematic-rebuild and computed-property branches
+- **Object Resolution Failure**: Grammar system incorrectly accesses object 1 (player) instead of object 3 (mailbox)
+- **Cross-Branch Consistency**: Identical infinite loop pattern confirms issue is in core grammar system, not computed property implementation
+- **Debug Evidence**: `get_prop_addr(obj=1, prop=18)` returns 0x0000, causing branch-jump-loop cycle
+
+**Previous Fixes (October 31, 2025)**:
 - TestAttributeBranch IR instruction implementation complete
 - Store instruction gap filled in interpreter
 - Stack discipline architecture violations resolved
@@ -76,9 +100,9 @@
 **Documentation Location**:
 - Historical analysis: `docs/` directory
 - Active development: Root directory files
-- See `docs/RESOLVE_OPEN_ANALYSIS.md` for latest object resolution fix details
+- Current investigation: Object resolution in verb dispatch pipeline
 
-**Status**: **PRODUCTION READY** - All major systems functional, minor optimizations remain
+**Status**: **OPERATIONAL** - Verb dispatch working, mailbox default state needs investigation
 
 ---
 

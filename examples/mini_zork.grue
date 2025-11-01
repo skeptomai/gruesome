@@ -221,6 +221,7 @@ grammar {
 }
 
 fn look_around() {
+    print("looking around..");
     clear_quit_state();
     print(player.location.desc);
     list_objects(player.location);
@@ -255,22 +256,23 @@ fn examine(obj) {
 }
 
 fn handle_open(obj) {
+    print("checking if player can see");
     if !player_can_see(obj) {
         print("You can't see any such thing.");
         return;
     }
-    
+    print("checking if object is openable");
     if !obj.openable {
         print("You can't open that.");
         return;
     }
-    
+    print("checking if object is open");
     if obj.open {
         print("It's already open.");
     } else {
         obj.open = true;
         print("Opened.");
-        
+        print("listing contents of object");
         if obj.container && !obj.empty() {
             print("The " + obj.name + " contains:");
             list_contents(obj);

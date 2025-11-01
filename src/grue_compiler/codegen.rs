@@ -673,7 +673,7 @@ impl ZMachineCodeGen {
         log::info!("Phase 2: Generating ALL Z-Machine sections to separated memory spaces");
 
         // STACK DISCIPLINE FIX (Oct 30, 2025): Analyze comparison usage patterns before code generation
-        log::debug!("🔍 Step 2-pre: Analyzing comparison operation usage patterns");
+
         self.comparison_ids_used_as_values = self.analyze_comparison_usage_patterns(ir);
         log::info!(
             "🔍 USAGE_ANALYSIS: Identified {} comparison operations that need push/pull mechanism",
@@ -5908,24 +5908,18 @@ impl ZMachineCodeGen {
     /// Input: Variable 2 contains the noun dictionary address from parse buffer
     /// Output: Variable 3 contains the matching object ID (or 0 if not found)
     fn generate_object_lookup_from_noun(&mut self) -> Result<(), CompilerError> {
-        let lookup_start_address = self.code_address;
-        log::debug!(
-            "🔍 OBJECT_LOOKUP_START: Starting at 0x{:04x}",
-            lookup_start_address
-        );
-        log::debug!("🔍 OBJECT_LOOKUP: Variable usage plan:");
-        log::debug!("    - Variable(2) = noun dictionary address (INPUT)");
-        log::debug!("    - Variable(3) = result object ID (OUTPUT)");
-        log::debug!("    - Variable(4) = loop counter");
-        log::debug!("    - Variable(5) = property value during comparison");
-
-        debug!(" OBJECT_LOOKUP_START: Generating dynamic object lookup from noun dictionary address at 0x{:04x}", self.code_address);
+        // Generate object lookup function that maps noun dictionary address to object ID
+        // Variable usage:
+        // - Variable(2) = noun dictionary address (INPUT)
+        // - Variable(3) = result object ID (OUTPUT)
+        // - Variable(4) = loop counter
+        // - Variable(5) = property value during comparison
 
         // ARCHITECTURAL FIX IMPLEMENTED (Sept 30, 2025):
         // Complete dictionary-address-to-object-ID mapping system for all objects.
         //
         // FIXED: Dynamic loop-based lookup replaces hardcoded 2-object limitation.
-        // NOW SUPPORTS: All objects in the game (68 objects in mini_zork).
+        // NOW SUPPORTS: All objects in the game (dynamically calculated maximum).
         //
         // PROPER FLOW: noun lookup → dictionary→object mapping → Variable(3)=objectID → clear_attr(objectID, 1)
 
@@ -5982,19 +5976,27 @@ impl ZMachineCodeGen {
             .insert(loop_start_label, self.code_address);
         self.record_final_address(loop_start_label, self.code_address);
 
-        // Check if current object number exceeds maximum (68 for mini_zork actual count)
+        // Calculate maximum object number dynamically from actual object count
+        // CRITICAL FIX: Use actual object count instead of hardcoded value to prevent infinite loops
+        let max_object_number = if self.ir_id_to_object_number.is_empty() {
+            15 // Fallback for edge cases
+        } else {
+            *self.ir_id_to_object_number.values().max().unwrap_or(&15)
+        };
+
         log::debug!(
-            "🔍 OBJECT_LOOKUP: Checking Variable(4) > 68 at 0x{:04x}",
+            "🔍 OBJECT_LOOKUP: Checking Variable(4) > {} (dynamically calculated max) at 0x{:04x}",
+            max_object_number,
             self.code_address
         );
         let layout = self.emit_instruction(
             0x03, // jg: jump if greater
             &[
-                Operand::Variable(4),       // Current object number
-                Operand::SmallConstant(68), // Maximum actual object count in mini_zork
+                Operand::Variable(4),                            // Current object number
+                Operand::SmallConstant(max_object_number as u8), // DYNAMIC: Calculated from actual object mappings
             ],
             None,
-            Some(0xBFFF_u16 as i16), // Placeholder - branch-on-TRUE (jump to end when object > 68)
+            Some(0xBFFF_u16 as i16), // Placeholder - branch-on-TRUE (jump to end when object > max)
         )?;
         // Register branch to end_label using proper branch_location from layout
         if let Some(branch_location) = layout.branch_location {
@@ -6070,7 +6072,7 @@ impl ZMachineCodeGen {
         log::debug!("OBJECT_LOOKUP_SECTION: Starting simple property 18 test section at code_address 0x{:04x}", self.code_address);
 
         // If property 18 doesn't exist (address is 0), skip to end
-        self.emit_instruction_typed(
+        let layout = self.emit_instruction_typed(
             Opcode::Op2(Op2::Je), // je: jump if equal
             &[
                 Operand::Variable(5),      // Property 18 data address
@@ -6081,16 +6083,19 @@ impl ZMachineCodeGen {
         )?;
 
         // Register branch to simple_test_end_label if no property 18
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Branch,
-                location: self.code_address - 2, // Branch instruction branch location
-                target_id: simple_test_end_label,
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        // CRITICAL FIX: Use layout.branch_location instead of hardcoded -2 offset
+        if let Some(branch_location) = layout.branch_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: branch_location, // CORRECT: Use actual branch location from layout
+                    target_id: simple_test_end_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        }
 
         // PROPER DICTIONARY ADDRESS COMPARISON IMPLEMENTATION
         // Property 18 exists (Variable(5) = data address), now compare actual dictionary addresses
@@ -6105,7 +6110,7 @@ impl ZMachineCodeGen {
         // Memory at 0x049b: [0x079a, 0x080c, 0x07b2] = ["a small mailbox", "mailbox", "box"]
 
         // Load first dictionary address: loadw Variable(5), 0 → Variable(6)
-        log::debug!("🔍 DICT_COMPARE: Loading first dictionary address from Variable(5)+0");
+
         self.emit_instruction_typed(
             Opcode::Op2(Op2::Loadw), // loadw: load word from memory
             &[
@@ -6117,8 +6122,8 @@ impl ZMachineCodeGen {
         )?;
 
         // Compare first address: if Variable(6) == Variable(2), jump to found_match_label
-        log::debug!("🔍 DICT_COMPARE: Comparing first dictionary address against parser result");
-        self.emit_instruction_typed(
+
+        let layout = self.emit_instruction_typed(
             Opcode::Op2(Op2::Je), // je: jump if equal
             &[
                 Operand::Variable(6), // First dictionary address
@@ -6129,19 +6134,22 @@ impl ZMachineCodeGen {
         )?;
 
         // Register branch to found_match_label for first address comparison
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Branch,
-                location: self.code_address - 2, // Branch instruction branch location
-                target_id: found_match_label,
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        // CRITICAL FIX: Use layout.branch_location instead of hardcoded -2 offset
+        if let Some(branch_location) = layout.branch_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: branch_location, // CORRECT: Use actual branch location from layout
+                    target_id: found_match_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        }
 
         // Load second dictionary address: loadw Variable(5), 1 → Variable(6)
-        log::debug!("🔍 DICT_COMPARE: Loading second dictionary address from Variable(5)+1");
+
         self.emit_instruction_typed(
             Opcode::Op2(Op2::Loadw), // loadw: load word from memory
             &[
@@ -6153,8 +6161,8 @@ impl ZMachineCodeGen {
         )?;
 
         // Compare second address: if Variable(6) == Variable(2), jump to found_match_label
-        log::debug!("🔍 DICT_COMPARE: Comparing second dictionary address against parser result");
-        self.emit_instruction_typed(
+
+        let layout = self.emit_instruction_typed(
             Opcode::Op2(Op2::Je), // je: jump if equal
             &[
                 Operand::Variable(6), // Second dictionary address
@@ -6165,19 +6173,22 @@ impl ZMachineCodeGen {
         )?;
 
         // Register branch to found_match_label for second address comparison
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Branch,
-                location: self.code_address - 2, // Branch instruction branch location
-                target_id: found_match_label,
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        // CRITICAL FIX: Use layout.branch_location instead of hardcoded -2 offset
+        if let Some(branch_location) = layout.branch_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: branch_location, // CORRECT: Use actual branch location from layout
+                    target_id: found_match_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        }
 
         // Load third dictionary address: loadw Variable(5), 2 → Variable(6)
-        log::debug!("🔍 DICT_COMPARE: Loading third dictionary address from Variable(5)+2");
+
         self.emit_instruction_typed(
             Opcode::Op2(Op2::Loadw), // loadw: load word from memory
             &[
@@ -6189,8 +6200,8 @@ impl ZMachineCodeGen {
         )?;
 
         // Compare third address: if Variable(6) == Variable(2), jump to found_match_label
-        log::debug!("🔍 DICT_COMPARE: Comparing third dictionary address against parser result");
-        self.emit_instruction_typed(
+
+        let layout = self.emit_instruction_typed(
             Opcode::Op2(Op2::Je), // je: jump if equal
             &[
                 Operand::Variable(6), // Third dictionary address
@@ -6201,16 +6212,19 @@ impl ZMachineCodeGen {
         )?;
 
         // Register branch to found_match_label for third address comparison
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::Branch,
-                location: self.code_address - 2, // Branch instruction branch location
-                target_id: found_match_label,
-                is_packed_address: false,
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
+        // CRITICAL FIX: Use layout.branch_location instead of hardcoded -2 offset
+        if let Some(branch_location) = layout.branch_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: branch_location, // CORRECT: Use actual branch location from layout
+                    target_id: found_match_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        }
 
         // If no match found, continue to next object (fall through to increment)
 
@@ -6219,26 +6233,16 @@ impl ZMachineCodeGen {
             .insert(simple_test_end_label, self.code_address);
         self.record_final_address(simple_test_end_label, self.code_address);
 
-        // PHASE 2 COMPLETE: Proper dictionary address comparison implemented
-        // No hardcoded object numbers - uses actual property 18 dictionary addresses!
-
-        // Increment loop counter
-        log::debug!(
-            "🔍 OBJECT_LOOKUP: Incrementing Variable(4) at 0x{:04x}",
-            self.code_address
-        );
-        self.emit_instruction(
-            0x05,                    // inc
+        // Increment object counter for next iteration
+        // CRITICAL: Must use emit_instruction_typed for correct Z-Machine bytecode generation
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::Inc),   // inc: type-safe opcode
             &[Operand::Variable(4)], // Increment object counter
             None,
             None,
         )?;
 
-        // Jump back to loop start
-        log::debug!(
-            "🔍 OBJECT_LOOKUP: Jump back to loop start at 0x{:04x}",
-            self.code_address
-        );
+        // Jump back to loop start to check next object
         let layout = self.emit_instruction(
             0x0C,                                          // jump
             &[Operand::LargeConstant(placeholder_word())], // Placeholder for loop start
@@ -6265,7 +6269,11 @@ impl ZMachineCodeGen {
         // Both "no more objects" and "found match" should exit the function
         // The difference is that "found match" stores the result first
 
-        // Found match - store current object number as result
+        // CRITICAL CONTROL FLOW DEBUG: Found match - store current object number as result
+        log::debug!(
+            "🔥 CONTROL_FLOW: FOUND_MATCH_LABEL at 0x{:04x} - This should EXIT the loop, NOT continue",
+            self.code_address
+        );
         log::debug!(
             "🔍 OBJECT_LOOKUP: Found match label at 0x{:04x}",
             self.code_address
@@ -6274,6 +6282,10 @@ impl ZMachineCodeGen {
             .insert(found_match_label, self.code_address);
         self.record_final_address(found_match_label, self.code_address);
 
+        log::debug!(
+            "🔥 CONTROL_FLOW: STORING MATCH RESULT - Variable(4) → Variable(3) at 0x{:04x}",
+            self.code_address
+        );
         log::debug!(
             "🔍 OBJECT_LOOKUP: Storing Variable(4) → Variable(3) at 0x{:04x}",
             self.code_address
@@ -6287,9 +6299,16 @@ impl ZMachineCodeGen {
             None,
             None,
         )?;
+        log::debug!(
+            "🔥 CONTROL_FLOW: MATCH STORED - Should now fall through to END_LABEL (no more increment/jump)"
+        );
 
-        // End of function - both match found and no match point here after store
-        log::debug!("🔍 OBJECT_LOOKUP: End label at 0x{:04x}", self.code_address);
+        // CRITICAL CONTROL FLOW DEBUG: End of function - both match found and no match point here after store
+        log::debug!(
+            "🔥 CONTROL_FLOW: END_LABEL at 0x{:04x} - Function terminates here",
+            self.code_address
+        );
+
         self.label_addresses.insert(end_label, self.code_address);
         self.record_final_address(end_label, self.code_address);
 

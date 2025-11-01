@@ -256,3 +256,32 @@ RUST_LOG=debug cargo test -- --nocapture  # Debug tests
 - Code size reduction (generate once, call many times)
 - Consistent architecture across all builtins
 - Easier debugging with proper call stack frames
+
+## CRITICAL: DYNAMIC BOUNDS CALCULATION RULE
+
+**NEVER use hardcoded maximum/minimum values for loop bounds or array sizes.**
+
+**ALWAYS calculate bounds dynamically from actual data structures.**
+
+**Common violations to avoid:**
+- ❌ NEVER hardcode object counts: `SmallConstant(68)`
+- ❌ NEVER hardcode array sizes: `for i in 0..50`
+- ❌ NEVER guess maximum values: `max_items = 100`
+- ✅ ALWAYS calculate from data: `ir.objects.len() + ir.rooms.len() + 1`
+- ✅ ALWAYS use dynamic maximum: `*mapping.values().max().unwrap_or(&default)`
+- ✅ ALWAYS verify bounds at runtime: `if index >= collection.len()`
+
+**Rationale**: Hardcoded bounds cause infinite loops, crashes, or missed data when actual sizes differ from assumptions. This was the root cause of the "open mailbox" infinite loop bug where hardcoded 68 objects caused loops to check non-existent objects 16-68 infinitely.
+
+**Implementation Pattern**:
+```rust
+// ❌ WRONG: Hardcoded maximum
+let max_objects = 68;
+
+// ✅ CORRECT: Calculate from actual data
+let max_objects = if self.ir_id_to_object_number.is_empty() {
+    default_value
+} else {
+    *self.ir_id_to_object_number.values().max().unwrap_or(&default_value)
+};
+```
