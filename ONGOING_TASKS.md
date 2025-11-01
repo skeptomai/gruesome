@@ -34,6 +34,13 @@
 - **Fix**: Changed object lookup loop from `SmallConstant(10)` to `SmallConstant(1)`
 - **Status**: Production ready - mailbox commands work correctly
 
+### **Phase Separation Architecture** 🚧 **ACTIVE PRIORITY**
+- **Issue**: Computed object properties (ternary expressions in `desc`) compile during Step 2c instead of Step 2f
+- **Impact**: Memory corruption, TestAttributeBranch instructions corrupted (0x4A → 0x41)
+- **Root Cause**: "open mailbox" shows "It's already open" due to wrong branch evaluation
+- **Plan**: See comprehensive 3-phase implementation in `docs/PHASE_SEPARATION_BUG_ANALYSIS_AND_PLAN.md`
+- **Status**: Ready for Phase 1 - Infrastructure setup for computed property functions
+
 ### **Stack Discipline Architecture** ✅ **MAJOR IMPROVEMENTS**
 - **Achievement**: Reduced stack imbalance from 25 to 12 unpulled IR IDs (52% improvement)
 - **Fix**: Function calls now use proper Z-Machine Variable(0) discipline
