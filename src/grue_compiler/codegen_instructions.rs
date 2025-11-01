@@ -843,20 +843,22 @@ impl ZMachineCodeGen {
                 )?;
                 log::error!("🔧 emit_instruction_typed returned layout: {:?}", layout);
 
-                // Create UnresolvedReference: when attribute is SET, branch to else_label
-                // (because else_label contains the then-branch content in IR layout)
+                // Create UnresolvedReference: when attribute is SET, branch to then_label
+                // IR semantics: then_label = true branch, else_label = false branch
+                // Z-Machine test_attr: branches when attribute is SET (true)
+                // Note: Correct label ordering is handled in IR generation (ir.rs:2582-2618)
                 self.reference_context.unresolved_refs.push(
                     crate::grue_compiler::codegen::UnresolvedReference {
                         reference_type: crate::grue_compiler::codegen::LegacyReferenceType::Branch,
                         location: layout.branch_location.unwrap(),
-                        target_id: *else_label, // FIXED: was *then_label
+                        target_id: *then_label, // CORRECTED: branch to then_label when attribute is SET
                         is_packed_address: false,
                         offset_size: 2,
                         location_space: crate::grue_compiler::codegen::MemorySpace::Code,
                     },
                 );
 
-                // If attribute is CLEAR, fall through to then_label (which contains else-branch content)
+                // If attribute is CLEAR, fall through to else_label (which contains else-branch content)
                 log::error!(
                     "TestAttributeBranch: SET -> branch to L{} (then-branch content), CLEAR -> fall through to L{} (else-branch content)",
                     then_label, else_label

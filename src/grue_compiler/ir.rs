@@ -1644,18 +1644,18 @@ impl IrGenerator {
         for (prop_name, prop_value) in &obj.properties {
             match prop_name.as_str() {
                 "openable" => {
-                    if let crate::grue_compiler::ast::PropertyValue::Boolean(true) = prop_value {
-                        attributes.set(StandardAttribute::Openable as u8, true);
+                    if let crate::grue_compiler::ast::PropertyValue::Boolean(val) = prop_value {
+                        attributes.set(StandardAttribute::Openable as u8, *val);
                     }
                 }
                 "open" => {
-                    if let crate::grue_compiler::ast::PropertyValue::Boolean(true) = prop_value {
-                        attributes.set(StandardAttribute::Open as u8, true);
+                    if let crate::grue_compiler::ast::PropertyValue::Boolean(val) = prop_value {
+                        attributes.set(StandardAttribute::Open as u8, *val);
                     }
                 }
                 "container" => {
-                    if let crate::grue_compiler::ast::PropertyValue::Boolean(true) = prop_value {
-                        attributes.set(StandardAttribute::Container as u8, true);
+                    if let crate::grue_compiler::ast::PropertyValue::Boolean(val) = prop_value {
+                        attributes.set(StandardAttribute::Container as u8, *val);
                     }
                 }
                 _ => {} // Other properties handled below
@@ -2579,7 +2579,52 @@ impl IrGenerator {
                                 else_label,
                             });
 
-                            // Skip the generic Branch instruction - TestAttributeBranch handles branching directly
+                            // CRITICAL FIX: TestAttributeBranch requires special label ordering for Z-Machine semantics
+                            //
+                            // Z-Machine test_attr instruction behavior:
+                            // - When attribute is SET (true): BRANCHES to specified target
+                            // - When attribute is CLEAR (false): FALLS THROUGH to next instruction
+                            //
+                            // This means the code layout must be:
+                            // 1. TestAttributeBranch instruction
+                            // 2. else_label content (executed on fall-through when attribute is CLEAR)
+                            // 3. Jump to end_label
+                            // 4. then_label content (executed on branch when attribute is SET)
+                            //
+                            // Bug was: Generic if-statement processing placed then_label first,
+                            // causing "It's already open" message to execute when mailbox was closed
+
+                            // Else branch: Executes when attribute is CLEAR (fall-through path)
+                            log::debug!(
+                                "IR TestAttributeBranch: Adding else label {} (fall-through)",
+                                else_label
+                            );
+                            block.add_instruction(IrInstruction::Label { id: else_label });
+                            if let Some(else_branch) = if_stmt.else_branch {
+                                self.generate_statement(*else_branch, block)?;
+                            }
+
+                            // Jump to end after else content to skip then_label content
+                            log::debug!(
+                                "IR TestAttributeBranch: Adding jump to end label {}",
+                                end_label
+                            );
+                            block.add_instruction(IrInstruction::Jump { label: end_label });
+
+                            // Then branch: Executes when attribute is SET (branch target)
+                            log::debug!(
+                                "IR TestAttributeBranch: Adding then label {} (branch target)",
+                                then_label
+                            );
+                            block.add_instruction(IrInstruction::Label { id: then_label });
+                            self.generate_statement(*if_stmt.then_branch, block)?;
+
+                            // End label: Convergence point for both branches
+                            log::debug!("IR TestAttributeBranch: Adding end label {}", end_label);
+                            block.add_instruction(IrInstruction::Label { id: end_label });
+
+                            // Skip the generic label processing - we handled everything above
+                            return Ok(());
                         } else {
                             // Non-attribute property: use generic pattern
                             let condition_temp = self.generate_expression_with_context(

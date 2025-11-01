@@ -225,11 +225,12 @@ impl Interpreter {
                 let result = self.vm.test_attribute(obj_num, attr_num)?;
                 let current_pc = self.vm.pc - inst.size as u32;
 
-                // Let's follow the natural flow
-                if current_pc == 0x4f7e {
-                    debug!(
-                        "test_attr at {:05x}: obj={}, attr={}, result={}",
-                        current_pc, obj_num, attr_num, result
+                // DEBUG: Trace test_attr with branch details for mailbox
+                if obj_num == 10 && attr_num == 5 {
+                    log::error!(
+                        "🔧 TEST_ATTR_BRANCH: PC=0x{:04x} obj={} attr={} result={} branch_on_true={:?}",
+                        current_pc, obj_num, attr_num, result,
+                        inst.branch.as_ref().map(|b| b.on_true)
                     );
                 }
 
