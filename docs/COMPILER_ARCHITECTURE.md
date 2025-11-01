@@ -409,5 +409,31 @@ let corrected_location = final_location - 1; // This breaks branch patching!
 
 ---
 
-*Last Updated: September 15, 2025*
-*Context: Systematic UnresolvedReference resolution failures completely resolved - major compiler milestone achieved*
+## Deferred Features
+
+### Computed Property System (Archived November 1, 2025)
+
+**Concept**: Runtime-evaluated object property expressions
+```grue
+object mailbox {
+    desc: "The mailbox is " + (mailbox.open ? "open" : "closed") + "."
+}
+```
+
+**Implementation Status**: 70% complete (Phase 1 & 2 working, Phase 3 partial)
+**Archive Location**: `computed-property-implementation-archive` branch
+**Documentation**: `docs/COMPUTED_PROPERTY_IMPLEMENTATION_ARCHIVE.md`
+
+**Architecture Overview**:
+- **Phase 1**: IR registration of computed expressions ✅
+- **Phase 2**: Z-Machine function generation ✅
+- **Phase 3**: GetProperty function calling ❌ (complexity issues)
+
+**Revert Reason**: Complexity vs. benefit analysis favored simpler conditional print approach
+
+**Future Considerations**: Advanced language feature for consideration once core systems are fully stable
+
+---
+
+*Last Updated: November 1, 2025*
+*Context: Computed property system archived, all major compiler systems functional*

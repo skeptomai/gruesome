@@ -34,12 +34,10 @@
 - **Fix**: Changed object lookup loop from `SmallConstant(10)` to `SmallConstant(1)`
 - **Status**: Production ready - mailbox commands work correctly
 
-### **Phase Separation Architecture** 🚧 **ACTIVE PRIORITY**
-- **Issue**: Computed object properties (ternary expressions in `desc`) compile during Step 2c instead of Step 2f
-- **Impact**: Memory corruption, TestAttributeBranch instructions corrupted (0x4A → 0x41)
-- **Root Cause**: "open mailbox" shows "It's already open" due to wrong branch evaluation
-- **Plan**: See comprehensive 3-phase implementation in `docs/PHASE_SEPARATION_BUG_ANALYSIS_AND_PLAN.md`
-- **Status**: Ready for Phase 1 - Infrastructure setup for computed property functions
+### **Dynamic Descriptions** ✅ **USING CONDITIONAL PRINT APPROACH**
+- **Issue**: "examine mailbox" needs to show dynamic state (open/closed)
+- **Solution**: Traditional conditional print statements in examine handler instead of computed properties
+- **Status**: Simple, proven approach - mailbox examine functionality working correctly
 
 ### **Stack Discipline Architecture** ✅ **MAJOR IMPROVEMENTS**
 - **Achievement**: Reduced stack imbalance from 25 to 12 unpulled IR IDs (52% improvement)
@@ -81,3 +79,15 @@
 - See `docs/RESOLVE_OPEN_ANALYSIS.md` for latest object resolution fix details
 
 **Status**: **PRODUCTION READY** - All major systems functional, minor optimizations remain
+
+---
+
+## 📦 **ARCHIVED FEATURES**
+
+### **Computed Property System** 📁 **ARCHIVED (November 1, 2025)**
+- **Concept**: Dynamic object property expressions evaluated at runtime (e.g., `desc: "The mailbox is " + (mailbox.open ? "open" : "closed") + "."`)
+- **Implementation Status**: 70% complete - Phase 1 (IR registration) & Phase 2 (function generation) working, Phase 3 (GetProperty calling) partially implemented
+- **Archive Location**: `computed-property-implementation-archive` branch
+- **Documentation**: `docs/COMPUTED_PROPERTY_IMPLEMENTATION_ARCHIVE.md`
+- **Revert Reason**: Complexity vs. benefit analysis favored simpler conditional print approach
+- **Future Consideration**: Advanced feature for future enhancement once core systems are fully stable

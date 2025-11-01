@@ -1,4 +1,10 @@
-# Phase Separation Bug Analysis
+# Phase Separation Bug Analysis - IMPLEMENTATION ARCHIVED
+
+**REVERT DECISION (November 1, 2025)**: This computed property implementation has been archived in favor of a simpler conditional print approach. The work is preserved in the `computed-property-implementation-archive` branch and documented in `docs/COMPUTED_PROPERTY_IMPLEMENTATION_ARCHIVE.md`.
+
+**Status**: Phase 1 & 2 completed successfully, Phase 3 partially implemented. Reverted due to complexity vs. benefit analysis.
+
+---
 
 **Date**: October 31, 2025
 **Bug ID**: Phase Separation in Computed Object Properties
@@ -298,6 +304,87 @@ Confirm no code generation occurs during Step 2c object processing.
 - [ ] "open mailbox" command works correctly
 - [ ] All computed property expressions evaluate correctly
 - [ ] Zero instruction corruption or memory conflicts
+
+---
+
+# CURRENT ANALYSIS AND REVISED PLAN (November 1, 2025)
+
+## Critical Discovery: Phase 2 Implementation is Broken
+
+**Investigation Results**:
+- Previous Phase 2 implementation exists but is non-functional
+- Debug output shows: "🔄 Phase 2: No computed property functions to generate"
+- Computed properties are being stored as placeholder strings `__COMPUTED_mailbox_desc` instead of being registered as ComputedFunction
+- The computed_property_manager has no functions registered
+
+**Root Cause Identified**:
+The Phase 1 (IR Generation) is broken - computed property expressions are never being registered with the computed_property_manager during object processing.
+
+## Revised Implementation Plan
+
+### Phase 1: Fix IR Generation - Computed Property Registration ⚙️
+**IMMEDIATE PRIORITY**: The computed property registration is failing during IR generation
+
+#### Phase 1a: Diagnose Registration Failure
+- [ ] **Find where computed properties should be registered**
+  - Locate `generate_object()` processing of `desc` properties
+  - Identify why ternary expressions become `__COMPUTED_mailbox_desc` strings instead of ComputedFunction entries
+  - Fix the registration logic to actually store expressions in computed_property_manager
+
+#### Phase 1b: Fix Registration Logic
+- [ ] **Ensure computed expressions get registered properly**
+  - When processing `desc: "text" + (object.open ? "open" : "closed") + "text"`
+  - Store the ternary expression as ComputedFunction variant
+  - Register function with computed_property_manager
+  - Generate unique function names
+
+**Verification**: Check that debug output shows computed functions being registered instead of "No computed property functions to generate"
+
+### Phase 2: Fix Function Generation Pipeline 🔧
+**AFTER Phase 1 Complete**: Make sure registered computed properties become Z-Machine functions
+
+#### Phase 2a: Verify Function Generation Works
+- [ ] **Test that registered functions get compiled**
+  - Verify compute_property_manager.get_functions() returns registered functions
+  - Ensure functions get generated during Step 2f
+  - Check function headers and bytecode generation
+
+#### Phase 2b: Fix Function Generation Issues
+- [ ] **Address any compilation errors in function generation**
+  - Fix expression compilation within function context
+  - Handle object references correctly
+  - Generate proper return instructions
+
+### Phase 3: Fix GetProperty Function Call Logic 🛡️
+**FINAL STEP**: Make GetProperty detect function addresses and call them
+
+#### Phase 3a: Implement Function Address Detection
+- [ ] **Complete the GetProperty fix**
+  - Add logic to test if property value >= 10000 (function address)
+  - If true, emit call_vs instruction to call the function
+  - If false, use property value directly
+  - Handle return value storage correctly
+
+#### Phase 3b: End-to-End Testing
+- [ ] **Verify complete pipeline works**
+  - Test "examine mailbox" returns "closed" initially
+  - Test "open mailbox" works without crashing
+  - Test "examine mailbox" returns "open" after opening
+  - Verify leaflet visibility changes
+
+## Current Status Assessment
+
+**What's Actually Working**:
+- Game starts without crashing ✓
+- Movement commands work ✓
+- Basic property access works ✓
+
+**What's Broken**:
+- Computed property registration (Phase 1) ❌
+- Computed function generation (Phase 2) ❌
+- Computed function calling (Phase 3) ❌
+
+**Critical Path**: Fix Phase 1 first, then Phase 2, then Phase 3. No point fixing GetProperty when there are no computed functions to call.
 
 ## References
 

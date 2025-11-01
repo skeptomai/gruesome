@@ -9,7 +9,7 @@ world {
 
         object mailbox {
             names: ["a small mailbox", "mailbox", "box"]
-            desc: "The small mailbox is " + (mailbox.open ? "open" : "closed") + "."
+            desc: "a small mailbox"
             openable: true
             container: true
             open: false
@@ -236,6 +236,18 @@ fn examine(obj) {
 
     if !player_can_see(obj) {
         print("You can't see any such thing.");
+        return;
+    }
+
+    // Special handling for dynamic descriptions
+    if obj == mailbox {
+        print("The small mailbox is ");
+        if mailbox.open {
+            print("open");
+        } else {
+            print("closed");
+        }
+        print(".");
         return;
     }
 
