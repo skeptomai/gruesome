@@ -5908,6 +5908,8 @@ impl ZMachineCodeGen {
     /// Input: Variable 2 contains the noun dictionary address from parse buffer
     /// Output: Variable 3 contains the matching object ID (or 0 if not found)
     fn generate_object_lookup_from_noun(&mut self) -> Result<(), CompilerError> {
+        let lookup_start_address = self.code_address;
+
         // Generate object lookup function that maps noun dictionary address to object ID
         // Variable usage:
         // - Variable(2) = noun dictionary address (INPUT)
