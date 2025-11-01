@@ -227,7 +227,7 @@ impl Interpreter {
 
                 // DEBUG: Trace test_attr with branch details for mailbox
                 if obj_num == 10 && attr_num == 5 {
-                    log::error!(
+                    log::debug!(
                         "🔧 TEST_ATTR_BRANCH: PC=0x{:04x} obj={} attr={} result={} branch_on_true={:?}",
                         current_pc, obj_num, attr_num, result,
                         inst.branch.as_ref().map(|b| b.on_true)

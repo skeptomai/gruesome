@@ -824,13 +824,17 @@ impl ZMachineCodeGen {
                 // CRITICAL FIX: Z-Machine test_attr branches when attribute is SET
                 // But in IR: then_label = else branch content, else_label = then branch content
                 // So when attribute is SET, branch to else_label (which contains then-branch content)
-                log::error!("🔧 About to call emit_instruction_typed with TestAttr");
-                log::error!(
+                log::debug!(
+                    "🔧 TestAttributeBranch codegen: object={}, attr={}",
+                    object,
+                    attribute_num
+                );
+                log::debug!(
                     "🔧 OBJECT MAPPING: IR object={}, resolved to operand={:?}",
                     object,
                     obj_operand
                 );
-                log::error!(
+                log::debug!(
                     "🔧 ATTRIBUTE: attr_num={}, operand={:?}",
                     attribute_num,
                     attr_operand
@@ -841,7 +845,7 @@ impl ZMachineCodeGen {
                     None,     // No store_var - this is a branch instruction
                     Some(-1), // Placeholder for branch offset
                 )?;
-                log::error!("🔧 emit_instruction_typed returned layout: {:?}", layout);
+                log::debug!("🔧 emit_instruction_typed returned layout: {:?}", layout);
 
                 // Create UnresolvedReference: when attribute is SET, branch to then_label
                 // IR semantics: then_label = true branch, else_label = false branch
@@ -859,11 +863,11 @@ impl ZMachineCodeGen {
                 );
 
                 // If attribute is CLEAR, fall through to else_label (which contains else-branch content)
-                log::error!(
+                log::debug!(
                     "TestAttributeBranch: SET -> branch to L{} (then-branch content), CLEAR -> fall through to L{} (else-branch content)",
                     then_label, else_label
                 );
-                log::error!(
+                log::debug!(
                     "TestAttributeBranch: Emitted instruction at PC=0x{:04x}, branch_location={:?}",
                     layout.instruction_start,
                     layout.branch_location

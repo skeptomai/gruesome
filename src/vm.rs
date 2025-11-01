@@ -959,7 +959,7 @@ impl VM {
 
         // DEBUG: Trace attribute tests for objects 1-15
         if obj_num <= 15 {
-            log::error!(
+            log::debug!(
                 "🔍 ATTR_TEST: obj={} attr={} addr=0x{:04x} byte_offset={} bit_pos={} byte_val=0x{:02x} mask=0x{:02x} result={}",
                 obj_num, attr_num, obj_addr, attr_byte, attr_bit, byte_val, (1 << attr_bit), is_set
             );
