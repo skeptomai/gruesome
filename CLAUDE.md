@@ -229,6 +229,7 @@ RUST_LOG=debug cargo test -- --nocapture  # Debug tests
 - Never give percentages of completion or time estimates
 - Use IndexSet and IndexMap rather than HashSet or HashMap for determinism
 - **NEVER compile test files to `/tmp`** - Always use `tests/` directory in the repository for compiled Z3 files
+- **NEVER write markdown analysis files to `/tmp`** - Always write analysis documents to the repository where they won't be lost
 
 ## CRITICAL ARCHITECTURE DIRECTIVE: NO INLINE BUILTIN FUNCTIONS
 

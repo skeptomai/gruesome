@@ -656,6 +656,8 @@ pub enum IrInstruction {
     /// Test attribute (Z-Machine style) - generates branch instruction
     /// NOTE: Z-Machine test_attr is a branch instruction, not a store instruction
     /// DEPRECATED: Use TestAttributeBranch or TestAttributeValue instead
+    /// This instruction has broken codegen and should not be used
+    #[deprecated(note = "Use TestAttributeValue for value contexts or TestAttributeBranch for branch contexts")]
     TestAttribute {
         target: IrId,
         object: IrId,
@@ -730,6 +732,13 @@ pub enum IrInstruction {
         target: IrId,
         object: IrId,
         branch_if_no_sibling: IrId, // Label to branch to when no sibling exists
+    },
+
+    /// Get sibling of object without branching (Z-Machine get_sibling instruction)
+    /// Returns the sibling object number (0 if no sibling)
+    GetObjectSiblingValue {
+        target: IrId,
+        object: IrId,
     },
 
     /// Get parent of object (Z-Machine get_parent instruction)
@@ -2297,6 +2306,18 @@ impl IrGenerator {
         self.current_locals.push(current_obj_local);
         self.next_local_slot += 1;
 
+        // Create loop counter variable to prevent infinite loops
+        let loop_counter_var = self.next_id();
+        let loop_counter_local = IrLocal {
+            ir_id: loop_counter_var,
+            name: format!("__loop_counter_{}", loop_counter_var),
+            var_type: Some(Type::Int),
+            slot: self.next_local_slot,
+            mutable: true,
+        };
+        self.current_locals.push(loop_counter_local);
+        self.next_local_slot += 1;
+
         // Create labels
         let loop_start = self.next_id();
         let loop_body = self.next_id();
@@ -2334,24 +2355,28 @@ impl IrGenerator {
         self.generate_statement(body, block)?;
 
         // Get next sibling: current = get_sibling(current)
-        // IR GetObjectSibling branches when there's NO sibling (parameter semantics)
         let current_for_sibling = self.next_id();
         block.add_instruction(IrInstruction::LoadVar {
             target: current_for_sibling,
             var_id: current_obj_var,
         });
         let next_sibling_temp = self.next_id();
+
+        // Get sibling and branch to loop_end if no more siblings
+        // Z-Machine get_sibling returns sibling object and branches when sibling==0
         block.add_instruction(IrInstruction::GetObjectSibling {
             target: next_sibling_temp,
             object: current_for_sibling,
-            branch_if_no_sibling: loop_end, // Exit loop when no more siblings
+            branch_if_no_sibling: loop_end,  // Exit loop when no more siblings
         });
+
+        // Store the sibling as the new current object
         block.add_instruction(IrInstruction::StoreVar {
             var_id: current_obj_var,
             source: next_sibling_temp,
         });
 
-        // Jump back to start to process next sibling
+        // Jump back to loop start to process this sibling
         block.add_instruction(IrInstruction::Jump { label: loop_start });
 
         // Loop end
@@ -3443,15 +3468,15 @@ impl IrGenerator {
                         }
 
                         ExpressionContext::Value => {
-                            // PHASE 2B: Will implement TestAttributeValue pattern
+                            // IMPLEMENTED: TestAttributeValue pattern for value contexts
                             log::debug!(
-                                "🔍 ATTRIBUTE ACCESS (VALUE): {} -> TestAttributeValue pattern (Phase 2B)",
+                                "🔍 ATTRIBUTE ACCESS (VALUE): {} -> TestAttributeValue pattern (implemented)",
                                 property
                             );
 
-                            // For now, fall back to existing TestAttribute
+                            // Use proper TestAttributeValue instruction
                             let temp_id = self.next_id();
-                            block.add_instruction(IrInstruction::TestAttribute {
+                            block.add_instruction(IrInstruction::TestAttributeValue {
                                 target: temp_id,
                                 object: object_temp,
                                 attribute_num: attr_num,

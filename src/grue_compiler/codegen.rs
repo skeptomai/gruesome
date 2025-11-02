@@ -6703,6 +6703,10 @@ impl ZMachineCodeGen {
                 // V3-compatible logical NOT implementation using je/store pattern
                 // OpVar::Not (0x8F) doesn't exist in V3 - it's call_1n in V5+
 
+                // CRITICAL: Allocate global variable for result first
+                let store_var = self.allocate_global_variable();
+                self.ir_id_to_stack_var.insert(target, store_var);
+
                 // Generate unique label IDs using next_string_id (same pattern as logical AND/OR)
                 let true_label = self.next_string_id;
                 self.next_string_id += 1;
@@ -6734,7 +6738,7 @@ impl ZMachineCodeGen {
                 // Operand is non-zero (true), so store 0 (NOT true = false)
                 let _layout2 = self.emit_instruction_typed(
                     Opcode::Op2(Op2::Store),
-                    &[Operand::Variable(0), Operand::SmallConstant(0)], // Store 0 to stack
+                    &[Operand::SmallConstant(store_var), Operand::SmallConstant(0)], // Store 0 to global
                     None,
                     None,
                 )?;
@@ -6749,7 +6753,7 @@ impl ZMachineCodeGen {
                     .insert(true_label, self.code_address);
                 let _layout3 = self.emit_instruction_typed(
                     Opcode::Op2(Op2::Store),
-                    &[Operand::Variable(0), Operand::SmallConstant(1)], // Store 1 to stack
+                    &[Operand::SmallConstant(store_var), Operand::SmallConstant(1)], // Store 1 to global
                     None,
                     None,
                 )?;
@@ -6760,12 +6764,9 @@ impl ZMachineCodeGen {
                     .ir_id_to_address
                     .insert(end_label, self.code_address);
 
-                // Phase C2: Convert boolean operation to use push/pull stack discipline
-                self.use_push_pull_for_result(target, "V3-compatible boolean NOT operation")?;
-
                 log::debug!(
-                    " UNARY_OP: Generated V3-compatible NOT using je/store pattern for target {}",
-                    target
+                    " UNARY_OP: Generated V3-compatible NOT using je/store pattern for target {} -> global var {}",
+                    target, store_var
                 );
             }
             IrUnaryOp::Minus => {
@@ -8318,8 +8319,29 @@ impl ZMachineCodeGen {
                         self.generate_binary_op(op, left_op, right_op, Some(0))?;
                     }
                 }
+                IrBinaryOp::And | IrBinaryOp::Or => {
+                    // CRITICAL FIX: Logical operations should use global variables, not push/pull
+                    // This avoids the "anti-pattern responsible for all our other stack underflows"
+
+                    // Allocate global variable for result first
+                    let result_var = self.allocate_global_variable();
+                    self.ir_id_to_stack_var.insert(target, result_var);
+
+                    // Resolve operands and generate operation with global variable storage
+                    let left_op = self.resolve_ir_id_to_operand(left)?;
+                    let right_op = self.resolve_ir_id_to_operand(right)?;
+                    self.generate_binary_op(op, left_op, right_op, Some(result_var))?;
+
+                    log::debug!(
+                        "Logical BinaryOp ({:?}) result: IR ID {} -> stored directly to global Variable({})",
+                        op, target, result_var
+                    );
+
+                    // SKIP push/pull mechanism for logical operations
+                    return Ok(());
+                }
                 _ => {
-                    // All other arithmetic/logical operations - resolve operands now
+                    // All other arithmetic operations - resolve operands now
                     let left_op = self.resolve_ir_id_to_operand(left)?;
                     let right_op = self.resolve_ir_id_to_operand(right)?;
                     self.generate_binary_op(op, left_op, right_op, Some(0))?;
@@ -8327,6 +8349,7 @@ impl ZMachineCodeGen {
             }
 
             // Phase C2: Convert binary operations to use push/pull stack discipline
+            // (only for arithmetic operations, not logical operations)
             self.use_push_pull_for_result(target, "binary operation")?;
             log::debug!(
                 "BinaryOp ({:?}) result: IR ID {} -> push/pull stack",

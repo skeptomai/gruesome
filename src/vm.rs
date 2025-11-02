@@ -1095,11 +1095,14 @@ impl VM {
             return Ok(0); // Object 0 has no sibling
         }
         let obj_addr = self.get_object_addr(obj_num)?;
-        if self.game.header.version <= 3 {
-            Ok(self.game.memory[obj_addr + 5] as u16)
+        let sibling = if self.game.header.version <= 3 {
+            self.game.memory[obj_addr + 5] as u16
         } else {
-            Ok(self.read_word((obj_addr + 8) as u32))
-        }
+            self.read_word((obj_addr + 8) as u32)
+        };
+
+        // Return sibling object number (0 = no sibling)
+        Ok(sibling)
     }
 
     /// Set sibling of object
@@ -1125,11 +1128,14 @@ impl VM {
             return Ok(0); // Object 0 has no child
         }
         let obj_addr = self.get_object_addr(obj_num)?;
-        if self.game.header.version <= 3 {
-            Ok(self.game.memory[obj_addr + 6] as u16)
+        let child = if self.game.header.version <= 3 {
+            self.game.memory[obj_addr + 6] as u16
         } else {
-            Ok(self.read_word((obj_addr + 10) as u32))
-        }
+            self.read_word((obj_addr + 10) as u32)
+        };
+
+        // Return first child object number (0 = no children)
+        Ok(child)
     }
 
     /// Set child of object
@@ -1185,7 +1191,14 @@ impl VM {
         Ok(())
     }
 
-    /// Insert object as first child of destination
+    /// Insert object as first child of destination (Z-Machine insert_obj instruction)
+    ///
+    /// Standard Z-Machine algorithm:
+    /// 1. Remove object from current location
+    /// 2. Get destination's current first child
+    /// 3. Set object as destination's new first child
+    /// 4. Set object's parent to destination
+    /// 5. Set object's sibling to old first child (forming linked list)
     pub fn insert_object(&mut self, obj_num: u16, dest_num: u16) -> Result<(), String> {
         if obj_num == 0 {
             log::debug!(" insert_object called with object 0 at PC {:05x}", self.pc);
@@ -1204,6 +1217,19 @@ impl VM {
 
         // Get current first child of destination
         let old_child = self.get_child(dest_num)?;
+
+        // CRITICAL FIX: Prevent double insertion bug that causes infinite loops
+        //
+        // Problem: Objects can be inserted both at compile time and runtime. When runtime
+        // code tries to re-insert an object that's already the first child, we would:
+        // 1. Get old_child = obj_num (the object itself)
+        // 2. Set obj_num.sibling = old_child = obj_num (self-reference!)
+        // 3. GetObjectSibling loops infinitely: obj → obj → obj → ...
+        //
+        // Solution: Skip insertion if object is already first child of destination
+        if old_child == obj_num {
+            return Ok(());
+        }
 
         // Set object as new first child
         self.set_child(dest_num, obj_num)?;

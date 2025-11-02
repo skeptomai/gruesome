@@ -37,7 +37,9 @@ impl ZMachineCodeGen {
             IrInstruction::Call { target, .. } => target.unwrap_or(0),
             IrInstruction::GetProperty { target, .. } => *target,
             IrInstruction::GetPropertyByNumber { target, .. } => *target,
+            #[allow(deprecated)]
             IrInstruction::TestAttribute { target, .. } => *target,
+            IrInstruction::TestAttributeValue { target, .. } => *target,
             IrInstruction::UnaryOp { target, .. } => *target,
             _ => 0,
         };
@@ -90,9 +92,16 @@ impl ZMachineCodeGen {
                     target
                 );
             }
+            #[allow(deprecated)]
             IrInstruction::TestAttribute { target, .. } => {
                 log::debug!(
                     "IR INSTRUCTION: TestAttribute creates target IR ID {}",
+                    target
+                );
+            }
+            IrInstruction::TestAttributeValue { target, .. } => {
+                log::debug!(
+                    "IR INSTRUCTION: TestAttributeValue creates target IR ID {}",
                     target
                 );
             }
@@ -874,6 +883,87 @@ impl ZMachineCodeGen {
                 );
             }
 
+            IrInstruction::TestAttributeValue {
+                target,
+                object,
+                attribute_num,
+            } => {
+                // Generate proper TestAttributeValue pattern using test_attr branch instruction
+                // Pattern: test_attr obj, attr -> branch_if_set -> store 1 -> jump end -> store 0 -> end
+                log::debug!(
+                    "🔍 TestAttributeValue codegen: object={}, attr={}, target={}",
+                    object, attribute_num, target
+                );
+
+                // Resolve object operand and use attribute_num as direct SmallConstant
+                let obj_operand = self.resolve_ir_id_to_operand(*object)?;
+                let attr_operand = Operand::SmallConstant(*attribute_num as u8);
+
+                log::debug!(
+                    "TestAttributeValue: obj={:?}, attr={:?}",
+                    obj_operand,
+                    attr_operand
+                );
+
+                // Generate unique labels for the branch pattern
+                let unique_seed = (self.code_address * 7919) % 100000;
+                let attr_set_label_id: u32 = (40000 + unique_seed) as u32;
+                let end_label_id: u32 = (50000 + unique_seed) as u32;
+
+                // Allocate storage for the result
+                let store_var = self.allocate_global_variable();
+                self.ir_id_to_stack_var.insert(*target, store_var);
+
+                // Emit test_attr as branch instruction
+                // Z-Machine test_attr branches when attribute is SET
+                let layout = self.emit_instruction_typed(
+                    Opcode::Op2(Op2::TestAttr),
+                    &[obj_operand, attr_operand],
+                    None,
+                    Some(0xFFFFu16 as i16), // Branch placeholder when attribute is SET (branch on true)
+                )?;
+
+                // Add unresolved reference for branch to attr_set_label
+                self.reference_context.unresolved_refs.push(
+                    crate::grue_compiler::codegen::UnresolvedReference {
+                        reference_type: crate::grue_compiler::codegen::LegacyReferenceType::Branch,
+                        location: layout.branch_location.unwrap(),
+                        target_id: attr_set_label_id,
+                        is_packed_address: false,
+                        offset_size: 2,
+                        location_space: crate::grue_compiler::codegen::MemorySpace::Code,
+                    },
+                );
+
+                // Attribute is CLEAR: store 0 (false) and jump to end
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::Add),
+                    &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
+                    Some(store_var), // Store 0 (false)
+                    None,
+                )?;
+
+                // Jump to end label
+                self.translate_jump(end_label_id)?;
+
+                // attr_set_label: Attribute is SET, store 1 (true)
+                self.record_code_space_offset(attr_set_label_id, self.code_address);
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::Add),
+                    &[Operand::SmallConstant(0), Operand::SmallConstant(1)],
+                    Some(store_var), // Store 1 (true)
+                    None,
+                )?;
+
+                // end_label: result is now in allocated global variable
+                self.record_code_space_offset(end_label_id, self.code_address);
+
+                log::debug!(
+                    "TestAttributeValue: Generated proper branch pattern for attr {} -> global var {}",
+                    attribute_num, store_var
+                );
+            }
+
             IrInstruction::SetAttribute {
                 object,
                 attribute_num,
@@ -1294,19 +1384,26 @@ impl ZMachineCodeGen {
                 object,
                 branch_if_no_sibling,
             } => {
+                log::debug!(
+                    "🔍 GetObjectSibling codegen: object={}, target={}, branch_if_no_sibling={}",
+                    object, target, branch_if_no_sibling
+                );
+
                 // Z-Machine get_sibling opcode: returns next sibling object
                 // Branches when sibling EXISTS (returns ≠ 0) per Z-Machine specification
+                // Our IR wants to branch when NO sibling exists (to exit loop)
+                // So we use branch-on-FALSE (when result = 0)
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
 
-                // CRITICAL BUG FIX (Oct 27, 2025): Both GetObjectChild and GetObjectSibling
-                // were using wrong opcodes - they were swapped!
-                // This completely broke object tree iteration in for-loops
-                let placeholder = 0x7FFF_u16 as i16; // bit 15=0 for branch-on-FALSE
-                let layout = self.emit_instruction(
-                    0x01, // get_sibling opcode (1OP:1) - FIXED: was 0x02 (get_child)
+                let store_var = self.allocate_global_variable();
+                self.ir_id_to_stack_var.insert(*target, store_var);
+
+                // FIXED: Use emit_instruction_typed instead of deprecated emit_instruction
+                let layout = self.emit_instruction_typed(
+                    Opcode::Op1(Op1::GetSibling), // get_sibling opcode (1OP:1)
                     &[obj_operand],
-                    Some(0),           // Store result to stack
-                    Some(placeholder), // Placeholder encodes branch polarity
+                    Some(store_var),                // Store result to global variable
+                    Some(0x7FFF_u16 as i16),       // Branch when result = 0 (no sibling)
                 )?;
 
                 // Create unresolved reference for branch target
@@ -1325,10 +1422,28 @@ impl ZMachineCodeGen {
                             location_space: MemorySpace::Code,
                         });
                 }
+            }
 
-                // Stack result already available via get_sibling instruction storing to Variable(0)
-                // No need for additional push - would cause stack imbalance
-                self.ir_id_to_stack_var.insert(*target, 0);
+            IrInstruction::GetObjectSiblingValue { target, object } => {
+                log::debug!(
+                    "🔍 GetObjectSiblingValue codegen: object={}, target={}",
+                    object, target
+                );
+
+                // Z-Machine get_sibling opcode: returns next sibling object
+                // This is a non-branching version that just stores the result
+                let obj_operand = self.resolve_ir_id_to_operand(*object)?;
+
+                let store_var = self.allocate_global_variable();
+                self.ir_id_to_stack_var.insert(*target, store_var);
+
+                // Use emit_instruction_typed without branch parameter for non-branching get_sibling
+                let _layout = self.emit_instruction_typed(
+                    Opcode::Op1(Op1::GetSibling), // get_sibling opcode (1OP:1)
+                    &[obj_operand],
+                    Some(store_var),              // Store result to global variable
+                    None,                         // No branching
+                )?;
             }
 
             IrInstruction::GetObjectParent { target, object } => {
@@ -2114,11 +2229,14 @@ impl ZMachineCodeGen {
         }
     }
 
-    ///
+    /// DEPRECATED: Use emit_instruction_typed for type safety and better error handling
     /// ```ignore
+    /// // DEPRECATED - avoid raw opcode numbers
     /// let layout = self.emit_instruction(0x8D, &[Operand::LargeConstant(placeholder_word())], None, None)?;
-    /// // Use layout.operand_location for reference patching instead of current_address - 2
+    /// // PREFERRED - use typed opcodes instead
+    /// let layout = self.emit_instruction_typed(Opcode::Op1(Op1::PrintPaddr), &[operand], None, None)?;
     /// ```
+    #[deprecated(note = "Use emit_instruction_typed for type safety and to avoid opcode number errors")]
     pub fn emit_instruction(
         &mut self,
         opcode: u8,
