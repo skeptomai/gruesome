@@ -108,64 +108,104 @@
 - Active development: Root directory files
 - Current investigation: Object resolution in verb dispatch pipeline
 
-**Status**: **PARTIALLY OPERATIONAL** - Core fixes applied, one object lookup bug remains
+**Status**: **CONTAINMENT BUG ISOLATED** - Object lookup working correctly, containment system failing
 
 ---
 
 ## 🐛 **ACTIVE BUG INVESTIGATION**
 
-### **Object Lookup Failure in Grammar System** 🔍 **ACTIVE** (November 2, 2025)
+### **Critical SetAttribute Compiler Bug** 🔍 **CRITICAL** (November 2, 2025)
 
-**ISSUE**: "examine leaflet" returns "You can't see any such thing" even when leaflet is visible in open mailbox
+**ISSUE**: All boolean attribute assignments (`obj.property = false`) are hardcoded to set `true`, breaking state changes
 
-**ROOT CAUSE ANALYSIS**:
-- ✅ **Dictionary**: "leaflet" correctly added to dictionary at position 17, encoded as `[45, 46, ae, 2a, 80, 00]`
-- ✅ **Object Creation**: leaflet assigned object #11, IR ID 34, with names ["leaflet", "paper"] in Property 18
-- ✅ **Dictionary References**: Property 18 correctly links to dictionary entries
-- ✅ **Game Logic**: `player_can_see()` and `examine()` functions work correctly for other objects (mailbox)
-- ❌ **Object Lookup**: Runtime object search returns 0 (null) instead of object 11 when parsing "leaflet"
+**ROOT CAUSE IDENTIFIED** (November 2, 2025):
+
+**❌ SETATTRIBUTE HARDCODED VALUE BUG**:
+- **Location**: `src/grue_compiler/ir.rs:2524`
+- **Problem**: `value: true, // TODO: Extract actual boolean from value_temp`
+- **Impact**: ALL attribute assignments (`obj.open = false`) ignore the assigned value and set `true`
+- **Evidence**: `obj.open = false` debug shows "Before: 1, After: 1" - no change
+- **Scope**: Affects ALL boolean attribute assignments in Grue language
+
+**✅ PREVIOUS FIXES COMPLETED**:
+- **Object Containment**: Fixed dual insertion parent pointer bug (vm.rs:1234) ✅
+- **Visibility Logic**: Fixed `player_can_see()` conditional syntax (nested if statements) ✅
+- **Container Logic**: Objects in open containers now correctly visible ✅
 
 **TECHNICAL EVIDENCE**:
-- PC=0x13c6: `je` instruction comparing `op1=0` vs `op2=2`
-- Variable 114 (object ID from parser) = 0 (should be 11)
-- Variable 116 (player location) = 2 (correct)
-- Comparison `if obj == 0` in `player_can_see()` returns true, causing "You can't see any such thing"
-
-**CONFIRMED BEHAVIOR**:
-- ✅ "examine mailbox" works correctly (returns object description)
-- ❌ "examine leaflet" fails (object lookup returns 0)
-- ❌ "take leaflet" fails (same object lookup issue)
-- ❌ "read leaflet" fails (same object lookup issue)
-
-**HYPOTHESIS**: Builtin object lookup function doesn't search objects inside containers during command parsing
+- **Assignment Code**: `obj.open = false` executes but prints "Closed." (success message) ✅
+- **Debug Output**: "Before: obj.open = 1, After: obj.open = 1" (value unchanged) ❌
+- **IR Generation**: SetAttribute instruction created but hardcoded to `value: true` ❌
+- **Z-Machine Output**: Set attribute opcodes generated with wrong value parameter ❌
 
 **NEXT STEPS**:
-1. Identify which builtin function handles object lookup during grammar parsing
-2. Debug why object search returns 0 for "leaflet" but works for "mailbox"
-3. Fix object search algorithm to check objects inside open containers
-4. Verify fix works for all objects in containers
+1. **Fix TODO in ir.rs:2524**: Extract actual boolean from `value_temp` instead of hardcoding `true`
+2. **Test attribute assignments**: Verify `obj.open = false` actually sets attribute to false
+3. **Regression test**: Ensure `obj.open = true` still works after fix
+4. **Comprehensive test**: Test all boolean attribute types (open, locked, etc.)
 
-**FILES TO INVESTIGATE**:
-- Compiler-generated builtin object search functions
-- Grammar system object resolution code
-- Z-Machine object tree traversal logic
+**✅ DUAL SYSTEM ARCHITECTURE BUG - PARTIALLY RESOLVED**:
+- **Compile-time**: Object placement metadata correctly generated ✅
+- **Runtime**: InsertObj instruction executed, containment now persisting ✅ **FIXED**
+- **Root Cause**: Double insertion prevention skipped `set_parent()` call ✅ **IDENTIFIED & FIXED**
+- **Architectural Issue**: Dual insertion system needs comprehensive redesign (see line 190-233)
+
+**INVESTIGATION METHODOLOGY**:
+1. ✅ **Traced object lookup function**: Found working correctly (5919-6333 in codegen.rs)
+2. ✅ **Verified dictionary resolution**: Parser correctly finds "leaflet" at 0x0800
+3. ✅ **Confirmed property 18 setup**: Dictionary addresses properly stored and loaded
+4. ✅ **Identified containment failure**: Object parent not correctly set at runtime
+5. ✅ **Ruled out grammar bugs**: Object resolution works, visibility logic fails
+
+**NEXT STEPS**:
+1. ✅ **InsertObj instruction execution**: Fixed - `set_parent()` now called in dual insertion prevention
+2. ✅ **Dual insertion conflict**: Resolved - parent relationships now correctly established
+3. ✅ **Object tree integrity**: Verified - no overwrites, parent field persists correctly
+4. ✅ **Container visibility logic**: Fixed - `player_can_see()` now correctly checks objects in open containers
+5. **CRITICAL NEW BUG**: Fix SetAttribute compiler bug - all boolean assignments hardcoded to `true` (ir.rs:2524)
+
+**FILES TO INVESTIGATE** (Next Phase):
+- Compiler-generated `player_can_see()` function - visibility logic for open containers
+- Game logic functions that check object accessibility
+- Container visibility rules implementation
+
+**FILES ALREADY FIXED**:
+- ✅ `src/vm.rs:1216-1235` - InsertObj instruction implementation (parent pointer fix)
+- ✅ `src/grue_compiler/codegen.rs:4049-4082` - Compile-time object placement (working correctly)
+- ✅ `src/grue_compiler/ir.rs:1410-1411` - Runtime object placement generation (working correctly)
 
 ---
 
 ## ✅ **RECENTLY FIXED BUGS** (November 2, 2025)
+
+### **Container Visibility Logic Bug** ✅ **FIXED** (November 2, 2025)
+- **Issue**: Objects in open containers not visible to player, breaking "examine leaflet" commands
+- **Root Cause**: Multi-line `&&` conditional syntax not working in Grue language
+- **Fix**: Changed from `if obj.location.container && obj.location.open && obj.location.location == player.location` to nested if statements
+- **Files**: `examples/mini_zork.grue:455-461`
+- **Result**: Objects in open containers now correctly visible and examinable
+- **Discovery**: Grue language requires nested `if` statements instead of multi-line `&&` conditionals
+
+### **Object Containment Parent Pointer Bug** ✅ **FIXED** (November 2, 2025)
+- **Issue**: Objects correctly positioned in containers but parent pointers not set, causing visibility failures
+- **Root Cause**: Dual insertion prevention logic skipped `set_parent()` call when objects already correctly positioned
+- **Fix**: Added `self.set_parent(obj_num, dest_num)?;` in vm.rs:1234 before early return in double insertion prevention
+- **Files**: `src/vm.rs:1230-1235`
+- **Result**: Object containment now working correctly, leaflet properly contained in mailbox
+- **Evidence**: Runtime trace shows `get_parent: obj_num=11 -> parent=10` instead of parent=0
 
 ### **Branch Resolution Location Bug** ✅ **FIXED**
 - **Issue**: VAR:0x1f crash and infinite loops in "examine leaflet" due to wrong branch/jump placeholder resolution
 - **Root Cause**: `generate_comparison_with_result` used deprecated `add_unresolved_reference()` instead of `add_unresolved_reference_at_location()`
 - **Fix**: Updated all 8 instances (6 branches + 2 jumps) to use correct placeholder locations from `emit_instruction_typed` layouts
 - **Files**: `src/grue_compiler/codegen.rs:8512-8723`
-- **Result**: No more crashes or infinite loops, but object lookup still fails
+- **Result**: No more crashes or infinite loops during object processing
 
 ---
 
 ## 🏗️ **ARCHITECTURAL DEBT**
 
-### **Object Containment Dual Insertion Architecture** ⚠️ **TECHNICAL DEBT** (November 1, 2025)
+### **Object Containment Dual Insertion Architecture** ⚠️ **CRITICAL ARCHITECTURAL FIX NEEDED** (November 2, 2025)
 
 **Issue**: The compiler implements object containment through **two parallel systems** that both place objects into containers:
 1. **Compile-time object placement** (codegen.rs:4049-4082) - Direct object table manipulation
@@ -176,9 +216,10 @@
 - **Executable Instructions**: Runtime needs placement commands for dynamic movement
 
 **Current Status**:
-- ✅ **Immediate Fix Applied**: Double insertion prevention in vm.rs:1216-1225
-- ✅ **Bug Resolved**: "leaflet" infinite loop fixed
-- ⚠️ **Architectural Inconsistency**: Dual system remains intact
+- ✅ **Immediate Fix Applied**: Double insertion prevention in vm.rs:1216-1235
+- ✅ **Critical Bug Fixed**: Parent pointer issue resolved (November 2, 2025)
+- ✅ **Containment Working**: Objects now correctly placed and maintain parent relationships
+- ⚠️ **Architectural Inconsistency**: Dual system remains, requires comprehensive redesign
 
 **Risk Level**: **MEDIUM**
 - Low immediate risk: workaround prevents user-visible bugs

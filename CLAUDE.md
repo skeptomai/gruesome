@@ -64,6 +64,7 @@ This shows:
 5. **Run commands freely**: Execute read, cargo run, cargo test without asking
 6. **Git requires permission**: Unless using automation commands above
 7. **Never estimate time**: No time estimates ("2-3 hours", etc.)
+8. **File opening**: NEVER use `filename:linenumber` syntax - it creates a bare buffer, not opening the actual file
 
 ## Z-Machine Specification Reference
 

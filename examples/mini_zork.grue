@@ -435,10 +435,12 @@ fn player_can_see(obj) -> bool {
     }
 
     // Can see objects in open containers in current location
-    if obj.location.container &&
-       obj.location.open &&
-       obj.location.location == player.location {
-        return true;
+    if obj.location.container {
+        if obj.location.open {
+            if obj.location.location == player.location {
+                return true;
+            }
+        }
     }
 
     return false;

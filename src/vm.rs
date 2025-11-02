@@ -1227,7 +1227,11 @@ impl VM {
         // 3. GetObjectSibling loops infinitely: obj → obj → obj → ...
         //
         // Solution: Skip insertion if object is already first child of destination
+        // CRITICAL FIX (Nov 2, 2025): Must still set parent relationship even if skipping insertion
         if old_child == obj_num {
+            // Object is already correctly positioned as first child (likely from compile-time placement)
+            // but we must ensure the parent pointer is set for visibility checks
+            self.set_parent(obj_num, dest_num)?;
             return Ok(());
         }
 
