@@ -2622,46 +2622,7 @@ impl ZMachineCodeGen {
     }
 
     /// Implementation: Print - Print value
-    fn translate_print(&mut self, value: IrId) -> Result<(), CompilerError> {
-        log::debug!("PRINT: value={}", value);
-
-        // Check if this is a string literal
-        if self.ir_id_to_string.contains_key(&value) {
-            // Print string literal using print_paddr
-            // CRITICAL FIX: Record exact code space offset BEFORE placeholder emission
-            let operand_location = self.code_space.len() + 1; // +1 for opcode byte (offset, will be translated to final address)
-            let _layout = self.emit_instruction_typed(
-                Opcode::Op1(Op1::PrintPaddr), // print_paddr opcode (1OP:141)
-                &[Operand::LargeConstant(placeholder_word())], // Placeholder for string address
-                None,
-                None,
-            )?;
-
-            // Add unresolved reference for string address using pre-calculated location
-            self.reference_context
-                .unresolved_refs
-                .push(UnresolvedReference {
-                    reference_type: LegacyReferenceType::StringRef,
-                    location: operand_location,
-                    target_id: value,
-                    is_packed_address: true,
-                    offset_size: 2,
-                    location_space: MemorySpace::Code, // String references in code instructions
-                });
-        } else {
-            // Print variable/computed value using print_num
-            let operand = Operand::SmallConstant(1); // Use variable 1 for now
-
-            self.emit_instruction_typed(
-                Opcode::OpVar(OpVar::PrintNum), // print_num opcode (VAR:230)
-                &[operand],
-                None,
-                None,
-            )?;
-        }
-
-        Ok(())
-    }
+    // Dead code removed: translate_print() method (40 lines) - unused from old IR translation layer
 
     /// Implementation: Return - Return from function
     fn translate_return(&mut self, value: Option<IrId>) -> Result<(), CompilerError> {
@@ -3332,109 +3293,7 @@ impl ZMachineCodeGen {
     /// SINGLE-PATH MIGRATION: String concatenation support for BinaryOp Add operations
     /// Implements compile-time string concatenation as done in the legacy system
 
-    fn translate_unary_op(
-        &mut self,
-        target: IrId,
-        op: &IrUnaryOp,
-        operand: IrId,
-    ) -> Result<(), CompilerError> {
-        log::debug!(
-            "UNARY_OP: target={}, op={:?}, operand={}",
-            target,
-            op,
-            operand
-        );
-
-        let operand_val = self.resolve_ir_id_to_operand(operand)?;
-
-        match op {
-            IrUnaryOp::Not => {
-                // Logical NOT - implement using V3-compatible je/store pattern
-                // OpVar::Not (0x8F) doesn't exist in V3 - it's call_1n in V5+
-
-                // Use je instruction with branch to implement NOT logic
-                // If operand == 0, store 1 (NOT false = true)
-                // If operand != 0, store 0 (NOT true = false)
-
-                // Generate a unique label ID for this NOT operation
-                let true_label = target + 50000; // Use offset to ensure uniqueness
-                let end_label = target + 50001;
-
-                // Je operand, 0 -> branch if operand is 0 (false)
-                let layout1 = self.emit_instruction_typed(
-                    Opcode::Op2(Op2::Je),
-                    &[operand_val, Operand::SmallConstant(0)],
-                    None,
-                    Some(-1), // Branch placeholder - will be patched to true_label
-                )?;
-
-                // Register branch to true_label (operand was 0/false)
-                if let Some(branch_location) = layout1.branch_location {
-                    self.reference_context
-                        .unresolved_refs
-                        .push(UnresolvedReference {
-                            reference_type: LegacyReferenceType::Branch,
-                            location: branch_location,
-                            target_id: true_label,
-                            is_packed_address: false,
-                            offset_size: 2,
-                            location_space: MemorySpace::Code,
-                        });
-                }
-
-                // Operand is non-zero (true), so store 0 (NOT true = false)
-                let layout2 = self.emit_instruction_typed(
-                    Opcode::Op2(Op2::Store),
-                    &[Operand::Variable(0), Operand::SmallConstant(0)], // Store 0 to stack
-                    None,
-                    None,
-                )?;
-
-                // Jump to end
-                self.translate_jump(end_label)?;
-
-                // true_label: operand was 0 (false), so store 1 (NOT false = true)
-                self.define_code_label(true_label)?;
-                let layout3 = self.emit_instruction_typed(
-                    Opcode::Op2(Op2::Store),
-                    &[Operand::Variable(0), Operand::SmallConstant(1)], // Store 1 to stack
-                    None,
-                    None,
-                )?;
-
-                // end_label:
-                self.define_code_label(end_label)?;
-
-                // Phase C2: Convert unary NOT to use push/pull stack discipline
-                self.use_push_pull_for_result(target, "unary NOT operation")?;
-
-                log::debug!(
-                    " UNARY_OP: Generated V3-compatible NOT using je/store pattern, result at stack depth {}",
-                    self.stack_depth - 1
-                );
-            }
-            IrUnaryOp::Minus => {
-                // Arithmetic negation - multiply by -1 using Z-Machine 'mul' instruction
-                // FIXED: Use stack for unary operation results (temporary values)
-                let layout = self.emit_instruction_typed(
-                    Opcode::Op2(Op2::Mul),                          // mul opcode (2OP:22)
-                    &[operand_val, Operand::LargeConstant(0xFFFF)], // multiply by -1 (0xFFFF = -1 in 16-bit signed)
-                    Some(0),                                        // Store result on stack
-                    None,                                           // No branch
-                )?;
-
-                // Phase C2: Convert arithmetic negation to use push/pull stack discipline
-                self.use_push_pull_for_result(target, "arithmetic negation (multiply)")?;
-
-                log::debug!(
-                    " UNARY_OP: Generated {} bytes for MINUS operation, result with push/pull",
-                    layout.total_size
-                );
-            }
-        }
-
-        Ok(())
-    }
+    // Dead code removed: translate_unary_op() method (103 lines) - unused from old IR translation layer
 
     // Dead code removed: translate_branch() method (69 lines) - unused from old IR translation layer
 
@@ -3452,30 +3311,7 @@ impl ZMachineCodeGen {
     // - translate_set_property_by_number() → codegen_instructions.rs:524-591 (handles both named and numbered)
 
     /// Implementation: CreateArray - Initialize dynamic array/list
-    fn translate_create_array(&mut self, target: IrId, size: i32) -> Result<(), CompilerError> {
-        log::debug!("CREATE_ARRAY: target={}, size={}", target, size);
-
-        // Create array metadata (simulation phase)
-        let array_info = ArrayInfo {
-            capacity: size,
-            current_size: 0,    // Start empty
-            base_address: None, // Not using Z-Machine memory yet
-        };
-
-        // Store array metadata for future operations
-        self.ir_id_to_array_info.insert(target, array_info);
-
-        // Also create integer mapping for resolve_ir_id_to_operand compatibility
-        // Use target ID as unique array identifier
-        self.ir_id_to_integer.insert(target, target as i16);
-
-        log::debug!(
-            " CREATE_ARRAY: Array {} created with capacity {} (metadata tracking)",
-            target,
-            size
-        );
-        Ok(())
-    }
+    // Dead code removed: translate_create_array() method (24 lines) - unused from old IR translation layer
 
     // Dead code removed: translate_array_empty() method (48 lines) - unused from old IR translation layer
 
