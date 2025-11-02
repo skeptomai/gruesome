@@ -2,6 +2,14 @@
 //
 // Transforms IR into executable Z-Machine bytecode following the Z-Machine Standard v1.1
 // Supports both v3 and v5 target formats with proper memory layout and instruction encoding.
+//
+// RECENT CLEANUP (2025-11-02): Removed 1,006 lines of dead code across 7 systematic phases:
+// - Phase 1: Commented-out code blocks (162 lines)
+// - Phase 2-4: Unused translate_* functions from old IR translation layer (586 lines)
+// - Phase 5: Unused helper functions (85 lines)
+// - Phase 6: Unused validation functions (127 lines)
+// - Phase 7: Unused resolution functions (44 lines)
+// Total file size reduction: 11,338 → 10,332 lines (8.9% reduction)
 
 use crate::grue_compiler::codegen_memory::{
     placeholder_word, MemorySpace, HEADER_SIZE, PLACEHOLDER_BYTE,
@@ -518,36 +526,9 @@ impl ZMachineCodeGen {
     ///
     /// Generate unimplemented array operation with return value
     /// This will cause a compile-time error with a clear message about which feature needs implementation
-    fn emit_unimplemented_array_op(
-        &mut self,
-        op_name: &str,
-        target: Option<u32>,
-    ) -> Result<(), CompilerError> {
-        log::debug!("UNIMPLEMENTED: {} - will cause compile-time error", op_name);
-        self.emit_instruction(UNIMPLEMENTED_OPCODE, &[], target.map(|_| 0), None)?;
-        Ok(())
-    }
-
-    /// Generate unimplemented array operation without return value
-    /// This will cause a compile-time error with a clear message about which feature needs implementation
-    fn emit_unimplemented_array_op_void(&mut self, op_name: &str) -> Result<(), CompilerError> {
-        log::debug!("UNIMPLEMENTED: {} - will cause compile-time error", op_name);
-        self.emit_instruction(UNIMPLEMENTED_OPCODE, &[], None, None)?;
-        Ok(())
-    }
-
-    /// Generate unimplemented general operation
-    /// This will cause a compile-time error with a clear message about which feature needs implementation
-    fn emit_unimplemented_operation(
-        &mut self,
-        op_name: &str,
-        has_result: bool,
-    ) -> Result<(), CompilerError> {
-        log::debug!("UNIMPLEMENTED: {} - will cause compile-time error", op_name);
-        let store_var = if has_result { Some(0) } else { None };
-        self.emit_instruction(UNIMPLEMENTED_OPCODE, &[], store_var, None)?;
-        Ok(())
-    }
+    // Dead code removed: emit_unimplemented_array_op() method (9 lines) - unused helper function
+    // Dead code removed: emit_unimplemented_array_op_void() method (5 lines) - unused helper function
+    // Dead code removed: emit_unimplemented_operation() method (10 lines) - unused helper function
 
     /// SEPARATED SPACES GENERATION: New architecture to eliminate memory conflicts
     /// This method uses separate working spaces during compilation and final assembly
@@ -2535,42 +2516,7 @@ impl ZMachineCodeGen {
     // Dead code removed: translate_load_immediate() method (55 lines) - unused from old IR translation layer
 
     /// Implementation: LoadVar - Load variable value
-    fn translate_load_var(&mut self, target: IrId, var_id: IrId) -> Result<(), CompilerError> {
-        log::debug!("LOAD_VAR: target={}, var_id={}", target, var_id);
-
-        log::debug!(
-            "📝 VAR1_WRITE: LoadVar at 0x{:04x} - HARDCODED storing to Variable(1) (BUG?)",
-            self.code_address
-        );
-
-        // For now, use simple variable assignment (can be improved with proper mapping)
-        let var_operand = Operand::SmallConstant(1); // Default to variable 1
-
-        let layout = self.emit_instruction_typed(
-            Opcode::Op1(Op1::Load), // load opcode (1OP:142)
-            &[var_operand],
-            Some(1), // Store result in variable 1
-            None,
-        )?;
-
-        // emit_instruction already pushed bytes to code_space
-
-        // Map the target to the loaded variable (for now, just map to var_id value)
-        if let Some(var_value) = self.ir_id_to_integer.get(&var_id).copied() {
-            self.ir_id_to_integer.insert(target, var_value);
-        } else {
-            // Default mapping if var_id is not found
-            self.ir_id_to_integer.insert(target, var_id as i16);
-        }
-
-        log::debug!(
-            " LOAD_VAR: Generated {} bytes and mapped target {} to variable {}",
-            layout.total_size,
-            target,
-            var_id
-        );
-        Ok(())
-    }
+    // Dead code removed: translate_load_var() method (36 lines) - unused from old IR translation layer
 
     /// Implementation: Local variable assignment (compile-time mapping only)
     /// This handles `let x = 42` by allocating a local variable slot and mapping the IR ID
@@ -2625,68 +2571,10 @@ impl ZMachineCodeGen {
     // Dead code removed: translate_print() method (40 lines) - unused from old IR translation layer
 
     /// Implementation: Return - Return from function
-    fn translate_return(&mut self, value: Option<IrId>) -> Result<(), CompilerError> {
-        log::warn!("🔄 RETURN COMPILATION: value={:?}", value);
-
-        if let Some(_ret_value) = value {
-            // Return with value (for now, just return 1)
-            log::warn!(
-                "🔄 RETURN: Compiling return with value {} - hardcoded to return 1 (true)",
-                _ret_value
-            );
-            let operand = Operand::SmallConstant(1); // Return 1 (true)
-
-            self.emit_instruction_typed(
-                Opcode::Op1(Op1::Ret), // ret opcode (1OP:139)
-                &[operand],
-                None,
-                None,
-            )?;
-        } else {
-            // Return true (rtrue)
-            log::warn!("🔄 RETURN: Compiling return without value - using rtrue (returns true)");
-            self.emit_instruction_typed(
-                Opcode::Op0(Op0::Rtrue), // rtrue opcode (0OP:176)
-                &[],
-                None,
-                None,
-            )?;
-        }
-
-        // CRITICAL FIX: Reset stack depth when function returns
-        // The Z-Machine cleans up the call frame and restores caller's stack state
-        log::debug!(
-            "Stack depth reset on function return: {} -> 0",
-            self.stack_depth
-        );
-        self.stack_depth = 0;
-
-        Ok(())
-    }
+    // Dead code removed: translate_return() method (38 lines) - unused from old IR translation layer
 
     /// Implementation: Label - Set label address for jumps
-    fn translate_label(&mut self, id: IrId) -> Result<(), CompilerError> {
-        log::debug!(
-            "LABEL: id={} at code_address=0x{:04x}",
-            id,
-            self.code_address
-        );
-
-        // Register the current code_space position for this label ID
-        // CRITICAL FIX: Store raw code_address as offset, don't subtract final_code_base yet
-        // final_code_base is not set correctly during initial code generation
-        let offset = if self.final_data.is_empty() {
-            // During initial code generation, code_address is already the correct offset
-            self.code_address
-        } else {
-            // During final assembly, subtract the base
-            self.code_address - self.final_code_base
-        };
-        self.record_code_space_offset(id, offset);
-
-        // Labels don't generate code, they just mark addresses
-        Ok(())
-    }
+    // Dead code removed: translate_label() method (22 lines) - unused from old IR translation layer
 
     /// Generate a jump instruction to the specified label
     /// Jump instructions use relative offsets following Z-Machine specification:
@@ -3138,157 +3026,7 @@ impl ZMachineCodeGen {
 
     /// SINGLE-PATH MIGRATION: BinaryOp instruction translation
     /// Converts IR arithmetic operations directly to Z-Machine instructions (add, sub, mul, div)
-    fn translate_binary_op(
-        &mut self,
-        target: IrId,
-        op: &IrBinaryOp,
-        left: IrId,
-        right: IrId,
-    ) -> Result<(), CompilerError> {
-        log::debug!(
-            " TRANSLATE_BINARY_OP_ENTRY: target={}, op={:?}, left={}, right={}",
-            target,
-            op,
-            left,
-            right
-        );
-        log::debug!(
-            "BINARY_OP: target={}, op={:?}, left={}, right={}",
-            target,
-            op,
-            left,
-            right
-        );
-
-        // Special case: String concatenation with Add operation
-        if matches!(op, IrBinaryOp::Add) {
-            let left_is_string = self.ir_id_to_string.contains_key(&left);
-            let right_is_string = self.ir_id_to_string.contains_key(&right);
-
-            if left_is_string || right_is_string {
-                log::debug!(" STRING_CONCATENATION: Detected string concatenation operation");
-                return self.translate_string_concatenation(left, right, target);
-            }
-        }
-
-        // Regular numeric operations - resolve operands normally
-        debug!("Resolving left operand: left={}", left);
-        let left_operand = self.resolve_ir_id_to_operand(left)?;
-        debug!("Resolving right operand: right={}", right);
-        let right_operand = self.resolve_ir_id_to_operand(right)?;
-        debug!(
-            "Operands resolved: left={:?}, right={:?}",
-            left_operand, right_operand
-        );
-
-        // Map binary operation to Z-Machine instruction
-        // NOTE: Comparison operations (Equal, Less, etc.) will not use these opcodes
-        // as they are handled through the branch instruction mechanism
-        let opcode = match op {
-            IrBinaryOp::Add => Opcode::Op2(Op2::Add), // add (2OP:20)
-            IrBinaryOp::Subtract => Opcode::Op2(Op2::Sub), // sub (2OP:21)
-            IrBinaryOp::Multiply => Opcode::Op2(Op2::Mul), // mul (2OP:22)
-            IrBinaryOp::Divide => Opcode::Op2(Op2::Div), // div (2OP:23)
-            IrBinaryOp::Modulo => Opcode::Op2(Op2::Mod), // mod (2OP:24)
-            IrBinaryOp::And => Opcode::Op2(Op2::And), // and (2OP:9) - Bitwise AND
-            IrBinaryOp::Or => Opcode::Op2(Op2::Or),   // or (2OP:8) - Bitwise OR
-            // Comparison operations - opcodes listed for reference but not used as direct instructions
-            IrBinaryOp::Equal => Opcode::Op2(Op2::Je), // je (2OP:1) - handled by emit_comparison_branch
-            IrBinaryOp::NotEqual => Opcode::Op2(Op2::Je), // je (2OP:1) - handled by emit_comparison_branch
-            IrBinaryOp::Less => Opcode::Op2(Op2::Jl), // jl (2OP:2) - handled by emit_comparison_branch
-            IrBinaryOp::LessEqual => Opcode::Op2(Op2::Jg), // jg (2OP:3) - handled by emit_comparison_branch
-            IrBinaryOp::Greater => Opcode::Op2(Op2::Jg), // jg (2OP:3) - handled by emit_comparison_branch
-            IrBinaryOp::GreaterEqual => Opcode::Op2(Op2::Jl), // jl (2OP:2) - handled by emit_comparison_branch
-        };
-
-        debug!("Opcode mapped: op={:?} -> opcode={:?}", op, opcode);
-
-        // CRITICAL FIX: Comparison operations should NOT be handled as direct binary operations.
-        // They should only be generated through the branch instruction mechanism in emit_conditional_branch_instruction.
-        debug!("About to match operation: op={:?}", op);
-        match op {
-            // Comparison operations - these should only be used in conditional contexts
-            IrBinaryOp::Equal
-            | IrBinaryOp::NotEqual
-            | IrBinaryOp::Less
-            | IrBinaryOp::LessEqual
-            | IrBinaryOp::Greater
-            | IrBinaryOp::GreaterEqual => {
-                debug!("Comparison branch entered: Comparison operation {:?} detected in translate_binary_op", op);
-                log::debug!("COMPARISON_DEFERRED: Comparison operation {:?} will be handled by branch instruction mechanism", op);
-
-                // OPTIMIZATION: Check if both operands are constants and evaluate at compile time
-                let left_const = self.ir_id_to_integer.get(&left).copied();
-                let right_const = self.ir_id_to_integer.get(&right).copied();
-
-                log::debug!(
-                    "CONST_CHECK: left IR {} = {:?}, right IR {} = {:?}",
-                    left,
-                    left_const,
-                    right,
-                    right_const
-                );
-
-                if let (Some(left_val), Some(right_val)) = (left_const, right_const) {
-                    // Evaluate constant comparison at compile time
-                    let result = match op {
-                        IrBinaryOp::Equal => left_val == right_val,
-                        IrBinaryOp::NotEqual => left_val != right_val,
-                        IrBinaryOp::Less => left_val < right_val,
-                        IrBinaryOp::LessEqual => left_val <= right_val,
-                        IrBinaryOp::Greater => left_val > right_val,
-                        IrBinaryOp::GreaterEqual => left_val >= right_val,
-                        _ => unreachable!("Non-comparison operation in comparison branch"),
-                    };
-
-                    // Store the compile-time result as a constant
-                    let int_result = if result { 1 } else { 0 };
-                    self.ir_id_to_integer.insert(target, int_result);
-                    self.constant_values
-                        .insert(target, ConstantValue::Boolean(result));
-
-                    log::debug!(
-                        "CONSTANT_COMPARISON: {:?} {:?} {:?} = {} (optimized at compile time)",
-                        left_val,
-                        op,
-                        right_val,
-                        result
-                    );
-                } else {
-                    // FUNDAMENTAL FIX: Comparison instructions in Z-Machine are BRANCH instructions,
-                    // not value-producing instructions. They should never store 0/1 to stack.
-                    //
-                    // The comparison should be handled by the conditional logic that uses it,
-                    // not by generating intermediate boolean storage.
-                    //
-                    // For now, return an error to catch cases where we're incorrectly trying to
-                    // generate standalone comparison instructions.
-
-                    return Err(CompilerError::CodeGenError(format!(
- "BinaryOp comparison {:?} should not generate standalone instructions - comparisons should be handled by conditional branching logic directly",
- op
- )));
-                }
-            }
-            // Arithmetic operations store their results normally
-            _ => {
-                let _layout = self.emit_instruction_typed(
-                    opcode,
-                    &[left_operand, right_operand],
-                    Some(0), // Store to stack for immediate consumption
-                    None,
-                )?;
-
-                // Phase C2: Convert binary operations in generate_binary_op to use push/pull
-                // Note: This requires changing the signature to include target_id
-                // For now, this will remain as Variable(0) - the main conversion is in translate_binary_op
-                self.use_push_pull_for_result(target, "unary operation")?;
-            }
-        }
-
-        log::debug!(" BINARY_OP: Generated binary operation {:?}", op);
-        Ok(())
-    }
+    // Dead code removed: translate_binary_op() method (151 lines) - unused from old IR translation layer
 
     /// SINGLE-PATH MIGRATION: String concatenation support for BinaryOp Add operations
     /// Implements compile-time string concatenation as done in the legacy system
@@ -3333,67 +3071,7 @@ impl ZMachineCodeGen {
 
     /// Generate implicit init block for games without explicit init{}
     /// Updated to handle separated spaces architecture compatibility
-    fn generate_implicit_init_block(&mut self, _ir: &IrProgram) -> Result<(), CompilerError> {
-        debug!("Generating implicit init block for games without explicit init{{}}");
-
-        // Check if this is a simple test case without rooms or complex game structure
-        // In that case, just generate a simple return instead of trying to call main loop
-        if _ir.rooms.is_empty() && _ir.objects.is_empty() && _ir.grammar.is_empty() {
-            debug!("Simple test case detected - generating minimal init block");
-            // Just generate a simple return (RTRUE)
-            self.emit_instruction(
-                0xB0, // rtrue opcode (0OP form) - FIXED: was 0x00
-                &[],  // No operands
-                None, // No store
-                None, // No branch
-            )?;
-            return Ok(());
-        }
-
-        // For mini_zork and similar games, we need to:
-        // 1. Print any banner/intro text (if present in original init)
-        // 2. Call the main loop routine
-
-        // This function should only be called when there's no explicit init block
-        // The logic above already checks for init_block existence
-
-        // For games without explicit init, create minimal setup:
-        // Just call the main loop routine (main loop will handle its own setup)
-        let main_loop_id = 9000u32; // Use consistent ID with main loop generation
-
-        debug!(
-            "Implicit init: calling main loop routine (ID {})",
-            main_loop_id
-        );
-
-        // Generate call to main loop routine
-        let layout = self.emit_instruction(
-            0x00, // call_vs raw opcode (emit_instruction expects 0x00-0x1F)
-            &[Operand::LargeConstant(placeholder_word())], // Placeholder for main loop routine address
-            Some(0x00), // Store result on stack (Z-Machine spec compliance)
-            None,       // No branch
-        )?;
-
-        // Add unresolved reference for main loop call
-        self.reference_context
-            .unresolved_refs
-            .push(UnresolvedReference {
-                reference_type: LegacyReferenceType::FunctionCall,
-                location: layout
-                    .operand_location
-                    .expect("call instruction must have operand"),
-                target_id: main_loop_id,
-                is_packed_address: true, // Function calls use packed addresses
-                offset_size: 2,
-                location_space: MemorySpace::Code,
-            });
-
-        debug!(
-            "Implicit init block complete - calls main loop at ID {}",
-            main_loop_id
-        );
-        Ok(())
-    }
+    // Dead code removed: generate_implicit_init_block() method (61 lines) - unused generation function
 
     /// Plan the memory layout for all Z-Machine structures
     fn layout_memory_structures(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
@@ -7548,62 +7226,9 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Unified memory allocator - coordinates all address allocation
-    /// Replaces the dual allocation system that caused memory conflicts
-    fn allocate_address(&mut self, size: usize, alignment: usize) -> usize {
-        debug!(
-            "Allocate address: current_address=0x{:04x}, requesting size={}, alignment={}",
-            self.code_address, size, alignment
-        );
+    // Dead code removed: allocate_address() method (27 lines) - unused generic memory allocation function
 
-        // Ensure proper alignment
-        let original_address = self.code_address;
-        while self.code_address % alignment != 0 {
-            self.code_address += 1;
-        }
-
-        debug!(
-            "Allocate address alignment: original=0x{:04x}, aligned=0x{:04x} (alignment={})",
-            original_address, self.code_address, alignment
-        );
-
-        let allocated_address = self.code_address;
-        self.code_address += size;
-
-        debug!(
-            "Allocate address result: allocated=0x{:04x}, new_current=0x{:04x} (size={})",
-            allocated_address, self.code_address, size
-        );
-
-        allocated_address
-    }
-
-    /// Allocate address for code labels (branch targets)
-    pub fn allocate_label_address(&mut self, ir_id: IrId) -> usize {
-        // FIXED: During generation, use relative address; convert to absolute later
-        let relative_address = self.code_space.len();
-        let address = if self.final_code_base != 0 {
-            // If final_code_base is set, use absolute address
-            self.final_code_base + relative_address
-        } else {
-            // During generation, store relative address - will be converted later
-            relative_address
-        };
-        debug!("Allocate label: IR ID {} -> relative=0x{:04x}, final_code_base=0x{:04x}, address=0x{:04x}", ir_id, relative_address, self.final_code_base, address);
-
-        // Historical note: Previously tracked label 415 specifically for debugging
-        // Label ID conflicts have been resolved through proper IR ID mapping
-
-        self.label_addresses.insert(ir_id, address);
-        self.record_final_address(ir_id, address);
-
-        debug!(
-            "allocate_label_address: IR ID {} -> 0x{:04x}",
-            ir_id, address
-        );
-
-        address
-    }
+    // Dead code removed: allocate_label_address() method (25 lines) - unused label address allocation function
 
     /// DEPRECATED FUNCTION REMOVED (Oct 27, 2025):
     /// use_stack_for_result() caused Variable(0) collisions that crashed Property 28 access!
@@ -7629,24 +7254,7 @@ impl ZMachineCodeGen {
     /// # Usage
     /// Convert critical builtin calls: get_location, random, get_object_contents, etc.
     /// that are frequently called and likely to collide with other Variable(0) operations.
-    pub fn use_global_for_result(&mut self, target_id: IrId, context: &str) {
-        // Safety check: Don't overwrite existing mappings from builtins
-        if self.ir_id_to_stack_var.contains_key(&target_id) {
-            log::debug!(
-                "use_global_for_result: IR ID {} already mapped, keeping existing mapping",
-                target_id
-            );
-            return;
-        }
-
-        // Allocate a unique global variable instead of using contested Variable(0)
-        let global_var = self.allocate_global_variable();
-        self.ir_id_to_stack_var.insert(target_id, global_var);
-        log::debug!(
-            "PHASE_3B_IMPROVEMENT: IR ID {} → global variable {} for {} (avoiding Variable(0) collision)",
-            target_id, global_var, context
-        );
-    }
+    // Dead code removed: use_global_for_result() method (18 lines) - unused Phase 3B global variable allocation function
 
     /// Allocate a unique global variable for results that need persistent storage
     ///
@@ -7763,19 +7371,7 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Resolve IR ID to operand with automatic pull instruction for push-marked values
-    /// Phase C1.1: This combines pull emission and operand resolution
-    pub fn resolve_ir_id_with_pull(
-        &mut self,
-        ir_id: IrId,
-        context: &str,
-    ) -> Result<Operand, CompilerError> {
-        // Emit pull instruction if this IR ID was previously pushed
-        self.emit_pull_for_ir_id(ir_id, context)?;
-
-        // Now resolve to operand (the pulled value will be in Variable(0))
-        self.resolve_ir_id_to_operand(ir_id)
-    }
+    // Dead code removed: resolve_ir_id_with_pull() method (11 lines) - unused IR ID resolution with pull function
 
     /// Get current code address for instruction generation
     pub fn current_address(&self) -> usize {
@@ -8303,34 +7899,7 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Allocate next available local variable (1-15) for function parameters ONLY
-    /// This should ONLY be used for explicit function parameters, not intermediate results
-    fn allocate_local_variable_for_parameter(&mut self) -> u8 {
-        // CRITICAL FIX: Per-function local variable allocation
-        // Each function must track its own local variables independently
-        // Z-Machine local variables: 1-15 (Variable 0 is stack)
-
-        // Increment the current function's local variable count
-        self.current_function_locals += 1;
-
-        if self.current_function_locals > 15 {
-            // Get better debugging info about which function is causing the issue
-            let current_function_name = self
-                .current_function_name
-                .clone()
-                .unwrap_or_else(|| "UNKNOWN".to_string());
-            panic!("COMPILER BUG: Function '{}' has more than 15 parameters/local variables (trying to allocate variable {}). Z-Machine max is 15.", 
- current_function_name, self.current_function_locals);
-        }
-
-        log::debug!(
- "allocate_local_variable_for_parameter: allocated Variable({}) for function parameter (total locals: {})", 
- self.current_function_locals,
- self.current_function_locals
- );
-
-        self.current_function_locals
-    }
+    // Dead code removed: allocate_local_variable_for_parameter() method (26 lines) - unused local variable allocation function
 
     /// Allocate space for strings with proper alignment
 
@@ -8532,45 +8101,7 @@ impl ZMachineCodeGen {
     }
 
     /// Write the Z-Machine file header with custom entry point
-    /// Resolve all address references and patch jumps/branches
-    fn resolve_addresses(&mut self) -> Result<(), CompilerError> {
-        // PHASE 2.3: Deduplicate references to eliminate double-patching
-        let raw_refs = self.reference_context.unresolved_refs.clone();
-        let deduplicated_refs = self.reference_context.deduplicate_references(&raw_refs);
-
-        // PHASE 2.3: Validate jump targets are within bounds
-        self.reference_context
-            .validate_jump_targets(&deduplicated_refs, self.story_data.len())?;
-
-        log::debug!(
-            "resolve_addresses: Processing {} deduplicated references (was {})",
-            deduplicated_refs.len(),
-            raw_refs.len()
-        );
-
-        for (i, reference) in deduplicated_refs.iter().enumerate() {
-            log::debug!(
-                "resolve_addresses: [{}] Resolving {:?} -> IR ID {}",
-                i,
-                reference.reference_type,
-                reference.target_id
-            );
-            self.resolve_unresolved_reference(reference)?;
-        }
-
-        // Clear resolved references
-        self.reference_context.unresolved_refs.clear();
-        log::debug!("resolve_addresses: Address resolution complete");
-
-        // PHASE 2.2: Story data integrity validation
-        self.validate_story_data_integrity()?;
-
-        // CRITICAL VALIDATION: Scan for any remaining 0x0000 placeholders that weren't resolved
-        self.reference_context
-            .validate_no_unresolved_placeholders(&self.story_data, self.code_address)?;
-
-        Ok(())
-    }
+    // Dead code removed: resolve_addresses() method (38 lines) - unused legacy address resolution function
 
     // Dead code removed: validate_no_unresolved_placeholders() method (65 lines) - moved to codegen_references.rs
 
@@ -8644,136 +8175,9 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// PHASE 1.2: Validate property table format for Z-Machine compliance
-    fn validate_property_table_format(&self) -> Result<(), CompilerError> {
-        log::debug!("=== PROPERTY TABLE FORMAT VALIDATION ===");
+    // Dead code removed: validate_property_table_format() method (60 lines) - unused property table validation function
 
-        // Validate property defaults table exists and is properly sized
-        let defaults_start = self.property_table_addr;
-        let expected_defaults_size = 31 * 2; // 31 properties, 2 bytes each for V3
-        log::debug!(
-            "Property defaults table: 0x{:04x}, expected size: {} bytes",
-            defaults_start,
-            expected_defaults_size
-        );
-
-        // Validate property numbering (1-31 for V3)
-        let mut invalid_properties = Vec::new();
-        for (name, &number) in &self.property_numbers {
-            if !(1..=31).contains(&number) {
-                invalid_properties.push((name.clone(), number));
-            }
-        }
-
-        if !invalid_properties.is_empty() {
-            return Err(CompilerError::CodeGenError(format!(
-                "Property numbers out of V3 range (1-31): {:?}",
-                invalid_properties
-            )));
-        }
-
-        log::debug!(
-            "Property numbering validation: {} properties, all in range 1-31 ✓",
-            self.property_numbers.len()
-        );
-
-        // Validate property table structure
-        let total_objects = self.object_numbers.len();
-        let property_section_size = self.code_address.saturating_sub(self.property_table_addr);
-
-        log::debug!("Property table structure:");
-        log::debug!(" Total objects: {}", total_objects);
-        log::debug!(" Property section size: {} bytes", property_section_size);
-        log::debug!(
-            " Average bytes per object: {:.1}",
-            property_section_size as f64 / total_objects.max(1) as f64
-        );
-
-        // Check for reasonable property table size (not too small/large)
-        if property_section_size < 50 {
-            log::warn!(
-                "Property table seems unusually small ({} bytes)",
-                property_section_size
-            );
-        } else if property_section_size > 5000 {
-            log::warn!(
-                "Property table seems unusually large ({} bytes)",
-                property_section_size
-            );
-        }
-
-        log::info!("Property table format validation complete - Z-Machine V3 compliant ✓");
-        Ok(())
-    }
-
-    /// PHASE 1.3: Validate object-property associations
-    fn validate_object_property_associations(&self) -> Result<(), CompilerError> {
-        log::debug!("=== OBJECT-PROPERTY ASSOCIATION VALIDATION ===");
-
-        let mut total_associations = 0;
-        let mut missing_properties = Vec::new();
-
-        for (obj_name, &obj_num) in &self.object_numbers {
-            log::debug!("Validating object '{}' (#{}):", obj_name, obj_num);
-
-            if let Some(properties) = self.object_properties.get(obj_name) {
-                log::debug!(
-                    " Found {} properties for object '{}'",
-                    properties.len(),
-                    obj_name
-                );
-
-                for prop_name in properties {
-                    if let Some(&prop_num) = self.property_numbers.get(prop_name) {
-                        log::debug!(" Property '{}' → #{} ✓", prop_name, prop_num);
-                        total_associations += 1;
-                    } else {
-                        log::debug!(" Property '{}' → MISSING from global registry", prop_name);
-                        missing_properties.push((obj_name.clone(), prop_name.clone()));
-                    }
-                }
-            } else {
-                log::debug!(" No properties registered for object '{}'", obj_name);
-            }
-        }
-
-        if !missing_properties.is_empty() {
-            return Err(CompilerError::CodeGenError(format!(
-                "Objects reference undefined properties: {:?}",
-                missing_properties
-            )));
-        }
-
-        // Cross-validation: Check that all registered properties are used by at least one object
-        let mut unused_properties = Vec::new();
-        for prop_name in self.property_numbers.keys() {
-            let mut is_used = false;
-            for obj_properties in self.object_properties.values() {
-                if obj_properties.contains(prop_name) {
-                    is_used = true;
-                    break;
-                }
-            }
-            if !is_used {
-                unused_properties.push(prop_name.clone());
-            }
-        }
-
-        if !unused_properties.is_empty() {
-            log::warn!(
-                "Unused properties detected (safe, but potentially wasteful): {:?}",
-                unused_properties
-            );
-        }
-
-        log::info!("Object-property association validation complete:");
-        log::info!(" {} objects validated", self.object_numbers.len());
-        log::info!(" {} property associations verified", total_associations);
-        log::info!(" {} unused properties detected", unused_properties.len());
-        log::info!(" All object property references valid ✓");
-
-        Ok(())
-    }
+    // Dead code removed: validate_object_property_associations() method (67 lines) - unused object-property validation function
 
     /// Resolve a single reference by patching the story data
     fn resolve_single_reference(
@@ -8899,13 +8303,7 @@ impl ZMachineCodeGen {
  );
     }
 
-    /// Calculate the size of an instruction by examining its opcode byte and operands
-    fn calculate_instruction_size_from_opcode(
-        &self,
-        instruction_addr: usize,
-    ) -> Result<usize, CompilerError> {
-        self.calculate_instruction_size_from_data(&self.story_data, instruction_addr)
-    }
+    // Dead code removed: calculate_instruction_size_from_opcode() method (6 lines) - unused instruction size calculation function
 
     fn calculate_instruction_size_from_data(
         &self,
