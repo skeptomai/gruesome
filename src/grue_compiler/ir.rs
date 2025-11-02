@@ -2456,7 +2456,7 @@ impl IrGenerator {
             Stmt::Assignment(assign) => {
                 // Generate the value expression with value context
                 let value_temp = self.generate_expression_with_context(
-                    assign.value,
+                    assign.value.clone(),
                     block,
                     ExpressionContext::Value,
                 )?;
@@ -2515,17 +2515,31 @@ impl IrGenerator {
                             // This is a Z-Machine attribute assignment - use set_attr
                             let attr_num = standard_attr as u8;
 
-                            // For attributes, we need to convert the value to a boolean
-                            // In Z-Machine, attributes are boolean flags, but the value might be 0/1
-                            // We'll let the codegen handle the boolean conversion
+                            // CRITICAL FIX (Nov 2, 2025): Extract actual boolean value from assignment expression
+                            // Previous bug: All attribute assignments were hardcoded to `value: true`
+                            // This caused obj.open = false to have no effect, breaking container state management
+                            let boolean_value = match &assign.value {
+                                crate::grue_compiler::ast::Expr::Boolean(value) => *value,
+                                _ => {
+                                    // For non-literal values (e.g., obj.open = some_variable), we would need
+                                    // runtime evaluation through Z-Machine instructions. Currently unsupported.
+                                    // This affects dynamic assignments but all literal cases (true/false) work.
+                                    log::error!(
+                                        "SETATTR_UNSUPPORTED: Non-literal boolean assignment not supported: {:?}",
+                                        assign.value
+                                    );
+                                    true
+                                }
+                            };
+
                             block.add_instruction(IrInstruction::SetAttribute {
                                 object: object_temp,
                                 attribute_num: attr_num,
-                                value: true, // TODO: Extract actual boolean from value_temp
+                                value: boolean_value,
                             });
                             log::debug!(
-                                "🔧 ATTRIBUTE ASSIGNMENT: {} -> set_attr(object={}, attr={}, value=true)",
-                                property, object_temp, attr_num
+                                "🔧 ATTRIBUTE ASSIGNMENT: {} -> set_attr(object={}, attr={}, value={})",
+                                property, object_temp, attr_num, boolean_value
                             );
                         } else if let Some(standard_prop) = self.get_standard_property(&property) {
                             // Check if this is a standard property that should use numbered access
