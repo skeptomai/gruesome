@@ -9964,6 +9964,7 @@ impl ZMachineCodeGen {
 
         match function_name.as_str() {
             "print" => self.generate_print_builtin(args),
+            "println" => self.generate_println_builtin(args),
             "print_ret" => self.generate_print_ret_builtin(args),
             "new_line" => self.generate_new_line_builtin(args),
             "quit" => self.generate_quit_builtin(args),

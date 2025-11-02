@@ -12,7 +12,7 @@ use crate::grue_compiler::opcodes::*;
 
 impl ZMachineCodeGen {
     /// Generate print builtin function
-    pub fn generate_print_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+    pub fn generate_println_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
         use crate::grue_compiler::codegen::StringPart;
 
         if args.len() != 1 {
@@ -26,7 +26,7 @@ impl ZMachineCodeGen {
 
         // Look up the string value from the IR ID
         log::debug!(
-            "generate_print_builtin: Looking up string for IR ID {}",
+            "generate_println_builtin: Looking up string for IR ID {}",
             arg_id
         );
         log::debug!(
@@ -250,6 +250,240 @@ impl ZMachineCodeGen {
         // Do NOT add return instruction here - this is inline code generation
         // The return instruction was causing premature termination of init blocks
         // Each builtin call should continue to the next instruction
+
+        Ok(())
+    }
+
+    /// Generate print builtin function (Z-Machine spec compliant - no automatic newlines)
+    ///
+    /// ARCHITECTURE: This function implements Z-Machine specification-compliant print() behavior.
+    /// Unlike println(), this function does NOT emit automatic new_line instructions.
+    /// This allows for precise control over line formatting, enabling constructs like:
+    ///   print("Your score is "); print_num(score); new_line();
+    /// which displays as "Your score is 42" on a single line, then advances to next line.
+    ///
+    /// KEY DIFFERENCE FROM println_builtin: No NEWLINE opcode emission at any point.
+    pub fn generate_print_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+        use crate::grue_compiler::codegen::StringPart;
+
+        if args.len() != 1 {
+            return Err(CompilerError::CodeGenError(format!(
+                "print expects 1 argument, got {}",
+                args.len()
+            )));
+        }
+
+        let arg_id = args[0];
+
+        // Look up the string value from the IR ID
+        log::debug!(
+            "generate_print_builtin: Looking up string for IR ID {}",
+            arg_id
+        );
+        log::debug!(
+            "  Available string IDs = {:?}",
+            self.ir_id_to_string.keys().collect::<Vec<_>>()
+        );
+        log::debug!(
+            "  Available integer IDs = {:?}",
+            self.ir_id_to_integer.keys().collect::<Vec<_>>()
+        );
+
+        // Check if this is a runtime string concatenation (e.g., "There is " + obj.name + " here.")
+        if let Some(parts) = self.runtime_concat_parts.get(&arg_id).cloned() {
+            log::debug!(
+                "🔤 Runtime concatenation print: IR ID {} has {} parts",
+                arg_id,
+                parts.len()
+            );
+
+            // Emit print instructions for each part
+            for part in parts {
+                match part {
+                    StringPart::Literal(string_id) => {
+                        // Print literal string using print_paddr
+                        log::debug!("  Emitting print_paddr for literal string ID {}", string_id);
+
+                        let operand_location = self.final_code_base + self.code_space.len() + 1;
+                        self.emit_instruction_typed(
+                            PRINTPADDR,
+                            &[Operand::LargeConstant(placeholder_word())],
+                            None,
+                            None,
+                        )?;
+
+                        // Add unresolved reference for the string address
+                        let reference = UnresolvedReference {
+                            reference_type: LegacyReferenceType::StringRef,
+                            location: operand_location,
+                            target_id: string_id as IrId,
+                            is_packed_address: true,
+                            offset_size: 2,
+                            location_space: MemorySpace::Code,
+                        };
+                        self.reference_context.unresolved_refs.push(reference);
+                    }
+                    StringPart::RuntimeValue(ir_id) => {
+                        // Print runtime value - check if it's from property (string) or numeric
+                        log::debug!("  Emitting print for runtime value IR ID {}", ir_id);
+
+                        let operand = self.resolve_ir_id_to_operand(ir_id)?;
+
+                        // Check if this value comes from a property access
+                        if self.ir_id_from_property.contains(&ir_id) {
+                            log::debug!(
+                                "IR ID {} is from GetProperty - generating print_paddr for string property",
+                                ir_id
+                            );
+
+                            self.emit_instruction_typed(
+                                Opcode::Op1(Op1::PrintPaddr),
+                                &[operand],
+                                None,
+                                None,
+                            )?;
+                        } else {
+                            // Non-property value - use print_num
+                            self.emit_instruction_typed(
+                                Opcode::OpVar(OpVar::PrintNum),
+                                &[operand],
+                                None,
+                                None,
+                            )?;
+                        }
+                    }
+                }
+            }
+
+            // NOTE: NO new_line emission here - this is the key difference from println
+            return Ok(());
+        }
+
+        // Check if this is a string literal
+        if let Some(string_value) = self.ir_id_to_string.get(&arg_id).cloned() {
+            let print_string = string_value;
+
+            // Add the string to the string table so it can be resolved
+            let string_id = self.find_or_create_string_id(&print_string)?;
+
+            // Encode the string for Z-Machine format
+            let encoded = self.encode_string(&print_string)?;
+            self.encoded_strings.insert(string_id, encoded);
+
+            // Generate print_paddr instruction with unresolved string reference
+            let operand_location = self.final_code_base + self.code_space.len() + 1; // +1 for opcode byte
+            let _layout = self.emit_instruction_typed(
+                PRINTPADDR,
+                &[Operand::LargeConstant(placeholder_word())], // Placeholder string address
+                None,                                          // No store
+                None,                                          // No branch
+            )?;
+
+            // Add unresolved reference for the string address using pre-calculated location
+            let operand_address = operand_location;
+            let reference = UnresolvedReference {
+                reference_type: LegacyReferenceType::StringRef,
+                location: operand_address,
+                target_id: string_id,
+                is_packed_address: true,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            };
+            self.reference_context.unresolved_refs.push(reference);
+
+            // NOTE: NO new_line emission here - this is the key difference from println
+        } else {
+            // This is not a string literal - it's a dynamic expression that needs runtime evaluation
+            log::debug!(
+                "IR ID {} is not a string literal - generating runtime evaluation for print",
+                arg_id
+            );
+
+            // Try to resolve it as a simple operand (variable, constant, etc.)
+            match self.resolve_ir_id_to_operand(arg_id) {
+                Ok(operand) => {
+                    // Check if this value comes from a property access
+                    // Property values for strings are addresses that need PRINT_PADDR
+                    if self.ir_id_from_property.contains(&arg_id) {
+                        log::debug!(
+                            "IR ID {} is from GetProperty - generating print_paddr for string property",
+                            arg_id
+                        );
+
+                        self.emit_instruction_typed(
+                            Opcode::Op1(Op1::PrintPaddr),
+                            &[operand], // The property address (from get_prop)
+                            None,
+                            None,
+                        )?;
+                    } else {
+                        // For non-property values, try to print as number
+                        log::debug!(
+                            "IR ID {} is not from property - trying print_num for numeric value",
+                            arg_id
+                        );
+
+                        self.emit_instruction_typed(
+                            Opcode::OpVar(OpVar::PrintNum),
+                            &[operand],
+                            None,
+                            None,
+                        )?;
+                    }
+                }
+                Err(_) => {
+                    log::debug!(
+                        "IR ID {} is a complex expression - full evaluation not yet implemented",
+                        arg_id
+                    );
+
+                    let placeholder_string = format!("?Complex expression IR ID {}?", arg_id);
+                    let string_id = self.find_or_create_string_id(&placeholder_string)?;
+                    log::debug!(
+                        "🔧 COMPLEX_EXPRESSION_PATH: IR ID {} -> placeholder string '{}'",
+                        arg_id,
+                        placeholder_string
+                    );
+
+                    let layout = self.emit_instruction_typed(
+                        PRINTPADDR,
+                        &[Operand::LargeConstant(placeholder_word())], // Placeholder address
+                        None,                                          // No store
+                        None,                                          // No branch
+                    )?;
+
+                    // Add unresolved reference for the string address
+                    let operand_address = layout
+                        .operand_location
+                        .expect("print instruction must have operand");
+                    let reference = UnresolvedReference {
+                        reference_type: LegacyReferenceType::StringRef,
+                        location: operand_address,
+                        target_id: string_id,
+                        is_packed_address: true,
+                        offset_size: 2,
+                        location_space: MemorySpace::Code,
+                    };
+                    self.reference_context.unresolved_refs.push(reference);
+
+                    let operand_address = layout
+                        .operand_location
+                        .expect("print_paddr instruction must have operand");
+                    let reference = UnresolvedReference {
+                        reference_type: LegacyReferenceType::StringRef,
+                        location: operand_address,
+                        target_id: string_id,
+                        is_packed_address: true,
+                        offset_size: 2,
+                        location_space: MemorySpace::Code,
+                    };
+                    self.reference_context.unresolved_refs.push(reference);
+                }
+            }
+        }
+
+        // Do NOT add return instruction here - this is inline code generation
+        // Do NOT add new_line instruction here - Z-Machine spec compliance
 
         Ok(())
     }

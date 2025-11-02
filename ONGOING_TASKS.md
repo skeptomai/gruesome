@@ -83,37 +83,40 @@
 - Implemented as real Z-Machine function (not inline) following architectural requirements
 - Follows standard builtin function call mechanism using `call_vs` instructions
 
-### **Print Newline Architecture Issue** 🚧 **IDENTIFIED** (November 2, 2025)
+### **Print Newline Architecture Issue** ✅ **FIXED** (November 2, 2025)
 
-**ISSUE**: `print_num` incorrectly adds automatic newline, breaking single-line output formatting
-- **Current Behavior**: `print("Your score is "); print_num(player.score);` displays:
-  ```
-  Your score is
-  0
-  ```
-- **Expected Behavior**: Should display `Your score is 0` on same line
-- **Root Cause**: Current `print_num` implementation adds automatic newline/return, violating Z-Machine specification
+**ISSUE RESOLVED**: Z-Machine specification violation in print functions resolved with dual-function approach
+- **Root Cause**: All print functions automatically added newlines, violating Z-Machine spec
+- **Z-Machine Spec**: Print opcodes should NOT add automatic newlines - only explicit `new_line` should
+- **Solution**: Implemented dual print/println architecture for precise control
 
-**Z-Machine Specification Analysis**:
-- **`print` (0OP:178)**: "Print the quoted (literal) Z-encoded string." - **No automatic newline**
-- **`print_num` (VAR:230/6)**: "Print (signed) number in decimal." - **No automatic newline**
-- **`new_line` (0OP:187)**: "Print carriage return." - **Explicit newline only**
+**IMPLEMENTATION**:
+✅ **`print()` Function**: Z-Machine spec compliant - no automatic newlines
+- Outputs text exactly as specified, allowing concatenation
+- Enables constructs like: `print("Your score is "); print_num(score); new_line();`
 
-**Technical Details**:
-- Z-Machine spec clearly states print opcodes do NOT automatically add newlines
-- Current implementation incorrectly adds `rtrue` return with automatic newline
-- Should only emit `print_num` opcode and return, allowing concatenation
+✅ **`println()` Function**: Convenience function - automatic newlines
+- Renamed existing `print()` implementation to maintain backward compatibility
+- All game content converted to use `println()` except score function
 
-**Impact**: Affects any code that wants to print numbers inline with text (scores, statistics, etc.)
+✅ **Score Display Fixed**: Now correctly displays "Your score is 0" on single line
+- Uses: `print("Your score is "); print_num(player.score); new_line();`
+- Result: Proper inline formatting with explicit line control
 
-**Solution Options**:
-1. **Fix Current Implementation**: Remove automatic newline from `print_num` to match Z-Machine spec
-2. **Create Variants**: Add `print_num_inline()` for no-newline and keep current for newline cases
-3. **Explicit Newlines**: Require explicit `new_line()` calls throughout codebase
+**FILES MODIFIED**:
+- `src/grue_compiler/semantic.rs` - Registered both `print` and `println` builtins
+- `src/grue_compiler/ir.rs` - Added `println` to builtin function detection
+- `src/grue_compiler/codegen.rs` - Updated dispatch to handle both functions
+- `src/grue_compiler/codegen_builtins.rs` - Created separate implementations:
+  - `generate_print_builtin()` - No newlines (Z-Machine spec compliant)
+  - `generate_println_builtin()` - With newlines (backward compatible)
+- `examples/mini_zork.grue` - Updated all `print()` calls to `println()` except score function
 
-**Files to Investigate**:
-- `src/grue_compiler/codegen.rs:11237-11250` - Current `print_num` function generation
-- Z-Machine specification compliance for all print-related builtins
+**ARCHITECTURE BENEFITS**:
+- ✅ **Z-Machine Specification Compliance**: `print()` follows spec exactly
+- ✅ **Backward Compatibility**: All existing content works with `println()`
+- ✅ **Precise Control**: Developers can choose exact formatting behavior
+- ✅ **Explicit Newlines**: `new_line()` provides clear line break control
 
 ### **Verb Dispatch Infinite Loop** ✅ **FIXED**
 - **Issue**: "open mailbox" caused infinite loop due to incorrect increment instruction compilation

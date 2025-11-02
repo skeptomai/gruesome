@@ -30,7 +30,7 @@ world {
         
         on_enter: {
             if !west_of_house.visited {
-                print("Welcome to Zork!");
+                println("Welcome to Zork!");
             }
         }
     }
@@ -68,7 +68,7 @@ world {
         
         on_look: {
             if window.open {
-                print("Through the open window you can see into what appears to be a kitchen.");
+                println("Through the open window you can see into what appears to be a kitchen.");
             }
         }
     }
@@ -225,13 +225,14 @@ grammar {
 }
 
 fn handle_score(){
-    print("Your score is ");
-    print_num(player.score);
+    print("Your score is ");  // Print without newline (Z-Machine spec compliant)
+    print_num(player.score);   // Print number without newline
+    new_line();               // Explicit newline for proper formatting
 }
 
 fn look_around() {
     clear_quit_state();
-    print(player.location.desc);
+    println(player.location.desc);
     list_objects(player.location);
 
     // Call location-specific look handler if it exists
@@ -244,42 +245,42 @@ fn examine(obj) {
     clear_quit_state();
 
     if !player_can_see(obj) {
-        print("You can't see any such thing.");
+        println("You can't see any such thing.");
         return;
     }
 
     // Special handling for dynamic descriptions
     if obj == mailbox {
-        print("The small mailbox is ");
+        println("The small mailbox is ");
         if mailbox.open {
-            print("open");
+            println("open");
         } else {
-            print("closed");
+            println("closed");
         }
-        print(".");
+        println(".");
         return;
     }
 
-    print(obj.desc);
+    println(obj.desc);
 }
 
 fn handle_open(obj) {
     if !player_can_see(obj) {
-        print("You can't see any such thing.");
+        println("You can't see any such thing.");
         return;
     }
 
     if !obj.openable {
-        print("You can't open that.");
+        println("You can't open that.");
         return;
     }
 
     if obj.open {
-        print("It's already open.");
+        println("It's already open.");
     } else {
         obj.open = true;
         if obj.container && !obj.empty() {
-            print("The " + obj.name + " contains:");
+            println("The " + obj.name + " contains:");
             list_contents(obj);
         }
     }
@@ -287,63 +288,63 @@ fn handle_open(obj) {
 
 fn handle_close(obj) {
     if !player_can_see(obj) {
-        print("You can't see any such thing.");
+        println("You can't see any such thing.");
         return;
     }
     
     if !obj.openable {
-        print("You can't close that.");
+        println("You can't close that.");
         return;
     }
     
     if !obj.open {
-        print("It's already closed.");
+        println("It's already closed.");
     } else {
         obj.open = false;
-        print("Closed.");
+        println("Closed.");
     }
 }
 
 fn handle_take(obj) {
     clear_quit_state();
     if obj.location == player {
-        print("You already have that.");
+        println("You already have that.");
         return;
     }
 
     if !player_can_see(obj) {
-        print("You can't see any such thing.");
+        println("You can't see any such thing.");
         return;
     }
     
     // Check if object is inside a closed container
     if obj.location.container && !obj.location.open {
-        print("The " + obj.location.name + " is closed.");
+        println("The " + obj.location.name + " is closed.");
         return;
     }
     
     move(obj, player);
-    print("Taken.");
+    println("Taken.");
 }
 
 fn handle_drop(obj) {
     if obj.location != player {
-        print("You don't have that.");
+        println("You don't have that.");
         return;
     }
     
     move(obj, player.location);
-    print("Dropped.");
+    println("Dropped.");
 }
 
 fn show_inventory() {
     let items = player.contents();
     if items.empty() {
-        print("You are empty-handed.");
+        println("You are empty-handed.");
     } else {
-        print("You are carrying:");
+        println("You are carrying:");
         for item in items {
-            print("  " + item.name);
+            println("  " + item.name);
         }
     }
 }
@@ -353,12 +354,12 @@ fn handle_go(direction) {
     let exit = player.location.get_exit(direction);
 
     if exit.none() {
-        print("You can't go that way.");
+        println("You can't go that way.");
         return;
     }
 
     if exit.blocked {
-        print(exit.message);
+        println(exit.message);
         return;
     }
 
@@ -384,25 +385,25 @@ fn handle_climb(obj) {
     if obj == tree && player.location == forest_path {
         handle_go("up");
     } else {
-        print("You can't climb that.");
+        println("You can't climb that.");
     }
 }
 
 fn handle_read(obj) {
     if !player_can_see(obj) {
-        print("You can't see any such thing.");
+        println("You can't see any such thing.");
         return;
     }
 
     if obj == leaflet {
-        print(leaflet.desc);
+        println(leaflet.desc);
     } else {
-        print("There's nothing to read on that.");
+        println("There's nothing to read on that.");
     }
 }
 
 fn handle_quit() {
-    print("Are you sure you want to quit? (y/n)");
+    println("Are you sure you want to quit? (y/n)");
     player.quit_pending = true;
 }
 
@@ -411,16 +412,16 @@ fn handle_yes() {
         player.quit_pending = false;
         quit();
     } else {
-        print("Yes to what?");
+        println("Yes to what?");
     }
 }
 
 fn handle_no() {
     if player.quit_pending {
         player.quit_pending = false;
-        print("OK, continuing game.");
+        println("OK, continuing game.");
     } else {
-        print("No to what?");
+        println("No to what?");
     }
 }
 
@@ -460,7 +461,7 @@ fn list_objects(location) {
 
     for obj in objects {
         if obj != player {
-            print("There is " + obj.name + " here.");
+            println("There is " + obj.name + " here.");
         }
     }
 }
@@ -468,7 +469,7 @@ fn list_objects(location) {
 fn list_contents(container) {
     let contents = container.contents();
     for item in contents {
-        print("  " + item.name);
+        println("  " + item.name);
     }
 }
 
@@ -479,13 +480,13 @@ fn take_all() {
     for obj in objects {
         if obj != player && obj.takeable != false {
             move(obj, player);
-            print(obj.name + ": Taken.");
+            println(obj.name + ": Taken.");
             taken = taken + 1;
         }
     }
     
     if taken == 0 {
-        print("There's nothing here to take.");
+        println("There's nothing here to take.");
     }
 }
 
@@ -495,12 +496,12 @@ init {
     west_of_house.visited = true;
     
     // Print game banner
-    print("DORK I: The Last Great Empire");
-    print("Copyright (c) 2025 Grue Games. All rights reserved.");
-    print("ZORK is a registered trademark of Infocom, Inc.");
-    print("DORK is .... not");
-    print("Revision 1 / Serial number 8675309");
-    print("");
+    println("DORK I: The Last Great Empire");
+    println("Copyright (c) 2025 Grue Games. All rights reserved.");
+    println("ZORK is a registered trademark of Infocom, Inc.");
+    println("DORK is .... not");
+    println("Revision 1 / Serial number 8675309");
+    println("");
     
     // Show initial location
     look_around();

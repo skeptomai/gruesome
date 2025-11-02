@@ -1125,6 +1125,7 @@ impl IrGenerator {
                 name,
                 "print"
                     | "print_num"
+                    | "println"
                     | "print_ret"
                     | "new_line"
                     | "move"
@@ -1175,6 +1176,7 @@ impl IrGenerator {
                 name,
                 "print"
                     | "print_num"
+                    | "println"
                     | "print_ret"
                     | "new_line"
                     | "move"
