@@ -132,6 +132,10 @@ world {
 }
 
 grammar {
+    verb "score" {
+        default => handle_score()
+    }
+
     verb "look" {
         default => look_around(),
         "at" + noun => examine($2)
@@ -218,6 +222,11 @@ grammar {
     verb "n" {
         default => handle_no()
     }
+}
+
+fn handle_score(){
+    print("Your score is ");
+    print_num(player.score);
 }
 
 fn look_around() {

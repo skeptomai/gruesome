@@ -1124,6 +1124,7 @@ impl IrGenerator {
             matches!(
                 name,
                 "print"
+                    | "print_num"
                     | "print_ret"
                     | "new_line"
                     | "move"
@@ -1173,6 +1174,7 @@ impl IrGenerator {
             matches!(
                 name,
                 "print"
+                    | "print_num"
                     | "print_ret"
                     | "new_line"
                     | "move"

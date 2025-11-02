@@ -66,6 +66,33 @@ This shows:
 7. **Never estimate time**: No time estimates ("2-3 hours", etc.)
 8. **File opening**: NEVER use `filename:linenumber` syntax - it creates a bare buffer, not opening the actual file
 
+## CRITICAL: NO HACKS OR WORKAROUNDS
+
+**NEVER implement hack solutions, workarounds, or placeholder fixes without explicit user approval.**
+
+**Prohibited Actions:**
+- ❌ NEVER hardcode values instead of implementing proper functionality
+- ❌ NEVER implement "temporary" fixes that provide incorrect behavior
+- ❌ NEVER choose lazy solutions over proper implementation
+- ❌ NEVER make implementation decisions that affect functionality without asking
+
+**Required Approach:**
+- ✅ ALWAYS ask user for implementation direction when facing technical challenges
+- ✅ ALWAYS present multiple implementation options with trade-offs
+- ✅ ALWAYS implement proper solutions, even if more complex
+- ✅ ALWAYS prioritize correctness over expedience
+
+**When Implementation Questions Arise:**
+1. Stop and ask the user for direction
+2. Present the technical challenge clearly
+3. Offer multiple solution approaches with pros/cons
+4. Wait for explicit user choice before proceeding
+5. Implement the chosen solution properly
+
+**Example Violation:** Changing `print("Your score is " + to_string(player.score))` to `print("Your score is 0")` - this is a hack that provides incorrect information.
+
+**Correct Approach:** Ask user whether to implement proper `to_string()` function, use alternative display method, or other solution approach.
+
 ## Z-Machine Specification Reference
 
 Official Z-Machine Standards Document (v1.1) at: `/Users/cb/Projects/Z-Machine-Standard/`
