@@ -518,6 +518,18 @@ impl Interpreter {
             let old_pc = self.vm.pc;
             let new_pc = old_pc + instruction.size as u32;
 
+            // CRITICAL DEBUG: Track PC advancement for examine leaflet bug
+            if old_pc == 0x13c6 {
+                log::error!(
+                    "🔧 PC_ADVANCE_BUG: PC=0x{:04x} instruction.size={} -> new_PC=0x{:04x}",
+                    old_pc,
+                    instruction.size,
+                    new_pc
+                );
+                log::error!("🔧 INSTRUCTION: {:?}", instruction);
+                log::error!("🔧 BRANCH: {:?}", instruction.branch);
+            }
+
             // Debug: Track PC advancement that might cause out-of-bounds
             if new_pc > self.vm.game.memory.len() as u32
                 || new_pc == 0x1717

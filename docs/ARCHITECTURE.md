@@ -2997,5 +2997,344 @@ RUST_LOG=error timeout 3 ./target/debug/gruesome tests/mini_zork.z3 < /tmp/nav_t
 - Z-Machine Branch Encoding Patterns (this document)
 - V3 Property Size Encoding - Two-Byte Format (this document)
 
+## Object Containment Dual Insertion Architecture Problem (November 1, 2025)
+
+### Overview: The Fundamental Architectural Inconsistency
+
+The Grue compiler implements object containment relationships through **two parallel systems** that both attempt to place objects into containers:
+
+1. **Compile-Time Object Placement**: Direct object table manipulation during bytecode generation
+2. **Runtime Object Placement**: InsertObj instructions executed during game initialization
+
+This dual approach creates a **double insertion bug** where objects are inserted into containers twice, causing self-referencing sibling pointers and infinite loops during object iteration.
+
+### The Double Insertion Sequence
+
+**Example with mailbox/leaflet containment**:
+
+```
+1. COMPILE-TIME (src/grue_compiler/codegen.rs:4049-4082):
+   - preprocess_insertobj_instructions() scans init block
+   - Finds InsertObj(leaflet → mailbox) instruction
+   - Sets mailbox.child = leaflet, leaflet.parent = mailbox directly in object table
+   - Result: Object table has correct parent/child/sibling pointers
+
+2. RUNTIME (src/grue_compiler/ir.rs:1410-1411):
+   - Game starts, calls init function
+   - Executes SAME InsertObj(leaflet → mailbox) instruction via Z-Machine insert_obj
+   - insert_obj(11, 10): old_child = get_child(10) = 11 (leaflet already first child)
+   - set_sibling(11, 11): Creates self-reference - leaflet.sibling = leaflet
+   - Result: CORRUPTED object tree with circular sibling pointers
+
+3. INFINITE LOOP MANIFESTATION:
+   - "open mailbox" → list_contents(mailbox) → for item in contents
+   - GetObjectSibling(11) returns 11 → GetObjectSibling(11) returns 11 → infinite loop
+   - Output: "leaflet leaflet leaflet..." thousands of times
+```
+
+### Architectural Root Cause Analysis
+
+#### The Information vs Execution Dual Purpose
+
+The InsertObj instructions serve **conflicting roles**:
+
+- **Information Source**: Compiler needs object relationship data for object table generation
+- **Executable Instructions**: Runtime needs placement commands for dynamic object movement
+
+This architectural confusion stems from **layered historical fixes**:
+
+1. **Originally**: Only runtime InsertObj instructions (Phase 1c)
+2. **Problem Discovered**: Some objects needed compile-time placement for proper Z-Machine structure
+3. **"Fix" Applied**: Added compile-time object table manipulation (Phase 2, Oct 12, 2025)
+4. **Result**: Both systems now run, causing double insertion!
+
+#### The Circular Dependency Resolution Pattern
+
+**Current System Flow**:
+```
+Phase 1c: IR Generation
+├─ generate_object_placement_instructions()
+├─ Creates InsertObj instructions for room.contains{} declarations
+└─ Stores in init_block for runtime execution
+
+Object Numbering Phase
+├─ Assigns object numbers to IR identifiers
+└─ Creates ir_id_to_object_number mapping
+
+Phase 2: Preprocessing (COMPILE-TIME)
+├─ preprocess_insertobj_instructions()
+├─ Scans the SAME InsertObj instructions from Phase 1c
+├─ Builds initial_locations_by_number mapping
+└─ Sets object table pointers directly
+
+Phase 3: Object Table Generation (COMPILE-TIME)
+├─ Uses initial_locations_by_number from Phase 2
+├─ Writes parent/child/sibling pointers into Z-Machine object table
+└─ Creates correctly structured object relationships
+
+Phase 4: Runtime Execution
+├─ Game starts at header.initial_pc, calls init function
+├─ Executes the SAME InsertObj instructions from Phase 1c
+├─ insert_obj tries to place already-placed objects
+└─ DOUBLE INSERTION BUG: self-referencing sibling pointers
+```
+
+### Why Both Systems Currently Exist
+
+#### Compile-Time Requirements (Cannot be eliminated)
+
+- **Object Table Structure**: Z-Machine requires well-formed parent/child/sibling relationships at compile time
+- **Property Table Generation**: Object properties may reference their containment relationships
+- **Dictionary Integration**: Object names in dictionary may be location-contextual
+- **Bytecode Validation**: Some instructions assume certain object relationships exist
+
+#### Runtime Requirements (Cannot be eliminated)
+
+- **Game Logic Sourcing**: Object relationships declared in `contains {}` blocks
+- **Initial State Setup**: Where objects start when game begins
+- **Dynamic Flexibility**: Some object movement might depend on complex startup logic
+
+#### The Critical Insight: Architecture Serves Dual Needs
+
+**Both phases need the relationship INFORMATION, but for different purposes:**
+
+- **Compile-time**: Structure the Z-Machine object table correctly
+- **Runtime**: Actually place objects based on game logic declarations
+
+**The InsertObj instructions are the ONLY source of this information**, which is why eliminating either system entirely is not feasible.
+
+### Analysis of Potential Solutions
+
+#### Solution 1: Instruction State Tracking (Marking as Processed)
+
+```rust
+// Mark instructions as processed during preprocessing
+enum InstructionState {
+    Pending,           // Not yet processed
+    ProcessedCompile,  // Used for compile-time object table setup
+    ProcessedRuntime,  // Executed at runtime
+}
+
+struct IrInstruction {
+    // ... existing fields
+    state: InstructionState,
+}
+
+// During preprocessing
+for instruction in init_block.instructions {
+    if let IrInstruction::InsertObj { .. } = instruction {
+        // Extract information for object table
+        instruction.state = InstructionState::ProcessedCompile;
+    }
+}
+
+// During runtime codegen
+for instruction in init_block.instructions {
+    match instruction {
+        IrInstruction::InsertObj { state: ProcessedCompile, .. } => {
+            // Skip - already handled at compile time
+            continue;
+        }
+        IrInstruction::InsertObj { state: Pending, .. } => {
+            // Generate runtime insert_obj instruction
+            self.generate_insert_obj_call(instruction);
+            instruction.state = ProcessedRuntime;
+        }
+    }
+}
+```
+
+**Benefits**:
+- Maintains existing IR structure
+- Clear state tracking prevents double processing
+- Allows mixed compile-time/runtime placement strategies
+
+**Concerns**:
+- Modifies IR instruction semantics (adds state)
+- Requires careful state management throughout pipeline
+- May complicate IR optimization passes
+
+#### Solution 2: Separate Declaration vs Execution Instructions
+
+```rust
+// New instruction types with distinct purposes
+enum IrInstruction {
+    // INFORMATION ONLY - for compile-time object table generation
+    DeclareContainment {
+        object: IrId,
+        container: IrId,
+        initial: bool,  // true = compile-time setup, false = runtime command
+    },
+
+    // EXECUTION ONLY - for runtime object movement
+    MoveObject {
+        object: IrId,
+        destination: IrId,
+    },
+
+    // Keep existing InsertObj for backward compatibility -> MoveObject
+    InsertObj { object: IrId, destination: IrId },
+}
+
+// Language syntax distinction
+// room bedroom {
+//     initially_contains {  // → DeclareContainment(initial: true)
+//         object bed { ... }
+//     }
+// }
+//
+// fn some_function() {
+//     move(object, destination);  // → MoveObject
+// }
+```
+
+**Benefits**:
+- Clear semantic distinction between information and execution
+- Enables compile-time validation of object placement
+- Supports both static and dynamic object relationships
+
+**Concerns**:
+- Requires language syntax changes
+- More complex IR instruction set
+- Migration path for existing code
+
+#### Solution 3: Runtime Object Placement Detection
+
+```rust
+// Enhanced insert_object with placement detection
+impl VM {
+    pub fn insert_object(&mut self, obj_num: u16, dest_num: u16) -> Result<(), String> {
+        let old_child = self.get_child(dest_num)?;
+
+        // CURRENT FIX: Prevent double insertion bug
+        if old_child == obj_num {
+            log::debug!("Object {} already first child of {} - skipping insertion",
+                       obj_num, dest_num);
+            return Ok(());
+        }
+
+        // ENHANCED: Check if object is anywhere in the child chain
+        let mut current_child = old_child;
+        while current_child != 0 {
+            if current_child == obj_num {
+                log::debug!("Object {} already child of {} - skipping insertion",
+                           obj_num, dest_num);
+                return Ok(());
+            }
+            current_child = self.get_sibling(current_child)?;
+        }
+
+        // Standard Z-Machine insertion algorithm
+        self.set_child(dest_num, obj_num)?;
+        self.set_parent(obj_num, dest_num)?;
+        self.set_sibling(obj_num, old_child)?;
+        Ok(())
+    }
+}
+```
+
+**Benefits**:
+- Fixes immediate double insertion problem
+- Maintains existing architecture
+- Minimal code changes required
+
+**Concerns**:
+- Band-aid solution that doesn't address root cause
+- Potential performance impact (sibling chain traversal)
+- May mask other architectural issues
+
+### Current Resolution Status
+
+**IMMEDIATE FIX APPLIED** (vm.rs:1216-1225):
+```rust
+// CRITICAL FIX: Prevent double insertion bug that causes infinite loops
+// If the object is already the first child of the destination, don't insert it again
+// This happens when objects are inserted both at compile time and runtime
+if old_child == obj_num {
+    return Ok(());
+}
+```
+
+**Impact**:
+- ✅ Resolves infinite loop in "open mailbox" → "leaflet" repetition
+- ✅ Maintains object tree integrity
+- ✅ Preserves existing compile-time and runtime architecture
+- ⚠️ Does not address fundamental architectural inconsistency
+
+### Architectural Debt and Future Considerations
+
+#### Technical Debt Assessment
+
+**Current State**: **STABLE BUT ARCHITECTURALLY INCONSISTENT**
+- Functional workaround prevents user-visible bugs
+- Dual insertion architecture remains intact
+- Root cause (conflicting information vs execution roles) unresolved
+
+**Risk Level**: **MEDIUM**
+- Low immediate risk: workaround is robust
+- Medium long-term risk: architecture complexity may cause future bugs
+- High maintenance burden: developers must understand dual system
+
+#### Recommended Resolution Strategy
+
+**Phase 1: Analysis and Documentation** ✅ **COMPLETE**
+- Document current dual architecture
+- Identify all insertion points and dependencies
+- Understand why both systems are necessary
+
+**Phase 2: Incremental Improvement** 🔲 **FUTURE**
+- Implement Solution 1 (Instruction State Tracking)
+- Maintain backward compatibility
+- Add comprehensive testing for mixed scenarios
+
+**Phase 3: Long-term Architecture Redesign** 🔮 **FUTURE**
+- Consider Solution 2 (Separate Declaration vs Execution)
+- Evaluate language syntax changes
+- Design migration path for existing code
+
+### Critical Questions for Future Resolution
+
+1. **Instruction Processing**: Should InsertObj instructions be marked as "processed" during preprocessing to prevent runtime re-execution?
+
+2. **Information vs Execution Separation**: Should we separate "initial placement declarations" from "runtime movement instructions" at the language syntax level?
+
+3. **Compile-time vs Runtime Distinction**: Is there a cleaner way to express the difference between object setup and object manipulation in the Grue language?
+
+4. **Architecture Evolution**: Can we design a migration path that gradually moves toward a cleaner single-responsibility system while maintaining compatibility?
+
+### Files and Components Involved
+
+**Key Files**:
+- `src/grue_compiler/ir.rs:1410-1411` - Runtime placement instruction generation
+- `src/grue_compiler/codegen.rs:7479-7530` - Compile-time preprocessing of InsertObj
+- `src/grue_compiler/codegen.rs:4049-4082` - Compile-time object table manipulation
+- `src/vm.rs:1194-1240` - Runtime insert_object implementation with fix
+
+**Critical Functions**:
+- `generate_object_placement_instructions()` - Creates runtime InsertObj instructions
+- `preprocess_insertobj_instructions()` - Extracts compile-time placement information
+- `create_object_entry_from_ir_with_mapping()` - Writes object table relationships
+- `insert_object()` - Runtime Z-Machine object insertion with double-insertion protection
+
+### Lessons Learned
+
+1. **Architecture Evolution Complexity**: Incremental fixes to fundamental architecture can create unexpected interaction patterns
+
+2. **Information Flow Dependencies**: When the same data serves multiple purposes (structure + behavior), separation requires careful analysis
+
+3. **Z-Machine Constraint Integration**: Low-level constraints (object table structure) can force high-level architecture decisions
+
+4. **Double-Purpose Code Smells**: When code serves both "information extraction" and "execution" roles, consider separation
+
+5. **Bug Manifestation Patterns**: Architectural inconsistencies often manifest as seemingly unrelated runtime bugs (infinite loops, corrupted data structures)
+
+### References
+
+- **Bug Discovery**: November 1, 2025 - "leaflet" infinite loop investigation
+- **Root Cause Analysis**: Dual insertion architecture identified during debugging session
+- **Immediate Fix**: vm.rs double insertion prevention (commit bf4134b)
+- **Related Documentation**: LEAFLET_INFINITE_LOOP_ANALYSIS.md (comprehensive bug analysis)
+- **Historical Context**: Phase 1c implementation (October 2025), Phase 2 object table fixes (October 12, 2025)
+
 **Date**: October 11, 2025
 **Status**: Core architecture complete, variable mapping bug in progress

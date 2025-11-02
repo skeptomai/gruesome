@@ -657,7 +657,9 @@ pub enum IrInstruction {
     /// NOTE: Z-Machine test_attr is a branch instruction, not a store instruction
     /// DEPRECATED: Use TestAttributeBranch or TestAttributeValue instead
     /// This instruction has broken codegen and should not be used
-    #[deprecated(note = "Use TestAttributeValue for value contexts or TestAttributeBranch for branch contexts")]
+    #[deprecated(
+        note = "Use TestAttributeValue for value contexts or TestAttributeBranch for branch contexts"
+    )]
     TestAttribute {
         target: IrId,
         object: IrId,
@@ -2367,7 +2369,7 @@ impl IrGenerator {
         block.add_instruction(IrInstruction::GetObjectSibling {
             target: next_sibling_temp,
             object: current_for_sibling,
-            branch_if_no_sibling: loop_end,  // Exit loop when no more siblings
+            branch_if_no_sibling: loop_end, // Exit loop when no more siblings
         });
 
         // Store the sibling as the new current object

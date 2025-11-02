@@ -1941,6 +1941,15 @@ impl ZMachineCodeGen {
                         reference.location
                     };
 
+                    // CRITICAL DEBUG: Track branch resolution for examine leaflet bug
+                    if final_location == 0x13cb {
+                        log::error!(
+                            "🔧 BRANCH_RESOLUTION_BUG: final_location=0x{:04x}, resolved_address=0x{:04x}",
+                            final_location,
+                            resolved_address
+                        );
+                    }
+
                     // CRITICAL FIX: Branch data is being written 1 byte too late
                     // TESTING: Remove the -1 adjustment hack to see if branch_location is correct
                     debug!(
@@ -8494,90 +8503,150 @@ impl ZMachineCodeGen {
         // Generate comparison branch instruction
         match op {
             IrBinaryOp::Equal => {
-                self.emit_instruction_typed(
+                let layout = self.emit_instruction_typed(
                     Opcode::Op2(Op2::Je),
                     &[left_operand, right_operand],
                     None,
                     Some(-1), // Placeholder for set_true_label
                 )?;
-                self.add_unresolved_reference(
-                    LegacyReferenceType::Branch,
-                    set_true_label,
-                    false,
-                    MemorySpace::Code,
-                )?;
+                // CRITICAL FIX (Nov 2, 2025): Use correct branch location from layout instead of deprecated function
+                //
+                // BUG: generate_comparison_with_result() used deprecated add_unresolved_reference() which
+                // calculated branch location as self.code_space.len() (AFTER instruction emission) instead
+                // of using the correct branch placeholder location returned by emit_instruction_typed().
+                //
+                // IMPACT: Branch placeholders were patched at wrong memory addresses, causing:
+                // - VAR:0x1f crashes when unresolved 0xFF bytes were executed as instructions
+                // - Infinite loops when jump placeholders remained as 0xFFFF (-1 offset)
+                //
+                // SOLUTION: Capture layout from emit_instruction_typed() and use layout.branch_location
+                // to ensure branch placeholders are resolved at the correct memory addresses.
+                if let Some(branch_location) = layout.branch_location {
+                    self.add_unresolved_reference_at_location(
+                        LegacyReferenceType::Branch,
+                        set_true_label,
+                        false,
+                        MemorySpace::Code,
+                        branch_location,
+                    )?;
+                } else {
+                    return Err(CompilerError::CodeGenError(
+                        "Expected branch location for Equal comparison instruction".to_string(),
+                    ));
+                }
             }
             IrBinaryOp::NotEqual => {
-                self.emit_instruction_typed(
+                let layout = self.emit_instruction_typed(
                     Opcode::Op2(Op2::Je),
                     &[left_operand, right_operand],
                     None,
                     Some(-1), // Placeholder for end_label (branch when equal, i.e., false case)
                 )?;
-                self.add_unresolved_reference(
-                    LegacyReferenceType::Branch,
-                    end_label,
-                    false,
-                    MemorySpace::Code,
-                )?;
+                // CRITICAL FIX: Use correct branch location from layout
+                if let Some(branch_location) = layout.branch_location {
+                    self.add_unresolved_reference_at_location(
+                        LegacyReferenceType::Branch,
+                        end_label,
+                        false,
+                        MemorySpace::Code,
+                        branch_location,
+                    )?;
+                } else {
+                    return Err(CompilerError::CodeGenError(
+                        "Expected branch location for NotEqual comparison instruction".to_string(),
+                    ));
+                }
             }
             IrBinaryOp::Less => {
-                self.emit_instruction_typed(
+                let layout = self.emit_instruction_typed(
                     Opcode::Op2(Op2::Jl),
                     &[left_operand, right_operand],
                     None,
                     Some(-1), // Placeholder for set_true_label
                 )?;
-                self.add_unresolved_reference(
-                    LegacyReferenceType::Branch,
-                    set_true_label,
-                    false,
-                    MemorySpace::Code,
-                )?;
+                // CRITICAL FIX: Use correct branch location from layout
+                if let Some(branch_location) = layout.branch_location {
+                    self.add_unresolved_reference_at_location(
+                        LegacyReferenceType::Branch,
+                        set_true_label,
+                        false,
+                        MemorySpace::Code,
+                        branch_location,
+                    )?;
+                } else {
+                    return Err(CompilerError::CodeGenError(
+                        "Expected branch location for Less comparison instruction".to_string(),
+                    ));
+                }
             }
             IrBinaryOp::Greater => {
-                self.emit_instruction_typed(
+                let layout = self.emit_instruction_typed(
                     Opcode::Op2(Op2::Jg),
                     &[left_operand, right_operand],
                     None,
                     Some(-1), // Placeholder for set_true_label
                 )?;
-                self.add_unresolved_reference(
-                    LegacyReferenceType::Branch,
-                    set_true_label,
-                    false,
-                    MemorySpace::Code,
-                )?;
+                // CRITICAL FIX: Use correct branch location from layout
+                if let Some(branch_location) = layout.branch_location {
+                    self.add_unresolved_reference_at_location(
+                        LegacyReferenceType::Branch,
+                        set_true_label,
+                        false,
+                        MemorySpace::Code,
+                        branch_location,
+                    )?;
+                } else {
+                    return Err(CompilerError::CodeGenError(
+                        "Expected branch location for Greater comparison instruction".to_string(),
+                    ));
+                }
             }
             IrBinaryOp::LessEqual => {
                 // Less or equal: Use jg and invert logic (branch to false case)
-                self.emit_instruction_typed(
+                let layout = self.emit_instruction_typed(
                     Opcode::Op2(Op2::Jg),
                     &[left_operand, right_operand],
                     None,
                     Some(-1), // Placeholder for end_label (branch when greater, i.e., false case)
                 )?;
-                self.add_unresolved_reference(
-                    LegacyReferenceType::Branch,
-                    end_label,
-                    false,
-                    MemorySpace::Code,
-                )?;
+                // CRITICAL FIX: Use correct branch location from layout
+                if let Some(branch_location) = layout.branch_location {
+                    self.add_unresolved_reference_at_location(
+                        LegacyReferenceType::Branch,
+                        end_label,
+                        false,
+                        MemorySpace::Code,
+                        branch_location,
+                    )?;
+                } else {
+                    return Err(CompilerError::CodeGenError(
+                        "Expected branch location for LessEqual comparison instruction".to_string(),
+                    ));
+                }
             }
             IrBinaryOp::GreaterEqual => {
                 // Greater or equal: Use jl and invert logic (branch to false case)
-                self.emit_instruction_typed(
+                let layout = self.emit_instruction_typed(
                     Opcode::Op2(Op2::Jl),
                     &[left_operand, right_operand],
                     None,
                     Some(-1), // Placeholder for end_label (branch when less, i.e., false case)
                 )?;
-                self.add_unresolved_reference(
-                    LegacyReferenceType::Branch,
-                    end_label,
-                    false,
-                    MemorySpace::Code,
-                )?;
+                // CRITICAL FIX: Use correct branch location from layout
+                if let Some(branch_location) = layout.branch_location {
+                    self.add_unresolved_reference_at_location(
+                        LegacyReferenceType::Branch,
+                        end_label,
+                        false,
+                        MemorySpace::Code,
+                        branch_location,
+                    )?;
+                } else {
+                    return Err(CompilerError::CodeGenError(
+                        "Expected branch location for GreaterEqual comparison instruction"
+                            .to_string(),
+                    ));
+                }
             }
             _ => {
                 return Err(CompilerError::CodeGenError(format!(
@@ -8600,18 +8669,34 @@ impl ZMachineCodeGen {
                 None,
             )?;
             // Jump to end
-            self.emit_instruction_typed(
+            let jump_layout = self.emit_instruction_typed(
                 Opcode::Op1(Op1::Jump),
                 &[Operand::LargeConstant(placeholder_word())],
                 None,
                 None,
             )?;
-            self.add_unresolved_reference(
-                LegacyReferenceType::Jump,
-                end_label,
-                false,
-                MemorySpace::Code,
-            )?;
+            // CRITICAL FIX (Nov 2, 2025): Use correct operand location for jump instruction
+            //
+            // BUG: Same deprecated add_unresolved_reference() bug as above, but for jump instructions
+            // which use operand_location instead of branch_location for placeholder addresses.
+            //
+            // IMPACT: Jump placeholders remained unresolved (0xFFFF), causing infinite loops
+            // where jump -1 created self-referencing loops in comparison result generation.
+            //
+            // SOLUTION: Use layout.operand_location to ensure jump operands are patched correctly.
+            if let Some(operand_location) = jump_layout.operand_location {
+                self.add_unresolved_reference_at_location(
+                    LegacyReferenceType::Jump,
+                    end_label,
+                    false,
+                    MemorySpace::Code,
+                    operand_location,
+                )?;
+            } else {
+                return Err(CompilerError::CodeGenError(
+                    "Expected operand location for Jump instruction".to_string(),
+                ));
+            }
         }
 
         // True case label
@@ -8632,18 +8717,27 @@ impl ZMachineCodeGen {
                 None,
             )?;
             // Jump to end
-            self.emit_instruction_typed(
+            let jump_layout = self.emit_instruction_typed(
                 Opcode::Op1(Op1::Jump),
                 &[Operand::LargeConstant(placeholder_word())],
                 None,
                 None,
             )?;
-            self.add_unresolved_reference(
-                LegacyReferenceType::Jump,
-                end_label,
-                false,
-                MemorySpace::Code,
-            )?;
+            // CRITICAL FIX: Use correct operand location from layout instead of deprecated function
+            if let Some(operand_location) = jump_layout.operand_location {
+                self.add_unresolved_reference_at_location(
+                    LegacyReferenceType::Jump,
+                    end_label,
+                    false,
+                    MemorySpace::Code,
+                    operand_location,
+                )?;
+            } else {
+                return Err(CompilerError::CodeGenError(
+                    "Expected operand location for Jump instruction in inverted comparison"
+                        .to_string(),
+                ));
+            }
         }
 
         // True case: Set Variable(0) = 1 (for direct comparisons)
@@ -9580,6 +9674,15 @@ impl ZMachineCodeGen {
         location: usize,
         target_address: usize,
     ) -> Result<(), CompilerError> {
+        // CRITICAL DEBUG: Track branch patching for examine leaflet bug
+        if location == 0x13cb {
+            log::error!(
+                "🔧 BRANCH_PATCH_BUG: location=0x{:04x}, target_address=0x{:04x}",
+                location,
+                target_address
+            );
+        }
+
         log::debug!(
             "🔧 BRANCH_PATCH_ATTEMPT: location=0x{:04x}, target_address=0x{:04x}",
             location,
@@ -9641,6 +9744,12 @@ impl ZMachineCodeGen {
                                                                      // Fix: Ensure bit 6 is always 0 for consistent 2-byte format
         let first_byte = (polarity_bit | ((offset_u16 >> 8) as u8 & 0x3F)) & 0xBF; // Force bit 6=0
         let second_byte = (offset_u16 & 0xFF) as u8;
+
+        // CRITICAL DEBUG: Track what gets written for our problematic branch
+        if location == 0x13cb {
+            log::error!("🔧 BRANCH_PATCH_OUTPUT: location=0x{:04x} placeholder=0x{:04x} branch_on_true={} target=0x{:04x} offset={} encoded=[0x{:02x} 0x{:02x}]",
+                location, placeholder, branch_on_true, target_address, offset_2byte, first_byte, second_byte);
+        }
 
         log::debug!("🔧 BRANCH_PATCH: location=0x{:04x} placeholder=0x{:04x} branch_on_true={} target=0x{:04x} offset={} encoded=[0x{:02x} 0x{:02x}]",
             location, placeholder, branch_on_true, target_address, offset_2byte, first_byte, second_byte);

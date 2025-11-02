@@ -892,7 +892,9 @@ impl ZMachineCodeGen {
                 // Pattern: test_attr obj, attr -> branch_if_set -> store 1 -> jump end -> store 0 -> end
                 log::debug!(
                     "🔍 TestAttributeValue codegen: object={}, attr={}, target={}",
-                    object, attribute_num, target
+                    object,
+                    attribute_num,
+                    target
                 );
 
                 // Resolve object operand and use attribute_num as direct SmallConstant
@@ -1386,7 +1388,9 @@ impl ZMachineCodeGen {
             } => {
                 log::debug!(
                     "🔍 GetObjectSibling codegen: object={}, target={}, branch_if_no_sibling={}",
-                    object, target, branch_if_no_sibling
+                    object,
+                    target,
+                    branch_if_no_sibling
                 );
 
                 // Z-Machine get_sibling opcode: returns next sibling object
@@ -1402,8 +1406,8 @@ impl ZMachineCodeGen {
                 let layout = self.emit_instruction_typed(
                     Opcode::Op1(Op1::GetSibling), // get_sibling opcode (1OP:1)
                     &[obj_operand],
-                    Some(store_var),                // Store result to global variable
-                    Some(0x7FFF_u16 as i16),       // Branch when result = 0 (no sibling)
+                    Some(store_var),         // Store result to global variable
+                    Some(0x7FFF_u16 as i16), // Branch when result = 0 (no sibling)
                 )?;
 
                 // Create unresolved reference for branch target
@@ -1427,7 +1431,8 @@ impl ZMachineCodeGen {
             IrInstruction::GetObjectSiblingValue { target, object } => {
                 log::debug!(
                     "🔍 GetObjectSiblingValue codegen: object={}, target={}",
-                    object, target
+                    object,
+                    target
                 );
 
                 // Z-Machine get_sibling opcode: returns next sibling object
@@ -1441,8 +1446,8 @@ impl ZMachineCodeGen {
                 let _layout = self.emit_instruction_typed(
                     Opcode::Op1(Op1::GetSibling), // get_sibling opcode (1OP:1)
                     &[obj_operand],
-                    Some(store_var),              // Store result to global variable
-                    None,                         // No branching
+                    Some(store_var), // Store result to global variable
+                    None,            // No branching
                 )?;
             }
 
@@ -2236,7 +2241,9 @@ impl ZMachineCodeGen {
     /// // PREFERRED - use typed opcodes instead
     /// let layout = self.emit_instruction_typed(Opcode::Op1(Op1::PrintPaddr), &[operand], None, None)?;
     /// ```
-    #[deprecated(note = "Use emit_instruction_typed for type safety and to avoid opcode number errors")]
+    #[deprecated(
+        note = "Use emit_instruction_typed for type safety and to avoid opcode number errors"
+    )]
     pub fn emit_instruction(
         &mut self,
         opcode: u8,

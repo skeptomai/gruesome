@@ -108,7 +108,128 @@
 - Active development: Root directory files
 - Current investigation: Object resolution in verb dispatch pipeline
 
-**Status**: **FULLY OPERATIONAL** - All major bugs resolved, mailbox behavior correct
+**Status**: **PARTIALLY OPERATIONAL** - Core fixes applied, one object lookup bug remains
+
+---
+
+## 🐛 **ACTIVE BUG INVESTIGATION**
+
+### **Object Lookup Failure in Grammar System** 🔍 **ACTIVE** (November 2, 2025)
+
+**ISSUE**: "examine leaflet" returns "You can't see any such thing" even when leaflet is visible in open mailbox
+
+**ROOT CAUSE ANALYSIS**:
+- ✅ **Dictionary**: "leaflet" correctly added to dictionary at position 17, encoded as `[45, 46, ae, 2a, 80, 00]`
+- ✅ **Object Creation**: leaflet assigned object #11, IR ID 34, with names ["leaflet", "paper"] in Property 18
+- ✅ **Dictionary References**: Property 18 correctly links to dictionary entries
+- ✅ **Game Logic**: `player_can_see()` and `examine()` functions work correctly for other objects (mailbox)
+- ❌ **Object Lookup**: Runtime object search returns 0 (null) instead of object 11 when parsing "leaflet"
+
+**TECHNICAL EVIDENCE**:
+- PC=0x13c6: `je` instruction comparing `op1=0` vs `op2=2`
+- Variable 114 (object ID from parser) = 0 (should be 11)
+- Variable 116 (player location) = 2 (correct)
+- Comparison `if obj == 0` in `player_can_see()` returns true, causing "You can't see any such thing"
+
+**CONFIRMED BEHAVIOR**:
+- ✅ "examine mailbox" works correctly (returns object description)
+- ❌ "examine leaflet" fails (object lookup returns 0)
+- ❌ "take leaflet" fails (same object lookup issue)
+- ❌ "read leaflet" fails (same object lookup issue)
+
+**HYPOTHESIS**: Builtin object lookup function doesn't search objects inside containers during command parsing
+
+**NEXT STEPS**:
+1. Identify which builtin function handles object lookup during grammar parsing
+2. Debug why object search returns 0 for "leaflet" but works for "mailbox"
+3. Fix object search algorithm to check objects inside open containers
+4. Verify fix works for all objects in containers
+
+**FILES TO INVESTIGATE**:
+- Compiler-generated builtin object search functions
+- Grammar system object resolution code
+- Z-Machine object tree traversal logic
+
+---
+
+## ✅ **RECENTLY FIXED BUGS** (November 2, 2025)
+
+### **Branch Resolution Location Bug** ✅ **FIXED**
+- **Issue**: VAR:0x1f crash and infinite loops in "examine leaflet" due to wrong branch/jump placeholder resolution
+- **Root Cause**: `generate_comparison_with_result` used deprecated `add_unresolved_reference()` instead of `add_unresolved_reference_at_location()`
+- **Fix**: Updated all 8 instances (6 branches + 2 jumps) to use correct placeholder locations from `emit_instruction_typed` layouts
+- **Files**: `src/grue_compiler/codegen.rs:8512-8723`
+- **Result**: No more crashes or infinite loops, but object lookup still fails
+
+---
+
+## 🏗️ **ARCHITECTURAL DEBT**
+
+### **Object Containment Dual Insertion Architecture** ⚠️ **TECHNICAL DEBT** (November 1, 2025)
+
+**Issue**: The compiler implements object containment through **two parallel systems** that both place objects into containers:
+1. **Compile-time object placement** (codegen.rs:4049-4082) - Direct object table manipulation
+2. **Runtime object placement** (ir.rs:1410-1411) - InsertObj instructions in init function
+
+**Root Cause**: InsertObj instructions serve dual conflicting purposes:
+- **Information Source**: Compiler needs relationship data for object table generation
+- **Executable Instructions**: Runtime needs placement commands for dynamic movement
+
+**Current Status**:
+- ✅ **Immediate Fix Applied**: Double insertion prevention in vm.rs:1216-1225
+- ✅ **Bug Resolved**: "leaflet" infinite loop fixed
+- ⚠️ **Architectural Inconsistency**: Dual system remains intact
+
+**Risk Level**: **MEDIUM**
+- Low immediate risk: workaround prevents user-visible bugs
+- Medium long-term risk: complexity may cause future bugs
+- High maintenance burden: developers must understand dual system
+
+**Resolution Strategy**:
+
+**Phase 1** 🎯 **NEXT PRIORITIES** (Choose One):
+
+**Option A: Instruction State Tracking** (Recommended)
+- Add `InstructionState` enum to IrInstruction (Pending/ProcessedCompile/ProcessedRuntime)
+- Mark InsertObj as processed during preprocessing phase
+- Skip runtime execution of already-processed instructions
+- **Effort**: Medium, maintains existing architecture
+- **Benefit**: Clean separation without breaking changes
+
+**Option B: Declaration vs Execution Separation** (Future)
+- Create `DeclareContainment` vs `MoveObject` instruction types
+- Introduce language syntax distinction (`initially_contains {}` vs `move()`)
+- **Effort**: High, requires language design changes
+- **Benefit**: Fundamental architecture cleanup
+
+**Option C: Enhanced Runtime Detection** (Band-aid)
+- Extend current fix to check entire sibling chain
+- Maintain dual architecture with better safeguards
+- **Effort**: Low, quick implementation
+- **Benefit**: Robust workaround, doesn't address root cause
+
+**Critical Questions for Decision**:
+
+1. **Instruction Processing Strategy**: Should InsertObj instructions be marked as "processed" during preprocessing to prevent runtime re-execution?
+
+2. **Scope of Change**: Are we willing to modify IR instruction semantics (Option A) or should we preserve current structure (Option C)?
+
+3. **Language Evolution**: Should this architectural improvement drive language syntax changes (Option B) or remain internal (Option A)?
+
+4. **Migration Path**: How do we handle existing code if we change instruction semantics or language syntax?
+
+**Files Requiring Changes** (Option A):
+- `src/grue_compiler/ir.rs` - Add InstructionState enum and tracking
+- `src/grue_compiler/codegen.rs` - State-aware instruction processing
+- `src/grue_compiler/codegen_instructions.rs` - Skip processed instructions
+
+**Testing Strategy**:
+- Verify compile-time object placement still works
+- Verify runtime object movement still works
+- Test mixed scenarios (some compile-time, some runtime)
+- Ensure no double insertion in any configuration
+
+**Documentation**: Complete architectural analysis in `docs/ARCHITECTURE.md` (Object Containment Dual Insertion Architecture Problem)
 
 ---
 
