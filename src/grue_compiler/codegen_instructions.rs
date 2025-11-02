@@ -1,8 +1,10 @@
 // Import placeholder_word for consistent placeholder handling throughout the codebase
-use crate::grue_compiler::codegen::{placeholder_word, ConstantValue, ZMachineCodeGen};
+use crate::grue_compiler::codegen::{ConstantValue, ZMachineCodeGen};
 use crate::grue_compiler::codegen::{
     InstructionForm, InstructionLayout, Operand, OperandType, UNIMPLEMENTED_OPCODE,
 };
+use crate::grue_compiler::codegen_memory::{placeholder_word, MemorySpace};
+use crate::grue_compiler::codegen_references::{LegacyReferenceType, UnresolvedReference};
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::{IrInstruction, IrValue};
 use crate::grue_compiler::opcodes::*;
@@ -765,16 +767,16 @@ impl ZMachineCodeGen {
                 )?;
 
                 // Step 4: Create UnresolvedReference for branch target
-                self.reference_context.unresolved_refs.push(
-                    crate::grue_compiler::codegen::UnresolvedReference {
-                        reference_type: crate::grue_compiler::codegen::LegacyReferenceType::Branch,
+                self.reference_context
+                    .unresolved_refs
+                    .push(UnresolvedReference {
+                        reference_type: LegacyReferenceType::Branch,
                         location: layout.branch_location.unwrap(),
                         target_id: true_label_id,
                         is_packed_address: false,
                         offset_size: 2,
-                        location_space: crate::grue_compiler::codegen::MemorySpace::Code,
-                    },
-                );
+                        location_space: MemorySpace::Code,
+                    });
 
                 // SURGICAL FIX (Oct 31, 2025): TestAttribute stores to global variable, not Variable(0)
                 // This prevents stack underflow in subsequent operations that read the result
@@ -860,16 +862,16 @@ impl ZMachineCodeGen {
                 // IR semantics: then_label = true branch, else_label = false branch
                 // Z-Machine test_attr: branches when attribute is SET (true)
                 // Note: Correct label ordering is handled in IR generation (ir.rs:2582-2618)
-                self.reference_context.unresolved_refs.push(
-                    crate::grue_compiler::codegen::UnresolvedReference {
-                        reference_type: crate::grue_compiler::codegen::LegacyReferenceType::Branch,
+                self.reference_context
+                    .unresolved_refs
+                    .push(UnresolvedReference {
+                        reference_type: LegacyReferenceType::Branch,
                         location: layout.branch_location.unwrap(),
                         target_id: *then_label, // CORRECTED: branch to then_label when attribute is SET
                         is_packed_address: false,
                         offset_size: 2,
-                        location_space: crate::grue_compiler::codegen::MemorySpace::Code,
-                    },
-                );
+                        location_space: MemorySpace::Code,
+                    });
 
                 // If attribute is CLEAR, fall through to else_label (which contains else-branch content)
                 log::debug!(
@@ -926,16 +928,16 @@ impl ZMachineCodeGen {
                 )?;
 
                 // Add unresolved reference for branch to attr_set_label
-                self.reference_context.unresolved_refs.push(
-                    crate::grue_compiler::codegen::UnresolvedReference {
-                        reference_type: crate::grue_compiler::codegen::LegacyReferenceType::Branch,
+                self.reference_context
+                    .unresolved_refs
+                    .push(UnresolvedReference {
+                        reference_type: LegacyReferenceType::Branch,
                         location: layout.branch_location.unwrap(),
                         target_id: attr_set_label_id,
                         is_packed_address: false,
                         offset_size: 2,
-                        location_space: crate::grue_compiler::codegen::MemorySpace::Code,
-                    },
-                );
+                        location_space: MemorySpace::Code,
+                    });
 
                 // Attribute is CLEAR: store 0 (false) and jump to end
                 self.emit_instruction_typed(
@@ -1361,8 +1363,9 @@ impl ZMachineCodeGen {
 
                 // Create unresolved reference for branch target
                 if let Some(branch_location) = layout.branch_location {
-                    use crate::grue_compiler::codegen::{
-                        LegacyReferenceType, MemorySpace, UnresolvedReference,
+                    use crate::grue_compiler::codegen_memory::MemorySpace;
+                    use crate::grue_compiler::codegen_references::{
+                        LegacyReferenceType, UnresolvedReference,
                     };
                     self.reference_context
                         .unresolved_refs
@@ -1412,8 +1415,9 @@ impl ZMachineCodeGen {
 
                 // Create unresolved reference for branch target
                 if let Some(branch_location) = layout.branch_location {
-                    use crate::grue_compiler::codegen::{
-                        LegacyReferenceType, MemorySpace, UnresolvedReference,
+                    use crate::grue_compiler::codegen_memory::MemorySpace;
+                    use crate::grue_compiler::codegen_references::{
+                        LegacyReferenceType, UnresolvedReference,
                     };
                     self.reference_context
                         .unresolved_refs
@@ -3621,9 +3625,8 @@ impl ZMachineCodeGen {
         args: &[crate::grue_compiler::ir::IrId],
         _target: Option<crate::grue_compiler::ir::IrId>,
     ) -> Result<(), CompilerError> {
-        use crate::grue_compiler::codegen::{
-            LegacyReferenceType, MemorySpace, UnresolvedReference,
-        };
+        use crate::grue_compiler::codegen_memory::MemorySpace;
+        use crate::grue_compiler::codegen_references::{LegacyReferenceType, UnresolvedReference};
 
         // Generate function call instruction with placeholder address
         let mut operands = Vec::new();
@@ -3877,14 +3880,12 @@ impl ZMachineCodeGen {
                 if let Some(branch_location) = layout.branch_location {
                     self.reference_context.unresolved_refs.push(
                         crate::grue_compiler::codegen_headers::UnresolvedReference {
-                            reference_type:
-                                crate::grue_compiler::codegen::LegacyReferenceType::Branch,
+                            reference_type: LegacyReferenceType::Branch,
                             location: branch_location,
                             target_id: branch_label,
                             is_packed_address: false,
                             offset_size: 2,
-                            location_space:
-                                crate::grue_compiler::codegen_headers::MemorySpace::Code,
+                            location_space: MemorySpace::Code,
                         },
                     );
                 }

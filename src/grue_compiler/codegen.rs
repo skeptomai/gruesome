@@ -3,6 +3,12 @@
 // Transforms IR into executable Z-Machine bytecode following the Z-Machine Standard v1.1
 // Supports both v3 and v5 target formats with proper memory layout and instruction encoding.
 
+use crate::grue_compiler::codegen_memory::{
+    placeholder_word, MemorySpace, HEADER_SIZE, PLACEHOLDER_BYTE,
+};
+use crate::grue_compiler::codegen_references::{
+    LegacyReferenceType, ReferenceContext, UnresolvedReference,
+};
 use crate::grue_compiler::codegen_utils::CodeGenUtils;
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
@@ -11,13 +17,7 @@ use crate::grue_compiler::ZMachineVersion;
 use indexmap::{IndexMap, IndexSet};
 use log::debug;
 
-/// Distinctive placeholder byte for unresolved references
-/// 0xFF is chosen because:
-/// 1. In Z-Machine, 0xFF as an instruction byte would be an invalid Extended form instruction
-/// 2. As operand data, 0xFFFF would represent -1 or 65535, which are uncommon values
-/// 3. It's easily recognizable in hex dumps as "unresolved"
-/// 4. Creates a clear pattern when examining bytecode (FFFF stands out)
-const PLACEHOLDER_BYTE: u8 = 0xFF;
+// PLACEHOLDER_BYTE moved to codegen_memory.rs
 
 /// CRITICAL: Invalid opcode marker for unimplemented IR instructions
 /// This opcode (0x00) is deliberately invalid in the Z-Machine specification.
@@ -38,23 +38,9 @@ const PLACEHOLDER_BYTE: u8 = 0xFF;
 /// 0xFF is not a valid Z-Machine opcode in any form, making it safe for this purpose.
 pub const UNIMPLEMENTED_OPCODE: u8 = 0xFF;
 
-/// Create a 16-bit placeholder value using the distinctive placeholder byte
-pub const fn placeholder_word() -> u16 {
-    ((PLACEHOLDER_BYTE as u16) << 8) | (PLACEHOLDER_BYTE as u16)
-}
+// placeholder_word() moved to codegen_memory.rs
 
-/// Memory space types for the separated compilation model
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum MemorySpace {
-    Header,
-    Globals,
-    Abbreviations,
-    Objects,
-    Dictionary,
-    Strings,
-    Code,
-    CodeSpace, // Alternative name for Code
-}
+// MemorySpace enum moved to codegen_memory.rs
 
 /// Reference types for fixup tracking
 #[derive(Debug, Clone)]
@@ -109,8 +95,7 @@ pub struct ObjectData {
     pub child: Option<IrId>,
 }
 
-/// Z-Machine memory layout constants
-const HEADER_SIZE: usize = 64; // Fixed 64-byte header
+// HEADER_SIZE moved to codegen_memory.rs
 const DEFAULT_HIGH_MEMORY: u16 = 0x8000; // Start of high memory
 const DEFAULT_PC_START: u16 = 0x1000; // Initial program counter
 
@@ -142,36 +127,15 @@ pub enum Operand {
     SmallConstant(u8),  // Always encoded as 8-bit
 }
 
-/// Legacy unresolved reference structure (being phased out in favor of separated spaces)
-#[derive(Debug, Clone)]
-pub struct UnresolvedReference {
-    pub reference_type: LegacyReferenceType,
-    pub location: usize, // Byte offset in story data where patch is needed
-    pub target_id: IrId, // IR ID being referenced (label, function, string)
-    pub is_packed_address: bool, // Whether address needs to be packed
-    pub offset_size: u8, // Size of offset field (1 or 2 bytes)
-    pub location_space: MemorySpace, // Which memory space the location belongs to
-}
-
-/// Legacy reference types for the old unified memory system
-#[derive(Debug, Clone, PartialEq)]
-pub enum LegacyReferenceType {
-    Jump,                                    // Unconditional jump to label
-    Branch,                                  // Conditional branch to label
-    Label(IrId),                             // Reference to label
-    FunctionCall,                            // Call to function address
-    StringRef,                               // Reference to string address
-    StringPackedAddress { string_id: IrId }, // Reference to packed string address for properties
-    DictionaryRef { word: String },          // Reference to dictionary entry address
-    GlobalsBase, // Reference to global variables base address from header
-}
-
-/// Reference context for tracking what needs resolution
-#[derive(Debug, Clone)]
-pub struct ReferenceContext {
-    pub ir_id_to_address: IndexMap<IrId, usize>, // Resolved addresses by IR ID
-    pub unresolved_refs: Vec<UnresolvedReference>, // References waiting for resolution
-}
+// Reference types moved to codegen_references.rs
+// - UnresolvedReference struct
+// - LegacyReferenceType enum
+// - ReferenceContext struct
+//
+// Reference helper functions moved to codegen_references.rs:
+// - deduplicate_references()
+// - validate_jump_targets()
+// - validate_no_unresolved_placeholders()
 
 /// Array metadata for dynamic list operations
 #[derive(Debug, Clone)]
@@ -444,10 +408,7 @@ impl ZMachineCodeGen {
             max_stack_depth: 0,
             in_init_block: false,
             pending_labels: Vec::new(),
-            reference_context: ReferenceContext {
-                ir_id_to_address: IndexMap::new(),
-                unresolved_refs: Vec::new(),
-            },
+            reference_context: ReferenceContext::new(),
             pc_to_ir_map: IndexMap::new(),
             constant_values: IndexMap::new(),
             labels_at_current_address: Vec::new(),
@@ -9001,76 +8962,15 @@ impl ZMachineCodeGen {
     }
 
     /// Write the Z-Machine file header with custom entry point
-    /// PHASE 2.3: Deduplicate unresolved references to eliminate double-patching
-    /// The real issue is multiple references to the same target ID
-    fn deduplicate_references(&self, refs: &[UnresolvedReference]) -> Vec<UnresolvedReference> {
-        let mut seen_references = IndexSet::new();
-        let mut deduplicated = Vec::new();
-
-        for reference in refs {
-            // Deduplicate based on (target_id, location) pair - same target can be at different locations
-            let ref_key = (reference.target_id, reference.location);
-            if seen_references.insert(ref_key) {
-                deduplicated.push(reference.clone());
-            } else {
-                log::debug!(
-                    "DEDUPLICATION: Skipping duplicate reference target {} at location 0x{:04x}",
-                    reference.target_id,
-                    reference.location
-                );
-            }
-        }
-
-        log::info!(
-            "Reference deduplication: {} → {} references ({} duplicate targets removed)",
-            refs.len(),
-            deduplicated.len(),
-            refs.len() - deduplicated.len()
-        );
-
-        deduplicated
-    }
-
-    /// PHASE 2.3: Validate jump targets are within story bounds
-    fn validate_jump_targets(&self, refs: &[UnresolvedReference]) -> Result<(), CompilerError> {
-        for reference in refs {
-            if matches!(
-                reference.reference_type,
-                LegacyReferenceType::Jump | LegacyReferenceType::Branch
-            ) {
-                if let Some(&target_addr) = self
-                    .reference_context
-                    .ir_id_to_address
-                    .get(&reference.target_id)
-                {
-                    if target_addr >= self.story_data.len() {
-                        return Err(CompilerError::CodeGenError(format!(
-                            "Jump target 0x{:04x} for IR ID {} exceeds story bounds (0x{:04x})",
-                            target_addr,
-                            reference.target_id,
-                            self.story_data.len()
-                        )));
-                    }
-                    log::debug!(
-                        "Jump target validation: IR ID {} → 0x{:04x} ✓",
-                        reference.target_id,
-                        target_addr
-                    );
-                }
-            }
-        }
-        log::debug!("All jump targets within bounds");
-        Ok(())
-    }
-
     /// Resolve all address references and patch jumps/branches
     fn resolve_addresses(&mut self) -> Result<(), CompilerError> {
         // PHASE 2.3: Deduplicate references to eliminate double-patching
         let raw_refs = self.reference_context.unresolved_refs.clone();
-        let deduplicated_refs = self.deduplicate_references(&raw_refs);
+        let deduplicated_refs = self.reference_context.deduplicate_references(&raw_refs);
 
         // PHASE 2.3: Validate jump targets are within bounds
-        self.validate_jump_targets(&deduplicated_refs)?;
+        self.reference_context
+            .validate_jump_targets(&deduplicated_refs, self.story_data.len())?;
 
         log::debug!(
             "resolve_addresses: Processing {} deduplicated references (was {})",
@@ -9096,74 +8996,78 @@ impl ZMachineCodeGen {
         self.validate_story_data_integrity()?;
 
         // CRITICAL VALIDATION: Scan for any remaining 0x0000 placeholders that weren't resolved
-        self.validate_no_unresolved_placeholders()?;
+        self.reference_context
+            .validate_no_unresolved_placeholders(&self.story_data, self.code_address)?;
 
         Ok(())
     }
 
-    /// Validate that no unresolved 0xFFFF placeholders remain in the instruction stream
-    fn validate_no_unresolved_placeholders(&self) -> Result<(), CompilerError> {
-        let mut unresolved_count = 0;
-        let mut scan_addr = 0x0040; // Start after header
+    // validate_no_unresolved_placeholders moved to codegen_references.rs
+    /*
+       /// Validate that no unresolved 0xFFFF placeholders remain in the instruction stream
+       fn validate_no_unresolved_placeholders(&self) -> Result<(), CompilerError> {
+           let mut unresolved_count = 0;
+           let mut scan_addr = 0x0040; // Start after header
 
-        log::debug!(
-            "Scanning for unresolved placeholders from 0x{:04x} to 0x{:04x}",
-            scan_addr,
-            self.code_address
-        );
+           log::debug!(
+               "Scanning for unresolved placeholders from 0x{:04x} to 0x{:04x}",
+               scan_addr,
+               self.code_address
+           );
 
-        while scan_addr + 1 < self.code_address {
-            if self.story_data[scan_addr] == PLACEHOLDER_BYTE
-                && self.story_data[scan_addr + 1] == PLACEHOLDER_BYTE
-            {
-                // Found potential unresolved placeholder
-                log::debug!(
-                    "UNRESOLVED PLACEHOLDER: Found 0xFFFF at address 0x{:04x}-0x{:04x}",
-                    scan_addr,
-                    scan_addr + 1
-                );
+           while scan_addr + 1 < self.code_address {
+               if self.story_data[scan_addr] == PLACEHOLDER_BYTE
+                   && self.story_data[scan_addr + 1] == PLACEHOLDER_BYTE
+               {
+                   // Found potential unresolved placeholder
+                   log::debug!(
+                       "UNRESOLVED PLACEHOLDER: Found 0xFFFF at address 0x{:04x}-0x{:04x}",
+                       scan_addr,
+                       scan_addr + 1
+                   );
 
-                // Try to provide context about what instruction this might be in
-                let context_start = scan_addr.saturating_sub(5);
-                let context_end = (scan_addr + 10).min(self.code_address);
-                let context_bytes: Vec<String> = self.story_data[context_start..context_end]
-                    .iter()
-                    .enumerate()
-                    .map(|(i, &b)| {
-                        let addr = context_start + i;
-                        if addr == scan_addr || addr == scan_addr + 1 {
-                            format!("[{:02x}]", b) // Mark the placeholder bytes
-                        } else {
-                            format!("{:02x}", b)
-                        }
-                    })
-                    .collect();
+                   // Try to provide context about what instruction this might be in
+                   let context_start = scan_addr.saturating_sub(5);
+                   let context_end = (scan_addr + 10).min(self.code_address);
+                   let context_bytes: Vec<String> = self.story_data[context_start..context_end]
+                       .iter()
+                       .enumerate()
+                       .map(|(i, &b)| {
+                           let addr = context_start + i;
+                           if addr == scan_addr || addr == scan_addr + 1 {
+                               format!("[{:02x}]", b) // Mark the placeholder bytes
+                           } else {
+                               format!("{:02x}", b)
+                           }
+                       })
+                       .collect();
 
-                log::debug!(
-                    "CONTEXT: 0x{:04x}: {}",
-                    context_start,
-                    context_bytes.join(" ")
-                );
+                   log::debug!(
+                       "CONTEXT: 0x{:04x}: {}",
+                       context_start,
+                       context_bytes.join(" ")
+                   );
 
-                unresolved_count += 1;
+                   unresolved_count += 1;
 
-                // Skip ahead to avoid counting overlapping placeholders
-                scan_addr += 2;
-            } else {
-                scan_addr += 1;
-            }
-        }
+                   // Skip ahead to avoid counting overlapping placeholders
+                   scan_addr += 2;
+               } else {
+                   scan_addr += 1;
+               }
+           }
 
-        if unresolved_count > 0 {
-            return Err(CompilerError::CodeGenError(format!(
- "Found {} unresolved placeholder(s) in generated bytecode - this will cause runtime errors",
- unresolved_count
- )));
-        }
+           if unresolved_count > 0 {
+               return Err(CompilerError::CodeGenError(format!(
+    "Found {} unresolved placeholder(s) in generated bytecode - this will cause runtime errors",
+    unresolved_count
+    )));
+           }
 
-        log::debug!("Validation complete: No unresolved placeholders found");
-        Ok(())
-    }
+           log::debug!("Validation complete: No unresolved placeholders found");
+           Ok(())
+       }
+       */
 
     /// PHASE 2.2: Validate story data integrity and boundary calculations
     fn validate_story_data_integrity(&self) -> Result<(), CompilerError> {

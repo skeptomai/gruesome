@@ -9,7 +9,8 @@ use crate::grue_compiler::ZMachineVersion;
 use log::debug;
 
 // Re-export common types for string handling
-pub use crate::grue_compiler::codegen::{MemorySpace, ZMachineCodeGen};
+pub use crate::grue_compiler::codegen::ZMachineCodeGen;
+pub use crate::grue_compiler::codegen_memory::MemorySpace;
 
 impl ZMachineCodeGen {
     /// String Collection Functions

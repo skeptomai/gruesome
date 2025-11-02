@@ -450,14 +450,14 @@ mod codegen_tests {
             LegacyReferenceType::Jump,
             100,
             false,
-            crate::grue_compiler::codegen::MemorySpace::Code,
+            crate::grue_compiler::codegen_memory::MemorySpace::Code,
             0x100, // Test location offset
         );
         let result2 = codegen.add_unresolved_reference_at_location(
             LegacyReferenceType::FunctionCall,
             200,
             true,
-            crate::grue_compiler::codegen::MemorySpace::Code,
+            crate::grue_compiler::codegen_memory::MemorySpace::Code,
             0x200, // Test location offset
         );
 

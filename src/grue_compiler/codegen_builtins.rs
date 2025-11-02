@@ -2,10 +2,9 @@
 // Extracted from codegen.rs for better maintainability
 // These are implementation methods that extend ZMachineCodeGen
 
-use crate::grue_compiler::codegen::{
-    placeholder_word, ConstantValue, LegacyReferenceType, MemorySpace, Operand,
-    UnresolvedReference, ZMachineCodeGen,
-};
+use crate::grue_compiler::codegen::{ConstantValue, Operand, ZMachineCodeGen};
+use crate::grue_compiler::codegen_memory::{placeholder_word, MemorySpace};
+use crate::grue_compiler::codegen_references::{LegacyReferenceType, UnresolvedReference};
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
 use crate::grue_compiler::opcodes::*;
@@ -681,16 +680,16 @@ impl ZMachineCodeGen {
         )?;
 
         // Create UnresolvedReference for branch target using existing patterns
-        self.reference_context.unresolved_refs.push(
-            crate::grue_compiler::codegen::UnresolvedReference {
-                reference_type: crate::grue_compiler::codegen::LegacyReferenceType::Branch,
+        self.reference_context
+            .unresolved_refs
+            .push(UnresolvedReference {
+                reference_type: LegacyReferenceType::Branch,
                 location: layout.branch_location.unwrap(),
                 target_id: true_label_id, // UNIQUE true_label IR ID
                 is_packed_address: false,
                 offset_size: 2,
-                location_space: crate::grue_compiler::codegen::MemorySpace::Code,
-            },
-        );
+                location_space: MemorySpace::Code,
+            });
 
         // Step 2: Attribute clear - push 0 and jump to end
         self.emit_instruction_typed(

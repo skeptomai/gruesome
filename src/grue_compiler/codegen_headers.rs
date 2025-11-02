@@ -11,9 +11,9 @@ const HEADER_SIZE: usize = 64; // Fixed 64-byte header
 const PLACEHOLDER_BYTE: u8 = 0xFF;
 
 // Re-export common types for header handling
-pub use crate::grue_compiler::codegen::{
-    MemorySpace, PendingFixup, ReferenceType, UnresolvedReference, ZMachineCodeGen,
-};
+pub use crate::grue_compiler::codegen::{PendingFixup, ReferenceType, ZMachineCodeGen};
+pub use crate::grue_compiler::codegen_memory::MemorySpace;
+pub use crate::grue_compiler::codegen_references::UnresolvedReference;
 
 impl ZMachineCodeGen {
     /// Phase 1: Generate static header fields (version, serial, flags)

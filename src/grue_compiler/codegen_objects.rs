@@ -10,7 +10,8 @@ use indexmap::{IndexMap, IndexSet};
 use log::debug;
 
 // Re-export common types for object handling
-pub use crate::grue_compiler::codegen::{MemorySpace, ObjectData, Operand, ZMachineCodeGen};
+pub use crate::grue_compiler::codegen::{ObjectData, Operand, ZMachineCodeGen};
+pub use crate::grue_compiler::codegen_memory::MemorySpace;
 
 impl ZMachineCodeGen {
     /// Allocate space in object space and return offset
