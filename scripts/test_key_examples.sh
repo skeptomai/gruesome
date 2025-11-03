@@ -35,7 +35,7 @@ for example in "${EXAMPLES[@]}"; do
     # Compile (suppress warnings to stderr for cleaner CI output)
     if ! RUST_LOG=error timeout 10s cargo run --bin grue-compiler -- "examples/$example" >/dev/null 2>/dev/null; then
         echo "❌ COMPILE FAILED"
-        ((FAILED++))
+        FAILED=$((FAILED + 1))
         continue
     fi
     
@@ -55,7 +55,7 @@ for example in "${EXAMPLES[@]}"; do
     if [ "$is_interactive" = false ]; then
         if ! RUST_LOG=error timeout 3s cargo run --bin gruesome "$basename.z3" >/dev/null 2>&1; then
             echo "❌ RUNTIME FAILED"
-            ((FAILED++))
+            FAILED=$((FAILED + 1))
             continue
         fi
     else
@@ -63,7 +63,7 @@ for example in "${EXAMPLES[@]}"; do
     fi
     
     echo "✅ PASSED"
-    ((PASSED++))
+    PASSED=$((PASSED + 1))
 done
 
 echo ""
