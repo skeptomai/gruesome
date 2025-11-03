@@ -35,7 +35,8 @@ for example in "${EXAMPLES[@]}"; do
     # Get output file name
     basename=$(basename "$example" .grue)
     
-    # Runtime test
+    # Runtime test - TODO: Need to improve runtime testing approach for interactive games
+    # Currently fails because games wait for input but no input is provided
     if ! RUST_LOG=error timeout 3s cargo run --bin gruesome "$basename.z3" >/dev/null 2>&1; then
         echo "❌ RUNTIME FAILED"
         ((FAILED++))

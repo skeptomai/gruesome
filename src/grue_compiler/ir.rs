@@ -1336,6 +1336,7 @@ impl IrGenerator {
             IrInstruction::Call { target, .. } => *target,
             IrInstruction::GetProperty { target, .. } => Some(*target),
             IrInstruction::GetPropertyByNumber { target, .. } => Some(*target),
+            #[allow(deprecated)]
             IrInstruction::TestAttribute { target, .. } => Some(*target),
             IrInstruction::TestAttributeBranch { .. } => None, // Branch instructions don't produce values
             IrInstruction::TestAttributeValue { target, .. } => Some(*target),
@@ -1360,6 +1361,7 @@ impl IrGenerator {
                 IrInstruction::Call { .. } => "Call",
                 IrInstruction::GetProperty { .. } => "GetProperty",
                 IrInstruction::GetPropertyByNumber { .. } => "GetPropertyByNumber",
+                #[allow(deprecated)]
                 IrInstruction::TestAttribute { .. } => "TestAttribute",
                 IrInstruction::TestAttributeBranch { .. } => "TestAttributeBranch",
                 IrInstruction::TestAttributeValue { .. } => "TestAttributeValue",
@@ -3477,11 +3479,14 @@ impl IrGenerator {
 
                             // Generate TestAttribute for condition (like if statements do)
                             let condition_temp = self.next_id();
-                            block.add_instruction(IrInstruction::TestAttribute {
-                                target: condition_temp,
-                                object: object_temp,
-                                attribute_num: attr_num,
-                            });
+                            #[allow(deprecated)]
+                            {
+                                block.add_instruction(IrInstruction::TestAttribute {
+                                    target: condition_temp,
+                                    object: object_temp,
+                                    attribute_num: attr_num,
+                                });
+                            }
 
                             // Return the condition temp - the if statement will handle the Branch
                             return Ok(condition_temp);

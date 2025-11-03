@@ -1,25 +1,14 @@
-// Test case focusing on property access
-world {
-    room test_room "Test Room" {
-        desc: "A simple test room"
-        
-        object test_obj {
-            names: ["test", "object"] 
-            desc: "A test object"
-            openable: true
-        }
-    }
-}
+// Test minimal property access - the most basic form that mini_zork uses
 
-fn test_property() {
-    print("Testing property access");
-    // Just access the property without branching
-    let obj = test_obj;
-    let is_openable = obj.openable;
-    print("Property accessed successfully");
+fn test_simple_property() {
+    print("Testing simple property access...");
+    // Try the absolute simplest property access: player.location
+    let loc = get_location(player);  // Built-in function
+    print("Got location successfully");
 }
 
 init {
-    player.location = test_room;
-    test_property();
+    print("=== Simple Property Test ===");
+    test_simple_property();
+    print("=== Property Test Complete ===");
 }

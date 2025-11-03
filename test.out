@@ -1,0 +1,1623 @@
+[0;34m╔════════════════════════════════════════╗[0m
+[0;34m║       GitHub Actions CI Check          ║[0m
+[0;34m╚════════════════════════════════════════╝[0m
+
+[0;34m━━━ Checking code formatting ━━━[0m
+[0;32m✓[0m Code formatting is correct
+
+[0;34m━━━ Running clippy linter ━━━[0m
+[0;31m✗[0m Clippy found issues. Fix them before pushing.
+[1m[32m    Checking[0m gruesome v0.6.0 (/Users/cb/Projects/infocom-testing-old/infocom)
+[0m[1m[38;5;9merror[0m[0m[1m: empty line after doc comment[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:528:5[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m528[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// This will cause a compile-time error with a clear message about which feature needs implementation[0m
+[0m[1m[38;5;12m...[0m[0m   [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m532[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m...[0m
+[0m[1m[38;5;12m549[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    pub fn generate_complete_game_image([0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m-----------------------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::empty-line-after-doc-comments` implied by `-D warnings`[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::empty_line_after_doc_comments)]`[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty line is unintentional, remove it[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the doc comment should not document function `generate_complete_game_image` then comment it out[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m523[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// CONSOLIDATION HELPERS: Centralized unimplemented feature handlers[0m
+[0m[1m[38;5;12m524[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// These methods eliminate the dangerous copy-paste pattern of placeholder opcodes[0m
+[0m[1m[38;5;12m525[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// and provide clear, consistent handling of unimplemented IR instructions.[0m
+[0m[1m[38;5;12m526[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m///[0m
+[0m[1m[38;5;12m527[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Generate unimplemented array operation with return value[0m
+[0m[1m[38;5;12m528[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// This will cause a compile-time error with a clear message about which feature needs implementation[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty line after doc comment[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:2101:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2101[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// Generate dictionary space with word parsing dictionary[0m
+[0m[1m[38;5;12m2102[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m2103[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    /// Generate global variables space (240 variables * 2 bytes = 480 bytes)[0m
+[0m[1m[38;5;12m2104[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    fn generate_globals_space(&mut self, _ir: &IrProgram) -> Result<(), CompilerError> {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m-------------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty line is unintentional, remove it[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the documentation should include the empty line include it in the comment[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2102[0m[0m [0m[0m[1m[38;5;12m| [0m[0m[38;5;10m    ///[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty line after doc comment[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:2518:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2518[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// Implementation: LoadVar - Load variable value[0m
+[0m[1m[38;5;12m2519[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m    // Dead code removed: translate_load_var() method (36 lines) - unused from old IR translation layer[0m
+[0m[1m[38;5;12m2520[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m...[0m
+[0m[1m[38;5;12m2524[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    fn assign_local_variable(&mut self, var_id: IrId, source: IrId) -> Result<(), CompilerError> {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m------------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty line is unintentional, remove it[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the doc comment should not document function `assign_local_variable` then comment it out[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2518[0m[0m [0m[0m[1m[38;5;12m| [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Implementation: LoadVar - Load variable value[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[38;5;10m++[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty lines after doc comment[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:2570:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2570[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// Implementation: Print - Print value[0m
+[0m[1m[38;5;12m2571[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m    // Dead code removed: translate_print() method (40 lines) - unused from old IR translation layer[0m
+[0m[1m[38;5;12m2572[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m2573[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m    /// Implementation: Return - Return from function[0m
+[0m[1m[38;5;12m...[0m[0m    [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m2578[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m...[0m
+[0m[1m[38;5;12m2582[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    pub fn translate_jump(&mut self, label: IrId) -> Result<(), CompilerError> {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m---------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty lines are unintentional, remove them[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the doc comment should not document function `translate_jump` then comment it out[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2570[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Implementation: Print - Print value[0m
+[0m[1m[38;5;12m2571[0m[0m [0m[0m[1m[38;5;12m|[0m[0m     // Dead code removed: translate_print() method (40 lines) - unused from old IR translation layer[0m
+[0m[1m[38;5;12m2572[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2573[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Implementation: Return - Return from function[0m
+[0m[1m[38;5;12m2574[0m[0m [0m[0m[1m[38;5;12m|[0m[0m     // Dead code removed: translate_return() method (38 lines) - unused from old IR translation layer[0m
+[0m[1m[38;5;12m2575[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2576[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Implementation: Label - Set label address for jumps[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty lines after doc comment[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:2970:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2970[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// Generates Z-Machine print_ret instruction (print + newline + return true)[0m
+[0m[1m[38;5;12m2971[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m    // REMOVED: translate_print_ret_builtin_inline - Dead code (architectural migration)[0m
+[0m[1m[38;5;12m2972[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m2973[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m    /// new_line builtin implementation[0m
+[0m[1m[38;5;12m...[0m[0m    [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m3075[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m3076[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    /// Plan the memory layout for all Z-Machine structures[0m
+[0m[1m[38;5;12m3077[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    fn layout_memory_structures(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m---------------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty lines are unintentional, remove them[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the doc comment should not document function `layout_memory_structures` then comment it out[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2969[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// PHASE 1: Single-path print_ret builtin implementation[0m
+[0m[1m[38;5;12m2970[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Generates Z-Machine print_ret instruction (print + newline + return true)[0m
+[0m[1m[38;5;12m2971[0m[0m [0m[0m[1m[38;5;12m|[0m[0m     // REMOVED: translate_print_ret_builtin_inline - Dead code (architectural migration)[0m
+[0m[1m[38;5;12m2972[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2973[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// new_line builtin implementation[0m
+[0m[1m[38;5;12m2974[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Generates Z-Machine new_line instruction (0OP:187, opcode 0x8B)[0m
+[0m[1m[38;5;12m2975[0m[0m [0m[0m[1m[38;5;12m|[0m[0m     // REMOVED: translate_new_line_builtin_inline - Dead code (architectural migration)[0m
+[0m[1m[38;5;12m2976[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2977[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// PHASE 2: Single-path move builtin implementation[0m
+[0m[1m[38;5;12m2978[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// This replaces delegation to generate_move_builtin()[0m
+[0m[1m[38;5;12m2979[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// SINGLE-PATH MIGRATION: Phase 1 - Move function (Tier 1 builtin)[0m
+[0m[1m[38;5;12m2980[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Generates Z-Machine insert_obj instruction directly from IR[0m
+[0m[1m[38;5;12m2981[0m[0m [0m[0m[1m[38;5;12m|[0m[0m     // REMOVED: translate_move_builtin_inline - Dead code (architectural migration)[0m
+[0m[1m[38;5;12m2982[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2983[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Generate get_location builtin function - unified implementation[0m
+[0m[1m[38;5;12m2984[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Returns the parent object of an object using Z-Machine get_parent instruction[0m
+[0m[1m[38;5;12m2985[0m[0m [0m[0m[1m[38;5;12m|[0m[0m     // REMOVED: translate_get_location_builtin_inline - Dead code (architectural migration)[0m
+[0m[1m[38;5;12m2986[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2987[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// PHASE 2: Single-path to_string builtin implementation[0m
+[0m[1m[38;5;12m2988[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// This replaces delegation to generate_to_string_builtin()[0m
+[0m[1m[38;5;12m2989[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2990[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// SINGLE-PATH MIGRATION: Phase 2 - Object system builtin (Tier 2)[0m
+[0m[1m[38;5;12m2991[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Generates Z-Machine get_child instruction directly from IR[0m
+[0m[1m[38;5;12m2992[0m[0m [0m[0m[1m[38;5;12m|[0m[0m     // REMOVED: translate_get_child_builtin_inline - Dead code (architectural migration)[0m
+[0m[1m[38;5;12m2993[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2994[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// PHASE 2: Single-path get_sibling builtin implementation[0m
+[0m[1m[38;5;12m2995[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// This replaces delegation to generate_get_sibling_builtin()[0m
+[0m[1m[38;5;12m2996[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2997[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// PHASE 2: Single-path get_prop builtin implementation[0m
+[0m[1m[38;5;12m2998[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// This replaces delegation to generate_get_prop_builtin()[0m
+[0m[1m[38;5;12m2999[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3000[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// PHASE 2: Single-path test_attr builtin implementation[0m
+[0m[1m[38;5;12m3001[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// This replaces delegation to generate_test_attr_builtin()[0m
+[0m[1m[38;5;12m3002[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3003[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// PHASE 2: Single-path set_attr builtin implementation[0m
+[0m[1m[38;5;12m3004[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// This replaces delegation to generate_set_attr_builtin()[0m
+[0m[1m[38;5;12m3005[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3006[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// PHASE 2: Single-path clear_attr builtin implementation[0m
+[0m[1m[38;5;12m3007[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// This replaces delegation to generate_clear_attr_builtin()[0m
+[0m[1m[38;5;12m3008[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3009[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// SINGLE-PATH MIGRATION: Phase 3 - Random number generation (Tier 3)[0m
+[0m[1m[38;5;12m3010[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Generates Z-Machine random instruction directly from IR[0m
+[0m[1m[38;5;12m3011[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3012[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// SINGLE-PATH MIGRATION: Phase 3 - Visibility checking (Tier 3)[0m
+[0m[1m[38;5;12m3013[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Generates complex Z-Machine visibility checking logic[0m
+[0m[1m[38;5;12m3014[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3015[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// SINGLE-PATH MIGRATION: Phase 3 - List all objects (Tier 3)[0m
+[0m[1m[38;5;12m3016[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3017[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// SINGLE-PATH MIGRATION: Phase 3 - List container contents (Tier 3)[0m
+[0m[1m[38;5;12m3018[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3019[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// SINGLE-PATH MIGRATION: Phase 3 - Get object contents (Tier 3)[0m
+[0m[1m[38;5;12m3020[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3021[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// SINGLE-PATH MIGRATION: Phase 3 - Check if object is empty (Tier 3)[0m
+[0m[1m[38;5;12m3022[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3023[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// SINGLE-PATH MIGRATION: Phase 3 - Check if value is none/null (Tier 3)[0m
+[0m[1m[38;5;12m3024[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3025[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// SINGLE-PATH MIGRATION: Phase 3 - Get object size/capacity (Tier 3)[0m
+[0m[1m[38;5;12m3026[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3027[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// SINGLE-PATH MIGRATION: BinaryOp instruction translation[0m
+[0m[1m[38;5;12m3028[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Converts IR arithmetic operations directly to Z-Machine instructions (add, sub, mul, div)[0m
+[0m[1m[38;5;12m3029[0m[0m [0m[0m[1m[38;5;12m|[0m[0m     // Dead code removed: translate_binary_op() method (151 lines) - unused from old IR translation layer[0m
+[0m[1m[38;5;12m3030[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3031[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// SINGLE-PATH MIGRATION: String concatenation support for BinaryOp Add operations[0m
+[0m[1m[38;5;12m3032[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Implements compile-time string concatenation as done in the legacy system[0m
+[0m[1m[38;5;12m3033[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m [0m[0m[1m[38;5;12m...[0m
+[0m[1m[38;5;12m3050[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3051[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Implementation: CreateArray - Initialize dynamic array/list[0m
+[0m[1m[38;5;12m3052[0m[0m [0m[0m[1m[38;5;12m|[0m[0m     // Dead code removed: translate_create_array() method (24 lines) - unused from old IR translation layer[0m
+[0m [0m[0m[1m[38;5;12m...[0m
+[0m[1m[38;5;12m3071[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3072[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Generate implicit init block for games without explicit init{}[0m
+[0m[1m[38;5;12m3073[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Updated to handle separated spaces architecture compatibility[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty line after doc comment[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:3236:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3236[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// Generate object and property tables[0m
+[0m[1m[38;5;12m3237[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m3238[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    /// Create a single object entry in the object table[0m
+[0m[1m[38;5;12m3239[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    fn create_object_entry([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m----------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty line is unintentional, remove it[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the documentation should include the empty line include it in the comment[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3237[0m[0m [0m[0m[1m[38;5;12m| [0m[0m[38;5;10m    ///[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty line after doc comment[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4035:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4035[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// Encode an object name as Z-Machine text[0m
+[0m[1m[38;5;12m4036[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m4037[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    /// Get object name by object number (for property table generation)[0m
+[0m[1m[38;5;12m4038[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    fn get_object_name_by_number(&self, obj_num: u8) -> String {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m----------------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty line is unintentional, remove it[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the documentation should include the empty line include it in the comment[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4036[0m[0m [0m[0m[1m[38;5;12m| [0m[0m[38;5;10m    ///[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty line after doc comment[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4054:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4054[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// Generate dictionary[0m
+[0m[1m[38;5;12m4055[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m4056[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    /// Generate global variables table[0m
+[0m[1m[38;5;12m4057[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    fn generate_global_variables(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m----------------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty line is unintentional, remove it[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the documentation should include the empty line include it in the comment[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4055[0m[0m [0m[0m[1m[38;5;12m| [0m[0m[38;5;10m    ///[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty lines after doc comment[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:7240:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m7240[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// REPLACEMENT: Use `use_push_pull_for_result()` for proper Z-Machine stack discipline[0m
+[0m[1m[38;5;12m7241[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m7242[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m    /// PHASE 3B: Improved stack discipline for function call results[0m
+[0m[1m[38;5;12m7243[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m    ///[0m
+[0m[1m[38;5;12m...[0m[0m    [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m7258[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m...[0m
+[0m[1m[38;5;12m7267[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    pub fn allocate_global_variable(&mut self) -> u8 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m-------------------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty lines are unintentional, remove them[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the doc comment should not document function `allocate_global_variable` then comment it out[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m7233[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// DEPRECATED FUNCTION REMOVED (Oct 27, 2025):[0m
+[0m[1m[38;5;12m7234[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// use_stack_for_result() caused Variable(0) collisions that crashed Property 28 access![0m
+[0m[1m[38;5;12m7235[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m///[0m
+[0m[1m[38;5;12m7236[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// MIGRATION COMPLETE: All callers migrated to use_push_pull_for_result()[0m
+[0m[1m[38;5;12m7237[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// - GetProperty operations (property access like obj.name)[0m
+[0m[1m[38;5;12m7238[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// - GetObjectParent operations (object tree access like player.location)[0m
+[0m[1m[38;5;12m7239[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m///[0m
+[0m[1m[38;5;12m7240[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// REPLACEMENT: Use `use_push_pull_for_result()` for proper Z-Machine stack discipline[0m
+[0m[1m[38;5;12m7241[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m7242[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// PHASE 3B: Improved stack discipline for function call results[0m
+[0m[1m[38;5;12m7243[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m///[0m
+[0m[1m[38;5;12m7244[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// This method replaces use_stack_for_result() for critical cases where multiple[0m
+[0m[1m[38;5;12m7245[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// operations compete for Variable(0), causing collisions and crashes like the[0m
+[0m[1m[38;5;12m7246[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Property 28 bug. By allocating unique global variables instead of using the[0m
+[0m[1m[38;5;12m7247[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// contested stack, we reduce Variable(0) contention significantly.[0m
+[0m[1m[38;5;12m7248[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m///[0m
+[0m[1m[38;5;12m7249[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// # Strategy[0m
+[0m[1m[38;5;12m7250[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// - Function call results that need persistent storage → unique global variables[0m
+[0m[1m[38;5;12m7251[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// - Temporary expression results → still use Variable(0) (TODO: Phase 3C push/pull)[0m
+[0m[1m[38;5;12m7252[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// - Property access results → already use globals (existing bug fix)[0m
+[0m[1m[38;5;12m7253[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m///[0m
+[0m[1m[38;5;12m7254[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// # Usage[0m
+[0m[1m[38;5;12m7255[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Convert critical builtin calls: get_location, random, get_object_contents, etc.[0m
+[0m[1m[38;5;12m7256[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// that are frequently called and likely to collide with other Variable(0) operations.[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty line after doc comment[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:7904:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m7904[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// Allocate space for strings with proper alignment[0m
+[0m[1m[38;5;12m7905[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m7906[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    /// Generate init block as a proper routine and startup sequence[0m
+[0m[1m[38;5;12m7907[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    fn generate_init_block([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m----------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty line is unintentional, remove it[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the documentation should include the empty line include it in the comment[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m7905[0m[0m [0m[0m[1m[38;5;12m| [0m[0m[38;5;10m    ///[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty lines after doc comment[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:8103:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m8103[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// Write the Z-Machine file header with custom entry point[0m
+[0m[1m[38;5;12m...[0m[0m    [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m8107[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m8108[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    /// PHASE 2.2: Validate story data integrity and boundary calculations[0m
+[0m[1m[38;5;12m8109[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    fn validate_story_data_integrity(&self) -> Result<(), CompilerError> {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m--------------------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty lines are unintentional, remove them[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the doc comment should not document function `validate_story_data_integrity` then comment it out[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m8103[0m[0m [0m[0m[1m[38;5;12m| [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Write the Z-Machine file header with custom entry point[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[38;5;10m++[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty line after doc comment[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:8728:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m8728[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// Pack a string address according to Z-Machine version[0m
+[0m[1m[38;5;12m8729[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m8730[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    /// Register a builtin function name with its ID[0m
+[0m[1m[38;5;12m8731[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    pub fn register_builtin_function(&mut self, function_id: IrId, name: String) {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m--------------------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty line is unintentional, remove it[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the documentation should include the empty line include it in the comment[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m8729[0m[0m [0m[0m[1m[38;5;12m| [0m[0m[38;5;10m    ///[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty lines after doc comment[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:8904:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m8904[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// Generate player_can_see builtin function - checks if player can see an object[0m
+[0m[1m[38;5;12m8905[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m8906[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m    /// Generate string concatenation for two IR values[0m
+[0m[1m[38;5;12m...[0m[0m    [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m8909[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m...[0m
+[0m[1m[38;5;12m8923[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    pub fn add_unresolved_reference_at_location([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m-------------------------------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty lines are unintentional, remove them[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the documentation should include the empty lines include them in the comment[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m8905[0m[0m [0m[0m[38;5;10m+     ///[0m
+[0m[1m[38;5;12m8906[0m[0m [0m[0m[1m[38;5;12m|[0m[0m     /// Generate string concatenation for two IR values[0m
+[0m[1m[38;5;12m8907[0m[0m [0m[0m[38;5;10m+     ///[0m
+[0m[1m[38;5;12m8908[0m[0m [0m[0m[1m[38;5;12m|[0m[0m     /// Get string value for an IR ID (handles both string literals and function return values)[0m
+[0m[1m[38;5;12m8909[0m[0m [0m[0m[38;5;10m+     ///[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty lines after doc comment[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:9666:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m9666[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// Write byte to string space (encoded strings)[0m
+[0m[1m[38;5;12m9667[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m9668[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m    /// Write byte to dictionary space (word parsing dictionary)[0m
+[0m[1m[38;5;12m9669[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m9670[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    /// Create UnresolvedReference with proper space context[0m
+[0m[1m[38;5;12m9671[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    pub fn create_unresolved_reference([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m----------------------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty lines are unintentional, remove them[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the documentation should include the empty lines include them in the comment[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m9667[0m[0m [0m[0m[38;5;10m+     ///[0m
+[0m[1m[38;5;12m9668[0m[0m [0m[0m[1m[38;5;12m|[0m[0m     /// Write byte to dictionary space (word parsing dictionary)[0m
+[0m[1m[38;5;12m9669[0m[0m [0m[0m[38;5;10m+     ///[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty line after doc comment[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_headers.rs:212:5[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m212[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// Address Resolution & Memory Layout Functions[0m
+[0m[1m[38;5;12m213[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m214[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    /// Set final assembly address with logging for debugging[0m
+[0m[1m[38;5;12m215[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    pub fn set_final_assembly_address(&mut self, new_addr: usize, context: &str) {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m---------------------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty line is unintentional, remove it[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the documentation should include the empty line include it in the comment[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m213[0m[0m [0m[0m[1m[38;5;12m| [0m[0m[38;5;10m    ///[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty line after doc comment[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_memory.rs:16:1[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m16[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m/// - `placeholder_word()`: Creates 16-bit placeholder (0xFFFF) for address resolution[0m
+[0m[1m[38;5;12m17[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m18[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m/// Z-Machine memory layout constants[0m
+[0m[1m[38;5;12m19[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0mpub const HEADER_SIZE: usize = 64; // Fixed 64-byte header[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m[1m[38;5;12m---------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this constant item[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty line is unintentional, remove it[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the comment should document the parent module use an inner doc comment[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m [0m[0m[1m[38;5;12m1[0m[0m [0m[0m[38;5;10m~ [0m[0m//[0m[0m[38;5;10m![0m[0m Z-Machine Memory Constants and Utilities[0m
+[0m [0m[0m[1m[38;5;12m2[0m[0m [0m[0m[38;5;10m~ [0m[0m//[0m[0m[38;5;10m![0m
+[0m [0m[0m[1m[38;5;12m3[0m[0m [0m[0m[38;5;10m~ [0m[0m//[0m[0m[38;5;10m![0m[0m This module contains constants, enums, and utility functions related to Z-Machine[0m
+[0m [0m[0m[1m[38;5;12m4[0m[0m [0m[0m[38;5;10m~ [0m[0m//[0m[0m[38;5;10m![0m[0m memory management and address calculation.[0m
+[0m [0m[0m[1m[38;5;12m5[0m[0m [0m[0m[38;5;10m~ [0m[0m//[0m[0m[38;5;10m![0m
+[0m [0m[0m[1m[38;5;12m6[0m[0m [0m[0m[38;5;10m~ [0m[0m//[0m[0m[38;5;10m![0m[0m Extracted from codegen.rs as part of Plan A refactoring to reduce file size[0m
+[0m [0m[0m[1m[38;5;12m7[0m[0m [0m[0m[38;5;10m~ [0m[0m//[0m[0m[38;5;10m![0m[0m and improve code organization.[0m
+[0m [0m[0m[1m[38;5;12m8[0m[0m [0m[0m[38;5;10m~ [0m[0m//[0m[0m[38;5;10m![0m
+[0m [0m[0m[1m[38;5;12m9[0m[0m [0m[0m[38;5;10m~ [0m[0m//[0m[0m[38;5;10m![0m[0m # Constants[0m
+[0m[1m[38;5;12m10[0m[0m [0m[0m[38;5;10m~ [0m[0m//[0m[0m[38;5;10m![0m
+[0m[1m[38;5;12m11[0m[0m [0m[0m[38;5;10m~ [0m[0m//[0m[0m[38;5;10m![0m[0m - `HEADER_SIZE`: Fixed 64-byte Z-Machine header size[0m
+[0m[1m[38;5;12m12[0m[0m [0m[0m[38;5;10m~ [0m[0m//[0m[0m[38;5;10m![0m[0m - `PLACEHOLDER_BYTE`: 0xFF byte used for unresolved address placeholders[0m
+[0m[1m[38;5;12m13[0m[0m [0m[0m[38;5;10m~ [0m[0m//[0m[0m[38;5;10m![0m
+[0m[1m[38;5;12m14[0m[0m [0m[0m[38;5;10m~ [0m[0m//[0m[0m[38;5;10m![0m[0m # Functions[0m
+[0m[1m[38;5;12m15[0m[0m [0m[0m[38;5;10m~ [0m[0m//[0m[0m[38;5;10m![0m
+[0m[1m[38;5;12m16[0m[0m [0m[0m[38;5;10m~ [0m[0m//[0m[0m[38;5;10m![0m[0m - `placeholder_word()`: Creates 16-bit placeholder (0xFFFF) for address resolution[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the documentation should include the empty line include it in the comment[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m17[0m[0m [0m[0m[1m[38;5;12m| [0m[0m[38;5;10m///[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty line after doc comment[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_strings.rs:16:5[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m16[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// String Collection Functions[0m
+[0m[1m[38;5;12m17[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m18[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    /// Collect all strings from the IR program for later encoding[0m
+[0m[1m[38;5;12m19[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    pub fn collect_strings(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m----------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty line is unintentional, remove it[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the documentation should include the empty line include it in the comment[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m17[0m[0m [0m[0m[1m[38;5;12m| [0m[0m[38;5;10m    ///[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty line after doc comment[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_strings.rs:161:5[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m161[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// String Encoding Functions[0m
+[0m[1m[38;5;12m162[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m163[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    /// Encode all collected strings using Z-Machine ZSCII encoding[0m
+[0m[1m[38;5;12m164[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    pub fn encode_all_strings(&mut self) -> Result<(), CompilerError> {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m-------------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty line is unintentional, remove it[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the documentation should include the empty line include it in the comment[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m162[0m[0m [0m[0m[1m[38;5;12m| [0m[0m[38;5;10m    ///[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty line after doc comment[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_strings.rs:358:5[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m358[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// Dictionary Generation Functions[0m
+[0m[1m[38;5;12m359[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m360[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    /// Generate dictionary space with minimal word parsing dictionary[0m
+[0m[1m[38;5;12m361[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    pub fn generate_dictionary_space(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m--------------------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty line is unintentional, remove it[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the documentation should include the empty line include it in the comment[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m359[0m[0m [0m[0m[1m[38;5;12m| [0m[0m[38;5;10m    ///[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty line after doc comment[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_strings.rs:498:5[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m498[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// String Utility Functions[0m
+[0m[1m[38;5;12m499[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m500[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    /// Find or create a string ID for the given string[0m
+[0m[1m[38;5;12m501[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    pub fn find_or_create_string_id(&mut self, s: &str) -> Result<IrId, CompilerError> {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m-------------------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty line is unintentional, remove it[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the documentation should include the empty line include it in the comment[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m499[0m[0m [0m[0m[1m[38;5;12m| [0m[0m[38;5;10m    ///[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty line after doc comment[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_strings.rs:553:5[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m553[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// Address and Space Management[0m
+[0m[1m[38;5;12m554[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m555[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    /// Allocate space in string space and return offset[0m
+[0m[1m[38;5;12m556[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    pub fn allocate_string_space([0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m----------------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty line is unintentional, remove it[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the documentation should include the empty line include it in the comment[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m554[0m[0m [0m[0m[1m[38;5;12m| [0m[0m[38;5;10m    ///[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: empty lines after doc comment[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_strings.rs:688:5[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m688[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    /// String Processing Functions for IR Translation[0m
+[0m[1m[38;5;12m689[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m690[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m    /// Translate to_string builtin function calls[0m
+[0m[1m[38;5;12m691[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m    // Removed dead code: _translate_to_string_builtin_inline_REMOVED[0m
+[0m[1m[38;5;12m692[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_^[0m
+[0m[1m[38;5;12m693[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    /// Translate string concatenation operations[0m
+[0m[1m[38;5;12m694[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m    pub fn translate_string_concatenation([0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m       [0m[0m[1m[38;5;12m-------------------------------------[0m[0m [0m[0m[1m[38;5;12mthe comment documents this function[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: [0m[0mif the empty lines are unintentional, remove them[0m
+[0m[1m[38;5;14mhelp[0m[0m: if the doc comment should not document function `translate_string_concatenation` then comment it out[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m688[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// String Processing Functions for IR Translation[0m
+[0m[1m[38;5;12m689[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m690[0m[0m [0m[0m[38;5;10m~ [0m[0m    [0m[0m[38;5;10m// [0m[0m/// Translate to_string builtin function calls[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4136:31[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4136[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                               [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D deprecated` implied by `-D warnings`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(deprecated)]`[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4240:27[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4240[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4282:34[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4282[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let storew_layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                  [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4310:34[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4310[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let storew_layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                  [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4336:14[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4336[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4352:27[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4352[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4403:27[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4403[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4508:14[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4508[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4519:27[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4519[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4554:14[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4554[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4594:34[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4594[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let storew_layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                  [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4641:27[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4641[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4678:27[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4678[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4756:27[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4756[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4803:22[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4803[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                      [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4818:35[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4818[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                   [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4851:35[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4851[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                   [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4957:35[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4957[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                   [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:5035:35[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m5035[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                   [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:5069:35[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m5069[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                   [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:5102:35[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m5102[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                   [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:5254:14[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m5254[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:5270:14[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m5270[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:5315:27[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m5315[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:5569:27[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m5569[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:6766:18[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m6766[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                  [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:6774:18[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m6774[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                  [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:7085:27[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m7085[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:7155:27[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m7155[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:7205:27[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m7205[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:8060:35[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m8060[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                   [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_builtins.rs:675:27[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m675[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let layout = self.emit_instruction([0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_builtins.rs:1106:31[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1106[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                               [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_builtins.rs:1221:38[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1221[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            let branch_layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                      [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_builtins.rs:1625:34[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1625[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let branch_layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                  [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_builtins.rs:1712:38[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1712[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let loop_check_layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                      [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `indexmap::IndexSet::<T, S>::remove`: `remove` disrupts the set order -- use `swap_remove` or `shift_remove` for explicit behavior.[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_instructions.rs:635:39[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m635[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                self.push_pull_ir_ids.remove(target);[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                                       [0m[0m[1m[38;5;9m^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_instructions.rs:1358:35[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1358[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                let layout = self.emit_instruction([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                   [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: use of deprecated method `indexmap::IndexSet::<T, S>::remove`: `remove` disrupts the set order -- use `swap_remove` or `shift_remove` for explicit behavior.[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_instructions.rs:1497:39[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1497[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                self.push_pull_ir_ids.remove(target);[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                       [0m[0m[1m[38;5;9m^^^^^^[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: unused variable: `index`[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_objects.rs:724:14[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m724[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        for (index, object) in all_objects.iter().enumerate() {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[38;5;9m^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: if this is intentional, prefix it with an underscore: `_index`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D unused-variables` implied by `-D warnings`[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(unused_variables)]`[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual implementation of `.is_multiple_of()`[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:863:20[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m863[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                if current_address % 2 != 0 {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                    [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: replace with: `!current_address.is_multiple_of(2)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_is_multiple_of[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::manual-is-multiple-of` implied by `-D warnings`[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::manual_is_multiple_of)]`[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `!RangeInclusive::contains` implementation[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:1716:24[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1716[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                    if offset < -32768 || offset > 32767 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                        [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `!(-32768..=32767).contains(&offset)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::manual-range-contains` implied by `-D warnings`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::manual_range_contains)]`[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: you seem to use `.enumerate()` and immediately discard the index[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:2204:31[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2204[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        for (_i, function) in ir.functions.iter().enumerate() {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                               [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unused_enumerate_index[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::unused-enumerate-index` implied by `-D warnings`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::unused_enumerate_index)]`[0m
+[0m[1m[38;5;14mhelp[0m[0m: remove the `.enumerate()` call[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2204[0m[0m [0m[0m[38;5;9m- [0m[0m        for [0m[0m[38;5;9m(_i, function)[0m[0m in [0m[0m[38;5;9mir.functions.iter().enumerate()[0m[0m {[0m
+[0m[1m[38;5;12m2204[0m[0m [0m[0m[38;5;10m+ [0m[0m        for [0m[0m[38;5;10mfunction[0m[0m in [0m[0m[38;5;10mir.functions.iter()[0m[0m {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual implementation of `.is_multiple_of()`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:2207:23[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2207[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                while simulated_address % 4 != 0 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                       [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: replace with: `!simulated_address.is_multiple_of(4)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_is_multiple_of[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual implementation of `.is_multiple_of()`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:2291:24[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2291[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                    if self.code_address % 2 != 0 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                        [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: replace with: `!self.code_address.is_multiple_of(2)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_is_multiple_of[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual implementation of `.is_multiple_of()`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:2298:27[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2298[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                    while self.code_address % 4 != 0 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: replace with: `!self.code_address.is_multiple_of(4)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_is_multiple_of[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: this match could be replaced by its scrutinee and body[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:2679:21[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2679[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m                    match name.as_str() {[0m
+[0m[1m[38;5;12m...[0m[0m    [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m2689[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                    }[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_____________________^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#match_single_binding[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::match-single-binding` implied by `-D warnings`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::match_single_binding)]`[0m
+[0m[1m[38;5;14mhelp[0m[0m: consider using the scrutinee and body instead[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2679[0m[0m [0m[0m[38;5;10m~ [0m[0m                    [0m[0m[38;5;10mname.as_str();[0m
+[0m[1m[38;5;12m2680[0m[0m [0m[0m[38;5;10m+                     {[0m
+[0m[1m[38;5;12m2681[0m[0m [0m[0m[38;5;10m+                         // Fallback to legacy system for remaining builtins (Tier 3 only)[0m
+[0m[1m[38;5;12m2682[0m[0m [0m[0m[38;5;10m+                         log::debug!(" LEGACY: {} delegating to legacy builtin system", name);[0m
+[0m[1m[38;5;12m2683[0m[0m [0m[0m[38;5;10m+                         let _ = target == Some(104);[0m
+[0m[1m[38;5;12m2684[0m[0m [0m[0m[38;5;10m+                         self.generate_builtin_function_call(function, args, target)?;[0m
+[0m[1m[38;5;12m2685[0m[0m [0m[0m[38;5;10m+                     }[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual implementation of `.is_multiple_of()`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:3188:24[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3188[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                    if addr % 2 != 0 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                        [0m[0m[1m[38;5;9m^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: replace with: `!addr.is_multiple_of(2)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_is_multiple_of[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual implementation of `.is_multiple_of()`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:3194:27[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3194[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                    while addr % 4 != 0 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: replace with: `!addr.is_multiple_of(4)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_is_multiple_of[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: called `unwrap` on `string_id_opt` after checking its variant with `is_some`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:3667:37[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3666[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                if i == 0 && string_id_opt.is_some() {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                              [0m[0m[1m[38;5;12m-----------------------[0m[0m [0m[0m[1m[38;5;12mthe check is happening here[0m
+[0m[1m[38;5;12m3667[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                    let string_id = string_id_opt.unwrap();[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                     [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: try using `if let` or `match`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unnecessary_unwrap[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::unnecessary-unwrap` implied by `-D warnings`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::unnecessary_unwrap)]`[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual implementation of `.is_multiple_of()`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4173:20[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4173[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                if self.code_address % 2 != 0 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                    [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: replace with: `!self.code_address.is_multiple_of(2)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_is_multiple_of[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual implementation of `.is_multiple_of()`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4179:23[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4179[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                while self.code_address % 4 != 0 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                       [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: replace with: `!self.code_address.is_multiple_of(4)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_is_multiple_of[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: you seem to use `.enumerate()` and immediately discard the index[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4709:31[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4709[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        for (_i, _pattern) in patterns.iter().enumerate() {}[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                               [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unused_enumerate_index[0m
+[0m[1m[38;5;14mhelp[0m[0m: remove the `.enumerate()` call[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4709[0m[0m [0m[0m[38;5;9m- [0m[0m        for [0m[0m[38;5;9m(_i, _pattern)[0m[0m in [0m[0m[38;5;9mpatterns.iter().enumerate()[0m[0m {}[0m
+[0m[1m[38;5;12m4709[0m[0m [0m[0m[38;5;10m+ [0m[0m        for [0m[0m[38;5;10m_pattern[0m[0m in [0m[0m[38;5;10mpatterns.iter()[0m[0m {}[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: useless use of `format!`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4949:68[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4949[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m[1m[38;5;12m...[0m[0m                   return Err(CompilerError::CodeGenError(format!([0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m ______________________________________________________________^[0m
+[0m[1m[38;5;12m4950[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m[1m[38;5;12m...[0m[0m                       "Grammar handler arguments cannot use StringRef - use String instead"[0m
+[0m[1m[38;5;12m4951[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m[1m[38;5;12m...[0m[0m                   )));[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_______________________^[0m[0m [0m[0m[1m[38;5;9mhelp: consider using `.to_string()`: `"Grammar handler arguments cannot use StringRef - use String instead".to_string()`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#useless_format[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::useless-format` implied by `-D warnings`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::useless_format)]`[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: the loop variable `i` is only used to index `operands`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:4986:34[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4986[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                        for i in 1..operand_index {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                  [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#needless_range_loop[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::needless-range-loop` implied by `-D warnings`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::needless_range_loop)]`[0m
+[0m[1m[38;5;14mhelp[0m[0m: consider using an iterator[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4986[0m[0m [0m[0m[38;5;9m- [0m[0m                        for [0m[0m[38;5;9mi[0m[0m in [0m[0m[38;5;9m1..operand_index[0m[0m {[0m
+[0m[1m[38;5;12m4986[0m[0m [0m[0m[38;5;10m+ [0m[0m                        for [0m[0m[38;5;10m<item>[0m[0m in [0m[0m[38;5;10moperands.iter().take(operand_index).skip(1)[0m[0m {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual implementation of `.is_multiple_of()`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:8709:20[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m8709[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                if byte_address % 2 != 0 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                    [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: replace with: `!byte_address.is_multiple_of(2)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_is_multiple_of[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual implementation of `.is_multiple_of()`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:8718:20[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m8718[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                if byte_address % 4 != 0 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                    [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: replace with: `!byte_address.is_multiple_of(4)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_is_multiple_of[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: unneeded `return` statement[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:8808:17[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m8808[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                return self.call_builtin_function("get_exit", args, target);[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                 [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#needless_return[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::needless-return` implied by `-D warnings`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::needless_return)]`[0m
+[0m[1m[38;5;14mhelp[0m[0m: remove `return`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m8808[0m[0m [0m[0m[38;5;9m- [0m[0m                [0m[0m[38;5;9mreturn self.call_builtin_function("get_exit", args, target);[0m
+[0m[1m[38;5;12m8808[0m[0m [0m[0m[38;5;10m+ [0m[0m                [0m[0m[38;5;10mself.call_builtin_function("get_exit", args, target)[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: unneeded `return` statement[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:8818:17[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m8818[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                return self.call_builtin_function("print_num", args, target);[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                 [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#needless_return[0m
+[0m[1m[38;5;14mhelp[0m[0m: remove `return`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m8818[0m[0m [0m[0m[38;5;9m- [0m[0m                [0m[0m[38;5;9mreturn self.call_builtin_function("print_num", args, target);[0m
+[0m[1m[38;5;12m8818[0m[0m [0m[0m[38;5;10m+ [0m[0m                [0m[0m[38;5;10mself.call_builtin_function("print_num", args, target)[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `Range::contains` implementation[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:9299:24[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m9299[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                    if value >= 1000 && value < 10000 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                        [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `(1000..10000).contains(&value)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `RangeInclusive::contains` implementation[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:9330:12[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m9330[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        if code_offset >= 0x333 && code_offset <= 0x338 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `(0x333..=0x338).contains(&code_offset)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `RangeInclusive::contains` implementation[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:9458:12[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m9458[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        if code_offset >= 0x330 && code_offset <= 0x340 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `(0x330..=0x340).contains(&code_offset)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: length comparison to zero[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:9467:51[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m9467[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            let byte_type = if code_offset > 0 && self.code_space.len() > 0 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                                   [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: using `!is_empty` is clearer and more explicit: `!self.code_space.is_empty()`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#len_zero[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::len-zero` implied by `-D warnings`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::len_zero)]`[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `RangeInclusive::contains` implementation[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:9471:27[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m9471[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                } else if byte >= 0xB0 && byte <= 0xBF {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `(0xB0..=0xBF).contains(&byte)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `RangeInclusive::contains` implementation[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:9473:27[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m9473[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                } else if byte >= 0x80 && byte <= 0xAF {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `(0x80..=0xAF).contains(&byte)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: this boolean expression can be simplified[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:9605:12[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m9605[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        if word == 0x019f || word == 415 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: try: `word == 0x019f`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#nonminimal_bool[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::nonminimal-bool` implied by `-D warnings`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::nonminimal_bool)]`[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: equal expressions as operands to `||`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:9605:12[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m9605[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        if word == 0x019f || word == 415 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#eq_op[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[deny(clippy::eq_op)]` on by default[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: literal with an empty format string[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:9930:40[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m9930[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            "PC", "Function", "IR ID", "Instruction"[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                        [0m[0m[1m[38;5;9m^^^^^^^^^^^^^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#print_literal[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::print-literal` implied by `-D warnings`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::print_literal)]`[0m
+[0m[1m[38;5;14mhelp[0m[0m: try[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m9929[0m[0m [0m[0m[38;5;10m~ [0m[0m            "{:<8} {:<20} {:<10} [0m[0m[38;5;10mInstruction[0m[0m",[0m
+[0m[1m[38;5;12m9930[0m[0m [0m[0m[38;5;10m~ [0m[0m            "PC", "Function", "IR ID"[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual implementation of `.is_multiple_of()`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:9995:16[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m9995[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            if self.code_address % 2 != 0 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: replace with: `!self.code_address.is_multiple_of(2)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_is_multiple_of[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual implementation of `.is_multiple_of()`[0m
+[0m     [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen.rs:10046:16[0m
+[0m      [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m10046[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            if self.code_address % 2 != 0 {[0m
+[0m      [0m[0m[1m[38;5;12m|[0m[0m                [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: replace with: `!self.code_address.is_multiple_of(2)`[0m
+[0m      [0m[0m[1m[38;5;12m|[0m
+[0m      [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_is_multiple_of[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: this call to `clone` can be replaced with `std::slice::from_ref`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_builtins.rs:1108:17[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1108[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                &[container_operand.clone()],[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                 [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: try: `std::slice::from_ref(&container_operand)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#cloned_ref_to_slice_refs[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::cloned-ref-to-slice-refs` implied by `-D warnings`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::cloned_ref_to_slice_refs)]`[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: this function has too many arguments (8/7)[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_headers.rs:71:5[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m71[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    pub fn fixup_header_addresses([0m
+[0m[1m[38;5;12m72[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m        &mut self,[0m
+[0m[1m[38;5;12m73[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m        pc_start: u16,[0m
+[0m[1m[38;5;12m74[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m        dictionary_addr: u16,[0m
+[0m[1m[38;5;12m...[0m[0m  [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m79[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m        high_mem_base: u16,[0m
+[0m[1m[38;5;12m80[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m    ) -> Result<(), CompilerError> {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|__________________________________^[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#too_many_arguments[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::too-many-arguments` implied by `-D warnings`[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::too_many_arguments)]`[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: casting to the same type is unnecessary (`u32` -> `u32`)[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_instructions.rs:447:65[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m447[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                let result_var = self.allocate_global_for_ir_id(*target as u32);[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                                                                 [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: try: `(*target)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unnecessary_cast[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::unnecessary-cast` implied by `-D warnings`[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::unnecessary_cast)]`[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: casting to the same type is unnecessary (`u8` -> `u8`)[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_instructions.rs:453:72[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m453[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                self.emit_instruction_typed(LOAD, &[var_operand], Some(result_var as u8), None)?;[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                                                                        [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: try: `result_var`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unnecessary_cast[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: casting to the same type is unnecessary (`u8` -> `u8`)[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_instructions.rs:458:57[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m458[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                self.ir_id_to_stack_var.insert(*target, result_var as u8);[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                                                         [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: try: `result_var`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unnecessary_cast[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: casting to the same type is unnecessary (`u8` -> `u8`)[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_instructions.rs:749:59[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m749[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                let attr_operand = Operand::SmallConstant(*attribute_num as u8);[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                                                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: try: `(*attribute_num)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unnecessary_cast[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: casting to the same type is unnecessary (`u8` -> `u8`)[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_instructions.rs:827:59[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m827[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                let attr_operand = Operand::SmallConstant(*attribute_num as u8);[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                                                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: try: `(*attribute_num)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unnecessary_cast[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: casting to the same type is unnecessary (`u8` -> `u8`)[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_instructions.rs:905:59[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m905[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                let attr_operand = Operand::SmallConstant(*attribute_num as u8);[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                                                           [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: try: `(*attribute_num)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unnecessary_cast[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: this `if let` can be collapsed into the outer `if let`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_instructions.rs:1989:13[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1989[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m            if let ConstantValue::String(s) = constant_value {[0m
+[0m[1m[38;5;12m1990[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                return Some(s.clone());[0m
+[0m[1m[38;5;12m1991[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            }[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_____________^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;14mhelp[0m[0m: the outer pattern can be modified to include the inner pattern[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_instructions.rs:1988:21[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1988[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        if let Some(constant_value) = self.constant_values.get(&ir_id) {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                     [0m[0m[1m[38;5;14m^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;14mreplace this binding[0m
+[0m[1m[38;5;12m1989[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            if let ConstantValue::String(s) = constant_value {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                    [0m[0m[1m[38;5;14m^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;14mwith this pattern[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#collapsible_match[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::collapsible-match` implied by `-D warnings`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::collapsible_match)]`[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: this `if let` can be collapsed into the outer `if let`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_instructions.rs:2006:13[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2006[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m            if let ConstantValue::Integer(i) = constant_value {[0m
+[0m[1m[38;5;12m2007[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                return Some(*i);[0m
+[0m[1m[38;5;12m2008[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            }[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_____________^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;14mhelp[0m[0m: the outer pattern can be modified to include the inner pattern[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_instructions.rs:2005:21[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2005[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        if let Some(constant_value) = self.constant_values.get(&ir_id) {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                     [0m[0m[1m[38;5;14m^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;14mreplace this binding[0m
+[0m[1m[38;5;12m2006[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            if let ConstantValue::Integer(i) = constant_value {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                    [0m[0m[1m[38;5;14m^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;14mwith this pattern[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#collapsible_match[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `RangeInclusive::contains` implementation[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_instructions.rs:2990:16[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2990[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            if offset >= 0 && offset <= 63 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `(0..=63).contains(&offset)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `RangeInclusive::contains` implementation[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_instructions.rs:3215:16[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3215[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            if offset >= 0 && offset <= 63 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `(0..=63).contains(&offset)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `RangeInclusive::contains` implementation[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_instructions.rs:3406:16[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m3406[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            if offset >= 0 && offset <= 63 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `(0..=63).contains(&offset)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: doc list item without indentation[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_memory.rs:18:5[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m18[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m/// Z-Machine memory layout constants[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[38;5;9m^[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: if this is supposed to be its own paragraph, add a blank line[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#doc_lazy_continuation[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::doc-lazy-continuation` implied by `-D warnings`[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::doc_lazy_continuation)]`[0m
+[0m[1m[38;5;14mhelp[0m[0m: indent this line[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m18[0m[0m [0m[0m[1m[38;5;12m| [0m[0m/// [0m[0m[38;5;10m  [0m[0mZ-Machine memory layout constants[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[38;5;10m++[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: you should consider adding a `Default` implementation for `ReferenceContext`[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_references.rs:61:5[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m61[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m    pub fn new() -> Self {[0m
+[0m[1m[38;5;12m62[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m        Self {[0m
+[0m[1m[38;5;12m63[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            ir_id_to_address: IndexMap::new(),[0m
+[0m[1m[38;5;12m64[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            unresolved_refs: Vec::new(),[0m
+[0m[1m[38;5;12m65[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m        }[0m
+[0m[1m[38;5;12m66[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m    }[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_____^[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#new_without_default[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::new-without-default` implied by `-D warnings`[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::new_without_default)]`[0m
+[0m[1m[38;5;14mhelp[0m[0m: try adding this[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m59[0m[0m [0m[0m[38;5;10m+ impl Default for ReferenceContext {[0m
+[0m[1m[38;5;12m60[0m[0m [0m[0m[38;5;10m+     fn default() -> Self {[0m
+[0m[1m[38;5;12m61[0m[0m [0m[0m[38;5;10m+         Self::new()[0m
+[0m[1m[38;5;12m62[0m[0m [0m[0m[38;5;10m+     }[0m
+[0m[1m[38;5;12m63[0m[0m [0m[0m[38;5;10m+ }[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: you seem to want to iterate on a map's values[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_strings.rs:112:36[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m112[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            for (_, prop_value) in &object.properties.properties {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                                    [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#for_kv_map[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::for-kv-map` implied by `-D warnings`[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::for_kv_map)]`[0m
+[0m[1m[38;5;14mhelp[0m[0m: use the corresponding method[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m112[0m[0m [0m[0m[38;5;9m- [0m[0m            for [0m[0m[38;5;9m(_, prop_value)[0m[0m in [0m[0m[38;5;9m&object.properties.properties[0m[0m {[0m
+[0m[1m[38;5;12m112[0m[0m [0m[0m[38;5;10m+ [0m[0m            for [0m[0m[38;5;10mprop_value[0m[0m in [0m[0m[38;5;10mobject.properties.properties.values()[0m[0m {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: you seem to be trying to use `match` for destructuring a single pattern. Consider using `if let`[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_strings.rs:148:13[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m148[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m            match instruction {[0m
+[0m[1m[38;5;12m149[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                IrInstruction::LoadImmediate {[0m
+[0m[1m[38;5;12m150[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                    target,[0m
+[0m[1m[38;5;12m151[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                    value: IrValue::String(s),[0m
+[0m[1m[38;5;12m...[0m[0m   [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m155[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                _ => {} // Other instructions don't contain strings[0m
+[0m[1m[38;5;12m156[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            }[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_____________^[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: you might want to preserve the comments from inside the `match`[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#single_match[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::single-match` implied by `-D warnings`[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::single_match)]`[0m
+[0m[1m[38;5;14mhelp[0m[0m: try[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m148[0m[0m [0m[0m[38;5;10m~ [0m[0m            [0m[0m[38;5;10mif let IrInstruction::LoadImmediate {[0m
+[0m[1m[38;5;12m149[0m[0m [0m[0m[38;5;10m+                     target,[0m
+[0m[1m[38;5;12m150[0m[0m [0m[0m[38;5;10m+                     value: IrValue::String(s),[0m
+[0m[1m[38;5;12m151[0m[0m [0m[0m[38;5;10m+                 } = instruction {[0m
+[0m[1m[38;5;12m152[0m[0m [0m[0m[38;5;10m+                 self.strings.push((*target, s.clone()));[0m
+[0m[1m[38;5;12m153[0m[0m [0m[0m[38;5;10m+             }[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual implementation of `.is_multiple_of()`[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_strings.rs:641:20[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m641[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                if byte_address % 2 != 0 {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                    [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: replace with: `!byte_address.is_multiple_of(2)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_is_multiple_of[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual implementation of `.is_multiple_of()`[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_strings.rs:650:20[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m650[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                if byte_address % 4 != 0 {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                    [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: replace with: `!byte_address.is_multiple_of(4)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_is_multiple_of[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: function call inside of `expect`[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/codegen_strings.rs:842:22[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m842[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m                    .expect(&format!([0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m ______________________^[0m
+[0m[1m[38;5;12m843[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                        "Property string '{}' for property {} not found in collected strings! \[0m
+[0m[1m[38;5;12m844[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                        This indicates a bug in collect_strings() - all property strings should be collected in Phase 1.",[0m
+[0m[1m[38;5;12m845[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                        s, prop_num[0m
+[0m[1m[38;5;12m846[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m                    ));[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|______________________^[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#expect_fun_call[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::expect-fun-call` implied by `-D warnings`[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::expect_fun_call)]`[0m
+[0m[1m[38;5;14mhelp[0m[0m: try[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m842[0m[0m [0m[0m[38;5;10m~ [0m[0m                    .[0m[0m[38;5;10munwrap_or_else(|| panic!("Property string '{}' for property {} not found in collected strings! \[0m
+[0m[1m[38;5;12m843[0m[0m [0m[0m[38;5;10m+                         This indicates a bug in collect_strings() - all property strings should be collected in Phase 1.",[0m
+[0m[1m[38;5;12m844[0m[0m [0m[0m[38;5;10m~                         s, prop_num))[0m[0m;[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: parameter is only used in recursion[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/ir.rs:1858:10[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1858[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        &self,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m          [0m[0m[1m[38;5;9m^^^^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;10mnote[0m[0m: parameter used here[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/ir.rs:1865:31[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1865[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            .map(|nested_obj| self.extract_object_hierarchy(nested_obj))[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                               [0m[0m[1m[38;5;10m^^^^[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#only_used_in_recursion[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::only-used-in-recursion` implied by `-D warnings`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::only_used_in_recursion)]`[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: local variable doesn't need to be boxed here[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/ir.rs:2263:9[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2263[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        for_stmt: Box<crate::grue_compiler::ast::ForStmt>,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m         [0m[0m[1m[38;5;9m^^^^^^^^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#boxed_local[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::boxed-local` implied by `-D warnings`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::boxed_local)]`[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: this expression creates a reference which is immediately dereferenced by the compiler[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/ir.rs:2606:82[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2606[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                        if let Some(standard_attr) = self.get_standard_attribute(&property) {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                                                                  [0m[0m[1m[38;5;9m^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: change this to: `property`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#needless_borrow[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::needless-borrow` implied by `-D warnings`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::needless_borrow)]`[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: this match could be replaced by its body itself[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/opcodes.rs:66:9[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m66[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m        match self {[0m
+[0m[1m[38;5;12m67[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            _ => false,[0m
+[0m[1m[38;5;12m68[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m        }[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_________^[0m[0m [0m[0m[1m[38;5;9mhelp: consider using the match body instead: `false`[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#match_single_binding[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: match expression looks like `matches!` macro[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/opcodes.rs:73:9[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m73[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m        match self {[0m
+[0m[1m[38;5;12m74[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            Op0::Save => true,[0m
+[0m[1m[38;5;12m75[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            Op0::Restore => true,[0m
+[0m[1m[38;5;12m76[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            Op0::Verify => true,[0m
+[0m[1m[38;5;12m77[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            _ => false,[0m
+[0m[1m[38;5;12m78[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m        }[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_________^[0m[0m [0m[0m[1m[38;5;9mhelp: try: `matches!(self, Op0::Save | Op0::Restore | Op0::Verify)`[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#match_like_matches_macro[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::match-like-matches-macro` implied by `-D warnings`[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::match_like_matches_macro)]`[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: match expression looks like `matches!` macro[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/opcodes.rs:168:9[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m168[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m        match self {[0m
+[0m[1m[38;5;12m169[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            Op1::GetSibling => true,[0m
+[0m[1m[38;5;12m170[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            Op1::GetChild => true,[0m
+[0m[1m[38;5;12m171[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            Op1::GetParent => true,[0m
+[0m[1m[38;5;12m...[0m[0m   [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m175[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            _ => false,[0m
+[0m[1m[38;5;12m176[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m        }[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_________^[0m[0m [0m[0m[1m[38;5;9mhelp: try: `matches!(self, Op1::GetSibling | Op1::GetChild | Op1::GetParent | Op1::GetPropLen | Op1::Call1s | Op1::Load)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#match_like_matches_macro[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: match expression looks like `matches!` macro[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/opcodes.rs:181:9[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m181[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m        match self {[0m
+[0m[1m[38;5;12m182[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            Op1::Jz => true,[0m
+[0m[1m[38;5;12m183[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            Op1::GetSibling => true,[0m
+[0m[1m[38;5;12m184[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            Op1::GetChild => true,[0m
+[0m[1m[38;5;12m185[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            _ => false,[0m
+[0m[1m[38;5;12m186[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m        }[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_________^[0m[0m [0m[0m[1m[38;5;9mhelp: try: `matches!(self, Op1::Jz | Op1::GetSibling | Op1::GetChild)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#match_like_matches_macro[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: match expression looks like `matches!` macro[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/opcodes.rs:315:9[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m315[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m        match self {[0m
+[0m[1m[38;5;12m316[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            Op2::Or => true,[0m
+[0m[1m[38;5;12m317[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            Op2::And => true,[0m
+[0m[1m[38;5;12m318[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            Op2::Loadw => true,[0m
+[0m[1m[38;5;12m...[0m[0m   [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m329[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            _ => false,[0m
+[0m[1m[38;5;12m330[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m        }[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_________^[0m[0m [0m[0m[1m[38;5;9mhelp: try: `matches!(self, Op2::Or | Op2::And | Op2::Loadw | Op2::Loadb | Op2::GetProp | Op2::GetPropAddr | Op2::GetNextProp | Op2::Add | Op2::Sub | Op2::Mul | Op2::Div | Op2::Mod | Op2::Call2s)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#match_like_matches_macro[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: match expression looks like `matches!` macro[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/opcodes.rs:335:9[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m335[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m        match self {[0m
+[0m[1m[38;5;12m336[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            Op2::Je => true,[0m
+[0m[1m[38;5;12m337[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            Op2::Jl => true,[0m
+[0m[1m[38;5;12m338[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            Op2::Jg => true,[0m
+[0m[1m[38;5;12m...[0m[0m   [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m344[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            _ => false,[0m
+[0m[1m[38;5;12m345[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m        }[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_________^[0m[0m [0m[0m[1m[38;5;9mhelp: try: `matches!(self, Op2::Je | Op2::Jl | Op2::Jg | Op2::DecChk | Op2::IncChk | Op2::Jin | Op2::Test | Op2::TestAttr)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#match_like_matches_macro[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: match expression looks like `matches!` macro[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/opcodes.rs:496:9[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m496[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m        match self {[0m
+[0m[1m[38;5;12m497[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            OpVar::CallVs => true,[0m
+[0m[1m[38;5;12m498[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            OpVar::Aread => true,[0m
+[0m[1m[38;5;12m499[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            OpVar::Random => true,[0m
+[0m[1m[38;5;12m...[0m[0m   [0m[0m[1m[38;5;9m|[0m
+[0m[1m[38;5;12m504[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            _ => false,[0m
+[0m[1m[38;5;12m505[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m        }[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_________^[0m[0m [0m[0m[1m[38;5;9mhelp: try: `matches!(self, OpVar::CallVs | OpVar::Aread | OpVar::Random | OpVar::CallVs2 | OpVar::ReadChar | OpVar::ScanTable | OpVar::Not)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#match_like_matches_macro[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: match expression looks like `matches!` macro[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/grue_compiler/opcodes.rs:510:9[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m510[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m/[0m[0m [0m[0m        match self {[0m
+[0m[1m[38;5;12m511[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            OpVar::ScanTable => true,[0m
+[0m[1m[38;5;12m512[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            OpVar::CheckArgCount => true,[0m
+[0m[1m[38;5;12m513[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m            _ => false,[0m
+[0m[1m[38;5;12m514[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|[0m[0m [0m[0m        }[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;9m|_________^[0m[0m [0m[0m[1m[38;5;9mhelp: try: `matches!(self, OpVar::ScanTable | OpVar::CheckArgCount)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#match_like_matches_macro[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `RangeInclusive::contains` implementation[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/interpreter.rs:1214:20[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1214[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                if (op1 >= 0x03b0 && op1 <= 0x03d0) || (op2 >= 0x03b0 && op2 <= 0x03d0) || op2 == 0[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                    [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `(0x03b0..=0x03d0).contains(&op1)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `RangeInclusive::contains` implementation[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/interpreter.rs:1214:56[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1214[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                if (op1 >= 0x03b0 && op1 <= 0x03d0) || (op2 >= 0x03b0 && op2 <= 0x03d0) || op2 == 0[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                                        [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `(0x03b0..=0x03d0).contains(&op2)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `RangeInclusive::contains` implementation[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/interpreter.rs:1549:20[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1549[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                if pc >= 0x15de && pc <= 0x19ff {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                    [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `(0x15de..=0x19ff).contains(&pc)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `RangeInclusive::contains` implementation[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/interpreter.rs:1578:20[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m1578[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                if pc >= 0x15de && pc <= 0x19ff {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                    [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `(0x15de..=0x19ff).contains(&pc)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: returning the result of a `let` binding from a block[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/interpreter.rs:2704:9[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2693[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m/[0m[0m [0m[0m        let unpacked = match self.vm.game.header.version {[0m
+[0m[1m[38;5;12m2694[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            1..=3 => (packed as usize) * 2,[0m
+[0m[1m[38;5;12m2695[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            4..=5 => (packed as usize) * 4,[0m
+[0m[1m[38;5;12m2696[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            6..=7 => {[0m
+[0m[1m[38;5;12m...[0m[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2701[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            _ => (packed as usize) * 2,[0m
+[0m[1m[38;5;12m2702[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        };[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m|__________-[0m[0m [0m[0m[1m[38;5;12munnecessary `let` binding[0m
+[0m[1m[38;5;12m2703[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2704[0m[0m [0m[0m[1m[38;5;12m|[0m[0m   [0m[0m        unpacked[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m           [0m[0m[1m[38;5;9m^^^^^^^^[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#let_and_return[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `-D clippy::let-and-return` implied by `-D warnings`[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: to override `-D warnings` add `#[allow(clippy::let_and_return)]`[0m
+[0m[1m[38;5;14mhelp[0m[0m: return the expression directly[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2693[0m[0m [0m[0m[38;5;10m~ [0m[0m        [0m
+[0m[1m[38;5;12m2694[0m[0m [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2695[0m[0m [0m[0m[38;5;10m~ [0m[0m        [0m[0m[38;5;10mmatch self.vm.game.header.version {[0m
+[0m[1m[38;5;12m2696[0m[0m [0m[0m[38;5;10m+             1..=3 => (packed as usize) * 2,[0m
+[0m[1m[38;5;12m2697[0m[0m [0m[0m[38;5;10m+             4..=5 => (packed as usize) * 4,[0m
+[0m[1m[38;5;12m2698[0m[0m [0m[0m[38;5;10m+             6..=7 => {[0m
+[0m[1m[38;5;12m2699[0m[0m [0m[0m[38;5;10m+                 // Would need to handle routine offset from header[0m
+[0m[1m[38;5;12m2700[0m[0m [0m[0m[38;5;10m+                 (packed as usize) * 4[0m
+[0m[1m[38;5;12m2701[0m[0m [0m[0m[38;5;10m+             }[0m
+[0m[1m[38;5;12m2702[0m[0m [0m[0m[38;5;10m+             8 => (packed as usize) * 8,[0m
+[0m[1m[38;5;12m2703[0m[0m [0m[0m[38;5;10m+             _ => (packed as usize) * 2,[0m
+[0m[1m[38;5;12m2704[0m[0m [0m[0m[38;5;10m+         }[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: casting to the same type is unnecessary (`u16` -> `u16`)[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/interpreter.rs:2898:44[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2898[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        let entries_end = entries_start + (num_entries as u16 * entry_length as u16);[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                                            [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: try: `num_entries`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unnecessary_cast[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual implementation of `.is_multiple_of()`[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/interpreter.rs:2906:12[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2906[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        if (addr - entries_start) % entry_length as u16 != 0 {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: replace with: `!(addr - entries_start).is_multiple_of(entry_length as u16)`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_is_multiple_of[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: length comparison to zero[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0msrc/interpreter.rs:2915:20[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2915[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                if decoded_string.len() > 0[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m                    [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: using `!is_empty` is clearer and more explicit: `!decoded_string.is_empty()`[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m     [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#len_zero[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `RangeInclusive::contains` implementation[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/opcodes_object.rs:321:20[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m321[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                if prop_num >= 20 && prop_num <= 22 {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                    [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `(20..=22).contains(&prop_num)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `RangeInclusive::contains` implementation[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/vm.rs:538:12[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m538[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        if (var >= 235 && var <= 244) || var == 1 {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `(235..=244).contains(&var)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `RangeInclusive::contains` implementation[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/vm.rs:719:20[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m719[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                if prop_num >= 20 && prop_num <= 22 {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                    [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `(20..=22).contains(&prop_num)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `RangeInclusive::contains` implementation[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/vm.rs:729:16[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m729[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m            if prop_num >= 20 && prop_num <= 22 {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `(20..=22).contains(&prop_num)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+
+[0m[1m[38;5;9merror[0m[0m[1m: manual `RangeInclusive::contains` implementation[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0msrc/vm.rs:737:20[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m737[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m                if prop_num >= 20 && prop_num <= 22 {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m                    [0m[0m[1m[38;5;9m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m [0m[0m[1m[38;5;9mhelp: use: `(20..=22).contains(&prop_num)`[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mhelp[0m[0m: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains[0m
+
+[1m[31merror[0m[1m:[0m could not compile `gruesome` (lib) due to 136 previous errors

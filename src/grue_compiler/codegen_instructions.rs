@@ -729,6 +729,7 @@ impl ZMachineCodeGen {
                 );
             }
 
+            #[allow(deprecated)]
             IrInstruction::TestAttribute {
                 target,
                 object,

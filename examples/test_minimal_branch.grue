@@ -1,8 +1,7 @@
-// Minimal branch test case
+// Absolute minimal branch test
 init {
-    if (42 == 2340) {
-        print("match");
-    } else {
-        print("no match");
+    print("Before");
+    if 1 == 1 {
     }
+    print("After");
 }

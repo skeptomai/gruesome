@@ -1,7 +1,0 @@
-// Absolute minimal branch test
-init {
-    print("Before");
-    if 1 == 1 {
-    }
-    print("After");
-}
