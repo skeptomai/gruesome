@@ -160,15 +160,19 @@ impl Instruction {
                 let opcode = opcode_byte & 0x1F;
 
                 // CRITICAL FIX: Validate opcode per Z-Machine specification
-                // Long form opcodes start at 0x01, not 0x00
+                // Long form (2OP) opcodes are only valid for 0x01-0x14 (1-20)
                 // This validation prevents false positives in disassembly where
-                // data regions (especially zeros) were incorrectly decoded as instructions
+                // data regions were incorrectly decoded as instructions
                 // Examples of false positives this prevents:
                 // - Address 33c04 in AMFV: all zeros decoded as Long 0x00
                 // - Addresses caf8, cafc: data incorrectly interpreted as code
-                if opcode == 0x00 {
+                // - Invalid opcodes above 0x14 that don't exist in Z-Machine spec
+                // ENHANCED VALIDATION: Reject ALL invalid Long form opcodes per Z-Machine spec
+                // 2OP instructions exist for opcodes 1-20 (0x01-0x14), opcode 0 and 0x15+ are invalid
+                if opcode == 0x00 || opcode > 0x14 {
                     return Err(format!(
-                        "Invalid Long form opcode 0x00 at address {addr:04x}"
+                        "Invalid Long form opcode 0x{:02x} at address {addr:04x} (valid range: 0x01-0x14)",
+                        opcode
                     ));
                 }
                 (opcode, None, OperandCount::OP2)
@@ -672,5 +676,64 @@ mod tests {
         assert_eq!(inst.operands[2], 0x02);
         assert_eq!(inst.operands[3], 0x03);
         assert_eq!(inst.store_var, Some(0x00));
+    }
+
+    #[test]
+    fn test_reject_invalid_long_form_opcode_0x00() {
+        // Test that invalid Long form opcode 0x00 is rejected
+        let memory = vec![
+            0x20, // Long form, 2OP, opcode 0 (INVALID), both small constants
+            0x34, // First operand (small constant)
+            0x78, // Second operand (small constant)
+            0x00, 0x00, // Padding
+        ];
+
+        let result = Instruction::decode(&memory, 0, 3);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .contains("Invalid Long form opcode 0x00"));
+    }
+
+    #[test]
+    fn test_reject_invalid_long_form_opcode_0x15() {
+        // Test that invalid Long form opcode 0x15 is rejected (above valid range)
+        let memory = vec![
+            0x35, // Long form, 2OP, opcode 0x15 (INVALID), both small constants
+            0x34, // First operand (small constant)
+            0x78, // Second operand (small constant)
+            0x00, 0x00, // Padding
+        ];
+
+        let result = Instruction::decode(&memory, 0, 3);
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Invalid Long form opcode 0x15"));
+        assert!(error_msg.contains("valid range: 0x01-0x14"));
+    }
+
+    #[test]
+    fn test_accept_valid_long_form_opcodes() {
+        // Test that valid Long form opcodes 0x01-0x14 are accepted
+
+        // Test opcode 0x01 (je)
+        let memory1 = vec![
+            0x21, // Long form, 2OP, opcode 1 (je), both small constants
+            0x34, // First operand (small constant)
+            0x78, // Second operand (small constant)
+            0x80, // Branch: on true, offset 0 (return false)
+            0x00, // Padding
+        ];
+        assert!(Instruction::decode(&memory1, 0, 3).is_ok());
+
+        // Test opcode 0x14 (add)
+        let memory2 = vec![
+            0x34, // Long form, 2OP, opcode 0x14 (add), both small constants
+            0x05, // First operand (small constant)
+            0x03, // Second operand (small constant)
+            0x01, // Store variable
+            0x00, // Padding
+        ];
+        assert!(Instruction::decode(&memory2, 0, 3).is_ok());
     }
 }

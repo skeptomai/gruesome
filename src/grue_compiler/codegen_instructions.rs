@@ -2624,9 +2624,10 @@ impl ZMachineCodeGen {
                 0 => InstructionForm::Short, // 0OP
                 1 => InstructionForm::Short, // 1OP
                 2 => {
-                    // Could be 2OP (long form) or VAR form
-                    // For now, prefer long form for 2 operands
-                    if opcode < 0x80 {
+                    // CRITICAL FIX: Only use LONG form for actual 2OP instructions
+                    // Prevents invalid combinations like trying to emit 1OP:0 (jz) with 2 operands
+                    // which would create invalid 2OP:0 instruction (opcode 0x20)
+                    if opcode < 0x80 && Self::is_valid_2op_opcode(opcode) {
                         InstructionForm::Long
                     } else {
                         InstructionForm::Variable
@@ -2634,6 +2635,15 @@ impl ZMachineCodeGen {
                 }
                 _ => InstructionForm::Variable, // VAR form for 3+ operands
             },
+        }
+    }
+
+    /// Check if an opcode is a valid 2OP instruction according to Z-Machine specification
+    /// 2OP instructions exist for opcodes 1-20 (0x01-0x14), opcode 0 is invalid
+    fn is_valid_2op_opcode(opcode: u8) -> bool {
+        match opcode {
+            0x01..=0x14 => true, // Valid 2OP instructions: je, jl, jg, dec_chk, inc_chk, jin, test, or, and, test_attr, set_attr, clear_attr, store, insert_obj, loadw, loadb, get_prop, get_prop_addr, get_next_prop, add
+            _ => false,
         }
     }
 
