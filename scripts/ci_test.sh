@@ -31,14 +31,11 @@ FAILING_EXAMPLES=(
     "examples/control_flow_test.grue"
 )
 
-# Core functionality tests
+# Core functionality tests (only non-interactive examples for CI)
 CORE_TESTS=(
     "examples/test_01_basic.grue"
     "examples/test_02_multiprint.grue"
-    "examples/test_04_room.grue"
-    "examples/test_05_player_location.grue" 
-    "examples/test_06_player_assignment.grue"
-    "examples/mini_zork.grue"
+    "examples/test_03_function.grue"
 )
 
 echo "Testing compilation of all working examples..."
@@ -87,7 +84,7 @@ done
 echo ""
 echo "✅ All CI tests passed!"
 echo "   - 14 working examples compile successfully"
-echo "   - 6 core examples run without crashes"
+echo "   - 3 core examples run without crashes"
 echo "   - Known issues are stable"
 echo ""
 echo "SUCCESS: Grue compiler is ready for release!"
