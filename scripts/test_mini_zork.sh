@@ -1,12 +1,21 @@
 #!/bin/bash
-# Test script for Mini Zork - compiles and runs the game
 
-echo "Recompiling mini_zork.grue..."
-env RUST_LOG=warn cargo run --bin grue-compiler -- examples/mini_zork.grue -o /tmp/mini_zork_test.z3 2>&1 | tail -3
+# Script to compile and run mini_zork interactively
+# Usage: ./test_mini_zork.sh
 
+set -e  # Exit on any error
+
+echo "🔨 Compiling mini_zork.grue..."
+cargo run --bin grue-compiler -- ../examples/mini_zork.grue -o ../tests/mini_zork_test.z3
+
+echo "🎮 Starting mini_zork interactive session..."
+echo "   Commands to try:"
+echo "   - look"
+echo "   - examine mailbox"
+echo "   - open mailbox"
+echo "   - north"
+echo "   - quit"
 echo ""
-echo "Starting Mini Zork..."
-echo "Try commands like: inventory, north, south, east, west, open mailbox, take leaflet, read leaflet"
-echo ""
 
-env DISPLAY_MODE=terminal ./target/debug/gruesome /tmp/mini_zork_test.z3
+# Run the interpreter interactively
+../target/debug/gruesome ../tests/mini_zork_test.z3
