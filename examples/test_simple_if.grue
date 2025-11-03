@@ -1,0 +1,23 @@
+// Minimal test case for constant comparison if (1 == 1)
+world {
+    room test_room "Test Room" {
+        desc: "A simple test room"
+    }
+}
+
+fn test_constant_if() {
+    print("Testing constant comparison if (1 == 1)");
+
+    if (1 == 1) {
+        print("Constant comparison TRUE branch executed");
+    } else {
+        print("Constant comparison FALSE branch executed - ERROR!");
+    }
+
+    print("Constant comparison test complete");
+}
+
+init {
+    player.location = test_room;
+    test_constant_if();
+}

@@ -1,0 +1,32 @@
+// Test to see if get_child now works with actual objects
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+
+        object coin {
+            name: "coin"
+            desc: "A shiny coin."
+        }
+    }
+}
+
+init {
+    player.location = test_room;
+    coin.location = player;  // This should insert coin into player
+    main();
+}
+
+fn main() {
+    print("Testing get_child after insert_obj...");
+
+    // Call player.contents() which should call get_child
+    let result = player.contents();
+
+    print("Player contents returned: " + result);
+
+    if result == 0 {
+        print("Result is 0 (empty)");
+    } else {
+        print("Result is non-zero: " + result);
+    }
+}

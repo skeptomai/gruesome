@@ -1,0 +1,29 @@
+// Phase 1 Test Case 2: Object Property Concatenation
+// Purpose: Test if stack underflow occurs when concatenating with object properties
+// This should reproduce the stack underflow we're investigating
+
+world {
+    room test_room "Test Room" {
+        desc: "A test room."
+
+        object coin {
+            name: "coin"
+            desc: "A shiny coin."
+        }
+    }
+}
+
+init {
+    player.location = test_room;
+    coin.location = player;  // Insert coin into player
+    main();
+}
+
+fn main() {
+    let result = player.contents();
+    if result != 0 {
+        print("Found object: " + result.name);  // This should trigger stack underflow
+    } else {
+        print("No objects found");
+    }
+}
