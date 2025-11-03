@@ -1,6 +1,12 @@
 // Basic working Grue program for testing
 // Only uses features we've fully implemented
 
+grammar {
+    verb "quit" {
+        default => handle_quit()
+    }
+}
+
 world {
     room test_room "Test Room" {
         desc: "This is a simple test room."
@@ -10,6 +16,11 @@ world {
 
 fn test_function() {
     print("Hello from test function!");
+}
+
+fn handle_quit() {
+    print("Goodbye!");
+    quit();
 }
 
 init {
