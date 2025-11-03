@@ -32,8 +32,8 @@ FAILED=0
 for example in "${EXAMPLES[@]}"; do
     echo -n "Testing $example... "
     
-    # Compile
-    if ! RUST_LOG=error timeout 10s cargo run --bin grue-compiler -- "examples/$example" >/dev/null 2>&1; then
+    # Compile (suppress warnings to stderr for cleaner CI output)
+    if ! RUST_LOG=error timeout 10s cargo run --bin grue-compiler -- "examples/$example" >/dev/null 2>/dev/null; then
         echo "❌ COMPILE FAILED"
         ((FAILED++))
         continue
