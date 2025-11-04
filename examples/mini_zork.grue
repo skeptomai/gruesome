@@ -18,6 +18,7 @@ world {
                 object leaflet {
                     names: ["leaflet", "paper"]
                     desc: "\"WELCOME TO ZORK!\n\nZORK is a game of adventure, danger, and low cunning. In it you will explore some of the most amazing territory ever seen by mortals. No computer should be without one!\""
+                    takeable: true
                 }
             }
         }
@@ -316,7 +317,13 @@ fn handle_take(obj) {
         println("You can't see any such thing.");
         return;
     }
-    
+
+    // Check if object is takeable
+    if obj.takeable == false {
+        println("You can't take that.");
+        return;
+    }
+
     // Check if object is inside a closed container
     if obj.location.container && !obj.location.open {
         println("The " + obj.location.name + " is closed.");

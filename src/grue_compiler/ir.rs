@@ -1675,6 +1675,11 @@ impl IrGenerator {
                         attributes.set(StandardAttribute::Container as u8, *val);
                     }
                 }
+                "takeable" => {
+                    if let crate::grue_compiler::ast::PropertyValue::Boolean(val) = prop_value {
+                        attributes.set(StandardAttribute::Takeable as u8, *val);
+                    }
+                }
                 _ => {} // Other properties handled below
             }
         }
