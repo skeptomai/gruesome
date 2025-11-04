@@ -4249,8 +4249,13 @@ impl ZMachineCodeGen {
             });
 
         // 4. Read user input using Z-Machine sread instruction with global variables (like Zork I)
-        self.emit_instruction(
-            0x04, // sread opcode (VAR instruction) - V3 compatible, not in typed enum
+        //
+        // SREAD TYPE-SAFETY FIX: Now uses emit_instruction_typed with OpVar::Sread instead
+        // of raw opcode 0x04. This was enabled by renaming Aread→Sread in opcodes.rs to
+        // align the typed enum with our V3 target platform. Previously required raw opcode
+        // because Aread was V4+ only, but Sread correctly represents V1-V3 semantics.
+        self.emit_instruction_typed(
+            Opcode::OpVar(OpVar::Sread), // V1-V3 sread instruction - now type-safe
             &[
                 Operand::Variable(TEXT_BUFFER_GLOBAL), // Global G6d = Variable(109)
                 Operand::Variable(PARSE_BUFFER_GLOBAL), // Global G6e = Variable(110)
@@ -5981,9 +5986,7 @@ impl ZMachineCodeGen {
                 // V3 compatibility constraints in determine_instruction_form_with_operands require raw opcode
                 self.emit_instruction(
                     0x17, // div opcode - V3 compatibility handled by determine_instruction_form_with_operands
-                    &operands,
-                    store_var,
-                    None,
+                    &operands, store_var, None,
                 )?;
             }
             _ => {
@@ -6157,12 +6160,17 @@ impl ZMachineCodeGen {
         );
 
         // Track the 17 problematic IR IDs
+        //
+        // LOGGING LEVEL FIX: Changed from log::error! to log::debug! - this tracks normal
+        // IR ID resolution during compilation, not actual errors. The term "problematic"
+        // refers to IDs that required investigation during development, but their resolution
+        // during compilation is expected behavior, not an error condition.
         if [
             132, 181, 203, 224, 334, 337, 358, 408, 417, 425, 439, 441, 443, 464, 515, 518, 535,
         ]
         .contains(&ir_id)
         {
-            log::error!(
+            log::debug!(
                 "RESOLVE_PROBLEMATIC: Resolving unpulled IR ID {} - in push_pull_ir_ids: {}",
                 ir_id,
                 self.push_pull_ir_ids.contains(&ir_id)

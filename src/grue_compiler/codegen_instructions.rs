@@ -817,7 +817,11 @@ impl ZMachineCodeGen {
             } => {
                 // CRITICAL FIX: Implement missing TestAttributeBranch codegen
                 // This instruction was being silently skipped, causing wrong branch behavior
-                log::error!(
+                //
+                // LOGGING LEVEL FIX: Changed from log::error! to log::debug! - this is normal
+                // compilation progress, not an actual error condition. ERROR level should be
+                // reserved for genuine failures that prevent compilation.
+                log::debug!(
                     "🎯 PHASE 3: TestAttributeBranch codegen for object={}, attr={}, then={}, else={}",
                     object, attribute_num, then_label, else_label
                 );
@@ -826,7 +830,7 @@ impl ZMachineCodeGen {
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
                 let attr_operand = Operand::SmallConstant(*attribute_num as u8);
 
-                log::error!(
+                log::debug!(
                     "TestAttributeBranch: obj={:?}, attr={:?}",
                     obj_operand,
                     attr_operand
@@ -2533,7 +2537,7 @@ impl ZMachineCodeGen {
             0x00 => Opcode::OpVar(OpVar::CallVs),
             0x01 => Opcode::OpVar(OpVar::Storew),
             0x03 => Opcode::OpVar(OpVar::PutProp),
-            0x04 => Opcode::OpVar(OpVar::Aread),
+            0x04 => Opcode::OpVar(OpVar::Sread),
             0x05 => Opcode::OpVar(OpVar::PrintChar),
             0x06 => Opcode::OpVar(OpVar::PrintNum),
             0x07 => Opcode::OpVar(OpVar::Random),

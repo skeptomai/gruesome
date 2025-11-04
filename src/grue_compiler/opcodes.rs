@@ -399,9 +399,14 @@ pub enum OpVar {
     /// Set object property value (227)
     /// V1+
     PutProp = 0x03,
-    /// Read line of input with result (V4+) (228)
-    /// V4+
-    Aread = 0x04,
+    /// Read line of input (V1-V3) / Read line of input with result (V4+) (228)
+    /// V1-V3 (compatible with V3 target, Aread is V4+)
+    ///
+    /// CRITICAL V3 COMPATIBILITY: This enum uses Sread (V1-V3) instead of Aread (V4+)
+    /// because this codebase targets V3 Z-Machine. Both instructions share opcode 0x04
+    /// but have different semantics. Using Sread enables type-safe emit_instruction_typed()
+    /// calls while maintaining V3 compatibility.
+    Sread = 0x04,
     /// Print single character (229)
     /// V1+
     PrintChar = 0x05,
@@ -495,7 +500,7 @@ impl OpVar {
     pub const fn stores_result(&self) -> bool {
         match self {
             OpVar::CallVs => true,
-            OpVar::Aread => true,
+            OpVar::Sread => true,
             OpVar::Random => true,
             OpVar::CallVs2 => true,
             OpVar::ReadChar => true,
@@ -525,14 +530,14 @@ impl OpVar {
             | OpVar::PrintNum
             | OpVar::Random
             | OpVar::Push
-            | OpVar::Pull => 1,
+            | OpVar::Pull
+            | OpVar::Sread => 1,
             OpVar::SplitWindow
             | OpVar::SetWindow
             | OpVar::OutputStream
             | OpVar::InputStream
             | OpVar::SoundEffect => 3,
-            OpVar::Aread
-            | OpVar::CallVs2
+            OpVar::CallVs2
             | OpVar::EraseWindow
             | OpVar::EraseLine
             | OpVar::SetCursor

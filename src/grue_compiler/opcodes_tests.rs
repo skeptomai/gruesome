@@ -35,7 +35,7 @@ mod tests {
     fn test_opvar_raw_values() {
         assert_eq!(OpVar::CallVs.raw_value(), 0x00);
         assert_eq!(OpVar::PutProp.raw_value(), 0x03);
-        assert_eq!(OpVar::Aread.raw_value(), 0x04); // V4+ version (Sread was V1-3)
+        assert_eq!(OpVar::Sread.raw_value(), 0x04); // V1-V3 version (Aread is V4+)
         assert_eq!(OpVar::OutputStream.raw_value(), 0x13);
     }
 
