@@ -1198,7 +1198,7 @@ impl Interpreter {
                 let op2_string = self.try_decode_dictionary_address(op2);
 
                 if op1_string.is_some() || op2_string.is_some() {
-                    log::warn!(
+                    log::debug!(
                         "🔤 DICT_COMPARE at PC=0x{:04x}: \"{}\" vs \"{}\" (0x{:04x} vs 0x{:04x})",
                         pc,
                         op1_string.unwrap_or_else(|| format!("0x{:04x}", op1)),
