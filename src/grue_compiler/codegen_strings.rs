@@ -374,6 +374,12 @@ impl ZMachineCodeGen {
         // Add built-in commands
         words.insert("quit".to_string());
 
+        // Add common numbers to dictionary (0-100) for score commands and other numeric input
+        for i in 0..=100 {
+            words.insert(i.to_string());
+        }
+        debug!("📚 Added numbers 0-100 to dictionary for numeric input support");
+
         // Add all grammar verbs
         for grammar in &ir.grammar {
             words.insert(grammar.verb.to_lowercase());

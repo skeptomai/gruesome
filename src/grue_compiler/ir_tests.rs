@@ -845,4 +845,246 @@ mod ir_tests {
             .nested_objects
             .is_empty());
     }
+
+    #[test]
+    fn test_score_property_access_maps_to_global_g17() {
+        let source = r#"
+            fn test_score() {
+                let current = player.score;
+                print_num(current);
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        // Find the test_score function
+        let test_function = ir
+            .functions
+            .iter()
+            .find(|f| f.name == "test_score")
+            .expect("test_score function should exist");
+
+        // Look for LoadVar instruction that reads from Global G17 (score)
+        let mut found_score_read = false;
+        for instruction in &test_function.body.instructions {
+            if let IrInstruction::LoadVar { var_id, .. } = instruction {
+                if *var_id == 17 {
+                    // Global G17 = score
+                    found_score_read = true;
+                }
+            }
+        }
+
+        assert!(
+            found_score_read,
+            "player.score should generate LoadVar with var_id=17 (Global G17)"
+        );
+    }
+
+    #[test]
+    fn test_score_property_assignment_maps_to_global_g17() {
+        let source = r#"
+            fn set_score() {
+                player.score = 100;
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        // Find the set_score function
+        let set_function = ir
+            .functions
+            .iter()
+            .find(|f| f.name == "set_score")
+            .expect("set_score function should exist");
+
+        // Look for StoreVar instruction that writes to Global G17 (score)
+        let mut found_score_write = false;
+        for instruction in &set_function.body.instructions {
+            if let IrInstruction::StoreVar { var_id, .. } = instruction {
+                if *var_id == 17 {
+                    // Global G17 = score
+                    found_score_write = true;
+                }
+            }
+        }
+
+        assert!(
+            found_score_write,
+            "player.score assignment should generate StoreVar with var_id=17 (Global G17)"
+        );
+    }
+
+    #[test]
+    fn test_add_score_builtin_function() {
+        let source = r#"
+            fn gain_points() {
+                add_score(10);
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        // Find the gain_points function
+        let function = ir
+            .functions
+            .iter()
+            .find(|f| f.name == "gain_points")
+            .expect("gain_points function should exist");
+
+        // Check that add_score generates the correct sequence:
+        // 1. LoadVar from G17 (current score)
+        // 2. BinaryOp Add
+        // 3. StoreVar to G17 (new score)
+        // 4. LoadVar from G17 (return value)
+        let mut load_vars = 0;
+        let mut binary_ops = 0;
+        let mut store_vars = 0;
+
+        for instruction in &function.body.instructions {
+            match instruction {
+                IrInstruction::LoadVar { var_id, .. } if *var_id == 17 => load_vars += 1,
+                IrInstruction::BinaryOp {
+                    op: IrBinaryOp::Add,
+                    ..
+                } => binary_ops += 1,
+                IrInstruction::StoreVar { var_id, .. } if *var_id == 17 => store_vars += 1,
+                _ => {}
+            }
+        }
+
+        assert_eq!(
+            load_vars, 2,
+            "add_score should load from G17 twice (current + return)"
+        );
+        assert_eq!(binary_ops, 1, "add_score should have one Add operation");
+        assert_eq!(store_vars, 1, "add_score should store to G17 once");
+    }
+
+    #[test]
+    fn test_subtract_score_builtin_function() {
+        let source = r#"
+            fn lose_points() {
+                subtract_score(5);
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        // Find the lose_points function
+        let function = ir
+            .functions
+            .iter()
+            .find(|f| f.name == "lose_points")
+            .expect("lose_points function should exist");
+
+        // Check that subtract_score generates the correct sequence:
+        // 1. LoadVar from G17 (current score)
+        // 2. BinaryOp Subtract
+        // 3. StoreVar to G17 (new score)
+        // 4. LoadVar from G17 (return value)
+        let mut load_vars = 0;
+        let mut binary_ops = 0;
+        let mut store_vars = 0;
+
+        for instruction in &function.body.instructions {
+            match instruction {
+                IrInstruction::LoadVar { var_id, .. } if *var_id == 17 => load_vars += 1,
+                IrInstruction::BinaryOp {
+                    op: IrBinaryOp::Subtract,
+                    ..
+                } => binary_ops += 1,
+                IrInstruction::StoreVar { var_id, .. } if *var_id == 17 => store_vars += 1,
+                _ => {}
+            }
+        }
+
+        assert_eq!(
+            load_vars, 2,
+            "subtract_score should load from G17 twice (current + return)"
+        );
+        assert_eq!(
+            binary_ops, 1,
+            "subtract_score should have one Subtract operation"
+        );
+        assert_eq!(store_vars, 1, "subtract_score should store to G17 once");
+    }
+
+    #[test]
+    fn test_score_system_comprehensive() {
+        let source = r#"
+            world {
+                room start "Test Room" {
+                    desc: "Test room"
+                }
+            }
+
+            fn test_all_score_operations() {
+                let current = player.score;      // Read from G17
+                player.score = 50;               // Write to G17
+                add_score(10);                   // Increment via builtin
+                subtract_score(5);               // Decrement via builtin
+            }
+
+            init {
+                player.location = start;
+            }
+        "#;
+
+        let ir = generate_ir_from_source(source).unwrap();
+
+        // Verify we have the expected functions
+        assert!(ir
+            .functions
+            .iter()
+            .any(|f| f.name == "test_all_score_operations"));
+
+        // Find the test function
+        let test_function = ir
+            .functions
+            .iter()
+            .find(|f| f.name == "test_all_score_operations")
+            .expect("test_all_score_operations function should exist");
+
+        // Count Global G17 operations
+        let mut g17_loads = 0;
+        let mut g17_stores = 0;
+        let mut adds = 0;
+        let mut subtracts = 0;
+
+        for instruction in &test_function.body.instructions {
+            match instruction {
+                IrInstruction::LoadVar { var_id, .. } if *var_id == 17 => g17_loads += 1,
+                IrInstruction::StoreVar { var_id, .. } if *var_id == 17 => g17_stores += 1,
+                IrInstruction::BinaryOp {
+                    op: IrBinaryOp::Add,
+                    ..
+                } => adds += 1,
+                IrInstruction::BinaryOp {
+                    op: IrBinaryOp::Subtract,
+                    ..
+                } => subtracts += 1,
+                _ => {}
+            }
+        }
+
+        // Should have:
+        // - 1 load for reading current score
+        // - 1 store for direct assignment
+        // - 2 loads + 1 store from add_score()
+        // - 2 loads + 1 store from subtract_score()
+        // Total: 5 loads, 3 stores, 1 add, 1 subtract
+        assert!(
+            g17_loads >= 5,
+            "Should have at least 5 loads from G17, got {}",
+            g17_loads
+        );
+        assert!(
+            g17_stores >= 3,
+            "Should have at least 3 stores to G17, got {}",
+            g17_stores
+        );
+        assert_eq!(adds, 1, "Should have exactly 1 Add operation");
+        assert_eq!(subtracts, 1, "Should have exactly 1 Subtract operation");
+    }
 }

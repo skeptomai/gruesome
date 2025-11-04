@@ -108,6 +108,11 @@ impl SemanticAnalyzer {
             // Note: Many functions are intentionally left as user-defined
             // to allow games to customize their behavior (look_around, player_can_see, etc.)
             ("move", vec![Type::Any, Type::Any], None),
+            // Score management functions for game writers
+            ("add_score", vec![Type::Int], None),
+            ("subtract_score", vec![Type::Int], None),
+            // Dictionary word conversion for numeric input
+            ("word_to_number", vec![Type::Any], Some(Type::Int)),
             ("get_location", vec![Type::Any], Some(Type::Any)),
             // Core Z-Machine object primitives - low-level operations only
             ("get_child", vec![Type::Any], Some(Type::Any)),

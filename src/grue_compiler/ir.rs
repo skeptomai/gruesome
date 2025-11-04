@@ -1129,6 +1129,9 @@ impl IrGenerator {
                     | "print_ret"
                     | "new_line"
                     | "move"
+                    | "add_score"
+                    | "subtract_score"
+                    | "word_to_number"
                     | "get_location"
                     | "get_child"
                     | "get_sibling"
@@ -1180,6 +1183,9 @@ impl IrGenerator {
                     | "print_ret"
                     | "new_line"
                     | "move"
+                    | "add_score"
+                    | "subtract_score"
+                    | "word_to_number"
                     | "get_location"
                     | "get_child"
                     | "get_sibling"
@@ -2522,6 +2528,14 @@ impl IrGenerator {
                                 object: object_temp,
                                 destination: value_temp,
                             });
+                        } else if property == "score" {
+                            // Special handling for .score assignment - write to Global Variable G17 per Z-Machine standard
+                            // G17 is the standard global variable for game score, used by status line
+                            log::debug!("📊 SCORE_WRITE: Using Global G17 for .score assignment");
+                            block.add_instruction(IrInstruction::StoreVar {
+                                var_id: 17, // Global Variable G17 = score
+                                source: value_temp,
+                            });
                         } else if let Some(standard_attr) = self.get_standard_attribute(&property) {
                             // This is a Z-Machine attribute assignment - use set_attr
                             let attr_num = standard_attr as u8;
@@ -3470,6 +3484,14 @@ impl IrGenerator {
                         target: temp_id,
                         object: object_temp,
                     });
+                } else if property == "score" {
+                    // Special handling for .score - read from Global Variable G17 per Z-Machine standard
+                    // G17 is the standard global variable for game score, used by status line
+                    log::debug!("📊 SCORE_FIX: Using Global G17 for .score property access");
+                    block.add_instruction(IrInstruction::LoadVar {
+                        target: temp_id,
+                        var_id: 17, // Global Variable G17 = score
+                    });
                 } else if let Some(standard_attr) = self.get_standard_attribute(&property) {
                     // Phase 2A: Z-Machine attribute access using Option B-2 (reuse existing Branch pattern)
                     let attr_num = standard_attr as u8;
@@ -4381,6 +4403,89 @@ impl IrGenerator {
                     label: format!("breakpoint_{}", temp_id),
                 });
                 // Return a dummy value (0) since debug_break doesn't produce a useful result
+                block.add_instruction(IrInstruction::LoadImmediate {
+                    target: temp_id,
+                    value: IrValue::Integer(0),
+                });
+            }
+            // Score management functions
+            "add_score" => {
+                if arg_temps.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "add_score expects 1 argument".to_string(),
+                    ));
+                }
+                // Load current score from Global G17
+                let current_score_temp = self.next_id();
+                block.add_instruction(IrInstruction::LoadVar {
+                    target: current_score_temp,
+                    var_id: 17, // Global Variable G17 = score
+                });
+                // Add the argument to current score
+                let new_score_temp = self.next_id();
+                block.add_instruction(IrInstruction::BinaryOp {
+                    target: new_score_temp,
+                    op: IrBinaryOp::Add,
+                    left: current_score_temp,
+                    right: arg_temps[0],
+                });
+                // Store new score back to Global G17
+                block.add_instruction(IrInstruction::StoreVar {
+                    var_id: 17, // Global Variable G17 = score
+                    source: new_score_temp,
+                });
+                // Return the new score value
+                block.add_instruction(IrInstruction::LoadVar {
+                    target: temp_id,
+                    var_id: 17, // Global Variable G17 = score
+                });
+            }
+            "subtract_score" => {
+                if arg_temps.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "subtract_score expects 1 argument".to_string(),
+                    ));
+                }
+                // Load current score from Global G17
+                let current_score_temp = self.next_id();
+                block.add_instruction(IrInstruction::LoadVar {
+                    target: current_score_temp,
+                    var_id: 17, // Global Variable G17 = score
+                });
+                // Subtract the argument from current score
+                let new_score_temp = self.next_id();
+                block.add_instruction(IrInstruction::BinaryOp {
+                    target: new_score_temp,
+                    op: IrBinaryOp::Subtract,
+                    left: current_score_temp,
+                    right: arg_temps[0],
+                });
+                // Store new score back to Global G17
+                block.add_instruction(IrInstruction::StoreVar {
+                    var_id: 17, // Global Variable G17 = score
+                    source: new_score_temp,
+                });
+                // Return the new score value
+                block.add_instruction(IrInstruction::LoadVar {
+                    target: temp_id,
+                    var_id: 17, // Global Variable G17 = score
+                });
+            }
+            "word_to_number" => {
+                if arg_temps.len() != 1 {
+                    return Err(CompilerError::CodeGenError(
+                        "word_to_number expects 1 argument".to_string(),
+                    ));
+                }
+                // TODO: Implement dictionary lookup to convert word address to numeric value
+                // For now, since we know the dictionary contains numbers 0-100 in order,
+                // we can calculate the value based on dictionary position
+                // This is a simplified implementation - in a full implementation,
+                // we would need to decode the dictionary entry back to a string
+                // and then parse the string to an integer
+
+                // For now, return 0 as a placeholder to prevent crashes
+                // This needs to be properly implemented with dictionary decoding
                 block.add_instruction(IrInstruction::LoadImmediate {
                     target: temp_id,
                     value: IrValue::Integer(0),

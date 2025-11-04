@@ -1,0 +1,92 @@
+// Minimal test case for binary arithmetic operations
+world {
+    room start "Test Room" {
+        desc: "A room for testing arithmetic operations."
+    }
+}
+
+grammar {
+    verb "test" {
+        default => handle_test()
+    }
+
+    verb "add" {
+        default => handle_add()
+    }
+
+    verb "quit" {
+        default => handle_quit()
+    }
+
+    verb "yes" {
+        default => handle_yes()
+    }
+
+    verb "y" {
+        default => handle_yes()
+    }
+}
+
+fn handle_test() {
+    println("=== Arithmetic Operations Test ===");
+
+    // Test 1: Simple integer addition
+    let a = 5;
+    let b = 3;
+    let result = a + b;
+    print("5 + 3 = ");
+    print_num(result);
+    new_line();
+
+    // Test 2: Score reading
+    print("Current score: ");
+    print_num(player.score);
+    new_line();
+
+    // Test 3: Score arithmetic (the problematic case)
+    let old_score = player.score;
+    let new_score = player.score + 10;
+    print("Score + 10: ");
+    print_num(old_score);
+    print(" + 10 = ");
+    print_num(new_score);
+    new_line();
+}
+
+fn handle_add() {
+    println("Testing direct score arithmetic assignment...");
+
+    print("Before: score = ");
+    print_num(player.score);
+    new_line();
+
+    // This is the problematic operation
+    player.score = player.score + 10;
+
+    print("After: score = ");
+    print_num(player.score);
+    new_line();
+}
+
+fn handle_quit() {
+    println("Are you sure you want to quit? (y/n)");
+    player.quit_pending = true;
+}
+
+fn handle_yes() {
+    if player.quit_pending {
+        player.quit_pending = false;
+        quit();
+    } else {
+        println("Yes to what?");
+    }
+}
+
+init {
+    player.location = start;
+    start.visited = true;
+
+    println("Arithmetic Operations Test");
+    println("Commands: test, add, quit");
+    println("");
+}

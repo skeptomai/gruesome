@@ -1,0 +1,100 @@
+// Simple score test demonstrating direct score manipulation
+world {
+    room start "Test Room" {
+        desc: "A test room for score manipulation."
+    }
+}
+
+grammar {
+    verb "score" {
+        default => handle_score()
+    }
+
+    verb "gain" {
+        default => handle_gain()
+    }
+
+    verb "lose" {
+        default => handle_lose()
+    }
+
+    verb "set" {
+        default => handle_set()
+    }
+
+    verb "quit" {
+        default => handle_quit()
+    }
+
+    verb "yes" {
+        default => handle_yes()
+    }
+
+    verb "y" {
+        default => handle_yes()
+    }
+}
+
+fn handle_score() {
+    print("Your score is ");
+    print_num(player.score);
+    new_line();
+}
+
+fn handle_gain() {
+    let old_score = player.score;
+    player.score = player.score + 10;  // Direct arithmetic
+    print("Gained 10 points! Score: ");
+    print_num(old_score);
+    print(" -> ");
+    print_num(player.score);
+    new_line();
+}
+
+fn handle_lose() {
+    let old_score = player.score;
+    player.score = player.score - 5;   // Direct arithmetic
+    print("Lost 5 points! Score: ");
+    print_num(old_score);
+    print(" -> ");
+    print_num(player.score);
+    new_line();
+}
+
+fn handle_set() {
+    let old_score = player.score;
+    player.score = 100;  // Direct assignment
+    print("Score set to 100! Was: ");
+    print_num(old_score);
+    print(" now: ");
+    print_num(player.score);
+    new_line();
+}
+
+fn handle_quit() {
+    println("Are you sure you want to quit? (y/n)");
+    player.quit_pending = true;
+}
+
+fn handle_yes() {
+    if player.quit_pending {
+        player.quit_pending = false;
+        quit();
+    } else {
+        println("Yes to what?");
+    }
+}
+
+init {
+    player.location = start;
+    start.visited = true;
+
+    println("Simple Score Test");
+    println("Commands: score, gain, lose, set, quit");
+    println("");
+    println("Test direct score manipulation:");
+    println("- 'gain' adds 10 points");
+    println("- 'lose' subtracts 5 points");
+    println("- 'set' sets score to 100");
+    println("");
+}

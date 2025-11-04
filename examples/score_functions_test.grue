@@ -1,0 +1,98 @@
+// Score functions test demonstrating builtin functions
+world {
+    room start "Test Room" {
+        desc: "A test room for score builtin functions."
+    }
+}
+
+grammar {
+    verb "score" {
+        default => handle_score()
+    }
+
+    verb "gain" {
+        default => handle_gain()
+    }
+
+    verb "lose" {
+        default => handle_lose()
+    }
+
+    verb "set" {
+        default => handle_set()
+    }
+
+    verb "quit" {
+        default => handle_quit()
+    }
+
+    verb "yes" {
+        default => handle_yes()
+    }
+
+    verb "y" {
+        default => handle_yes()
+    }
+}
+
+fn handle_score() {
+    print("Your score is ");
+    print_num(player.score);
+    new_line();
+}
+
+fn handle_gain() {
+    print("Before gain: ");
+    print_num(player.score);
+    print(" -> ");
+    add_score(10);  // Use builtin function
+    print_num(player.score);
+    new_line();
+}
+
+fn handle_lose() {
+    print("Before lose: ");
+    print_num(player.score);
+    print(" -> ");
+    subtract_score(5);  // Use builtin function
+    print_num(player.score);
+    new_line();
+}
+
+fn handle_set() {
+    let old_score = player.score;
+    player.score = 100;  // Direct assignment
+    print("Score set to 100! Was: ");
+    print_num(old_score);
+    print(" now: ");
+    print_num(player.score);
+    new_line();
+}
+
+fn handle_quit() {
+    println("Are you sure you want to quit? (y/n)");
+    player.quit_pending = true;
+}
+
+fn handle_yes() {
+    if player.quit_pending {
+        player.quit_pending = false;
+        quit();
+    } else {
+        println("Yes to what?");
+    }
+}
+
+init {
+    player.location = start;
+    start.visited = true;
+
+    println("Score Functions Test");
+    println("Commands: score, gain, lose, set, quit");
+    println("");
+    println("Test builtin score functions:");
+    println("- 'gain' uses add_score(10)");
+    println("- 'lose' uses subtract_score(5)");
+    println("- 'set' uses direct assignment");
+    println("");
+}

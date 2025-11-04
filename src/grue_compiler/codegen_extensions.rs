@@ -7,7 +7,6 @@ use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
 
 impl ZMachineCodeGen {
-
     /// CONSOLIDATION HELPERS: Centralized unimplemented feature handlers
     /// These methods eliminate the dangerous copy-paste pattern of placeholder opcodes
     /// and provide clear, consistent handling of unimplemented IR instructions.

@@ -41,6 +41,44 @@
 
 ## 🎯 **ACTIVE DEVELOPMENT AREAS**
 
+### **Score System Binary Arithmetic Bug** 🔥 **CURRENT WORK** (November 4, 2025)
+
+**ISSUE**: Arithmetic binary operations on score fail to produce correct results
+- **Problem**: `player.score = player.score + 10` doesn't work correctly
+- **Evidence**: `gain` command shows `Gained 10 points! Score: 0 -> 0` instead of `0 -> 10`
+- **Root Cause**: Binary operations (`+`, `-`) not evaluating correctly in expressions
+- **Status**: **INVESTIGATING** - Compiler issue with arithmetic operation IR generation
+
+**IMPLEMENTATION STATUS**:
+- ✅ **Core Score Architecture**: Working perfectly (Global G17, status line integration)
+- ✅ **Score Reading**: `player.score` works correctly
+- ✅ **Score Assignment**: `player.score = 100` works correctly
+- ❌ **Score Arithmetic**: `player.score + value` not working
+- ❌ **Score Builtin Functions**: `add_score()`, `subtract_score()` crash with opcode errors
+
+**INVESTIGATION PLAN**:
+1. 🎯 **Current**: Debug arithmetic binary operation IR generation
+2. **Next**: Fix opcode generation for builtin functions
+3. **Final**: Verify complete score functionality
+
+### **Score Builtin Functions Opcode Bug** ⏳ **NEXT UP** (November 4, 2025)
+
+**ISSUE**: `add_score()` and `subtract_score()` builtin functions cause runtime crashes
+- **Problem**: `add_score(10)` generates invalid Z-Machine bytecode
+- **Evidence**: `Error: Failed to decode instruction at 00b7a: Invalid Long form opcode 0x15`
+- **Root Cause**: Builtin functions generating invalid opcodes
+- **Status**: **PENDING** - Runtime opcode generation issue
+
+**FILES TO INVESTIGATE**:
+- `src/grue_compiler/ir.rs:4409-4493` - Builtin function implementations
+- `src/grue_compiler/codegen_builtins.rs` - Z-Machine code generation
+- Score builtin function call mechanism
+
+**SCORE SYSTEM VALIDATION** ✅ **COMPLETED**:
+- ✅ **5 Unit Tests**: All passing - IR generation correctly uses Global G17
+- ✅ **4 Gameplay Tests**: All passing - Core functionality works
+- ✅ **200 System Tests**: All passing - No regressions introduced
+
 ### **Score Display Corruption Bug** ✅ **FIXED** (November 2, 2025)
 
 **ISSUE RESOLVED**: Score command now correctly displays actual score value

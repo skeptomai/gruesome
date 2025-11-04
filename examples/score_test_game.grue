@@ -1,0 +1,88 @@
+// Simple test game for score management functions
+world {
+    room start "Test Room" {
+        desc: "A simple test room for score functions."
+    }
+}
+
+grammar {
+    verb "score" {
+        default => handle_score()
+    }
+
+    verb "add" {
+        noun => handle_add($noun)
+    }
+
+    verb "subtract" {
+        noun => handle_subtract($noun)
+    }
+
+    verb "quit" {
+        default => handle_quit()
+    }
+
+    verb "yes" {
+        default => handle_yes()
+    }
+
+    verb "y" {
+        default => handle_yes()
+    }
+}
+
+fn handle_score() {
+    print("Your score is ");
+    print_num(player.score);
+    new_line();
+}
+
+fn handle_add(word_addr) {
+    let points = word_to_number(word_addr);
+    let old_score = player.score;
+    add_score(points);
+    print("Added ");
+    print_num(points);
+    print(" points. Score: ");
+    print_num(old_score);
+    print(" -> ");
+    print_num(player.score);
+    new_line();
+}
+
+fn handle_subtract(word_addr) {
+    let points = word_to_number(word_addr);
+    let old_score = player.score;
+    subtract_score(points);
+    print("Subtracted ");
+    print_num(points);
+    print(" points. Score: ");
+    print_num(old_score);
+    print(" -> ");
+    print_num(player.score);
+    new_line();
+}
+
+fn handle_quit() {
+    println("Are you sure you want to quit? (y/n)");
+    player.quit_pending = true;
+}
+
+fn handle_yes() {
+    if player.quit_pending {
+        player.quit_pending = false;
+        quit();
+    } else {
+        println("Yes to what?");
+    }
+}
+
+init {
+    player.location = start;
+    start.visited = true;
+
+    println("Score Test Game");
+    println("Commands: score, add <number>, subtract <number>, quit");
+    println("");
+    println("You are in a test room for score functions.");
+}

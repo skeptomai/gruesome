@@ -7391,10 +7391,25 @@ impl ZMachineCodeGen {
                         // The target IR ID is handled by the print system, not stack/variable system.
                         return Ok(());
                     } else {
-                        // Regular arithmetic addition - resolve operands now
+                        // CRITICAL FIX (Nov 4, 2025): Arithmetic operations should use global variables, not push/pull
+                        // This avoids the double-stack-operation bug causing arithmetic results to be 0
+
+                        // Allocate global variable for result first
+                        let result_var = self.allocate_global_variable();
+                        self.ir_id_to_stack_var.insert(target, result_var);
+
+                        // Resolve operands and generate operation with global variable storage
                         let left_op = self.resolve_ir_id_to_operand(left)?;
                         let right_op = self.resolve_ir_id_to_operand(right)?;
-                        self.generate_binary_op(op, left_op, right_op, Some(0))?;
+                        self.generate_binary_op(op, left_op, right_op, Some(result_var))?;
+
+                        log::debug!(
+                            "Arithmetic BinaryOp ({:?}) result: IR ID {} -> stored directly to global Variable({})",
+                            op, target, result_var
+                        );
+
+                        // SKIP push/pull mechanism for arithmetic operations
+                        return Ok(());
                     }
                 }
                 IrBinaryOp::And | IrBinaryOp::Or => {
@@ -7419,15 +7434,30 @@ impl ZMachineCodeGen {
                     return Ok(());
                 }
                 _ => {
-                    // All other arithmetic operations - resolve operands now
+                    // CRITICAL FIX (Nov 4, 2025): All arithmetic operations should use global variables, not push/pull
+                    // This avoids the double-stack-operation bug causing arithmetic results to be 0
+
+                    // Allocate global variable for result first
+                    let result_var = self.allocate_global_variable();
+                    self.ir_id_to_stack_var.insert(target, result_var);
+
+                    // Resolve operands and generate operation with global variable storage
                     let left_op = self.resolve_ir_id_to_operand(left)?;
                     let right_op = self.resolve_ir_id_to_operand(right)?;
-                    self.generate_binary_op(op, left_op, right_op, Some(0))?;
+                    self.generate_binary_op(op, left_op, right_op, Some(result_var))?;
+
+                    log::debug!(
+                        "Arithmetic BinaryOp ({:?}) result: IR ID {} -> stored directly to global Variable({})",
+                        op, target, result_var
+                    );
+
+                    // SKIP push/pull mechanism for arithmetic operations
+                    return Ok(());
                 }
             }
 
-            // Phase C2: Convert binary operations to use push/pull stack discipline
-            // (only for arithmetic operations, not logical operations)
+            // Phase C2: Convert comparison operations to use push/pull stack discipline
+            // (arithmetic and logical operations now return early with global variables)
             self.use_push_pull_for_result(target, "binary operation")?;
             log::debug!(
                 "BinaryOp ({:?}) result: IR ID {} -> push/pull stack",
