@@ -721,7 +721,7 @@ impl ZMachineCodeGen {
         // For now, keep the original mapping but we've fixed the main ir_id_to_object_number issue
 
         // Step 4: Create object table entries
-        for (index, object) in all_objects.iter().enumerate() {
+        for (_index, object) in all_objects.iter().enumerate() {
             // CRITICAL FIX: Use the correct object number from IR mapping, not sequential index
             // This fixes the dual numbering system bug where IR ID 106 (mailbox) was mapped to Object #3
             // but Object #3 in the table was getting populated with data from all_objects[2] (North of House)
