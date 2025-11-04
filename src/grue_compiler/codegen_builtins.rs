@@ -672,8 +672,8 @@ impl ZMachineCodeGen {
         );
 
         // Step 1: Emit test_attr as branch instruction (branch to true_label if attribute set)
-        let layout = self.emit_instruction(
-            0x0A, // 2OP:10 (test_attr)
+        let layout = self.emit_instruction_typed(
+            Opcode::Op2(Op2::TestAttr), // 2OP:10 (test_attr)
             &[obj_operand, attr_operand],
             None,     // No store_var - this is a branch instruction
             Some(-1), // Placeholder for branch offset (will be resolved)
@@ -1103,8 +1103,8 @@ impl ZMachineCodeGen {
             // Emit GetObjectChild instruction: get first child of container
             // CRITICAL FIX (Oct 27, 2025): Was 0x01 (get_sibling) - now 0x02 (get_child)
             // Z-Machine get_child opcode (1OP:2) branches when NO child exists (returns 0)
-            let layout = self.emit_instruction(
-                0x02, // get_child opcode (1OP:2) - FIXED: was 0x01 (get_sibling)
+            let layout = self.emit_instruction_typed(
+                Opcode::Op1(Op1::GetChild), // get_child opcode (1OP:2) - FIXED: was 0x01 (get_sibling)
                 &[container_operand.clone()],
                 Some(0),      // Store result to stack (Variable 0)
                 Some(0x7FFF), // Branch on FALSE (no child) - placeholder offset
@@ -1218,8 +1218,8 @@ impl ZMachineCodeGen {
             self.next_string_id += 1;
 
             // Test: value == 0?
-            let branch_layout = self.emit_instruction(
-                0x01, // je
+            let branch_layout = self.emit_instruction_typed(
+                Opcode::Op2(Op2::Je), // je
                 &[value_operand, Operand::SmallConstant(0)],
                 None,
                 Some(-1), // Placeholder for forward branch (true path) - bit 15=1 means "branch on true"
@@ -1622,8 +1622,8 @@ impl ZMachineCodeGen {
             "🔍 GET_EXIT: About to emit je branch at PC 0x{:04x}",
             self.code_address
         );
-        let branch_layout = self.emit_instruction(
-            0x01, // je - branch if addr == 0
+        let branch_layout = self.emit_instruction_typed(
+            Opcode::Op2(Op2::Je), // je - branch if addr == 0
             &[
                 Operand::Variable(directions_addr_var),
                 Operand::SmallConstant(0),
@@ -1681,8 +1681,9 @@ impl ZMachineCodeGen {
         )?;
 
         // Divide by 2 to get num_exits (property length is in bytes, each word is 2 bytes)
-        self.emit_instruction_typed(
-            Opcode::Op2(Op2::Div),
+        // CRITICAL: Use raw opcode to ensure V3 form determination applies
+        self.emit_instruction(
+            0x17, // div opcode - V3 compatibility handled by determine_instruction_form_with_operands
             &[Operand::Variable(num_exits_var), Operand::SmallConstant(2)],
             Some(num_exits_var), // Store quotient
             None,
@@ -1709,8 +1710,8 @@ impl ZMachineCodeGen {
         // "jl index, num_exits" returns TRUE when index < num_exits
         // With branch_on_false (0x7FFF), we branch when condition is FALSE (index >= num_exits)
         // So: index >= num_exits → branch to not_found_label (exit loop)
-        let loop_check_layout = self.emit_instruction(
-            0x02, // jl - jump if index < num_exits
+        let loop_check_layout = self.emit_instruction_typed(
+            Opcode::Op2(Op2::Jl), // jl - jump if index < num_exits
             &[
                 Operand::Variable(index_var),
                 Operand::Variable(num_exits_var),

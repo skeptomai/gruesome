@@ -632,7 +632,7 @@ impl ZMachineCodeGen {
                 self.ir_id_to_stack_var.insert(*target, store_var);
 
                 // SURGICAL FIX: Remove from push_pull_ir_ids to prevent stack lookup conflict
-                self.push_pull_ir_ids.remove(target);
+                self.push_pull_ir_ids.swap_remove(target);
 
                 self.emit_instruction_typed(
                     Opcode::Op2(Op2::GetProp),
@@ -760,8 +760,8 @@ impl ZMachineCodeGen {
                 let end_label_id: u32 = (60000 + unique_seed) as u32;
 
                 // Step 2: Emit test_attr as branch instruction with CORRECT SmallConstant
-                let layout = self.emit_instruction(
-                    0x0A, // 2OP:10 (test_attr)
+                let layout = self.emit_instruction_typed(
+                    Opcode::Op2(Op2::TestAttr), // 2OP:10 (test_attr)
                     &[obj_operand, attr_operand],
                     None,     // No store_var - this is a branch instruction
                     Some(-1), // Placeholder for branch offset
@@ -785,11 +785,11 @@ impl ZMachineCodeGen {
                 self.ir_id_to_stack_var.insert(*target, store_var);
 
                 // SURGICAL FIX: Remove from push_pull_ir_ids to prevent stack lookup conflict
-                self.push_pull_ir_ids.remove(target);
+                self.push_pull_ir_ids.swap_remove(target);
 
                 // Step 5: Attribute false - store 0 to allocated global variable
-                self.emit_instruction(
-                    0x94, // 2OP:20 (add)
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::Add), // 2OP:20 (add)
                     &[Operand::SmallConstant(0), Operand::SmallConstant(0)],
                     Some(store_var), // Store result to allocated global variable
                     None,
@@ -798,8 +798,8 @@ impl ZMachineCodeGen {
 
                 // Step 6: true_label - attribute true, store 1 to allocated global variable
                 self.record_code_space_offset(true_label_id, self.code_address);
-                self.emit_instruction(
-                    0x94, // 2OP:20 (add)
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::Add), // 2OP:20 (add)
                     &[Operand::SmallConstant(0), Operand::SmallConstant(1)],
                     Some(store_var), // Store result to allocated global variable
                     None,
@@ -1355,8 +1355,8 @@ impl ZMachineCodeGen {
                 //   - 1OP:1 (0x01) = get_sibling
                 //   - 1OP:2 (0x02) = get_child
                 let placeholder = 0x7FFF_u16 as i16; // bit 15=0 for branch-on-FALSE
-                let layout = self.emit_instruction(
-                    0x02, // get_child opcode (1OP:2) - FIXED: was 0x01 (get_sibling)
+                let layout = self.emit_instruction_typed(
+                    Opcode::Op1(Op1::GetChild), // get_child opcode (1OP:2) - FIXED: was 0x01 (get_sibling)
                     &[obj_operand],
                     Some(0),           // Store result to stack
                     Some(placeholder), // Placeholder encodes branch polarity
@@ -1494,7 +1494,7 @@ impl ZMachineCodeGen {
                 self.ir_id_to_stack_var.insert(*target, store_var);
 
                 // SURGICAL FIX: Remove from push_pull_ir_ids to prevent stack lookup conflict
-                self.push_pull_ir_ids.remove(target);
+                self.push_pull_ir_ids.swap_remove(target);
             }
 
             IrInstruction::InsertObj {
@@ -2620,6 +2620,10 @@ impl ZMachineCodeGen {
             0xE5 => InstructionForm::Variable, // print_char (VAR:229 = opcode 5, full byte 0xE5) is always VAR
             0xE6 => InstructionForm::Variable, // print_num (VAR:230 = opcode 6, full byte 0xE6) is always VAR
             0xE7 => InstructionForm::Variable, // random (VAR:231 = opcode 7, full byte 0xE7) is always VAR
+            // V3 compatibility: Force VAR form for opcodes > 0x14 that can't use Long form
+            0x15 | 0x16 | 0x17 | 0x18 if self.version == super::ZMachineVersion::V3 => {
+                InstructionForm::Variable
+            }
             _ => match operand_count {
                 0 => InstructionForm::Short, // 0OP
                 1 => InstructionForm::Short, // 1OP
@@ -2728,6 +2732,31 @@ impl ZMachineCodeGen {
             (0x06, _) => Ok(InstructionForm::Variable), // print_num is always VAR
             (0x07, _) => Ok(InstructionForm::Variable), // random is always VAR
             (0x08, _) => Ok(InstructionForm::Variable), // push (VAR:0x08) is always VAR - conflicts with 1OP:call_1s
+
+            // CRITICAL V3 COMPATIBILITY: Force VAR form for opcodes > 0x14 that can't use Long form
+            //
+            // **Problem**: Z-Machine V3 Long form only supports opcodes 0x01-0x14. Opcodes 0x15+
+            // would generate invalid Long form instructions like 0x57 (Long form + opcode 0x17),
+            // causing "Invalid Long form opcode 0x17" runtime errors.
+            //
+            // **Solution**: Force Variable form for all opcodes > 0x14 when targeting V3.
+            // This generates valid VAR form instructions like 0xD7 (VAR form + opcode 0x17).
+            //
+            // **Affected Operations**: Division, multiplication, call_2s, bitwise not
+            // **Root Cause Fixed**: Division operations in get_exit builtin and binary expressions
+            // **Error Pattern**: "Failed to decode instruction at XXXX: Invalid Long form opcode 0x17"
+            (0x15, _) if self.version == super::ZMachineVersion::V3 => {
+                Ok(InstructionForm::Variable)
+            } // mul - V3 Long form incompatible
+            (0x16, _) if self.version == super::ZMachineVersion::V3 => {
+                Ok(InstructionForm::Variable)
+            } // call_2s - V3 Long form incompatible
+            (0x17, _) if self.version == super::ZMachineVersion::V3 => {
+                Ok(InstructionForm::Variable)
+            } // div - V3 Long form incompatible
+            (0x18, _) if self.version == super::ZMachineVersion::V3 => {
+                Ok(InstructionForm::Variable)
+            } // not - V3 Long form incompatible
             // CRITICAL OPCODE 0x09 CONFLICT FIX: Op2(And) vs Var(Pull)
             // REMOVED: (0x09, _) => Ok(InstructionForm::Variable) - This forced both And and Pull to VAR form
             // Now Op2(And) can use proper 2OP encoding while Var(Pull) uses emit_instruction_typed

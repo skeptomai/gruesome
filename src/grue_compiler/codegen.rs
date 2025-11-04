@@ -514,7 +514,6 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-
     // === IR INPUT ANALYSIS & VALIDATION (DEBUG PHASE 1) ===
 
     /// Generate ALL Z-Machine sections to separated memory spaces (COMPLETE Z-MACHINE FORMAT)
@@ -4050,8 +4049,8 @@ impl ZMachineCodeGen {
             self.record_final_address(main_call_id, main_call_routine_address);
 
             // Call the user's main function
-            let layout = self.emit_instruction(
-                0x00, // call_vs raw opcode (emit_instruction expects 0x00-0x1F, not encoded 0xE0)
+            let layout = self.emit_instruction_typed(
+                Opcode::OpVar(OpVar::CallVs),                  // call_vs instruction
                 &[Operand::LargeConstant(placeholder_word())], // Placeholder for main function address
                 Some(0x00), // Store result in local variable 0 (discarded)
                 None,       // No branch
@@ -4154,11 +4153,11 @@ impl ZMachineCodeGen {
             .main_loop_prompt_id
             .expect("Main loop prompt ID should be set during string collection");
 
-        let layout = self.emit_instruction(
-            0x8D, // print_paddr (print packed address string) - 1OP:141
+        let layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::PrintPaddr), // print_paddr (print packed address string)
             &[Operand::LargeConstant(placeholder_word())], // Placeholder for prompt string address
-            None, // No store
-            None, // No branch
+            None,                         // No store
+            None,                         // No branch
         )?;
 
         // Add unresolved reference for prompt string using layout-tracked operand location
@@ -4196,8 +4195,8 @@ impl ZMachineCodeGen {
         //
         // Variable 109 (Global G6d) is at: globals_base + ((109-16) * 2) = globals_base + 186
         let text_buffer_offset = (TEXT_BUFFER_GLOBAL - 16) as u16;
-        let storew_layout = self.emit_instruction(
-            0x01, // VAR:storew (always VAR with 3 operands - no conflict!)
+        let storew_layout = self.emit_instruction_typed(
+            Opcode::OpVar(OpVar::Storew), // VAR:storew (always VAR with 3 operands)
             &[
                 Operand::LargeConstant(placeholder_word()), // base = globals_addr (resolved later)
                 Operand::SmallConstant(text_buffer_offset as u8), // offset in words
@@ -4224,8 +4223,8 @@ impl ZMachineCodeGen {
         // Store parse buffer address in global G6e using VAR:storew
         // Variable 110 (Global G6e) is at: globals_base + ((110-16) * 2) = globals_base + 188
         let parse_buffer_offset = (PARSE_BUFFER_GLOBAL - 16) as u16;
-        let storew_layout = self.emit_instruction(
-            0x01, // VAR:storew
+        let storew_layout = self.emit_instruction_typed(
+            Opcode::OpVar(OpVar::Storew), // VAR:storew
             &[
                 Operand::LargeConstant(placeholder_word()), // base = globals_addr (resolved later)
                 Operand::SmallConstant(parse_buffer_offset as u8), // offset in words
@@ -4251,7 +4250,7 @@ impl ZMachineCodeGen {
 
         // 4. Read user input using Z-Machine sread instruction with global variables (like Zork I)
         self.emit_instruction(
-            0x04, // sread opcode (VAR instruction)
+            0x04, // sread opcode (VAR instruction) - V3 compatible, not in typed enum
             &[
                 Operand::Variable(TEXT_BUFFER_GLOBAL), // Global G6d = Variable(109)
                 Operand::Variable(PARSE_BUFFER_GLOBAL), // Global G6e = Variable(110)
@@ -4266,8 +4265,8 @@ impl ZMachineCodeGen {
         // 5. Jump back to start of main loop for next command
         debug!("Generating loop-back jump to continue main loop");
 
-        let layout = self.emit_instruction(
-            0x0C,                                          // jump opcode (1OP:12)
+        let layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::Jump),                        // jump opcode (1OP:12)
             &[Operand::LargeConstant(placeholder_word())], // Placeholder for loop start address
             None,                                          // No store
             None,                                          // No branch
@@ -4317,8 +4316,8 @@ impl ZMachineCodeGen {
         let unknown_command_string_id = self
             .main_loop_unknown_command_id
             .expect("Main loop unknown command ID should be set during string collection");
-        let layout = self.emit_instruction(
-            0x8D,                                          // print_paddr: print string at packed address
+        let layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::PrintPaddr), // print_paddr: print string at packed address
             &[Operand::LargeConstant(placeholder_word())], // Placeholder for string address
             None,
             None,
@@ -4422,8 +4421,8 @@ impl ZMachineCodeGen {
             self.code_address
         );
 
-        self.emit_instruction(
-            0x10, // loadb: load byte from array (2OP:16)
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Loadb), // loadb: load byte from array (2OP:16)
             &[
                 Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
                 Operand::SmallConstant(1),              // Byte offset 1 = word count
@@ -4433,8 +4432,8 @@ impl ZMachineCodeGen {
         )?;
 
         // If word count < 1, skip this verb (no words to match)
-        let layout = self.emit_instruction(
-            0x02, // jl: jump if less than
+        let layout = self.emit_instruction_typed(
+            Opcode::Op2(Op2::Jl), // jl: jump if less than
             &[
                 Operand::Variable(1),      // word count
                 Operand::SmallConstant(1), // compare with 1
@@ -4468,8 +4467,8 @@ impl ZMachineCodeGen {
             self.code_address
         );
 
-        self.emit_instruction(
-            0x0F, // loadw: load word from array (2OP:15)
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Loadw), // loadw: load word from array (2OP:15)
             &[
                 Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
                 Operand::SmallConstant(1), // Offset 1 = word 1 dict addr (bytes 2-3 of parse buffer)
@@ -4508,8 +4507,8 @@ impl ZMachineCodeGen {
         // 4. G200 is far from score/moves and other game state globals
         //
         // Note: globals_addr is a placeholder that gets resolved during layout
-        let storew_layout = self.emit_instruction(
-            0x01, // VAR:storew (always VAR with 3 operands - no conflict!)
+        let storew_layout = self.emit_instruction_typed(
+            Opcode::OpVar(OpVar::Storew), // VAR:storew (always VAR with 3 operands - no conflict!)
             &[
                 Operand::LargeConstant(placeholder_word()), // base = globals_addr (resolved later)
                 Operand::SmallConstant(200), // offset = 200 words (for variable 216 = global G200)
@@ -4555,8 +4554,8 @@ impl ZMachineCodeGen {
             "Emitting je at code_address=0x{:04x}: Variable(2) vs Variable(216)",
             self.code_address
         );
-        let layout = self.emit_instruction(
-            0x01, // je: jump if equal
+        let layout = self.emit_instruction_typed(
+            Opcode::Op2(Op2::Je), // je: jump if equal
             &[
                 Operand::Variable(2),   // Word 1 dict addr (from parse buffer)
                 Operand::Variable(216), // This verb's dict addr (from Global G200)
@@ -4592,8 +4591,8 @@ impl ZMachineCodeGen {
         }
 
         // If we get here, verb didn't match - skip to end
-        let layout = self.emit_instruction(
-            0x0C, // jump (unconditional)
+        let layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::Jump), // jump (unconditional)
             &[Operand::LargeConstant(placeholder_word())],
             None,
             None,
@@ -4670,8 +4669,8 @@ impl ZMachineCodeGen {
         );
 
         // Emit jl with placeholder branch - will be resolved to verb_only_label
-        let layout = self.emit_instruction(
-            0x02, // jl: jump if less than
+        let layout = self.emit_instruction_typed(
+            Opcode::Op2(Op2::Jl), // jl: jump if less than
             &[
                 Operand::Variable(1),      // word count
                 Operand::SmallConstant(2), // compare with 2
@@ -4717,8 +4716,8 @@ impl ZMachineCodeGen {
                 );
 
                 // We have a noun: Extract second word dictionary address
-                self.emit_instruction(
-                    0x0F, // loadw: load word from array (2OP:15)
+                self.emit_instruction_typed(
+                    Opcode::Op2(Op2::Loadw), // loadw: load word from array (2OP:15)
                     &[
                         Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
                         Operand::SmallConstant(3),              // Offset 3 = word 2 dict addr
@@ -4732,8 +4731,8 @@ impl ZMachineCodeGen {
                 self.generate_object_lookup_from_noun()?;
 
                 // Call handler with resolved object ID parameter
-                let layout = self.emit_instruction(
-                    0x00, // call_vs: call routine with arguments, returns value (VAR:0/VAR:224)
+                let layout = self.emit_instruction_typed(
+                    Opcode::OpVar(OpVar::CallVs), // call_vs: call routine with arguments, returns value (VAR:0/VAR:224)
                     &[
                         Operand::LargeConstant(placeholder_word()), // Function address placeholder
                         Operand::Variable(3), // Resolved object ID from variable 3
@@ -4765,8 +4764,8 @@ impl ZMachineCodeGen {
                     main_loop_jump_id
                 );
 
-                let layout = self.emit_instruction(
-                    0x0C,                                          // jump
+                let layout = self.emit_instruction_typed(
+                    Opcode::Op1(Op1::Jump),                        // jump
                     &[Operand::LargeConstant(placeholder_word())], // Will be resolved to main loop start
                     None,
                     None,
@@ -4871,8 +4870,8 @@ impl ZMachineCodeGen {
                     operands.push(arg_operand);
                 }
 
-                let layout = self.emit_instruction(
-                    0x00, // call_vs: call routine with arguments, returns value (VAR:0)
+                let layout = self.emit_instruction_typed(
+                    Opcode::OpVar(OpVar::CallVs), // call_vs: call routine with arguments, returns value (VAR:0)
                     &operands,
                     Some(0), // Store result on stack
                     None,    // No branch
@@ -4949,8 +4948,8 @@ impl ZMachineCodeGen {
                     main_loop_jump_id
                 );
 
-                let layout = self.emit_instruction(
-                    0x0C,                                          // jump
+                let layout = self.emit_instruction_typed(
+                    Opcode::Op1(Op1::Jump),                        // jump
                     &[Operand::LargeConstant(placeholder_word())], // Will be resolved to main loop start
                     None,
                     None,
@@ -4983,8 +4982,8 @@ impl ZMachineCodeGen {
  verb, func_id
  );
 
-                let layout = self.emit_instruction(
-                    0x19, // call_2s: call routine with 2 arguments (2OP:25 / 0x19)
+                let layout = self.emit_instruction_typed(
+                    Opcode::OpVar(OpVar::CallVs), // call_vs: V3 compatible call routine with arguments
                     &[
                         Operand::LargeConstant(placeholder_word()), // Function address placeholder
                         Operand::SmallConstant(0),                  // Object ID 0 (no object)
@@ -5016,8 +5015,8 @@ impl ZMachineCodeGen {
                     main_loop_jump_id
                 );
 
-                let layout = self.emit_instruction(
-                    0x0C,                                          // jump
+                let layout = self.emit_instruction_typed(
+                    Opcode::Op1(Op1::Jump),                        // jump
                     &[Operand::LargeConstant(placeholder_word())], // Will be resolved to main loop start
                     None,
                     None,
@@ -5168,8 +5167,8 @@ impl ZMachineCodeGen {
             "🔍 OBJECT_LOOKUP: Initializing Variable(3)=0 at 0x{:04x}",
             self.code_address
         );
-        self.emit_instruction(
-            0x0D, // store
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Store), // store
             &[
                 Operand::Variable(3),      // Result variable 3
                 Operand::SmallConstant(0), // Initialize to 0 (not found)
@@ -5184,8 +5183,8 @@ impl ZMachineCodeGen {
             "🔍 OBJECT_LOOKUP: Initializing Variable(4)=1 (loop counter) at 0x{:04x}",
             self.code_address
         );
-        self.emit_instruction(
-            0x0D, // store
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Store), // store
             &[
                 Operand::Variable(4),      // Loop counter variable 4
                 Operand::SmallConstant(1), // Start at object 1 to check all objects
@@ -5229,8 +5228,8 @@ impl ZMachineCodeGen {
             max_object_number,
             self.code_address
         );
-        let layout = self.emit_instruction(
-            0x03, // jg: jump if greater
+        let layout = self.emit_instruction_typed(
+            Opcode::Op2(Op2::Jg), // jg: jump if greater
             &[
                 Operand::Variable(4),                            // Current object number
                 Operand::SmallConstant(max_object_number as u8), // DYNAMIC: Calculated from actual object mappings
@@ -5483,8 +5482,8 @@ impl ZMachineCodeGen {
         )?;
 
         // Jump back to loop start to check next object
-        let layout = self.emit_instruction(
-            0x0C,                                          // jump
+        let layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::Jump),                        // jump
             &[Operand::LargeConstant(placeholder_word())], // Placeholder for loop start
             None,
             None,
@@ -5976,6 +5975,16 @@ impl ZMachineCodeGen {
                 );
                 // Don't generate any bytecode for comparison operations - let the direct branch handle it
                 return Ok(());
+            }
+            IrBinaryOp::Divide => {
+                // CRITICAL: Use raw opcode to ensure V3 form determination applies
+                // V3 compatibility constraints in determine_instruction_form_with_operands require raw opcode
+                self.emit_instruction(
+                    0x17, // div opcode - V3 compatibility handled by determine_instruction_form_with_operands
+                    &operands,
+                    store_var,
+                    None,
+                )?;
             }
             _ => {
                 // Arithmetic operations store result normally
@@ -6682,19 +6691,19 @@ impl ZMachineCodeGen {
     fn emit_return(&mut self, value: Option<IrId>) -> Result<(), CompilerError> {
         if let Some(_ir_id) = value {
             // Return with value - use ret opcode with operand
-            self.emit_instruction(
-                0x0B,                         // ret opcode
+            self.emit_instruction_typed(
+                Opcode::Op1(Op1::Ret),        // ret opcode
                 &[Operand::SmallConstant(0)], // Return 0 for now (TODO: resolve actual value)
                 None,                         // No store
                 None,                         // No branch
             )?;
         } else {
             // Return without value - use rtrue (0OP instruction)
-            self.emit_instruction(
-                0xB0, // rtrue opcode
-                &[],  // No operands
-                None, // No store
-                None, // No branch
+            self.emit_instruction_typed(
+                Opcode::Op0(Op0::Rtrue), // rtrue opcode
+                &[],                     // No operands
+                None,                    // No store
+                None,                    // No branch
             )?;
         }
         Ok(())
@@ -7001,8 +7010,8 @@ impl ZMachineCodeGen {
         // jz is opcode 0 in the 1OP group, so it should be encoded as 0x80 (1OP form + opcode 0)
         // Bit 15 of placeholder = 1 means "branch on true" (when value IS zero, branch to false_label)
         // Using -1 (0xFFFF) sets bit 15, making branch_on_true = true
-        let layout = self.emit_instruction(
-            0x80, // jz (1OP:0) - jump if zero - correct Z-Machine encoding 0x80 + 0x00
+        let layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::Jz), // jz (1OP:0) - jump if zero - correct Z-Machine encoding 0x80 + 0x00
             &[condition_operand],
             None,     // No store
             Some(-1), // Negative value sets bit 15 = branch on true (jump when zero)
@@ -7121,8 +7130,8 @@ impl ZMachineCodeGen {
         // TODO: Support proper conditional branching with condition operand
 
         // Emit jump instruction with placeholder offset
-        let layout = self.emit_instruction(
-            0x0C,                                          // jump opcode (1OP:12) - fixed from 0x8C
+        let layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::Jump), // jump opcode (1OP:12) - fixed from 0x8C
             &[Operand::LargeConstant(placeholder_word())], // Placeholder offset (will be resolved later)
             None,                                          // No store
             None,                                          // No branch
@@ -7976,8 +7985,8 @@ impl ZMachineCodeGen {
                 // - Variable 3: resolved object ID (for noun matching)
                 // - Variable 4: loop counter (for object lookup iteration)
                 // - Variable 5: property value (for object lookup comparison)
-                let layout = self.emit_instruction(
-                    0x00,                                          // call_vs (VAR:224, opcode 0 - NOT 0x20!)
+                let layout = self.emit_instruction_typed(
+                    Opcode::OpVar(OpVar::CallVs), // call_vs (VAR:224, opcode 0 - NOT 0x20!)
                     &[Operand::LargeConstant(placeholder_word())], // Placeholder for routine address
                     Some(0x00), // Store result on stack (required by Z-Machine spec)
                     None,       // No branch
