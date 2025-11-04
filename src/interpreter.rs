@@ -1198,6 +1198,8 @@ impl Interpreter {
                 let op2_string = self.try_decode_dictionary_address(op2);
 
                 if op1_string.is_some() || op2_string.is_some() {
+                    // LOG LEVEL FIX: Changed from log::warn! to log::debug! to prevent
+                    // dictionary comparison debug info from flooding WARN output during gameplay
                     log::debug!(
                         "🔤 DICT_COMPARE at PC=0x{:04x}: \"{}\" vs \"{}\" (0x{:04x} vs 0x{:04x})",
                         pc,
