@@ -3,6 +3,7 @@
 
 pub mod ast;
 pub mod codegen;
+pub mod codegen_extensions;
 pub mod codegen_builtins;
 pub mod codegen_headers;
 pub mod codegen_instructions;

@@ -258,8 +258,8 @@ pub struct ZMachineCodeGen {
 
     // String encoding
     pub strings: Vec<(IrId, String)>, // Collected strings for encoding
-    main_loop_prompt_id: Option<IrId>, // ID of the main loop prompt string
-    main_loop_unknown_command_id: Option<IrId>, // ID of the "I don't understand" string
+    pub main_loop_prompt_id: Option<IrId>, // ID of the main loop prompt string (public for codegen_extensions.rs)
+    pub main_loop_unknown_command_id: Option<IrId>, // ID of the "I don't understand" string (public for codegen_extensions.rs)
 
     // Stack tracking for debugging
     pub stack_depth: i32,     // Current estimated stack depth
@@ -514,83 +514,6 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// CONSOLIDATION HELPERS: Centralized unimplemented feature handlers
-    /// These methods eliminate the dangerous copy-paste pattern of placeholder opcodes
-    /// and provide clear, consistent handling of unimplemented IR instructions.
-    ///
-    /// Generate unimplemented array operation with return value
-    /// This will cause a compile-time error with a clear message about which feature needs implementation
-
-    /// SEPARATED SPACES GENERATION: New architecture to eliminate memory conflicts
-    /// This method uses separate working spaces during compilation and final assembly
-    /// to eliminate the memory corruption issues that plagued the unified approach.
-    /// Fixed: Header field population and test compatibility issues resolved
-    /// PURE SEPARATED SPACES: Complete Z-Machine file generator
-    ///
-    /// This method creates a complete Z-Machine file using only separated memory spaces.
-    /// NO legacy dependencies, NO story_data usage, clean architecture throughout.
-    ///
-    /// File Layout (documented exactly):
-    /// 0x0000-0x003F: Header (64 bytes) - Z-Machine header with all addresses
-    /// 0x0040-?????: Code space - Program code (init + main loop + functions)
-    /// ?????-?????: String space - All encoded Z-Machine strings
-    /// ?????-?????: Object space - Object table + property tables + defaults
-    /// ?????-?????: Buffer space - Text input buffer + Parse buffer (for sread)
-    ///
-    pub fn generate_complete_game_image(
-        &mut self,
-        ir: IrProgram,
-    ) -> Result<Vec<u8>, CompilerError> {
-        log::info!("Z-Machine file generation: starting game image generation");
-
-        // Phase 0: IR Input Analysis & Validation (DEBUG)
-        CodeGenUtils::log_ir_inventory(&ir);
-        CodeGenUtils::validate_ir_input(&ir)?;
-
-        // Phase 1: Analyze and prepare all content
-        log::info!("Phase 1: Content analysis and preparation");
-        self.layout_memory_structures(&ir)?; // CRITICAL: Plan memory layout before generation
-        self.setup_comprehensive_id_mappings(&ir);
-        // Phase 2 (Oct 12, 2025): Setup IR ID to object number mapping BEFORE code generation
-        // This allows InsertObj tracking in init block to resolve object numbers at compile time
-        self.setup_ir_id_to_object_mapping(&ir)?;
-        self.analyze_properties(&ir)?;
-        self.collect_strings(&ir)?;
-        let (prompt_id, unknown_command_id) = self.add_main_loop_strings()?;
-        self.main_loop_prompt_id = Some(prompt_id);
-        self.main_loop_unknown_command_id = Some(unknown_command_id);
-        self.encode_all_strings()?;
-        log::info!(" Phase 1 complete: Content analysis and string encoding finished");
-
-        // Phase 2: Generate ALL Z-Machine sections to separated working spaces
-        log::info!("Phase 2: Generate ALL Z-Machine sections to separated memory spaces");
-        self.generate_all_zmachine_sections(&ir)?;
-        log::info!(" Phase 2 complete: All Z-Machine sections generated");
-
-        // DEBUG: Show space population before final assembly
-        self.debug_space_population();
-
-        // Phase 3: Calculate precise layout and assemble final image
-        log::info!(" Phase 3: Calculate comprehensive layout and assemble complete image");
-        let mut final_game_image = self.assemble_complete_zmachine_image(&ir)?;
-        log::info!(" Phase 3 complete: Final Z-Machine image assembled");
-
-        // Phase 4: Reinitialize input buffers (after all resizes are complete)
-        log::debug!(" Phase 4: Reinitializing input buffers");
-        self.reinitialize_input_buffers_in_image(&mut final_game_image);
-
-        // Phase 5: Final validation
-        log::debug!(" Phase 5: Validating final Z-Machine image");
-        // Final validation disabled - can be enabled for additional checks
-        // self.validate_final_assembly()?;
-
-        log::info!(
-            "🎉 COMPLETE Z-MACHINE FILE generation complete: {} bytes",
-            final_game_image.len()
-        );
-
-        Ok(final_game_image)
-    }
 
     // === IR INPUT ANALYSIS & VALIDATION (DEBUG PHASE 1) ===
 
@@ -602,7 +525,8 @@ impl ZMachineCodeGen {
     /// 4. Dictionary space - word parsing dictionary
     /// 5. Global variables space - 240 global variable slots
     /// 6. Abbreviations space - string compression abbreviations
-    fn generate_all_zmachine_sections(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
+    /// Made public for use by codegen_extensions.rs
+    pub fn generate_all_zmachine_sections(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
         log::info!("Phase 2: Generating ALL Z-Machine sections to separated memory spaces");
 
         // STACK DISCIPLINE FIX (Oct 30, 2025): Analyze comparison usage patterns before code generation
@@ -802,8 +726,9 @@ impl ZMachineCodeGen {
     /// ?????-?????: String space - All encoded strings (if any)
     /// ?????-?????: Object space - Object table + properties (if any)
     /// ?????-?????: Buffer space - Input buffers for sread operations (if needed)
+    /// Made public for use by codegen_extensions.rs
     ///
-    fn assemble_complete_zmachine_image(
+    pub fn assemble_complete_zmachine_image(
         &mut self,
         _ir: &IrProgram,
     ) -> Result<Vec<u8>, CompilerError> {
@@ -3065,7 +2990,8 @@ impl ZMachineCodeGen {
     // Dead code removed: generate_implicit_init_block() method (61 lines) - unused generation function
 
     /// Plan the memory layout for all Z-Machine structures
-    fn layout_memory_structures(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
+    /// Made public for use by codegen_extensions.rs
+    pub fn layout_memory_structures(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
         debug!(" LAYOUT_DEBUG: Starting memory layout planning");
         // Start after header
         let mut addr = HEADER_SIZE;
@@ -6411,7 +6337,8 @@ impl ZMachineCodeGen {
 
     /// Set up comprehensive IR ID mappings for ALL IDs found in the IR program
     /// This ensures every IR ID used in instructions gets a proper mapping
-    fn setup_comprehensive_id_mappings(&mut self, ir: &IrProgram) {
+    /// Made public for use by codegen_extensions.rs
+    pub fn setup_comprehensive_id_mappings(&mut self, ir: &IrProgram) {
         // STEP 1: Scan ALL IR instructions to find every IR ID used anywhere
         let mut all_used_ids = IndexSet::new();
 
@@ -6618,7 +6545,8 @@ impl ZMachineCodeGen {
     /// Setup IR ID to object number mapping for ALL objects (Phase 2: Oct 12, 2025)
     /// This must be called BEFORE code generation so that InsertObj tracking can resolve object numbers
     /// Object numbering: Player (#1), Rooms (#2-N), Objects (#N+1-M)
-    fn setup_ir_id_to_object_mapping(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
+    /// Made public for use by codegen_extensions.rs
+    pub fn setup_ir_id_to_object_mapping(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
         let mut object_num = 1u16;
 
         // Player is always object #1 (first in ir.objects)
@@ -9876,7 +9804,8 @@ impl ZMachineCodeGen {
 
     /// Reinitialize input buffers in the final game image
     /// This ensures buffer headers survive any ensure_capacity() calls
-    fn reinitialize_input_buffers_in_image(&self, game_image: &mut Vec<u8>) {
+    /// Made public for use by codegen_extensions.rs
+    pub fn reinitialize_input_buffers_in_image(&self, game_image: &mut Vec<u8>) {
         if self.text_buffer_addr > 0 && self.parse_buffer_addr > 0 {
             debug!(
  "Reinitializing input buffers in final image: text_buffer[{}] = 100, parse_buffer[{}] = 120",
