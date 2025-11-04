@@ -465,9 +465,6 @@ impl ZMachineCodeGen {
 
     // === SEPARATED MEMORY SPACES CORE METHODS ===
 
-    // ELIMINATED: write_to_code_space() and write_word_to_code_space()
-    // All code writes now go through the single-path emit_byte() system
-
     /// Define a label in code space - enables immediate jump/branch resolution
     fn define_code_label(&mut self, label_id: IrId) -> Result<(), CompilerError> {
         let label_address = self.code_address;
@@ -484,9 +481,6 @@ impl ZMachineCodeGen {
 
         Ok(())
     }
-
-    // REMOVED: emit_code_jump - This was the broken legacy system
-    // All jump generation now uses the working LegacyReferenceType::Jump system
 
     /// Emit a cross-space reference (string, object, routine call)
     fn emit_cross_space_ref(
@@ -526,9 +520,6 @@ impl ZMachineCodeGen {
     ///
     /// Generate unimplemented array operation with return value
     /// This will cause a compile-time error with a clear message about which feature needs implementation
-    // Dead code removed: emit_unimplemented_array_op() method (9 lines) - unused helper function
-    // Dead code removed: emit_unimplemented_array_op_void() method (5 lines) - unused helper function
-    // Dead code removed: emit_unimplemented_operation() method (10 lines) - unused helper function
 
     /// SEPARATED SPACES GENERATION: New architecture to eliminate memory conflicts
     /// This method uses separate working spaces during compilation and final assembly
