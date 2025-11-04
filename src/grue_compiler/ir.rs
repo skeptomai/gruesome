@@ -4408,87 +4408,30 @@ impl IrGenerator {
                     value: IrValue::Integer(0),
                 });
             }
-            // Score management functions
-            "add_score" => {
-                if arg_temps.len() != 1 {
-                    return Err(CompilerError::CodeGenError(
-                        "add_score expects 1 argument".to_string(),
-                    ));
-                }
-                // Load current score from Global G17
-                let current_score_temp = self.next_id();
-                block.add_instruction(IrInstruction::LoadVar {
-                    target: current_score_temp,
-                    var_id: 17, // Global Variable G17 = score
-                });
-                // Add the argument to current score
-                let new_score_temp = self.next_id();
-                block.add_instruction(IrInstruction::BinaryOp {
-                    target: new_score_temp,
-                    op: IrBinaryOp::Add,
-                    left: current_score_temp,
-                    right: arg_temps[0],
-                });
-                // Store new score back to Global G17
-                block.add_instruction(IrInstruction::StoreVar {
-                    var_id: 17, // Global Variable G17 = score
-                    source: new_score_temp,
-                });
-                // Return the new score value
-                block.add_instruction(IrInstruction::LoadVar {
-                    target: temp_id,
-                    var_id: 17, // Global Variable G17 = score
-                });
-            }
-            "subtract_score" => {
-                if arg_temps.len() != 1 {
-                    return Err(CompilerError::CodeGenError(
-                        "subtract_score expects 1 argument".to_string(),
-                    ));
-                }
-                // Load current score from Global G17
-                let current_score_temp = self.next_id();
-                block.add_instruction(IrInstruction::LoadVar {
-                    target: current_score_temp,
-                    var_id: 17, // Global Variable G17 = score
-                });
-                // Subtract the argument from current score
-                let new_score_temp = self.next_id();
-                block.add_instruction(IrInstruction::BinaryOp {
-                    target: new_score_temp,
-                    op: IrBinaryOp::Subtract,
-                    left: current_score_temp,
-                    right: arg_temps[0],
-                });
-                // Store new score back to Global G17
-                block.add_instruction(IrInstruction::StoreVar {
-                    var_id: 17, // Global Variable G17 = score
-                    source: new_score_temp,
-                });
-                // Return the new score value
-                block.add_instruction(IrInstruction::LoadVar {
-                    target: temp_id,
-                    var_id: 17, // Global Variable G17 = score
-                });
-            }
-            "word_to_number" => {
-                if arg_temps.len() != 1 {
-                    return Err(CompilerError::CodeGenError(
-                        "word_to_number expects 1 argument".to_string(),
-                    ));
-                }
-                // TODO: Implement dictionary lookup to convert word address to numeric value
-                // For now, since we know the dictionary contains numbers 0-100 in order,
-                // we can calculate the value based on dictionary position
-                // This is a simplified implementation - in a full implementation,
-                // we would need to decode the dictionary entry back to a string
-                // and then parse the string to an integer
+            // Score management functions - Now implemented as real Z-Machine functions
+            // ARCHITECTURE FIX (Nov 4, 2025): Converted from inline generation to real builtin functions
+            // per CLAUDE.md directive: "ALL builtin functions MUST be implemented as real Z-Machine functions"
+            "add_score" | "subtract_score" | "word_to_number" => {
+                // Use standard builtin function call mechanism like get_exit
+                // This eliminates opcode 0x15 errors by using proper function calls
+                // instead of inline IR generation that violates Z-Machine V3 constraints
 
-                // For now, return 0 as a placeholder to prevent crashes
-                // This needs to be properly implemented with dictionary decoding
-                block.add_instruction(IrInstruction::LoadImmediate {
-                    target: temp_id,
-                    value: IrValue::Integer(0),
+                // Look up function ID (or create placeholder)
+                let func_id = if let Some(&id) = self.symbol_ids.get(name) {
+                    id
+                } else {
+                    let placeholder_id = self.next_id();
+                    self.symbol_ids.insert(name.to_string(), placeholder_id);
+                    self.builtin_functions
+                        .insert(placeholder_id, name.to_string());
+                    placeholder_id
+                };
+
+                // Generate function call instruction
+                block.add_instruction(IrInstruction::Call {
+                    target: Some(temp_id),
+                    function: func_id,
+                    args: arg_temps.to_vec(),
                 });
             }
             // For other builtin functions, use standard call mechanism

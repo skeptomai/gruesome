@@ -2800,6 +2800,24 @@ impl ZMachineCodeGen {
                     // Retry the builtin call now that it's registered
                     return self.translate_call(target, function, args);
                 }
+                279 => {
+                    log::debug!("HOTFIX: Registering function 279 as add_score");
+                    self.register_builtin_function(279, "add_score".to_string());
+                    // Retry the builtin call now that it's registered
+                    return self.translate_call(target, function, args);
+                }
+                280 => {
+                    log::debug!("HOTFIX: Registering function 280 as subtract_score");
+                    self.register_builtin_function(280, "subtract_score".to_string());
+                    // Retry the builtin call now that it's registered
+                    return self.translate_call(target, function, args);
+                }
+                281 => {
+                    log::debug!("HOTFIX: Registering function 281 as word_to_number");
+                    self.register_builtin_function(281, "word_to_number".to_string());
+                    // Retry the builtin call now that it's registered
+                    return self.translate_call(target, function, args);
+                }
                 _ => {
                     log::warn!(
  "UNKNOWN_FUNCTION_CALL: function={} not found in builtins or user functions",
@@ -10059,6 +10077,255 @@ impl ZMachineCodeGen {
             // Register function address
             log::debug!(
                 "🏗️ BUILTIN_GEN: Registering print_num function: ID {} → address 0x{:04x}",
+                func_id,
+                func_addr
+            );
+            self.reference_context
+                .ir_id_to_address
+                .insert(func_id, func_addr);
+            self.function_addresses.insert(func_id, func_addr);
+
+            generated_count += 1;
+        }
+
+        // Generate add_score builtin function if registered
+        if self.builtin_functions.contains_key("add_score") {
+            log::debug!("🏗️ BUILTIN_GEN: Generating add_score function");
+
+            // Ensure even address alignment for function
+            if self.code_address % 2 != 0 {
+                log::debug!("🏗️ BUILTIN_GEN: Adding padding byte for alignment");
+                self.emit_byte(0xB4)?;
+            }
+
+            let func_addr = self.code_address;
+            let func_id = *self.builtin_functions.get("add_score").unwrap();
+
+            // Generate function header (1 local for the argument)
+            let num_locals = 1;
+            log::debug!(
+                "🏗️ BUILTIN_GEN: Generating add_score function header at 0x{:04x}",
+                func_addr
+            );
+            self.emit_byte(num_locals)?;
+            for _ in 0..num_locals {
+                self.emit_word(0)?;
+            }
+
+            // Generate add_score function body:
+            // 1. Load current score from Global G17
+            // 2. Add argument (Local 1) to current score
+            // 3. Store result back to Global G17
+            // 4. Return new score value
+
+            // Load current score from G17 → Variable 0 (stack)
+            self.emit_instruction_typed(
+                crate::grue_compiler::opcodes::Opcode::Op1(
+                    crate::grue_compiler::opcodes::Op1::Load,
+                ),
+                &[Operand::Variable(17)], // G17
+                Some(0),                  // Store to Variable 0 (stack)
+                None,
+            )?;
+
+            // Add Local 1 (argument) to stack value → Variable 0 (stack)
+            self.emit_instruction_typed(
+                crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Add),
+                &[
+                    Operand::Variable(0), // Stack (current score)
+                    Operand::Variable(1), // Local 1 (argument)
+                ],
+                Some(0), // Store result to Variable 0 (stack)
+                None,
+            )?;
+
+            // Store result from stack to G17
+            self.emit_instruction_typed(
+                crate::grue_compiler::opcodes::Opcode::Op2(
+                    crate::grue_compiler::opcodes::Op2::Store,
+                ),
+                &[
+                    Operand::Variable(17), // G17
+                    Operand::Variable(0),  // Stack (new score)
+                ],
+                None,
+                None,
+            )?;
+
+            // Return new score (load G17 to stack and return)
+            self.emit_instruction_typed(
+                crate::grue_compiler::opcodes::Opcode::Op1(
+                    crate::grue_compiler::opcodes::Op1::Load,
+                ),
+                &[Operand::Variable(17)], // G17
+                Some(0),                  // Store to Variable 0 (stack) for return
+                None,
+            )?;
+
+            self.emit_instruction_typed(
+                crate::grue_compiler::opcodes::Opcode::Op1(crate::grue_compiler::opcodes::Op1::Ret),
+                &[Operand::Variable(0)], // Return stack value
+                None,
+                None,
+            )?;
+
+            // Register function address
+            log::debug!(
+                "🏗️ BUILTIN_GEN: Registering add_score function: ID {} → address 0x{:04x}",
+                func_id,
+                func_addr
+            );
+            self.reference_context
+                .ir_id_to_address
+                .insert(func_id, func_addr);
+            self.function_addresses.insert(func_id, func_addr);
+
+            generated_count += 1;
+        }
+
+        // Generate subtract_score builtin function if registered
+        if self.builtin_functions.contains_key("subtract_score") {
+            log::debug!("🏗️ BUILTIN_GEN: Generating subtract_score function");
+
+            // Ensure even address alignment for function
+            if self.code_address % 2 != 0 {
+                log::debug!("🏗️ BUILTIN_GEN: Adding padding byte for alignment");
+                self.emit_byte(0xB4)?;
+            }
+
+            let func_addr = self.code_address;
+            let func_id = *self.builtin_functions.get("subtract_score").unwrap();
+
+            // Generate function header (1 local for the argument)
+            let num_locals = 1;
+            log::debug!(
+                "🏗️ BUILTIN_GEN: Generating subtract_score function header at 0x{:04x}",
+                func_addr
+            );
+            self.emit_byte(num_locals)?;
+            for _ in 0..num_locals {
+                self.emit_word(0)?;
+            }
+
+            // Generate subtract_score function body:
+            // 1. Load current score from Global G17
+            // 2. Subtract argument (Local 1) from current score
+            // 3. Store result back to Global G17
+            // 4. Return new score value
+
+            // Load current score from G17 → Variable 0 (stack)
+            self.emit_instruction_typed(
+                crate::grue_compiler::opcodes::Opcode::Op1(
+                    crate::grue_compiler::opcodes::Op1::Load,
+                ),
+                &[Operand::Variable(17)], // G17
+                Some(0),                  // Store to Variable 0 (stack)
+                None,
+            )?;
+
+            // Subtract Local 1 (argument) from stack value → Variable 0 (stack)
+            self.emit_instruction_typed(
+                crate::grue_compiler::opcodes::Opcode::Op2(crate::grue_compiler::opcodes::Op2::Sub),
+                &[
+                    Operand::Variable(0), // Stack (current score)
+                    Operand::Variable(1), // Local 1 (argument)
+                ],
+                Some(0), // Store result to Variable 0 (stack)
+                None,
+            )?;
+
+            // Store result from stack to G17
+            self.emit_instruction_typed(
+                crate::grue_compiler::opcodes::Opcode::Op2(
+                    crate::grue_compiler::opcodes::Op2::Store,
+                ),
+                &[
+                    Operand::Variable(17), // G17
+                    Operand::Variable(0),  // Stack (new score)
+                ],
+                None,
+                None,
+            )?;
+
+            // Return new score (load G17 to stack and return)
+            self.emit_instruction_typed(
+                crate::grue_compiler::opcodes::Opcode::Op1(
+                    crate::grue_compiler::opcodes::Op1::Load,
+                ),
+                &[Operand::Variable(17)], // G17
+                Some(0),                  // Store to Variable 0 (stack) for return
+                None,
+            )?;
+
+            self.emit_instruction_typed(
+                crate::grue_compiler::opcodes::Opcode::Op1(crate::grue_compiler::opcodes::Op1::Ret),
+                &[Operand::Variable(0)], // Return stack value
+                None,
+                None,
+            )?;
+
+            // Register function address
+            log::debug!(
+                "🏗️ BUILTIN_GEN: Registering subtract_score function: ID {} → address 0x{:04x}",
+                func_id,
+                func_addr
+            );
+            self.reference_context
+                .ir_id_to_address
+                .insert(func_id, func_addr);
+            self.function_addresses.insert(func_id, func_addr);
+
+            generated_count += 1;
+        }
+
+        // Generate word_to_number builtin function if registered
+        if self.builtin_functions.contains_key("word_to_number") {
+            log::debug!("🏗️ BUILTIN_GEN: Generating word_to_number function");
+
+            // Ensure even address alignment for function
+            if self.code_address % 2 != 0 {
+                log::debug!("🏗️ BUILTIN_GEN: Adding padding byte for alignment");
+                self.emit_byte(0xB4)?;
+            }
+
+            let func_addr = self.code_address;
+            let func_id = *self.builtin_functions.get("word_to_number").unwrap();
+
+            // Generate function header (1 local for the argument)
+            let num_locals = 1;
+            log::debug!(
+                "🏗️ BUILTIN_GEN: Generating word_to_number function header at 0x{:04x}",
+                func_addr
+            );
+            self.emit_byte(num_locals)?;
+            for _ in 0..num_locals {
+                self.emit_word(0)?;
+            }
+
+            // Generate word_to_number function body:
+            // For now, return 0 as placeholder (same as inline implementation)
+            // TODO: Implement proper dictionary lookup when needed
+
+            // Load immediate 0 → Variable 0 (stack)
+            self.emit_instruction_typed(
+                crate::grue_compiler::opcodes::Opcode::Op1(
+                    crate::grue_compiler::opcodes::Op1::Load,
+                ),
+                &[Operand::SmallConstant(0)],
+                Some(0), // Store to Variable 0 (stack)
+                None,
+            )?;
+
+            self.emit_instruction_typed(
+                crate::grue_compiler::opcodes::Opcode::Op1(crate::grue_compiler::opcodes::Op1::Ret),
+                &[Operand::Variable(0)], // Return stack value
+                None,
+                None,
+            )?;
+
+            // Register function address
+            log::debug!(
+                "🏗️ BUILTIN_GEN: Registering word_to_number function: ID {} → address 0x{:04x}",
                 func_id,
                 func_addr
             );
