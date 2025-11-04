@@ -4779,8 +4779,6 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    // Dead code removed: generate_functions() and generate_function_body_with_boundary() methods (95 lines)
-
     /// Set up parameter IR ID to local variable slot mappings for a function
     /// This must be called before translating function instructions
     fn setup_function_parameter_mappings(&mut self, function: &IrFunction) {
@@ -5209,26 +5207,6 @@ impl ZMachineCodeGen {
             }
         }
 
-        Ok(())
-    }
-
-    /// UNUSED: Old function call generation - replaced by generate_call_with_reference
-    /// Left here for reference but should not be called
-    #[allow(dead_code)]
-    fn generate_call(
-        &mut self,
-        function_addr: Operand,
-        args: &[Operand],
-        store_var: Option<u8>,
-    ) -> Result<(), CompilerError> {
-        // NOTE: This function used 0xE0 (encoded byte) instead of typed Opcode
-        // This was architecturally incorrect - emit_instruction_typed expects Opcode enum
-        let opcode = Opcode::OpVar(OpVar::CallVs); // call_vs opcode (VAR:224)
-
-        let mut operands = vec![function_addr];
-        operands.extend_from_slice(args);
-
-        self.emit_instruction_typed(opcode, &operands, store_var, None)?;
         Ok(())
     }
 
@@ -6379,12 +6357,6 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    // Dead code removed: allocate_address() method (27 lines) - unused generic memory allocation function
-
-    // Dead code removed: allocate_label_address() method (25 lines) - unused label address allocation function
-
-    /// DEPRECATED FUNCTION REMOVED (Oct 27, 2025):
-    /// use_stack_for_result() caused Variable(0) collisions that crashed Property 28 access!
     ///
     /// MIGRATION COMPLETE: All callers migrated to use_push_pull_for_result()
     /// - GetProperty operations (property access like obj.name)
@@ -6523,8 +6495,6 @@ impl ZMachineCodeGen {
         }
         Ok(())
     }
-
-    // Dead code removed: resolve_ir_id_with_pull() method (11 lines) - unused IR ID resolution with pull function
 
     /// Get current code address for instruction generation
     pub fn current_address(&self) -> usize {
@@ -7073,8 +7043,6 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    // Dead code removed: allocate_local_variable_for_parameter() method (26 lines) - unused local variable allocation function
-
     /// Allocate space for strings with proper alignment
 
     /// Generate init block as a proper routine and startup sequence
@@ -7275,10 +7243,7 @@ impl ZMachineCodeGen {
     }
 
     /// Write the Z-Machine file header with custom entry point
-    // Dead code removed: resolve_addresses() method (38 lines) - unused legacy address resolution function
-
-    // Dead code removed: validate_no_unresolved_placeholders() method (65 lines) - moved to codegen_references.rs
-
+    
     /// PHASE 2.2: Validate story data integrity and boundary calculations
     fn validate_story_data_integrity(&self) -> Result<(), CompilerError> {
         log::debug!("=== STORY DATA INTEGRITY CHECK ===");
@@ -7348,10 +7313,6 @@ impl ZMachineCodeGen {
         log::debug!("Story data integrity validation complete");
         Ok(())
     }
-
-    // Dead code removed: validate_property_table_format() method (60 lines) - unused property table validation function
-
-    // Dead code removed: validate_object_property_associations() method (67 lines) - unused object-property validation function
 
     /// Resolve a single reference by patching the story data
     fn resolve_single_reference(
@@ -7476,8 +7437,6 @@ impl ZMachineCodeGen {
  reference.reference_type, reference.target_id
  );
     }
-
-    // Dead code removed: calculate_instruction_size_from_opcode() method (6 lines) - unused instruction size calculation function
 
     fn calculate_instruction_size_from_data(
         &self,
@@ -8075,23 +8034,7 @@ impl ZMachineCodeGen {
         }
     }
 
-    /// Generate player_can_see builtin function - checks if player can see an object
-
-    /// Generate string concatenation for two IR values
-
-    /// Get string value for an IR ID (handles both string literals and function return values)
-
     /// Update string addresses after new strings have been added
-    ///
-    /// REMOVED: update_string_addresses - dead code from dual allocation architecture
-    /// This function was part of the old dual allocation system. All string allocation
-    /// now goes through the unified allocator in write_new_strings_immediate()
-    ///
-    /// REMOVED: write_strings_to_memory - dead code from old architecture
-    /// This function was designed for layout-phase string writing, which is obsolete
-    /// with the unified memory allocator. All string allocation now goes through
-    /// the unified allocator in write_new_strings_immediate()
-    ///
     /// Add an unresolved reference to be patched later
     /// CRITICAL: Pass location_offset calculated BEFORE emitting placeholder
     pub fn add_unresolved_reference_at_location(
@@ -8110,28 +8053,28 @@ impl ZMachineCodeGen {
         );
 
         let reference = UnresolvedReference {
- reference_type,
- location: match location_space {
- MemorySpace::Code => {
- // Use the exact offset provided by caller (calculated BEFORE placeholder emission)
- self.final_code_base + location_offset
- },
- MemorySpace::CodeSpace => {
- // Use the exact offset provided by caller
- self.final_code_base + location_offset
- },
- MemorySpace::Header => panic!("COMPILER BUG: Header space references not implemented - cannot use add_unresolved_reference() for Header space"),
- MemorySpace::Globals => panic!("COMPILER BUG: Globals space references not implemented - cannot use add_unresolved_reference() for Globals space"),
- MemorySpace::Abbreviations => panic!("COMPILER BUG: Abbreviations space references not implemented - cannot use add_unresolved_reference() for Abbreviations space"),
- MemorySpace::Objects => panic!("COMPILER BUG: Objects space references not implemented - cannot use add_unresolved_reference() for Objects space"),
- MemorySpace::Dictionary => panic!("COMPILER BUG: Dictionary space references not implemented - cannot use add_unresolved_reference() for Dictionary space"),
- MemorySpace::Strings => panic!("COMPILER BUG: Strings space references not implemented - cannot use add_unresolved_reference() for Strings space"),
- },
- target_id,
- is_packed_address: is_packed,
- offset_size: 2, // Default to 2 bytes
- location_space,
- };
+            reference_type,
+            location: match location_space {
+                MemorySpace::Code => {
+                    // Use the exact offset provided by caller (calculated BEFORE placeholder emission)
+                    self.final_code_base + location_offset
+                    },
+                    MemorySpace::CodeSpace => {
+                    // Use the exact offset provided by caller
+                    self.final_code_base + location_offset
+                    },
+                    MemorySpace::Header => panic!("COMPILER BUG: Header space references not implemented - cannot use add_unresolved_reference() for Header space"),
+                    MemorySpace::Globals => panic!("COMPILER BUG: Globals space references not implemented - cannot use add_unresolved_reference() for Globals space"),
+                    MemorySpace::Abbreviations => panic!("COMPILER BUG: Abbreviations space references not implemented - cannot use add_unresolved_reference() for Abbreviations space"),
+                    MemorySpace::Objects => panic!("COMPILER BUG: Objects space references not implemented - cannot use add_unresolved_reference() for Objects space"),
+                    MemorySpace::Dictionary => panic!("COMPILER BUG: Dictionary space references not implemented - cannot use add_unresolved_reference() for Dictionary space"),
+                    MemorySpace::Strings => panic!("COMPILER BUG: Strings space references not implemented - cannot use add_unresolved_reference() for Strings space"),
+                },
+            target_id,
+            is_packed_address: is_packed,
+            offset_size: 2, // Default to 2 bytes
+            location_space,
+        };
         self.reference_context.unresolved_refs.push(reference);
         Ok(())
     }
