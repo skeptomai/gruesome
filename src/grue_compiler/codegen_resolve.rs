@@ -1,16 +1,23 @@
-/// codegen_resolve.rs
-/// Resolution methods for ZMachineCodeGen
+/// codegen_resolve.rs - Address Resolution for Z-Machine Code Generation
+///
+/// This module contains methods for resolving address references in the final game image.
+/// These methods were moved here from codegen.rs to improve code organization and modularity.
+///
+/// Contains:
+/// - resolve_all_addresses() - Main entry point for address resolution
+/// - resolve_unresolved_reference() - Handles modern reference system
+/// - resolve_legacy_fixup() - Handles legacy fixup compatibility system
 ///
 use crate::grue_compiler::codegen::ZMachineCodeGen;
 use crate::grue_compiler::codegen_headers::PendingFixup;
-use crate::grue_compiler::codegen_references::{UnresolvedReference, LegacyReferenceType};
+use crate::grue_compiler::codegen_references::{LegacyReferenceType, UnresolvedReference};
 use crate::grue_compiler::codegen_strings::MemorySpace;
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ZMachineVersion;
 use log::debug;
 
 impl ZMachineCodeGen {
-        /// Resolve all address references in the final game image (PURE SEPARATED SPACES)
+    /// Resolve all address references in the final game image (PURE SEPARATED SPACES)
     ///
     /// Processes all unresolved references and pending fixups to patch addresses
     /// in the final assembled game image.

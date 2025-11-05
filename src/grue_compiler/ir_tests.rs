@@ -1028,7 +1028,7 @@ mod ir_tests {
             .expect("test_all_score_operations function should exist");
 
         // Count operations (new architecture)
-        let mut g17_loads = 0;  // Direct loads from player.score
+        let mut g17_loads = 0; // Direct loads from player.score
         let mut g17_stores = 0; // Direct stores to player.score
         let mut function_calls = 0; // Calls to builtin functions (add_score, subtract_score)
 
@@ -1039,7 +1039,11 @@ mod ir_tests {
                 IrInstruction::Call { args, .. } => {
                     // Should be calls to score functions with one argument each
                     function_calls += 1;
-                    assert_eq!(args.len(), 1, "Score function calls should take one argument");
+                    assert_eq!(
+                        args.len(),
+                        1,
+                        "Score function calls should take one argument"
+                    );
                 }
                 _ => {}
             }
@@ -1059,6 +1063,9 @@ mod ir_tests {
             "Should have exactly 1 store to G17 for direct assignment, got {}",
             g17_stores
         );
-        assert_eq!(function_calls, 2, "Should have exactly 2 function calls (add_score and subtract_score)");
+        assert_eq!(
+            function_calls, 2,
+            "Should have exactly 2 function calls (add_score and subtract_score)"
+        );
     }
 }
