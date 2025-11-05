@@ -187,7 +187,7 @@ pub struct ZMachineCodeGen {
     // Code generation state
     pub label_addresses: IndexMap<IrId, usize>, // IR label ID -> byte address
     string_addresses: IndexMap<IrId, usize>,    // IR string ID -> byte address
-    pub function_addresses: IndexMap<IrId, usize>,  // IR function ID -> function header byte address
+    pub function_addresses: IndexMap<IrId, usize>, // IR function ID -> function header byte address
     function_locals_count: IndexMap<IrId, usize>, // IR function ID -> locals count (for header size calculation)
     function_header_locations: IndexMap<IrId, usize>, // IR function ID -> header byte location for patching
     current_function_locals: u8, // Track local variables allocated in current function (0-15)
@@ -3006,7 +3006,10 @@ impl ZMachineCodeGen {
     ///
     /// Bug History: Previously looped through 126 "objects" when only 14 existed, treating
     /// property table bytes as object headers and corrupting property data. See CLAUDE.md Bug 6.
-    pub fn patch_property_table_addresses(&mut self, object_base: usize) -> Result<(), CompilerError> {
+    pub fn patch_property_table_addresses(
+        &mut self,
+        object_base: usize,
+    ) -> Result<(), CompilerError> {
         log::debug!(" PATCH: Starting property table address patching");
 
         // Calculate how many objects exist based on object space size
@@ -7243,7 +7246,7 @@ impl ZMachineCodeGen {
     }
 
     /// Write the Z-Machine file header with custom entry point
-    
+
     /// PHASE 2.2: Validate story data integrity and boundary calculations
     fn validate_story_data_integrity(&self) -> Result<(), CompilerError> {
         log::debug!("=== STORY DATA INTEGRITY CHECK ===");
@@ -8361,19 +8364,6 @@ impl ZMachineCodeGen {
     // Utility methods for code emission
 
     pub fn emit_byte(&mut self, byte: u8) -> Result<(), CompilerError> {
-        // CRITICAL: Check for problematic bytes being written
-        let code_offset = self.code_space.len();
-        if code_offset >= 0x333 && code_offset <= 0x338 {
-            log::debug!(
-                "DEBUG: Writing 0x{:02x} at code space offset 0x{:04x}",
-                byte,
-                code_offset
-            );
-        }
-        // Historical note: Previously checked for specific addresses 0x335/0x336
-        // This was debugging code for the label ID 415 bug (label IDs written as branch bytes)
-        // Fixed by proper branch offset calculation - removed panic checks
-
         // Clear labels at current address when we emit actual instruction bytes
         // (but not for padding or alignment bytes)
         if !self.labels_at_current_address.is_empty() && byte != 0x00 {
@@ -8384,80 +8374,6 @@ impl ZMachineCodeGen {
                 byte
             );
             self.labels_at_current_address.clear();
-        }
-
-        if byte == 0x9d || byte == 0x8d {
-            log::debug!(
-                "Emitting 0x{:02x} (print_paddr) at address 0x{:04x}",
-                byte,
-                self.code_address
-            );
-        }
-        if byte == 0xe0 {
-            log::debug!(
-                "Emitting 0x{:02x} (call_vs) at address 0x{:04x}",
-                byte,
-                self.code_address
-            );
-        }
-        if byte == 0xb0 {
-            log::debug!(
-                "Emitting 0x{:02x} (rtrue) at address 0x{:04x}",
-                byte,
-                self.code_address
-            );
-        }
-
-        // Note: Zero bytes are legitimate in Z-Machine function headers and store_var fields
-
-        // Debug critical addresses
-        if self.code_address >= 0x0730 && self.code_address <= 0x0740 {
-            debug!(
-                "emit_byte: 0x{:02x} at address 0x{:04x}",
-                byte, self.code_address
-            );
-        }
-
-        // CRITICAL: Track ALL writes to addresses that could affect 0x0B66 in final file
-        if self.code_address == 0x0598 {
-            log::debug!(
-                " BYTE_TRACE: Writing byte 0x{:02x} to generation address 0x0598 (final 0x0B66)",
-                byte
-            );
-            if byte == 0x3E {
-                panic!("FOUND THE BUG: byte 0x3E being written to generation address 0x0598 (final 0x0B66) - this creates invalid opcode 0x1E!\nStack trace will show the source.");
-            }
-        }
-
-        // Also track writes to the final address if we're in final assembly phase
-        if self.code_address == 0x0B66 {
-            log::debug!(
-                " FINAL_TRACE: Writing byte 0x{:02x} to FINAL address 0x0B66",
-                byte
-            );
-            if byte == 0x3E {
-                panic!("FOUND THE BUG: byte 0x3E being written to FINAL address 0x0B66 - this creates invalid opcode 0x1E!\nStack trace will show the source.");
-            }
-        }
-
-        // PHASE 1: Track all placeholder writes comprehensively
-        if byte == 0x00 || byte == 0xFF {
-            debug!(
-                "Placeholder byte: Writing potential placeholder byte 0x{:02x} at address 0x{:04x}",
-                byte, self.code_address
-            );
-            debug!(" 0x00 = NULL (likely unpatched placeholder)");
-            debug!(" 0xFF = Placeholder high byte (should be part of 0xFFFF)");
-            debug!(" Context: Current instruction emission in progress");
-
-            // Detailed logging for null bytes specifically
-            if byte == 0x00 {
-                debug!("Null byte analysis:");
-                debug!(" - If this is an operand position, placeholder resolution failed");
-                debug!(" - If this is an opcode position, instruction emission is broken");
-                debug!(" - Expected: Either valid opcode/operand OR 0xFFFF placeholder");
-                debug!(" - Reality: 0x00 suggests missing UnresolvedReference or failed patching");
-            }
         }
 
         self.ensure_capacity(self.code_address + 1);
@@ -8472,119 +8388,11 @@ impl ZMachineCodeGen {
             self.code_space.resize(code_offset + 1, 0xFF); // Fill with 0xFF to detect uninitialized/skipped bytes
         }
 
-        if byte != 0x00 || self.code_space.len() < 10 {
-            log::debug!(
-                "📝 EMIT_BYTE: code_offset={}, byte=0x{:02x}, code_address=0x{:04x}, space_len={}",
-                code_offset,
-                byte,
-                self.code_address,
-                self.code_space.len()
-            );
-        }
-
-        // CRITICAL: Track all writes to code_space[0] to find corruption source
-        if code_offset == 0 {
-            debug!("Code space 0 write: Writing byte 0x{:02x} to code_space[0] at code_address=0x{:04x}", byte, self.code_address);
-            if byte == 0x3E {
-                panic!("FOUND THE BUG: 0x3E being written to code_space[0]! Stack trace will show the source.");
-            }
-        }
-
-        // CRITICAL: Track writes to our problematic location
-        if code_offset >= 0x330 && code_offset <= 0x340 {
-            log::debug!(
-                "WRITE[0x{:04x}]: 0x{:02x} (code_addr=0x{:04x})",
-                code_offset,
-                byte,
-                self.code_address
-            );
-
-            // Identify what this byte likely represents
-            let byte_type = if code_offset > 0 && self.code_space.len() > 0 {
-                // Check if this looks like an opcode, operand, or data
-                if byte == 0xFF {
-                    "PLACEHOLDER"
-                } else if byte >= 0xB0 && byte <= 0xBF {
-                    "0OP_OPCODE"
-                } else if byte >= 0x80 && byte <= 0xAF {
-                    "1OP_OPCODE"
-                } else if byte <= 0x7F {
-                    // byte >= 0x00 &&
-                    if byte <= 0x1F {
-                        "2OP_OPCODE"
-                    } else {
-                        "OPERAND/DATA"
-                    }
-                } else if byte >= 0xC0 {
-                    "VAR_OPCODE"
-                } else {
-                    "UNKNOWN"
-                }
-            } else {
-                "FIRST_BYTE"
-            };
-            log::debug!(
-                " Type: {} {}",
-                byte_type,
-                if byte == 0x02 {
-                    "(jl opcode)"
-                } else if byte == 0xFF {
-                    "(placeholder)"
-                } else if byte == 0x01
-                    && code_offset > 0
-                    && self.code_space.get(code_offset - 1) == Some(&0x00)
-                {
-                    "(might be part of 0x01 0x9f = 415)"
-                } else {
-                    ""
-                }
-            );
-
-            // Historical note: Previously tracked JUMP placeholder writes at 0x334-0x335
-            // This was debugging code for overlap detection with JL branch bytes
-            // Fixed by proper placeholder resolution order
-        }
-
         // Phase-aware writing: code generation writes to code_space, address patching writes to final_data
         if !self.final_data.is_empty() {
             // Final assembly phase: write to final_data only
             if self.code_address < self.final_data.len() {
                 self.final_data[self.code_address] = byte;
-
-                // TEMPORARY DEBUG: Track writes to problem area (jl at 0x127f)
-                if self.code_address >= 0x127f && self.code_address <= 0x1284 {
-                    log::debug!(
-                        "WRITING TO 0x{:04x}: byte=0x{:02x}",
-                        self.code_address,
-                        byte
-                    );
-                    if self.code_address == 0x1283 && byte == 0x9f {
-                        log::debug!("CRITICAL: Writing 0x9f to offset 0x1283!");
-                        log::debug!(
-                            "Previous bytes: {:02x} {:02x} {:02x} {:02x}",
-                            if self.code_address >= 4 {
-                                self.final_data[self.code_address - 4]
-                            } else {
-                                0
-                            },
-                            if self.code_address >= 3 {
-                                self.final_data[self.code_address - 3]
-                            } else {
-                                0
-                            },
-                            if self.code_address >= 2 {
-                                self.final_data[self.code_address - 2]
-                            } else {
-                                0
-                            },
-                            if self.code_address >= 1 {
-                                self.final_data[self.code_address - 1]
-                            } else {
-                                0
-                            }
-                        );
-                    }
-                }
             } else {
                 return Err(CompilerError::CodeGenError(format!(
  "Cannot write byte at address 0x{:04x}: beyond final_data bounds (len: 0x{:04x})",
@@ -8592,29 +8400,8 @@ impl ZMachineCodeGen {
  )));
             }
         } else {
-            // Historical note: Previously tracked specific byte writes at 0x338/0x339
-            // This was debugging code for the label ID 415 bug
-            // Fixed by proper branch offset calculation
-
             // Code generation phase: write to code_space
             self.code_space[code_offset] = byte;
-
-            // TEMPORARY DEBUG: Track problematic sequence in code_space
-            if code_offset >= 4
-                && self.code_space[code_offset - 4] == 0x02
-                && self.code_space[code_offset - 3] == 0x0d
-                && self.code_space[code_offset - 2] == 0x00
-                && self.code_space[code_offset - 1] == 0x01
-                && byte == 0x9f
-            {
-                log::debug!(
-                    "FOUND SEQUENCE IN CODE_SPACE: 02 0d 00 01 9f at offset 0x{:04x}",
-                    code_offset - 4
-                );
-                // Historical note: Previously tracked sequence detection for label ID 415 bug
-                // This code detected when label IDs were being written as branch bytes
-                log::debug!("This is jl(13,0) with branch bytes 01 9f (415) - tracking disabled");
-            }
         }
 
         // Advance code_address to next position
@@ -8826,67 +8613,15 @@ impl ZMachineCodeGen {
             );
         }
 
-        // Globals space analysis
-        log::info!(" 🌐 GLOBALS_SPACE: {} bytes", self.globals_space.len());
-        if !self.globals_space.is_empty() {
-            let first_10: Vec<String> = self
-                .globals_space
-                .iter()
-                .take(10)
-                .map(|b| format!("0x{:02x}", b))
-                .collect();
-            log::info!(" First 10 bytes: [{}]", first_10.join(", "));
-            let non_zero_count = self.globals_space.iter().filter(|&&b| b != 0).count();
-            log::info!(
-                " Non-zero bytes: {}/{}",
-                non_zero_count,
-                self.globals_space.len()
-            );
-        }
-
-        // Dictionary space analysis
-        log::info!(
-            " 📚 DICTIONARY_SPACE: {} bytes",
-            self.dictionary_space.len()
-        );
-        if !self.dictionary_space.is_empty() {
-            let all_bytes: Vec<String> = self
-                .dictionary_space
-                .iter()
-                .map(|b| format!("0x{:02x}", b))
-                .collect();
-            log::info!(" All bytes: [{}]", all_bytes.join(", "));
-        }
+        // Basic logging for globals and dictionary space
+        log::debug!("Globals space: {} bytes", self.globals_space.len());
+        log::debug!("Dictionary space: {} bytes", self.dictionary_space.len());
     }
 
     /// Write a single byte at a specific address (no address advancement)
-    /// Routes through emit_byte for single point monitoring
     fn write_byte_at(&mut self, addr: usize, byte: u8) -> Result<(), CompilerError> {
-        // Debug specific string writes if needed
-        if addr == 0x0b90 || addr == 0x0b91 {
-            debug!("Write to string area 0x{:04x}: 0x{:02x}", addr, byte);
-        }
-
         // Direct write to final_data during address patching phase
         if addr < self.final_data.len() {
-            // Warn about potentially problematic writes
-            if byte == 0x00 {
-                debug!(
-                    "Zero write: Writing 0x00 to final_data[0x{:04x}] - potential invalid opcode!",
-                    addr
-                );
-            }
-
-            log::debug!(
-                " WRITE_BYTE_AT: Writing byte 0x{:02x} directly to final_data[0x{:04x}]",
-                byte,
-                addr
-            );
-
-            // Historical note: Previously tracked direct writes to addresses 0x127f-0x1284
-            // This was debugging code for the label ID 415 bug with panic on 0x9f write
-            // Fixed by proper branch offset calculation - removed panic checks
-
             self.final_data[addr] = byte;
             Ok(())
         } else {
@@ -9478,7 +9213,6 @@ impl ZMachineCodeGen {
 
         Ok(())
     }
-
 }
 
 #[cfg(test)]
