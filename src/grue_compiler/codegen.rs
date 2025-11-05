@@ -206,6 +206,8 @@ pub struct ZMachineCodeGen {
     builtin_functions: IndexMap<String, IrId>,
     /// Mapping from IR IDs to array metadata (for dynamic lists)
     ir_id_to_array_info: IndexMap<IrId, ArrayInfo>,
+    /// Mapping from IR IDs to ArrayCodeGen array IDs (for static arrays)
+    ir_id_to_array_id: IndexMap<IrId, IrId>,
     /// Set of IR IDs that come from GetProperty instructions (for print() type detection)
     pub ir_id_from_property: IndexSet<IrId>,
     /// Mapping from object names to object numbers (from IR generator)
@@ -301,6 +303,9 @@ pub struct ZMachineCodeGen {
     pub globals_space: Vec<u8>,
     pub globals_address: usize,
 
+    /// Array subsystem for static array management
+    pub array_codegen: crate::grue_compiler::codegen_arrays::ArrayCodeGen,
+
     /// Abbreviations space - contains string compression abbreviations table
     pub abbreviations_space: Vec<u8>,
     abbreviations_address: usize,
@@ -377,6 +382,7 @@ impl ZMachineCodeGen {
             builtin_function_names: IndexMap::new(),
             builtin_functions: IndexMap::new(),
             ir_id_to_array_info: IndexMap::new(),
+            ir_id_to_array_id: IndexMap::new(),
             ir_id_from_property: IndexSet::new(),
             object_numbers: IndexMap::new(),
             room_to_object_id: IndexMap::new(),
@@ -420,6 +426,7 @@ impl ZMachineCodeGen {
             dictionary_address: 0,
             globals_space: Vec::new(),
             globals_address: 0,
+            array_codegen: crate::grue_compiler::codegen_arrays::ArrayCodeGen::new(),
             abbreviations_space: Vec::new(),
             abbreviations_address: 0,
             code_labels: IndexMap::new(),
@@ -6801,6 +6808,98 @@ impl ZMachineCodeGen {
             "Called builtin function '{}', result stored, PC now 0x{:04x}",
             name,
             self.code_address
+        );
+
+        Ok(())
+    }
+
+    /// Generate CreateArray instruction for static arrays
+    ///
+    /// This method delegates to ArrayCodeGen for the array allocation and IR ID mapping,
+    /// maintaining proper separation of concerns. Static arrays are allocated at compile
+    /// time and accessible via their base addresses in Z-Machine memory.
+    ///
+    /// # Arguments
+    /// * `target` - The IR ID that will reference this array
+    /// * `elements` - The initial values to populate the array with
+    ///
+    /// # Returns
+    /// Result indicating success or compilation error
+    pub fn generate_create_array(
+        &mut self,
+        target: IrId,
+        elements: &[IrValue],
+    ) -> Result<(), CompilerError> {
+        // Delegate to ArrayCodeGen which contains the array-specific logic
+        self.array_codegen
+            .generate_create_array(target, elements, &mut self.ir_id_to_array_id)
+    }
+
+    /// Generate GetArrayElement instruction using loadw opcode
+    ///
+    /// This method delegates to ArrayCodeGen for array information lookup, then
+    /// generates the necessary Z-Machine loadw instructions. Follows Zork I patterns:
+    /// `loadw array_base (index + 1) -> target` where index+1 accounts for the
+    /// count word at array[0].
+    ///
+    /// # Arguments
+    /// * `target` - IR ID where the loaded value should be stored
+    /// * `array_ir_id` - IR ID of the array to access
+    /// * `index_ir_id` - IR ID containing the index to access
+    ///
+    /// # Returns
+    /// Result indicating success or compilation error
+    pub fn generate_get_array_element(
+        &mut self,
+        target: IrId,
+        array_ir_id: IrId,
+        index_ir_id: IrId,
+    ) -> Result<(), CompilerError> {
+        // Get array information from ArrayCodeGen
+        let (base_address, _target, _index_ir_id) =
+            self.array_codegen.generate_get_array_element_info(
+                target,
+                array_ir_id,
+                index_ir_id,
+                &self.ir_id_to_array_id,
+            )?;
+
+        // Get index operand
+        let index_operand = self.resolve_ir_id_to_operand(index_ir_id)?;
+
+        // Allocate temporary variable for index calculation (add 1 to skip count word)
+        let temp_var = self.allocate_local_variable_slot();
+
+        // Add 1 to index to skip count word at array[0]
+        // This matches Zork I array access patterns
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Add),
+            &[index_operand, Operand::SmallConstant(1)],
+            Some(temp_var),
+            None,
+        )?;
+
+        // Generate loadw instruction: loadw array_base (temp_var) -> target
+        // This is the core Z-Machine array access pattern from Zork I
+        // The result goes to the stack (target is handled by IR ID mapping)
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Loadw),
+            &[
+                Operand::LargeConstant(base_address),
+                Operand::Variable(temp_var),
+            ],
+            None, // Store result on stack, will be popped later
+            None,
+        )?;
+
+        // Map the target IR ID to stack variable for later access
+        let stack_var = 0; // Z-Machine stack is variable 0
+        self.ir_id_to_stack_var.insert(target, stack_var);
+
+        log::debug!(
+            "GetArrayElement: Generated loadw 0x{:04x} {} -> stack (array access)",
+            base_address,
+            temp_var
         );
 
         Ok(())

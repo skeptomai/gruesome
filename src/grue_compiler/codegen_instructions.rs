@@ -43,6 +43,8 @@ impl ZMachineCodeGen {
             IrInstruction::TestAttribute { target, .. } => *target,
             IrInstruction::TestAttributeValue { target, .. } => *target,
             IrInstruction::UnaryOp { target, .. } => *target,
+            IrInstruction::CreateArray { target, .. } => *target,
+            IrInstruction::GetArrayElement { target, .. } => *target,
             _ => 0,
         };
 
@@ -1506,6 +1508,34 @@ impl ZMachineCodeGen {
                             .insert(*target, ConstantValue::Integer(0));
                     }
                 }
+            }
+
+            // Array operations - static arrays only (matching Zork I patterns)
+            IrInstruction::CreateArray { target, elements } => {
+                log::debug!(
+                    "Generating CreateArray: target={}, elements=[{}]",
+                    target,
+                    elements
+                        .iter()
+                        .map(|e| format!("{:?}", e))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                self.generate_create_array(*target, elements)?;
+            }
+
+            IrInstruction::GetArrayElement {
+                target,
+                array,
+                index,
+            } => {
+                log::debug!(
+                    "Generating GetArrayElement: target={}, array={}, index={}",
+                    target,
+                    array,
+                    index
+                );
+                self.generate_get_array_element(*target, *array, *index)?;
             }
 
             // Debug breakpoint (debug builds only)

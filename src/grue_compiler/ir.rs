@@ -843,6 +843,22 @@ pub enum IrInstruction {
         value: IrId,
     },
 
+    /// Static array creation - ONLY for compile-time known arrays
+    /// Creates a static array with predefined elements [1, 2, 3] or ["a", "b", "c"]
+    /// No empty [] arrays - that was the anti-pattern eliminated from Z-Machine games
+    CreateArray {
+        target: IrId,
+        elements: Vec<IrValue>, // Always populated: [1,2,3] or ["a","b","c"]
+    },
+
+    /// Array read access - for property arrays and static data
+    /// Generates loadw operations following Zork I patterns
+    GetArrayElement {
+        target: IrId,
+        array: IrId,
+        index: IrId,
+    },
+
     /// No-operation (used for optimization)
     Nop,
 }
@@ -1264,6 +1280,8 @@ impl IrGenerator {
             IrInstruction::Jump { .. } => None,
             IrInstruction::Label { .. } => None,
             IrInstruction::Return { .. } => None,
+            IrInstruction::CreateArray { target, .. } => Some(*target),
+            IrInstruction::GetArrayElement { target, .. } => Some(*target),
             _ => None,
         };
 
@@ -1282,6 +1300,8 @@ impl IrGenerator {
                 IrInstruction::TestAttribute { .. } => "TestAttribute",
                 IrInstruction::TestAttributeBranch { .. } => "TestAttributeBranch",
                 IrInstruction::TestAttributeValue { .. } => "TestAttributeValue",
+                IrInstruction::CreateArray { .. } => "CreateArray",
+                IrInstruction::GetArrayElement { .. } => "GetArrayElement",
                 _ => "Other",
             };
 
@@ -3689,13 +3709,33 @@ impl IrGenerator {
                 }
             }
 
-            Expr::Array(_) => {
-                // ARRAY REMOVAL (Nov 5, 2025): Array literals like [1, 2, 3] no longer supported
-                // Text adventure games typically use object containment instead of arrays
-                // This provides a clear error message when array syntax is encountered
-                Err(CompilerError::CodeGenError(
-                    "Array expressions are not supported in this implementation".to_string(),
-                ))
+            Expr::Array(elements) => {
+                // ARRAY RESTORATION (Nov 5, 2025): Implement proper static array support
+                // following the NEW_ARRAY_IMPLEMENTATION approach
+                log::debug!("Processing array literal with {} elements", elements.len());
+
+                // Convert each element expression to IR value
+                let mut ir_elements = Vec::new();
+                for element in elements {
+                    let element_id = self.generate_expression(element, block)?;
+                    // For static arrays, we need to resolve the element to a constant value
+                    // Dynamic resolution will be handled during codegen
+                    ir_elements.push(IrValue::Integer(element_id as i16)); // Store IR ID as i16
+                }
+
+                // Generate array creation instruction
+                let array_id = self.next_id();
+                log::debug!(
+                    "Generated CreateArray instruction: target={}, elements={:?}",
+                    array_id,
+                    ir_elements
+                );
+
+                block.add_instruction(IrInstruction::CreateArray {
+                    target: array_id,
+                    elements: ir_elements,
+                });
+                Ok(array_id)
             }
             Expr::DisambiguationContext {
                 candidates: _,

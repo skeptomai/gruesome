@@ -1,0 +1,4119 @@
+Resident data ends at 4e37, program starts at 4f04, file ends at 16800
+
+Starting analysis pass at address 4e37
+
+End of analysis pass, low address = 4e42, high address = 10b04
+
+[Start of code]
+
+Routine R0001, 1 local (0000)
+
+       PRINT            "a "
+       PRINT_OBJ       L00
+       RTRUE           
+
+Routine R0002, 1 local (0000)
+
+       JZ              G3c [TRUE] 4e51
+       RANDOM          #64 -> -(SP)
+       JG              L00,(SP)+ [TRUE] RTRUE
+       RFALSE          
+
+Routine R0003, 1 local (0000)
+
+       LOADW           L00,#00 -> -(SP)
+       RANDOM          (SP)+ -> -(SP)
+       LOADW           L00,(SP)+ -> -(SP)
+       RET_POPPED      
+
+Routine R0004, 6 locals (0000, 0000, 0000, 0000, 0000, 0000)
+
+       LOADW           L00,#00 -> L01
+       LOADW           L00,#01 -> L02
+       DEC             L01
+       ADD             L00,#02 -> L00
+
+Routine R0005, 6 locals (7502, 0300, e7bf, 0004, 6f06, 0405)
+
+       LOADW           L05,#01 -> -(SP)
+       STOREW          L05,L03,(SP)+
+       STOREW          L05,#01,L04
+       INC             L02
+       JE              L02,L01 [FALSE] L0001
+       STORE           L02,#00
+L0001: STOREW          L00,#00,L02
+       RET             L04
+
+Routine R0006, 0 locals ()
+
+       JE              G78,#2b [FALSE] RFALSE
+       CALL            R0296 (#a3) -> -(SP)
+       RFALSE          
+
+Routine R0007, 0 locals ()
+
+       JZ              G2e [TRUE] 4ee1
+       TEST_ATTR       #ae,#0b [FALSE] 4ed0
+       RET             #39
+
+Routine R0008, 1 local (0000)
+
+       JE              L00,#01 [FALSE] RFALSE
+       JE              G78,#45 [FALSE] RFALSE
+       JZ              G76 [FALSE] RFALSE
+       CALL            R0532 (#983b) -> -(SP)
+       RTRUE           
+
+Main routine R0009, 0 locals ()
+
+       CALL            R0022 (#8010,#ffff) -> -(SP)
+       STOREW          (SP)+,#00,#01
+       CALL            R0022 (#807c,#ffff) -> -(SP)
+       CALL            R0022 (#80f0,#ffff) -> -(SP)
+       STOREW          (SP)+,#00,#01
+       CALL            R0022 (#6f6a,#28) -> -(SP)
+       CALL            R0022 (#6f55,#c8) -> -(SP)
+       PUT_PROP        #9c,#06,#04
+       ADD             G10,#02 -> -(SP)
+       STOREW          G0a,#01,(SP)+
+       ADD             G10,#04 -> -(SP)
+       STOREW          G0a,#02,(SP)+
+       ADD             G0e,#02 -> -(SP)
+       STOREW          G09,#02,(SP)+
+       ADD             G0e,#04 -> -(SP)
+       STOREW          G09,#03,(SP)+
+       ADD             G0d,#02 -> -(SP)
+       STOREW          G08,#01,(SP)+
+       ADD             G0c,#02 -> -(SP)
+       STOREW          G08,#03,(SP)+
+       STORE           G00,#b4
+       CALL            R0321 (#a0) -> -(SP)
+       TEST_ATTR       G00,#03 [TRUE] L0001
+       CALL            R0132 -> -(SP)
+       NEW_LINE        
+L0001: STORE           G42,#01
+       STORE           G6f,#04
+       STORE           G80,G6f
+       INSERT_OBJ      G6f,G00
+       CALL            R0200 -> -(SP)
+       CALL            R0029 -> -(SP)
+       JUMP            #ff66
+
+Routine R0010, 3 locals (0000, 0001, 0000)
+
+       JE              G76,#0b [FALSE] 4fc4
+       JE              G77,#0b [FALSE] 4fc4
+       PRINT_RET        "Those things aren't here!"
+
+Routine R0011, 4 locals (0000, 0000, 0000, 0000)
+
+       CALL            R0103 (L00) -> L02
+       JG              L02,#01 [FALSE] L0002
+       LOADW           L00,#01 -> -(SP)
+       GET_PROP        (SP)+,#05 -> L03
+       JZ              L03 [TRUE] L0002
+       STORE           L02,#01
+       STORE           G4c,L03
+L0002: JE              #01,L02 [FALSE] 504b
+       JZ              L01 [TRUE] 5047
+       STORE           G76,G4c
+       RFALSE          
+
+Routine R0012, 1 local (0000)
+
+       STORE           G6c,#00
+       STORE           G60,#00
+       PRINT            "You can't see any"
+       JE              L00,G76 [FALSE] 5088
+       CALL            R0118 -> -(SP)
+       JUMP            #07
+
+Routine R0013, 2 locals (0000, 0000)
+
+       JZ              G69 [TRUE] 50ab
+       JZ              G4a [TRUE] L0001
+       PRINT            " "
+       PRINT_ADDR      G49
+L0001: JZ              G4b [TRUE] RFALSE
+       PRINT            " "
+       PRINT_ADDR      G4b
+       RTRUE           
+
+Routine R0014, 2 locals (0000, 0000)
+
+       RFALSE          
+
+Routine R0015, 0 locals ()
+
+       JE              G78,#22 [FALSE] RFALSE
+       PRINT_RET        "You should say whether you want to go up or down."
+
+Routine R0016, 11 locals (636c, 6702, ad5c, d828, 0115, 8a67, 2e4d, 8018, 070f, 3c52, f302)
+
+       PRINT_OBJ       #e4
+       PRINT            "gsm"
+       ADD             G55,G9e -> G3d
+       JZ              #34d5 [FALSE] 5163
+       GET_NEXT_PROP   G50,#01 -> Gd0
+       PRINT            "   kgr"
+       CALL_1S         R0087 -> G3e
+       JE              G77,#08 [FALSE] 5169
+       CALL            R0030 (#31,G76) -> -(SP)
+       RTRUE           
+
+Routine R0017, 0 locals ()
+
+       JE              G78,#38 [FALSE] 5239
+       PRINT_RET        "The grue is a sinister, lurking presence in the dark places of the earth. Its favorite diet is adventurers, but its insatiable appetite is tempered by its fear of light. No grue has ever been seen by the light of day, and few have survived its fearsome jaws to tell the tale."
+
+Routine R0018, 1 local (0000)
+
+       JE              G78,#6f [FALSE] 52f4
+       STORE           G6c,#00
+       STORE           G60,#00
+       PRINT_RET        "Talking to yourself is said to be a sign of impending mental collapse."
+
+Routine R0019, 0 locals ()
+
+       JE              G78,#3d,#5d [FALSE] 53e4
+       PRINT_RET        "You must specify a direction to go."
+
+Routine R0020, 0 locals ()
+
+       JE              G78,#38 [FALSE] 5434
+       PRINT_RET        "The zorkmid is the unit of currency of the Great Underground Empire."
+
+Routine R0021, 3 locals (0000, 0000, 0000)
+
+       CALL            R0023 (L00,#01) -> L02
+       STOREW          L02,#01,L01
+       RET             L02
+
+Routine R0022, 3 locals (0000, 0000, 0000)
+
+       CALL            R0023 (L00) -> L02
+       STOREW          L02,#01,L01
+       RET             L02
+
+Routine R0023, 5 locals (0000, 0000, 0000, 0000, 0000)
+
+       ADD             G84,#b4 -> L02
+       ADD             G84,G82 -> L03
+       JE              L03,L02 [FALSE] 54b3
+
+Routine R0024, 6 locals (9374, 9492, 05e1, 9b05, 0201, ab05)
+
+       LOADW           L03,#02 -> -(SP)
+       JE              (SP)+,L00 [FALSE] 54bd
+       RET             L03
+
+Routine R0025, 4 locals (0000, 0000, 0000, 0000)
+
+       JZ              G81 [TRUE] 54d4
+       STORE           G81,#00
+       RFALSE          
+
+Routine R0026, 13 locals (9100, b1a0, 8fc8, e8bf, 928c, 0005, e8bf, 9374, 9400, 0154, 94b4, 0261, 0102)
+
+       STORE           Gb5,#4f
+       GET_PROP_ADDR   #03,#e7 -> G35
+       STORE           G02,#00
+       RET             L03
+
+Routine R0027, 1 local (00e1)
+
+       RET             #01
+
+Routine R0028, 0 locals ()
+
+       JG              L02,#01 [TRUE] L0002
+       LOADW           L00,#02 -> -(SP)
+       CALL            #0000 -> -(SP)
+       JZ              (SP)+ [TRUE] L0002
+       STORE           L03,#01
+L0002: ADD             L00,#06 -> L00
+       JUMP            #ffc0
+
+Routine R0029, 10 locals (0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000)
+
+       STORE           L03,#00
+       STORE           L04,#00
+       STORE           L07,#01
+       CALL            R0031 -> G7f
+       JZ              G7f [TRUE] 574b
+       LOADW           G55,G51 -> L00
+       LOADW           G56,G51 -> L01
+       JZ              L01 [FALSE] 5562
+       PUSH            L01
+       JUMP            #33
+
+Routine R0030, 7 locals (0000, 0000, 0000, 0000, 0000, 0000, 0000)
+
+       STORE           L04,G78
+       STORE           L05,G76
+       STORE           L06,G77
+       JE              #0c,L02,L01 [FALSE] 57b8
+       JE              G6a,G00 [TRUE] 57b8
+       PRINT            "I don't see what you are referring to."
+       NEW_LINE        
+       RET             #02
+
+Routine R0031, 11 locals (0001, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, ffff)
+
+       INC_CHK         #0b,#09 [FALSE] 589e
+       JUMP            #0a
+
+Routine R0032, 4 locals (951a, e952, 65d4, a5bb)
+
+       RFALSE          
+
+Routine R0033, 0 locals ()
+
+       OR              L12,#70 -> -(SP)
+       JUMP            #235
+
+Routine R0034, 1 local (02a0)
+
+       JL              #4c,#e0 [FALSE] 4872
+       THROW           #2a0,#282,#13c1,#8f -> L01
+
+Routine R0035, 2 locals (3b3d, 63c1)
+
+       NOT             #23b -> G2d
+       INSERT_OBJ      G90,#70
+       OR              #7000,#8c00 -> L04
+       STORE           G60,#01
+       JZ              G71 [TRUE] L0001
+       ADD             L00,#02 -> G6c
+L0001: STOREB          G6e,#01,G71
+       JUMP            #1c8
+
+Routine R0036, 0 locals ()
+
+       JUMP            #159
+
+Routine R0037, 3 locals (e19b, 7400, 03e1)
+
+       RET             #74
+
+Routine R0038, 0 locals ()
+
+       ADD             L08,#01 -> -(SP)
+       LOADB           G6e,(SP)+ -> -(SP)
+       STOREB          G62,#03,(SP)+
+       JUMP            #10e
+
+Routine R0039, 0 locals ()
+
+       JZ              (SP)+ [FALSE] L0001
+       CALL            R0041 (L01,#80) -> -(SP)
+       JZ              (SP)+ [TRUE] 5b05
+L0001: STORE           L02,#00
+       JG              G71,#00 [FALSE] 5aa6
+       ADD             L00,#02 -> -(SP)
+       LOADW           G6e,(SP)+ -> -(SP)
+       JE              (SP)+,#4650 [FALSE] 5aa6
+       JZ              L02 [FALSE] 5aa6
+       JE              L01,#3b7c,#467a,#3b44 [TRUE] 5aa6
+       JUMP            #c1
+
+Routine R0040, 6 locals (cd0d, 8889, 2d86, 062d, 6f06, 9b01)
+
+       STORE           G5f,#00
+       JZ              G69 [TRUE] L0001
+       CALL            R0056 -> -(SP)
+L0001: CALL            R0071 -> -(SP)
+       JZ              (SP)+ [TRUE] RFALSE
+       CALL            R0090 -> -(SP)
+       JZ              (SP)+ [TRUE] RFALSE
+       CALL            R0114 -> -(SP)
+       JZ              (SP)+ [TRUE] RFALSE
+       CALL            R0112 -> -(SP)
+       JZ              (SP)+ [TRUE] RFALSE
+       RTRUE           
+
+Routine R0041, 5 locals (0000, 0000, 0005, 0005, 0000)
+
+       LOADB           L00,#04 -> L04
+       TEST            L04,L01 [FALSE] RFALSE
+       JG              L02,#04 [TRUE] RTRUE
+       AND             L04,#03 -> L04
+       JE              L04,L02 [TRUE] L0001
+       INC             L03
+L0001: LOADB           L00,L03 -> -(SP)
+       RET_POPPED      
+
+Routine R0042, 10 locals (0000, 0000, 0000, 0000, 0000, 0000, 0001, 0000, 0000, 0000)
+
+       ; No instructions decoded
+
+Routine R0043, 4 locals (a002, db34, 0204, 05e1)
+
+       RET             G64
+
+Routine R0044, 2 locals (5405, 0100)
+
+       STOREW          G64,(SP)+,L02
+       ADD             L00,#02 -> L00
+       JUMP            #04
+
+Routine R0045, 5 locals (010a, 5601, 0200, 747e, 0000)
+
+       STOREW          G64,L09,(SP)+
+       RET             #ffff
+
+Routine R0046, 3 locals (a003, 4ce0, 2f2e)
+
+       THROW           #3a0,#381,#3ea0,#81 -> G38
+
+Routine R0047, 8 locals (008c, 000a, 5401, 0200, 6f7e, 0008, c183, 033b)
+
+       CALL_1S         #003b -> G26
+       OR              L12,#06 -> L00
+       JUMP            #126
+
+Routine R0048, 0 locals ()
+
+       RET             L00
+
+Routine R0049, 1 local (0401)
+
+       ADD             L00,#02 -> -(SP)
+       STOREW          G6e,(SP)+,#4bc1
+       ADD             G71,#02 -> G71
+       JUMP            #1d
+
+Routine R0050, 0 locals ()
+
+       JZ              (SP)+ [TRUE] 5d9d
+       JUMP            #10
+
+Routine R0051, 1 local (00b1)
+
+       STORE           L08,L02
+       STORE           L06,#00
+       ADD             L00,#02 -> L00
+       JUMP            #fe89
+
+Routine R0052, 7 locals (0000, 0000, 0000, 0000, 0000, 0000, 0000)
+
+       ; No instructions decoded
+
+Routine R0053, 3 locals (0402, 0045, 8c00)
+
+       GET_PROP_ADDR   #70,G6d -> L02
+       DEC_CHK         #41,#04 [FALSE] 5837
+       STORE           L05,L04
+       STORE           L04,#00
+       JUMP            #1c
+
+Routine R0054, 5 locals (0a07, 5504, 3000, 7407, 0005)
+
+       INC             L02
+       JUMP            #ffcb
+
+Routine R0055, 5 locals (03e8, c0a0, 06d9, 4206, 0849)
+
+       ADD             L05,#0c -> L05
+       JUMP            #06
+
+Routine R0056, 8 locals (ffff, 0000, 0000, 0000, 0000, 0000, 0000, 0000)
+
+       STORE           G69,#00
+       LOADW           G64,#01 -> -(SP)
+       LOADW           (SP)+,#00 -> -(SP)
+       CALL            R0041 ((SP)+,#20,#02) -> -(SP)
+       JZ              (SP)+ [TRUE] L0001
+       STORE           L05,#01
+L0001: LOADW           G64,#00 -> L02
+       JZ              L02 [TRUE] L0003
+       JZ              L05 [FALSE] L0003
+       LOADW           G63,#00 -> -(SP)
+       JE              L02,(SP)+ [FALSE] RFALSE
+L0003: JE              G61,#02 [TRUE] RFALSE
+       LOADW           G63,#06 -> -(SP)
+       JE              (SP)+,#01 [FALSE] 5ec7
+       LOADW           G64,#02 -> L01
+       LOADW           G63,#02 -> -(SP)
+       JE              L01,(SP)+ [TRUE] L0004
+       JZ              L01 [FALSE] RFALSE
+L0004: JZ              L05 [TRUE] 5eb2
+       ADD             G6e,#02 -> -(SP)
+       STOREW          G63,#06,(SP)+
+       ADD             G6e,#06 -> -(SP)
+       STOREW          G63,#07,(SP)+
+       JUMP            #eb
+
+Routine R0057, 1 local (003e)
+
+       LOADW           G64,#02 -> L01
+       LOADW           G63,#02 -> -(SP)
+       JE              L01,(SP)+ [TRUE] L0001
+       JZ              L01 [FALSE] RFALSE
+L0001: JZ              L05 [TRUE] 5eb2
+       ADD             G6e,#02 -> -(SP)
+       STOREW          G63,#06,(SP)+
+       ADD             G6e,#06 -> -(SP)
+       STOREW          G63,#07,(SP)+
+       JUMP            #eb
+
+Routine R0058, 4 locals (0061, 0200, c5a0, 0240)
+
+       JZ              L05 [TRUE] L0001
+       ADD             G6e,#02 -> -(SP)
+       STOREW          G64,#06,(SP)+
+       ADD             G6e,#06 -> -(SP)
+       STOREW          G64,#07,(SP)+
+L0001: LOADW           G64,#06 -> -(SP)
+       STOREW          G63,#08,(SP)+
+       LOADW           G64,#07 -> -(SP)
+       STOREW          G63,#09,(SP)+
+       STORE           G61,#02
+       JUMP            #91
+
+Routine R0059, 13 locals (0600, 4f74, 0705, 4f04, 0007, 6104, 0552, a006, cbe0, 2f2f, d806, 008c, 005c)
+
+       STORE           G67,#00
+       RFALSE          
+
+Routine R0060, 0 locals ()
+
+       JUMP            #21
+
+Routine R0061, 4 locals (0d71, 0155, 0404, 00e1)
+
+       RET             #74
+
+Routine R0062, 0 locals ()
+
+       STOREW          G64,#07,L03
+       JUMP            #ff94
+
+Routine R0063, 1 local (0946)
+
+       STORE           G68,#01
+       RTRUE           
+
+Routine R0064, 0 locals ()
+
+       STOREW          G64,L00,(SP)+
+       JUMP            #ffee
+
+Routine R0065, 1 local (0000)
+
+       LOADW           G63,#00 -> -(SP)
+       STOREW          G64,#00,(SP)+
+       STORE           G72,G63
+       ADD             G67,#01 -> -(SP)
+       CALL            R0082 (G67,(SP)+,L00) -> -(SP)
+       LOADW           G63,#08 -> -(SP)
+       JZ              (SP)+ [TRUE] L0001
+       STORE           G61,#02
+L0001: STORE           G67,#00
+       RTRUE           
+
+Routine R0066, 2 locals (0000, 0000)
+
+       DEC_CHK         #01,#00 [TRUE] RTRUE
+       LOADB           G6d,L01 -> -(SP)
+       PRINT_CHAR      (SP)+
+       INC             L01
+       JUMP            #fff2
+
+Routine R0067, 3 locals (0000, 0000, 0000)
+
+       JE              G78,#70 [FALSE] 600a
+       PRINT            "Nothing happens."
+       NEW_LINE        
+       RFALSE          
+
+Routine R0068, 1 local (0202)
+
+       ADD             G6e,L01 -> -(SP)
+       LOADB           (SP)+,#02 -> L02
+       ADD             G6e,L01 -> -(SP)
+       LOADB           (SP)+,#03 -> -(SP)
+       CALL            R0066 (L02,(SP)+) -> -(SP)
+       PRINT            ""."
+       NEW_LINE        
+       STORE           G60,#00
+       STORE           G69,#00
+       RET             G69
+
+Routine R0069, 3 locals (0000, 0000, 0000)
+
+       JE              G78,#70 [FALSE] 605a
+       PRINT            "Nothing happens."
+       NEW_LINE        
+       RFALSE          
+
+Routine R0070, 5 locals (e4a5, 5601, 0202, 747e, 0200)
+
+       LOADB           (SP)+,#02 -> L02
+       ADD             G6e,L01 -> -(SP)
+       LOADB           (SP)+,#03 -> -(SP)
+       CALL            R0066 (L02,(SP)+) -> -(SP)
+       PRINT            "" in a way that I don't understand."
+       NEW_LINE        
+       STORE           G60,#00
+       STORE           G69,#00
+       RET             G69
+
+Routine R0071, 11 locals (0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000)
+
+       LOADW           G64,#00 -> L07
+       JZ              L07 [FALSE] 60d5
+       PRINT            "There was no verb in that sentence!"
+       NEW_LINE        
+       RFALSE          
+
+Routine R0072, 8 locals (59b2, 051c, 1b00, 4e80, 6d57, 1c01, 5c67, 030a)
+
+       LOADW           G1a,#4d -> L09
+       DEC             G75
+       NEW_LINE        
+       RFALSE          
+
+Routine R0073, 0 locals ()
+
+       LOADW           G9d,(SP)+ -> L00
+       LOADB           L00,#00 -> L01
+       ADD             #01,L00 -> L00
+       LOADB           L00,#00 -> -(SP)
+       AND             (SP)+,#03 -> L02
+       JG              G61,L02 [FALSE] 60f4
+       JUMP            #4b
+
+Routine R0074, 0 locals ()
+
+       PRINT            ""I don't understand! What are you referring to?""
+       NEW_LINE        
+       RFALSE          
+
+Routine R0075, 3 locals (0000, 0000, ffff)
+
+       STOREW          G52,G51,#00
+       STORE           G72,G64
+       INC_CHK         #03,#09 [FALSE] 628e
+       JUMP            #0e
+
+Routine R0076, 8 locals (0900, 4271, 01c9, e017, 31cf, 0607, 00a0, 01d1)
+
+       LOADB           L00,#01 -> -(SP)
+       STOREW          G63,#02,(SP)+
+       STOREW          G63,#06,#01
+       RTRUE           
+
+Routine R0077, 0 locals ()
+
+       STOREW          G63,#04,(SP)+
+       STOREW          G63,#08,#01
+       RTRUE           
+
+Routine R0078, 4 locals (0000, 0000, 0001, 0000)
+
+       LOADW           G64,L00 -> L03
+       LOADW           G64,L01 -> -(SP)
+       CALL            R0079 (L03,(SP)+,L02) -> -(SP)
+       RET_POPPED      
+
+Routine R0079, 8 locals (0000, 0000, 0000, 0000, 0000, 0001, 0000, 0000)
+
+       JE              L00,L01 [TRUE] RTRUE
+       JZ              L03 [TRUE] 630c
+       STORE           L03,#00
+       JUMP            #05
+
+Routine R0080, 0 locals ()
+
+       RET_POPPED      
+
+Routine R0081, 2 locals (0000, 0000)
+
+       JZ              L00 [TRUE] RFALSE
+       PRINT            " "
+       CALL            R0087 (L00) -> L01
+       PRINT_ADDR      L01
+       RTRUE           
+
+Routine R0082, 5 locals (0000, 0000, 0000, 0000, 0000)
+
+       LOADW           G72,L00 -> L03
+       LOADW           G72,L01 -> L04
+       LOADW           G52,G51 -> -(SP)
+
+Routine R0083, 0 locals ()
+
+       RTRUE           
+
+Routine R0084, 4 locals (0000, 6176, 0048, e02f)
+
+       GET_PROP_ADDR   #01,L02 -> -(SP)
+       LOADW           L03,#00 -> -(SP)
+       CALL            R0085 ((SP)+) -> -(SP)
+       ADD             L03,#04 -> L03
+       JUMP            #ffc6
+
+Routine R0085, 2 locals (0000, 0000)
+
+       LOADW           G52,G51 -> -(SP)
+       ADD             (SP)+,#02 -> L01
+
+Routine R0086, 2 locals (5502, 0100)
+
+       STOREW          G52,(SP)+,L00
+       STOREW          G52,L01,#00
+       STOREW          G52,G51,L01
+       RTRUE           
+
+Routine R0087, 3 locals (0000, 0000, 0000)
+
+       LOADW           G9a,#00 -> -(SP)
+
+Routine R0088, 1 local (0000)
+
+       STORE           G73,L00
+       LOADB           L00,#07 -> G78
+       RET             G78
+
+Routine R0089, 4 locals (0000, 0000, 0000, 0000)
+
+       JE              L00,#12 [FALSE] 6465
+       RET             #52
+
+Routine R0090, 1 local (0000)
+
+       LOADW           G64,#06 -> L00
+       JZ              L00 [TRUE] L0002
+       LOADB           G73,#05 -> G5c
+       LOADW           G64,#07 -> -(SP)
+       CALL            R0092 (L00,(SP)+,G56) -> -(SP)
+       JZ              (SP)+ [TRUE] RFALSE
+       LOADW           G54,G51 -> -(SP)
+       JZ              (SP)+ [TRUE] L0002
+       CALL            R0091 (G56) -> G56
+L0002: LOADW           G64,#08 -> L00
+       JZ              L00 [TRUE] RTRUE
+       LOADB           G73,#06 -> G5c
+       LOADW           G64,#09 -> -(SP)
+       CALL            R0092 (L00,(SP)+,G55) -> -(SP)
+       JZ              (SP)+ [TRUE] RFALSE
+       LOADW           G54,G51 -> -(SP)
+       JZ              (SP)+ [TRUE] RTRUE
+       LOADW           G55,G51 -> -(SP)
+       JE              (SP)+,#01 [FALSE] 6524
+       CALL            R0091 (G56) -> G56
+       RTRUE           
+
+Routine R0091, 7 locals (0000, 0000, 0000, 0001, 0000, 0000, 0000)
+
+       LOADW           L00,G51 -> L01
+       STOREW          G53,G51,#00
+       DEC_CHK         #02,#00 [FALSE] 654b
+       JUMP            #23
+
+Routine R0092, 8 locals (0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000)
+
+       STORE           G50,#00
+       STORE           G4f,L00
+       STORE           G4e,L01
+       STORE           G4d,#00
+       STOREW          G54,G51,#00
+       STOREW          L02,G51,#00
+       LOADW           L00,#00 -> L06
+       JE              L00,L01 [FALSE] 65bd
+       JZ              L03 [TRUE] 65b2
+       PUSH            L03
+       JUMP            #05
+
+Routine R0093, 9 locals (0000, 0001, 0000, 0000, 0000, 0000, 0000, 0000, 0000)
+
+       STORE           L04,G5c
+       LOADW           L00,G51 -> L05
+       TEST            G50,#04 [TRUE] RTRUE
+       JZ              G5a [FALSE] L0003
+       JZ              G59 [TRUE] L0003
+       CALL            R0041 (G57,#80,#00) -> -(SP)
+       JZ              (SP)+ [TRUE] L0003
+       STORE           G5a,G57
+       STORE           G59,#00
+L0003: JZ              G5a [FALSE] 6724
+       JZ              G59 [FALSE] 6724
+       JE              G50,#01 [TRUE] 6724
+       JZ              G5b [FALSE] 6724
+       JZ              L01 [TRUE] RFALSE
+       PRINT            "There seems to be a noun missing in that sentence!"
+       NEW_LINE        
+       RFALSE          
+
+Routine R0094, 1 local (0100)
+
+       PRINT            "(How about the "
+       LOADW           L00,#01 -> -(SP)
+       PRINT_OBJ       (SP)+
+       PRINT            "?)"
+       NEW_LINE        
+       STOREW          L00,G51,#01
+       JUMP            #d8
+
+Routine R0095, 0 locals ()
+
+       JUMP            #c18f
+
+Routine R0096, 4 locals (6f01, 6100, 7500, 0400)
+
+       STOREW          L00,G51,(SP)+
+       JUMP            #ff6e
+
+Routine R0097, 4 locals (452d, 0408, 617f, 90c8)
+
+       CALL            R0074 -> -(SP)
+       RFALSE          
+
+Routine R0098, 2 locals (f0a0, 6aed)
+
+       CALL            R0105 (L05,L03,L00) -> -(SP)
+       JE              L00,G56 [FALSE] 67ef
+       PUSH            #06
+       JUMP            #05
+
+Routine R0099, 0 locals ()
+
+       RFALSE          
+
+Routine R0100, 7 locals (f7a0, 02ed, a052, dce0, 1b35, 5d0b, 0100)
+
+       STORE           G4b,G5a
+       STORE           G4a,G59
+       STORE           G49,G57
+       STORE           G5a,#00
+       STORE           G59,#00
+       STORE           G57,#00
+       RTRUE           
+
+Routine R0101, 3 locals (1926, 5e00, 0578)
+
+       AND             #45,Gc0 -> G95
+       NEW_LINE        
+       STORE           G5a,#00
+       STORE           G59,#00
+       RFALSE          
+
+Routine R0102, 13 locals (6900, b003, 0000, 0000, 0000, cd4f, 6cff, ff2d, 6a5b, 2d69, 5ae1, a701, 6100)
+
+       GET_CHILD       #52 -> L01 [TRUE] L0001
+L0001: JZ              L01 [FALSE] 689d
+       JUMP            #11
+
+Routine R0103, 3 locals (0000, 0000, 0000)
+
+       STORE           G5c,#ffff
+       STORE           G5a,G4b
+       STORE           G59,G4a
+       STOREW          L00,G51,#00
+       GET_CHILD       #52 -> L01 [TRUE] L0001
+L0001: JZ              L01 [FALSE] 689d
+       JUMP            #11
+
+Routine R0104, 1 local (0100)
+
+       LOADW           L00,G51 -> L02
+       JZ              L02 [FALSE] L0001
+       CALL            R0109 (#52,#01,#01) -> -(SP)
+L0001: LOADW           L00,G51 -> L02
+       JE              L02,#01 [FALSE] L0002
+       LOADW           L00,#01 -> G4c
+L0002: STORE           G5a,#00
+       STORE           G59,#00
+       RET             L02
+
+Routine R0105, 5 locals (0000, 0000, 0000, 0000, 0000)
+
+       STORE           L04,L01
+       PRINT            "Which"
+       JZ              G69 [FALSE] L0002
+       JZ              G68 [FALSE] L0002
+       JZ              G4d [TRUE] 6902
+L0002: PRINT            " "
+       PRINT_ADDR      G5a
+       JUMP            #19
+
+Routine R0106, 8 locals (0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000)
+
+       LOADW           L00,G51 -> L01
+       STORE           L06,G5c
+       GET_PROP_ADDR   G00,#05 -> L02
+       JZ              L02 [TRUE] 6990
+       GET_PROP_LEN    L02 -> -(SP)
+
+Routine R0107, 0 locals ()
+
+       STOREW          L07,#00,(SP)+
+       LOADW           G5a,#01 -> -(SP)
+       STOREW          L07,#01,(SP)+
+       CALL            R0111 (#0d,L00) -> -(SP)
+       JUMP            #07
+
+Routine R0108, 7 locals (6f01, 6100, a000, 40c1, 9588, 3971, 3840)
+
+       CALL            R0109 (#52,#01,#01) -> -(SP)
+       RET_POPPED      
+
+Routine R0109, 4 locals (0000, 0000, 0000, 0000)
+
+       ADD             L01,L02 -> -(SP)
+       TEST            G5c,(SP)+ [FALSE] 6a38
+       CALL            R0110 (L00,G75,#01) -> -(SP)
+       RET_POPPED      
+
+Routine R0110, 5 locals (0000, 0000, 0000, 0000, 0000)
+
+       GET_CHILD       L00 -> L00 [FALSE] RFALSE
+       JE              L02,#02 [TRUE] L0003
+       GET_PROP_ADDR   L00,#12 -> -(SP)
+       JZ              (SP)+ [TRUE] L0003
+       CALL            R0120 (L00,L01) -> -(SP)
+       JZ              (SP)+ [TRUE] L0003
+       CALL            R0111 (L00,L01) -> -(SP)
+L0003: JE              L02,#00 [FALSE] L0005
+       TEST_ATTR       L00,#08 [TRUE] L0005
+       TEST_ATTR       L00,#0a [FALSE] 6ab4
+L0005: GET_CHILD       L00 -> L04 [FALSE] 6ab4
+       TEST_ATTR       L00,#0b [TRUE] L0006
+       TEST_ATTR       L00,#0c [FALSE] 6ab4
+L0006: TEST_ATTR       L00,#0a [FALSE] 6a9f
+       PUSH            #01
+       JUMP            #0f
+
+Routine R0111, 3 locals (0000, 0000, 0000)
+
+       LOADW           L01,G51 -> L02
+       ADD             L02,#01 -> -(SP)
+       STOREW          L01,(SP)+,L00
+       ADD             L02,#01 -> -(SP)
+       STOREW          L01,G51,(SP)+
+       RTRUE           
+
+Routine R0112, 0 locals ()
+
+       LOADB           G73,#05 -> -(SP)
+       CALL            R0113 (G56,(SP)+) -> -(SP)
+       JZ              (SP)+ [TRUE] RFALSE
+       LOADB           G73,#06 -> -(SP)
+       CALL            R0113 (G55,(SP)+) -> -(SP)
+       RET_POPPED      
+
+Routine R0113, 5 locals (0000, 0000, 0000, 0000, 0000)
+
+       LOADW           L00,G51 -> L02
+       JZ              L02 [TRUE] RTRUE
+       TEST            L01,#02 [TRUE] L0001
+       TEST            L01,#08 [FALSE] RTRUE
+L0001: DEC_CHK         #03,#00 [TRUE] RTRUE
+       ADD             L02,#01 -> -(SP)
+       LOADW           L00,(SP)+ -> L03
+       JE              L03,#0c [FALSE] L0002
+       STORE           L03,G6b
+L0002: CALL            R0318 (L03) -> -(SP)
+       JZ              (SP)+ [FALSE] L0001
+       JE              L03,#01 [TRUE] L0001
+       STORE           G76,L03
+       TEST_ATTR       L03,#0d [FALSE] 6b3d
+       STORE           L04,#01
+       JUMP            #23
+
+Routine R0114, 3 locals (0000, 0000, 0000)
+
+       LOADW           G56,G51 -> -(SP)
+       JG              (SP)+,#01 [FALSE] 6bb5
+       LOADB           G73,#05 -> -(SP)
+       TEST            (SP)+,#04 [TRUE] 6bb5
+       STORE           L00,#01
+       JUMP            #15
+
+Routine R0115, 4 locals (0000, 0000, ffff, 0001)
+
+       JZ              L01 [TRUE] RFALSE
+       JL              L02,#00 [TRUE] 6c38
+       STORE           L03,#00
+       JUMP            #06
+
+Routine R0116, 4 locals (0000, 0000, 0000, 0000)
+
+       LOADB           L01,L03 -> -(SP)
+       JE              L00,(SP)+ [TRUE] RTRUE
+       INC_CHK         #04,L02 [FALSE] 6c53
+       RFALSE          
+
+Routine R0117, 4 locals (0000, 0001, 0000, 0000)
+
+       JZ              G48 [TRUE] L0001
+       JE              G6f,G80 [TRUE] RTRUE
+L0001: STORE           G5b,#14
+       STORE           L02,G00
+       STORE           G00,L00
+       JZ              L01 [TRUE] 6c88
+       TEST_ATTR       L00,#14 [FALSE] 6c88
+       STORE           L03,#01
+       JUMP            #3e
+
+Routine R0118, 1 local (0000)
+
+       JZ              G68 [FALSE] L0001
+       LOADW           G64,#06 -> L00
+       LOADW           L00,#00 -> -(SP)
+       JE              (SP)+,#43cc [FALSE] 6ce6
+L0001: PRINT            " "
+       PRINT_OBJ       G76
+       RTRUE           
+
+Routine R0119, 1 local (0000)
+
+       JZ              G68 [FALSE] L0001
+       LOADW           G64,#08 -> L00
+       LOADW           L00,#00 -> -(SP)
+       JE              (SP)+,#43cc [FALSE] 6d0e
+L0001: PRINT            " "
+       PRINT_OBJ       G76
+       RTRUE           
+
+Routine R0120, 4 locals (0000, 0000, 0000, 0000)
+
+       TEST_ATTR       L00,#07 [TRUE] RFALSE
+       JZ              G5a [TRUE] 6d46
+       GET_PROP_ADDR   L00,#12 -> L02
+       GET_PROP_LEN    L02 -> -(SP)
+
+Routine R0121, 3 locals (c0a4, 0300, 5500)
+
+       JE              #00,#e0 [FALSE] 578e
+       INC_CHK         #69,L02 [FALSE] RFALSE
+       JZ              (SP)+ [TRUE] RFALSE
+       JZ              G5b [TRUE] RTRUE
+       TEST_ATTR       L00,G5b [TRUE] RTRUE
+       RFALSE          
+
+Routine R0122, 0 locals ()
+
+       STORE           G47,#01
+       STORE           G46,#00
+       PRINT_RET        "Maximum verbosity."
+
+Routine R0123, 0 locals ()
+
+       STORE           G47,#00
+       STORE           G46,#00
+       PRINT_RET        "Brief descriptions."
+
+Routine R0124, 0 locals ()
+
+       STORE           G46,#01
+       PRINT_RET        "Super-brief descriptions."
+
+Routine R0125, 0 locals ()
+
+       GET_CHILD       G6f -> -(SP) [FALSE] 6dbc
+       CALL            R0291 (G6f) -> -(SP)
+       RET_POPPED      
+
+Routine R0126, 2 locals (0001, 0000)
+
+       CALL            R0531 -> -(SP)
+       JZ              L00 [TRUE] L0001
+       PRINT            "Do you wish to leave the game? (Y is affirmative): "
+       CALL            R0298 -> -(SP)
+       JZ              (SP)+ [FALSE] L0002
+L0001: JZ              L00 [FALSE] 6e09
+L0002: QUIT            
+
+Routine R0127, 0 locals ()
+
+       CALL            R0531 (#01) -> -(SP)
+       PRINT            "Do you wish to restart? (Y is affirmative): "
+       CALL            R0298 -> -(SP)
+       JZ              (SP)+ [TRUE] RFALSE
+       PRINT            "Restarting."
+       NEW_LINE        
+       RESTART         
+       PRINT_RET        "Failed."
+
+Routine R0128, 0 locals ()
+
+       RESTORE          [FALSE] 6e61
+       PRINT            "Ok."
+       NEW_LINE        
+       CALL            R0286 -> -(SP)
+       RET_POPPED      
+
+Routine R0129, 0 locals ()
+
+       SAVE             [FALSE] 6e70
+       PRINT_RET        "Ok."
+
+Routine R0130, 0 locals ()
+
+       LOADW           #00,#08 -> -(SP)
+       OR              (SP)+,#01 -> -(SP)
+       STOREW          #00,#08,(SP)+
+       PRINT            "Here begins a transcript of interaction with"
+       NEW_LINE        
+       CALL            R0132 -> -(SP)
+       RTRUE           
+
+Routine R0131, 0 locals ()
+
+       PRINT            "Here ends a transcript of interaction with"
+       NEW_LINE        
+       CALL            R0132 -> -(SP)
+       LOADW           #00,#08 -> -(SP)
+       AND             (SP)+,#fffe -> -(SP)
+       STOREW          #00,#08,(SP)+
+       RTRUE           
+
+Routine R0132, 1 local (0011)
+
+       PRINT            "ZORK I: The Great Underground Empire
+Copyright (c) 1981, 1982, 1983 Infocom, Inc. "
+       PRINT            "All rights reserved."
+       NEW_LINE        
+       LOADB           #00,#01 -> -(SP)
+       AND             (SP)+,#08 -> -(SP)
+       JZ              (SP)+ [TRUE] L0001
+       PRINT            "Licensed to Tandy Corporation."
+       NEW_LINE        
+L0001: PRINT            "ZORK is a registered trademark of Infocom, Inc.
+Revision "
+       LOADW           #00,#01 -> -(SP)
+       AND             (SP)+,#7ff -> -(SP)
+       PRINT_NUM       (SP)+
+       PRINT            " / Serial number "
+       INC_CHK         #01,#17 [FALSE] 6fab
+       JUMP            #0c
+
+Routine R0133, 0 locals ()
+
+       PRINT            "Verifying disk..."
+       NEW_LINE        
+       VERIFY           [FALSE] 6fd8
+       PRINT_RET        "The disk is correct."
+
+Routine R0134, 0 locals ()
+
+       PRINT_RET        "A hollow voice says "Fool.""
+
+Routine R0135, 1 local (0000)
+
+       JE              G7e,#89 [FALSE] 7017
+       CALL            R0030 (G7e,G7d) -> -(SP)
+       RET_POPPED      
+
+Routine R0136, 0 locals ()
+
+       TEST_ATTR       G76,#1e [FALSE] 70ab
+       GET_PROP        G76,#07 -> -(SP)
+       JL              (SP)+,#00 [FALSE] 708a
+       PRINT            "The "
+       PRINT_OBJ       G76
+       PRINT            " is rudely awakened."
+       NEW_LINE        
+       CALL            R0520 (G76) -> -(SP)
+       RET_POPPED      
+
+Routine R0137, 0 locals ()
+
+       PRINT            "Nobody seems to be awaiting your answer."
+       NEW_LINE        
+       STORE           G6c,#00
+       STORE           G60,#00
+       RTRUE           
+
+Routine R0138, 0 locals ()
+
+       TEST_ATTR       G76,#1e [TRUE] 7105
+       PRINT            "I've known strange people, but fighting a "
+       PRINT_OBJ       G76
+       PRINT_RET        "?"
+
+Routine R0139, 0 locals ()
+
+       PRINT_RET        "Sorry, my memory is poor. Please give a direction."
+
+Routine R0140, 0 locals ()
+
+       PRINT_RET        "You can't blast anything by using words."
+
+Routine R0141, 1 local (0000)
+
+       GET_PARENT      G6f -> L00
+       CALL            R0014 -> -(SP)
+       JZ              (SP)+ [FALSE] RTRUE
+       TEST_ATTR       G76,#1b [FALSE] 7200
+       JIN             G76,G00 [TRUE] 71eb
+       PRINT            "The "
+       PRINT_OBJ       G76
+       PRINT            " must be on the ground to be boarded."
+       NEW_LINE        
+       RET             #02
+
+Routine R0142, 1 local (0000)
+
+       PRINT            "You are now in the "
+       PRINT_OBJ       G76
+       PRINT            "."
+       NEW_LINE        
+       INSERT_OBJ      G6f,G76
+       GET_PROP        G76,#11 -> -(SP)
+       CALL            #0000 (#02) -> -(SP)
+       RTRUE           
+
+Routine R0143, 0 locals ()
+
+       CALL            R0030 (#17,G76,#06) -> -(SP)
+       RET_POPPED      
+
+Routine R0144, 0 locals ()
+
+       PRINT_RET        "If you wish, but heaven only knows why."
+
+Routine R0145, 0 locals ()
+
+       PRINT_RET        "Bug? Not in a flawless program like this! (Cough, cough)."
+
+Routine R0146, 0 locals ()
+
+       TEST_ATTR       G77,#19 [FALSE] L0001
+       TEST_ATTR       G77,#14 [TRUE] RFALSE
+L0001: PRINT            "With a "
+       PRINT_OBJ       G77
+       PRINT_RET        "??!?"
+
+Routine R0147, 0 locals ()
+
+       CALL            R0014 -> -(SP)
+       JZ              (SP)+ [FALSE] RFALSE
+       TEST_ATTR       G76,#1a [FALSE] 731f
+       JIN             G76,G6f [TRUE] L0001
+       JIN             G6f,G76 [FALSE] 72ff
+L0001: CALL            R0172 (G76) -> -(SP)
+       PRINT            "The "
+       PRINT_OBJ       G76
+       PRINT            " catches fire. Unfortunately, you were "
+       JIN             G6f,G76 [FALSE] 72f0
+       PRINT            "in"
+       JUMP            #09
+
+Routine R0148, 0 locals ()
+
+       PRINT_RET        "Preposterous!"
+
+Routine R0149, 0 locals ()
+
+       CALL            R0152 (#16,G76) -> -(SP)
+       RET_POPPED      
+
+Routine R0150, 0 locals ()
+
+       CALL            R0152 (#17,G76) -> -(SP)
+       RET_POPPED      
+
+Routine R0151, 0 locals ()
+
+       TEST_ATTR       G76,#1b [FALSE] 735b
+       CALL            R0030 (#19,G76) -> -(SP)
+       RTRUE           
+
+Routine R0152, 5 locals (0017, 0000, 0000, 0000, 0000)
+
+       JZ              L01 [FALSE] L0002
+       JZ              G76 [TRUE] L0002
+       STORE           L01,G76
+L0002: GET_PROP_ADDR   G00,L00 -> L03
+       JZ              L03 [TRUE] 73de
+       JZ              L01 [TRUE] 73d7
+       GET_PROP_LEN    L03 -> L02
+       JE              L02,#02 [TRUE] L0003
+       JE              L02,#04,#05,#01 [FALSE] 73d7
+       LOADB           L03,#00 -> -(SP)
+       CALL            R0314 (G76,(SP)+) -> -(SP)
+       JZ              (SP)+ [FALSE] 73d7
+L0003: PRINT            "The "
+       PRINT_OBJ       L01
+       PRINT            " do"
+       JE              L01,#49 [TRUE] L0004
+       PRINT            "es"
+L0004: PRINT            "n't lead "
+       JE              L00,#17 [FALSE] 73cd
+       PRINT            "up"
+       JUMP            #07
+
+Routine R0153, 0 locals ()
+
+       TEST_ATTR       G76,#13 [TRUE] 7447
+       TEST_ATTR       G76,#17 [TRUE] 7447
+       PRINT            "You must tell me how to do that to a "
+       PRINT_OBJ       G76
+       PRINT_RET        "."
+
+Routine R0154, 0 locals ()
+
+       TEST_ATTR       G76,#1e [FALSE] 74cb
+       PRINT            "The "
+       PRINT_OBJ       G76
+       PRINT_RET        " pays no attention."
+
+Routine R0155, 0 locals ()
+
+       JE              G76,#0a [FALSE] 74f6
+       PRINT_RET        "Well, for one, you are playing Zork..."
+
+Routine R0156, 0 locals ()
+
+       PRINT_RET        "You can't cross that!"
+
+Routine R0157, 0 locals ()
+
+       JZ              G76 [TRUE] 753a
+       TEST_ATTR       G76,#1e [FALSE] 752f
+       PRINT_RET        "Insults of this nature won't help you."
+
+Routine R0158, 0 locals ()
+
+       TEST_ATTR       G76,#1e [FALSE] 7570
+       CALL            R0030 (#13,G76,G77) -> -(SP)
+       RET_POPPED      
+
+Routine R0159, 0 locals ()
+
+       PRINT_RET        "Come on, now!"
+
+Routine R0160, 0 locals ()
+
+       JZ              G77 [FALSE] L0001
+       STORE           G77,#01
+L0001: JE              G77,#79 [FALSE] 764c
+       PRINT_RET        "There's no reason to be digging here."
+
+Routine R0161, 0 locals ()
+
+       GET_PARENT      G6f -> -(SP)
+       JE              (SP)+,G76 [TRUE] 7696
+       PRINT            "You're not in that!"
+       NEW_LINE        
+       RET             #02
+
+Routine R0162, 0 locals ()
+
+       PRINT_RET        "Nothing happens."
+
+Routine R0163, 0 locals ()
+
+       CALL            R0167 -> -(SP)
+       RET_POPPED      
+
+Routine R0164, 0 locals ()
+
+       PRINT_RET        "How peculiar!"
+
+Routine R0165, 0 locals ()
+
+       GET_PARENT      G6f -> -(SP)
+       JE              G76,(SP)+ [FALSE] RFALSE
+       CALL            R0030 (#2d,G76) -> -(SP)
+       RTRUE           
+
+Routine R0166, 0 locals ()
+
+       CALL            R0305 -> -(SP)
+       JZ              (SP)+ [TRUE] RFALSE
+       PRINT_RET        "Dropped."
+
+Routine R0167, 3 locals (0000, 0000, 0000)
+
+       TEST_ATTR       G76,#15 [TRUE] 7723
+       PUSH            #00
+       JUMP            #05
+
+Routine R0168, 0 locals ()
+
+       PRINT            "Thank you very much. I was rather thirsty (from all this talking, probably)."
+       NEW_LINE        
+       CALL            R0172 (G76) -> -(SP)
+       RET_POPPED      
+
+Routine R0169, 5 locals (0000, 0000, 0000, 0000, 0000)
+
+       LOADB           G6e,#01 -> -(SP)
+       JG              (SP)+,#00 [FALSE] 78a0
+       LOADB           G6e,#01 -> -(SP)
+
+Routine R0170, 0 locals ()
+
+       CLEAR_ATTR      #70,#7d
+       DEC_CHK         #00,#e5 [TRUE] 7795
+       JUMP            #fff1
+
+Routine R0171, 10 locals (21b4, 00b2, 1645, c8a5, 0000, e03f, 2868, 00e0, 3f3b, 6700)
+
+       RET_POPPED      
+
+Routine R0172, 2 locals (0000, 0000)
+
+       JE              L00,G6b [FALSE] L0001
+       STORE           G6b,#00
+       STORE           G6a,#00
+L0001: STORE           L01,G42
+       REMOVE_OBJ      L00
+       CALL            R0117 (G00) -> G42
+       JZ              L01 [TRUE] RTRUE
+       JE              L01,G42 [TRUE] RTRUE
+       PRINT_RET        "You are left in the dark..."
+
+Routine R0173, 0 locals ()
+
+       CALL            R0313 (#15) -> -(SP)
+       RET_POPPED      
+
+Routine R0174, 0 locals ()
+
+       GET_PROP        G76,#08 -> -(SP)
+       JZ              (SP)+ [TRUE] 7904
+       GET_PROP        G76,#08 -> -(SP)
+       PRINT_PADDR     (SP)+
+       NEW_LINE        
+       RTRUE           
+
+Routine R0175, 0 locals ()
+
+       CALL            R0313 (#14) -> -(SP)
+       RET_POPPED      
+
+Routine R0176, 0 locals ()
+
+       PRINT_RET        "What a bizarre concept!"
+
+Routine R0177, 5 locals (0114, 5905, 6b3a, 3100, 7971)
+
+       CALL_2S         #00b2 -> G31
+       PRINT_ADDR      #eec0
+       CALL            R0030 (#12,G77,G76) -> -(SP)
+       RTRUE           
+
+Routine R0178, 0 locals ()
+
+       JZ              G77 [FALSE] 79be
+       CALL            R0314 (#ee,G00) -> -(SP)
+       JZ              (SP)+ [TRUE] 799b
+       CALL            R0030 (#3b,G76,#ee) -> -(SP)
+       RTRUE           
+
+Routine R0179, 1 local (0000)
+
+       GET_PARENT      G76 -> L00
+       JE              G76,#01,#06 [FALSE] 7a0f
+       PRINT_RET        "Within six feet of your head, assuming you haven't left that somewhere."
+
+Routine R0180, 0 locals ()
+
+       PRINT_RET        "You're nuts!"
+
+Routine R0181, 0 locals ()
+
+       PRINT_RET        "The FROBOZZ Corporation created, owns, and operates this dungeon."
+
+Routine R0182, 0 locals ()
+
+       CALL            R0318 (G76) -> -(SP)
+       JZ              (SP)+ [FALSE] RFALSE
+       PRINT            "That's easy for you to say since you don't even have the "
+       PRINT_OBJ       G76
+       PRINT_RET        "."
+
+Routine R0183, 0 locals ()
+
+       TEST_ATTR       G77,#1e [TRUE] 7b0c
+       PRINT            "You can't give a "
+       PRINT_OBJ       G76
+       PRINT            " to a "
+       PRINT_OBJ       G77
+       PRINT_RET        "!"
+
+Routine R0184, 0 locals ()
+
+       PRINT_RET        "Bizarre!"
+
+Routine R0185, 0 locals ()
+
+       JZ              G76 [TRUE] 7b7d
+       TEST_ATTR       G76,#1e [FALSE] 7b4d
+       PRINT            "The "
+       PRINT_OBJ       G76
+       PRINT_RET        " bows his head to you in greeting."
+
+Routine R0186, 0 locals ()
+
+       PRINT            "The incantation echoes back faintly, but nothing else happens."
+       NEW_LINE        
+       STORE           G60,#00
+       STORE           G6c,#00
+       RTRUE           
+
+Routine R0187, 0 locals ()
+
+       PRINT_RET        "How can you inflate that?"
+
+Routine R0188, 0 locals ()
+
+       JIN             G76,G77 [FALSE] 7be9
+       PRINT            "Yes, it is "
+       TEST_ATTR       G77,#0a [FALSE] 7bde
+       PRINT            "on"
+       JUMP            #05
+
+Routine R0189, 0 locals ()
+
+       CALL            R0308 (#9a4c) -> -(SP)
+       RET_POPPED      
+
+Routine R0190, 0 locals ()
+
+       PRINT_RET        "I'd sooner kiss a pig."
+
+Routine R0191, 0 locals ()
+
+       TEST_ATTR       G76,#17 [FALSE] 7c24
+       PRINT_RET        "Nobody's home."
+
+Routine R0192, 0 locals ()
+
+       TEST_ATTR       G76,#1f [FALSE] 7c76
+       TEST_ATTR       G76,#14 [TRUE] 7c47
+       PRINT_RET        "It is already off."
+
+Routine R0193, 0 locals ()
+
+       TEST_ATTR       G76,#1f [FALSE] 7cb8
+       TEST_ATTR       G76,#14 [FALSE] 7c96
+       PRINT_RET        "It is already on."
+
+Routine R0194, 0 locals ()
+
+       TEST_ATTR       G76,#1b [FALSE] 7ce4
+       PRINT_RET        "You can't launch that by saying "launch"!"
+
+Routine R0195, 0 locals ()
+
+       PRINT_RET        "Getting tired?"
+
+Routine R0196, 2 locals (0000, 0000)
+
+       JZ              G76 [TRUE] 7d41
+       JIN             G76,G00 [FALSE] 7d30
+       TEST_ATTR       G76,#1e [FALSE] 7d2a
+       PRINT            "The "
+       PRINT_OBJ       G76
+       PRINT_RET        " is too big to jump over."
+
+Routine R0197, 0 locals ()
+
+       CALL            R0313 (#14) -> -(SP)
+       RET_POPPED      
+
+Routine R0198, 0 locals ()
+
+       PRINT            "The "
+       PRINT_OBJ       G76
+       PRINT_RET        " makes no sound."
+
+Routine R0199, 0 locals ()
+
+       PRINT_RET        "It doesn't seem to work."
+
+Routine R0200, 0 locals ()
+
+       CALL            R0287 (#01) -> -(SP)
+       JZ              (SP)+ [TRUE] RFALSE
+       CALL            R0288 (#01) -> -(SP)
+       RET_POPPED      
+
+Routine R0201, 0 locals ()
+
+       PRINT            "There is nothing behind the "
+       PRINT_OBJ       G76
+       PRINT_RET        "."
+
+Routine R0202, 0 locals ()
+
+       TEST_ATTR       G76,#17 [FALSE] 7e62
+       TEST_ATTR       G76,#0b [FALSE] 7e54
+       PRINT            "The "
+       PRINT_OBJ       G76
+       PRINT            " is open, but I can't tell what's beyond it."
+       JUMP            #0e
+
+Routine R0203, 0 locals ()
+
+       TEST_ATTR       G76,#0a [FALSE] 7ecb
+       CALL            R0030 (#39,G76) -> -(SP)
+       RTRUE           
+
+Routine R0204, 0 locals ()
+
+       PRINT_RET        "There is nothing but dust there."
+
+Routine R0205, 0 locals ()
+
+       CALL            R0308 (#9a6e) -> -(SP)
+       RET_POPPED      
+
+Routine R0206, 0 locals ()
+
+       PRINT_RET        "You can't do that."
+
+Routine R0207, 0 locals ()
+
+       PRINT            "It's not clear that a "
+       PRINT_OBJ       G76
+       PRINT_RET        " can be melted."
+
+Routine R0208, 0 locals ()
+
+       CALL            R0318 (G76) -> -(SP)
+       JZ              (SP)+ [TRUE] RFALSE
+       PRINT_RET        "You aren't an accomplished enough juggler."
+
+Routine R0209, 0 locals ()
+
+       TEST_ATTR       G76,#11 [FALSE] 7f5d
+       PRINT            "Moving the "
+       PRINT_OBJ       G76
+       PRINT_RET        " reveals nothing."
+
+Routine R0210, 0 locals ()
+
+       PRINT_RET        "You'll have to speak up if you expect me to hear you!"
+
+Routine R0211, 0 locals ()
+
+       CALL            R0014 -> -(SP)
+       JZ              (SP)+ [FALSE] RTRUE
+       JZ              G77 [TRUE] L0001
+       TEST_ATTR       G77,#1d [TRUE] RFALSE
+L0001: PRINT            "Trying to destroy the "
+       PRINT_OBJ       G76
+       PRINT            " with "
+       JZ              G77 [FALSE] 7fc3
+       PRINT            "your bare hands"
+       JUMP            #07
+
+Routine R0212, 0 locals ()
+
+       TEST_ATTR       G76,#1e [FALSE] 7fdf
+       CALL            R0030 (#13,G76) -> -(SP)
+       RTRUE           
+
+Routine R0213, 0 locals ()
+
+       JE              G00,#b9 [FALSE] 8059
+       JIN             #ba,G00 [FALSE] 8059
+       JZ              G95 [FALSE] 8059
+       CALL            R0023 (#649f) -> -(SP)
+       STOREW          (SP)+,#00,#00
+       STORE           G95,#01
+       PRINT            "The cyclops, hearing the name of his father's deadly nemesis, flees the room by knocking down the wall on the east of the room."
+       NEW_LINE        
+       STORE           G8f,#01
+       CLEAR_ATTR      #ba,#02
+       CALL            R0172 (#ba) -> -(SP)
+       RET_POPPED      
+
+Routine R0214, 0 locals ()
+
+       PRINT_RET        "You probably put spinach in your gas tank, too."
+
+Routine R0215, 2 locals (0000, 0000)
+
+       TEST_ATTR       G76,#13 [FALSE] 80f7
+       GET_PROP        G76,#0a -> -(SP)
+       JZ              (SP)+ [TRUE] 80f7
+       TEST_ATTR       G76,#0b [FALSE] 80a3
+       PRINT_RET        "It is already open."
+
+Routine R0216, 1 local (0000)
+
+       JE              G77,#f8 [FALSE] 816b
+       GET_PARENT      G6f -> L00
+       TEST_ATTR       L00,#1b [FALSE] 815e
+       GET_PARENT      L00 -> -(SP)
+       INSERT_OBJ      G76,(SP)+
+       PRINT            "Ahoy -- "
+       PRINT_OBJ       G76
+       PRINT_RET        " overboard!"
+
+Routine R0217, 0 locals ()
+
+       PRINT_RET        "You can't pick that."
+
+Routine R0218, 0 locals ()
+
+       PRINT_RET        "That's silly!"
+
+Routine R0219, 0 locals ()
+
+       PRINT_RET        "This has no effect."
+
+Routine R0220, 0 locals ()
+
+       JE              G76,#ed [FALSE] 81e4
+       CALL            R0172 (G76) -> -(SP)
+       TEST_ATTR       G77,#19 [FALSE] 81c4
+       TEST_ATTR       G77,#14 [FALSE] 81c4
+       PRINT            "The "
+       PRINT_OBJ       G77
+       PRINT            " is extinguished."
+       NEW_LINE        
+       CLEAR_ATTR      G77,#14
+       CLEAR_ATTR      G77,#19
+       RTRUE           
+
+Routine R0221, 0 locals ()
+
+       JE              G00,#d4 [FALSE] 8208
+       CALL            R0310 (#4e) -> -(SP)
+       RET_POPPED      
+
+Routine R0222, 0 locals ()
+
+       JZ              G77 [TRUE] 8240
+       JE              G77,#ad [TRUE] 8240
+       PRINT            "Pump it up with a "
+       PRINT_OBJ       G77
+       PRINT_RET        "?"
+
+Routine R0223, 0 locals ()
+
+       CALL            R0308 (#9a75) -> -(SP)
+       RET_POPPED      
+
+Routine R0224, 0 locals ()
+
+       PRINT_RET        "You can't push things to that."
+
+Routine R0225, 0 locals ()
+
+       CALL            R0014 -> -(SP)
+       JZ              (SP)+ [FALSE] RFALSE
+       CALL            R0182 -> -(SP)
+       RET_POPPED      
+
+Routine R0226, 1 local (0000)
+
+       TEST_ATTR       G77,#0b [TRUE] 82a9
+       TEST_ATTR       G77,#17 [TRUE] L0001
+       TEST_ATTR       G77,#13 [TRUE] 82a9
+L0001: TEST_ATTR       G77,#1b [FALSE] 82a0
+       JUMP            #0b
+
+Routine R0227, 1 local (0001)
+
+       GET_PROP        G77,#0a -> -(SP)
+       JG              L00,(SP)+ [FALSE] 8316
+       PRINT_RET        "There's no room."
+
+Routine R0228, 0 locals ()
+
+       PRINT_RET        "That hiding place is too obvious."
+
+Routine R0229, 0 locals ()
+
+       JE              G77,#08 [FALSE] 8379
+       CALL            R0030 (#31,G76) -> -(SP)
+       RTRUE           
+
+Routine R0230, 0 locals ()
+
+       PRINT_RET        "You can't do that."
+
+Routine R0231, 0 locals ()
+
+       CALL            R0205 -> -(SP)
+       RET_POPPED      
+
+Routine R0232, 0 locals ()
+
+       PRINT_RET        "What a (ahem!) strange idea."
+
+Routine R0233, 0 locals ()
+
+       JZ              G42 [FALSE] 83dd
+       PRINT_RET        "It is impossible to read in the dark."
+
+Routine R0234, 0 locals ()
+
+       TEST_ATTR       G76,#10 [TRUE] 8413
+       PRINT            "How does one read a "
+       PRINT_OBJ       G76
+       PRINT_RET        "?"
+
+Routine R0235, 0 locals ()
+
+       CALL            R0030 (#53,G76) -> -(SP)
+       RTRUE           
+
+Routine R0236, 0 locals ()
+
+       PRINT_RET        "It could very well be too late!"
+
+Routine R0237, 0 locals ()
+
+       PRINT            "It is hardly likely that the "
+       PRINT_OBJ       G76
+       PRINT            " is interested."
+       NEW_LINE        
+       STORE           G6c,#00
+       STORE           G60,#00
+       RTRUE           
+
+Routine R0238, 0 locals ()
+
+       PRINT_RET        "How, exactly, can you ring that?"
+
+Routine R0239, 0 locals ()
+
+       CALL            R0308 (#9a79) -> -(SP)
+       RET_POPPED      
+
+Routine R0240, 1 local (0000)
+
+       JZ              G6c [FALSE] 8493
+       PRINT_RET        "Say what?"
+
+Routine R0241, 0 locals ()
+
+       STORE           G6c,#00
+       RET             G6c
+
+Routine R0242, 0 locals ()
+
+       RTRUE           
+
+Routine R0243, 0 locals ()
+
+       STORE           G6c,#00
+       PRINT_RET        "Talking to yourself is a sign of impending mental collapse."
+
+Routine R0244, 0 locals ()
+
+       PRINT_RET        "You find nothing unusual."
+
+Routine R0245, 0 locals ()
+
+       TEST_ATTR       G76,#1e [FALSE] 8525
+       PRINT            "Why would you send for the "
+       PRINT_OBJ       G76
+       PRINT_RET        "?"
+
+Routine R0246, 0 locals ()
+
+       CALL            R0030 (#3f,G77,G76) -> -(SP)
+       RTRUE           
+
+Routine R0247, 0 locals ()
+
+       PRINT_RET        "Foo!"
+
+Routine R0248, 0 locals ()
+
+       TEST_ATTR       G76,#1e [FALSE] 8558
+       PRINT_RET        "This seems to have no effect."
+
+Routine R0249, 1 local (0000)
+
+       GET_CHILD       G76 -> L00 [FALSE] RTRUE
+       SET_ATTR        L00,#03
+       JE              G00,#58 [FALSE] 8610
+       PUSH            #4b
+       JUMP            #0f
+
+Routine R0250, 0 locals ()
+
+       CALL            R0004 (G43) -> -(SP)
+       PRINT_PADDR     (SP)+
+       NEW_LINE        
+       RTRUE           
+
+Routine R0251, 0 locals ()
+
+       PRINT            "It smells like a "
+       PRINT_OBJ       G76
+       PRINT_RET        "."
+
+Routine R0252, 0 locals ()
+
+       PRINT_RET        "You can't spin that!"
+
+Routine R0253, 0 locals ()
+
+       CALL            R0254 -> -(SP)
+       RET_POPPED      
+
+Routine R0254, 0 locals ()
+
+       TEST_ATTR       G76,#1e [FALSE] 8674
+       PRINT            "The "
+       PRINT_OBJ       G76
+       PRINT            " does not understand this."
+       JUMP            #15
+
+Routine R0255, 0 locals ()
+
+       CALL            R0030 (#77,G77,G76) -> -(SP)
+       RET_POPPED      
+
+Routine R0256, 1 local (0000)
+
+       CALL            R0495 (G6f) -> L00
+       JZ              L00 [TRUE] 86a9
+       CALL            R0030 (#13,G76,L00) -> -(SP)
+       RTRUE           
+
+Routine R0257, 0 locals ()
+
+       GET_PARENT      G6f -> -(SP)
+       TEST_ATTR       (SP)+,#1b [FALSE] 86dd
+       GET_PARENT      G6f -> -(SP)
+       CALL            R0030 (#2d,(SP)+) -> -(SP)
+       RTRUE           
+
+Routine R0258, 0 locals ()
+
+       PRINT_RET        "You will be lost without me!"
+
+Routine R0259, 0 locals ()
+
+       TEST_ATTR       G76,#1e [FALSE] 8746
+       PRINT            "Since you aren't versed in hand-to-hand combat, you'd better attack the "
+       PRINT_OBJ       G76
+       PRINT_RET        " with a weapon."
+
+Routine R0260, 0 locals ()
+
+       CALL            R0314 (#ee,G00) -> -(SP)
+       JZ              (SP)+ [TRUE] 8788
+       PRINT            "Swimming isn't usually allowed in the "
+       JZ              G76 [TRUE] 877f
+       PRINT_OBJ       G76
+       PRINT            "."
+       JUMP            #09
+
+Routine R0261, 0 locals ()
+
+       JZ              G77 [FALSE] 87ab
+       PRINT_RET        "Whoosh!"
+
+Routine R0262, 0 locals ()
+
+       JIN             G76,G6f [FALSE] 87d3
+       TEST_ATTR       G76,#00 [FALSE] 87ca
+       PRINT_RET        "You are already wearing it."
+
+Routine R0263, 0 locals ()
+
+       CALL            R0299 -> -(SP)
+       JE              (SP)+,#01 [FALSE] RFALSE
+       TEST_ATTR       G76,#00 [FALSE] 8860
+       PRINT            "You are now wearing the "
+       PRINT_OBJ       G76
+       PRINT_RET        "."
+
+Routine R0264, 0 locals ()
+
+       TEST_ATTR       G76,#1e [FALSE] 88ad
+       JZ              G6c [TRUE] 8879
+       STORE           G6f,G76
+       GET_PARENT      G6f -> G00
+       RET             G00
+
+Routine R0265, 2 locals (0000, 0000)
+
+       TEST_ATTR       G76,#17 [FALSE] 88dc
+       CALL            R0319 (G76) -> -(SP)
+       CALL            R0313 ((SP)+) -> -(SP)
+       RTRUE           
+
+Routine R0266, 0 locals ()
+
+       CALL            R0305 -> -(SP)
+       JZ              (SP)+ [TRUE] RFALSE
+       JE              G77,#05 [FALSE] 8992
+       PRINT            "A terrific throw! The "
+       PRINT_OBJ       G76
+       CALL            R0532 (#9aa6) -> -(SP)
+       RET_POPPED      
+
+Routine R0267, 0 locals ()
+
+       PRINT_RET        "You can't throw anything off of that!"
+
+Routine R0268, 0 locals ()
+
+       JE              G77,G6f [FALSE] 89f4
+       PRINT_RET        "You can't tie anything to yourself."
+
+Routine R0269, 0 locals ()
+
+       PRINT_RET        "You could certainly never tie it with that!"
+
+Routine R0270, 0 locals ()
+
+       JE              G00,#dc [FALSE] 8a2c
+       CALL            R0310 (#be) -> -(SP)
+       RET_POPPED      
+
+Routine R0271, 0 locals ()
+
+       TEST_ATTR       G76,#0f [TRUE] RFALSE
+       PRINT_RET        "You can't turn that!"
+
+Routine R0272, 0 locals ()
+
+       PRINT_RET        "This has no effect."
+
+Routine R0273, 0 locals ()
+
+       CALL            R0199 -> -(SP)
+       RET_POPPED      
+
+Routine R0274, 0 locals ()
+
+       PRINT_RET        "This cannot be tied, so it cannot be untied!"
+
+Routine R0275, 1 local (0003)
+
+       PRINT            "Time passes..."
+       NEW_LINE        
+       DEC_CHK         #01,#00 [FALSE] 8a96
+       JUMP            #0b
+
+Routine R0276, 5 locals (0000, 0000, 0000, 0000, 0000)
+
+       JZ              G5f [FALSE] 8aba
+       CALL            R0030 (#8a,G76) -> -(SP)
+       RTRUE           
+
+Routine R0277, 0 locals ()
+
+       PRINT_RET        "Use compass directions for movement."
+
+Routine R0278, 0 locals ()
+
+       JIN             G76,G00 [TRUE] L0001
+       CALL            R0314 (G76,G00) -> -(SP)
+       JZ              (SP)+ [TRUE] 8bfa
+L0001: PRINT_RET        "It's here!"
+
+Routine R0279, 0 locals ()
+
+       CALL            R0308 (#9afe) -> -(SP)
+       RET_POPPED      
+
+Routine R0280, 0 locals ()
+
+       TEST_ATTR       G76,#00 [TRUE] 8c2d
+       PRINT            "You can't wear the "
+       PRINT_OBJ       G76
+       PRINT_RET        "."
+
+Routine R0281, 0 locals ()
+
+       PRINT_RET        "Naturally!"
+
+Routine R0282, 0 locals ()
+
+       PRINT            "You cannot wind up a "
+       PRINT_OBJ       G76
+       PRINT_RET        "."
+
+Routine R0283, 0 locals ()
+
+       PRINT_RET        "With luck, your wish will come true."
+
+Routine R0284, 0 locals ()
+
+       PRINT_RET        "Aaaarrrrgggghhhh!"
+
+Routine R0285, 0 locals ()
+
+       PRINT_RET        "At your service!"
+
+Routine R0286, 0 locals ()
+
+       CALL            R0287 -> -(SP)
+       JZ              (SP)+ [TRUE] RFALSE
+       JZ              G46 [FALSE] RFALSE
+       CALL            R0288 -> -(SP)
+       RET_POPPED      
+
+Routine R0287, 4 locals (0000, 0000, 0000, 0000)
+
+       JZ              L00 [TRUE] 8cac
+       PUSH            L00
+       JUMP            #05
+
+Routine R0288, 1 local (0000)
+
+       JZ              G42 [TRUE] 8d71
+       GET_CHILD       G00 -> -(SP) [FALSE] RFALSE
+       JZ              L00 [TRUE] 8d61
+       PUSH            L00
+       JUMP            #05
+
+Routine R0289, 5 locals (0000, 0000, 0000, 0000, 0000)
+
+       STORE           G40,L00
+       JZ              L02 [FALSE] L0001
+       GET_PROP        L00,#09 -> -(SP)
+       CALL            #0000 (#05) -> -(SP)
+       JZ              (SP)+ [FALSE] RTRUE
+L0001: JZ              L02 [FALSE] 8dc9
+       TEST_ATTR       L00,#03 [TRUE] L0002
+       GET_PROP        L00,#0e -> L03
+       JZ              L03 [FALSE] L0003
+L0002: GET_PROP        L00,#0b -> L03
+       JZ              L03 [TRUE] 8dc9
+L0003: PRINT_PADDR     L03
+       JUMP            #58
+
+Routine R0290, 6 locals (0000, 0000, 0000, 0001, 0000, 0000)
+
+       GET_CHILD       L00 -> L01 [FALSE] RFALSE
+       GET_SIBLING     L01 -> L02 [TRUE] L0001
+L0001: JZ              L03 [TRUE] 8e76
+       STORE           L03,#00
+       JUMP            #0b
+
+Routine R0291, 10 locals (0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000)
+
+       GET_CHILD       L00 -> L03 [FALSE] RTRUE
+       GET_PARENT      G6f -> L06
+       JZ              L06 [TRUE] 8ed0
+       TEST_ATTR       L06,#1b [FALSE] 8ed0
+       JUMP            #05
+
+Routine R0292, 1 local (04c2)
+
+       JZ              L03 [FALSE] 8f66
+       JZ              L08 [TRUE] 8fd0
+       JZ              L06 [TRUE] 8fd0
+       GET_CHILD       L06 -> -(SP) [FALSE] 8fd0
+       INC             L02
+       CALL            R0291 (L06,L01,L02) -> -(SP)
+       JUMP            #6c
+
+Routine R0293, 2 locals (0000, 0000)
+
+       JE              L00,#c2 [FALSE] 8ffc
+       PRINT_RET        "Your collection of treasures consists of:"
+
+Routine R0294, 1 local (0000)
+
+       TEST_ATTR       L00,#07 [TRUE] RFALSE
+       TEST_ATTR       L00,#0c [TRUE] RTRUE
+       TEST_ATTR       L00,#0b [TRUE] RTRUE
+       RFALSE          
+
+Routine R0295, 1 local (0000)
+
+       ADD             G3f,L00 -> G3f
+       ADD             G01,L00 -> G01
+       JE              G01,#15e [FALSE] RTRUE
+       JZ              G8c [FALSE] RTRUE
+       STORE           G8c,#01
+       CLEAR_ATTR      #6d,#07
+       CLEAR_ATTR      #b4,#03
+       PRINT_RET        "An almost inaudible voice whispers in your ear, "Look to your treasures for the final secret.""
+
+Routine R0296, 2 locals (0000, 0000)
+
+       GET_PROP        L00,#0d -> L01
+       JG              L01,#00 [FALSE] RFALSE
+       CALL            R0295 (L01) -> -(SP)
+       PUT_PROP        L00,#0d,#00
+       RTRUE           
+
+Routine R0297, 0 locals ()
+
+       CALL            R0531 -> -(SP)
+       QUIT            
+
+Routine R0298, 0 locals ()
+
+       PRINT            ">"
+       SREAD           G6d,G6e
+       LOADW           G6e,#01 -> -(SP)
+       JE              (SP)+,#4e14,#4df8 [FALSE] RFALSE
+       RTRUE           
+
+Routine R0299, 4 locals (0001, 0000, 0000, 0000)
+
+       JZ              G3e [TRUE] 9118
+       JZ              L00 [TRUE] RFALSE
+       PRINT            "Your hand passes through its object."
+       NEW_LINE        
+       RFALSE          
+
+Routine R0300, 9 locals (8d04, d51b, 182b, 0006, ae67, 0050, ef29, 1996, 45bb)
+
+       RFALSE          
+
+Routine R0301, 0 locals ()
+
+       PRINT_PADDR     (SP)+
+       NEW_LINE        
+       RFALSE          
+
+Routine R0302, 0 locals ()
+
+       INC             G68
+       JZ              L00 [TRUE] 918f
+       PRINT            "Your load is too heavy"
+       JL              G85,G86 [FALSE] 918b
+       PRINT            ", especially in light of your condition."
+       JUMP            #05
+
+Routine R0303, 4 locals (e77f, 6400, 6304, 005b)
+
+       PRINT            "You're holding too many things already!"
+       NEW_LINE        
+       RFALSE          
+
+Routine R0304, 0 locals ()
+
+       CALL            R0296 (G76) -> -(SP)
+       RTRUE           
+
+Routine R0305, 0 locals ()
+
+       JIN             G76,G6f [TRUE] 91f4
+       GET_PARENT      G76 -> -(SP)
+       JIN             (SP)+,G6f [TRUE] 91f4
+       PRINT            "You're not carrying the "
+       PRINT_OBJ       G76
+       PRINT            "."
+       NEW_LINE        
+       RFALSE          
+
+Routine R0306, 3 locals (0000, 0000, 0000)
+
+       GET_CHILD       L00 -> L02 [FALSE] L0001
+       TEST_ATTR       L02,#00 [TRUE] L0002
+       INC             L01
+L0002: GET_SIBLING     L02 -> L02 [TRUE] 921f
+L0001: RET             L01
+
+Routine R0307, 3 locals (0000, 0000, 0000)
+
+       GET_CHILD       L00 -> L01 [FALSE] 9253
+       JE              L00,G80 [FALSE] 9244
+       TEST_ATTR       L01,#00 [FALSE] 9244
+       INC             L02
+       JUMP            #0c
+
+Routine R0308, 1 local (0000)
+
+       JIN             G76,#f7 [FALSE] 9278
+       JE              G78,#54,#69,#8c [FALSE] 9278
+       PRINT            "The "
+       PRINT_OBJ       G76
+       PRINT_RET        " isn't here!"
+
+Routine R0309, 2 locals (0000, 0000)
+
+       JZ              L00 [TRUE] 92a1
+       PRINT            "You can't go there in a "
+       PRINT_OBJ       L01
+       PRINT            "."
+       JUMP            #15
+
+Routine R0310, 6 locals (0000, 0001, 0000, 0000, 0000, 0000)
+
+       TEST_ATTR       L00,#06 [TRUE] 92cd
+       PUSH            #00
+       JUMP            #05
+
+Routine R0311, 2 locals (0000, 0000)
+
+       CALL            R0312 (G00,L00) -> L01
+       JZ              L01 [TRUE] RFALSE
+       CALL            R0310 (L01) -> -(SP)
+       JZ              (SP)+ [FALSE] RTRUE
+       RET             #02
+
+Routine R0312, 4 locals (0000, 0000, 0000, 0000)
+
+       LOADW           L01,#00 -> L03
+       INC_CHK         #03,L03 [TRUE] RFALSE
+       LOADW           L01,L02 -> -(SP)
+       JE              (SP)+,L00 [FALSE] 9455
+       JE              L02,L03 [TRUE] RFALSE
+       ADD             L02,#01 -> -(SP)
+       LOADW           L01,(SP)+ -> -(SP)
+       RET             (SP)+
+
+Routine R0313, 1 local (0000)
+
+       STORE           G5f,L00
+       CALL            R0030 (#89,L00) -> -(SP)
+       RET_POPPED      
+
+Routine R0314, 3 locals (0000, 0000, 0000)
+
+       GET_PROP_ADDR   L01,#05 -> L02
+       JZ              L02 [TRUE] RFALSE
+       GET_PROP_LEN    L02 -> -(SP)
+
+Routine R0315, 3 locals (c0a4, 0300, 5500)
+
+       JE              #00,#e0 [FALSE] 7eec
+       INC_CHK         #01,L02 [FALSE] RFALSE
+       RET_POPPED      
+
+Routine R0316, 3 locals (0000, 0000, 0000)
+
+       GET_CHILD       L00 -> L02 [TRUE] L0001
+L0001: JZ              L02 [TRUE] RFALSE
+       TEST_ATTR       L02,L01 [FALSE] 94d6
+       JE              L02,#04 [TRUE] 94d6
+       RET             L02
+
+Routine R0317, 1 local (0000)
+
+       JIN             L00,G00 [TRUE] RTRUE
+       CALL            R0314 (L00,G00) -> -(SP)
+       RET_POPPED      
+
+Routine R0318, 1 local (0000)
+
+       GET_PARENT      L00 -> L00
+       JZ              L00 [TRUE] RFALSE
+       JE              L00,G6f [FALSE] 94ef
+       RTRUE           
+
+Routine R0319, 3 locals (0000, 0000, 0000)
+
+       GET_NEXT_PROP   G00,L01 -> L01
+       JL              L01,G98 [TRUE] RFALSE
+       GET_PROP_ADDR   G00,L01 -> L02
+       GET_PROP_LEN    L02 -> -(SP)
+       JE              (SP)+,#05 [FALSE] 9503
+       LOADB           L02,#01 -> -(SP)
+       JE              (SP)+,L00 [FALSE] 9503
+       RET             L01
+
+Routine R0320, 2 locals (0000, 0000)
+
+       SET_ATTR        L00,#12
+       PUT_PROP        L00,#0b,L01
+       RTRUE           
+
+Routine R0321, 1 local (0000)
+
+       STORE           G6b,L00
+       STORE           G6a,G00
+       RET             G6a
+
+Routine R0322, 1 local (0000)
+
+       JE              L00,#03 [FALSE] RFALSE
+       PRINT            "You are standing in an open field west of a white house, with a boarded front door."
+       JZ              G8c [TRUE] L0001
+       PRINT            " A secret path leads southwest into the forest."
+L0001: NEW_LINE        
+       RTRUE           
+
+Routine R0323, 1 local (0000)
+
+       JE              L00,#03 [FALSE] RFALSE
+       PRINT            "You are behind the white house. A path leads into the forest to the east. In one corner of the house there is a small window which is "
+       TEST_ATTR       #eb,#0b [FALSE] 95ec
+       PRINT            "open."
+       JUMP            #0d
+
+Routine R0324, 3 locals (0000, 0000, 0000)
+
+       JE              G78,#2b [FALSE] 961b
+       TEST_ATTR       L00,#0b [FALSE] 9614
+       CALL            R0004 (G34) -> -(SP)
+       PRINT_PADDR     (SP)+
+       JUMP            #07
+
+Routine R0325, 0 locals ()
+
+       JE              G78,#38,#5d [FALSE] RFALSE
+       PRINT_RET        "The boards are securely fastened."
+
+Routine R0326, 0 locals ()
+
+       JE              G78,#1a [FALSE] RFALSE
+       JE              G76,#f8 [FALSE] RFALSE
+       JE              G77,#62 [FALSE] 966b
+       JIN             G77,G6f [FALSE] 966b
+       CALL            R0532 (#9b77) -> -(SP)
+       RET_POPPED      
+
+Routine R0327, 0 locals ()
+
+       JE              G00,#dc [FALSE] 96d8
+       JE              G78,#3c [FALSE] RFALSE
+       PRINT_RET        "The west wall is solid granite here."
+
+Routine R0328, 0 locals ()
+
+       JE              G78,#5d,#3c [FALSE] 9752
+       PRINT_RET        "The songbird is not here but is probably nearby."
+
+Routine R0329, 0 locals ()
+
+       JE              G00,#cb,#c1,#c9 [FALSE] 97b6
+       JE              G78,#3c [FALSE] 97ab
+       PRINT_RET        "Why not find your brains?"
+
+Routine R0330, 0 locals ()
+
+       JE              G78,#8b [FALSE] 98d4
+       CALL            R0311 (G89) -> -(SP)
+       RET_POPPED      
+
+Routine R0331, 0 locals ()
+
+       JE              G78,#20,#1f,#1e [FALSE] RFALSE
+       PRINT_RET        "Don't you believe me? The mountains are impassable!"
+
+Routine R0332, 3 locals (0000, 0000, 0000)
+
+       JE              G78,#40 [TRUE] RFALSE
+       JE              G78,#22 [FALSE] 996f
+       CALL            R0004 (G37) -> -(SP)
+       PRINT_PADDR     (SP)+
+       NEW_LINE        
+       RTRUE           
+
+Routine R0333, 0 locals ()
+
+       JE              G78,#23,#2b [FALSE] 9b6b
+       STORE           G33,#01
+       CALL            R0324 (#eb,#9ba8,#9bbd) -> -(SP)
+       RET_POPPED      
+
+Routine R0334, 0 locals ()
+
+       JE              G78,#6f [FALSE] 9c0c
+       PRINT            "The spirits jeer loudly and ignore you."
+       NEW_LINE        
+       STORE           G6c,#00
+       RET             G6c
+
+Routine R0335, 0 locals ()
+
+       JE              G78,#69 [FALSE] 9cae
+       JZ              G32 [TRUE] 9c84
+       CALL            R0004 (G34) -> -(SP)
+       PRINT_PADDR     (SP)+
+       NEW_LINE        
+       RTRUE           
+
+Routine R0336, 0 locals ()
+
+       JE              G78,#6f [FALSE] 9d60
+       CALL            R0338 (#06) -> -(SP)
+       STORE           G6c,#00
+       RET             G6c
+
+Routine R0337, 0 locals ()
+
+       CALL            R0338 (#04) -> -(SP)
+       NEW_LINE        
+       PRINT            "The bat grabs you by the scruff of your neck and lifts you away...."
+       NEW_LINE        
+       NEW_LINE        
+       CALL            R0004 (G31) -> -(SP)
+       CALL            R0310 ((SP)+,#00) -> -(SP)
+       CALL            R0286 -> -(SP)
+       RTRUE           
+
+Routine R0338, 1 local (0000)
+
+       DEC_CHK         #01,#01 [FALSE] 9de0
+       JUMP            #0f
+
+Routine R0339, 0 locals ()
+
+       JE              G78,#6d [FALSE] RFALSE
+       JE              G00,#5a7f [FALSE] L0001
+       JZ              G91 [TRUE] RFALSE
+L0001: PRINT_RET        "Ding, dong."
+
+Routine R0340, 0 locals ()
+
+       JE              G78,#5d [FALSE] 9e26
+       PRINT_RET        "The bell is very hot and cannot be taken."
+
+Routine R0341, 0 locals ()
+
+       JE              G78,#2b [FALSE] 9ee0
+       PRINT_RET        "The windows are boarded and can't be opened."
+
+Routine R0342, 0 locals ()
+
+       JE              G78,#5d [FALSE] RFALSE
+       PRINT_RET        "The nails, deeply imbedded in the door, cannot be removed."
+
+Routine R0343, 0 locals ()
+
+       JE              G78,#22 [FALSE] RFALSE
+       PRINT_RET        "You can't fit through the crack."
+
+Routine R0344, 1 local (0000)
+
+       JE              L00,#03 [FALSE] 9fc9
+       PRINT            "You are in the kitchen of the white house. A table seems to have been used recently for the preparation of food. A passage leads to the west and a dark staircase can be seen leading upward. A dark chimney leads down and to the east is a small window which is "
+       TEST_ATTR       #eb,#0b [FALSE] 9fbe
+       PRINT_RET        "open."
+
+Routine R0345, 1 local (0000)
+
+       JE              L00,#01 [FALSE] RFALSE
+       JE              G78,#36 [TRUE] L0003
+       JE              G78,#89 [FALSE] L0002
+       JE              G76,#1d,#15 [TRUE] L0003
+L0002: JE              G78,#22 [FALSE] RFALSE
+       JE              G76,#b1 [FALSE] RFALSE
+L0003: PRINT            "Inside the Barrow
+As you enter the barrow, the door closes inexorably behind you. Around you it is dark, but ahead is an enormous cavern, brightly lit. Through its center runs a wide stream. Spanning the stream is a small wooden footbridge, and beyond a path leads into a dark tunnel. Above the bridge, floating in the air, is a large sign. It reads:  All ye who stand before this bridge have completed a great and perilous adventure which has tested your wit and courage. You have mastered"
+       LOADB           #00,#01 -> -(SP)
+       AND             (SP)+,#08 -> -(SP)
+       JZ              (SP)+ [FALSE] a201
+       PRINT            " the first part of the ZORK trilogy. Those who pass over this bridge must be prepared to undertake an even greater adventure that will severely test your skill and bravery!
+
+The ZORK trilogy continues with "ZORK II: The Wizard of Frobozz" and is completed in "ZORK III: The Dungeon Master.""
+       NEW_LINE        
+       JUMP            #20
+
+Routine R0346, 0 locals ()
+
+       JE              G78,#23,#2b [FALSE] RFALSE
+       PRINT_RET        "The door is too heavy."
+
+Routine R0347, 0 locals ()
+
+       JE              G78,#22 [FALSE] RFALSE
+       CALL            R0313 (#1d) -> -(SP)
+       RET_POPPED      
+
+Routine R0348, 0 locals ()
+
+       JE              G78,#5d [FALSE] RFALSE
+       JE              G76,#c2 [FALSE] RFALSE
+       PRINT_RET        "The trophy case is securely fastened to the wall."
+
+Routine R0349, 3 locals (0000, 0000, 0000)
+
+       JE              L00,#03 [FALSE] a395
+       PRINT            "You are in the living room. There is a doorway to the east"
+       JZ              G8f [TRUE] a2e1
+       PRINT            ". To the west is a cyclops-shaped opening in an old wooden door, above which is some strange gothic lettering, "
+       JUMP            #33
+
+Routine R0350, 2 locals (0000, 0000)
+
+       GET_CHILD       L00 -> L01 [TRUE] L0001
+L0001: JZ              L01 [TRUE] RTRUE
+       SET_ATTR        L01,#03
+       GET_CHILD       L01 -> -(SP) [FALSE] L0002
+       CALL            R0350 (L01) -> -(SP)
+L0002: GET_SIBLING     L01 -> L01 [TRUE] L0003
+L0003: JUMP            #ffeb
+
+Routine R0351, 3 locals (00c2, 0000, 0000)
+
+       GET_CHILD       L00 -> L01 [TRUE] L0001
+L0001: JZ              L01 [FALSE] a3f0
+       RET             L02
+
+Routine R0352, 0 locals ()
+
+       JE              G78,#69 [FALSE] a417
+       CALL            R0030 (#2b,#b7) -> -(SP)
+       RTRUE           
+
+Routine R0353, 1 local (0000)
+
+       JE              L00,#03 [FALSE] a509
+       PRINT_RET        "You are in a dark and damp cellar with a narrow passageway leading north, and a crawlway to the south. On the west is the bottom of a steep metal ramp which is unclimbable."
+
+Routine R0354, 0 locals ()
+
+       JE              G78,#38 [FALSE] RFALSE
+       PRINT            "The chimney leads "
+       JE              G00,#cb [FALSE] a562
+       PRINT            "down"
+       JUMP            #05
+
+Routine R0355, 1 local (0000)
+
+       GET_CHILD       G6f -> L00 [TRUE] a59c
+       PRINT            "Going up empty-handed is a bad idea."
+       NEW_LINE        
+       RFALSE          
+
+Routine R0356, 0 locals ()
+
+       JZ              G30 [TRUE] a5ed
+       TEST_ATTR       #b7,#0b [FALSE] a5da
+       RET             #48
+
+Routine R0357, 0 locals ()
+
+       JE              G78,#69 [FALSE] a642
+       PRINT            "The rug is too heavy to lift"
+       JZ              G30 [TRUE] a617
+       PRINT_RET        "."
+
+Routine R0358, 0 locals ()
+
+       JZ              G8d [FALSE] RFALSE
+       CALL            R0360 (#da,#d9) -> -(SP)
+       RET_POPPED      
+
+Routine R0359, 0 locals ()
+
+       CALL            R0360 (#71,#72) -> -(SP)
+       RET_POPPED      
+
+Routine R0360, 2 locals (0000, 0000)
+
+       JIN             L01,G00 [FALSE] RFALSE
+       JE              G78,#5d [FALSE] RFALSE
+       JIN             L00,L01 [FALSE] a7df
+       PRINT            "The "
+       PRINT_OBJ       L01
+       PRINT_RET        " swings it out of your reach."
+
+Routine R0361, 1 local (0000)
+
+       JE              G78,#6f [FALSE] a826
+       PRINT            "The troll isn't much of a conversationalist."
+       NEW_LINE        
+       STORE           G6c,#00
+       RET             G6c
+
+Routine R0362, 0 locals ()
+
+       TEST_ATTR       #ae,#0b [TRUE] RFALSE
+       JZ              G2e [FALSE] RFALSE
+       JE              G78,#5d,#58 [FALSE] ac37
+       PRINT            "In disturbing the pile of leaves, a grating is revealed."
+       NEW_LINE        
+       JUMP            #1e
+
+Routine R0363, 0 locals ()
+
+       JE              G78,#25 [FALSE] ac74
+       PRINT_RET        "There are 69,105 leaves here."
+
+Routine R0364, 1 local (0000)
+
+       JE              L00,#02 [FALSE] ad3e
+       JZ              G2e [FALSE] RFALSE
+       SET_ATTR        #ae,#07
+       RTRUE           
+
+Routine R0365, 1 local (0000)
+
+       JE              L00,#02 [FALSE] adc9
+       CLEAR_ATTR      #ae,#07
+       RTRUE           
+
+Routine R0366, 0 locals ()
+
+       JE              G78,#2b [FALSE] ae72
+       JE              G77,#7a [FALSE] ae72
+       CALL            R0030 (#85,#ae,#7a) -> -(SP)
+       RTRUE           
+
+Routine R0367, 0 locals ()
+
+       PRINT            "You won't be able to get back up to the tunnel you are going through when it gets to the next room."
+       NEW_LINE        
+       NEW_LINE        
+       JE              G00,#45 [FALSE] afe2
+       RET             #43
+
+Routine R0368, 0 locals ()
+
+       JE              G78,#5d [FALSE] b037
+       JIN             #6e,G6f [FALSE] RFALSE
+       PRINT            "As you touch the rusty knife, your sword gives a single pulse of blinding blue light."
+       NEW_LINE        
+       RFALSE          
+
+Routine R0369, 0 locals ()
+
+       JE              G78,#5d [FALSE] RFALSE
+       CLEAR_ATTR      #ca,#0e
+       RFALSE          
+
+Routine R0370, 0 locals ()
+
+       JE              G78,#58,#6e,#5d [TRUE] L0002
+       JE              G78,#54,#69,#65 [TRUE] L0002
+       JE              G78,#48,#46,#13 [FALSE] RFALSE
+L0002: PRINT            "A ghost appears in the room and is appalled at your desecration of the remains of a fellow adventurer. He casts a curse on your valuables and banishes them to the Land of the Living Dead. The ghost leaves, muttering obscenities."
+       NEW_LINE        
+       CALL            R0528 (G00,#e6,#64) -> -(SP)
+       CALL            R0528 (#04,#e6) -> -(SP)
+       RTRUE           
+
+Routine R0371, 0 locals ()
+
+       JE              G78,#38 [FALSE] b120
+       PRINT_RET        "The torch is burning."
+
+Routine R0372, 1 local (0000)
+
+       JE              L00,#03 [FALSE] RFALSE
+       PRINT            "You are in a large square room with tall ceilings. On the south wall is an enormous mirror which fills the entire wall. There are exits on the other three sides of the room."
+       NEW_LINE        
+       JZ              G2c [TRUE] RFALSE
+       PRINT_RET        "Unfortunately, the mirror has been destroyed by your recklessness."
+
+Routine R0373, 4 locals (0098, 0000, 0000, 0000)
+
+       JZ              G2c [FALSE] b286
+       JE              G78,#6e [FALSE] b286
+       JZ              G77 [TRUE] b227
+       JE              G77,#01 [TRUE] b227
+       PRINT            "You feel a faint tingling transmitted through the "
+       PRINT_OBJ       G77
+       PRINT_RET        "."
+
+Routine R0374, 1 local (0000)
+
+       JE              L00,#03 [FALSE] RFALSE
+       PRINT            "This is a large room with a prominent doorway leading to a down staircase. Above you is a large dome. Up around the edge of the dome (20 feet up) is a wooden railing. In the center of the room sits a white marble pedestal."
+       NEW_LINE        
+       JZ              G93 [TRUE] RFALSE
+       PRINT_RET        "A piece of rope descends from the railing above, ending some five feet above your head."
+
+Routine R0375, 1 local (0000)
+
+       JE              L00,#03 [FALSE] b4a6
+       PRINT            "You are at the periphery of a large dome, which forms the ceiling of another room below. Protecting you from a precipitous drop is a wooden railing which circles the dome."
+       NEW_LINE        
+       JZ              G93 [TRUE] RFALSE
+       PRINT_RET        "Hanging down from the railing is a rope which ends about ten feet from the floor below."
+
+Routine R0376, 1 local (0000)
+
+       JE              L00,#03 [FALSE] b5dd
+       PRINT            "You are outside a large gateway, on which is inscribed
+
+  Abandon every hope all ye who enter here!
+
+The gate is open; through it you can see a desolation, with a pile of mangled bodies in one corner. Thousands of voices, lamenting some hideous fate, can be heard."
+       NEW_LINE        
+       JZ              G91 [FALSE] RFALSE
+       JZ              G3e [FALSE] RFALSE
+       PRINT_RET        "The way through the gate is barred by evil spirits, who jeer at your attempts to pass."
+
+Routine R0377, 0 locals ()
+
+       JZ              G29 [FALSE] L0002
+       JE              G00,#e8 [FALSE] L0002
+       PRINT            "The tension of this ceremony is broken, and the wraiths, amused but shaken at your clumsy attempt, resume their hideous jeering."
+       NEW_LINE        
+L0002: STORE           G2a,#00
+       RET             G2a
+
+Routine R0378, 0 locals ()
+
+       STORE           G29,#00
+       CALL            R0377 -> -(SP)
+       RET_POPPED      
+
+Routine R0379, 0 locals ()
+
+       CALL            R0172 (#db) -> -(SP)
+       INSERT_OBJ      #dd,#e8
+       JE              G00,#e8 [FALSE] RFALSE
+       PRINT_RET        "The bell appears to have cooled down."
+
+Routine R0380, 1 local (0000)
+
+       JE              L00,#03 [FALSE] RFALSE
+       PRINT            "You are standing on the top of the Flood Control Dam #3, which was quite a tourist attraction in times far distant. There are paths to the north, south, and west, and a scramble down."
+       NEW_LINE        
+       JZ              G90 [TRUE] b9c6
+       JZ              G27 [TRUE] b9c6
+       PRINT            "The water level behind the dam is low: The sluice gates have been opened. Water rushes through the dam and downstream."
+       NEW_LINE        
+       JUMP            #ce
+
+Routine R0381, 0 locals ()
+
+       JE              G78,#59 [FALSE] bbba
+       JE              G77,#5b [FALSE] bb94
+       JZ              G28 [TRUE] bb7d
+       CLEAR_ATTR      #32,#03
+       JZ              G27 [TRUE] bb48
+       STORE           G27,#00
+       CLEAR_ATTR      #8a,#03
+       PRINT            "The sluice gates close and water starts to collect behind the dam."
+       NEW_LINE        
+       CALL            R0022 (#5e14,#08) -> -(SP)
+       STOREW          (SP)+,#00,#01
+       CALL            R0022 (#5e94,#00) -> -(SP)
+       RTRUE           
+
+Routine R0382, 0 locals ()
+
+       JE              G78,#5d [FALSE] RFALSE
+       CALL            R0383 -> -(SP)
+       RET_POPPED      
+
+Routine R0383, 0 locals ()
+
+       PRINT_RET        "It is an integral part of the control panel."
+
+Routine R0384, 0 locals ()
+
+       SET_ATTR        #64,#04
+       CLEAR_ATTR      #64,#06
+       CLEAR_ATTR      #28,#03
+       CLEAR_ATTR      #8a,#03
+       JIN             #65,#64 [FALSE] L0001
+       SET_ATTR        #65,#07
+L0001: STORE           G90,#00
+       JE              G00,#64 [FALSE] bc7d
+       GET_PARENT      G6f -> -(SP)
+       TEST_ATTR       (SP)+,#1b [FALSE] bc75
+       PRINT_RET        "The boat lifts gently out of the mud and is now floating on the reservoir."
+
+Routine R0385, 0 locals ()
+
+       SET_ATTR        #64,#06
+       CLEAR_ATTR      #64,#04
+       CLEAR_ATTR      #28,#03
+       CLEAR_ATTR      #8a,#03
+       CLEAR_ATTR      #65,#07
+       STORE           G90,#01
+       JE              G00,#64 [FALSE] bd7e
+       GET_PARENT      G6f -> -(SP)
+       TEST_ATTR       (SP)+,#1b [FALSE] bd7e
+       PRINT_RET        "The water level has dropped to the point at which the boat can no longer stay afloat. It sinks into the mud."
+
+Routine R0386, 0 locals ()
+
+       JE              G78,#53 [FALSE] bde2
+       PRINT_RET        "They're greek to you."
+
+Routine R0387, 0 locals ()
+
+       JE              G78,#38 [FALSE] bec4
+       PRINT_RET        "The chests are all empty."
+
+Routine R0388, 0 locals ()
+
+       LOADW           G25,(SP)+ -> -(SP)
+       PRINT_PADDR     (SP)+
+       NEW_LINE        
+       INC             G24
+       JL              G24,#0e [TRUE] bf5f
+       CALL            R0320 (#c7,#9d34) -> -(SP)
+       CALL            R0022 (#5f89,#00) -> -(SP)
+       JZ              L00 [TRUE] RTRUE
+       CALL            R0532 (#9d3f) -> -(SP)
+       RTRUE           
+
+Routine R0389, 0 locals ()
+
+       JG              G24,#00 [FALSE] RFALSE
+       JE              G78,#32,#12 [FALSE] bf87
+       JE              G76,#62 [FALSE] bf87
+       CALL            R0390 -> -(SP)
+       RET_POPPED      
+
+Routine R0390, 0 locals ()
+
+       STORE           G24,#ffff
+       CALL            R0022 (#5f89,#00) -> -(SP)
+       PRINT_RET        "By some miracle of Zorkian technology, you have managed to stop the leak in the dam."
+
+Routine R0391, 0 locals ()
+
+       JE              G78,#55 [FALSE] L0001
+       JE              G77,#62 [TRUE] L0002
+L0001: JE              G78,#12 [FALSE] RFALSE
+       JE              G76,#62 [FALSE] RFALSE
+L0002: PRINT_RET        "The all-purpose gunk isn't a lubricant."
+
+Routine R0392, 0 locals ()
+
+       JE              G78,#12 [FALSE] c02c
+       JE              G77,#63 [FALSE] c02c
+       PRINT_RET        "The tube refuses to accept anything."
+
+Routine R0393, 0 locals ()
+
+       JE              G78,#23,#2b [FALSE] c094
+       PRINT_RET        "Sounds reasonable, but this isn't how."
+
+Routine R0394, 1 local (0000)
+
+       PRINT            "With a "
+       PRINT_OBJ       L00
+       PRINT_RET        "?"
+
+Routine R0395, 1 local (0000)
+
+       JE              L00,#03 [FALSE] RFALSE
+       JZ              G90 [TRUE] c177
+       JZ              G27 [TRUE] c177
+       PRINT            "You are in a long room, to the north of which was formerly a lake. However, with the water level lowered, there is merely a wide stream running through the center of the room."
+       JUMP            #12f
+
+Routine R0396, 1 local (0000)
+
+       JE              L00,#06 [FALSE] c35d
+       GET_PARENT      G6f -> -(SP)
+       TEST_ATTR       (SP)+,#1b [TRUE] c35d
+       JZ              G27 [FALSE] c35d
+       JZ              G90 [TRUE] c35d
+       PRINT_RET        "You notice that the water level here is rising rapidly. The currents are also becoming stronger. Staying here seems quite perilous!"
+
+Routine R0397, 1 local (0000)
+
+       JE              L00,#03 [FALSE] RFALSE
+       JZ              G90 [TRUE] c45d
+       JZ              G27 [TRUE] c45d
+       PRINT            "You are in a large cavernous room, the south of which was formerly a lake. However, with the water level lowered, there is merely a wide stream running through there."
+       JUMP            #c0
+
+Routine R0398, 1 local (0000)
+
+       JE              G78,#7f [FALSE] c56d
+       JE              G76,#ec [FALSE] c56d
+       CALL            R0172 (G76) -> -(SP)
+       STORE           L00,#01
+       PRINT            "The bottle hits the far wall and shatters."
+       NEW_LINE        
+       JUMP            #3f
+
+Routine R0399, 13 locals (3a40, 6aa5, c8a5, bb0d, a500, 0bba, 0242, 0100, 4835, 0001, 33ab, 332d, 3301)
+
+       RET             G23
+
+Routine R0400, 1 local (00e0)
+
+       SET_ATTR        #6f,#a4
+       CHECK_ARG_COUNT #33e0,#32a,#3964,#9fff
+       CHECK_ARG_COUNT #e197,#00,#1b0,#4186
+       ERASE_WINDOW    
+       JE              G76,#ec [FALSE] c83b
+       JIN             #ed,#ec [FALSE] c83b
+       JL              L00,#00 [FALSE] c814
+       CALL            R0172 (#ed) -> -(SP)
+       INSERT_OBJ      #ec,G00
+       SET_ATTR        #ec,#0b
+       CLEAR_ATTR      #ba,#02
+       PRINT            "The cyclops takes the bottle, checks that it's open, and drinks the water. A moment later, he lets out a yawn that nearly blows you over, and then falls fast asleep (what did you put in that drink, anyway?)."
+       NEW_LINE        
+       STORE           G95,#01
+       RET             G95
+
+Routine R0401, 13 locals (5f4c, 6002, 2a99, 3557, 71d8, 280e, 3274, 5d58, 0024, 55d9, 397a, 4406, 672a)
+
+       TEST_ATTR       Ga9,#96 [FALSE] c8de
+       NEW_LINE        
+       JE              G78,#7f [FALSE] RTRUE
+       INSERT_OBJ      G76,G00
+       RTRUE           
+
+Routine R0402, 0 locals ()
+
+       RTRUE           
+
+Routine R0403, 0 locals ()
+
+       STOREW          (SP)+,#00,#00
+       CALL            R0532 (#9d66) -> -(SP)
+       RET_POPPED      
+
+Routine R0404, 1 local (0000)
+
+       JE              L00,#03 [FALSE] cb51
+       PRINT            "This room has an exit on the northwest, and a staircase leading up."
+       NEW_LINE        
+       JZ              G95 [TRUE] c9f1
+       JZ              G8f [FALSE] c9f1
+       PRINT_RET        "The cyclops is sleeping blissfully at the foot of the stairs."
+
+Routine R0405, 2 locals (0000, 0000)
+
+       JE              L00,#03 [FALSE] cc31
+       PRINT            "This is a large room with a ceiling which cannot be detected from the ground. There is a narrow passage from east to west and a stone stairway leading upward."
+       JZ              G21 [FALSE] L0001
+       JZ              G27 [FALSE] cbd6
+       JZ              G90 [TRUE] cbd6
+L0001: PRINT            " The room is eerie in its quietness."
+       JUMP            #5b
+
+Routine R0406, 1 local (0000)
+
+       JE              L00,#03 [FALSE] RFALSE
+       PRINT            "You are on the south edge of a deep canyon. Passages lead off to the east, northwest and southwest. A stairway leads down."
+       JZ              G27 [TRUE] ce68
+       JZ              G90 [FALSE] ce68
+       PRINT            " You can hear a loud roaring sound, like that of rushing water, from below."
+       JUMP            #25
+
+Routine R0407, 4 locals (0000, 0000, 0000, 0000)
+
+       JZ              G3e [FALSE] L0001
+       JE              G00,#be [TRUE] RFALSE
+L0001: JZ              G1f [FALSE] d20e
+       JZ              G3e [FALSE] cf87
+       JZ              L00 [FALSE] cf87
+       RANDOM          #64 -> -(SP)
+       JG              #1e,(SP)+ [FALSE] cf87
+       JIN             #71,#72 [FALSE] cf29
+       CLEAR_ATTR      #72,#07
+       PRINT            "Someone carrying a large bag is casually leaning against one of the walls here. He does not speak, but it is clear from his aspect that the bag will be taken only over his dead body."
+       NEW_LINE        
+       STORE           G1f,#01
+       RTRUE           
+
+Routine R0408, 1 local (0000)
+
+       STORE           L00,G42
+       CALL            R0117 (G00) -> G42
+       JZ              G42 [FALSE] RTRUE
+       JZ              L00 [TRUE] RTRUE
+       PRINT_RET        "The thief seems to have left you in the dark."
+
+Routine R0409, 1 local (0000)
+
+       CALL            R0526 -> -(SP)
+       SET_ATTR        #72,#07
+       GET_CHILD       #be -> L00 [TRUE] L0001
+L0001: JZ              L00 [TRUE] RTRUE
+       CLEAR_ATTR      L00,#07
+       GET_SIBLING     L00 -> L00 [TRUE] L0002
+L0002: JUMP            #fff5
+
+Routine R0410, 4 locals (0000, 0000, 0000, 0000)
+
+       GET_CHILD       #72 -> L01 [TRUE] L0001
+L0001: JZ              L01 [FALSE] d300
+       RET             L03
+
+Routine R0411, 3 locals (0000, 0000, 0000)
+
+       GET_CHILD       L00 -> L01 [TRUE] L0001
+L0001: JZ              L01 [TRUE] RFALSE
+       GET_SIBLING     L01 -> L02 [TRUE] L0002
+L0002: TEST_ATTR       L01,#11 [FALSE] d3a1
+       TEST_ATTR       L01,#07 [TRUE] d3a1
+       RANDOM          #64 -> -(SP)
+       JG              #28,(SP)+ [FALSE] d3a1
+       PRINT            "You hear, off in the distance, someone saying "My, I wonder what this fine "
+       PRINT_OBJ       L01
+       PRINT            " is doing here.""
+       NEW_LINE        
+       CALL            R0002 (#3c) -> -(SP)
+       JZ              (SP)+ [TRUE] RTRUE
+       INSERT_OBJ      L01,#72
+       SET_ATTR        L01,#03
+       SET_ATTR        L01,#07
+       RTRUE           
+
+Routine R0412, 15 locals (0e45, 5364, 197a, aa96, 45bb, 0d7c, 00ab, 7ca0, 0102, ea41, 8842, 0050, 1172, 0b00, 6100)
+
+       CLEAR_ATTR      #00,G37
+       PRINT_RET        "The thief, being temporarily incapacitated, is unable to acknowledge your greeting with his usual graciousness."
+
+Routine R0413, 0 locals ()
+
+       INC_CHK         #b2,#96 [FALSE] d49e
+       NEW_LINE        
+       SET_ATTR        #72,#07
+       RTRUE           
+
+Routine R0414, 0 locals ()
+
+       CALL            R0023 (#80f0) -> -(SP)
+       STOREW          (SP)+,#00,#01
+       CALL            R0526 -> -(SP)
+       PUT_PROP        #72,#0b,G1d
+       PRINT            "Your proposed victim suddenly recovers consciousness."
+       NEW_LINE        
+       INSERT_OBJ      G76,#72
+       GET_PROP        G76,#0c -> -(SP)
+       JG              (SP)+,#00 [FALSE] d5b4
+       STORE           G1e,#01
+       PRINT            "The thief is taken aback by your unexpected generosity, but accepts the "
+       PRINT_OBJ       G76
+       PRINT_RET        " and stops to admire its beauty."
+
+Routine R0415, 1 local (35ae)
+
+       OR              Gb1 -> G87
+       CALL_1S         #3938 -> -(SP)
+       RET             #b3
+
+Routine R0416, 15 locals (067b, 004e, 9935, d330, 231b, 0004, e140, 571d, 4a4c, 0b52, f21a, 3178, 0e4f, 3751, 3a21)
+
+       AND             G86,#45 -> G31
+       JE              #01,#00 [FALSE] d6cd
+       JIN             #71,#72 [TRUE] RFALSE
+       GET_PARENT      #72 -> -(SP)
+       JIN             #71,(SP)+ [FALSE] RFALSE
+       INSERT_OBJ      #71,#72
+       SET_ATTR        #71,#0e
+       JIN             #72,G00 [FALSE] RTRUE
+       PRINT            "The robber, somewhat surprised at this turn of events, nimbly retrieves his stiletto."
+       NEW_LINE        
+       RTRUE           
+
+Routine R0417, 1 local (0200)
+
+       NEW_LINE        
+       INSERT_OBJ      #71,G00
+       CLEAR_ATTR      #71,#0e
+       CALL            R0410 (G00) -> L02
+       JE              G00,#be [FALSE] d7ab
+       GET_CHILD       G00 -> L02 [TRUE] L0001
+L0001: JZ              L02 [FALSE] d743
+       PRINT            "The chalice is now safe to take."
+       NEW_LINE        
+       JUMP            #7d
+
+Routine R0418, 1 local (0558)
+
+       JZ              G1f [TRUE] RFALSE
+       TEST_ATTR       #72,#07 [TRUE] RFALSE
+       RANDOM          #64 -> -(SP)
+       JG              #14,(SP)+ [FALSE] RFALSE
+       SET_ATTR        #72,#02
+       STORE           G6c,#00
+       RTRUE           
+
+Routine R0419, 1 local (035d)
+
+       CALL            R0023 (#80f0) -> -(SP)
+       STOREW          (SP)+,#00,#00
+       CLEAR_ATTR      #72,#02
+       INSERT_OBJ      #71,G00
+       CLEAR_ATTR      #71,#0e
+       PUT_PROP        #72,#0b,G1c
+       RTRUE           
+
+Routine R0420, 4 locals (4093, 7200, 6100, 1000)
+
+       GET_NEXT_PROP   L10,#72 -> L01
+       PRINT            "The robber revives, briefly feigning continued unconsciousness, and, when he sees his moment, scrambles away from you."
+       NEW_LINE        
+       CALL            R0023 (#80f0) -> -(SP)
+       STOREW          (SP)+,#00,#01
+       PUT_PROP        #72,#0b,G1d
+       CALL            R0526 -> -(SP)
+       RET_POPPED      
+
+Routine R0421, 0 locals ()
+
+       JE              G78,#5d [FALSE] d8d4
+       GET_PROP        #72,#0b -> -(SP)
+       JE              (SP)+,G1c [FALSE] d8bb
+       PRINT_RET        "Sadly for you, the robber collapsed on top of the bag. Trying to take it would wake him."
+
+Routine R0422, 4 locals (0000, 0000, 0000, 0000)
+
+       GET_CHILD       L00 -> L02 [FALSE] RFALSE
+       JZ              L02 [TRUE] RTRUE
+       GET_SIBLING     L02 -> L03 [TRUE] L0001
+L0001: CLEAR_ATTR      L02,#07
+       INSERT_OBJ      L02,L01
+       STORE           L02,L03
+       JUMP            #ffef
+
+Routine R0423, 0 locals ()
+
+       JE              G78,#5d [FALSE] d99c
+       JIN             G76,#be [FALSE] RFALSE
+       JIN             #72,#be [FALSE] RFALSE
+       TEST_ATTR       #72,#02 [FALSE] RFALSE
+       TEST_ATTR       #72,#07 [TRUE] RFALSE
+       GET_PROP        #72,#0b -> -(SP)
+       JE              (SP)+,G1c [TRUE] RFALSE
+       PRINT_RET        "You'd be stabbed in the back first."
+
+Routine R0424, 3 locals (0000, 0000, 0000)
+
+       JE              L00,#02 [FALSE] RFALSE
+       CALL            R0023 (#80f0) -> -(SP)
+       LOADW           (SP)+,#00 -> -(SP)
+       JE              (SP)+,#01 [FALSE] RFALSE
+       JZ              G3e [FALSE] RFALSE
+       JIN             #72,G00 [TRUE] d9ef
+       PUSH            #01
+       JUMP            #05
+
+Routine R0425, 2 locals (0000, 0000)
+
+       GET_CHILD       G00 -> L00 [TRUE] L0001
+L0001: JZ              L00 [TRUE] L0003
+       GET_SIBLING     L00 -> -(SP) [FALSE] L0003
+       PRINT            "The thief gestures mysteriously, and the treasures in the room suddenly vanish."
+       NEW_LINE        
+       NEW_LINE        
+L0003: JZ              L00 [TRUE] RTRUE
+       JE              L00,#bf [TRUE] L0005
+       JE              L00,#72 [TRUE] L0005
+       SET_ATTR        L00,#07
+L0005: GET_SIBLING     L00 -> L00 [TRUE] L0006
+L0006: JUMP            #ffed
+
+Routine R0426, 0 locals ()
+
+       JE              G78,#2b [FALSE] dac0
+       PRINT_RET        "The door cannot be opened."
+
+Routine R0427, 0 locals ()
+
+       JE              G78,#5d [FALSE] db14
+       PRINT_RET        "A force keeps you from taking the bodies."
+
+Routine R0428, 0 locals ()
+
+       JE              G78,#2b [FALSE] db3e
+       PRINT_RET        "The book is already open to page 569."
+
+Routine R0429, 0 locals ()
+
+       JE              G78,#2a [FALSE] RFALSE
+       PUT_PROP        G76,#0c,#00
+       PUT_PROP        G76,#0b,#9e7a
+       PRINT_RET        "Congratulations! Unlike the other vandals, who merely stole the artist's masterpieces, you have destroyed one."
+
+Routine R0430, 0 locals ()
+
+       JE              G78,#7f [FALSE] dca3
+       PRINT            "The lamp has smashed into the floor, and the light has gone out."
+       NEW_LINE        
+       CALL            R0023 (#6f55) -> -(SP)
+       STOREW          (SP)+,#00,#00
+       CALL            R0172 (#a4) -> -(SP)
+       INSERT_OBJ      #d2,G00
+       RTRUE           
+
+Routine R0431, 0 locals ()
+
+       JE              G78,#5d [FALSE] RFALSE
+       JE              G76,#a0 [FALSE] RFALSE
+       PRINT_RET        "It is securely anchored."
+
+Routine R0432, 0 locals ()
+
+       STOREW          (SP)+,#00,#01
+       PRINT            "One of the matches starts to burn."
+       NEW_LINE        
+       JZ              G42 [FALSE] RTRUE
+       STORE           G42,#01
+       CALL            R0200 -> -(SP)
+       RTRUE           
+
+Routine R0433, 1 local (169a)
+
+       SREAD           Gab
+       CLEAR_ATTR      #9b,#19
+       CLEAR_ATTR      #9b,#14
+       CALL            R0117 (G00) -> G42
+       JZ              G42 [FALSE] L0001
+       PRINT            "It's pitch black in here!"
+       NEW_LINE        
+L0001: CALL            R0022 (#6f46,#00) -> -(SP)
+       RTRUE           
+
+Routine R0434, 1 local (00c8)
+
+       PRINT            "no"
+       JUMP            #05
+
+Routine R0435, 1 local (01ca)
+
+       PRINT            "es."
+       JUMP            #05
+
+Routine R0436, 0 locals ()
+
+       GET_PROP_ADDR   Gde,G57 -> G1a
+       CLEAR_ATTR      L01,#49
+       CALL_2S         #0045 (#bb,#b0,(SP)+) -> -(SP)
+       PRINT            "The match has gone out."
+       NEW_LINE        
+       CLEAR_ATTR      #9b,#19
+       CLEAR_ATTR      #9b,#14
+       CALL            R0117 (G00) -> G42
+       RTRUE           
+
+Routine R0437, 2 locals (0000, 0000)
+
+       LOAD            G1b -> L01
+       LOADW           L01,#00 -> L00
+       CALL            R0022 (#6f55,L00) -> -(SP)
+       STOREW          (SP)+,#00,#01
+       CALL            R0439 (#a4,L01,L00) -> -(SP)
+       JZ              L00 [TRUE] RFALSE
+       ADD             L01,#04 -> G1b
+       RET             G1b
+
+Routine R0438, 2 locals (0000, 0000)
+
+       LOAD            G19 -> L01
+       SET_ATTR        #93,#03
+       LOADW           L01,#00 -> L00
+       CALL            R0022 (#6f6a,L00) -> -(SP)
+       STOREW          (SP)+,#00,#01
+       CALL            R0439 (#93,L01,L00) -> -(SP)
+       JZ              L00 [TRUE] RFALSE
+       ADD             L01,#04 -> G19
+       RET             G19
+
+Routine R0439, 3 locals (0000, 0000, 0000)
+
+       JZ              L02 [FALSE] L0001
+       CLEAR_ATTR      L00,#14
+       SET_ATTR        L00,#12
+L0001: CALL            R0318 (L00) -> -(SP)
+       JZ              (SP)+ [FALSE] L0002
+       JIN             L00,G00 [FALSE] RFALSE
+L0002: JZ              L02 [FALSE] df40
+       PRINT            "You'd better have more light than from the "
+       PRINT_OBJ       L00
+       PRINT_RET        "."
+
+Routine R0440, 2 locals (0000, 0000)
+
+       JL              L00,L01 [FALSE] df53
+       RET             L00
+
+Routine R0441, 0 locals ()
+
+       TEST_ATTR       #93,#03 [TRUE] L0001
+       CALL            R0023 (#6f6a) -> -(SP)
+       STOREW          (SP)+,#00,#01
+L0001: JE              #93,G77 [TRUE] RFALSE
+       JE              G78,#1c,#0e [FALSE] e085
+       TEST_ATTR       #93,#12 [FALSE] dfa5
+       PRINT_RET        "Alas, there's not much left of the candles. Certainly not enough to burn."
+
+Routine R0442, 1 local (0000)
+
+       JE              L00,#06 [FALSE] RFALSE
+       JIN             #93,G6f [FALSE] RFALSE
+       CALL            R0002 (#32) -> -(SP)
+       JZ              (SP)+ [TRUE] RFALSE
+       TEST_ATTR       #93,#14 [FALSE] RFALSE
+       CALL            R0023 (#6f6a) -> -(SP)
+       STOREW          (SP)+,#00,#00
+       CLEAR_ATTR      #93,#14
+       PRINT            "A gust of wind blows out your candles!"
+       NEW_LINE        
+       CALL            R0117 (G00) -> G42
+       JZ              G42 [FALSE] RFALSE
+       PRINT_RET        "It is now completely dark."
+
+Routine R0443, 1 local (0000)
+
+       JE              G78,#5d [FALSE] e1c0
+       JE              G6f,#04 [FALSE] e1c0
+       CALL            R0022 (#807c,#ffff) -> -(SP)
+       STOREW          (SP)+,#00,#01
+       RFALSE          
+
+Routine R0444, 3 locals (0000, 0000, 0000)
+
+       JE              L00,#06 [FALSE] RFALSE
+       JE              L00,#06 [FALSE] L0003
+       JE              G78,#1c,#0e [FALSE] L0003
+       JE              G76,#93,#68,#9b [FALSE] L0003
+       STORE           L01,#01
+L0003: CALL            R0318 (#93) -> -(SP)
+       JZ              (SP)+ [TRUE] L0004
+       TEST_ATTR       #93,#14 [TRUE] L0007
+L0004: CALL            R0318 (#68) -> -(SP)
+       JZ              (SP)+ [TRUE] L0006
+       TEST_ATTR       #68,#14 [TRUE] L0007
+L0006: CALL            R0318 (#9b) -> -(SP)
+       JZ              (SP)+ [TRUE] RFALSE
+       TEST_ATTR       #9b,#14 [FALSE] RFALSE
+L0007: JZ              L01 [TRUE] e294
+       PRINT            "How sad for an aspiring adventurer to light a "
+       PRINT_OBJ       G76
+       PRINT            " in a room which reeks of gas. Fortunately, there is justice in the world."
+       NEW_LINE        
+       JUMP            #4c
+
+Routine R0445, 1 local (0000)
+
+       GET_PARENT      #bd -> -(SP)
+       JE              (SP)+,G6f,G00 [FALSE] e332
+       PRINT_RET        "In the corner of the room on the ceiling is a large vampire bat who is obviously deranged and holding his nose."
+
+Routine R0446, 1 local (0000)
+
+       JE              L00,#03 [FALSE] e382
+       PRINT_RET        "You are in a small room which has doors only to the east and south."
+
+Routine R0447, 1 local (0000)
+
+       JE              L00,#03 [FALSE] RFALSE
+       PRINT            "This is a large, cold room whose sole exit is to the north. In one corner there is a machine which is reminiscent of a clothes dryer. On its face is a switch which is labelled "START". The switch does not appear to be manipulable by any human hand (unless the fingers are about 1/16 by 1/4 inch). On the front of the machine is a large lid, which is "
+       TEST_ATTR       #9e,#0b [FALSE] e480
+       PRINT            "open."
+       JUMP            #07
+
+Routine R0448, 0 locals ()
+
+       JE              G78,#5d [FALSE] e49c
+       PRINT_RET        "It is far too large to carry."
+
+Routine R0449, 1 local (0000)
+
+       JE              G78,#59 [FALSE] RFALSE
+       JE              G77,#7b [FALSE] e5da
+       TEST_ATTR       #9e,#0b [FALSE] e55b
+       PRINT_RET        "The machine doesn't seem to want to do anything."
+
+Routine R0450, 0 locals ()
+
+       CALL            R0172 (#92) -> -(SP)
+       PRINT_RET        "The slag was rather insubstantial, and crumbles into dust at your touch."
+
+Routine R0451, 2 locals (0000, 0000)
+
+       JE              L00,#01 [FALSE] RFALSE
+       GET_CHILD       G6f -> L01 [TRUE] L0001
+L0001: STORE           G92,#01
+       JZ              L01 [FALSE] e648
+       JUMP            #19
+
+Routine R0452, 13 locals (2800, b101, 0000, 4101, 0140, 26d0, 7fc8, e87f, 018c, 0005, e87f, 002d, 9b00)
+
+       RFALSE          
+
+Routine R0453, 1 local (0000)
+
+       JE              L00,#06 [FALSE] RFALSE
+       JIN             #9c,G6f [FALSE] e698
+       STORE           G94,#00
+       RET             G94
+
+Routine R0454, 0 locals ()
+
+       JE              G78,#69,#8c [FALSE] RFALSE
+       JE              G00,#1d [TRUE] L0001
+       JE              G00,#88 [FALSE] e760
+L0001: JZ              G8e [FALSE] e72e
+       CLEAR_ATTR      #89,#07
+       PRINT            "Suddenly, the rainbow appears to become solid and, I venture, walkable (I think the giveaway was the stairs and bannister)."
+       NEW_LINE        
+       JE              G00,#88 [FALSE] L0003
+       JIN             #89,#88 [FALSE] L0003
+       PRINT            "A shimmering pot of gold appears at the end of the rainbow."
+       NEW_LINE        
+L0003: STORE           G8e,#01
+       RET             G8e
+
+Routine R0455, 1 local (0000)
+
+       JE              L00,#03 [FALSE] RFALSE
+       PRINT            "You are at the top of Aragain Falls, an enormous waterfall with a drop of about 450 feet. The only path here is on the north end."
+       NEW_LINE        
+       JZ              G8e [TRUE] e802
+       PRINT            "A solid rainbow spans the falls."
+       JUMP            #25
+
+Routine R0456, 0 locals ()
+
+       JE              G78,#22,#26 [FALSE] e87e
+       JE              G00,#19 [FALSE] e83f
+       PRINT_RET        "From here?!?"
+
+Routine R0457, 0 locals ()
+
+       JE              G78,#32,#12 [FALSE] e8ad
+       JE              G76,#62 [FALSE] e8ad
+       CALL            R0458 -> -(SP)
+       RET_POPPED      
+
+Routine R0458, 0 locals ()
+
+       PRINT            "Well done. The boat is repaired."
+       NEW_LINE        
+       GET_PARENT      #8e -> -(SP)
+       INSERT_OBJ      #8d,(SP)+
+       CALL            R0172 (#8e) -> -(SP)
+       RET_POPPED      
+
+Routine R0459, 0 locals ()
+
+       JE              G78,#12 [FALSE] e989
+       JE              G77,#83 [FALSE] RFALSE
+       JE              G76,#05 [FALSE] e920
+       CALL            R0532 (#9ef2) -> -(SP)
+       RET_POPPED      
+
+Routine R0460, 1 local (0000)
+
+       JE              G00,#24,#23,#22 [TRUE] e9ff
+       JE              G00,#82,#1f [TRUE] e9ff
+       CALL            R0023 (#74f1) -> -(SP)
+       STOREW          (SP)+,#00,#00
+       RTRUE           
+
+Routine R0461, 2 locals (0000, 0000)
+
+       JE              L00,#02,#06,#03 [TRUE] RFALSE
+       JE              L00,#01 [FALSE] ebdc
+       JE              G78,#89 [FALSE] ea93
+       JE              G76,#13,#1e,#1d [TRUE] RFALSE
+       JE              G00,#64 [FALSE] L0001
+       JE              G76,#1f,#1c [TRUE] RFALSE
+L0001: JE              G00,#30 [FALSE] L0002
+       JE              G76,#1c [TRUE] RFALSE
+L0002: PRINT_RET        "Read the label for the boat's instructions."
+
+Routine R0462, 0 locals ()
+
+       CALL            R0030 (#17,G76,#06) -> -(SP)
+       RET_POPPED      
+
+Routine R0463, 0 locals ()
+
+       JE              G78,#3b,#17 [FALSE] RFALSE
+       JIN             #8d,G00 [TRUE] ed0c
+       PRINT_RET        "The boat must be on the ground to be inflated."
+
+Routine R0464, 1 local (0000)
+
+       JE              L00,#06 [FALSE] RFALSE
+       JIN             #a2,G6f [FALSE] RFALSE
+       JZ              G14 [TRUE] RFALSE
+       PRINT            "You notice something funny about the feel of the buoy."
+       NEW_LINE        
+       STORE           G14,#00
+       RET             G14
+
+Routine R0465, 0 locals ()
+
+       JE              G78,#2c [FALSE] RFALSE
+       JE              G77,#79 [FALSE] RFALSE
+       INC             G13
+       JG              G13,#03 [FALSE] ede9
+       STORE           G13,#ffff
+       JIN             #74,G00 [FALSE] L0001
+       SET_ATTR        #74,#07
+L0001: CALL            R0532 (#9f71) -> -(SP)
+       RET_POPPED      
+
+Routine R0466, 2 locals (0000, 0000)
+
+       JE              L00,#03 [FALSE] ee8c
+       PRINT            "You are about 10 feet above the ground nestled among some large branches. The nearest branch above you is above your reach."
+       NEW_LINE        
+       GET_CHILD       #4b -> L01 [FALSE] RFALSE
+       GET_SIBLING     L01 -> -(SP) [FALSE] RFALSE
+       PRINT            "On the ground below you can see:  "
+       CALL            R0290 (#4b) -> -(SP)
+       PRINT_RET        "."
+
+Routine R0467, 0 locals ()
+
+       JE              G78,#2a,#2b [FALSE] f06f
+       JE              G76,#57 [FALSE] f06f
+       TEST_ATTR       G76,#0b [FALSE] ef8e
+       PRINT_RET        "The egg is already open."
+
+Routine R0468, 1 local (0000)
+
+       JIN             #54,#57 [FALSE] f12b
+       PRINT            " "
+       GET_PROP        #53,#0e -> -(SP)
+       PRINT_PADDR     (SP)+
+       JUMP            #08
+
+Routine R0469, 0 locals ()
+
+       JE              G78,#8e [FALSE] RFALSE
+       JE              G76,#54 [FALSE] f274
+       JZ              G11 [FALSE] f249
+       CALL            R0470 -> -(SP)
+       JZ              (SP)+ [TRUE] f249
+       PRINT            "The canary chirps, slightly off-key, an aria from a forgotten opera. From out of the greenery flies a lovely songbird. It perches on a limb just over your head and opens its beak to sing. As it does so a beautiful brass bauble drops from its mouth, bounces off the top of your head, and lands glimmering in the grass. As the canary winds down, the songbird flies away."
+       NEW_LINE        
+       STORE           G11,#01
+       JE              G00,#58 [FALSE] f242
+       PUSH            #4b
+       JUMP            #05
+
+Routine R0470, 0 locals ()
+
+       JE              G00,#4e,#4d,#4c [TRUE] RTRUE
+       JE              G00,#4b,#58 [TRUE] RTRUE
+       RFALSE          
+
+Routine R0471, 0 locals ()
+
+       CALL            R0470 -> -(SP)
+       JZ              (SP)+ [FALSE] f2be
+       CALL            R0023 (#7954) -> -(SP)
+       STOREW          (SP)+,#00,#00
+       RFALSE          
+
+Routine R0472, 1 local (0000)
+
+       JE              L00,#02 [FALSE] f2fe
+       CALL            R0022 (#7954,#ffff) -> -(SP)
+       STOREW          (SP)+,#00,#01
+       RTRUE           
+
+Routine R0473, 0 locals ()
+
+       JE              G78,#20,#1f,#1e [FALSE] RFALSE
+       PRINT_RET        "The cliff is too steep for climbing."
+
+Routine R0474, 0 locals ()
+
+       JE              G78,#45 [TRUE] L0001
+       JE              G78,#12 [FALSE] f35e
+       JE              G76,#05 [FALSE] f35e
+L0001: PRINT_RET        "That would be very unwise. Perhaps even fatal."
+
+Routine R0475, 1 local (0000)
+
+       JE              G00,#85 [TRUE] f3a9
+       STORE           G93,#00
+       JE              G78,#82 [FALSE] RFALSE
+       PRINT_RET        "You can't tie the rope to that."
+
+Routine R0476, 0 locals ()
+
+       JE              G76,#81 [FALSE] f4fe
+       JZ              G93 [TRUE] f4fe
+       JE              G77,#86 [FALSE] f4fe
+       CALL            R0030 (#86,G76) -> -(SP)
+       RET_POPPED      
+
+Routine R0477, 0 locals ()
+
+       JE              G78,#1f,#1e,#22 [TRUE] L0001
+       JE              G78,#20 [TRUE] L0002
+L0001: JE              G78,#12 [FALSE] f54a
+       JE              G76,#05 [FALSE] f54a
+L0002: JE              G00,#48 [FALSE] f52d
+       CALL            R0313 (#1d) -> -(SP)
+       RTRUE           
+
+Routine R0478, 1 local (0000)
+
+       TEST_ATTR       L00,#11 [FALSE] f585
+       PRINT            "The "
+       PRINT_OBJ       L00
+       PRINT            " falls into the slide and is gone."
+       NEW_LINE        
+       JE              L00,#ed [FALSE] f581
+       CALL            R0172 (L00) -> -(SP)
+       RET_POPPED      
+
+Routine R0479, 0 locals ()
+
+       JE              G78,#75 [FALSE] RFALSE
+       JIN             #e1,G76 [FALSE] RFALSE
+       PRINT_RET        "It smells of hot peppers."
+
+Routine R0480, 2 locals (0000, 0000)
+
+       JE              G78,#89 [FALSE] f5ce
+       JE              G00,#ce [FALSE] RFALSE
+       JE              G76,#1d [FALSE] RFALSE
+       PRINT_RET        "You cannot enter in your condition."
+
+Routine R0481, 0 locals ()
+
+       JZ              G90 [TRUE] f84d
+       PRINT_RET        "There's not much lake left...."
+
+Routine R0482, 0 locals ()
+
+       JE              G78,#22,#7d [FALSE] f888
+       PRINT_RET        "You can't swim in the stream."
+
+Routine R0483, 0 locals ()
+
+       JE              G78,#45 [TRUE] L0001
+       JE              G78,#12 [FALSE] f8d4
+       JE              G76,#05 [FALSE] f8d4
+L0001: PRINT_RET        "You look before leaping, and realize that you would never survive."
+
+Routine R0484, 0 locals ()
+
+       JE              G78,#48 [FALSE] RFALSE
+       PRINT_RET        "No."
+
+Routine R0485, 0 locals ()
+
+       JE              G78,#22 [FALSE] f934
+       CALL            R0313 (#15) -> -(SP)
+       RTRUE           
+
+Routine R0486, 0 locals ()
+
+       JE              G78,#23,#2b [FALSE] f97a
+       PRINT_RET        "The door won't budge."
+
+Routine R0487, 0 locals ()
+
+       JE              G78,#2a [FALSE] RFALSE
+       PRINT_RET        "Some paint chips away, revealing more paint."
+
+Routine R0488, 0 locals ()
+
+       JE              G78,#18 [FALSE] f9c6
+       PRINT_RET        "There is too much gas to blow away."
+
+Routine R0489, 6 locals (0000, 0000, 0000, 0000, 0000, 0000)
+
+       STORE           L01,#00
+       INC             L01
+       JE              L01,L00 [FALSE] f9fc
+       STORE           L02,#01
+       JUMP            #40
+
+Routine R0490, 6 locals (0000, 0000, 0000, 0000, 0000, 0000)
+
+       LOADW           L00,#00 -> L03
+       INC_CHK         #05,L03 [FALSE] fa60
+       JUMP            #1d
+
+Routine R0491, 2 locals (0001, 0000)
+
+       ; No instructions decoded
+
+Routine R0492, 7 locals (0200, 77a7, 0000, 7711, 0000, 3402, 0002)
+
+       JZ              L00 [TRUE] fa9f
+       GET_PROP        G6f,#07 -> -(SP)
+       ADD             L01,(SP)+ -> -(SP)
+       RET_POPPED      
+
+Routine R0493, 4 locals (0000, 0000, 0000, 0000)
+
+       LOADW           L00,#00 -> L01
+       GET_PROP        L01,#07 -> L02
+       JL              L02,#00 [TRUE] fae9
+       JE              L01,#72 [FALSE] L0002
+       JZ              G1e [TRUE] L0002
+       JG              L02,#02 [FALSE] L0003
+       STORE           L02,#02
+L0003: STORE           G1e,#00
+L0002: JZ              G77 [TRUE] fae9
+       TEST_ATTR       G77,#1d [FALSE] fae9
+       LOADW           L00,#01 -> -(SP)
+       JE              (SP)+,G77 [FALSE] fae9
+       LOADW           L00,#02 -> -(SP)
+
+Routine R0494, 3 locals (0004, 4204, 0145)
+
+       STORE           L03,#01
+       STORE           L02,L03
+       RET             L02
+
+Routine R0495, 2 locals (0000, 0000)
+
+       GET_CHILD       L00 -> L01 [TRUE] L0001
+L0001: JZ              L01 [TRUE] RFALSE
+       JE              L01,#71,#da,#6e [TRUE] L0002
+       JE              L01,#a9,#80 [FALSE] fb07
+L0002: RET             L01
+
+Routine R0496, 12 locals (0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000)
+
+       LOADW           L00,#00 -> L02
+       LOADW           L00,#04 -> L03
+       CLEAR_ATTR      G6f,#01
+       TEST_ATTR       L02,#01 [FALSE] fb51
+       PRINT            "The "
+       PRINT_OBJ       L02
+       PRINT            " slowly regains his feet."
+       NEW_LINE        
+       CLEAR_ATTR      L02,#01
+       RTRUE           
+
+Routine R0497, 4 locals (4c7f, 014a, 0301, 5db2)
+
+       GET_PROP_LEN    #25aa -> L02
+       PRINT            " slowly regains his feet."
+       NEW_LINE        
+       CLEAR_ATTR      L02,#01
+       RTRUE           
+
+Routine R0498, 13 locals (0801, e03f, 7d3f, 0743, 0700, 41e0, 1f7d, 3f00, 09e0, 2f7d, 767f, 0542, 0700)
+
+       OR              L12,#0b -> L02
+       JUMP            #98
+
+Routine R0499, 0 locals ()
+
+       LOADW           G0a,(SP)+ -> L09
+       JUMP            #3d
+
+Routine R0500, 4 locals (5506, 0100, 6f19, 000a)
+
+       JUMP            #27
+
+Routine R0501, 13 locals (0602, 5406, 0200, 6f18, 000a, e77f, 0900, 5500, 0100, 6f0a, 000b, a002, cf41)
+
+       SET_ATTR        #06,#48
+       STORE           L10,#08
+       JUMP            #05
+
+Routine R0502, 5 locals (0041, 0b01, 807e, 410b, 0845)
+
+       JUMP            #77
+
+Routine R0503, 7 locals (0045, 0d07, 0043, 9532, 0050, 5595, 0a95)
+
+       JUMP            #49
+
+Routine R0504, 0 locals ()
+
+       LOADW           #41,L10 -> L05
+       OR              G3b,#7f -> L00
+       JUMP            #25
+
+Routine R0505, 0 locals ()
+
+       RET_POPPED      
+
+Routine R0506, 13 locals (0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000)
+
+       LOADW           G03,#00 -> L12
+       INC             L06
+       JE              L06,L12 [FALSE] fcc4
+       JUMP            #0f
+
+Routine R0507, 6 locals (000d, 0901, a009, 6661, 867f, 4ae0)
+
+       LOADW           #83,#33 -> G8f
+       PRINT_PADDR     (SP)+
+       RET_POPPED      
+
+Routine R0508, 1 local (80a5)
+
+       PRINT_OBJ       L01
+       PRINT_RET        " is pointless."
+
+Routine R0509, 6 locals (0263, 7505, 0605, c28f, 05ff, ff4a)
+
+       STORE           L04,#fffe
+       JUMP            #09
+
+Routine R0510, 6 locals (068c, 004f, 410b, 03c6, 410b, 0948)
+
+       STORE           L05,#00
+       JUMP            #41
+
+Routine R0511, 11 locals (044e, 9606, 4206, 0077, 0d06, 008c, 0031, 410b, 0550, 5506, 0206)
+
+       JL              L05,#00 [FALSE] fe90
+       STORE           L05,#00
+       JUMP            #1f
+
+Routine R0512, 0 locals ()
+
+       CALL            R0532 (#9fbf) -> -(SP)
+       RFALSE          
+
+Routine R0513, 3 locals (0000, 0000, 0000)
+
+       PUT_PROP        L00,#07,L01
+       JZ              L01 [FALSE] ff73
+       CLEAR_ATTR      L00,#02
+       PRINT            "Almost as soon as the "
+       PRINT_OBJ       L00
+       PRINT            " breathes his last breath, a cloud of sinister black fog envelops him, and when the fog lifts, the carcass has disappeared."
+       NEW_LINE        
+       CALL            R0172 (L00) -> -(SP)
+       GET_PROP        L00,#11 -> -(SP)
+       CALL            #0000 (#02) -> -(SP)
+       RET             L02
+
+Routine R0514, 3 locals (0000, 0000, 0000)
+
+       GET_PROP        L00,#07 -> L01
+       CALL            R0491 -> -(SP)
+
+Routine R0515, 3 locals (004b, e77f, 6400)
+
+       JG              #4b,(SP)+ [TRUE] RTRUE
+       RFALSE          
+
+Routine R0516, 0 locals ()
+
+       JG              #32,(SP)+ [TRUE] RTRUE
+       RFALSE          
+
+Routine R0517, 0 locals ()
+
+       JG              #0a,(SP)+ [TRUE] RTRUE
+       RFALSE          
+
+Routine R0518, 1 local (0000)
+
+       GET_PROP        G6f,#07 -> L00
+       JG              L00,#00 [FALSE] ffea
+       STORE           L00,#00
+       PUT_PROP        G6f,#07,L00
+       JUMP            #0d
+
+Routine R0519, 6 locals (0000, 0000, 0000, 0000, 0000, 0000)
+
+       LOADW           G03,#00 -> L01
+       JZ              G3e [FALSE] RFALSE
+       STORE           L02,#00
+       INC             L02
+       JE              L02,L01 [FALSE] 10040
+       JUMP            #8f
+
+Routine R0520, 2 locals (0000, 0000)
+
+       GET_PROP        L00,#07 -> L01
+       JL              L01,#00 [FALSE] RTRUE
+
+Routine R0521, 0 locals ()
+
+       PUT_PROP        L00,#07,(SP)+
+       GET_PROP        L00,#11 -> -(SP)
+       CALL            #0000 (#04) -> -(SP)
+       RTRUE           
+
+Routine R0522, 6 locals (0000, 0000, 0000, 0000, 0000, 0000)
+
+       CALL            R0023 (#807c) -> L00
+       GET_PROP        #6e,#0c -> L01
+       JIN             #6e,#04 [FALSE] 101bf
+       CALL            R0523 (G00) -> -(SP)
+       JZ              (SP)+ [TRUE] 10124
+       STORE           L02,#02
+       JUMP            #34
+
+Routine R0523, 2 locals (0000, 0000)
+
+       GET_CHILD       L00 -> L01 [TRUE] L0001
+L0001: JZ              L01 [TRUE] RFALSE
+       TEST_ATTR       L01,#1e [FALSE] L0002
+       TEST_ATTR       L01,#07 [FALSE] RTRUE
+L0002: GET_SIBLING     L01 -> L01 [TRUE] L0001
+       RFALSE          
+
+Routine R0524, 5 locals (0000, 0000, 0000, 0000, 0000)
+
+       GET_PARENT      #72 -> L00
+       TEST_ATTR       #72,#07 [TRUE] 101f8
+       PUSH            #01
+       JUMP            #05
+
+Routine R0525, 4 locals (0000, 0000, 0000, 0000)
+
+       GET_CHILD       #72 -> L01 [TRUE] L0001
+L0001: JZ              L01 [FALSE] 102d6
+       RET             L03
+
+Routine R0526, 0 locals ()
+
+       GET_PARENT      #72 -> -(SP)
+       JIN             #71,(SP)+ [FALSE] RFALSE
+       SET_ATTR        #71,#0e
+       INSERT_OBJ      #71,#72
+       RTRUE           
+
+Routine R0527, 3 locals (0000, 0000, 0000)
+
+       GET_CHILD       L00 -> L01 [TRUE] L0001
+L0001: JZ              L01 [TRUE] RFALSE
+       GET_SIBLING     L01 -> L02 [TRUE] L0002
+L0002: GET_PROP        L01,#0c -> -(SP)
+       JZ              (SP)+ [FALSE] 103b2
+       TEST_ATTR       L01,#11 [FALSE] 103b2
+       TEST_ATTR       L01,#09 [TRUE] 103b2
+       TEST_ATTR       L01,#07 [TRUE] 103b2
+       JE              L01,#71 [TRUE] L0003
+       CALL            R0002 (#0a) -> -(SP)
+       JZ              (SP)+ [TRUE] 103b2
+L0003: INSERT_OBJ      L01,#72
+       SET_ATTR        L01,#03
+       SET_ATTR        L01,#07
+       JE              L01,#81 [FALSE] L0004
+       STORE           G93,#00
+L0004: JE              L00,G00 [FALSE] RFALSE
+       PRINT            "You suddenly notice that the "
+       PRINT_OBJ       L01
+       PRINT_RET        " vanished."
+
+Routine R0528, 6 locals (0000, 0000, 0000, 0000, 0000, 0000)
+
+       GET_CHILD       L00 -> L04 [TRUE] L0001
+L0001: JZ              L04 [FALSE] 103ce
+       RET             L05
+
+Routine R0529, 0 locals ()
+
+       GET_PROP_ADDR   Ga2,#04 -> G31
+       UNKNOWN_2OP     G31,L01,#01,#50
+       PRINT            "a light wound,"
+       JUMP            #3b
+
+Routine R0530, 0 locals ()
+
+       LOADW           (SP)+,#01 -> -(SP)
+       ADD             L03,(SP)+ -> -(SP)
+       PRINT_NUM       (SP)+
+       PRINT            " moves."
+       NEW_LINE        
+       PRINT            "You can "
+       JZ              L02 [FALSE] 104e8
+       PRINT            "expect death soon"
+       JUMP            #73
+
+Routine R0531, 1 local (0001)
+
+       PRINT            "Your score is "
+       PRINT_NUM       G01
+       PRINT            " (total of 350 points), in "
+       PRINT_NUM       G02
+       JE              G02,#01 [FALSE] 105b7
+       PRINT            " move."
+       JUMP            #09
+
+Routine R0532, 2 locals (0000, 0000)
+
+       JZ              G3e [TRUE] L0001
+       PRINT            "
+It takes a talented person to be killed while already dead. YOU are such a talent. Unfortunately, it takes a talented person to deal with it. I am not such a talent. Sorry."
+       NEW_LINE        
+       CALL            R0297 -> -(SP)
+L0001: PRINT_PADDR     L00
+       NEW_LINE        
+       JZ              G3c [FALSE] L0002
+       PRINT            "Bad luck, huh?"
+       NEW_LINE        
+L0002: CALL            R0295 (#fff6) -> -(SP)
+       PRINT            " 
+   ****  You have died  **** 
+
+"
+       GET_PARENT      G6f -> -(SP)
+       TEST_ATTR       (SP)+,#1b [FALSE] L0003
+       INSERT_OBJ      G6f,G00
+L0003: JL              G3d,#02 [TRUE] 107b7
+       PRINT            "You clearly are a suicidal maniac. We don't allow psychotics in the cave, since they may harm other adventurers. Your remains will be installed in the Land of the Living Dead, where your fellow adventurers may gloat over them."
+       NEW_LINE        
+       CALL            R0297 -> -(SP)
+       RET_POPPED      
+
+Routine R0533, 4 locals (0000, 0000, 0000, 0000)
+
+       JIN             #a4,G6f [FALSE] L0001
+       INSERT_OBJ      #a4,#c1
+L0001: JIN             #d0,G6f [FALSE] L0002
+       INSERT_OBJ      #d0,#af
+L0002: PUT_PROP        #6e,#0c,#00
+       GET_CHILD       G6f -> L02 [TRUE] L0003
+L0003: LOADW           G87,#00 -> L03
+       STORE           L01,L02
+       JZ              L01 [TRUE] RTRUE
+       GET_SIBLING     L01 -> L02 [TRUE] L0004
+L0004: GET_PROP        L01,#0c -> -(SP)
+       JG              (SP)+,#00 [FALSE] 10944
+       JZ              L00 [FALSE] L0006
+       GET_CHILD       #52 -> L00 [TRUE] L0006
+L0006: TEST_ATTR       L00,#06 [FALSE] 1093d
+       TEST_ATTR       L00,#14 [TRUE] 1093d
+       RANDOM          #64 -> -(SP)
+       JG              #32,(SP)+ [FALSE] 1093d
+       INSERT_OBJ      L01,L00
+       JUMP            #ffd3
+
+Routine R0534, 0 locals ()
+
+       CALL            R0023 (#5c3e) -> -(SP)
+       STOREW          (SP)+,#00,#00
+       CALL            R0023 (#5c6d) -> -(SP)
+       STOREW          (SP)+,#00,#00
+       CALL            R0023 (#649f) -> -(SP)
+       STOREW          (SP)+,#00,#00
+       CALL            R0023 (#6f55) -> -(SP)
+       STOREW          (SP)+,#00,#00
+       CALL            R0023 (#6f6a) -> -(SP)
+       STOREW          (SP)+,#00,#00
+       CALL            R0023 (#807c) -> -(SP)
+       STOREW          (SP)+,#00,#00
+       CALL            R0023 (#7954) -> -(SP)
+       STOREW          (SP)+,#00,#00
+       CALL            R0023 (#6f46) -> -(SP)
+       STOREW          (SP)+,#00,#00
+       CLEAR_ATTR      #9b,#14
+       RTRUE           
+
+Routine R0535, 0 locals ()
+
+       CALL            R0537 (#a5,#a5c2) -> -(SP)
+       RET_POPPED      
+
+Routine R0536, 0 locals ()
+
+       CALL            R0537 (#65,#a5c4) -> -(SP)
+       RET_POPPED      
+
+Routine R0537, 2 locals (0000, 0000)
+
+       JE              G78,#23,#2b [FALSE] 109fb
+       PRINT            "The "
+       PRINT_PADDR     L01
+       PRINT_RET        " are safely inside; there's no need to do that."
+
+Routine R0538, 0 locals ()
+
+       JE              G78,#39,#23,#2b [FALSE] 10a4f
+       PRINT_RET        "You can't do that."
+
+Routine R0539, 0 locals ()
+
+       JE              G78,#33 [FALSE] RFALSE
+       CALL            R0172 (G76) -> -(SP)
+       PRINT_RET        "What the heck! You won't make friends this way, but nobody around here is too friendly anyhow. Gulp!"
+
+Routine R0540, 0 locals ()
+
+       JE              G78,#58,#5d [FALSE] 10ac6
+       PRINT_RET        "The chain is secure."
+
+Routine R0541, 1 local (0000)
+
+       JE              L00,#02 [FALSE] RFALSE
+       JIN             #d9,G00 [FALSE] RFALSE
+       CALL            R0321 (#d9) -> -(SP)
+       RET_POPPED      
+
+[End of code]
+

@@ -321,6 +321,18 @@ impl ZMachineCodeGen {
         let globals_base = current_address;
         current_address += globals_size;
 
+        // Arrays section - allocated after globals, before abbreviations
+        let arrays_base = current_address;
+        let arrays_size = self.array_codegen.total_array_size();
+        log::debug!(
+            " Arrays allocated at 0x{:04x}, size={} bytes",
+            arrays_base,
+            arrays_size
+        );
+        self.array_codegen
+            .set_array_base_address(arrays_base as u16);
+        current_address += arrays_size;
+
         let abbreviations_base = current_address;
         current_address += abbreviations_size;
 
@@ -508,11 +520,26 @@ impl ZMachineCodeGen {
 
         // Copy global variables space
         if !self.globals_space.is_empty() {
-            self.final_data[globals_base..abbreviations_base].copy_from_slice(&self.globals_space);
+            self.final_data[globals_base..arrays_base].copy_from_slice(&self.globals_space);
             log::debug!(
                 " Globals space copied: {} bytes at 0x{:04x}",
                 globals_size,
                 globals_base
+            );
+        }
+
+        // Initialize and copy array memory
+        if arrays_size > 0 {
+            // Create array memory buffer and initialize it
+            let mut array_memory = vec![0u8; arrays_size];
+            self.array_codegen
+                .initialize_array_memory(&mut array_memory)?;
+
+            self.final_data[arrays_base..abbreviations_base].copy_from_slice(&array_memory);
+            log::debug!(
+                " Arrays space initialized and copied: {} bytes at 0x{:04x}",
+                arrays_size,
+                arrays_base
             );
         }
 

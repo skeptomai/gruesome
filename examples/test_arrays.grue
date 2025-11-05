@@ -1,0 +1,50 @@
+// Array Testing Game
+// Tests static array functionality following mini_zork patterns
+
+world {
+    room test_room "Array Test Room" {
+        desc: "A testing ground for array functionality."
+    }
+}
+
+grammar {
+    verb "look" {
+        default => look_around()
+    }
+
+    verb "test" {
+        default => test_arrays()
+    }
+
+    verb "quit" {
+        default => quit_game()
+    }
+}
+
+fn look_around() {
+    print("You are in the Array Test Room.");
+    print("Type 'test' to run array tests.");
+    print("Type 'quit' to exit.");
+}
+
+fn test_arrays() {
+    print("Testing basic array functionality...");
+
+    // Test static arrays with simple syntax first
+    let numbers = [1, 2, 3];
+    print("Created array with 3 numbers");
+    print("Array test completed successfully!");
+}
+
+fn quit_game() {
+    print("Goodbye!");
+    return true;
+}
+
+mode: script
+
+init {
+    print("=== Array Test Game ===");
+    print("Type 'look' for help.");
+    print("");
+}
