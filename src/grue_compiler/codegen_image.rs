@@ -1,21 +1,18 @@
-/// codegen_extensions.rs
-/// Extension methods for ZMachineCodeGen
+/// codegen_image.rs
+/// Image assembly methods for ZMachineCodeGen
 ///
 use crate::grue_compiler::codegen::ZMachineCodeGen;
-use crate::grue_compiler::codegen_memory::HEADER_SIZE;
+use crate::grue_compiler::codegen_memory::{
+    MemorySpace, HEADER_SIZE,
+};
 use crate::grue_compiler::codegen_utils::CodeGenUtils;
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
 use crate::grue_compiler::ZMachineVersion;
+
 use log::debug;
 
 impl ZMachineCodeGen {
-    /// CONSOLIDATION HELPERS: Centralized unimplemented feature handlers
-    /// These methods eliminate the dangerous copy-paste pattern of placeholder opcodes
-    /// and provide clear, consistent handling of unimplemented IR instructions.
-    ///
-    /// Generate unimplemented array operation with return value
-    /// This will cause a compile-time error with a clear message about which feature needs implementation
 
     /// SEPARATED SPACES GENERATION: New architecture to eliminate memory conflicts
     /// This method uses separate working spaces during compilation and final assembly
@@ -779,4 +776,117 @@ impl ZMachineCodeGen {
 
         Ok(self.final_data.clone())
     }
+
+    /// Translate space-relative address to final assembly layout address (DETERMINISTIC)
+    pub fn translate_space_address_to_final(
+        &self,
+        space: MemorySpace,
+        space_offset: usize,
+    ) -> Result<usize, CompilerError> {
+        let final_address = match space {
+            MemorySpace::Header => space_offset,
+            MemorySpace::Globals => self.global_vars_addr + space_offset,
+            MemorySpace::Abbreviations => self.final_abbreviations_base + space_offset,
+            MemorySpace::Objects => self.final_object_base + space_offset,
+            MemorySpace::Dictionary => self.dictionary_addr + space_offset,
+            MemorySpace::Strings => self.final_string_base + space_offset,
+            MemorySpace::Code => {
+                // CRITICAL FIX: Use final_code_base directly instead of hardcoded calculation
+                // Previous calculation used hardcoded section sizes that didn't match actual layout,
+                // causing UnresolvedReference locations to point to operand type bytes instead of operand data
+                self.final_code_base + space_offset
+            }
+            MemorySpace::CodeSpace => {
+                // Same as Code
+                self.final_code_base + space_offset
+            }
+        };
+
+        if final_address >= self.final_data.len() {
+            return Err(CompilerError::CodeGenError(format!(
+                "Address translation {:?}[0x{:04x}] -> 0x{:04x} exceeds final_data size {}",
+                space,
+                space_offset,
+                final_address,
+                self.final_data.len()
+            )));
+        }
+
+        log::debug!(
+            "📍 ADDRESS_TRANSLATE: {:?}[0x{:04x}] -> final=0x{:04x}",
+            space,
+            space_offset,
+            final_address
+        );
+        Ok(final_address)
+    }
+
+    /// Debug function: Show comprehensive space population analysis
+    pub fn debug_space_population(&self) {
+        log::info!(" SPACE POPULATION ANALYSIS:");
+
+        // Code space analysis
+        log::info!(" CODE_SPACE: {} bytes", self.code_space.len());
+        if !self.code_space.is_empty() {
+            let first_10: Vec<String> = self
+                .code_space
+                .iter()
+                .take(10)
+                .map(|b| format!("0x{:02x}", b))
+                .collect();
+            let last_10: Vec<String> = self
+                .code_space
+                .iter()
+                .rev()
+                .take(10)
+                .rev()
+                .map(|b| format!("0x{:02x}", b))
+                .collect();
+            log::info!(" First 10 bytes: [{}]", first_10.join(", "));
+            log::info!(" Last 10 bytes: [{}]", last_10.join(", "));
+        }
+
+        // Object space analysis
+        log::info!(" 📦 OBJECT_SPACE: {} bytes", self.object_space.len());
+        if !self.object_space.is_empty() {
+            let first_10: Vec<String> = self
+                .object_space
+                .iter()
+                .take(10)
+                .map(|b| format!("0x{:02x}", b))
+                .collect();
+            log::info!(" First 10 bytes: [{}]", first_10.join(", "));
+            let non_zero_count = self.object_space.iter().filter(|&&b| b != 0).count();
+            log::info!(
+                " Non-zero bytes: {}/{} ({:.1}%)",
+                non_zero_count,
+                self.object_space.len(),
+                (non_zero_count as f32 / self.object_space.len() as f32) * 100.0
+            );
+        }
+
+        // String space analysis
+        log::info!(" 📝 STRING_SPACE: {} bytes", self.string_space.len());
+        if !self.string_space.is_empty() {
+            let first_10: Vec<String> = self
+                .string_space
+                .iter()
+                .take(10)
+                .map(|b| format!("0x{:02x}", b))
+                .collect();
+            log::info!(" First 10 bytes: [{}]", first_10.join(", "));
+            let non_zero_count = self.string_space.iter().filter(|&&b| b != 0).count();
+            log::info!(
+                " Non-zero bytes: {}/{} ({:.1}%)",
+                non_zero_count,
+                self.string_space.len(),
+                (non_zero_count as f32 / self.string_space.len() as f32) * 100.0
+            );
+        }
+
+        // Basic logging for globals and dictionary space
+        log::debug!("Globals space: {} bytes", self.globals_space.len());
+        log::debug!("Dictionary space: {} bytes", self.dictionary_space.len());
+    }
+
 }
