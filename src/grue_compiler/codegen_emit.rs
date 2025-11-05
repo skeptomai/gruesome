@@ -2,14 +2,7 @@
 /// Image assembly methods for ZMachineCodeGen
 ///
 use crate::grue_compiler::codegen::ZMachineCodeGen;
-use crate::grue_compiler::codegen_memory::{
-    MemorySpace, HEADER_SIZE,
-};
-use crate::grue_compiler::codegen_utils::CodeGenUtils;
 use crate::grue_compiler::error::CompilerError;
-use crate::grue_compiler::ir::*;
-use crate::grue_compiler::ZMachineVersion;
-
 use log::debug;
 
 impl ZMachineCodeGen {
