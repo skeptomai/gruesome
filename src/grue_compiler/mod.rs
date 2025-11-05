@@ -7,6 +7,7 @@ pub mod codegen_builtins;
 pub mod codegen_extensions;
 pub mod codegen_headers;
 pub mod codegen_instructions;
+pub mod codegen_lookup;
 pub mod codegen_memory;
 pub mod codegen_objects;
 pub mod codegen_references;
