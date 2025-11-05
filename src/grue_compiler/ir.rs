@@ -871,6 +871,7 @@ pub enum IrValue {
     String(String),
     StringRef(IrId), // Reference to string table entry
     Object(String),  // Object reference by name - will be resolved to runtime number during codegen
+    Room(String),    // Room reference by name - will be resolved to runtime number during codegen
     Null,
 }
 
@@ -2971,6 +2972,14 @@ impl IrGenerator {
                     block.add_instruction(IrInstruction::LoadImmediate {
                         target: temp_id,
                         value: IrValue::Object(name.clone()),
+                    });
+                    Ok(temp_id)
+                } else if self.room_objects.contains_key(&name) {
+                    // This is a room - store room name for later runtime resolution
+                    let temp_id = self.next_id();
+                    block.add_instruction(IrInstruction::LoadImmediate {
+                        target: temp_id,
+                        value: IrValue::Room(name.clone()),
                     });
                     Ok(temp_id)
                 } else if let Some(&var_id) = self.symbol_ids.get(&name) {

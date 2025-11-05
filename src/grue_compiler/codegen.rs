@@ -2862,6 +2862,21 @@ impl ZMachineCodeGen {
                                 )));
                             }
                         }
+                        crate::grue_compiler::ir::IrValue::Room(room_name) => {
+                            // Convert room name to runtime object number for function arguments
+                            if let Some(&runtime_number) = self.object_numbers.get(room_name) {
+                                if runtime_number <= 255 {
+                                    Operand::SmallConstant(runtime_number as u8)
+                                } else {
+                                    Operand::LargeConstant(runtime_number)
+                                }
+                            } else {
+                                return Err(CompilerError::CodeGenError(format!(
+                                    "Room '{}' not found in runtime mapping for function argument",
+                                    room_name
+                                )));
+                            }
+                        }
                     };
                     operands.push(arg_operand);
                 }
