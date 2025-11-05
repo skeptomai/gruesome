@@ -3316,6 +3316,153 @@ if old_child == obj_num {
 - `create_object_entry_from_ir_with_mapping()` - Writes object table relationships
 - `insert_object()` - Runtime Z-Machine object insertion with double-insertion protection
 
+## Array Architecture Analysis
+
+### Property Arrays vs General-Purpose Arrays
+
+The Grue compiler implements two distinct array systems that serve different purposes and operate at different levels of the compilation pipeline. Understanding this distinction is critical for proper architecture comprehension.
+
+#### Property Arrays (AST-Level)
+
+Property arrays like `names: ["mailbox", "box"]` in object definitions are **compile-time structures** that work at the AST (Abstract Syntax Tree) level:
+
+**Characteristics**:
+- Processed during semantic analysis phase
+- Converted directly to Z-Machine object property data
+- Stored in object property tables as sequential words
+- No runtime array instructions generated
+- Part of static object definition structure
+
+**Implementation Location**: `src/grue_compiler/semantic.rs`
+- Objects with property arrays are transformed into property table entries
+- Array elements become consecutive property values
+- Accessed via property system (`get_prop`, `get_next_prop`)
+
+**Example**:
+```grue
+object mailbox {
+    names: ["mailbox", "box"]  // Property array
+}
+```
+
+**Z-Machine Result**:
+- Property 1: Address of "mailbox" string
+- Property 1: Address of "box" string
+- No `CreateArray` or `GetArrayElement` instructions
+
+#### General-Purpose Arrays (Runtime-Level)
+
+General-purpose arrays like `let numbers = [1, 2, 3]` are **runtime structures** that require full array instruction support:
+
+**Characteristics**:
+- Processed during IR (Intermediate Representation) generation
+- Generate `CreateArray` and `GetArrayElement` IR instructions
+- Allocated in Z-Machine memory with table format (count word + elements)
+- Accessed via `loadw`/`storew` opcodes
+- Support runtime indexing and manipulation
+
+**Implementation Location**: `src/grue_compiler/codegen_arrays.rs`
+- Dedicated `ArrayCodeGen` module for memory allocation
+- Static allocation with compile-time known sizes
+- Z-Machine table format: `[count_word, element1, element2, ...]`
+
+**Example**:
+```grue
+fn test_function() {
+    let numbers = [1, 2, 3];  // General-purpose array
+    let first = numbers[0];   // Runtime array access
+}
+```
+
+**Z-Machine Result**:
+- `CreateArray` instruction allocates memory
+- `GetArrayElement` instructions for access
+- Memory layout: `[0x0003, 0x0001, 0x0002, 0x0003]`
+
+### Architectural Justification
+
+**Why maintain separate systems?**
+
+1. **Performance Optimization**: Property arrays are compile-time constants that become direct property lookups. Converting them to runtime arrays would add unnecessary overhead.
+
+2. **Semantic Clarity**: Property arrays define object characteristics (metadata), while general arrays handle dynamic data (runtime values).
+
+3. **Z-Machine Alignment**: Object properties and general arrays map to different Z-Machine subsystems with different access patterns and performance characteristics.
+
+4. **Memory Efficiency**: Property arrays are stored in optimized property tables. Runtime arrays require additional indirection and memory allocation overhead.
+
+### Technical Implementation Details
+
+#### Property Array Processing Pipeline
+```
+Object Definition → Semantic Analysis → Property Table → Z-Machine Properties
+```
+
+#### General Array Processing Pipeline
+```
+Array Literal → IR Generation → ArrayCodeGen → Z-Machine Memory + Instructions
+```
+
+#### Key Architectural Components
+
+**Property Array System**:
+- `semantic.rs`: Processes object definitions with property arrays
+- Property table generation in object creation
+- No array-specific instructions generated
+
+**General Array System**:
+- `ir.rs`: Generates `CreateArray` and `GetArrayElement` instructions
+- `codegen_arrays.rs`: Manages memory allocation and instruction generation
+- `codegen.rs`: Integrates with Z-Machine instruction emission
+
+### Anti-Pattern: Dynamic Arrays
+
+Through analysis of existing Grue games (mini_zork.grue), we determined that **dynamic arrays are anti-patterns** in Z-Machine development:
+
+**Why Dynamic Arrays Don't Fit Z-Machine Architecture**:
+- Z-Machine has no `malloc()` - all memory must be statically allocated
+- Array growth requires predicting maximum size at compile time
+- Dynamic behavior conflicts with Z-Machine's deterministic memory model
+- No evidence of dynamic array usage patterns in real game code
+
+**Rejected Patterns**:
+```grue
+// ANTI-PATTERN: Dynamic array creation
+let items = [];           // Empty dynamic array
+items.add(new_item);      // Runtime growth
+items.remove(old_item);   // Runtime shrinkage
+```
+
+**Preferred Patterns**:
+```grue
+// CORRECT: Static arrays with known size
+let inventory = [item1, item2, item3];  // Fixed size
+let visible_objects = get_visible_objects();  // Function returns array
+```
+
+### Files and Components
+
+**Core Array Implementation**:
+- `src/grue_compiler/codegen_arrays.rs` - General array system
+- `src/grue_compiler/semantic.rs` - Property array processing
+- `src/grue_compiler/ir.rs` - Array IR instruction generation
+- `src/grue_compiler/codegen.rs` - Array instruction emission integration
+
+**Test Coverage**:
+- `examples/test_arrays.grue` - General array functionality tests
+- Unit tests in `codegen_arrays.rs` - Memory allocation verification
+- Integration tests with `mini_zork.grue` - Property array validation
+
+### Design Principles
+
+1. **Separation of Concerns**: Property arrays and general arrays serve different purposes and should remain separate systems.
+
+2. **Static Allocation**: All arrays must have compile-time determinable maximum sizes to fit Z-Machine memory constraints.
+
+3. **Performance First**: Property arrays optimize for object metadata access; general arrays optimize for runtime data manipulation.
+
+4. **Z-Machine Native**: Both systems map cleanly to Z-Machine primitives (properties vs loadw/storew) without architectural impedance mismatch.
+
 ### Lessons Learned
 
 1. **Architecture Evolution Complexity**: Incremental fixes to fundamental architecture can create unexpected interaction patterns
