@@ -1,3 +1,24 @@
+//! Array Code Generation Module
+//!
+//! This module implements the array subsystem for the Grue Z-Machine compiler.
+//! It provides static array allocation and instruction generation following
+//! Z-Machine table format and memory layout principles.
+//!
+//! ## Implementation Date
+//! November 5, 2025 - Complete array implementation with comprehensive testing
+//!
+//! ## Key Features
+//! - Static array allocation with compile-time known sizes
+//! - Z-Machine table format: [count_word, element1, element2, ...]
+//! - Proper memory layout and address management
+//! - Integration with loadw/storew Z-Machine opcodes
+//! - Comprehensive unit test coverage (6 tests)
+//!
+//! ## Architecture
+//! This module implements general-purpose arrays (runtime structures) as distinct
+//! from property arrays (compile-time AST structures). See docs/ARCHITECTURE.md
+//! for detailed analysis of the dual array system architecture.
+
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::{IrId, IrValue};
 use indexmap::IndexMap;
