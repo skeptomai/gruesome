@@ -93,7 +93,7 @@ impl ZMachineCodeGen {
         log::info!("🏁 Starting code generation - PC will point directly to first instruction");
 
         // Phase 2.0: Functions will be registered with REAL addresses during code generation
-        // No more estimation hack - use actual addresses from translate_ir_instruction
+        // Functions are registered with actual addresses during code generation
         log::info!(
             " FUNCTION_REGISTRATION: Functions will be registered during actual code generation"
         );

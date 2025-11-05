@@ -2,9 +2,7 @@
 /// Image assembly methods for ZMachineCodeGen
 ///
 use crate::grue_compiler::codegen::ZMachineCodeGen;
-use crate::grue_compiler::codegen_memory::{
-    MemorySpace, HEADER_SIZE,
-};
+use crate::grue_compiler::codegen_memory::{MemorySpace, HEADER_SIZE};
 use crate::grue_compiler::codegen_utils::CodeGenUtils;
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
@@ -13,7 +11,6 @@ use crate::grue_compiler::ZMachineVersion;
 use log::debug;
 
 impl ZMachineCodeGen {
-
     /// SEPARATED SPACES GENERATION: New architecture to eliminate memory conflicts
     /// This method uses separate working spaces during compilation and final assembly
     /// to eliminate the memory corruption issues that plagued the unified approach.
@@ -888,5 +885,4 @@ impl ZMachineCodeGen {
         log::debug!("Globals space: {} bytes", self.globals_space.len());
         log::debug!("Dictionary space: {} bytes", self.dictionary_space.len());
     }
-
 }

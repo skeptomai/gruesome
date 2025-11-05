@@ -125,6 +125,58 @@ impl ZMachineCodeGen {
             IrInstruction::LoadVar { target, .. } => {
                 log::debug!("IR INSTRUCTION: LoadVar creates target IR ID {}", target);
             }
+            // Array instructions with targets
+            IrInstruction::ArrayRemove { target, .. } => {
+                log::debug!(
+                    "IR INSTRUCTION: ArrayRemove creates target IR ID {}",
+                    target
+                );
+            }
+            IrInstruction::ArrayLength { target, .. } => {
+                log::debug!(
+                    "IR INSTRUCTION: ArrayLength creates target IR ID {}",
+                    target
+                );
+            }
+            IrInstruction::ArrayEmpty { target, .. } => {
+                log::debug!("IR INSTRUCTION: ArrayEmpty creates target IR ID {}", target);
+            }
+            IrInstruction::ArrayContains { target, .. } => {
+                log::debug!(
+                    "IR INSTRUCTION: ArrayContains creates target IR ID {}",
+                    target
+                );
+            }
+            IrInstruction::ArrayIndexOf { target, .. } => {
+                log::debug!(
+                    "IR INSTRUCTION: ArrayIndexOf creates target IR ID {}",
+                    target
+                );
+            }
+            IrInstruction::ArrayFilter { target, .. } => {
+                log::debug!(
+                    "IR INSTRUCTION: ArrayFilter creates target IR ID {}",
+                    target
+                );
+            }
+            IrInstruction::ArrayMap { target, .. } => {
+                log::debug!("IR INSTRUCTION: ArrayMap creates target IR ID {}", target);
+            }
+            IrInstruction::ArrayFind { target, .. } => {
+                log::debug!("IR INSTRUCTION: ArrayFind creates target IR ID {}", target);
+            }
+            IrInstruction::ArrayJoin { target, .. } => {
+                log::debug!("IR INSTRUCTION: ArrayJoin creates target IR ID {}", target);
+            }
+            IrInstruction::ArrayReverse { target, .. } => {
+                log::debug!(
+                    "IR INSTRUCTION: ArrayReverse creates target IR ID {}",
+                    target
+                );
+            }
+            IrInstruction::ArraySort { target, .. } => {
+                log::debug!("IR INSTRUCTION: ArraySort creates target IR ID {}", target);
+            }
             IrInstruction::StringIndexOf { target, .. } => {
                 log::debug!(
                     "IR INSTRUCTION: StringIndexOf creates target IR ID {}",
@@ -469,6 +521,7 @@ impl ZMachineCodeGen {
             } => {
                 self.generate_unary_op(*target, op, *operand)?;
             }
+
 
             IrInstruction::GetProperty {
                 target,
@@ -948,9 +1001,11 @@ impl ZMachineCodeGen {
                 log::debug!("GetNextProperty: IR ID {} -> stack", target);
             }
 
+
             IrInstruction::Nop => {
                 // No operation - do nothing
             }
+
 
             IrInstruction::GetObjectChild {
                 target,

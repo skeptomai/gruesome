@@ -597,6 +597,7 @@ pub enum IrInstruction {
         args: Vec<IrId>,
     },
 
+
     /// Return from function
     Return {
         value: Option<IrId>,
@@ -699,6 +700,7 @@ pub enum IrInstruction {
         object: IrId,
         property_num: u8,
     },
+
 
     /// Get first child of object (for object tree traversal)
     /// Branch is taken when object has NO child (returns 0)
@@ -864,6 +866,7 @@ pub enum VariableSource {
     /// Variable holds result of obj.contents() call (object tree root)
     /// Contains the container object ID
     ObjectTreeRoot(IrId),
+
 
     /// Variable holds scalar value (numbers, booleans, strings, objects)
     /// Not iterable
@@ -2815,13 +2818,10 @@ impl IrGenerator {
                     var_id: index_var,
                 });
                 let element_temp = self.next_id();
-                // ARRAY REMOVAL (Nov 5, 2025): Arrays removed from Z-Machine compiler
-                // This was previously GetArrayElement for iterating through array contents
-                // Now replaced with placeholder that returns constant value
-                // Text adventures typically use object containment rather than arrays
+                // Array operations removed - placeholder for object contents iteration
                 block.add_instruction(IrInstruction::LoadImmediate {
                     target: element_temp,
-                    value: IrValue::Integer(1), // Placeholder object ID - always returns 1
+                    value: IrValue::Integer(1), // Placeholder object ID
                 });
                 block.add_instruction(IrInstruction::StoreVar {
                     var_id: loop_var_id,
@@ -3359,16 +3359,13 @@ impl IrGenerator {
                     _ => {} // Fall through to normal property access
                 }
 
-                // ARRAY REMOVAL (Nov 5, 2025): Array property access removed from Z-Machine compiler
-                // This section previously handled array.length and array.size properties
-                // Now returns placeholder values since arrays are not supported
+                // Check if this is an array property access
                 if is_array {
                     match property.as_str() {
                         "length" | "size" => {
-                            // Return placeholder length of 0 for removed array functionality
-                            block.add_instruction(IrInstruction::LoadImmediate {
+                            block.add_instruction(IrInstruction::ArrayLength {
                                 target: temp_id,
-                                value: IrValue::Integer(0), // Placeholder - arrays always have length 0
+                                array: object_temp,
                             });
                             return Ok(temp_id);
                         }
@@ -3547,10 +3544,9 @@ impl IrGenerator {
                 if is_array {
                     match property.as_str() {
                         "length" | "size" => {
-                            // Arrays removed - return placeholder length
-                            block.add_instruction(IrInstruction::LoadImmediate {
+                            block.add_instruction(IrInstruction::ArrayLength {
                                 target: temp_id,
-                                value: IrValue::Integer(0), // Placeholder array length
+                                array: object_temp,
                             });
                         }
                         _ => {
@@ -3689,14 +3685,6 @@ impl IrGenerator {
                 }
             }
 
-            Expr::Array(_) => {
-                // ARRAY REMOVAL (Nov 5, 2025): Array literals like [1, 2, 3] no longer supported
-                // Text adventure games typically use object containment instead of arrays
-                // This provides a clear error message when array syntax is encountered
-                Err(CompilerError::CodeGenError(
-                    "Array expressions are not supported in this implementation".to_string(),
-                ))
-            }
             Expr::DisambiguationContext {
                 candidates: _,
                 query,
@@ -3741,7 +3729,7 @@ impl IrGenerator {
                 if let Some(&var_id) = self.symbol_ids.get(name) {
                     if let Some(source) = self.variable_sources.get(&var_id) {
                         return match source {
-                            // Arrays removed - no variables are arrays anymore
+                            VariableSource::Array(_) => true,           // Explicitly an array
                             VariableSource::ObjectTreeRoot(_) => false, // Contents result - NOT an array
                             VariableSource::Scalar(_) => false, // Scalar value - NOT an array
                         };
@@ -3762,6 +3750,7 @@ impl IrGenerator {
             _ => false,
         }
     }
+
 
     fn generate_builtin_function_call(
         &mut self,

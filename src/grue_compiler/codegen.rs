@@ -5642,14 +5642,7 @@ impl ZMachineCodeGen {
             }
         }
 
-        // Debug tracking for patch_address calls at location 0x0b90
-        if location == 0x0b90 {
-            debug!("String 568 debug: patch_address called for location 0x0b90");
-            debug!("String 568 debug: address to patch: 0x{:04x}", address);
-            debug!("String 568 debug: size: {}", size);
-        }
-
-        // Use final_data for all address patching - legacy story_data system removed
+        // Use final_data for all address patching
         let target_data_len = self.final_data.len();
 
         if location + size > target_data_len {
@@ -6238,7 +6231,7 @@ impl ZMachineCodeGen {
         }
     }
 
-   /// Create UnresolvedReference with proper space context
+    /// Create UnresolvedReference with proper space context
     pub fn create_unresolved_reference(
         &self,
         reference_type: LegacyReferenceType,

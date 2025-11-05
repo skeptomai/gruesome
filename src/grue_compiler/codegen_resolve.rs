@@ -619,7 +619,7 @@ impl ZMachineCodeGen {
                     }
 
                     // CRITICAL FIX: Branch data is being written 1 byte too late
-                    // TESTING: Remove the -1 adjustment hack to see if branch_location is correct
+                    // Using direct location for branch resolution
                     debug!(
                         "Branch resolution: Using direct location 0x{:04x} (no -1 adjustment)",
                         final_location

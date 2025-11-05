@@ -4,12 +4,11 @@ use crate::grue_compiler::codegen_memory::{placeholder_word, MemorySpace};
 use crate::grue_compiler::codegen_objects::Operand;
 use crate::grue_compiler::codegen_references::{LegacyReferenceType, UnresolvedReference};
 use crate::grue_compiler::error::CompilerError;
-use crate::grue_compiler::opcodes::{Op1, Opcode};
-use crate::grue_compiler::ir::IrId;
 use crate::grue_compiler::ir::IrBinaryOp;
+use crate::grue_compiler::ir::IrId;
+use crate::grue_compiler::opcodes::{Op1, Opcode};
 
 impl ZMachineCodeGen {
-
     /// Emit proper Z-Machine conditional branch instruction
     pub fn emit_conditional_branch_instruction(
         &mut self,

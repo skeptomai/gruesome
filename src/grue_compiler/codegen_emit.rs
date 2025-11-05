@@ -6,7 +6,6 @@ use crate::grue_compiler::error::CompilerError;
 use log::debug;
 
 impl ZMachineCodeGen {
-
     // Utility methods for code emission
 
     pub fn emit_byte(&mut self, byte: u8) -> Result<(), CompilerError> {
@@ -128,7 +127,7 @@ impl ZMachineCodeGen {
         );
         Ok(())
     }
- 
+
     /// Write a single byte at a specific address (no address advancement)
     pub fn write_byte_at(&mut self, addr: usize, byte: u8) -> Result<(), CompilerError> {
         // Direct write to final_data during address patching phase

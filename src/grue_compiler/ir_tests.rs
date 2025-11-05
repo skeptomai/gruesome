@@ -553,6 +553,9 @@ mod ir_tests {
 
     #[test]
     fn test_for_loop_ir() {
+        // ARRAY REMOVAL (Nov 5, 2025): Test updated to verify array rejection
+        // Previously tested array compilation, now verifies proper error handling
+        // when array literals like [1, 2, 3] are encountered in source code
         let source = r#"
             fn test_for() {
                 let items = [1, 2, 3];
@@ -562,28 +565,20 @@ mod ir_tests {
             }
         "#;
 
-        let ir = generate_ir_from_source(source).unwrap();
+        let ir_result = generate_ir_from_source(source);
 
-        assert_eq!(ir.functions.len(), 1);
-        let func = &ir.functions[0];
-        let instructions = &func.body.instructions;
-
-        // Should contain GetArrayElement instruction for iterating
-        let array_gets = instructions
-            .iter()
-            .filter(|inst| matches!(inst, IrInstruction::GetArrayElement { .. }))
-            .count();
-        assert!(array_gets >= 1, "Should have GetArrayElement instruction");
-
-        // Should contain loop control instructions
-        let branches = instructions
-            .iter()
-            .filter(|inst| matches!(inst, IrInstruction::Branch { .. }))
-            .count();
-        assert!(
-            branches >= 1,
-            "Should have branch instruction for loop condition"
-        );
+        // Should fail with array error since we removed array support
+        match ir_result {
+            Err(error) => {
+                let error_msg = format!("{:?}", error);
+                assert!(
+                    error_msg.contains("Array expressions are not supported"),
+                    "Expected array error, got: {}",
+                    error_msg
+                );
+            }
+            Ok(_) => panic!("Expected error for array expressions, but compilation succeeded"),
+        }
     }
 
     // Tests for room object containment foundation (Phase 1a)
