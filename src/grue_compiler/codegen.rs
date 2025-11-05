@@ -527,11 +527,13 @@ impl ZMachineCodeGen {
     /// ?????-?????: String space - All encoded strings (if any)
     /// ?????-?????: Object space - Object table + properties (if any)
 
+    /*
     /// Resolve all address references in the final game image (PURE SEPARATED SPACES)
     ///
     /// Processes all unresolved references and pending fixups to patch addresses
     /// in the final assembled game image.
     ///
+    /// NOTE: This function has been moved to codegen_resolve.rs
     pub fn resolve_all_addresses(&mut self) -> Result<(), CompilerError> {
         log::info!(" Resolving all address references in final game image");
 
@@ -674,8 +676,11 @@ impl ZMachineCodeGen {
         log::info!(" All address references resolved successfully");
         Ok(())
     }
+    */
 
+    /*
     /// Resolve a single unresolved reference in the final game image
+    /// NOTE: This function has been moved to codegen_resolve.rs
     fn resolve_unresolved_reference(
         &mut self,
         reference: &UnresolvedReference,
@@ -1291,8 +1296,11 @@ impl ZMachineCodeGen {
         );
         Ok(())
     }
+    */
 
+    /*
     /// Resolve a single legacy fixup in the final game image
+    /// NOTE: This function has been moved to codegen_resolve.rs
     fn resolve_legacy_fixup(&mut self, fixup: &PendingFixup) -> Result<(), CompilerError> {
         // This function provides compatibility with the old fixup system
         // by translating legacy fixups to the new final_data addressing
@@ -1333,6 +1341,7 @@ impl ZMachineCodeGen {
             }
         }
     }
+    */
 
     /// Generate dictionary space with word parsing dictionary
 
@@ -7618,7 +7627,7 @@ impl ZMachineCodeGen {
     }
 
     /// Patch a branch offset at the given location
-    fn patch_branch_offset(
+    pub fn patch_branch_offset(
         &mut self,
         location: usize,
         target_address: usize,
@@ -8507,7 +8516,7 @@ impl ZMachineCodeGen {
     }
 
     /// Translate space-relative address to final assembly layout address (DETERMINISTIC)
-    fn translate_space_address_to_final(
+    pub fn translate_space_address_to_final(
         &self,
         space: MemorySpace,
         space_offset: usize,
@@ -8619,7 +8628,7 @@ impl ZMachineCodeGen {
     }
 
     /// Write a single byte at a specific address (no address advancement)
-    fn write_byte_at(&mut self, addr: usize, byte: u8) -> Result<(), CompilerError> {
+    pub fn write_byte_at(&mut self, addr: usize, byte: u8) -> Result<(), CompilerError> {
         // Direct write to final_data during address patching phase
         if addr < self.final_data.len() {
             self.final_data[addr] = byte;
