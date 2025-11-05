@@ -296,47 +296,117 @@ impl ZMachineCodeGen {
         // PROPER DICTIONARY ADDRESS COMPARISON IMPLEMENTATION
         // Property 18 exists (Variable(5) = data address), now compare actual dictionary addresses
         log::debug!(
-            "🔍 DICT_COMPARE: Property 18 exists at 0x{:04x}, implementing dictionary address comparison",
+            "🔍 DICT_COMPARE: Property 18 exists at 0x{:04x}, implementing dynamic dictionary address comparison",
             self.code_address
         );
 
-        // For the mailbox example:
-        // Variable(5) = 0x049b (property 18 data address)
-        // Variable(2) = 0x080c (parser result for "mailbox")
-        // Memory at 0x049b: [0x079a, 0x080c, 0x07b2] = ["a small mailbox", "mailbox", "box"]
+        // PARSER BUG FIX: Dynamic Property 18 dictionary address checking
+        // Instead of hardcoding offsets 0, 1, 2, we need to dynamically check all addresses
+        // in Property 18 based on the property length.
+        //
+        // PROBLEM: The old code hardcoded 3 checks (offsets 0, 1, 2) but objects have different
+        // numbers of names:
+        // - Tree: 2 names → Property 18 has 2 addresses (offsets 0, 1)
+        // - Egg: 3 names → Property 18 has 3 addresses (offsets 0, 1, 2)
+        //
+        // When parser looks for "tree", the hardcoded offset 2 check would match against
+        // the egg's third address instead of properly failing for the tree object.
 
-        // Load first dictionary address: loadw Variable(5), 0 → Variable(6)
-
+        // Get Property 18 length: get_prop_len(Variable(5)) → Variable(7)
         self.emit_instruction_typed(
-            Opcode::Op2(Op2::Loadw), // loadw: load word from memory
-            &[
-                Operand::Variable(5),      // Property data address (0x049b)
-                Operand::SmallConstant(0), // Offset 0 (first word)
-            ],
-            Some(6), // Store result in Variable(6)
+            Opcode::Op1(Op1::GetPropLen), // get_prop_len: get property length
+            &[Operand::Variable(5)],      // Property data address
+            Some(7),                      // Store length in Variable(7)
             None,
         )?;
 
-        // Compare first address: if Variable(6) == Variable(2), jump to found_match_label
+        // Convert byte length to word count: Variable(7) = Variable(7) / 2
+        // Each dictionary address is 2 bytes, so divide length by 2 to get address count
+        // CRITICAL: Use raw opcode to ensure V3 form determination applies
+        // V3 compatibility constraints in determine_instruction_form_with_operands require raw opcode
+        self.emit_instruction(
+            0x17, // div opcode - V3 compatibility handled by determine_instruction_form_with_operands
+            &[
+                Operand::Variable(7),      // Property length in bytes
+                Operand::SmallConstant(2), // Divide by 2
+            ],
+            Some(7), // Store word count back in Variable(7)
+            None,
+        )?;
 
+        // Initialize address index counter: Variable(3) = 0
+        // Variable(3) can be reused here since we'll set it to the object ID when found
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Store), // store
+            &[
+                Operand::Variable(3),      // Address index counter (reusing output variable)
+                Operand::SmallConstant(0), // Start at offset 0
+            ],
+            None,
+            None,
+        )?;
+
+        // Dynamic loop to check all dictionary addresses in Property 18
+        let address_loop_start_label = self.next_string_id;
+        self.next_string_id += 1;
+        let address_loop_end_label = self.next_string_id;
+        self.next_string_id += 1;
+
+        // Mark address loop start
+        self.label_addresses
+            .insert(address_loop_start_label, self.code_address);
+        self.record_final_address(address_loop_start_label, self.code_address);
+
+        // Check if we've processed all addresses: if Variable(3) >= Variable(7), exit loop
         let layout = self.emit_instruction_typed(
-            Opcode::Op2(Op2::Je), // je: jump if equal
+            Opcode::Op2(Op2::Jg), // jg: jump if greater
             &[
-                Operand::Variable(6), // First dictionary address
-                Operand::Variable(2), // Parser result (noun dictionary address)
+                Operand::Variable(3), // Current address index
+                Operand::Variable(7), // Total address count - 1
             ],
             None,
-            Some(-1), // Branch on TRUE: if addresses match, jump to found_match_label
+            Some(0xBFFF_u16 as i16), // Placeholder - branch-on-TRUE
         )?;
-
-        // Register branch to found_match_label for first address comparison
-        // CRITICAL FIX: Use layout.branch_location instead of hardcoded -2 offset
         if let Some(branch_location) = layout.branch_location {
             self.reference_context
                 .unresolved_refs
                 .push(UnresolvedReference {
                     reference_type: LegacyReferenceType::Branch,
-                    location: branch_location, // CORRECT: Use actual branch location from layout
+                    location: branch_location,
+                    target_id: address_loop_end_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        }
+
+        // Load dictionary address at current index: loadw Variable(5), Variable(3) → Variable(6)
+        self.emit_instruction_typed(
+            Opcode::Op2(Op2::Loadw), // loadw: load word from memory
+            &[
+                Operand::Variable(5), // Property data address
+                Operand::Variable(3), // Current address index
+            ],
+            Some(6), // Store result in Variable(6)
+            None,
+        )?;
+
+        // Compare current address: if Variable(6) == Variable(2), jump to found_match_label
+        let layout = self.emit_instruction_typed(
+            Opcode::Op2(Op2::Je), // je: jump if equal
+            &[
+                Operand::Variable(6), // Current dictionary address
+                Operand::Variable(2), // Parser result (noun dictionary address)
+            ],
+            None,
+            Some(-1), // Branch on TRUE: if addresses match, jump to found_match_label
+        )?;
+        if let Some(branch_location) = layout.branch_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Branch,
+                    location: branch_location,
                     target_id: found_match_label,
                     is_packed_address: false,
                     offset_size: 2,
@@ -344,85 +414,40 @@ impl ZMachineCodeGen {
                 });
         }
 
-        // Load second dictionary address: loadw Variable(5), 1 → Variable(6)
-
+        // Increment address index: Variable(3) = Variable(3) + 1
         self.emit_instruction_typed(
-            Opcode::Op2(Op2::Loadw), // loadw: load word from memory
-            &[
-                Operand::Variable(5),      // Property data address (0x049b)
-                Operand::SmallConstant(1), // Offset 1 (second word)
-            ],
-            Some(6), // Store result in Variable(6)
+            Opcode::Op1(Op1::Inc),   // inc: increment
+            &[Operand::Variable(3)], // Address index counter
+            None,
             None,
         )?;
 
-        // Compare second address: if Variable(6) == Variable(2), jump to found_match_label
-
+        // Jump back to address loop start
         let layout = self.emit_instruction_typed(
-            Opcode::Op2(Op2::Je), // je: jump if equal
-            &[
-                Operand::Variable(6), // Second dictionary address
-                Operand::Variable(2), // Parser result (noun dictionary address)
-            ],
+            Opcode::Op1(Op1::Jump),                        // jump
+            &[Operand::LargeConstant(placeholder_word())], // Placeholder for loop start
             None,
-            Some(-1), // Branch on TRUE: if addresses match, jump to found_match_label
+            None,
         )?;
-
-        // Register branch to found_match_label for second address comparison
-        // CRITICAL FIX: Use layout.branch_location instead of hardcoded -2 offset
-        if let Some(branch_location) = layout.branch_location {
+        if let Some(operand_location) = layout.operand_location {
             self.reference_context
                 .unresolved_refs
                 .push(UnresolvedReference {
-                    reference_type: LegacyReferenceType::Branch,
-                    location: branch_location, // CORRECT: Use actual branch location from layout
-                    target_id: found_match_label,
+                    reference_type: LegacyReferenceType::Jump,
+                    location: operand_location,
+                    target_id: address_loop_start_label,
                     is_packed_address: false,
                     offset_size: 2,
                     location_space: MemorySpace::Code,
                 });
         }
 
-        // Load third dictionary address: loadw Variable(5), 2 → Variable(6)
+        // Mark address loop end
+        self.label_addresses
+            .insert(address_loop_end_label, self.code_address);
+        self.record_final_address(address_loop_end_label, self.code_address);
 
-        self.emit_instruction_typed(
-            Opcode::Op2(Op2::Loadw), // loadw: load word from memory
-            &[
-                Operand::Variable(5),      // Property data address (0x049b)
-                Operand::SmallConstant(2), // Offset 2 (third word)
-            ],
-            Some(6), // Store result in Variable(6)
-            None,
-        )?;
-
-        // Compare third address: if Variable(6) == Variable(2), jump to found_match_label
-
-        let layout = self.emit_instruction_typed(
-            Opcode::Op2(Op2::Je), // je: jump if equal
-            &[
-                Operand::Variable(6), // Third dictionary address
-                Operand::Variable(2), // Parser result (noun dictionary address)
-            ],
-            None,
-            Some(-1), // Branch on TRUE: if addresses match, jump to found_match_label
-        )?;
-
-        // Register branch to found_match_label for third address comparison
-        // CRITICAL FIX: Use layout.branch_location instead of hardcoded -2 offset
-        if let Some(branch_location) = layout.branch_location {
-            self.reference_context
-                .unresolved_refs
-                .push(UnresolvedReference {
-                    reference_type: LegacyReferenceType::Branch,
-                    location: branch_location, // CORRECT: Use actual branch location from layout
-                    target_id: found_match_label,
-                    is_packed_address: false,
-                    offset_size: 2,
-                    location_space: MemorySpace::Code,
-                });
-        }
-
-        // If no match found, continue to next object (fall through to increment)
+        // If no match found in any address, continue to next object (fall through to increment)
 
         // Mark the end label (no match found - property 18 doesn't exist)
         self.label_addresses

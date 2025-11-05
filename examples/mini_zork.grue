@@ -84,8 +84,8 @@ world {
         }
 
         exits: {
-            north: north_of_house,
-            south: forest,
+            north: forest,
+            south: north_of_house,
             up: up_a_tree
         }
     }
@@ -117,7 +117,7 @@ world {
     room forest "Forest" {
         desc: "This is a forest, with trees in all directions. To the east, there appears to be sunlight."
         exits: {
-            north: forest_path,
+            south: forest_path,
             east: clearing,
             west: behind_house
         }
@@ -389,8 +389,11 @@ fn handle_go(direction) {
 }
 
 fn handle_climb(obj) {
-    if obj == tree && player.location == forest_path {
-        handle_go("up");
+    if (obj == tree) {
+        if (player.location == forest_path) {
+            println("Climbing the tree!");
+            handle_go("up");
+        }
     } else {
         println("You can't climb that.");
     }

@@ -211,7 +211,7 @@ pub struct ZMachineCodeGen {
     /// Set of IR IDs that come from GetProperty instructions (for print() type detection)
     pub ir_id_from_property: IndexSet<IrId>,
     /// Mapping from object names to object numbers (from IR generator)
-    object_numbers: IndexMap<String, u16>,
+    pub object_numbers: IndexMap<String, u16>,
     /// Mapping from room IR IDs to Z-Machine object numbers
     pub room_to_object_id: IndexMap<IrId, u16>,
     /// Exit directions for each room: room_name -> Vec<direction_name>
@@ -1626,6 +1626,15 @@ impl ZMachineCodeGen {
                                 .position(|w| w == &object_name.to_lowercase())
                                 .unwrap_or(0) as u32;
 
+                            // CRITICAL FIX: Use the exact offset of this specific dictionary address placeholder
+                            // data_offset points to current byte, we need the start of the 2-byte word
+                            let dict_address_offset = data_offset;
+
+                            log::warn!(
+                                "🔗 PROP18_DICTREF_FIX: Object '{}' name '{}' -> dict_address_offset=0x{:04x} (object_space-relative)",
+                                object.name, object_name, dict_address_offset
+                            );
+
                             // Create UnresolvedReference for dictionary address
                             self.reference_context
                                 .unresolved_refs
@@ -1633,7 +1642,7 @@ impl ZMachineCodeGen {
                                     reference_type: LegacyReferenceType::DictionaryRef {
                                         word: object_name.clone(),
                                     },
-                                    location: data_offset, // Location in object_space (will be adjusted with object_base)
+                                    location: dict_address_offset, // Exact location of this 2-byte dictionary address
                                     target_id: position,
                                     is_packed_address: false,
                                     offset_size: 2,
@@ -1642,7 +1651,7 @@ impl ZMachineCodeGen {
 
                             log::debug!(
                                 "Created DictionaryRef UnresolvedReference for Property 18 object names: object='{}', name='{}', position={}, object_space offset=0x{:04x}",
-                                object.name, object_name, position, data_offset
+                                object.name, object_name, position, dict_address_offset
                             );
                         }
                     }
@@ -2839,6 +2848,20 @@ impl ZMachineCodeGen {
                                 "Grammar handler arguments cannot use StringRef - use String instead"
                             )));
                         }
+                        crate::grue_compiler::ir::IrValue::Object(object_name) => {
+                            // Convert object name to runtime object number for function arguments
+                            if let Some(&runtime_number) = self.object_numbers.get(object_name) {
+                                if runtime_number <= 255 {
+                                    Operand::SmallConstant(runtime_number as u8)
+                                } else {
+                                    Operand::LargeConstant(runtime_number)
+                                }
+                            } else {
+                                return Err(CompilerError::CodeGenError(format!(
+                                    "Object '{}' not found in runtime mapping for function argument", object_name
+                                )));
+                            }
+                        }
                     };
                     operands.push(arg_operand);
                 }
@@ -3283,6 +3306,11 @@ impl ZMachineCodeGen {
                 // String literals in LoadImmediate don't generate any bytecode
                 // They are just metadata that gets stored in ir_id_to_string
                 // The actual string usage happens in print calls, not load immediates
+            }
+            IrValue::Object(_object_name) => {
+                // Object references in LoadImmediate don't generate any bytecode
+                // The object name to runtime number mapping is handled in codegen_instructions.rs
+                // when the LoadImmediate instruction is processed
             }
             _ => {
                 return Err(CompilerError::CodeGenError(
@@ -3968,8 +3996,21 @@ impl ZMachineCodeGen {
             }
         }
 
-        // Also copy the object_numbers mapping for legacy compatibility
-        self.object_numbers = ir.object_numbers.clone();
+        // Create proper name-to-runtime-number mapping instead of copying IR phase mapping
+        self.object_numbers.clear();
+
+        // Build mapping from object names to actual runtime object numbers
+        for (name, &ir_id) in &ir.symbol_ids {
+            if let Some(&runtime_number) = self.ir_id_to_object_number.get(&ir_id) {
+                self.object_numbers.insert(name.clone(), runtime_number);
+                log::debug!(
+                    "Final object mapping: '{}' (IR ID {}) -> runtime Object #{}",
+                    name,
+                    ir_id,
+                    runtime_number
+                );
+            }
+        }
 
         log::debug!(
             "Object mapping setup complete: {} IR ID -> object number mappings created",
@@ -4004,47 +4045,47 @@ impl ZMachineCodeGen {
     /// Object numbering: Player (#1), Rooms (#2-N), Objects (#N+1-M)
     /// Made public for use by codegen_extensions.rs
     pub fn setup_ir_id_to_object_mapping(&mut self, ir: &IrProgram) -> Result<(), CompilerError> {
+        // CRITICAL FIX: Match the ordering used in object tree generation to ensure
+        // consistent object numbering between phases. The key insight is that we need
+        // to use the same iteration order as the object table generation.
+
         let mut object_num = 1u16;
 
-        // Player is always object #1 (first in ir.objects)
+        // Collect all objects in the same order as object table generation
+        let mut all_objects = Vec::new();
+
+        // First the player (always first in ir.objects)
         if !ir.objects.is_empty() {
-            let player = &ir.objects[0];
-            self.ir_id_to_object_number.insert(player.id, object_num);
-            log::warn!(
-                "🗺️ OBJ_MAPPING: Player '{}' (IR ID {}) -> Object #{}",
-                player.name,
-                player.id,
-                object_num
-            );
-            object_num += 1;
+            all_objects.push(("player", ir.objects[0].id, &ir.objects[0].name));
         }
 
-        // Rooms come next
+        // Then rooms
         for room in &ir.rooms {
-            self.ir_id_to_object_number.insert(room.id, object_num);
-            log::warn!(
-                "🗺️ OBJ_MAPPING: Room '{}' (IR ID {}) -> Object #{}",
-                room.name,
-                room.id,
-                object_num
-            );
-            object_num += 1;
+            all_objects.push(("room", room.id, &room.name));
         }
 
-        // Regular objects (skip player who was already added)
+        // Then non-player objects
         for object in ir.objects.iter().skip(1) {
-            self.ir_id_to_object_number.insert(object.id, object_num);
+            all_objects.push(("object", object.id, &object.name));
+        }
+
+        // Now assign sequential numbers in this exact order
+        for (obj_type, ir_id, name) in all_objects {
+            self.ir_id_to_object_number.insert(ir_id, object_num);
+            // Also populate object_numbers mapping for IrValue::Object support
+            self.object_numbers.insert(name.clone(), object_num);
             log::warn!(
-                "🗺️ OBJ_MAPPING: Object '{}' (IR ID {}) -> Object #{}",
-                object.name,
-                object.id,
+                "🗺️ OBJ_MAPPING: {} '{}' (IR ID {}) -> Object #{} (sequential)",
+                obj_type,
+                name,
+                ir_id,
                 object_num
             );
             object_num += 1;
         }
 
         log::info!(
-            "IR ID to object mapping complete: {} objects mapped",
+            "IR ID to object mapping complete: {} objects mapped sequentially",
             self.ir_id_to_object_number.len()
         );
         Ok(())

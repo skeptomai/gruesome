@@ -216,6 +216,19 @@ impl ZMachineCodeGen {
                         self.constant_values
                             .insert(*target, ConstantValue::Boolean(*b));
                     }
+                    IrValue::Object(object_name) => {
+                        // Convert object name to runtime object number
+                        if let Some(&runtime_number) = self.object_numbers.get(object_name) {
+                            self.ir_id_to_integer.insert(*target, runtime_number as i16);
+                            self.constant_values
+                                .insert(*target, ConstantValue::Integer(runtime_number as i16));
+                        } else {
+                            return Err(CompilerError::CodeGenError(format!(
+                                "Object '{}' not found in runtime mapping",
+                                object_name
+                            )));
+                        }
+                    }
                     _ => {}
                 }
                 self.generate_load_immediate(value)?;
