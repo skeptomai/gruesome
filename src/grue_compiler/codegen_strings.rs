@@ -6,6 +6,7 @@
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::*;
 use crate::grue_compiler::ZMachineVersion;
+use indexmap::IndexMap;
 use log::debug;
 
 // Re-export common types for string handling
@@ -691,10 +692,86 @@ impl ZMachineCodeGen {
         address
     }
 
-    /// String Processing Functions for IR Translation
+    /// Patch string property placeholders with final packed addresses
+    /// During Phase 2, string properties stored string IDs as placeholders
+    /// Now that final_string_base is known, convert them to packed addresses
+    fn patch_string_properties(&mut self) -> Result<(), CompilerError> {
+        log::info!("🔄 PATCHING STRING PROPERTIES: Converting string IDs to packed addresses");
 
-    /// Translate to_string builtin function calls
-    // Removed dead code: _translate_to_string_builtin_inline_REMOVED
+        // Calculate packed address for each string
+        let mut string_packed_addresses = IndexMap::new();
+        for (&string_id, &offset) in &self.string_offsets {
+            let absolute_address = self.final_string_base + offset;
+            let packed_address = match self.version {
+                ZMachineVersion::V3 => absolute_address / 2,
+                ZMachineVersion::V4 | ZMachineVersion::V5 => absolute_address / 4,
+            };
+            string_packed_addresses.insert(string_id, packed_address);
+            log::debug!(
+                "STRING_PACKING: ID {} at offset {} → address 0x{:04x} → packed 0x{:04x}",
+                string_id,
+                offset,
+                absolute_address,
+                packed_address
+            );
+        }
+
+        // Scan final_data at object_base for string ID placeholders and replace with packed addresses
+        // Properties are stored as: [size_byte][data...]
+        // String properties have size_byte indicating 2-byte Word property
+        let object_start = self.final_object_base;
+        let object_end = object_start + self.object_space.len();
+        let mut i = object_start;
+
+        log::debug!(
+            "Scanning object space in final_data from 0x{:04x} to 0x{:04x}",
+            object_start,
+            object_end
+        );
+
+        while i < object_end {
+            // Check if this looks like a property size byte
+            if i + 2 < object_end && i + 2 < self.final_data.len() {
+                let size_byte = self.final_data[i];
+
+                // Extract property number and size from size_byte
+                // Format: [size-1 in bits 5-7][property number in bits 0-4]
+                let prop_num = size_byte & 0x1F;
+                let prop_size = ((size_byte >> 5) & 0x07) + 1;
+
+                // Only patch 2-byte (Word) properties
+                if prop_size == 2 {
+                    // Read the 2-byte value
+                    let high_byte = self.final_data[i + 1];
+                    let low_byte = self.final_data[i + 2];
+                    let value = ((high_byte as u16) << 8) | (low_byte as u16);
+
+                    // Check if this value is a string ID (1000+)
+                    if value >= 1000 && value < 10000 {
+                        if let Some(&packed_addr) = string_packed_addresses.get(&(value as u32)) {
+                            // Replace with packed address in final_data
+                            self.final_data[i + 1] = (packed_addr >> 8) as u8;
+                            self.final_data[i + 2] = (packed_addr & 0xFF) as u8;
+                            log::debug!(
+                                "PATCHED: Property {} at absolute address 0x{:04x}: string ID {} → packed address 0x{:04x}",
+                                prop_num,
+                                i,
+                                value,
+                                packed_addr
+                            );
+                        }
+                    }
+                }
+
+                // Move to next property (skip size byte + property data)
+                i += 1 + prop_size as usize;
+            } else {
+                i += 1;
+            }
+        }
+
+        Ok(())
+    }
 
     /// Translate string concatenation operations
     pub fn translate_string_concatenation(

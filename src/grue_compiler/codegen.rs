@@ -8358,87 +8358,6 @@ impl ZMachineCodeGen {
         }
     }
 
-    /// Patch string property placeholders with final packed addresses
-    /// During Phase 2, string properties stored string IDs as placeholders
-    /// Now that final_string_base is known, convert them to packed addresses
-    fn patch_string_properties(&mut self) -> Result<(), CompilerError> {
-        log::info!("🔄 PATCHING STRING PROPERTIES: Converting string IDs to packed addresses");
-
-        // Calculate packed address for each string
-        let mut string_packed_addresses = IndexMap::new();
-        for (&string_id, &offset) in &self.string_offsets {
-            let absolute_address = self.final_string_base + offset;
-            let packed_address = match self.version {
-                ZMachineVersion::V3 => absolute_address / 2,
-                ZMachineVersion::V4 | ZMachineVersion::V5 => absolute_address / 4,
-            };
-            string_packed_addresses.insert(string_id, packed_address);
-            log::debug!(
-                "STRING_PACKING: ID {} at offset {} → address 0x{:04x} → packed 0x{:04x}",
-                string_id,
-                offset,
-                absolute_address,
-                packed_address
-            );
-        }
-
-        // Scan final_data at object_base for string ID placeholders and replace with packed addresses
-        // Properties are stored as: [size_byte][data...]
-        // String properties have size_byte indicating 2-byte Word property
-        let object_start = self.final_object_base;
-        let object_end = object_start + self.object_space.len();
-        let mut i = object_start;
-
-        log::debug!(
-            "Scanning object space in final_data from 0x{:04x} to 0x{:04x}",
-            object_start,
-            object_end
-        );
-
-        while i < object_end {
-            // Check if this looks like a property size byte
-            if i + 2 < object_end && i + 2 < self.final_data.len() {
-                let size_byte = self.final_data[i];
-
-                // Extract property number and size from size_byte
-                // Format: [size-1 in bits 5-7][property number in bits 0-4]
-                let prop_num = size_byte & 0x1F;
-                let prop_size = ((size_byte >> 5) & 0x07) + 1;
-
-                // Only patch 2-byte (Word) properties
-                if prop_size == 2 {
-                    // Read the 2-byte value
-                    let high_byte = self.final_data[i + 1];
-                    let low_byte = self.final_data[i + 2];
-                    let value = ((high_byte as u16) << 8) | (low_byte as u16);
-
-                    // Check if this value is a string ID (1000+)
-                    if value >= 1000 && value < 10000 {
-                        if let Some(&packed_addr) = string_packed_addresses.get(&(value as u32)) {
-                            // Replace with packed address in final_data
-                            self.final_data[i + 1] = (packed_addr >> 8) as u8;
-                            self.final_data[i + 2] = (packed_addr & 0xFF) as u8;
-                            log::debug!(
-                                "PATCHED: Property {} at absolute address 0x{:04x}: string ID {} → packed address 0x{:04x}",
-                                prop_num,
-                                i,
-                                value,
-                                packed_addr
-                            );
-                        }
-                    }
-                }
-
-                // Move to next property (skip size byte + property data)
-                i += 1 + prop_size as usize;
-            } else {
-                i += 1;
-            }
-        }
-
-        Ok(())
-    }
-
     // Utility methods for code emission
 
     pub fn emit_byte(&mut self, byte: u8) -> Result<(), CompilerError> {
@@ -8780,10 +8699,6 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Write byte to string space (encoded strings)
-
-    /// Write byte to dictionary space (word parsing dictionary)
-
     /// Create UnresolvedReference with proper space context
     pub fn create_unresolved_reference(
         &self,
@@ -9005,10 +8920,8 @@ impl ZMachineCodeGen {
     /// Made public for use by codegen_extensions.rs
     pub fn reinitialize_input_buffers_in_image(&self, game_image: &mut Vec<u8>) {
         if self.text_buffer_addr > 0 && self.parse_buffer_addr > 0 {
-            debug!(
- "Reinitializing input buffers in final image: text_buffer[{}] = 100, parse_buffer[{}] = 120",
- self.text_buffer_addr, self.parse_buffer_addr
- );
+            debug!("Reinitializing input buffers in final image: text_buffer[{}] = 100, parse_buffer[{}] = 120",
+                    self.text_buffer_addr, self.parse_buffer_addr);
 
             // Ensure we have enough space in the final image
             let required_size = self.parse_buffer_addr + 34;
@@ -9058,11 +8971,6 @@ impl ZMachineCodeGen {
         }
         eprintln!();
     }
-
-    // Z-Machine instruction encoding methods now moved to codegen_instructions.rs
-
-    // PLACEHOLDER: Instruction emission functions moved to codegen_instructions.rs module
-    // This comment preserves the section organization while the functions are now extracted
 
     // ============================================================================
     // BUILTIN FUNCTION GENERATION
@@ -9562,28 +9470,6 @@ impl ZMachineCodeGen {
                 });
         }
 
-        // CRITICAL FIX (Oct 27, 2025): Generic builtin stack discipline violation
-        //
-        // PROBLEM: This generic wrapper was calling use_push_pull_for_result BEFORE individual
-        // builtin functions executed, while individual builtins also called it AFTER emitting
-        // their instructions. This created a double call pattern:
-        //
-        // 1. Generic wrapper: use_push_pull_for_result() → emits "push Variable(0)"
-        // 2. Individual builtin: emits actual instruction (get_child, get_prop, etc.)
-        // 3. Individual builtin: use_push_pull_for_result() → emits another push
-        //
-        // RESULT: First push executed before any value was on stack → stack underflow crash
-        //
-        // ROOT CAUSE: Generic wrapper violated Z-Machine stack discipline by calling
-        // use_push_pull_for_result prematurely. Individual builtins already handle
-        // stack operations correctly after instruction emission.
-        //
-        // SOLUTION: Remove generic call entirely. Let individual builtins handle their
-        // own stack discipline correctly (after instruction emission, not before).
-        //
-        // AFFECTED FUNCTIONS: get_object_contents, all property access, string operations
-        // IMPACT: Eliminates systematic stack underflow in object iteration system
-
         log::debug!(
             "Called builtin function '{}', result stored, PC now 0x{:04x}",
             name,
@@ -9593,14 +9479,6 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    // ARCHITECTURE FIX (Oct 27, 2025): Removed create_builtin_get_exit function
-    //
-    // get_exit now uses standard builtin pipeline:
-    // 1. Semantic registration via semantic.rs register_builtin_functions()
-    // 2. Function creation via generate_builtin_functions() → generate_get_exit_builtin()
-    // 3. Call translation via generate_builtin_function_call() with UnresolvedReference fixups
-    //
-    // This eliminates reactive registration patterns and provides proper address resolution.
 }
 
 #[cfg(test)]
