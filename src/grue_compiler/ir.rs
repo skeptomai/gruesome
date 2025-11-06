@@ -3031,10 +3031,28 @@ impl IrGenerator {
             }
             Expr::FunctionCall { name, arguments } => {
                 // Generate arguments first
+                // For string literals, use the same approach as grammar handlers
                 let mut arg_temps = Vec::new();
                 for arg in arguments {
-                    let arg_temp = self.generate_expression(arg, block)?;
-                    arg_temps.push(arg_temp);
+                    match arg {
+                        crate::grue_compiler::ast::Expr::String(_) => {
+                            // For string literals, use expr_to_ir_value approach like grammar handlers
+                            // This bypasses IR ID creation and timing issues
+                            let ir_value = self.expr_to_ir_value(arg)?;
+                            // Create a temporary LoadImmediate instruction to hold the IrValue
+                            let temp_id = self.next_id();
+                            block.add_instruction(IrInstruction::LoadImmediate {
+                                target: temp_id,
+                                value: ir_value,
+                            });
+                            arg_temps.push(temp_id);
+                        }
+                        _ => {
+                            // For complex expressions, use normal generation
+                            let arg_temp = self.generate_expression(arg, block)?;
+                            arg_temps.push(arg_temp);
+                        }
+                    }
                 }
 
                 // Check if this is a built-in function that needs special IR handling

@@ -41,7 +41,25 @@
 
 ## 🎯 **ACTIVE DEVELOPMENT AREAS**
 
-### **Score System Binary Arithmetic Bug** 🔥 **CURRENT WORK** (November 4, 2025)
+### **String Parameter Investigation** 🔥 **CURRENT WORK** (November 6, 2025)
+
+**ISSUE**: String literal parameters work in grammar definitions but fail in regular function calls
+- **WORKS**: `verb "north" { default => handle_go("north") }`
+- **FAILS**: `handle_go("up")` (receives IR ID 37 instead of string "up")
+- **ROOT CAUSE**: Function calls pass IR ID instead of actual string content to parameters
+- **INVESTIGATION**: Understanding why grammar string literals work vs regular function calls
+- **DOCUMENTATION**: See `docs/string_parameter_investigation.md`
+
+**CURRENT TASK**: Examining grammar codegen system to identify how it successfully processes string literals and applying the same mechanism to regular function calls.
+
+### **Climb Tree Functionality Bug** ⏳ **BLOCKED ON STRING PARAMETERS** (November 6, 2025)
+
+**ISSUE**: "north, north, climb tree" returns "You can't climb that" instead of climbing the tree
+- **STATUS**: handle_climb executes but `handle_go("up")` fails due to string parameter issue
+- **DEPENDENCIES**: Blocked on string parameter investigation above
+- **FILES**: `examples/debug_climb.grue`, `examples/mini_zork.grue`
+
+### **Score System Binary Arithmetic Bug** ⏳ **NEXT UP** (November 4, 2025)
 
 **ISSUE**: Arithmetic binary operations on score fail to produce correct results
 - **Problem**: `player.score = player.score + 10` doesn't work correctly

@@ -1,0 +1,126 @@
+// Debug version of climb tree to diagnose function call issue
+
+world {
+    room forest_path "Forest Path" {
+        desc: "This is a path winding through a dimly lit forest. The path heads north-south here. One particularly large tree with some low branches stands at the edge of the path."
+
+        object tree {
+            names: ["tree", "large tree"]
+            desc: "The tree has low branches that look climbable."
+            takeable: false
+        }
+
+        exits: {
+            up: up_a_tree
+        }
+    }
+
+    room up_a_tree "Up a Tree" {
+        desc: "You are about 10 feet above the ground nestled among some large branches. The nearest branch above you is above your reach."
+
+        exits: {
+            down: forest_path
+        }
+    }
+}
+
+grammar {
+    verb "climb" {
+        noun => handle_climb($noun)
+    }
+
+    verb "up" {
+        default => handle_go("up")
+    }
+
+    verb "look" {
+        default => look_around()
+    }
+
+    verb "quit" {
+        default => handle_quit()
+    }
+
+    verb "yes" {
+        default => handle_yes()
+    }
+
+    verb "y" {
+        default => handle_yes()
+    }
+}
+
+fn handle_climb(obj) {
+    println("DEBUG: handle_climb called");
+    if (obj == tree) {
+        println("DEBUG: obj matches tree");
+        if (player.location == forest_path) {
+            println("DEBUG: player location is forest_path");
+            println("Climbing the tree!");
+            println("DEBUG: About to call handle_go(\"up\")");
+            handle_go("up");
+            println("DEBUG: handle_go call completed");
+        } else {
+            println("DEBUG: player not in forest_path");
+        }
+    } else {
+        println("You can't climb that.");
+        println("DEBUG: obj doesn't match tree");
+    }
+}
+
+fn handle_go(direction) {
+    println("DEBUG: handle_go called with direction:");
+    println(direction);
+
+    let exit = player.location.get_exit(direction);
+    println("DEBUG: got exit");
+
+    if exit.none() {
+        println("DEBUG: exit is none");
+        println("You can't go that way.");
+        return;
+    }
+
+    println("DEBUG: exit exists, checking if blocked");
+    if exit.blocked {
+        println("DEBUG: exit is blocked");
+        println(exit.message);
+        return;
+    }
+
+    println("DEBUG: Moving player to destination");
+    move(player, exit.destination);
+    player.location.visited = true;
+
+    println("DEBUG: Moved successfully, calling look_around");
+    look_around();
+}
+
+fn look_around() {
+    println("DEBUG: look_around called");
+    println(player.location.desc);
+}
+
+fn handle_quit() {
+    println("Are you sure you want to quit? (y/n)");
+    player.quit_pending = true;
+}
+
+fn handle_yes() {
+    if player.quit_pending {
+        player.quit_pending = false;
+        quit();
+    } else {
+        println("Yes to what?");
+    }
+}
+
+init {
+    // Set up initial game state
+    player.location = forest_path;
+    forest_path.visited = true;
+
+    // Show initial location
+    look_around();
+}

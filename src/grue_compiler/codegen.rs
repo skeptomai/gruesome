@@ -3741,12 +3741,21 @@ impl ZMachineCodeGen {
             return Ok(Operand::Variable(local_var));
         }
 
-        // Check if it's a string literal (shouldn't be used in binary ops, but handle gracefully)
-        if self.ir_id_to_string.contains_key(&ir_id) {
-            return Err(CompilerError::CodeGenError(format!(
-                "Cannot use string literal (IR ID {}) as operand in binary operation",
+        // Check if it's a string literal - return packed address
+        if let Some(string_content) = self.ir_id_to_string.get(&ir_id) {
+            // Check if we have the string address calculated
+            if let Some(&address) = self.string_addresses.get(&ir_id) {
+                let packed_address = address / 2; // V3 strings are word-addressed
+                log::debug!(
+                    "resolve_ir_id_to_operand: String literal '{}' (IR ID {}) -> packed_addr 0x{:04x}",
+                    string_content, ir_id, packed_address
+                );
+                return Ok(Operand::LargeConstant(packed_address as u16));
+            }
+            log::debug!(
+                "resolve_ir_id_to_operand: Found string literal IR ID {} but no address calculated yet",
                 ir_id
-            )));
+            );
         }
 
         // CRITICAL FIX: Check for player object first - player must use Variable(16)
@@ -6813,6 +6822,7 @@ impl ZMachineCodeGen {
             arg_operands.push(self.resolve_ir_id_to_operand(arg_id)?);
         }
 
+
         // Phase 1: Store function results in Variable(0) for Z-Machine compliance
         // CHANGE: Always store to Variable(0) when result needed, following Z-Machine spec
         let store_var = if let Some(target_id) = target {
@@ -6859,6 +6869,7 @@ impl ZMachineCodeGen {
                     location_space: MemorySpace::Code,
                 });
         }
+
 
         log::debug!(
             "Called builtin function '{}', result stored, PC now 0x{:04x}",
