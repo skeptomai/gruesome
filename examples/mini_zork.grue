@@ -28,7 +28,7 @@ world {
             contains {
                 object leaflet {
                     names: ["leaflet", "paper"]
-                    desc: "\"WELCOME TO ZORK!\n\nZORK is a game of adventure, danger, and low cunning. In it you will explore some of the most amazing territory ever seen by mortals. No computer should be without one!\""
+                    desc: "\"WELCOME TO DORK!\n\nDORK is a game of adventure, danger, and low cunning. In it you will explore some of the most amazing territory ever seen by mortals. No computer should be without one!\""
                     takeable: true
                 }
             }
