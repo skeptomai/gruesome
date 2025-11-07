@@ -1,6 +1,18 @@
 // Mini Zork - Sample Grue Game for Compiler Testing
 // This game implements the classic opening of Zork I
 // to validate our Z-Machine compiler implementation
+//
+// Room Layout (Consistent Directional Movement):
+//
+//     [forest_path] -----> [forest] -----> [clearing]
+//           |                |               |
+//           v                v               v
+//   [north_of_house]   [behind_house] -------|
+//           |                |
+//           v                v
+//   [west_of_house] <---[south_of_house]
+//
+// Movement flows naturally: house perimeter → forest path → deep forest → clearing
 
 world {
     room west_of_house "West of House" {
@@ -76,6 +88,8 @@ world {
     room forest_path "Forest Path" {
         desc: "This is a path winding through a dimly lit forest. The path heads north-south here. One particularly large tree with some low branches stands at the edge of the path."
 
+        // Directional consistency: south leads back toward house, east leads deeper into forest
+
         object tree {
             names: ["tree", "large tree"]
             desc: "The tree has low branches that look climbable."
@@ -83,8 +97,8 @@ world {
         }
 
         exits: {
-            north: north_of_house,
-            south: forest,
+            south: north_of_house,
+            east: forest,
             up: up_a_tree
         }
     }
@@ -117,18 +131,21 @@ world {
     
     room forest "Forest" {
         desc: "This is a forest, with trees in all directions. To the east, there appears to be sunlight."
+
+        // Linear progression: south leads to clearing (not east), creating consistent flow
         exits: {
             north: forest_path,
-            east: clearing,
+            south: clearing,
             west: behind_house
         }
     }
     
     room clearing "Forest Clearing" {
         desc: "You are in a clearing, with a forest surrounding you on all sides. A path leads south."
+
+        // Removed circular south→forest exit for cleaner geography; players can return via behind_house
         exits: {
             north: behind_house,
-            south: forest
         }
     }
 }
