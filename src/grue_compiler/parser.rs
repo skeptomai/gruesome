@@ -549,6 +549,7 @@ impl Parser {
                     "bool" => Ok(Type::Bool),
                     "int" => Ok(Type::Int),
                     "string" => Ok(Type::String),
+                    "string_address" => Ok(Type::StringAddress),
                     "room" => Ok(Type::Room),
                     "object" => Ok(Type::Object),
                     _ => Err(CompilerError::ParseError(
