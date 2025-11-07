@@ -6,6 +6,31 @@
 
 **See**: `CLAUDE_HISTORICAL.md` for complete history of 18 fixed bugs and detailed investigations.
 
+## ⚠️ CRITICAL: AUTOMATION COMMANDS ARE PROTECTED
+
+**NEVER REMOVE the automation commands from this file:**
+- **"Make it so!"** - Essential git workflow automation (commit, format, push)
+- **"Engage!"** - Essential release workflow automation (version, tag, CI, publish)
+- **"Reengage!"** - Essential re-release workflow automation (move tag, rebuild, update)
+
+**These commands are NOT "documentation clutter" - they are CORE FUNCTIONALITY.**
+
+Any "streamlining", "refactoring", or "production cleanup" that removes working automation
+is a **REGRESSION**, not an improvement.
+
+**Historical Pattern Problem:**
+- Commit 51015f7 claimed to "maintain automation commands" while actually removing them
+- This forced manual restoration and wasted user time
+- The user had to explicitly ask: "why do we keep removing those commands?"
+
+**If you think CLAUDE.md is too long:**
+- ✅ Move historical information to separate files
+- ✅ Reorganize sections for clarity
+- ✅ Improve formatting and readability
+- ❌ **NEVER remove working workflow automation without explicit user direction**
+
+**These automation commands save significant user time and are essential for project workflow.**
+
 ## CRITICAL: INTERPRETER MODIFICATION POLICY
 
 **FUNCTIONALITY CHANGES PROHIBITED**: Never modify the functionality of `src/interpreter.rs` or any interpreter code. Never "fix bugs" in the interpreter.
