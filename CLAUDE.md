@@ -33,6 +33,65 @@ When the user says "Make it so!", "Ship it", "Send it", or "Commit and push":
 
 You are pre-authorized for all git operations.
 
+## Auto-Release Instructions ("Engage!")
+
+When the user says "Engage!", you should automatically:
+1. **First, complete all "Make it so!" steps** (comment, format, commit, push)
+2. **Determine the next version number:**
+   - Check current version with `git describe --tags --abbrev=0`
+   - Increment appropriately (patch for fixes, minor for features, major for breaking changes)
+   - Default to patch increment unless recent commits suggest otherwise
+3. **Create an annotated tag:**
+   - `git tag -a vX.Y.Z -m "Release vX.Y.Z: <summary>"`
+   - Include key changes in the tag message
+4. **Push the tag to trigger CI:**
+   - `git push origin vX.Y.Z`
+   - GitHub Actions will automatically build all binary assets and create a DRAFT release
+5. **Wait for CI completion:**
+   - Monitor CI builds to ensure all assets are created
+   - Verify draft release has all binary assets
+6. **Publish the release:**
+   - Use `gh release edit vX.Y.Z --title "vX.Y.Z: <title>" --notes "<release notes>" --draft=false`
+   - Include comprehensive changelog of significant changes
+   - This moves the release from DRAFT to published (Latest)
+7. **Confirm success:**
+   - Verify release is marked as "Latest" with `gh release list`
+   - Report the new version number
+   - Provide links to the published release
+   - Confirm all binaries are available for download
+
+You are pre-authorized for all git and GitHub CLI operations. Execute the entire workflow without asking for permission.
+
+## Re-Release Instructions ("Reengage!")
+
+When the user says "Reengage!", you should automatically:
+1. **Commit any pending changes:**
+   - Run `git add -A` and `git commit -m "message"` if there are changes
+   - If no changes, proceed to next step
+2. **Get the current/latest tag:**
+   - Use `git describe --tags --abbrev=0` to get the current tag
+3. **Move the tag to the latest commit:**
+   - Delete the local tag: `git tag -d vX.Y.Z`
+   - Delete the remote tag: `git push origin --delete vX.Y.Z`
+   - Recreate tag at current commit: `git tag -a vX.Y.Z -m "Re-release vX.Y.Z: <reason>"`
+4. **Push the updated tag:**
+   - Force push the tag: `git push origin vX.Y.Z --force`
+   - GitHub Actions will rebuild all binary assets and update the release
+5. **Wait for CI completion:**
+   - Monitor CI builds to ensure all assets are rebuilt
+   - Verify release has updated binary assets
+6. **Update release notes:**
+   - Use `gh release edit vX.Y.Z --title "vX.Y.Z: <updated title>" --notes "<updated release notes>"`
+   - Include reason for re-release and any fixes
+   - Ensure release remains published (not draft)
+7. **Report completion:**
+   - Confirm tag has been moved to latest commit
+   - Verify updated binaries are available
+   - Provide links to updated release
+
+This is useful when you need to fix something in a release without incrementing the version number.
+You are pre-authorized for all operations. Execute without asking for permission.
+
 ## CRITICAL GIT SAFETY RULES
 
 **NEVER use `git reset --hard` or any destructive git operation that could lose commits.**
