@@ -714,7 +714,7 @@ impl SemanticAnalyzer {
                             // Functions as identifiers return their return type
                             Ok(return_type.clone().unwrap_or(Type::Any))
                         }
-                        SymbolType::Room { .. } => Ok(Type::Room),
+                        SymbolType::Room { .. } => Ok(Type::Int), // Rooms are object numbers at runtime
                         SymbolType::Object { .. } => Ok(Type::Object),
                     }
                 } else {

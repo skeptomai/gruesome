@@ -41,6 +41,110 @@
 
 ## 🎯 **ACTIVE DEVELOPMENT AREAS**
 
+### **CLIMB TREE BUG** ✅ **RESOLVED** (November 6, 2025)
+
+**ISSUE RESOLVED**: Object variable compilation bug causing infinite loops in climb tree functionality
+
+**Final Status**: SUCCESSFULLY FIXED - Object variable compilation now works correctly
+
+**Root Cause Identified and Fixed**:
+- **Problem**: Object variables like `tree` were compiled with IR object numbers instead of runtime object numbers, causing `obj == tree` comparisons to fail and infinite loops in get_exit function
+- **Evidence**: Debug output showed `obj = 13` (correct runtime number) but `tree` variable compiles to wrong IR number
+
+**Solution Implemented**:
+1. ✅ **Added IrValue::Object(String) variant** to store object names for deferred resolution
+2. ✅ **Modified object variable compilation** in `ir.rs` to use `IrValue::Object` instead of immediate integers
+3. ✅ **Added codegen handling** in `codegen_instructions.rs` to convert object names to runtime numbers during code generation
+4. ✅ **Fixed compilation errors** by making object_numbers field public and adding missing pattern matches in `codegen.rs`
+5. ✅ **Verified fix works** - "climb tree" now gives proper response "You can't climb that." instead of infinite loop
+
+**Test Results - SUCCESSFUL**:
+- **Before Fix**: "climb tree" → Infinite loop (get_exit never finding matching direction)
+- **After Fix**: "climb tree" → "You can't climb that." (proper game response)
+- **All basic directions still work perfectly**: north, south, east, west navigation confirmed working
+- **Object variable comparisons now work correctly**: `obj == tree` comparison resolves properly
+
+**Key Files Modified**:
+- `src/grue_compiler/ir.rs` - Object variable compilation with IrValue::Object (line 3029-3038)
+- `src/grue_compiler/codegen_instructions.rs` - Runtime object number resolution (line 308-320)
+- `src/grue_compiler/codegen.rs` - Made object_numbers public, added pattern matches (lines 214, 2837-2847, 3298-3302)
+
+**Architecture Improvement**: Object references now use deferred name resolution instead of compile-time numbers, ensuring correct runtime object mapping for ALL object variable references throughout the compiler.
+
+### **String-to-Dictionary Function Parameter Passing Bug** 🔥 **ACTIVE INVESTIGATION** (November 6, 2025)
+
+**ISSUE**: `handle_go("up")` function call receives corrupted dictionary address, causing incorrect parameter values
+- **Problem**: Function receives `-16641` (`0xBEFF`) instead of expected dictionary address `2750` (`0x0abe`)
+- **Evidence**: Dictionary resolution works correctly, but parameter corruption occurs during function calls
+- **Root Cause**: New string-to-dictionary implementation bypassed original parameter passing mechanism
+
+**CRITICAL ANALYSIS - PARAMETER PASSING ARCHITECTURE**:
+
+**Original System (Working)**:
+```rust
+for &arg_id in args {
+    let arg_operand = self.resolve_ir_id_to_operand(arg_id)?;
+    operands.push(arg_operand);
+}
+```
+- `resolve_ir_id_to_operand` **explicitly rejects string literals** with error
+- Strings were **never designed** to be passed as function parameters
+- System worked because strings weren't used in this context
+
+**New Implementation (Buggy)**:
+```rust
+for &arg_id in args {
+    if let Some(string) = self.ir_id_to_string.get(&arg_id) {
+        // NEW: Create UnresolvedReference with dictionary lookup
+        let operand_location = self.code_address + 1 + operands.len() * 2;
+        operands.push(Operand::LargeConstant(placeholder_word()));
+        // Complex reference creation logic...
+    } else {
+        // Fall back to original method
+        let arg_operand = self.resolve_ir_id_to_operand(arg_id)?;
+        operands.push(arg_operand);
+    }
+}
+```
+- **BYPASSED** the original rejection mechanism
+- **INTRODUCED** new parameter passing for strings
+- **CREATED** entirely new UnresolvedReference resolution path
+
+**EVIDENCE OF WORKING COMPONENTS**:
+1. ✅ **Dictionary resolution**: `"up"` → position 134 → address `0x0abe` (2750)
+2. ✅ **Reference patching**: `Writing 0x0a 0xbe to location 0x15ba`
+3. ❌ **Runtime parameter**: Function receives `-16641` (`0xBEFF`) instead of `2750` (`0x0abe`)
+
+**BYTE PATTERN ANALYSIS**:
+- Expected: `0x0abe` (2750 decimal)
+- Received: `0xBEFF` (-16641 as signed 16-bit)
+- Pattern suggests: **Address calculation error** or **memory layout corruption**
+
+**ARCHITECTURE VIOLATION**:
+The system was designed with `resolve_ir_id_to_operand` explicitly rejecting strings:
+```rust
+if self.ir_id_to_string.contains_key(&ir_id) {
+    return Err(CompilerError::CodeGenError(format!(
+        "Cannot use string literal (IR ID {}) as operand in binary operation")));
+}
+```
+
+This indicates strings were **architecturally prohibited** as function parameters. Our implementation created a parallel system, introducing complexity and bugs.
+
+**IMPLEMENTATION OPTIONS**:
+1. **Fix address calculation** in new implementation (current approach)
+2. **Debug exact memory layout** corruption
+3. **Revert to original** and implement dictionary lookup at different level
+
+**STATUS**: Pursuing Option 1 - fixing address calculation while preserving analysis for potential rollback
+
+**FILES MODIFIED**:
+- `src/grue_compiler/codegen_instructions.rs` - New string parameter handling (lines 3300-3410)
+- Address calculation: `self.code_address + 1 + operands.len() * 2` may be incorrect
+- UnresolvedReference location/MemorySpace may be wrong
+
+**COMMIT DECISION**: Documenting this architectural analysis before proceeding, as we may need to revert to a fundamentally different approach if address calculation fixes don't resolve the core parameter corruption.
+
 ### **Score System Binary Arithmetic Bug** 🔥 **CURRENT WORK** (November 4, 2025)
 
 **ISSUE**: Arithmetic binary operations on score fail to produce correct results

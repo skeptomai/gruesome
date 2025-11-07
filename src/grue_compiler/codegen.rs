@@ -210,8 +210,11 @@ pub struct ZMachineCodeGen {
     ir_id_to_array_id: IndexMap<IrId, IrId>,
     /// Set of IR IDs that come from GetProperty instructions (for print() type detection)
     pub ir_id_from_property: IndexSet<IrId>,
+    /// Mapping from function ID to argument positions that are string literals
+    /// Used to propagate ir_id_from_property flag from string arguments to their corresponding parameters
+    pub string_arg_to_param_mapping: IndexMap<IrId, Vec<usize>>,
     /// Mapping from object names to object numbers (from IR generator)
-    object_numbers: IndexMap<String, u16>,
+    pub object_numbers: IndexMap<String, u16>,
     /// Mapping from room IR IDs to Z-Machine object numbers
     pub room_to_object_id: IndexMap<IrId, u16>,
     /// Exit directions for each room: room_name -> Vec<direction_name>
@@ -384,6 +387,7 @@ impl ZMachineCodeGen {
             ir_id_to_array_info: IndexMap::new(),
             ir_id_to_array_id: IndexMap::new(),
             ir_id_from_property: IndexSet::new(),
+            string_arg_to_param_mapping: IndexMap::new(),
             object_numbers: IndexMap::new(),
             room_to_object_id: IndexMap::new(),
             room_exit_directions: IndexMap::new(),
@@ -2834,6 +2838,17 @@ impl ZMachineCodeGen {
                             Operand::SmallConstant(if *b { 1 } else { 0 })
                         }
                         crate::grue_compiler::ir::IrValue::Null => Operand::SmallConstant(0),
+                        crate::grue_compiler::ir::IrValue::Object(object_name) => {
+                            // Convert object name to runtime object number
+                            if let Some(&runtime_number) = self.object_numbers.get(object_name) {
+                                Operand::LargeConstant(runtime_number)
+                            } else {
+                                return Err(CompilerError::CodeGenError(format!(
+                                    "Object '{}' not found in runtime mapping for function argument",
+                                    object_name
+                                )));
+                            }
+                        }
                         crate::grue_compiler::ir::IrValue::StringRef(_) => {
                             return Err(CompilerError::CodeGenError(format!(
                                 "Grammar handler arguments cannot use StringRef - use String instead"
@@ -3035,7 +3050,7 @@ impl ZMachineCodeGen {
             function.name,
             function.parameters.len()
         );
-        for parameter in &function.parameters {
+        for (param_index, parameter) in function.parameters.iter().enumerate() {
             self.ir_id_to_local_var
                 .insert(parameter.ir_id, parameter.slot);
             log::debug!(
@@ -3045,6 +3060,29 @@ impl ZMachineCodeGen {
                 parameter.slot,
                 function.name
             );
+        }
+
+        // CRITICAL: Propagate ir_id_from_property flag from string arguments to parameters
+        if let Some(string_arg_positions) = self.string_arg_to_param_mapping.get(&function.id) {
+            for &arg_position in string_arg_positions {
+                if arg_position < function.parameters.len() {
+                    let parameter_ir_id = function.parameters[arg_position].ir_id;
+                    self.ir_id_from_property.insert(parameter_ir_id);
+                    log::debug!(
+                        "🔧 Propagated ir_id_from_property flag from string argument position {} to parameter IR ID {} for function '{}'",
+                        arg_position,
+                        parameter_ir_id,
+                        function.name
+                    );
+                } else {
+                    log::error!(
+                        "String argument position {} exceeds parameter count {} for function '{}'",
+                        arg_position,
+                        function.parameters.len(),
+                        function.name
+                    );
+                }
+            }
         }
     }
 
@@ -3283,6 +3321,11 @@ impl ZMachineCodeGen {
                 // String literals in LoadImmediate don't generate any bytecode
                 // They are just metadata that gets stored in ir_id_to_string
                 // The actual string usage happens in print calls, not load immediates
+            }
+            IrValue::Object(_object_name) => {
+                // Object references in LoadImmediate don't generate any bytecode
+                // They are just metadata that gets resolved during codegen_instructions
+                // The actual object number resolution happens in LoadImmediate instruction handling
             }
             _ => {
                 return Err(CompilerError::CodeGenError(
@@ -3706,6 +3749,17 @@ impl ZMachineCodeGen {
             )));
         }
 
+        // MISSING CHECK FIX: Look up integer values (including resolved IrValue::Object)
+        // This handles values stored by LoadImmediate instructions, including runtime object numbers
+        if let Some(&integer_value) = self.ir_id_to_integer.get(&ir_id) {
+            log::debug!(
+                " resolve_ir_id_to_operand: IR ID {} resolved to LargeConstant({}) [Integer value]",
+                ir_id,
+                integer_value
+            );
+            return Ok(Operand::LargeConstant(integer_value as u16));
+        }
+
         // CRITICAL FIX: Check for player object first - player must use Variable(16)
         // The player object is stored in global variable G00 (Variable 16) and must be accessed via variable read
         // This follows proper Z-Machine architecture where the player object is referenced via global variables
@@ -4010,6 +4064,8 @@ impl ZMachineCodeGen {
         if !ir.objects.is_empty() {
             let player = &ir.objects[0];
             self.ir_id_to_object_number.insert(player.id, object_num);
+            // CRITICAL: Also populate object_numbers mapping for IrValue::Object support
+            self.object_numbers.insert(player.name.clone(), object_num);
             log::warn!(
                 "🗺️ OBJ_MAPPING: Player '{}' (IR ID {}) -> Object #{}",
                 player.name,
@@ -4022,6 +4078,8 @@ impl ZMachineCodeGen {
         // Rooms come next
         for room in &ir.rooms {
             self.ir_id_to_object_number.insert(room.id, object_num);
+            // CRITICAL: Also populate object_numbers mapping for IrValue::Object support
+            self.object_numbers.insert(room.name.clone(), object_num);
             log::warn!(
                 "🗺️ OBJ_MAPPING: Room '{}' (IR ID {}) -> Object #{}",
                 room.name,
@@ -4034,6 +4092,8 @@ impl ZMachineCodeGen {
         // Regular objects (skip player who was already added)
         for object in ir.objects.iter().skip(1) {
             self.ir_id_to_object_number.insert(object.id, object_num);
+            // CRITICAL: Also populate object_numbers mapping for IrValue::Object support
+            self.object_numbers.insert(object.name.clone(), object_num);
             log::warn!(
                 "🗺️ OBJ_MAPPING: Object '{}' (IR ID {}) -> Object #{}",
                 object.name,

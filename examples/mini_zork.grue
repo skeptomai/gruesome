@@ -357,6 +357,8 @@ fn show_inventory() {
 }
 
 fn handle_go(direction) {
+    println("handle_go called with:");
+    println(direction);
     clear_quit_state();
     let exit = player.location.get_exit(direction);
 
@@ -389,8 +391,13 @@ fn handle_go(direction) {
 }
 
 fn handle_climb(obj) {
-    if obj == tree && player.location == forest_path {
-        handle_go("up");
+    if (obj == tree) {
+        if (player.location == forest_path) {
+            println("You climb the large tree.");
+            handle_go("up");
+        } else {
+            println("You need to be on the forest path to climb the tree.");
+        }
     } else {
         println("You can't climb that.");
     }

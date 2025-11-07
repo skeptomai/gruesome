@@ -216,6 +216,20 @@ impl ZMachineCodeGen {
                         self.constant_values
                             .insert(*target, ConstantValue::Boolean(*b));
                     }
+                    IrValue::Object(object_name) => {
+                        // Convert object name to runtime object number
+                        if let Some(&runtime_number) = self.object_numbers.get(object_name) {
+                            log::debug!("🔧 OBJECT_RESOLVE: '{}' -> runtime object #{}", object_name, runtime_number);
+                            self.ir_id_to_integer.insert(*target, runtime_number as i16);
+                            self.constant_values
+                                .insert(*target, ConstantValue::Integer(runtime_number as i16));
+                        } else {
+                            return Err(CompilerError::CodeGenError(format!(
+                                "Object '{}' not found in runtime mapping",
+                                object_name
+                            )));
+                        }
+                    }
                     _ => {}
                 }
                 self.generate_load_immediate(value)?;
@@ -3286,8 +3300,112 @@ impl ZMachineCodeGen {
 
         // Add arguments
         for &arg_id in args {
-            let arg_operand = self.resolve_ir_id_to_operand(arg_id)?;
-            operands.push(arg_operand);
+            // Handle string literals for function calls (similar to codegen.rs:3490-3507)
+            // Check for literal values (inline equivalent of get_literal_value)
+            if let Some(&integer_value) = self.ir_id_to_integer.get(&arg_id) {
+                let literal_value = if integer_value >= 0 {
+                    integer_value as u16
+                } else {
+                    0 // Fallback for negative values
+                };
+                operands.push(Operand::LargeConstant(literal_value));
+            } else if let Some(string) = self.ir_id_to_string.get(&arg_id) {
+                // CRITICAL FIX: Use dictionary addresses for direction strings in function calls
+                // Direction strings like "up", "north", "south" should be passed as dictionary addresses
+                // for proper comparison in builtin functions like get_exit, not as packed string addresses.
+                //
+                // Dictionary words are the standard Z-Machine way to pass strings for comparison.
+                // Packed addresses are for display strings, dictionary addresses are for comparison.
+
+                // Check if this is a direction word that should use dictionary address
+                let direction_words = ["up", "down", "north", "south", "east", "west",
+                                     "northeast", "northwest", "southeast", "southwest",
+                                     "in", "out"];
+
+                let is_direction = direction_words.contains(&string.as_str());
+
+                // String literal: Create placeholder + unresolved reference
+                // CRITICAL FIX: Record exact location BEFORE emitting placeholder
+                // Calculate location where THIS operand will be placed using actual code address
+                // Use self.code_space.len() (buffer offset) for precise location tracking
+                // FIXED: Address calculation was using final addresses instead of buffer offsets
+                let operand_location = self.code_space.len() + 1 + operands.len() * 2;
+                operands.push(Operand::LargeConstant(crate::grue_compiler::codegen_memory::placeholder_word()));
+
+                // Create reference with exact calculated location
+                let location = operand_location; // Use actual final address
+                let reference = if is_direction {
+                    // Find the word's position in the dictionary
+                    let word_lower = string.to_lowercase();
+                    let position = self
+                        .dictionary_words
+                        .iter()
+                        .position(|w| w == &word_lower)
+                        .unwrap_or_else(|| {
+                            // If not in dictionary yet, add it (this might happen during early compilation phases)
+                            log::warn!("Direction word '{}' not yet in dictionary, using temporary position", word_lower);
+                            0 // Temporary position, will be corrected in later phases
+                        }) as u32;
+
+                    log::debug!("🔍 Dictionary position calculation for '{}': position={}", word_lower, position);
+
+                    // Use dictionary address for direction strings
+                    UnresolvedReference {
+                        reference_type: LegacyReferenceType::DictionaryRef {
+                            word: string.clone(),
+                        },
+                        location,
+                        target_id: position, // Use dictionary position, not IR ID
+                        is_packed_address: false, // Dictionary addresses are not packed addresses
+                        offset_size: 2,
+                        location_space: MemorySpace::Code,
+                    }
+                } else {
+                    // Use packed address for other strings (display strings, etc.)
+                    UnresolvedReference {
+                        reference_type: LegacyReferenceType::StringRef,
+                        location,
+                        target_id: arg_id,
+                        is_packed_address: true,
+                        offset_size: 2,
+                        location_space: MemorySpace::Code,
+                    }
+                };
+                self.reference_context.unresolved_refs.push(reference);
+
+                // CRITICAL: Mark ALL string arguments as from property for correct printing
+                // Both direction strings (dictionary addresses) and regular strings (packed addresses)
+                // should use print_paddr for display, not print_num
+                self.ir_id_from_property.insert(arg_id);
+
+                if is_direction {
+                    log::debug!("🔧 Using dictionary address for direction '{}' (IR ID {}) and marked as from_property", string, arg_id);
+                } else {
+                    log::debug!("🔧 Marked string argument IR ID {} as from_property for print_paddr", arg_id);
+                }
+
+                // CRITICAL: Store mapping for parameter propagation
+                // We need to propagate the ir_id_from_property flag from string arguments to their corresponding parameters
+                // Store the function_id and argument position so we can propagate the flag during function setup
+                if !self.string_arg_to_param_mapping.contains_key(&function_id) {
+                    self.string_arg_to_param_mapping.insert(function_id, Vec::new());
+                }
+                self.string_arg_to_param_mapping.get_mut(&function_id).unwrap().push(args.iter().position(|&id| id == arg_id).unwrap());
+                log::debug!("🔧 Stored string argument mapping for function {} arg position {}", function_id, args.iter().position(|&id| id == arg_id).unwrap());
+
+                log::debug!(
+                    "📍 Location calculation: code_space.len()={}, operands.len()={}, operand_offset={}, final_location=0x{:04x}",
+                    self.code_space.len(), operands.len(), operand_location, location
+                );
+                log::debug!(
+                    "Added string argument reference: IR ID {} at location 0x{:04x} (type: {})",
+                    arg_id, location, if is_direction { "dictionary" } else { "packed string" }
+                );
+            } else {
+                // Handle other operand types through normal resolution
+                let arg_operand = self.resolve_ir_id_to_operand(arg_id)?;
+                operands.push(arg_operand);
+            }
         }
 
         // Determine store variable

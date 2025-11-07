@@ -1,0 +1,77 @@
+// Simple test for location comparison bug
+world {
+    room test_room "Test Room" {
+        desc: "A test room"
+    }
+}
+
+grammar {
+    verb "test" {
+        default => test_comparison()
+    }
+
+    verb "quit" {
+        default => handle_quit()
+    }
+
+    verb "yes" {
+        default => handle_yes()
+    }
+
+    verb "y" {
+        default => handle_yes()
+    }
+
+    verb "no" {
+        default => handle_no()
+    }
+
+    verb "n" {
+        default => handle_no()
+    }
+}
+
+fn test_comparison() {
+    print("player.location = ");
+    println(player.location);
+    print("test_room = ");
+    println(test_room);
+
+    if (player.location == test_room) {
+        println("COMPARISON SUCCESS: player.location == test_room");
+    } else {
+        println("COMPARISON FAILED: player.location != test_room");
+    }
+}
+
+fn handle_quit() {
+    println("Are you sure you want to quit? (y/n)");
+    player.quit_pending = true;
+}
+
+fn handle_yes() {
+    if player.quit_pending {
+        player.quit_pending = false;
+        quit();
+    } else {
+        println("Yes to what?");
+    }
+}
+
+fn handle_no() {
+    if player.quit_pending {
+        player.quit_pending = false;
+        println("OK, continuing game.");
+    } else {
+        println("No to what?");
+    }
+}
+
+init {
+    player.location = test_room;
+    test_room.visited = true;
+
+    println("Location Comparison Test");
+    println("Type 'test' to run the test");
+    println("");
+}

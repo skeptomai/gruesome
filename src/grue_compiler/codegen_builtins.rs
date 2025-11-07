@@ -79,6 +79,7 @@ impl ZMachineCodeGen {
 
                         if self.ir_id_from_property.contains(&ir_id) {
                             // Property value - use print_paddr
+                            log::debug!("🔧 IR ID {} is marked as from_property - using print_paddr", ir_id);
                             self.emit_instruction_typed(
                                 Opcode::Op1(Op1::PrintPaddr),
                                 &[operand],
@@ -87,6 +88,7 @@ impl ZMachineCodeGen {
                             )?;
                         } else {
                             // Non-property value - use print_num
+                            log::debug!("🔧 IR ID {} NOT marked as from_property - using print_num", ir_id);
                             self.emit_instruction_typed(
                                 Opcode::OpVar(OpVar::PrintNum),
                                 &[operand],
