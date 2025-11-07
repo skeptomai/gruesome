@@ -1519,6 +1519,193 @@ grep -n "emit_instruction(0x03" src/grue_compiler/*.rs  # jl
 - **Current Bug Report**: October 3, 2025 (grammar system `store` → `output_stream` conflict)
 - **File Locations**: See "Integration Points" above
 
+## String-to-Dictionary Parameter Passing Architecture (November 6, 2025)
+
+### Overview
+
+The compiler implements string-to-dictionary conversion for function parameters to enable passing direction strings to user-defined functions while maintaining Z-Machine dictionary semantics. This required bypassing the original architectural constraint that prohibited string literals as function parameters.
+
+### Architectural Challenge
+
+**Original Design Constraint**: The parameter passing system explicitly rejected string literals:
+```rust
+if self.ir_id_to_string.contains_key(&ir_id) {
+    return Err(CompilerError::CodeGenError("Cannot use string literal as operand"));
+}
+```
+
+This constraint existed because the Z-Machine has no native mechanism for passing strings as function arguments - only integers and object references.
+
+### Use Case Requirement
+
+**Problem**: Game navigation requires passing direction strings to user-defined functions:
+```grue
+fn handle_go(direction) {
+    // direction needs to be dictionary address for comparison with get_exit()
+}
+
+// Called as: handle_go("up")
+```
+
+**Challenge**: The string "up" must be converted to a dictionary address (e.g., 2750) for comparison with exit data, but the original system rejected all string parameters.
+
+### Implementation Architecture
+
+#### Phase 1: String Detection and Collection
+
+During function call operand building:
+```rust
+// Collect string argument info for post-instruction processing
+let mut string_arg_info = Vec::new();
+
+for &arg_id in args {
+    if let Some(string) = self.ir_id_to_string.get(&arg_id) {
+        // Add placeholder, store info for later processing
+        operands.push(Operand::LargeConstant(placeholder_word()));
+
+        // Detect direction strings vs display strings
+        let direction_words = ["up", "down", "north", "south", "east", "west", ...];
+        let is_direction = direction_words.contains(&string.as_str());
+
+        string_arg_info.push((arg_id, string.clone(), is_direction, operands.len() - 1));
+    } else {
+        // Normal parameter processing
+        let arg_operand = self.resolve_ir_id_to_operand(arg_id)?;
+        operands.push(arg_operand);
+    }
+}
+```
+
+#### Phase 2: Layout-Based Address Resolution
+
+After `emit_instruction_typed` provides precise operand locations:
+```rust
+let layout = self.emit_instruction_typed(CALLVS, &operands, store_var, None)?;
+
+if let Some(base_operand_loc) = layout.operand_location {
+    for (arg_id, string, is_direction, operand_index) in string_arg_info {
+        // Calculate exact operand address
+        let string_operand_location = base_operand_loc + (operand_index * 2);
+
+        let reference = if is_direction {
+            // Dictionary reference for direction strings
+            UnresolvedReference {
+                reference_type: LegacyReferenceType::DictionaryRef { word: string },
+                location: string_operand_location,
+                target_id: dictionary_position,
+                is_packed_address: false,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            }
+        } else {
+            // Packed address for display strings
+            UnresolvedReference {
+                reference_type: LegacyReferenceType::StringRef,
+                location: string_operand_location,
+                target_id: arg_id,
+                is_packed_address: true,
+                offset_size: 2,
+                location_space: MemorySpace::Code,
+            }
+        };
+    }
+}
+```
+
+### Critical Bug and Resolution
+
+#### The Address Calculation Bug
+
+**Original Implementation (Buggy)**:
+```rust
+// Manual calculation BEFORE instruction emission
+let operand_location = self.code_address + 1 + operands.len() * 2;
+operands.push(Operand::LargeConstant(placeholder_word()));
+// Create UnresolvedReference at calculated location (OFF-BY-ONE ERROR!)
+```
+
+**Issue**: Manual address calculation was **off by one byte**, causing dictionary addresses to be written to wrong memory locations.
+
+**Evidence**: Function received `-16641` (`0xBEFF`) instead of `2750` (`0x0abe`). The shared `0xBE` byte indicated reading from adjacent memory containing an unpatched placeholder `0xFF`.
+
+#### The Layout-Based Solution
+
+**Fixed Implementation**:
+```rust
+// Two-phase approach using precise layout information
+operands.push(Operand::LargeConstant(placeholder_word()));
+let layout = self.emit_instruction_typed(...);
+
+// Use EXACT address from instruction layout
+if let Some(base_operand_loc) = layout.operand_location {
+    let string_operand_location = base_operand_loc + (operand_index * 2);
+    // Create UnresolvedReference at PRECISE location
+}
+```
+
+**Key Insight**: The `InstructionLayout` struct exists specifically to provide exact byte locations for instruction components. Manual calculation is error-prone and should be avoided.
+
+### String Type Differentiation
+
+The implementation distinguishes between two types of string parameters:
+
+#### Direction Strings → Dictionary Addresses
+- **Words**: `["up", "down", "north", "south", "east", "west", ...]`
+- **Purpose**: Runtime comparison with game data (exits, etc.)
+- **Encoding**: Raw dictionary address (not packed)
+- **Reference Type**: `LegacyReferenceType::DictionaryRef`
+
+#### Display Strings → Packed Addresses
+- **Words**: All other strings
+- **Purpose**: Text output via `print_paddr`
+- **Encoding**: Packed address (standard Z-Machine format)
+- **Reference Type**: `LegacyReferenceType::StringRef`
+
+### Integration with Parameter Propagation
+
+String arguments marked for proper printing:
+```rust
+// Mark ALL string arguments for print_paddr usage
+self.ir_id_from_property.insert(arg_id);
+
+// Store parameter mapping for function setup
+if !self.string_arg_to_param_mapping.contains_key(&function_id) {
+    self.string_arg_to_param_mapping.insert(function_id, Vec::new());
+}
+self.string_arg_to_param_mapping.get_mut(&function_id).unwrap()
+    .push(args.iter().position(|&id| id == arg_id).unwrap());
+```
+
+This ensures that when string parameters are printed within functions, they use `print_paddr` (address-based) rather than `print_num` (numeric display).
+
+### Performance Characteristics
+
+- **Dictionary Lookup**: O(log n) for position calculation
+- **Address Resolution**: O(1) using layout information
+- **Memory Overhead**: 2 bytes per string parameter (standard operand size)
+- **Code Size**: Minimal - reuses existing UnresolvedReference infrastructure
+
+### Files Modified
+
+- **`src/grue_compiler/codegen_instructions.rs`** lines 3301-3425
+  - Two-phase string parameter handling
+  - Layout-based address calculation
+  - Direction string detection and differentiation
+
+### Lessons Learned
+
+1. **Architectural Constraints Exist for Reasons**: The original string parameter prohibition existed because Z-Machine has no native string parameter support
+2. **Layout Information is Authoritative**: Always use `InstructionLayout` addresses rather than manual calculation
+3. **Two-Phase Processing**: When instruction emission affects addressing, collect info first, then process after emission
+4. **Type Differentiation Matters**: Direction strings (dictionary) vs display strings (packed) serve different purposes
+
+### References
+
+- **Implementation**: November 6, 2025
+- **Bug Resolution**: Address calculation off-by-one error
+- **Test Case**: `handle_go("up")` in mini_zork.grue
+- **Evidence of Success**: "climb tree" command now correctly navigates to tree location
+
 ## Complex Expression Control Flow Patterns
 
 ### Overview

@@ -71,79 +71,74 @@
 
 **Architecture Improvement**: Object references now use deferred name resolution instead of compile-time numbers, ensuring correct runtime object mapping for ALL object variable references throughout the compiler.
 
-### **String-to-Dictionary Function Parameter Passing Bug** 🔥 **ACTIVE INVESTIGATION** (November 6, 2025)
+### **String-to-Dictionary Function Parameter Passing Bug** ✅ **COMPLETED** (November 6, 2025)
 
-**ISSUE**: `handle_go("up")` function call receives corrupted dictionary address, causing incorrect parameter values
-- **Problem**: Function receives `-16641` (`0xBEFF`) instead of expected dictionary address `2750` (`0x0abe`)
-- **Evidence**: Dictionary resolution works correctly, but parameter corruption occurs during function calls
-- **Root Cause**: New string-to-dictionary implementation bypassed original parameter passing mechanism
+**ISSUE**: `handle_go("up")` function call received corrupted dictionary address, causing incorrect parameter values
+- **Problem**: Function received `-16641` (`0xBEFF`) instead of expected dictionary address `2750` (`0x0abe`)
+- **Root Cause**: Off-by-one error in UnresolvedReference address calculation for function call operands
 
-**CRITICAL ANALYSIS - PARAMETER PASSING ARCHITECTURE**:
+**SOLUTION**: **Fixed address calculation using `layout.operand_location`** from `emit_instruction_typed`
 
-**Original System (Working)**:
-```rust
-for &arg_id in args {
-    let arg_operand = self.resolve_ir_id_to_operand(arg_id)?;
-    operands.push(arg_operand);
-}
-```
-- `resolve_ir_id_to_operand` **explicitly rejects string literals** with error
-- Strings were **never designed** to be passed as function parameters
-- System worked because strings weren't used in this context
-
-**New Implementation (Buggy)**:
-```rust
-for &arg_id in args {
-    if let Some(string) = self.ir_id_to_string.get(&arg_id) {
-        // NEW: Create UnresolvedReference with dictionary lookup
-        let operand_location = self.code_address + 1 + operands.len() * 2;
-        operands.push(Operand::LargeConstant(placeholder_word()));
-        // Complex reference creation logic...
-    } else {
-        // Fall back to original method
-        let arg_operand = self.resolve_ir_id_to_operand(arg_id)?;
-        operands.push(arg_operand);
-    }
-}
-```
-- **BYPASSED** the original rejection mechanism
-- **INTRODUCED** new parameter passing for strings
-- **CREATED** entirely new UnresolvedReference resolution path
-
-**EVIDENCE OF WORKING COMPONENTS**:
-1. ✅ **Dictionary resolution**: `"up"` → position 134 → address `0x0abe` (2750)
-2. ✅ **Reference patching**: `Writing 0x0a 0xbe to location 0x15ba`
-3. ❌ **Runtime parameter**: Function receives `-16641` (`0xBEFF`) instead of `2750` (`0x0abe`)
-
-**BYTE PATTERN ANALYSIS**:
-- Expected: `0x0abe` (2750 decimal)
-- Received: `0xBEFF` (-16641 as signed 16-bit)
-- Pattern suggests: **Address calculation error** or **memory layout corruption**
-
-**ARCHITECTURE VIOLATION**:
-The system was designed with `resolve_ir_id_to_operand` explicitly rejecting strings:
+**CRITICAL DISCOVERY**: The original parameter passing system was **architecturally designed to reject string literals**:
 ```rust
 if self.ir_id_to_string.contains_key(&ir_id) {
-    return Err(CompilerError::CodeGenError(format!(
-        "Cannot use string literal (IR ID {}) as operand in binary operation")));
+    return Err(CompilerError::CodeGenError("Cannot use string literal as operand"));
 }
 ```
 
-This indicates strings were **architecturally prohibited** as function parameters. Our implementation created a parallel system, introducing complexity and bugs.
+Our implementation bypassed this safety mechanism to enable string-to-dictionary conversion for direction arguments.
 
-**IMPLEMENTATION OPTIONS**:
-1. **Fix address calculation** in new implementation (current approach)
-2. **Debug exact memory layout** corruption
-3. **Revert to original** and implement dictionary lookup at different level
+**THE BUG**: Manual address calculation **before** instruction emission vs precise locations **after**:
+```rust
+// BUGGY (Manual calculation):
+let operand_location = self.code_address + 1 + operands.len() * 2;
+operands.push(Operand::LargeConstant(placeholder_word()));
+// Create UnresolvedReference at calculated location (WRONG!)
 
-**STATUS**: Pursuing Option 1 - fixing address calculation while preserving analysis for potential rollback
+// FIXED (Layout-based):
+operands.push(Operand::LargeConstant(placeholder_word()));
+let layout = self.emit_instruction_typed(...);
+if let Some(base_operand_loc) = layout.operand_location {
+    let string_operand_location = base_operand_loc + (operand_index * 2);
+    // Create UnresolvedReference at precise location (CORRECT!)
+}
+```
+
+**THE FIX**: **Two-phase approach**
+1. **Collect string info** during operand building
+2. **Process using layout** after `emit_instruction_typed` provides exact addresses
+
+**IMPLEMENTATION DETAILS**:
+- **Direction detection**: `["up", "down", "north", "south", "east", "west", ...]`
+- **Dictionary conversion**: Direction strings → dictionary addresses (not packed addresses)
+- **Display strings**: Non-direction strings → packed addresses (existing behavior)
+- **Layout precision**: Use `layout.operand_location + (index * 2)` for exact addressing
+
+**EVIDENCE OF SUCCESS**:
+```bash
+# BEFORE (Broken):
+handle_go called with: -16641
+You can't go that way.
+
+# AFTER (Fixed):
+handle_go called with: 2750
+You are about 10 feet above the ground nestled among some large branches.
+```
+
+**TECHNICAL VALIDATION**:
+- ✅ Dictionary resolution: `"up"` → position 134 → address `0x0abe` (2750)
+- ✅ Address calculation: `base=0x0443 + 1*2 = 0x0445`
+- ✅ Parameter passing: Function receives correct `2750`
+- ✅ Game functionality: `climb tree` now works correctly
+
+**ARCHITECTURE PRESERVED**: Separation between dictionary addresses (comparison) and packed addresses (display)
 
 **FILES MODIFIED**:
-- `src/grue_compiler/codegen_instructions.rs` - New string parameter handling (lines 3300-3410)
-- Address calculation: `self.code_address + 1 + operands.len() * 2` may be incorrect
-- UnresolvedReference location/MemorySpace may be wrong
+- `src/grue_compiler/codegen_instructions.rs` lines 3301-3425 - **Fixed string parameter handling**
+- Layout-based address calculation replaces manual calculation
+- Two-phase approach: collect info, then process with precise locations
 
-**COMMIT DECISION**: Documenting this architectural analysis before proceeding, as we may need to revert to a fundamentally different approach if address calculation fixes don't resolve the core parameter corruption.
+**LESSON LEARNED**: When working with Z-Machine instruction layout, always use the **precise locations returned by `emit_instruction_typed`** rather than manual calculation. The `InstructionLayout` struct exists specifically to provide these exact addresses.
 
 ### **Score System Binary Arithmetic Bug** 🔥 **CURRENT WORK** (November 4, 2025)
 

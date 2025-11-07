@@ -219,7 +219,11 @@ impl ZMachineCodeGen {
                     IrValue::Object(object_name) => {
                         // Convert object name to runtime object number
                         if let Some(&runtime_number) = self.object_numbers.get(object_name) {
-                            log::debug!("🔧 OBJECT_RESOLVE: '{}' -> runtime object #{}", object_name, runtime_number);
+                            log::debug!(
+                                "🔧 OBJECT_RESOLVE: '{}' -> runtime object #{}",
+                                object_name,
+                                runtime_number
+                            );
                             self.ir_id_to_integer.insert(*target, runtime_number as i16);
                             self.constant_values
                                 .insert(*target, ConstantValue::Integer(runtime_number as i16));
@@ -3298,9 +3302,23 @@ impl ZMachineCodeGen {
         let mut operands = Vec::new();
         operands.push(Operand::LargeConstant(0xFFFF)); // Placeholder for function address
 
-        // Add arguments
+        // STRING-TO-DICTIONARY PARAMETER PASSING ARCHITECTURE (November 6, 2025)
+        //
+        // CHALLENGE: Z-Machine has no native string parameter support, but games need to pass
+        // direction strings to user functions (e.g., handle_go("up")). Original system rejected
+        // all string parameters with: "Cannot use string literal as operand".
+        //
+        // SOLUTION: Two-phase approach
+        // Phase 1: Collect string argument info during operand building
+        // Phase 2: Process using layout.operand_location for precise addressing (AFTER instruction emission)
+        //
+        // CRITICAL: Manual address calculation was off-by-one, causing corruption.
+        // The fix uses InstructionLayout.operand_location for exact byte locations.
+
+        // Phase 1: Collect string argument metadata for post-instruction processing
+        let mut string_arg_info = Vec::new();
+
         for &arg_id in args {
-            // Handle string literals for function calls (similar to codegen.rs:3490-3507)
             // Check for literal values (inline equivalent of get_literal_value)
             if let Some(&integer_value) = self.ir_id_to_integer.get(&arg_id) {
                 let literal_value = if integer_value >= 0 {
@@ -3310,97 +3328,42 @@ impl ZMachineCodeGen {
                 };
                 operands.push(Operand::LargeConstant(literal_value));
             } else if let Some(string) = self.ir_id_to_string.get(&arg_id) {
-                // CRITICAL FIX: Use dictionary addresses for direction strings in function calls
-                // Direction strings like "up", "north", "south" should be passed as dictionary addresses
-                // for proper comparison in builtin functions like get_exit, not as packed string addresses.
-                //
-                // Dictionary words are the standard Z-Machine way to pass strings for comparison.
-                // Packed addresses are for display strings, dictionary addresses are for comparison.
+                // String literal: Add placeholder, store info for post-instruction processing
+                operands.push(Operand::LargeConstant(
+                    crate::grue_compiler::codegen_memory::placeholder_word(),
+                ));
 
-                // Check if this is a direction word that should use dictionary address
-                let direction_words = ["up", "down", "north", "south", "east", "west",
-                                     "northeast", "northwest", "southeast", "southwest",
-                                     "in", "out"];
-
+                // Store string info for processing after emit_instruction_typed
+                let direction_words = [
+                    "up",
+                    "down",
+                    "north",
+                    "south",
+                    "east",
+                    "west",
+                    "northeast",
+                    "northwest",
+                    "southeast",
+                    "southwest",
+                    "in",
+                    "out",
+                ];
                 let is_direction = direction_words.contains(&string.as_str());
 
-                // String literal: Create placeholder + unresolved reference
-                // CRITICAL FIX: Record exact location BEFORE emitting placeholder
-                // Calculate location where THIS operand will be placed using actual code address
-                // Use self.code_space.len() (buffer offset) for precise location tracking
-                // FIXED: Address calculation was using final addresses instead of buffer offsets
-                let operand_location = self.code_space.len() + 1 + operands.len() * 2;
-                operands.push(Operand::LargeConstant(crate::grue_compiler::codegen_memory::placeholder_word()));
+                string_arg_info.push((arg_id, string.clone(), is_direction, operands.len() - 1));
 
-                // Create reference with exact calculated location
-                let location = operand_location; // Use actual final address
-                let reference = if is_direction {
-                    // Find the word's position in the dictionary
-                    let word_lower = string.to_lowercase();
-                    let position = self
-                        .dictionary_words
-                        .iter()
-                        .position(|w| w == &word_lower)
-                        .unwrap_or_else(|| {
-                            // If not in dictionary yet, add it (this might happen during early compilation phases)
-                            log::warn!("Direction word '{}' not yet in dictionary, using temporary position", word_lower);
-                            0 // Temporary position, will be corrected in later phases
-                        }) as u32;
-
-                    log::debug!("🔍 Dictionary position calculation for '{}': position={}", word_lower, position);
-
-                    // Use dictionary address for direction strings
-                    UnresolvedReference {
-                        reference_type: LegacyReferenceType::DictionaryRef {
-                            word: string.clone(),
-                        },
-                        location,
-                        target_id: position, // Use dictionary position, not IR ID
-                        is_packed_address: false, // Dictionary addresses are not packed addresses
-                        offset_size: 2,
-                        location_space: MemorySpace::Code,
-                    }
-                } else {
-                    // Use packed address for other strings (display strings, etc.)
-                    UnresolvedReference {
-                        reference_type: LegacyReferenceType::StringRef,
-                        location,
-                        target_id: arg_id,
-                        is_packed_address: true,
-                        offset_size: 2,
-                        location_space: MemorySpace::Code,
-                    }
-                };
-                self.reference_context.unresolved_refs.push(reference);
-
-                // CRITICAL: Mark ALL string arguments as from property for correct printing
-                // Both direction strings (dictionary addresses) and regular strings (packed addresses)
-                // should use print_paddr for display, not print_num
+                // Mark for print_paddr usage
                 self.ir_id_from_property.insert(arg_id);
 
-                if is_direction {
-                    log::debug!("🔧 Using dictionary address for direction '{}' (IR ID {}) and marked as from_property", string, arg_id);
-                } else {
-                    log::debug!("🔧 Marked string argument IR ID {} as from_property for print_paddr", arg_id);
-                }
-
-                // CRITICAL: Store mapping for parameter propagation
-                // We need to propagate the ir_id_from_property flag from string arguments to their corresponding parameters
-                // Store the function_id and argument position so we can propagate the flag during function setup
+                // Store parameter mapping
                 if !self.string_arg_to_param_mapping.contains_key(&function_id) {
-                    self.string_arg_to_param_mapping.insert(function_id, Vec::new());
+                    self.string_arg_to_param_mapping
+                        .insert(function_id, Vec::new());
                 }
-                self.string_arg_to_param_mapping.get_mut(&function_id).unwrap().push(args.iter().position(|&id| id == arg_id).unwrap());
-                log::debug!("🔧 Stored string argument mapping for function {} arg position {}", function_id, args.iter().position(|&id| id == arg_id).unwrap());
-
-                log::debug!(
-                    "📍 Location calculation: code_space.len()={}, operands.len()={}, operand_offset={}, final_location=0x{:04x}",
-                    self.code_space.len(), operands.len(), operand_location, location
-                );
-                log::debug!(
-                    "Added string argument reference: IR ID {} at location 0x{:04x} (type: {})",
-                    arg_id, location, if is_direction { "dictionary" } else { "packed string" }
-                );
+                self.string_arg_to_param_mapping
+                    .get_mut(&function_id)
+                    .unwrap()
+                    .push(args.iter().position(|&id| id == arg_id).unwrap());
             } else {
                 // Handle other operand types through normal resolution
                 let arg_operand = self.resolve_ir_id_to_operand(arg_id)?;
@@ -3436,6 +3399,73 @@ impl ZMachineCodeGen {
                 function_id,
                 operand_loc
             );
+        }
+
+        // Phase 2: STRING-TO-DICTIONARY ADDRESS RESOLUTION (Layout-Based)
+        //
+        // ARCHITECTURE: Use precise locations from InstructionLayout instead of manual calculation
+        // WHY: Manual calculation (code_address + 1 + operands.len() * 2) was off-by-one
+        // EVIDENCE: Function received 0xBEFF instead of 0x0abe (shared 0xBE, wrong adjacent 0xFF)
+        // FIX: layout.operand_location provides exact byte addresses for each operand
+        if let Some(base_operand_loc) = layout.operand_location {
+            for (arg_id, string, is_direction, operand_index) in string_arg_info {
+                // Calculate the exact location of this string operand
+                // base_operand_loc is the location of the first operand (function address)
+                // Each operand is 2 bytes, so string operand is at base + (operand_index * 2)
+                let string_operand_location = base_operand_loc + (operand_index * 2);
+
+                // STRING TYPE DIFFERENTIATION:
+                // - Direction strings → Dictionary addresses (for comparison with get_exit(), etc.)
+                // - Display strings  → Packed addresses (for print_paddr output)
+                let reference = if is_direction {
+                    // DIRECTION STRINGS: Convert to dictionary address for runtime comparison
+                    let word_lower = string.to_lowercase();
+                    let position = self
+                        .dictionary_words
+                        .iter()
+                        .position(|w| w == &word_lower)
+                        .unwrap_or_else(|| {
+                            log::warn!("Direction word '{}' not yet in dictionary, using temporary position", word_lower);
+                            0 // Temporary position, will be corrected in later phases
+                        }) as u32;
+
+                    log::debug!(
+                        "🔍 Dictionary position calculation for '{}': position={}",
+                        word_lower,
+                        position
+                    );
+
+                    // Dictionary reference: Raw address for comparison operations
+                    UnresolvedReference {
+                        reference_type: LegacyReferenceType::DictionaryRef {
+                            word: string.clone(),
+                        },
+                        location: string_operand_location,
+                        target_id: position, // Use dictionary position, not IR ID
+                        is_packed_address: false, // Raw address, not packed
+                        offset_size: 2,
+                        location_space: MemorySpace::Code,
+                    }
+                } else {
+                    // DISPLAY STRINGS: Use packed address for text output
+                    UnresolvedReference {
+                        reference_type: LegacyReferenceType::StringRef,
+                        location: string_operand_location,
+                        target_id: arg_id,
+                        is_packed_address: true, // Standard Z-Machine packed address
+                        offset_size: 2,
+                        location_space: MemorySpace::Code,
+                    }
+                };
+
+                self.reference_context.unresolved_refs.push(reference);
+
+                log::debug!(
+                    "✅ FIXED ADDRESSING: String '{}' at location 0x{:04x} (base=0x{:04x} + {}*2) (type: {})",
+                    string, string_operand_location, base_operand_loc, operand_index,
+                    if is_direction { "dictionary" } else { "packed string" }
+                );
+            }
         }
 
         Ok(())
