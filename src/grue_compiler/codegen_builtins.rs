@@ -2,6 +2,7 @@
 // Extracted from codegen.rs for better maintainability
 // These are implementation methods that extend ZMachineCodeGen
 
+use crate::grue_compiler::ast::Type;
 use crate::grue_compiler::codegen::{ConstantValue, Operand, ZMachineCodeGen};
 use crate::grue_compiler::codegen_memory::{placeholder_word, MemorySpace};
 use crate::grue_compiler::codegen_references::{LegacyReferenceType, UnresolvedReference};
@@ -22,6 +23,67 @@ impl ZMachineCodeGen {
         }
 
         let arg_id = args[0];
+
+        // **NEW: Type-aware println dispatch for StringAddress system**
+        // Check if we have type information for this argument
+        if let Some(arg_type) = self.ir_type_info.get(&arg_id) {
+            log::debug!(
+                "🎯 Type-aware println: IR ID {} has type {:?}",
+                arg_id,
+                arg_type
+            );
+
+            match arg_type {
+                Type::StringAddress => {
+                    // Handle string address - use print_paddr
+                    log::debug!(
+                        "📍 StringAddress detected: using print_paddr for IR ID {}",
+                        arg_id
+                    );
+                    let operand = self.resolve_ir_id_to_operand(arg_id)?;
+
+                    self.emit_instruction_typed(
+                        Opcode::Op1(Op1::PrintPaddr),
+                        &[operand],
+                        None,
+                        None,
+                    )?;
+
+                    // Add newline
+                    self.emit_instruction_typed(NEWLINE, &[], None, None)?;
+                    return Ok(());
+                }
+                Type::Int => {
+                    // Handle integer - use print_num
+                    log::debug!("🔢 Int detected: using print_num for IR ID {}", arg_id);
+                    let operand = self.resolve_ir_id_to_operand(arg_id)?;
+
+                    self.emit_instruction_typed(
+                        Opcode::OpVar(OpVar::PrintNum),
+                        &[operand],
+                        None,
+                        None,
+                    )?;
+
+                    // Add newline
+                    self.emit_instruction_typed(NEWLINE, &[], None, None)?;
+                    return Ok(());
+                }
+                _ => {
+                    // For other types (String, etc.), fall through to existing logic
+                    log::debug!(
+                        "🔄 Type {:?}: using existing logic for IR ID {}",
+                        arg_type,
+                        arg_id
+                    );
+                }
+            }
+        } else {
+            log::debug!(
+                "❓ No type info available for IR ID {}, using existing logic",
+                arg_id
+            );
+        }
 
         // Look up the string value from the IR ID
         log::debug!(
@@ -281,6 +343,61 @@ impl ZMachineCodeGen {
         }
 
         let arg_id = args[0];
+
+        // **NEW: Type-aware print dispatch for StringAddress system**
+        // Check if we have type information for this argument
+        if let Some(arg_type) = self.ir_type_info.get(&arg_id) {
+            log::debug!(
+                "🎯 Type-aware print: IR ID {} has type {:?}",
+                arg_id,
+                arg_type
+            );
+
+            match arg_type {
+                Type::StringAddress => {
+                    // Handle string address - use print_paddr (no newline)
+                    log::debug!(
+                        "📍 StringAddress detected: using print_paddr for IR ID {}",
+                        arg_id
+                    );
+                    let operand = self.resolve_ir_id_to_operand(arg_id)?;
+
+                    self.emit_instruction_typed(
+                        Opcode::Op1(Op1::PrintPaddr),
+                        &[operand],
+                        None,
+                        None,
+                    )?;
+                    return Ok(());
+                }
+                Type::Int => {
+                    // Handle integer - use print_num (no newline)
+                    log::debug!("🔢 Int detected: using print_num for IR ID {}", arg_id);
+                    let operand = self.resolve_ir_id_to_operand(arg_id)?;
+
+                    self.emit_instruction_typed(
+                        Opcode::OpVar(OpVar::PrintNum),
+                        &[operand],
+                        None,
+                        None,
+                    )?;
+                    return Ok(());
+                }
+                _ => {
+                    // For other types (String, etc.), fall through to existing logic
+                    log::debug!(
+                        "🔄 Type {:?}: using existing logic for IR ID {}",
+                        arg_type,
+                        arg_id
+                    );
+                }
+            }
+        } else {
+            log::debug!(
+                "❓ No type info available for IR ID {}, using existing logic",
+                arg_id
+            );
+        }
 
         // Look up the string value from the IR ID
         log::debug!(

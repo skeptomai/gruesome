@@ -231,7 +231,7 @@ pub enum Type {
     Bool,
     Int,
     String,
-    StringAddress,  // Packed string addresses from builtins like exit_get_message
+    StringAddress, // Packed string addresses from builtins like exit_get_message
     Room,
     Object,
     Array(Box<Type>),

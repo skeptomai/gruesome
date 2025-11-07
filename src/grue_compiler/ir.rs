@@ -103,6 +103,8 @@ pub struct IrProgram {
     pub id_registry: IrIdRegistry,
     /// Property manager with consistent property name -> number mappings
     pub property_manager: PropertyManager,
+    /// Expression type information for StringAddress system
+    pub expression_types: IndexMap<IrId, Type>,
 }
 
 impl IrProgram {
@@ -883,8 +885,9 @@ pub enum IrValue {
     Integer(i16),
     Boolean(bool),
     String(String),
-    StringRef(IrId), // Reference to string table entry
-    Object(String),  // Object reference by name - will be resolved to runtime number during codegen
+    StringRef(IrId),    // Reference to string table entry
+    StringAddress(i16), // Packed string address for Z-Machine (result of builtins like exit_get_message)
+    Object(String), // Object reference by name - will be resolved to runtime number during codegen
     Null,
 }
 
@@ -948,6 +951,7 @@ impl IrProgram {
             object_numbers: IndexMap::new(),
             id_registry: IrIdRegistry::new(), // NEW: Initialize ID registry
             property_manager: PropertyManager::new(), // Initialize property manager
+            expression_types: IndexMap::new(), // NEW: Initialize expression types for StringAddress system
         }
     }
 
@@ -1028,6 +1032,7 @@ pub struct IrGenerator {
     property_manager: PropertyManager,  // Manages property numbering and inheritance
     id_registry: IrIdRegistry,          // NEW: Track all IR IDs for debugging and mapping
     variable_sources: IndexMap<IrId, VariableSource>, // Track variable origins for iteration strategy
+    expression_types: IndexMap<IrId, Type>, // NEW: Track expression result types for StringAddress system
     /// Mapping of room names to objects contained within them
     /// Used for automatic object placement during init block generation
     room_objects: IndexMap<String, Vec<RoomObjectInfo>>,
@@ -1056,7 +1061,8 @@ impl IrGenerator {
             property_manager: PropertyManager::new(),
             id_registry: IrIdRegistry::new(), // NEW: Initialize ID registry
             variable_sources: IndexMap::new(), // NEW: Initialize variable source tracking
-            room_objects: IndexMap::new(),    // NEW: Initialize room object mapping
+            expression_types: IndexMap::new(), // NEW: Initialize expression type tracking for StringAddress system
+            room_objects: IndexMap::new(),     // NEW: Initialize room object mapping
         }
     }
 
@@ -1213,6 +1219,7 @@ impl IrGenerator {
         ir_program.object_numbers = self.object_numbers.clone();
         ir_program.id_registry = self.id_registry.clone(); // NEW: Transfer ID registry
         ir_program.property_manager = self.property_manager.clone(); // Transfer property manager with consistent mappings
+        ir_program.expression_types = self.expression_types.clone(); // NEW: Transfer expression types for StringAddress system
 
         Ok(ir_program)
     }
@@ -1272,6 +1279,17 @@ impl IrGenerator {
         let id = self.id_counter;
         self.id_counter += 1;
         id
+    }
+
+    /// Record the type of an IR result for StringAddress system
+    fn record_expression_type(&mut self, ir_id: IrId, type_info: Type) {
+        self.expression_types.insert(ir_id, type_info.clone());
+        log::debug!("IR_TYPE: IR ID {} has type {:?}", ir_id, type_info);
+    }
+
+    /// Get the type of an IR expression for StringAddress system
+    fn get_expression_type(&self, ir_id: IrId) -> Option<&Type> {
+        self.expression_types.get(&ir_id)
     }
 
     /// Centralized IR instruction emission with automatic ID tracking
@@ -3386,6 +3404,9 @@ impl IrGenerator {
                             function: builtin_id,
                             args: vec![object_temp],
                         });
+
+                        // Record that exit_get_message returns StringAddress for type-aware println
+                        self.record_expression_type(temp_id, Type::StringAddress);
 
                         log::debug!(
                             "🚪 EXIT: Call instruction added, returning temp_id={}",

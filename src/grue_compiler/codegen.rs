@@ -12,6 +12,7 @@
 // - Phase 7: Unused resolution functions (44 lines)
 // Total file size reduction: 11,338 → 10,332 lines (8.9% reduction)
 
+use crate::grue_compiler::ast::Type;
 use crate::grue_compiler::codegen_memory::{
     placeholder_word, MemorySpace, HEADER_SIZE, PLACEHOLDER_BYTE,
 };
@@ -196,6 +197,8 @@ pub struct ZMachineCodeGen {
     pub ir_id_to_local_var: IndexMap<IrId, u8>,
     /// Mapping from IR IDs to binary operations (for conditional branch optimization)
     pub ir_id_to_binary_op: IndexMap<IrId, (IrBinaryOp, IrId, IrId)>, // (operator, left_operand, right_operand)
+    /// Mapping from IR IDs to expression types (for StringAddress system)
+    pub ir_type_info: IndexMap<IrId, Type>,
     /// Analysis of comparison operations usage patterns
     /// Contains IR IDs of comparison operations that are used as values (need push/pull)
     /// vs those used only in direct branches (no push/pull needed)
@@ -381,6 +384,7 @@ impl ZMachineCodeGen {
             ir_id_to_object_number: IndexMap::new(),
             ir_id_to_local_var: IndexMap::new(),
             ir_id_to_binary_op: IndexMap::new(),
+            ir_type_info: IndexMap::new(),
             comparison_ids_used_as_values: IndexSet::new(),
             builtin_function_names: IndexMap::new(),
             builtin_functions: IndexMap::new(),
@@ -2853,6 +2857,15 @@ impl ZMachineCodeGen {
                             return Err(CompilerError::CodeGenError(format!(
                                 "Grammar handler arguments cannot use StringRef - use String instead"
                             )));
+                        }
+                        crate::grue_compiler::ir::IrValue::StringAddress(addr) => {
+                            // StringAddress holds a packed string address (i16)
+                            // Treat as integer value for Z-Machine operations
+                            if *addr >= 0 && *addr <= 255 {
+                                Operand::SmallConstant(*addr as u8)
+                            } else {
+                                Operand::LargeConstant(*addr as u16)
+                            }
                         }
                     };
                     operands.push(arg_operand);

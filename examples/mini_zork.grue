@@ -385,7 +385,7 @@ fn handle_go(direction) {
     }
 
     if exit.blocked {
-        print_message(exit.message);
+        println(exit.message);  // StringAddress system automatically detects type and uses print_paddr
         return;
     }
 

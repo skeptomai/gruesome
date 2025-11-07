@@ -37,6 +37,7 @@ mod codegen_tests {
                 symbol_ids: indexmap::IndexSet::new(),
                 expression_ids: indexmap::IndexSet::new(),
             },
+            expression_types: indexmap::IndexMap::new(),
         }
     }
 

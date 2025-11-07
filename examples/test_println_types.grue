@@ -1,0 +1,36 @@
+// Test println with different argument types
+// This will help us verify if type-aware println is working
+
+mode: custom
+
+world {
+    room start "Test Room" {
+        desc: "A room for testing println with different types."
+
+        exits: {
+            north: blocked("The way is blocked.")
+        }
+    }
+}
+
+init {
+    player.location = start
+}
+
+fn main() {
+    // Test 1: Regular string literal
+    println("Test 1: This is a string literal")
+
+    // Test 2: String address from exit.message (should use print_paddr)
+    let north_exit = start.get_exit("north")
+    if (north_exit) {
+        println("Test 2: ")
+        println(north_exit.message)  // This should be a StringAddress
+    }
+
+    // Test 3: Integer (should use print_num)
+    println("Test 3: Number: ")
+    println(42)
+
+    quit()
+}

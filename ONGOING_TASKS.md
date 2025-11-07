@@ -178,6 +178,42 @@ You are about 10 feet above the ground nestled among some large branches.
 - ✅ **4 Gameplay Tests**: All passing - Core functionality works
 - ✅ **200 System Tests**: All passing - No regressions introduced
 
+### **StringAddress Type System Enhancement** 🔄 **IN DEVELOPMENT** (November 7, 2025)
+
+**OBJECTIVE**: Replace manual `print_message` function with automatic string address detection in `println()`
+- **Goal**: Enable `println(exit.message)` to automatically detect string addresses and use correct Z-Machine opcodes
+- **Current**: Must use `print_message(exit.message)` because `println` treats all Int as numbers, not packed string addresses
+- **Target**: Type-aware `println` that automatically selects `print_paddr` vs `print_num` based on value type
+
+**IMPLEMENTATION STATUS**: **Phase 4 INCOMPLETE** - Foundation ready, function call type propagation missing
+- ✅ **Phase 1**: StringAddress type system foundation (Type enum, parser, semantic analysis)
+- ✅ **Phase 2**: IR value representation with IrValue::StringAddress variant
+- ✅ **Phase 3**: Codegen support for StringAddress operand conversion
+- ❌ **Phase 4**: Function call return type propagation - **CRITICAL MISSING COMPONENT**
+
+**ROOT CAUSE IDENTIFIED**: Type information lost during builtin function calls
+- `exit.message` property access correctly has Type::StringAddress
+- But `exit_get_message` builtin function returns Type::Int, not StringAddress
+- So `println(exit.message)` receives Int and displays "1860" instead of message text
+- **Solution Needed**: Builtin functions must declare StringAddress return types
+
+**IMPLEMENTATION BRANCH**: `feature/string-address-type`
+- **Rollback Safety**: All changes isolated on feature branch, can merge when complete
+- **Testing Strategy**: Verify no regressions after each phase completion
+
+**TECHNICAL ARCHITECTURE**:
+- **StringAddress Type**: Distinguished from regular Int for packed string addresses
+- **Type Compatibility**: StringAddress allowed in String contexts for seamless usage
+- **Automatic Detection**: `println()` selects appropriate Z-Machine opcode based on argument type
+
+**DETAILED PLAN**: See `docs/STRING_ADDRESS_TYPE_PLAN.md` for complete 7-phase implementation plan and current status
+
+**NEXT STEPS**:
+1. **Add builtin return type declarations** - Declare that `exit_get_message`, etc. return StringAddress
+2. **Implement IR type tracking** - Propagate function call result types through expression evaluation
+3. **Update println codegen** - Use type information to select print_paddr vs print_num
+4. **Verify automatic detection** - Test that `println(exit.message)` works without manual print_message calls
+
 ### **Score Display Corruption Bug** ✅ **FIXED** (November 2, 2025)
 
 **ISSUE RESOLVED**: Score command now correctly displays actual score value

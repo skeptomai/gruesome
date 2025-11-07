@@ -130,6 +130,13 @@ impl GrueCompiler {
         // Transfer object numbers from IR generator to code generator
         code_generator.set_object_numbers(ir_generator.get_object_numbers().clone());
 
+        // Transfer expression types for StringAddress system
+        code_generator.ir_type_info = ir_program.expression_types.clone();
+        log::debug!(
+            "🔄 Transferred {} expression types to codegen",
+            ir_program.expression_types.len()
+        );
+
         let story_data = code_generator.generate_complete_game_image(ir_program)?;
 
         Ok((story_data, code_generator))

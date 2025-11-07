@@ -81,13 +81,13 @@ impl SemanticAnalyzer {
     fn add_builtin_functions(&mut self) {
         // Add common built-in functions
         let builtins = [
-            ("print", vec![Type::String], None),
+            ("print", vec![Type::Any], None), // Allow String, StringAddress, or Int with type-aware code generation
             ("print_num", vec![Type::Int], None),
             ("print_ret", vec![Type::String], None),
             ("print_message", vec![Type::Int], None),
             ("new_line", vec![], None),
             ("quit", vec![], None),
-            ("println", vec![Type::String], None),
+            ("println", vec![Type::Any], None), // Allow String, StringAddress, or Int with type-aware code generation
             ("error", vec![Type::String], None),
             ("to_string", vec![Type::Any], Some(Type::String)),
             ("to_int", vec![Type::String], Some(Type::Int)),
@@ -853,9 +853,22 @@ impl SemanticAnalyzer {
                         )),
                     },
                     _ => {
-                        // For non-array types, assume any property access is valid
-                        // TODO: Validate property exists on object type
-                        Ok(Type::Any)
+                        // Enhanced property type resolution for StringAddress system
+                        match property.as_str() {
+                            "message" => {
+                                // exit.message returns StringAddress (packed string address)
+                                Ok(Type::StringAddress)
+                            }
+                            "destination" => Ok(Type::Int), // Room number
+                            "blocked" => Ok(Type::Bool),
+                            "name" => Ok(Type::StringAddress), // Object names are string addresses
+                            "desc" => Ok(Type::StringAddress), // Descriptions are string addresses
+                            _ => {
+                                // For other properties, assume any property access is valid
+                                // TODO: Validate property exists on object type
+                                Ok(Type::Any)
+                            }
+                        }
                     }
                 }
             }
@@ -1214,9 +1227,23 @@ impl SemanticAnalyzer {
 
     fn types_compatible(&self, expected: &Type, actual: &Type) -> bool {
         match (expected, actual) {
+            // Any type accepts anything
             (Type::Any, _) | (_, Type::Any) => true,
+
             // Exact type matches
-            (a, b) => a == b,
+            (a, b) if a == b => true,
+
+            // StringAddress can be used where String is expected (for println)
+            (Type::String, Type::StringAddress) => true,
+
+            // Int and StringAddress are NOT compatible (different semantics)
+            (Type::Int, Type::StringAddress) | (Type::StringAddress, Type::Int) => false,
+
+            // Arrays with compatible element types
+            (Type::Array(a), Type::Array(b)) => self.types_compatible(a, b),
+
+            // Default: types are not compatible
+            _ => false,
         }
     }
 
