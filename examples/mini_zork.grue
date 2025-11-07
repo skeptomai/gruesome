@@ -42,7 +42,7 @@ world {
         
         on_enter: {
             if !west_of_house.visited {
-                println("Welcome to Zork!");
+                println("Welcome to Dork!");
             }
         }
     }
