@@ -1,0 +1,60 @@
+{
+  "name": "grue-language-support",
+  "displayName": "Grue Language Support",
+  "description": "Syntax highlighting and language support for Grue interactive fiction language",
+  "version": "1.0.0",
+  "publisher": "gruesome-project",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/skeptomai/gruesome"
+  },
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.50.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "grue",
+    "interactive fiction",
+    "z-machine",
+    "text adventure",
+    "infocom"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "grue",
+        "aliases": [
+          "Grue",
+          "grue"
+        ],
+        "extensions": [
+          ".grue"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "grue",
+        "scopeName": "source.grue",
+        "path": "./syntaxes/grue.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^14.x",
+    "@types/vscode": "^1.50.0",
+    "typescript": "^4.4.0",
+    "vsce": "^2.0.0"
+  }
+}

@@ -1,0 +1,72 @@
+// Test file for Grue syntax highlighting
+// This file demonstrates all major language constructs
+
+world {
+    room test_room "Test Room" {
+        desc: "A room for testing syntax highlighting."
+
+        object test_object {
+            names: ["object", "test", "thing"]
+            desc: "A test object with properties."
+            openable: true
+            open: false
+            takeable: true
+        }
+
+        exits: {
+            north: another_room,
+            east: blocked("You can't go that way.")
+        }
+
+        on_enter: {
+            if !test_room.visited {
+                println("Welcome to the test room!");
+                player.score = player.score + 10;
+            }
+        }
+    }
+}
+
+grammar {
+    verb "test" {
+        pattern: "test $object" => test_verb($object)
+        pattern: "t $noun" => test_verb($noun)
+    }
+}
+
+fn test_verb(obj) {
+    let message = "Testing " + obj.name;
+
+    if (obj.openable && !obj.open) {
+        obj.open = true;
+        print(message + " - opened!");
+    } else if (obj.takeable) {
+        move(obj, player);
+        println(message + " - taken!");
+        return true;
+    } else {
+        println("You can't test that.");
+        return false;
+    }
+
+    // Ternary operator example
+    let status = obj.open ? "open" : "closed";
+    println("Object is now " + status + ".");
+}
+
+init {
+    player.location = test_room;
+    player.score = 0;
+
+    // Array example
+    let items = ["sword", "shield", "potion"];
+    for item in items {
+        println("Found: " + item);
+    }
+
+    // Parameter examples
+    println("Testing parameters: $1, $noun, $object");
+}
+
+/* Future: Multi-line comment support
+   Could be added to lexer if needed */
