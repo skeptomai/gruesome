@@ -45,15 +45,16 @@ echo ""
 echo "🎯 Test with: examples/mini_zork.grue"
 echo "📚 Documentation: README.md"
 
-# Optional: Offer to open VS Code
-read -p "🚀 Open VS Code now? (y/N): " -n 1 -r
+# Optional: Offer to open a test file in VS Code
+read -p "🚀 Open test file in VS Code to see syntax highlighting? (y/N): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     if command -v code &> /dev/null; then
-        echo "🔄 Reloading VS Code..."
-        code --reload
+        echo "📝 Opening test file..."
+        code test-syntax.grue
+        echo "💡 If you don't see syntax highlighting, run: Cmd/Ctrl + Shift + P → 'Developer: Reload Window'"
     else
-        echo "⚠️  VS Code 'code' command not found. Please reload VS Code manually."
+        echo "⚠️  VS Code 'code' command not found. Please open test-syntax.grue manually."
     fi
 fi
 
