@@ -1464,15 +1464,19 @@ impl ZMachineCodeGen {
         let exit_value_id = args[0];
         let exit_value_operand = self.resolve_ir_id_to_operand(exit_value_id)?;
 
-        if let Some(store_var) = target {
+        if let Some(target_ir_id) = target {
+            // BUG FIX (Nov 7, 2025): Use direct storage like exit_get_data to avoid push/pull issues
+            // CRITICAL: Don't reuse existing mappings - always allocate fresh variable for builtins
+            let result_var = self.allocate_global_for_ir_id(target_ir_id);
+            self.ir_id_to_stack_var.insert(target_ir_id, result_var);
+
             // Use and (opcode 0x09) to mask lower 14 bits: value & 0x3FFF
             self.emit_instruction_typed(
                 Opcode::Op2(Op2::And),
                 &[exit_value_operand, Operand::LargeConstant(0x3FFF)],
-                Some(0),
+                Some(result_var), // Store directly to allocated variable
                 None,
             )?;
-            self.use_push_pull_for_result(store_var, "exit_get_message builtin")?;
 
             // BUG FIX (Oct 9, 2025): DO NOT mark exit_get_message result as property
             // The ir_id_from_property flag is too broad - it affects ALL uses of this IR ID,
@@ -1486,9 +1490,40 @@ impl ZMachineCodeGen {
             // REMOVED: self.ir_id_from_property.insert(store_var);
             log::debug!(
                 "🚪 EXIT: exit_get_message result stored to IR ID {} (NOT marked as property to avoid print_paddr with 0)",
-                store_var
+                target_ir_id
             );
         }
+
+        Ok(())
+    }
+
+    /// Generate print_message builtin - prints string at given address using print_paddr
+    ///
+    /// **Purpose**: Specifically designed for printing string addresses (like those returned by exit_get_message)
+    /// **Architecture**: Uses print_paddr instruction to treat the integer argument as a packed string address
+    /// **Usage**: `print_message(exit.message)` where exit.message returns a string address (e.g., 1904)
+    /// **Rationale**: Needed because println() treats integers as numbers (uses print_num) rather than addresses
+    pub fn generate_print_message_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
+        if args.len() != 1 {
+            return Err(CompilerError::CodeGenError(format!(
+                "print_message expects 1 argument, got {}",
+                args.len()
+            )));
+        }
+
+        let message_addr_id = args[0];
+        let message_addr_operand = self.resolve_ir_id_to_operand(message_addr_id)?;
+
+        // Use print_paddr to print the string at the given address
+        self.emit_instruction_typed(
+            Opcode::Op1(Op1::PrintPaddr),
+            &[message_addr_operand],
+            None, // No store
+            None, // No branch
+        )?;
+
+        // Emit new_line instruction after print_paddr for proper line breaks
+        self.emit_instruction_typed(NEWLINE, &[], None, None)?;
 
         Ok(())
     }
@@ -1596,6 +1631,18 @@ impl ZMachineCodeGen {
         let index_var = 7u8; // Local variable 7 for loop index
         let current_dir_var = 8u8; // Local variable 8 for current direction (pulled from stack)
         let type_shifted_var = 9u8; // Local variable 9 for type_shifted value
+
+        // BUG FIX (Nov 7, 2025): Allocate result variable at function start for both "found" and "not found" paths
+        let result_var = if let Some(target_ir_id) = target {
+            // Inline call - use target IR ID for result variable allocation
+            let var = self.allocate_global_for_ir_id(target_ir_id);
+            self.ir_id_to_stack_var.insert(target_ir_id, var);
+            var
+        } else {
+            // Function call - allocate anonymous local variable for result calculation
+            // Use a high variable number to avoid conflicts (240+ range is our temp storage)
+            245
+        };
 
         // Allocate labels for control flow
         let not_found_label = self.next_string_id;
@@ -1846,32 +1893,7 @@ impl ZMachineCodeGen {
         )?;
 
         // loadw data_addr, index -> result var (data word)
-        // Store directly to result to save stack manipulation
-        // BUG FIX (Oct 11, 2025): Allocate proper Z-Machine variable for target IR ID
-        // Cannot use IR ID directly as variable number - causes header corruption when
-        // IR ID 274 becomes var 18 (0x12) which overwrites score/moves in header
-        // IMPORTANT: Only insert mapping ONCE at the top, use in both branches
-        // CRITICAL: Don't reuse existing mappings - always allocate fresh for builtins
-        // ARCHITECTURE FIX: Always allocate result variable for function call architecture
-        //
-        // PROBLEM: When target=None (function generation), no result variable is allocated,
-        //          so the function cannot store its calculated result and returns 0
-        //
-        // SOLUTION: Always allocate a local variable for the result, regardless of target.
-        //           For function calls, the function must calculate and return its result.
-        //           The caller handles storing the returned value to the actual target.
-        let result_var = if let Some(target_ir_id) = target {
-            // Inline call - use target IR ID for result variable allocation
-            let var = self.allocate_global_for_ir_id(target_ir_id);
-            self.ir_id_to_stack_var.insert(target_ir_id, var);
-            var
-        } else {
-            // Function call - allocate anonymous local variable for result calculation
-            // Use a high variable number to avoid conflicts (240+ range is our temp storage)
-            245
-        };
-
-        // Always execute data loading and result calculation now that we always have result_var
+        // result_var was allocated at function start and is available in both paths
         self.emit_instruction_typed(
             Opcode::Op2(Op2::Loadw),
             &[

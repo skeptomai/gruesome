@@ -1,0 +1,36 @@
+warning: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors
+    --> src/grue_compiler/codegen.rs:3490:22
+     |
+3490 |                 self.emit_instruction(
+     |                      ^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors
+   --> src/grue_compiler/codegen_branch.rs:271:27
+    |
+271 |         let layout = self.emit_instruction(
+    |                           ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors
+    --> src/grue_compiler/codegen_builtins.rs:1693:14
+     |
+1693 |         self.emit_instruction(
+     |              ^^^^^^^^^^^^^^^^
+
+warning: unused variable: `param_index`
+    --> src/grue_compiler/codegen.rs:3053:14
+     |
+3053 |         for (param_index, parameter) in function.parameters.iter().enumerate() {
+     |              ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_param_index`
+     |
+     = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `is_array`
+    --> src/grue_compiler/ir.rs:3064:21
+     |
+3064 |                 let is_array = self.is_array_type(&object);
+     |                     ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_is_array`
+
+warning: `gruesome` (lib) generated 5 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.06s

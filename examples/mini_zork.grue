@@ -1,4 +1,3 @@
-
 // Mini Zork - Sample Grue Game for Compiler Testing
 // This game implements the classic opening of Zork I
 // to validate our Z-Machine compiler implementation
@@ -97,6 +96,7 @@ world {
             names: ["bird's nest", "nest"]
             desc: "In the bird's nest is a large egg encrusted with precious jewels."
             container: true
+            open: true
             
             contains {
                 object egg {
@@ -105,6 +105,7 @@ world {
                     openable: true
                     container: true
                     valuable: true
+                    takeable: true
                 }
             }
         }
@@ -207,6 +208,10 @@ grammar {
         default => handle_quit()
     }
 
+    verb "exit" {
+        default => handle_quit()
+    }
+
     // Add yes/y/no/n to dictionary (used for quit confirmation)
     verb "yes" {
         default => handle_yes()
@@ -252,13 +257,23 @@ fn examine(obj) {
 
     // Special handling for dynamic descriptions
     if obj == mailbox {
-        println("The small mailbox is ");
+        print("The small mailbox is ");
         if mailbox.open {
-            println("open");
+            print("open");
         } else {
-            println("closed");
+            print("closed");
         }
         println(".");
+        return;
+    }
+
+    // Special handling for nest - show natural description including contents
+    if obj == nest {
+        if egg.location == nest {
+            println("A bird's nest rests among the branches, and you can see a jewel-encrusted egg nestled inside.");
+        } else {
+            println("A bird's nest rests among the branches, but it appears to be empty.");
+        }
         return;
     }
 
@@ -370,7 +385,7 @@ fn handle_go(direction) {
     }
 
     if exit.blocked {
-        println(exit.message);
+        print_message(exit.message);
         return;
     }
 
@@ -410,7 +425,7 @@ fn handle_read(obj) {
     }
 
     if obj == leaflet {
-        println(leaflet.desc);
+        println(obj.desc);
     } else {
         println("There's nothing to read on that.");
     }
@@ -475,7 +490,16 @@ fn list_objects(location) {
 
     for obj in objects {
         if obj != player {
-            println("There is " + obj.name + " here.");
+            // Special description for nest
+            if obj == nest {
+                if egg.location == nest {
+                    println("There is a bird's nest here with a jewel-encrusted egg visible inside.");
+                } else {
+                    println("There is an empty bird's nest here.");
+                }
+            } else {
+                println("There is " + obj.name + " here.");
+            }
         }
     }
 }

@@ -23,5 +23,16 @@ echo "   - north"
 echo "   - quit"
 echo ""
 
-# Run the interpreter interactively
-target/debug/gruesome tests/mini_zork_test.z3
+# Auto-detect and run the interpreter interactively
+if [ -f "target/debug/gruesome" ]; then
+    echo "🔍 Using debug build for better error messages..."
+    target/debug/gruesome tests/mini_zork_test.z3
+elif [ -f "target/release/gruesome" ]; then
+    echo "🔍 Using release build (debug not available)..."
+    target/release/gruesome tests/mini_zork_test.z3
+else
+    echo "❌ Error: No gruesome binary found. Please run:"
+    echo "   cargo build --bin gruesome          # for debug build, or"
+    echo "   cargo build --release --bin gruesome # for release build"
+    exit 1
+fi

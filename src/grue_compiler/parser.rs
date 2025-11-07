@@ -322,11 +322,17 @@ impl Parser {
 
     fn parse_expression_as_string(&mut self) -> Result<String, CompilerError> {
         // Parse expression and convert to string representation
-        // This is a simplified approach - in a real compiler, we'd store the expression
-        let _expr = self.parse_expression()?;
-        // For now, return a placeholder string
-        // TODO: Properly evaluate string expressions during semantic analysis
-        Ok("[expression]".to_string())
+        let expr = self.parse_expression()?;
+
+        // Handle string literals directly
+        match expr {
+            crate::grue_compiler::ast::Expr::String(s) => Ok(s),
+            _ => {
+                // For non-string expressions, return a placeholder for now
+                // TODO: Properly evaluate other expression types during semantic analysis
+                Ok("[expression]".to_string())
+            }
+        }
     }
 
     fn parse_grammar_decl(&mut self) -> Result<GrammarDecl, CompilerError> {

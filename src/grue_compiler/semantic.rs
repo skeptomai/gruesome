@@ -84,6 +84,7 @@ impl SemanticAnalyzer {
             ("print", vec![Type::String], None),
             ("print_num", vec![Type::Int], None),
             ("print_ret", vec![Type::String], None),
+            ("print_message", vec![Type::Int], None),
             ("new_line", vec![], None),
             ("quit", vec![], None),
             ("println", vec![Type::String], None),

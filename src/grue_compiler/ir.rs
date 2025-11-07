@@ -393,6 +393,20 @@ impl PropertyManager {
 
         self.property_numbers
             .insert(prop_name.to_string(), prop_num);
+
+        // Register aliases for properties that have multiple valid names
+        match prop {
+            StandardProperty::Description => {
+                // Register "desc" as alias for "description"
+                self.property_numbers.insert("desc".to_string(), prop_num);
+            }
+            StandardProperty::ShortName => {
+                // Register "name" as alias for "short_name"
+                self.property_numbers.insert("name".to_string(), prop_num);
+            }
+            _ => {}
+        }
+
         self.next_property_number += 1;
     }
 
@@ -1056,6 +1070,7 @@ impl IrGenerator {
                     | "print_num"
                     | "println"
                     | "print_ret"
+                    | "print_message"
                     | "new_line"
                     | "move"
                     | "add_score"
@@ -1110,6 +1125,7 @@ impl IrGenerator {
                     | "print_num"
                     | "println"
                     | "print_ret"
+                    | "print_message"
                     | "new_line"
                     | "move"
                     | "add_score"
@@ -1636,7 +1652,7 @@ impl IrGenerator {
 
         // Set standard properties using computed short_name (not obj.identifier!)
         properties.set_string(StandardProperty::ShortName as u8, short_name.clone());
-        properties.set_string(StandardProperty::LongName as u8, obj.description.clone());
+        properties.set_string(StandardProperty::Description as u8, obj.description.clone());
 
         // Convert AST properties to Z-Machine properties using property manager
         for (prop_name, prop_value) in &obj.properties {
