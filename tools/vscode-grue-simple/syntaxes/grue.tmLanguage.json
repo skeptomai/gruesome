@@ -19,6 +19,9 @@
       "include": "#parameters"
     },
     {
+      "include": "#properties"
+    },
+    {
       "include": "#keywords"
     },
     {
@@ -76,6 +79,20 @@
           "captures": {
             "0": {
               "name": "punctuation.definition.variable.grue"
+            }
+          }
+        }
+      ]
+    },
+    "properties": {
+      "patterns": [
+        {
+          "comment": "Property names followed by colon (e.g., 'name:', 'desc:', 'start_room:')",
+          "name": "entity.name.tag.property.grue",
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*:",
+          "captures": {
+            "1": {
+              "name": "entity.name.tag.property.grue"
             }
           }
         }

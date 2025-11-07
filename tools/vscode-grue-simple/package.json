@@ -2,9 +2,10 @@
   "name": "grue",
   "displayName": "Grue Language Support",
   "description": "Syntax highlighting for Grue language",
-  "version": "0.0.1",
+  "version": "1.0.0",
+  "publisher": "vscode",
   "engines": {
-    "vscode": "^1.50.0"
+    "vscode": "^1.52.0"
   },
   "categories": [
     "Programming Languages"

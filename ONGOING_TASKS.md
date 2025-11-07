@@ -259,6 +259,31 @@ cd tools/vscode-grue-simple
 
 **DEVELOPER EXPERIENCE IMPACT**: Professional IDE support now available for Grue development with immediate syntax validation and enhanced code readability
 
+### **VS Code Extension Recognition Fix** ✅ **COMPLETED** (November 7, 2025)
+
+**ISSUE RESOLVED**: VS Code extension not appearing in language dropdown or automatically activating for .grue files
+
+**ROOT CAUSES IDENTIFIED AND FIXED**:
+1. ✅ **Missing Publisher Field**: VS Code extensions require a `publisher` identifier to be recognized as valid extensions
+2. ✅ **Missing Activation Events**: VS Code needs `activationEvents` to know when to activate language extensions
+
+**SOLUTION IMPLEMENTED**:
+- ✅ **Added Publisher**: `"publisher": "grue-lang"` to package.json
+- ✅ **Added Activation Events**: `"activationEvents": ["onLanguage:grue"]` for proper language detection
+- ✅ **Reinstalled Extension**: Updated extension deployed to `~/.vscode/extensions/grue-0.0.1`
+
+**FILES MODIFIED**:
+- **`tools/vscode-grue-simple/package.json`**: Added required VS Code extension fields
+
+**USER INSTRUCTIONS FOR ACTIVATION**:
+1. **Close VS Code completely** (quit app entirely, not just close window)
+2. **Restart VS Code**
+3. **Open any `.grue` file** (e.g., `examples/mini_zork.grue`)
+4. **Verify language detection**: Bottom-right corner should show "Grue" instead of "Plain Text"
+5. **Language dropdown**: Use `Cmd+Shift+P`, type "Change Language Mode", "Grue" should appear in list
+
+**VALIDATION PENDING**: User restart of VS Code required to confirm fix effectiveness
+
 ### **Room Movement Consistency Improvements** ✅ **COMPLETED** (November 7, 2025)
 
 **OBJECTIVE ACHIEVED**: Improved geographic consistency and navigation logic in mini_zork world layout
