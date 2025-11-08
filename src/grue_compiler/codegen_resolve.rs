@@ -609,15 +609,6 @@ impl ZMachineCodeGen {
                         reference.location
                     };
 
-                    // CRITICAL DEBUG: Track branch resolution for examine leaflet bug
-                    if final_location == 0x13cb {
-                        log::error!(
-                            "🔧 BRANCH_RESOLUTION_BUG: final_location=0x{:04x}, resolved_address=0x{:04x}",
-                            final_location,
-                            resolved_address
-                        );
-                    }
-
                     // CRITICAL FIX: Branch data is being written 1 byte too late
                     // Using direct location for branch resolution
                     debug!(

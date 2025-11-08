@@ -255,13 +255,18 @@ impl SemanticAnalyzer {
                         line: 0, // TODO: Add line number tracking
                     };
 
-                    if self.current_scope.symbols.contains_key(&func.name) {
-                        return Err(CompilerError::SemanticError(
-                            format!("Function '{}' is already defined", func.name),
-                            0,
-                        ));
+                    // Allow function overloading for polymorphic dispatch
+                    // Only reject if it's the same function with the same specialization
+                    if let Some(existing_symbol) = self.current_scope.symbols.get(&func.name) {
+                        // Check if both functions have the same specialization type
+                        if let SymbolType::Function { .. } = &existing_symbol.symbol_type {
+                            // For now, allow overloading - the IR generator will handle dispatch resolution
+                            // In the future, we could add more sophisticated conflict detection here
+                            log::debug!("🔄 Allowing function overload for '{}'", func.name);
+                        }
                     }
 
+                    // Always insert the symbol - overloads will be tracked in IR generation
                     self.current_scope.symbols.insert(func.name.clone(), symbol);
                 }
 

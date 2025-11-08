@@ -217,12 +217,22 @@ pub struct FunctionDecl {
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,
     pub body: BlockStmt,
+    pub specialization: ObjectSpecialization, // NEW: Track if this is a specialized handler
 }
 
 #[derive(Debug, Clone)]
 pub struct Parameter {
     pub name: String,
     pub param_type: Option<Type>,
+    pub object_constraint: Option<String>, // NEW: Specific object name for specialization
+}
+
+/// Object specialization types for polymorphic dispatch
+#[derive(Debug, Clone, PartialEq)]
+pub enum ObjectSpecialization {
+    Generic,                // Default handler (e.g., fn handle_take(obj))
+    SpecificObject(String), // Handler for specific object (e.g., fn handle_take(leaflet))
+    ObjectType(String),     // Handler for object type (future extension)
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -13,7 +13,7 @@ use crate::grue_compiler::codegen_memory::{placeholder_word, MemorySpace};
 use crate::grue_compiler::codegen_objects::Operand;
 use crate::grue_compiler::codegen_references::{LegacyReferenceType, UnresolvedReference};
 use crate::grue_compiler::error::CompilerError;
-use crate::grue_compiler::opcodes::{Op1, Op2, Opcode};
+use crate::grue_compiler::opcodes::{Op0, Op1, Op2, Opcode};
 use log::debug;
 
 impl ZMachineCodeGen {
@@ -461,13 +461,13 @@ impl ZMachineCodeGen {
             panic!("BUG: emit_instruction didn't return operand_location for jump instruction");
         }
 
-        // LOOP EMISSION FIX: Place found_match_label and end_label at the same location
-        // Both "no more objects" and "found match" should exit the function
-        // The difference is that "found match" stores the result first
+        // CRITICAL CONTROL FLOW FIX: Separate found_match_label and end_label
+        // found_match_label: stores the result when a match is found
+        // end_label: handles the case when no match is found (Variable(3) stays 0)
 
-        // CRITICAL CONTROL FLOW DEBUG: Found match - store current object number as result
+        // FOUND MATCH PATH: Store current object number as result
         log::debug!(
-            "🔥 CONTROL_FLOW: FOUND_MATCH_LABEL at 0x{:04x} - This should EXIT the loop, NOT continue",
+            "🔥 CONTROL_FLOW: FOUND_MATCH_LABEL at 0x{:04x} - Match found, storing result",
             self.code_address
         );
         log::debug!(
@@ -495,18 +495,69 @@ impl ZMachineCodeGen {
             None,
             None,
         )?;
-        log::debug!(
-            "🔥 CONTROL_FLOW: MATCH STORED - Should now fall through to END_LABEL (no more increment/jump)"
-        );
+        log::debug!("🔥 CONTROL_FLOW: MATCH STORED - Jumping to end to skip error handling");
 
-        // CRITICAL CONTROL FLOW DEBUG: End of function - both match found and no match point here after store
+        // After storing match result, jump to the end (past error checking)
+        let jump_to_actual_end_label = self.next_string_id;
+        self.next_string_id += 1;
+
+        let layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::Jump),                        // jump
+            &[Operand::LargeConstant(placeholder_word())], // Target filled later
+            None,
+            None,
+        )?;
+
+        if let Some(operand_location) = layout.operand_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Jump,
+                    location: operand_location,
+                    target_id: jump_to_actual_end_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        }
+
+        // NO MATCH FOUND PATH: Place end_label here (Variable(3) remains 0)
+        // THIS IS AN ERROR CONDITION - No object found for user input
         log::debug!(
-            "🔥 CONTROL_FLOW: END_LABEL at 0x{:04x} - Function terminates here",
+            "🔥 CONTROL_FLOW: END_LABEL at 0x{:04x} - No match found, Variable(3) should be 0",
+            self.code_address
+        );
+        self.label_addresses.insert(end_label, self.code_address);
+        self.record_final_address(end_label, self.code_address);
+
+        // GRACEFUL FALLBACK: No match found - let dispatch system handle gracefully
+        log::debug!(
+            "📝 OBJECT_LOOKUP: No match found - returning 0 for dispatch system to handle at 0x{:04x}",
+            self.code_address
+        );
+        log::debug!(
+            "📝 DISPATCH_FALLBACK: Variable(3) is 0 - dispatch will call generic handler at 0x{:04x}",
             self.code_address
         );
 
-        self.label_addresses.insert(end_label, self.code_address);
-        self.record_final_address(end_label, self.code_address);
+        // NO QUIT: Let dispatch system handle object lookup failure gracefully
+        // Variable(3) remains 0, which dispatch system can handle with error messages
+
+        // ACTUAL END: Place jump_to_actual_end_label here for successful matches
+        self.label_addresses
+            .insert(jump_to_actual_end_label, self.code_address);
+        self.record_final_address(jump_to_actual_end_label, self.code_address);
+        log::debug!(
+            "🔥 SUCCESS: ACTUAL_END_LABEL at 0x{:04x} - Object lookup succeeded",
+            self.code_address
+        );
+
+        // FUNCTION COMPLETION: Object lookup function ends here
+        // All error handling is done immediately when no match is found
+        log::debug!(
+            "🔥 CONTROL_FLOW: FUNCTION_END at 0x{:04x} - Object lookup function complete",
+            self.code_address
+        );
 
         log::debug!(
             "🔍 OBJECT_LOOKUP_END: Complete at 0x{:04x} (size={} bytes)",

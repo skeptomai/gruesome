@@ -361,13 +361,17 @@ fn handle_take(obj) {
         println("The " + obj.location.name + " is closed.");
         return;
     }
-
-    if (obj == leaflet) {
-        player.score = player.score + 2;
-    }
     
     move(obj, player);
     println("Taken.");
+}
+
+fn handle_take(leaflet){
+    clear_quit_state();
+    player.score = player.score + 2;
+
+    move(leaflet, player);
+    println("Took leaflet.");
 }
 
 fn handle_drop(obj) {

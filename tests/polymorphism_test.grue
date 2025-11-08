@@ -1,0 +1,86 @@
+// Polymorphic Dispatch Test
+// Tests function overloading with specific objects
+
+world {
+    room test_room "Test Room" {
+        desc: "A test room for polymorphic dispatch testing."
+
+        object leaflet {
+            names: ["leaflet", "paper"]
+            desc: "A small leaflet with text on it."
+            takeable: true
+        }
+
+        object tree {
+            names: ["tree", "large tree"]
+            desc: "A tall tree with climbable branches."
+            takeable: false
+        }
+
+        object box {
+            names: ["box", "container"]
+            desc: "A simple wooden box."
+            takeable: true
+        }
+    }
+}
+
+grammar {
+    verb "take" {
+        noun => handle_take($noun)
+    }
+
+    verb "climb" {
+        noun => handle_climb($noun)
+    }
+
+    verb "examine" {
+        noun => handle_examine($noun)
+    }
+}
+
+// Generic handle_take function (fallback)
+fn handle_take(obj) {
+    println("You take the " + obj.name + ".");
+    move(obj, player);
+}
+
+// Specialized handle_take for leaflet
+fn handle_take(leaflet) {
+    println("You carefully pick up the leaflet, noting its importance.");
+    player.score = player.score + 5;
+    move(leaflet, player);
+}
+
+// Specialized handle_take for tree
+fn handle_take(tree) {
+    println("You can't take the tree - it's rooted to the ground!");
+}
+
+// Generic handle_climb function (fallback)
+fn handle_climb(obj) {
+    println("You can't climb that.");
+}
+
+// Specialized handle_climb for tree
+fn handle_climb(tree) {
+    println("You climb up into the tree branches.");
+    player.score = player.score + 10;
+}
+
+// Generic handle_examine function (fallback)
+fn handle_examine(obj) {
+    println(obj.desc);
+}
+
+// Specialized handle_examine for leaflet
+fn handle_examine(leaflet) {
+    println("The leaflet contains important information. You should take it!");
+}
+
+init {
+    player.location = test_room;
+    player.score = 0;
+    println("Polymorphic dispatch test initialized.");
+    println("Try: 'take leaflet', 'take tree', 'take box', 'climb tree', 'examine leaflet'");
+}

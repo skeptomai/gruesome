@@ -1,5 +1,76 @@
 # ONGOING TASKS - PROJECT STATUS
 
+## 🔧 **VARIABLE(3) CORRUPTION AFTER OBJECT LOOKUP** - **IN PROGRESS** (November 8, 2025)
+
+**CURRENT ISSUE**:
+- ✅ **Object Lookup Works**: Dictionary address matching correctly succeeds (0x0a64 = 0x0a64 for "leaflet")
+- ✅ **Variable(3) Set Correctly**: Object lookup function successfully stores object ID 11 in Variable(3)
+- ❌ **Immediate Corruption**: Function call to address 0x1a74 immediately overwrites Variable(3) with 0
+- ❌ **Command Fails**: "take leaflet" reports "You can't see any such thing" due to Variable(3) containing 0 instead of 11
+
+**ROOT CAUSE ANALYSIS**:
+**The parse buffer offset fix (SmallConstant(2) → SmallConstant(3)) was CORRECT and is working perfectly.**
+
+**The regression is NOT in object lookup - it's in unrelated function call sequence after successful lookup:**
+
+**Working Sequence (Expected)**:
+1. ✅ Parse buffer loads word 1 dictionary address correctly (offset 3)
+2. ✅ Object lookup function finds matching object (leaflet = object ID 11)
+3. ✅ Object lookup stores result: `Variable(3) = 11`
+4. ✅ Object lookup function returns/exits cleanly
+5. ✅ Dispatch system uses Variable(3) containing 11 for takeable check
+
+**Broken Sequence (Current)**:
+1. ✅ Parse buffer loads word 1 dictionary address correctly (offset 3)
+2. ✅ Object lookup function finds matching object (leaflet = object ID 11)
+3. ✅ Object lookup stores result: `Variable(3) = 11`
+4. ❌ **Extra function call to address 0x1a74 overwrites Variable(3) to 0**
+5. ❌ Dispatch system receives Variable(3) containing 0 instead of 11
+
+**DEBUG EVIDENCE**:
+```
+[DEBUG] 🔍 DICT_ADDR_COMPARE: op1=0x0a64 vs op2=0x0a64, condition=true    # ✅ Dictionary match works
+[DEBUG] store: var_num=03, value=11                                        # ✅ Object ID stored correctly
+[DEBUG] FUNCTION_CALL: calling addr=0x1a74 from PC=0x1cff                  # ❌ Extra function corrupts Variable(3)
+[ERROR] 🎯 DISPATCH_OBJECT_COMPARE: op1=0 vs op2=11, condition=false       # ❌ Variable(3) now contains 0
+```
+
+**INVESTIGATION NEEDED**:
+1. **Identify function at address 0x1a74** that's corrupting Variable(3)
+2. **Compare function call sequence** between working commit (before 886e96e) and current version
+3. **Remove extra function call** or ensure it doesn't use Variable(3) as parameter/local variable
+4. **Verify control flow** after object lookup success jumps directly to dispatch system
+
+**REGRESSION SOURCE**: Commit 886e96e refactoring introduced extra function call in control flow after successful object lookup
+
+---
+
+## ✅ **VERB MATCHING LOGIC ERROR** - **FIXED** (November 8, 2025)
+
+**ISSUE RESOLVED**:
+- ✅ **Root Cause Found**: Verb matching was comparing word 1 (noun) against verb dictionary address instead of word 0 (verb)
+- ✅ **Problem**: Parse buffer correctly populated (examine=0x0a3a, mailbox=0x0a70) but verb dispatch code read wrong word
+- ✅ **Impact**: All commands failed with infinite loops or "You can't see any such thing" responses
+- ✅ **Solution**: Fixed line 2470 to load word 0 (SmallConstant(1)) instead of word 1 (SmallConstant(2)) for verb matching
+
+**INVESTIGATION FINDINGS**:
+- ✅ **Parse Buffer Population**: Correctly working - SREAD instruction properly populated buffer
+- ✅ **Dictionary Compilation**: Correctly working - examine=0x0a3a, mailbox=0x0a70 addresses correct
+- ✅ **Logic Error**: Verb matching code loaded noun dictionary address and compared against verb dictionary address
+- ✅ **Fix Verified**: "examine mailbox", "look", "open mailbox" all work correctly, no infinite loops
+
+**TECHNICAL DETAILS**:
+- **File**: `src/grue_compiler/codegen.rs:2470`
+- **Change**: `SmallConstant(2)` → `SmallConstant(1)` for verb matching (word 0, not word 1)
+- **Result**: Proper verb-to-verb dictionary address comparison in command dispatch
+
+**REGRESSION SOURCE**:
+- Previous fixes correctly changed noun loading from offset 1 to offset 2
+- But verb matching also got incorrectly changed from offset 1 to offset 2
+- Verb matching should use offset 1 (word 0), noun loading should use offset 2 (word 1)
+
+---
+
 ## ✅ **OBJECT ID RESOLUTION BUG** - **FIXED** (November 1, 2025)
 
 **ISSUE RESOLVED**:
@@ -140,25 +211,57 @@ You are about 10 feet above the ground nestled among some large branches.
 
 **LESSON LEARNED**: When working with Z-Machine instruction layout, always use the **precise locations returned by `emit_instruction_typed`** rather than manual calculation. The `InstructionLayout` struct exists specifically to provide these exact addresses.
 
-### **Score System Binary Arithmetic Bug** 🔥 **CURRENT WORK** (November 4, 2025)
+### **Parse Buffer Offset Regression** ✅ **MOSTLY FIXED** (November 8, 2025)
 
-**ISSUE**: Arithmetic binary operations on score fail to produce correct results
-- **Problem**: `player.score = player.score + 10` doesn't work correctly
-- **Evidence**: `gain` command shows `Gained 10 points! Score: 0 -> 0` instead of `0 -> 10`
-- **Root Cause**: Binary operations (`+`, `-`) not evaluating correctly in expressions
-- **Status**: **INVESTIGATING** - Compiler issue with arithmetic operation IR generation
+**ISSUE DISCOVERED**: Parse buffer offset regression introduced during code refactoring caused object resolution to fail
 
-**IMPLEMENTATION STATUS**:
-- ✅ **Core Score Architecture**: Working perfectly (Global G17, status line integration)
-- ✅ **Score Reading**: `player.score` works correctly
-- ✅ **Score Assignment**: `player.score = 100` works correctly
-- ❌ **Score Arithmetic**: `player.score + value` not working
-- ❌ **Score Builtin Functions**: `add_score()`, `subtract_score()` crash with opcode errors
+**ROOT CAUSE IDENTIFIED**: During commit `886e96e` (refactoring to move dictionary functions to `codegen_lookup.rs`), the parse buffer offset for noun dictionary address was incorrectly changed from **offset 3** to **offset 2**.
 
-**INVESTIGATION PLAN**:
-1. 🎯 **Current**: Debug arithmetic binary operation IR generation
-2. **Next**: Fix opcode generation for builtin functions
-3. **Final**: Verify complete score functionality
+**TECHNICAL ANALYSIS**:
+
+**Parse Buffer Structure** (Z-Machine Standard):
+```
+Offset 0: word count
+Offset 1: word 1 dict addr (verb)      ← SmallConstant(1)
+Offset 2: word 1 text position         ← WRONG - this is text position, not dict addr
+Offset 3: word 2 dict addr (noun)      ← SmallConstant(3) ← CORRECT
+Offset 4: word 2 text position
+Offset 5: word 2 text length
+```
+
+**Evidence from Git History**:
+- **Working Version** (before 886e96e): Used `SmallConstant(3)` for noun dictionary address
+- **Broken Version** (after refactoring): Changed to `SmallConstant(2)` incorrectly
+- **Result**: Variable(2) loaded text position (0x0702) instead of dictionary address (0x0a70)
+
+**WHY WE HAD TO "RANDOMLY" TRY OFFSETS**:
+We shouldn't have! The systematic approach was to check git history first as you instructed. The working commit clearly documented offset 3 was correct. Our "testing" of offsets 2→4→3 was unnecessary - we should have immediately compared to the previous working version.
+
+**FIX IMPLEMENTED**:
+✅ Changed parse buffer offset from 2 back to 3 in `src/grue_compiler/codegen.rs:2728-2736`
+```rust
+Operand::SmallConstant(3), // Offset 3 = word 1 dict addr (noun) - CORRECT: Fixed regression
+```
+
+**VALIDATION**: Mini_zork commands working:
+- ✅ "open mailbox" → correctly opens mailbox
+- ✅ "examine mailbox" → shows proper description
+- ✅ "examine leaflet" → shows leaflet content
+
+**REMAINING ISSUE** ❌: Object resolution still fails in some cases
+
+**Current Bug Evidence** (November 8, 2025):
+```bash
+> take leaflet
+🔍 DICT_ADDR_COMPARE: op1=0x0a64 vs op2=0x0a64, condition=true  ← Dictionary match SUCCESS
+🎯 DISPATCH_OBJECT_COMPARE: op1=0 vs op2=11, condition=false    ← Object lookup FAILURE
+*** GENERIC FUNCTION CALLED ***
+You can't see any such thing.
+```
+
+**Analysis**: Dictionary address matching works (0x0a64 = 0x0a64), but object ID resolution fails (returns 0 instead of 11). The issue is now in the final step where the found object ID gets stored/retrieved.
+
+**NEXT**: Investigate why Variable(3) contains 0 instead of 11 after successful dictionary address match in object lookup function.
 
 ### **Score Builtin Functions Opcode Bug** ⏳ **NEXT UP** (November 4, 2025)
 
@@ -644,9 +747,103 @@ cd tools/vscode-grue-simple
 
 **Testing Strategy**:
 - Verify compile-time object placement still works
-- Verify runtime object movement still works
-- Test mixed scenarios (some compile-time, some runtime)
-- Ensure no double insertion in any configuration
+
+---
+
+## 🐛 **ACTIVE INVESTIGATION: Polymorphic Dispatch Function Parameter Bug**
+
+### **Status**: ✅ **ROOT CAUSE IDENTIFIED** - Ready for fix
+
+### **Issue**: "take leaflet" fails with "You can't see any such thing" due to Variable(3) corruption
+
+**Evidence**:
+```
+[DEBUG] 🔍 DICT_ADDR_COMPARE: op1=0x0a64 vs op2=0x0a64, condition=true    # ✅ Dictionary match works
+[DEBUG] store: var_num=03, value=11                                        # ✅ Object ID stored correctly
+[DEBUG] FUNCTION_CALL: calling addr=0x1a74 from PC=0x1cff                  # ❌ Dispatch function corrupts Variable(3)
+[DEBUG] WARNING: Reading local variable 1 but routine only has 0 locals - returning 0
+[DEBUG] 🎯 DISPATCH_OBJECT_COMPARE: op1=0 vs op2=11, condition=false       # ❌ Variable(3) now contains 0
+```
+
+### **Complete Root Cause Analysis**
+
+1. **Parse Buffer Fix**: ✅ **COMPLETED** - Fixed offset from 2→3 (Variable(2) loading correct dictionary address 0x0a70)
+
+2. **Object Lookup Success**: ✅ **VERIFIED** - Dictionary matching works, object ID 11 correctly stored in Variable(3)
+
+3. **Polymorphic Dispatch Bug**: 🎯 **ROOT CAUSE FOUND**
+   - Function ID 669 (dispatch_handle_take) at address 0x1a74 has **0 locals** but tries to read **local variable 1**
+   - Z-Machine interpreter returns 0 for non-existent local variable, corrupting Variable(3)
+   - **Grammar**: `verb "take" { noun => FunctionCall(669, [RuntimeParameter("noun")]) }`
+
+### **Technical Details**
+
+**Dispatch Function Creation Bug** (`src/grue_compiler/ir.rs:1263-1361`):
+
+```rust
+Ok(IrFunction {
+    id: dispatch_id,
+    name: format!("dispatch_{}", base_name),
+    parameters: vec![dispatch_param],        // ✅ Parameter defined
+    return_type: None,
+    body: IrBlock { id: self.next_id(), instructions },
+    local_vars: vec![],                      // ❌ EMPTY - should include parameter!
+})
+```
+
+**Z-Machine Function Header Generation** (`src/grue_compiler/codegen.rs:3289`):
+
+```rust
+let declared_locals = function.local_vars.len();  // Returns 0 for dispatch function
+```
+
+**Parameter Processing** (`src/grue_compiler/codegen.rs:3217-3219`):
+
+```rust
+pub fn setup_function_local_mappings(&mut self, function: &IrFunction) {
+    self.setup_function_parameter_mappings(function);  // Maps parameters to local vars
+    // But if local_vars.len() = 0, Z-Machine header gets 0 locals!
+}
+```
+
+### **The Fix**
+
+**Problem**: Dispatch function has parameter in `parameters` vec but not in `local_vars` vec
+
+**Solution**: Add the parameter to both `parameters` and `local_vars` in `create_dispatch_function`
+
+```rust
+// In src/grue_compiler/ir.rs:1350-1361, change:
+local_vars: vec![],                          // ❌ WRONG
+
+// To:
+local_vars: vec![dispatch_param.clone()],    // ✅ CORRECT
+```
+
+### **Verification**
+
+**Expected Result**: Dispatch function will have 1 local variable, parameter reads will succeed, Variable(3) won't be corrupted
+
+**Test Command**:
+```bash
+RUST_LOG=debug timeout 10s bash -c 'echo "open mailbox\ntake leaflet\nquit\ny" | ./target/debug/gruesome tests/mini_zork.z3'
+```
+
+**Success Criteria**: No "Reading local variable 1 but routine only has 0 locals" warning, "take leaflet" succeeds
+
+### **Impact**
+
+- **Scope**: ALL polymorphic dispatch functions (any function with multiple overloads)
+- **Affected**: `handle_take`, potentially other overloaded functions
+- **Risk Level**: HIGH - breaks core gameplay functionality
+- **Regression**: Introduced during polymorphic dispatch system implementation
+
+### **Related Files**
+
+- `src/grue_compiler/ir.rs:1350-1361` - Dispatch function creation (FIX NEEDED)
+- `src/grue_compiler/codegen.rs:3289` - Function header generation using local_vars.len()
+- `src/grue_compiler/codegen.rs:3217-3219` - Parameter to local variable mapping
+- `examples/mini_zork.grue:175-177` - Grammar rule calling dispatch function
 
 **Documentation**: Complete architectural analysis in `docs/ARCHITECTURE.md` (Object Containment Dual Insertion Architecture Problem)
 

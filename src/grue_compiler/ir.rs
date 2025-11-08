@@ -3,7 +3,7 @@
 // The IR is designed to be a lower-level representation that's closer to Z-Machine
 // instructions while still maintaining some high-level constructs for optimization.
 
-use crate::grue_compiler::ast::{Expr, Program, ProgramMode, Type};
+use crate::grue_compiler::ast::{Expr, ObjectSpecialization, Program, ProgramMode, Type};
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::object_system::ComprehensiveObject;
 use indexmap::{IndexMap, IndexSet};
@@ -183,6 +183,15 @@ pub struct IrLocal {
     pub var_type: Option<Type>,
     pub slot: u8, // Local variable slot
     pub mutable: bool,
+}
+
+/// Function overload information for polymorphic dispatch
+#[derive(Debug, Clone)]
+pub struct FunctionOverload {
+    pub function_id: IrId,
+    pub specialization: ObjectSpecialization,
+    pub mangled_name: String,
+    pub priority: u8, // Lower number = higher priority (0 = highest)
 }
 
 /// Global variable in IR
@@ -885,9 +894,10 @@ pub enum IrValue {
     Integer(i16),
     Boolean(bool),
     String(String),
-    StringRef(IrId),    // Reference to string table entry
+    StringRef(IrId),          // Reference to string table entry
     StringAddress(i16), // Packed string address for Z-Machine (result of builtins like exit_get_message)
     Object(String), // Object reference by name - will be resolved to runtime number during codegen
+    RuntimeParameter(String), // Grammar parameter like $noun - resolved at runtime from parse buffer
     Null,
 }
 
@@ -1036,6 +1046,11 @@ pub struct IrGenerator {
     /// Mapping of room names to objects contained within them
     /// Used for automatic object placement during init block generation
     room_objects: IndexMap<String, Vec<RoomObjectInfo>>,
+
+    // Polymorphic dispatch support
+    function_overloads: IndexMap<String, Vec<FunctionOverload>>, // Function name -> list of overloads
+    dispatch_functions: IndexMap<String, IrId>, // Function name -> dispatch function ID
+    function_base_names: IndexMap<IrId, String>, // Function ID -> base function name
 }
 
 impl Default for IrGenerator {
@@ -1063,6 +1078,11 @@ impl IrGenerator {
             variable_sources: IndexMap::new(), // NEW: Initialize variable source tracking
             expression_types: IndexMap::new(), // NEW: Initialize expression type tracking for StringAddress system
             room_objects: IndexMap::new(),     // NEW: Initialize room object mapping
+
+            // Polymorphic dispatch support
+            function_overloads: IndexMap::new(),
+            dispatch_functions: IndexMap::new(),
+            function_base_names: IndexMap::new(),
         }
     }
 
@@ -1178,6 +1198,223 @@ impl IrGenerator {
         }
     }
 
+    /// Generate a mangled function name based on specialization
+    fn mangle_function_name(
+        &self,
+        base_name: &str,
+        specialization: &ObjectSpecialization,
+    ) -> String {
+        match specialization {
+            ObjectSpecialization::Generic => format!("{}_default", base_name),
+            ObjectSpecialization::SpecificObject(obj_name) => format!("{}_{}", base_name, obj_name),
+            ObjectSpecialization::ObjectType(type_name) => {
+                format!("{}_type_{}", base_name, type_name)
+            }
+        }
+    }
+
+    /// Detect object specialization based on parameter names
+    fn detect_specialization(
+        &self,
+        _func_name: &str,
+        parameters: &[crate::grue_compiler::ast::Parameter],
+    ) -> ObjectSpecialization {
+        // Check if any parameter matches an object name
+        for param in parameters {
+            if self.object_numbers.contains_key(&param.name) {
+                return ObjectSpecialization::SpecificObject(param.name.clone());
+            }
+        }
+        ObjectSpecialization::Generic
+    }
+
+    /// Register a function overload
+    fn register_function_overload(
+        &mut self,
+        base_name: &str,
+        func_id: IrId,
+        specialization: ObjectSpecialization,
+    ) {
+        let mangled_name = self.mangle_function_name(base_name, &specialization);
+        let priority = match &specialization {
+            ObjectSpecialization::SpecificObject(_) => 0, // Highest priority
+            ObjectSpecialization::ObjectType(_) => 1,     // Medium priority
+            ObjectSpecialization::Generic => 2,           // Lowest priority (fallback)
+        };
+
+        let overload = FunctionOverload {
+            function_id: func_id,
+            specialization,
+            mangled_name,
+            priority,
+        };
+
+        if let Some(overloads) = self.function_overloads.get_mut(base_name) {
+            overloads.push(overload);
+        } else {
+            self.function_overloads
+                .insert(base_name.to_string(), vec![overload]);
+        }
+    }
+
+    /// Generate dispatch functions for polymorphic function calls
+    fn generate_dispatch_functions(
+        &mut self,
+        ir_program: &mut IrProgram,
+    ) -> Result<(), CompilerError> {
+        for (base_name, overloads) in &self.function_overloads.clone() {
+            if overloads.len() > 1 {
+                log::debug!(
+                    "Generating dispatch function for '{}' with {} overloads",
+                    base_name,
+                    overloads.len()
+                );
+
+                let dispatch_func = self.create_dispatch_function(base_name, overloads)?;
+                ir_program.functions.push(dispatch_func);
+
+                // Store the dispatch function ID for grammar system integration
+                if let Some(dispatch_id) = ir_program.functions.last().map(|f| f.id) {
+                    self.dispatch_functions
+                        .insert(base_name.clone(), dispatch_id);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Create a dispatch function that routes calls to the appropriate specialized function
+    fn create_dispatch_function(
+        &mut self,
+        base_name: &str,
+        overloads: &[FunctionOverload],
+    ) -> Result<IrFunction, CompilerError> {
+        let dispatch_id = self.next_id();
+
+        // Create parameter to match the original function signature
+        // For now, assume single object parameter (can be extended later)
+        let param_id = self.next_id();
+        let dispatch_param = IrParameter {
+            name: "obj".to_string(),
+            param_type: Some(Type::Object),
+            slot: 1,
+            ir_id: param_id,
+        };
+
+        let mut instructions = Vec::new();
+        let mut label_counter = 0;
+
+        // Sort overloads by priority (specific objects first)
+        let mut sorted_overloads = overloads.to_vec();
+        sorted_overloads.sort_by_key(|o| o.priority);
+
+        // Generate object ID checks for specific objects
+        for overload in &sorted_overloads {
+            if let ObjectSpecialization::SpecificObject(obj_name) = &overload.specialization {
+                if let Some(&obj_number) = self.object_numbers.get(obj_name) {
+                    label_counter += 1;
+                    let match_label = self.next_id();
+                    let continue_label = self.next_id();
+
+                    // Load object constant the same way working code does
+                    // This creates the same IrValue::Object that identifier resolution creates
+                    let obj_constant_temp = self.next_id();
+                    instructions.push(IrInstruction::LoadImmediate {
+                        target: obj_constant_temp,
+                        value: IrValue::Object(obj_name.to_string()),
+                    });
+
+                    // Compare object parameter with specific object ID
+                    let comparison_temp = self.next_id();
+                    instructions.push(IrInstruction::BinaryOp {
+                        target: comparison_temp,
+                        op: IrBinaryOp::Equal,
+                        left: param_id,
+                        right: obj_constant_temp,
+                    });
+
+                    // Branch: if equal, call specialized function
+                    instructions.push(IrInstruction::Branch {
+                        condition: comparison_temp,
+                        true_label: match_label,
+                        false_label: continue_label,
+                    });
+
+                    // Match label: call specialized function
+                    instructions.push(IrInstruction::Label { id: match_label });
+                    let result_temp = self.next_id();
+                    instructions.push(IrInstruction::Call {
+                        target: Some(result_temp),
+                        function: overload.function_id,
+                        args: vec![param_id],
+                    });
+                    instructions.push(IrInstruction::Return {
+                        value: Some(result_temp),
+                    });
+
+                    // Continue label for next check
+                    instructions.push(IrInstruction::Label { id: continue_label });
+                }
+            }
+        }
+
+        // Default case: call generic function
+        if let Some(generic_overload) = sorted_overloads
+            .iter()
+            .find(|o| matches!(o.specialization, ObjectSpecialization::Generic))
+        {
+            let result_temp = self.next_id();
+            instructions.push(IrInstruction::Call {
+                target: Some(result_temp),
+                function: generic_overload.function_id,
+                args: vec![param_id],
+            });
+            instructions.push(IrInstruction::Return {
+                value: Some(result_temp),
+            });
+        } else {
+            // No generic function - return 0
+            let zero_temp = self.next_id();
+            instructions.push(IrInstruction::LoadImmediate {
+                target: zero_temp,
+                value: IrValue::Integer(0),
+            });
+            instructions.push(IrInstruction::Return {
+                value: Some(zero_temp),
+            });
+        }
+
+        // CRITICAL FIX: Convert parameter to local variable for Z-Machine function header
+        //
+        // ISSUE: Dispatch functions had parameters in `parameters` vec but not in `local_vars`,
+        // causing Z-Machine function header generation to create 0 locals while the function
+        // tries to read parameter from local variable 1. This returned 0, corrupting Variable(3)
+        // and breaking object resolution in polymorphic dispatch (e.g., "take leaflet").
+        //
+        // SOLUTION: Add the dispatch parameter to both `parameters` (for IR semantics) and
+        // `local_vars` (for Z-Machine function header generation) to ensure proper local
+        // variable allocation in the generated Z-Machine bytecode.
+        let dispatch_local = IrLocal {
+            ir_id: dispatch_param.ir_id,
+            name: dispatch_param.name.clone(),
+            var_type: dispatch_param.param_type.clone(),
+            slot: dispatch_param.slot,
+            mutable: true, // Parameters are typically mutable
+        };
+
+        Ok(IrFunction {
+            id: dispatch_id,
+            name: format!("dispatch_{}", base_name),
+            parameters: vec![dispatch_param],
+            return_type: None, // Can be enhanced later
+            body: IrBlock {
+                id: self.next_id(),
+                instructions,
+            },
+            local_vars: vec![dispatch_local], // FIXED: Include parameter as local variable for Z-Machine
+        })
+    }
+
     pub fn generate(&mut self, ast: Program) -> Result<IrProgram, CompilerError> {
         log::debug!(
             "IR GENERATOR: Starting IR generation for {} items",
@@ -1205,9 +1442,18 @@ impl IrGenerator {
             }
         }
 
-        // SECOND PASS: Generate IR for all items (functions will now use registered IDs)
+        // SECOND PASS: Generate IR for all items except grammar (functions will now use registered IDs)
+        let mut deferred_grammar = Vec::new();
         for item in ast.items.iter() {
-            self.generate_item(item.clone(), &mut ir_program)?;
+            match item {
+                crate::grue_compiler::ast::Item::Grammar(grammar) => {
+                    // Defer grammar processing until after dispatch functions are created
+                    deferred_grammar.push(grammar.clone());
+                }
+                _ => {
+                    self.generate_item(item.clone(), &mut ir_program)?;
+                }
+            }
         }
 
         // Add synthetic player object to IR
@@ -1221,12 +1467,35 @@ impl IrGenerator {
         ir_program.property_manager = self.property_manager.clone(); // Transfer property manager with consistent mappings
         ir_program.expression_types = self.expression_types.clone(); // NEW: Transfer expression types for StringAddress system
 
+        // Generate dispatch functions for polymorphic functions
+        self.generate_dispatch_functions(&mut ir_program)?;
+
+        // Now process deferred grammar items with dispatch functions available
+        log::debug!(
+            "Processing {} deferred grammar items with dispatch functions available",
+            deferred_grammar.len()
+        );
+        for grammar in deferred_grammar {
+            let ir_grammar = self.generate_grammar(grammar)?;
+            ir_program.grammar.extend(ir_grammar);
+        }
+
         Ok(ir_program)
     }
 
     /// Get builtin functions discovered during IR generation
     pub fn get_builtin_functions(&self) -> &IndexMap<IrId, String> {
         &self.builtin_functions
+    }
+
+    /// Get dispatch functions generated during IR generation
+    pub fn get_dispatch_functions(&self) -> &IndexMap<String, IrId> {
+        &self.dispatch_functions
+    }
+
+    /// Get function base names for dispatch lookup
+    pub fn get_function_base_names(&self) -> &IndexMap<IrId, String> {
+        &self.function_base_names
     }
 
     pub fn get_object_numbers(&self) -> &IndexMap<String, u16> {
@@ -1410,15 +1679,29 @@ impl IrGenerator {
         &mut self,
         func: crate::grue_compiler::ast::FunctionDecl,
     ) -> Result<IrFunction, CompilerError> {
-        // Function should already be registered in symbol table from first pass
+        // Detect object specialization based on parameter names
+        let specialization = self.detect_specialization(&func.name, &func.parameters);
+
+        // Use existing registered function ID if this is the first/only version of the function
         let func_id = if let Some(&existing_id) = self.symbol_ids.get(&func.name) {
-            existing_id
+            // Check if this is the first occurrence of this function name being generated
+            if !self.function_overloads.contains_key(&func.name) {
+                // This is the first/only version, reuse the registered ID
+                existing_id
+            } else {
+                // This is an additional overload, create a new ID
+                self.next_id()
+            }
         } else {
-            return Err(CompilerError::SemanticError(format!(
-                "Function '{}' not found in symbol table. This indicates a bug in the two-pass system.",
-                func.name
-            ), 0));
+            // Fallback: create new ID (shouldn't happen in normal flow)
+            self.next_id()
         };
+
+        // Register this as a function overload
+        self.register_function_overload(&func.name, func_id, specialization.clone());
+
+        // Store base name mapping for dispatch lookup
+        self.function_base_names.insert(func_id, func.name.clone());
 
         // SCOPE MANAGEMENT: Save the current global symbol table before processing function
         let saved_symbol_ids = self.symbol_ids.clone();
@@ -1504,9 +1787,23 @@ impl IrGenerator {
             );
         }
 
+        // Only use mangled names when there are actual overloads
+        let final_name = if let Some(overloads) = self.function_overloads.get(&func.name) {
+            if overloads.len() > 1 {
+                // This function has overloads, use mangled name
+                self.mangle_function_name(&func.name, &specialization)
+            } else {
+                // Single function, keep original name
+                func.name.clone()
+            }
+        } else {
+            // No overloads registered yet, keep original name
+            func.name.clone()
+        };
+
         Ok(IrFunction {
             id: func_id,
-            name: func.name.clone(),
+            name: final_name,
             parameters,
             return_type: func.return_type,
             body,
@@ -1520,6 +1817,7 @@ impl IrGenerator {
         ir_program: &mut IrProgram,
     ) -> Result<(), CompilerError> {
         // First pass: register all rooms and objects for symbol resolution
+        // IMPORTANT: Defer object numbering to match code generator's systematic ordering
         for room in &world.rooms {
             let room_id = self.next_id();
             self.symbol_ids.insert(room.identifier.clone(), room_id);
@@ -1527,10 +1825,7 @@ impl IrGenerator {
             self.id_registry
                 .register_id(room_id, "room", "generate_world", false);
 
-            let object_number = self.object_counter;
-            self.object_counter += 1;
-            self.object_numbers
-                .insert(room.identifier.clone(), object_number);
+            // NOTE: Object number assignment deferred to match code generator ordering
 
             // Register all objects in the room
             for obj in &room.objects {
@@ -1538,7 +1833,29 @@ impl IrGenerator {
             }
         }
 
-        // Second pass: generate actual IR objects and rooms
+        // Second pass: Assign object numbers systematically to match code generator
+        // Order: Player(#1) -> All Rooms(#2-N) -> All Objects(#N+1-M)
+        let mut object_counter = 2; // Start at 2, player is already #1
+
+        // Assign numbers to all rooms first
+        for room in &world.rooms {
+            self.object_numbers
+                .insert(room.identifier.clone(), object_counter);
+            log::debug!(
+                "🔢 IR Object Numbering: Room '{}' -> #{}",
+                room.identifier,
+                object_counter
+            );
+            object_counter += 1;
+        }
+
+        // Then assign numbers to all objects
+        self.assign_object_numbers_recursively(&world.rooms, &mut object_counter)?;
+
+        // Update the object_counter field to reflect the final count
+        self.object_counter = object_counter;
+
+        // Third pass: generate actual IR objects and rooms
         for room in world.rooms {
             let ir_room = self.generate_room(room.clone())?;
             let room_id = ir_room.id; // Save the room ID before moving ir_room
@@ -1553,6 +1870,45 @@ impl IrGenerator {
 
         // Set up property defaults for common properties
         self.setup_property_defaults(ir_program);
+
+        Ok(())
+    }
+
+    /// Recursively assign object numbers to all objects in all rooms
+    /// This ensures systematic ordering: Player(#1) -> Rooms(#2-N) -> Objects(#N+1-M)
+    fn assign_object_numbers_recursively(
+        &mut self,
+        rooms: &[crate::grue_compiler::ast::RoomDecl],
+        object_counter: &mut u16,
+    ) -> Result<(), CompilerError> {
+        for room in rooms {
+            for obj in &room.objects {
+                self.assign_object_number_to_object_and_nested(obj, object_counter)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Assign object number to an object and all its nested objects
+    fn assign_object_number_to_object_and_nested(
+        &mut self,
+        obj: &crate::grue_compiler::ast::ObjectDecl,
+        object_counter: &mut u16,
+    ) -> Result<(), CompilerError> {
+        // Assign number to this object
+        self.object_numbers
+            .insert(obj.identifier.clone(), *object_counter);
+        log::debug!(
+            "🔢 IR Object Numbering: Object '{}' -> #{}",
+            obj.identifier,
+            *object_counter
+        );
+        *object_counter += 1;
+
+        // Recursively assign numbers to nested objects
+        for nested_obj in &obj.contains {
+            self.assign_object_number_to_object_and_nested(nested_obj, object_counter)?;
+        }
 
         Ok(())
     }
@@ -1794,30 +2150,13 @@ impl IrGenerator {
         let obj_id = self.next_id();
         self.symbol_ids.insert(obj.identifier.clone(), obj_id);
 
-        // Assign object number (check if already assigned to avoid duplicates)
-        if !self.object_numbers.contains_key(&obj.identifier) {
-            let object_number = self.object_counter;
-            self.object_counter += 1;
-            self.object_numbers
-                .insert(obj.identifier.clone(), object_number);
-            log::debug!(
-                "Assigned NEW object number {} to object '{}'",
-                object_number,
-                obj.identifier
-            );
-        } else {
-            log::debug!(
-                "Object '{}' already has object number {}",
-                obj.identifier,
-                self.object_numbers[&obj.identifier]
-            );
-        }
+        // NOTE: Object number assignment deferred to assign_object_numbers_recursively()
+        // This ensures systematic ordering: Player(#1) -> All Rooms(#2-N) -> All Objects(#N+1-M)
 
         log::debug!(
-            "Registered object '{}' with ID {} and object number {}",
+            "Registered object '{}' with ID {} (object number will be assigned systematically later)",
             obj.identifier,
-            obj_id,
-            self.object_numbers[&obj.identifier]
+            obj_id
         );
 
         // Process nested objects recursively
@@ -2012,16 +2351,11 @@ impl IrGenerator {
                 existing_number
             );
         } else {
-            // Fallback: assign object number if not already assigned
-            let object_number = self.object_counter;
-            self.object_counter += 1;
-            log::debug!(
-                "IR generate_room: Assigning object number {} to room '{}' (fallback)",
-                object_number,
+            // This should never happen with systematic object numbering
+            return Err(CompilerError::CodeGenError(format!(
+                "IR generate_room: Room '{}' should have been assigned an object number during systematic assignment but wasn't found",
                 room.identifier
-            );
-            self.object_numbers
-                .insert(room.identifier.clone(), object_number);
+            )));
         }
 
         let mut exits = IndexMap::new();
@@ -2176,7 +2510,22 @@ impl IrGenerator {
                         // Previously used placeholder function ID 0, causing "Routine ID 0 not found" errors
                         // during code generation. Now properly resolves function names to their assigned IR IDs.
                         // This enables grammar pattern handlers like handle_look() to be correctly called.
-                        let func_id = if let Some(&id) = self.symbol_ids.get(&name) {
+
+                        // POLYMORPHIC DISPATCH FIX: Use dispatch function if available
+                        let func_id = if let Some(&dispatch_id) = self.dispatch_functions.get(&name)
+                        {
+                            log::debug!(
+                                "🎯 Grammar using dispatch function for '{}': ID {}",
+                                name,
+                                dispatch_id
+                            );
+                            dispatch_id
+                        } else if let Some(&id) = self.symbol_ids.get(&name) {
+                            log::debug!(
+                                "🎯 Grammar using original function for '{}': ID {}",
+                                name,
+                                id
+                            );
                             id
                         } else {
                             return Err(CompilerError::SemanticError(
@@ -3067,8 +3416,21 @@ impl IrGenerator {
                     return self.generate_builtin_function_call(&name, &arg_temps, block);
                 }
 
-                // Look up function ID (should be pre-registered)
-                let func_id = if let Some(&id) = self.symbol_ids.get(&name) {
+                // POLYMORPHIC DISPATCH FIX: Use dispatch function if available (same logic as grammar patterns)
+                // This ensures consistent behavior between direct calls and grammar calls
+                let func_id = if let Some(&dispatch_id) = self.dispatch_functions.get(&name) {
+                    log::debug!(
+                        "🎯 Direct call using dispatch function for '{}': ID {}",
+                        name,
+                        dispatch_id
+                    );
+                    dispatch_id
+                } else if let Some(&id) = self.symbol_ids.get(&name) {
+                    log::debug!(
+                        "🎯 Direct call using original function for '{}': ID {}",
+                        name,
+                        id
+                    );
                     id
                 } else {
                     return Err(CompilerError::SemanticError(
@@ -3800,10 +4162,30 @@ impl IrGenerator {
             Expr::Integer(value) => Ok(IrValue::Integer(value)),
             Expr::String(value) => Ok(IrValue::String(value)),
             Expr::Boolean(value) => Ok(IrValue::Boolean(value)),
+            Expr::Parameter(param) => {
+                // Grammar parameters like $noun should resolve to runtime parsed objects
+                // For now, return a special marker that the codegen can handle
+                Ok(IrValue::RuntimeParameter(param.clone()))
+            }
+            Expr::Identifier(name) => {
+                // Check if this is an object reference
+                if self.object_numbers.contains_key(&name) {
+                    Ok(IrValue::Object(name.clone()))
+                } else {
+                    return Err(CompilerError::SemanticError(
+                        format!("Cannot resolve identifier '{}' in grammar expression - not a known object or variable", name),
+                        0
+                    ));
+                }
+            }
             _ => {
-                // For complex expressions, we'd need to generate temporary instructions
-                // For now, return a placeholder
-                Ok(IrValue::Null)
+                return Err(CompilerError::SemanticError(
+                    format!(
+                        "UNIMPLEMENTED: Complex expression in grammar handler: {:?}",
+                        expr
+                    ),
+                    0,
+                ));
             }
         }
     }

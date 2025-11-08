@@ -130,6 +130,14 @@ impl GrueCompiler {
         // Transfer object numbers from IR generator to code generator
         code_generator.set_object_numbers(ir_generator.get_object_numbers().clone());
 
+        // Transfer dispatch functions from IR generator to code generator
+        log::debug!(
+            "🔄 Transferring {} dispatch functions from IR to codegen",
+            ir_generator.get_dispatch_functions().len()
+        );
+        code_generator.set_dispatch_functions(ir_generator.get_dispatch_functions().clone());
+        code_generator.set_function_base_names(ir_generator.get_function_base_names().clone());
+
         // Transfer expression types for StringAddress system
         code_generator.ir_type_info = ir_program.expression_types.clone();
         log::debug!(

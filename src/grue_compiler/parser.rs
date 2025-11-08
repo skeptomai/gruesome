@@ -499,8 +499,9 @@ impl Parser {
             };
 
             parameters.push(Parameter {
-                name: param_name,
+                name: param_name.clone(),
                 param_type,
+                object_constraint: None, // Will be set during semantic analysis
             });
         }
 
@@ -537,6 +538,7 @@ impl Parser {
             parameters,
             return_type,
             body,
+            specialization: ObjectSpecialization::Generic, // Will be determined during semantic analysis
         })
     }
 

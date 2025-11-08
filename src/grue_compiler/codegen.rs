@@ -207,6 +207,10 @@ pub struct ZMachineCodeGen {
     builtin_function_names: IndexMap<IrId, String>,
     /// Mapping from builtin name to pseudo function ID for address lookup
     builtin_functions: IndexMap<String, IrId>,
+    /// Mapping from base function name to dispatch function ID for polymorphic dispatch
+    dispatch_functions: IndexMap<String, IrId>,
+    /// Mapping from function ID to base function name for dispatch lookup
+    function_base_names: IndexMap<IrId, String>,
     /// Mapping from IR IDs to array metadata (for dynamic lists)
     ir_id_to_array_info: IndexMap<IrId, ArrayInfo>,
     /// Mapping from IR IDs to ArrayCodeGen array IDs (for static arrays)
@@ -388,6 +392,8 @@ impl ZMachineCodeGen {
             comparison_ids_used_as_values: IndexSet::new(),
             builtin_function_names: IndexMap::new(),
             builtin_functions: IndexMap::new(),
+            dispatch_functions: IndexMap::new(),
+            function_base_names: IndexMap::new(),
             ir_id_to_array_info: IndexMap::new(),
             ir_id_to_array_id: IndexMap::new(),
             ir_id_from_property: IndexSet::new(),
@@ -1632,7 +1638,16 @@ impl ZMachineCodeGen {
                                 .dictionary_words
                                 .iter()
                                 .position(|w| w == &object_name.to_lowercase())
-                                .unwrap_or(0) as u32;
+                                .unwrap_or_else(|| {
+                                    log::error!(
+                                        "🚨 PROP18_DICT_ERROR: Object name '{}' not found in dictionary_words! This is a compiler bug. Available words: {:?}",
+                                        object_name, self.dictionary_words
+                                    );
+                                    panic!(
+                                        "FATAL: Object name '{}' for object '{}' not found in dictionary_words. This causes incorrect dictionary addresses in property 18.",
+                                        object_name, object.name
+                                    );
+                                }) as u32;
 
                             // Create UnresolvedReference for dictionary address
                             self.reference_context
@@ -2101,11 +2116,11 @@ impl ZMachineCodeGen {
 
         // Main loop needs 7 locals for grammar matching system:
         // Variable 1: word count
-        // Variable 2: word 1 dictionary address (verb matching)
+        // Variable 2: word 1 dictionary address (noun for object resolution)
         // Variable 3: resolved object ID (noun matching)
         // Variable 4: loop counter (object lookup)
         // Variable 5: property value (object lookup)
-        // Variable 6: temporary for verb dictionary address
+        // Variable 6: word 0 dictionary address (verb matching)
         // Variable 7: temporary for additional grammar operations
         self.emit_byte(0x07)?; // Routine header: 7 locals
 
@@ -2442,9 +2457,9 @@ impl ZMachineCodeGen {
                 });
         }
 
-        // Load word 1 dictionary address from parse buffer
+        // Load word 0 dictionary address from parse buffer (VERB for verb matching)
         debug!(
-            " LOAD_VERB: Load word 1 dict address at 0x{:04x}",
+            " LOAD_VERB: Load word 0 dict address (verb) at 0x{:04x}",
             self.code_address
         );
 
@@ -2452,9 +2467,9 @@ impl ZMachineCodeGen {
             Opcode::Op2(Op2::Loadw), // loadw: load word from array (2OP:15)
             &[
                 Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
-                Operand::SmallConstant(1), // Offset 1 = word 1 dict addr (bytes 2-3 of parse buffer)
+                Operand::SmallConstant(1), // Offset 1 = word 0 dict addr (verb) - CORRECT for verb matching
             ],
-            Some(2), // Store word 1 dict addr in local variable 2
+            Some(6), // Store word 0 dict addr in local variable 6 (verb dictionary address)
             None,
         )?;
 
@@ -2529,16 +2544,16 @@ impl ZMachineCodeGen {
             verb, verb_dict_addr, dict_addr_location
         );
 
-        // Compare word 1 dict addr with this verb's dict addr (now in Global G200/Variable 216)
+        // Compare word 0 dict addr (verb) with this verb's dict addr (now in Global G200/Variable 216)
         // If they DON'T match, skip this verb handler
         debug!(
-            "Emitting je at code_address=0x{:04x}: Variable(2) vs Variable(216)",
+            "Emitting je at code_address=0x{:04x}: Variable(6) vs Variable(216)",
             self.code_address
         );
         let layout = self.emit_instruction_typed(
             Opcode::Op2(Op2::Je), // je: jump if equal
             &[
-                Operand::Variable(2),   // Word 1 dict addr (from parse buffer)
+                Operand::Variable(6),   // Word 0 dict addr (verb from parse buffer)
                 Operand::Variable(216), // This verb's dict addr (from Global G200)
             ],
             None,
@@ -2682,7 +2697,7 @@ impl ZMachineCodeGen {
 
         // VERB+NOUN CASE: We have at least 2 words, process noun pattern
         if let Some(pattern) = noun_pattern {
-            if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, _args) =
+            if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, args) =
                 &pattern.handler
             {
                 debug!(
@@ -2691,33 +2706,97 @@ impl ZMachineCodeGen {
  );
 
                 log::debug!(
-                    "📍 PATTERN_HANDLER: '{}' noun pattern at 0x{:04x}",
+                    "📍 PATTERN_HANDLER: '{}' noun pattern at 0x{:04x} with {} arguments",
                     verb,
-                    self.code_address
+                    self.code_address,
+                    args.len()
                 );
 
-                // We have a noun: Extract second word dictionary address
-                self.emit_instruction_typed(
-                    Opcode::Op2(Op2::Loadw), // loadw: load word from array (2OP:15)
-                    &[
-                        Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
-                        Operand::SmallConstant(3),              // Offset 3 = word 2 dict addr
-                    ],
-                    Some(2), // Store noun dictionary address in local variable 2
-                    None,
-                )?;
+                // POLYMORPHIC DISPATCH FIX: Process RuntimeParameter arguments properly
+                // Instead of hardcoding object lookup, use the existing RuntimeParameter resolution system
 
-                // Phase 3.1 Step 2: Object lookup from noun dictionary address
-                // Call object resolution function to convert dictionary address to object ID
-                self.generate_object_lookup_from_noun()?;
+                // Build operands: function address + arguments
+                let mut operands = vec![Operand::LargeConstant(placeholder_word())]; // Function address placeholder
 
-                // Call handler with resolved object ID parameter
+                // Convert IrValue arguments to operands
+                for arg_value in args.iter() {
+                    let arg_operand = match arg_value {
+                        crate::grue_compiler::ir::IrValue::RuntimeParameter(param) => {
+                            // Runtime grammar parameter - needs to be resolved from parse buffer
+                            if param == "noun" {
+                                // Semantic "noun" parameter - load word 1 from parse buffer
+                                self.emit_instruction_typed(
+                                    Opcode::Op2(Op2::Loadw), // loadw: load word from array
+                                    &[
+                                        Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
+                                        Operand::SmallConstant(3), // Offset 3 = word 1 dict addr (noun) - CORRECT: Fixed parse buffer offset
+                                    ],
+                                    Some(2), // Store word 1 dict addr in local variable 2 (expected by lookup function)
+                                    None,
+                                )?;
+
+                                // Generate object lookup code to convert dictionary address to object ID
+                                self.generate_object_lookup_from_noun()?;
+
+                                // The object ID is now in variable 3, so return that as the operand
+                                Operand::Variable(3)
+                            } else if let Ok(word_position) = param.parse::<u8>() {
+                                // Positional parameter like "2", "3", etc. - load word at specified position
+                                if word_position >= 1 && word_position <= 15 {
+                                    // Load word N dictionary address from parse buffer offset N
+                                    self.emit_instruction_typed(
+                                        Opcode::Op2(Op2::Loadw), // loadw: load word from array
+                                        &[
+                                            Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
+                                            Operand::SmallConstant(word_position), // Offset N = word N dict addr
+                                        ],
+                                        Some(2), // Store word N dict addr in local variable 2 (expected by lookup function)
+                                        None,
+                                    )?;
+
+                                    // Generate object lookup code to convert dictionary address to object ID
+                                    self.generate_object_lookup_from_noun()?;
+
+                                    // The object ID is now in variable 3, so return that as the operand
+                                    Operand::Variable(3)
+                                } else {
+                                    return Err(CompilerError::CodeGenError(format!(
+                                        "Invalid word position '{}' in RuntimeParameter. Must be between 1 and 15.",
+                                        word_position
+                                    )));
+                                }
+                            } else {
+                                return Err(CompilerError::CodeGenError(format!(
+                                    "UNIMPLEMENTED: Runtime parameter '{}' resolution not yet implemented. Supported parameters: 'noun' or numeric positions (1-15).",
+                                    param
+                                )));
+                            }
+                        }
+                        crate::grue_compiler::ir::IrValue::Object(object_name) => {
+                            // Compile-time object reference - resolve to object number
+                            if let Some(&obj_number) = self.object_numbers.get(object_name) {
+                                Operand::SmallConstant(obj_number as u8)
+                            } else {
+                                return Err(CompilerError::CodeGenError(format!(
+                                    "Object '{}' not found in object_numbers mapping for function argument",
+                                    object_name
+                                )));
+                            }
+                        }
+                        _ => {
+                            return Err(CompilerError::CodeGenError(format!(
+                                "UNIMPLEMENTED: Unsupported IrValue type in grammar handler arguments: {:?}",
+                                arg_value
+                            )));
+                        }
+                    };
+                    operands.push(arg_operand);
+                }
+
+                // Call handler with properly resolved parameters
                 let layout = self.emit_instruction_typed(
                     Opcode::OpVar(OpVar::CallVs), // call_vs: call routine with arguments, returns value (VAR:0/VAR:224)
-                    &[
-                        Operand::LargeConstant(placeholder_word()), // Function address placeholder
-                        Operand::Variable(3), // Resolved object ID from variable 3
-                    ],
+                    &operands,
                     Some(0), // Store result on stack
                     None,    // No branch
                 )?;
@@ -2725,12 +2804,13 @@ impl ZMachineCodeGen {
                 // FIXED: Use layout.operand_location instead of hardcoded offset calculation
                 // This was previously using self.code_address - 2 which caused placeholder resolution failures
                 if let Some(operand_location) = layout.operand_location {
+                    let dispatch_func_id = self.get_function_id_with_dispatch(*func_id);
                     self.reference_context
                         .unresolved_refs
                         .push(UnresolvedReference {
                             reference_type: LegacyReferenceType::FunctionCall,
                             location: operand_location, // Correct operand location from emit_instruction
-                            target_id: *func_id,
+                            target_id: dispatch_func_id,
                             is_packed_address: true,
                             offset_size: 2,
                             location_space: MemorySpace::Code,
@@ -2850,6 +2930,38 @@ impl ZMachineCodeGen {
                                 return Err(CompilerError::CodeGenError(format!(
                                     "Object '{}' not found in runtime mapping for function argument",
                                     object_name
+                                )));
+                            }
+                        }
+                        crate::grue_compiler::ir::IrValue::RuntimeParameter(param) => {
+                            // Runtime grammar parameter like $noun - needs to be resolved from parse buffer
+                            if param == "noun" {
+                                // For noun parameter, read word 1 from parse buffer and resolve to object ID
+                                // This generates runtime code that:
+                                // 1. Loads word 1 dictionary address from parse buffer offset 2
+                                // 2. Calls object lookup to convert dict addr to object ID
+
+                                // Load word 1 dictionary address from parse buffer (noun is typically word 1)
+                                self.emit_instruction_typed(
+                                    Opcode::Op2(Op2::Loadw), // loadw: load word from array
+                                    &[
+                                        Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
+                                        Operand::SmallConstant(3), // Offset 3 = word 1 dict addr (noun) - CORRECT: Fixed parse buffer offset
+                                    ],
+                                    Some(2), // Store word 1 dict addr in local variable 2 (expected by lookup function)
+                                    None,
+                                )?;
+
+                                // Generate object lookup code to convert dictionary address to object ID
+                                // This uses the existing object lookup infrastructure
+                                self.generate_object_lookup_from_noun()?;
+
+                                // The object ID is now in variable 3, so return that as the operand
+                                Operand::Variable(3)
+                            } else {
+                                return Err(CompilerError::CodeGenError(format!(
+                                    "UNIMPLEMENTED: Runtime parameter '{}' resolution not yet implemented. Currently only 'noun' parameter is supported.",
+                                    param
                                 )));
                             }
                         }
@@ -2996,12 +3108,13 @@ impl ZMachineCodeGen {
                 // FIXED: Use layout.operand_location instead of hardcoded offset calculation
                 // This was previously using self.code_address - 2 which caused placeholder resolution failures
                 if let Some(operand_location) = layout.operand_location {
+                    let dispatch_func_id = self.get_function_id_with_dispatch(*func_id);
                     self.reference_context
                         .unresolved_refs
                         .push(UnresolvedReference {
                             reference_type: LegacyReferenceType::FunctionCall,
                             location: operand_location, // Correct operand location from emit_instruction
-                            target_id: *func_id,
+                            target_id: dispatch_func_id,
                             is_packed_address: true,
                             offset_size: 2,
                             location_space: MemorySpace::Code,
@@ -5582,15 +5695,6 @@ impl ZMachineCodeGen {
         location: usize,
         target_address: usize,
     ) -> Result<(), CompilerError> {
-        // CRITICAL DEBUG: Track branch patching for examine leaflet bug
-        if location == 0x13cb {
-            log::error!(
-                "🔧 BRANCH_PATCH_BUG: location=0x{:04x}, target_address=0x{:04x}",
-                location,
-                target_address
-            );
-        }
-
         log::debug!(
             "🔧 BRANCH_PATCH_ATTEMPT: location=0x{:04x}, target_address=0x{:04x}",
             location,
@@ -5818,6 +5922,41 @@ impl ZMachineCodeGen {
         self.builtin_function_names
             .insert(function_id, name.clone());
         self.builtin_functions.insert(name, function_id);
+    }
+
+    /// Set dispatch functions from IR generator
+    pub fn set_dispatch_functions(&mut self, dispatch_functions: IndexMap<String, IrId>) {
+        self.dispatch_functions = dispatch_functions;
+    }
+
+    /// Set function base names from IR generator
+    pub fn set_function_base_names(&mut self, function_base_names: IndexMap<IrId, String>) {
+        self.function_base_names = function_base_names;
+    }
+
+    /// Get function ID for dispatch or original function, checking dispatch functions first
+    /// This enables polymorphic dispatch by routing calls through dispatch functions when available
+    fn get_function_id_with_dispatch(&self, original_function_id: IrId) -> IrId {
+        // Look up the base function name for this function ID
+        if let Some(base_function_name) = self.function_base_names.get(&original_function_id) {
+            // Check if there's a dispatch function for this base name
+            if let Some(&dispatch_id) = self.dispatch_functions.get(base_function_name) {
+                log::debug!(
+                    "🎯 DISPATCH: Using dispatch function {} (ID {}) instead of {} (ID {})",
+                    format!("dispatch_{}", base_function_name),
+                    dispatch_id,
+                    base_function_name,
+                    original_function_id
+                );
+                return dispatch_id;
+            }
+        }
+
+        log::debug!(
+            "🎯 DIRECT: Using original function ID {} (no dispatch available)",
+            original_function_id
+        );
+        original_function_id
     }
 
     /// Register object numbers from IR generator

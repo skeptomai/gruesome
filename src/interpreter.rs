@@ -518,18 +518,6 @@ impl Interpreter {
             let old_pc = self.vm.pc;
             let new_pc = old_pc + instruction.size as u32;
 
-            // CRITICAL DEBUG: Track PC advancement for examine leaflet bug
-            if old_pc == 0x13c6 {
-                log::error!(
-                    "🔧 PC_ADVANCE_BUG: PC=0x{:04x} instruction.size={} -> new_PC=0x{:04x}",
-                    old_pc,
-                    instruction.size,
-                    new_pc
-                );
-                log::error!("🔧 INSTRUCTION: {:?}", instruction);
-                log::error!("🔧 BRANCH: {:?}", instruction.branch);
-            }
-
             // Debug: Track PC advancement that might cause out-of-bounds
             if new_pc > self.vm.game.memory.len() as u32
                 || new_pc == 0x1717
@@ -669,7 +657,7 @@ impl Interpreter {
 
         // Optional instruction tracing (enable with TRACE_INSTRUCTIONS=1)
         if std::env::var("TRACE_INSTRUCTIONS").is_ok() {
-            log::error!(
+            log::debug!(
                 "🔧 EXEC: PC=0x{:04x} (current PC=0x{:04x}), {:?}",
                 instruction_pc,
                 self.vm.pc,
@@ -1212,6 +1200,25 @@ impl Interpreter {
 
                 let condition = op1 == op2;
                 debug!("JE: condition={} (equal={})", condition, op1 == op2);
+
+                // POLYMORPHIC DISPATCH DEBUG: Track object comparisons for dispatch functions
+                // NOTE: Changed from log::error to log::debug - these are debugging traces, not errors
+                if op1 <= 20 && op2 <= 20 && (op1 > 0 || op2 > 0) {
+                    log::debug!(
+                        "🎯 DISPATCH_OBJECT_COMPARE: op1={} vs op2={}, condition={}, PC=0x{:04x}",
+                        op1,
+                        op2,
+                        condition,
+                        pc
+                    );
+                }
+
+                // OBJECT LOOKUP DEBUG: Track dictionary address comparisons in Property 18 lookup
+                // NOTE: Changed from log::error to log::debug - these are debugging traces, not errors
+                if op2 == 0x0a64 || op1 == 0x0a64 {
+                    log::debug!("🔍 DICT_ADDR_COMPARE: op1=0x{:04x} vs op2=0x{:04x}, condition={}, PC=0x{:04x}, branch={:?}",
+                        op1, op2, condition, pc, inst.branch);
+                }
                 // Log comparisons involving likely exit-related addresses (0x03b0-0x03d0)
                 if (op1 >= 0x03b0 && op1 <= 0x03d0) || (op2 >= 0x03b0 && op2 <= 0x03d0) || op2 == 0
                 {
@@ -1343,6 +1350,23 @@ impl Interpreter {
                 let value = op2;
 
                 debug!("store: variable {} <- value {}", var_num, value);
+
+                // OBJECT LOOKUP DEBUG: Track Variable(3) assignments (object lookup result)
+                if var_num == 3 {
+                    log::debug!(
+                        "🎯 VAR3_STORE: Variable(3) = {} at PC=0x{:04x}",
+                        value,
+                        self.vm.pc - inst.size as u32
+                    );
+
+                    // CRITICAL ERROR CHECK: Variable(3) should NEVER be 0 after successful dictionary match
+                    if value == 0 {
+                        log::error!("🚨 CRITICAL BUG: Object lookup returned 0 (not found) despite successful dictionary match!");
+                        log::error!("🚨 This indicates a serious control flow error in generate_object_lookup_from_noun()");
+                        // Don't panic yet, but this is definitely wrong
+                    }
+                }
+
                 self.vm.write_variable(var_num, value)?;
                 Ok(ExecutionResult::Continue)
             }
