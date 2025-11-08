@@ -2850,6 +2850,14 @@ impl IrGenerator {
                                 var_id: 17, // Global Variable G17 = score
                                 source: value_temp,
                             });
+                        } else if property == "moves" {
+                            // Special handling for .moves assignment - write to Global Variable G18 per Z-Machine standard
+                            // G18 is the standard global variable for move counter, used by status line
+                            log::debug!("📊 MOVES_WRITE: Using Global G18 for .moves assignment");
+                            block.add_instruction(IrInstruction::StoreVar {
+                                var_id: 18, // Global Variable G18 = moves
+                                source: value_temp,
+                            });
                         } else if let Some(standard_attr) = self.get_standard_attribute(&property) {
                             // This is a Z-Machine attribute assignment - use set_attr
                             let attr_num = standard_attr as u8;
@@ -3801,24 +3809,34 @@ impl IrGenerator {
                     }
                 }
 
-                // Special handling for .location - use get_parent instead of property access
-                // BUG FIX (Oct 11, 2025): player.location must read parent from object tree,
-                // not from a property, because move() uses insert_obj which updates the tree
-                if property == "location" {
-                    log::debug!(
-                        "🏃 LOCATION_FIX: Using GetObjectParent for .location property access"
-                    );
-                    block.add_instruction(IrInstruction::GetObjectParent {
-                        target: temp_id,
-                        object: object_temp,
-                    });
-                } else if property == "score" {
+                // Special handling for player global variables FIRST, before standard property handling
+                // This ensures score/moves access global variables instead of properties
+                if property == "score" {
                     // Special handling for .score - read from Global Variable G17 per Z-Machine standard
                     // G17 is the standard global variable for game score, used by status line
                     log::debug!("📊 SCORE_FIX: Using Global G17 for .score property access");
                     block.add_instruction(IrInstruction::LoadVar {
                         target: temp_id,
                         var_id: 17, // Global Variable G17 = score
+                    });
+                } else if property == "moves" {
+                    // Special handling for .moves - read from Global Variable G18 per Z-Machine standard
+                    // G18 is the standard global variable for move counter, used by status line
+                    log::debug!("📊 MOVES_FIX: Using Global G18 for .moves property access");
+                    block.add_instruction(IrInstruction::LoadVar {
+                        target: temp_id,
+                        var_id: 18, // Global Variable G18 = moves
+                    });
+                } else if property == "location" {
+                    // Special handling for .location - use get_parent instead of property access
+                    // BUG FIX (Oct 11, 2025): player.location must read parent from object tree,
+                    // not from a property, because move() uses insert_obj which updates the tree
+                    log::debug!(
+                        "🏃 LOCATION_FIX: Using GetObjectParent for .location property access"
+                    );
+                    block.add_instruction(IrInstruction::GetObjectParent {
+                        target: temp_id,
+                        object: object_temp,
                     });
                 } else if let Some(standard_attr) = self.get_standard_attribute(&property) {
                     // Phase 2A: Z-Machine attribute access using Option B-2 (reuse existing Branch pattern)

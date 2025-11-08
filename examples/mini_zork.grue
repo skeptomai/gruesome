@@ -155,9 +155,14 @@ grammar {
         default => handle_score()
     }
 
+    verb "moves" {
+        default => handle_moves()
+    }
+
     verb "look" {
         default => look_around(),
-        "at" + noun => examine($2)
+        "at" + noun => examine($2),
+        "around" => look_around()
     }
     
     verb "examine" {
@@ -250,6 +255,13 @@ grammar {
 fn handle_score(){
     print("Your score is ");  // Print without newline (Z-Machine spec compliant)
     print_num(player.score);   // Print number without newline
+    new_line();               // Explicit newline for proper formatting
+}
+
+fn handle_moves(){
+    print("You have taken ");  // Print without newline (Z-Machine spec compliant)
+    print_num(player.moves);   // Print number without newline
+    print(" moves.");         // Print without newline
     new_line();               // Explicit newline for proper formatting
 }
 
@@ -453,6 +465,9 @@ fn handle_go(direction) {
     move(player, exit.destination);
     player.location.visited = true;
 
+    // *** Increment move counter on successful movement ***
+    player.moves = player.moves + 1;
+
     // Call location on_enter handler if it exists
     if player.location.on_enter {
         player.location.on_enter();
@@ -586,6 +601,8 @@ fn take_all() {
 init {
     // Set up initial game state
     player.location = west_of_house;
+    player.score = 0;      // Explicit initialization
+    player.moves = 0;      // Start move counter
     west_of_house.visited = true;
     
     // Print game banner
