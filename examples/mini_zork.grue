@@ -369,9 +369,33 @@ fn handle_take(obj) {
 fn handle_take(leaflet){
     clear_quit_state();
     player.score = player.score + 2;
+    if leaflet.location == player {
+        println("You already have that.");
+        return;
+    }
 
+    if !player_can_see(leaflet) {
+        println("You can't see any such thing.");
+        return;
+    }
     move(leaflet, player);
     println("Took leaflet.");
+}
+
+fn handle_take(egg){
+    clear_quit_state();
+    if egg.location == player {
+        println("You already have that.");
+        return;
+    }
+
+    if !player_can_see(egg) {
+        println("You can't see any such thing.");
+        return;
+    }
+
+    move(egg, player);
+    println("You are the proud owner of a very special egg.. Is it ticking?");
 }
 
 fn handle_drop(obj) {
@@ -382,6 +406,16 @@ fn handle_drop(obj) {
     
     move(obj, player.location);
     println("Dropped.");
+}
+
+fn handle_drop(egg) {
+    if egg.location != player {
+        println("You don't have that.");
+        return;
+    }
+    
+    move(egg, player.location);
+    println("Ok, now I really think it's ticking. Perhaps you should walk away... quickly");    
 }
 
 fn show_inventory() {
