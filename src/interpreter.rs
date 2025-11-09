@@ -1184,6 +1184,11 @@ impl Interpreter {
                 // DEBUG: Log all je comparisons for debugging literal patterns
                 log::error!("🔍 JE_ALL: PC=0x{:04x}, op1=0x{:04x}({}), op2=0x{:04x}({})", pc, op1, op1, op2, op2);
 
+                // Special debug for literal pattern matching
+                if op1 == 0x0a04 || op2 == 0x0a04 {
+                    log::error!("🔥 LITERAL_AROUND_MATCH: PC=0x{:04x}, comparing literal 'around' (0x0a04) - op1=0x{:04x}, op2=0x{:04x}", pc, op1, op2);
+                }
+
                 // Check if these are dictionary addresses and decode to strings
                 let op1_string = self.try_decode_dictionary_address(op1);
                 let op2_string = self.try_decode_dictionary_address(op2);
@@ -1677,6 +1682,24 @@ impl Interpreter {
                     routine_addr,
                     &operands[1..]
                 );
+
+                // Special debug logging for all function calls to track parameter differences
+                log::error!(
+                    "🔍 ALL_FUNCTION_CALL: PC=0x{:04x}, routine_addr=0x{:04x}, arg_count={}, args={:?}",
+                    self.vm.pc,
+                    routine_addr,
+                    operands.len() - 1,
+                    &operands[1..]
+                );
+
+                // Special tracking for look_around function calls to debug literal pattern issue
+                if routine_addr == 0x1a82 {  // look_around function address (approximate)
+                    log::error!("🔍 LOOK_AROUND_CALL: Called at PC=0x{:04x}, Var2={}, Var3={}",
+                        self.vm.pc,
+                        self.vm.read_variable(2).unwrap_or(999),
+                        self.vm.read_variable(3).unwrap_or(999)
+                    );
+                }
 
                 // Call with remaining operands as arguments
                 let args = &operands[1..];

@@ -478,8 +478,8 @@ impl VM {
             };
             // Show call stack depth to distinguish frames
             let stack_depth = self.call_stack.len();
-            log::debug!(
-                "🔍 WRITE_VAR_2: value=0x{:04x} ({}), PC=0x{:04x}, frame_depth={}, inst_bytes={:02x?}",
+            log::error!(
+                "🔧 WRITE_VAR_2: value=0x{:04x} ({}), PC=0x{:04x}, frame_depth={}, inst_bytes={:02x?}",
                 value,
                 value,
                 self.pc,
@@ -509,6 +509,17 @@ impl VM {
                     &self.game.memory[start..end]
                 );
             }
+        }
+        // Log writes to Variable 3 (literal pattern debugging)
+        if var == 3 {
+            let stack_depth = self.call_stack.len();
+            log::error!(
+                "🔧 WRITE_VAR_3: value=0x{:04x} ({}), PC=0x{:04x}, frame_depth={}",
+                value,
+                value,
+                self.pc,
+                stack_depth
+            );
         }
         // Log writes to Variable 216 (0xD8) - source of corruption
         if var == 216 {
@@ -1206,6 +1217,28 @@ impl VM {
             if !self.stack.is_empty() {
                 log::debug!(" top of stack: {:?}", self.stack.last());
             }
+
+            // ENHANCED DEBUGGING: Show where this insert_obj(0) came from
+            log::error!("🚨 VM_INSERT_OBJ_ZERO: insert_object(obj=0, dest={}) called at PC=0x{:04x}", dest_num, self.pc);
+            log::error!("🔍 VM_CONTEXT: Variables: 1={}, 2={}, 3={}",
+                self.read_variable(1).unwrap_or(999),
+                self.read_variable(2).unwrap_or(999),
+                self.read_variable(3).unwrap_or(999)
+            );
+
+            // Show raw bytes at PC to understand what instruction this was
+            let pc_addr = self.pc as usize;
+            if pc_addr + 5 < self.game.memory.len() {
+                log::error!("🔍 VM_BYTES_AT_PC: [{:02x} {:02x} {:02x} {:02x} {:02x}] at PC=0x{:04x}",
+                    self.game.memory[pc_addr],
+                    self.game.memory[pc_addr + 1],
+                    self.game.memory[pc_addr + 2],
+                    self.game.memory[pc_addr + 3],
+                    self.game.memory[pc_addr + 4],
+                    pc_addr
+                );
+            }
+
             return Err("Cannot insert object 0".to_string());
         }
         if dest_num == 0 {

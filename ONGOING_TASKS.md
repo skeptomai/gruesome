@@ -1,6 +1,74 @@
 # ONGOING TASKS - PROJECT STATUS
 
-## 🔧 **VARIABLE(3) CORRUPTION AFTER OBJECT LOOKUP** - **IN PROGRESS** (November 8, 2025)
+## 🔧 **LITERAL PATTERN MATCHING BUG IN GENERATE_VERB_MATCHING FUNCTION** - **IN PROGRESS** (November 9, 2025)
+
+**STATUS**: **PROBLEM ISOLATED TO generate_verb_matching FUNCTION** ✅
+
+**INVESTIGATION FINDINGS** (November 9, 2025):
+
+**✅ ROOT CAUSE CONFIRMED**: The `generate_verb_matching` function ignores literal patterns within verb structures
+
+**✅ EVIDENCE**:
+1. **Single "look" works**: Shows room description → verb matching system functional
+2. **"look around" fails**: "You can't see any such thing" → literal pattern processing not working
+3. **Parse buffer correct**: Both "look" (0x0a70) and "around" (0x0a04) correctly parsed and stored
+4. **Command routing works**: Both commands reach verb processing system
+
+**✅ PROBLEM ISOLATION**:
+- **✅ NOT command processing pipeline**: Works correctly - "look around" parsed as 2 words
+- **✅ NOT parse buffer offsets**: Fixed - "around" correctly stored at offset 3
+- **✅ NOT local variable conflicts**: Fixed - using variable 7 instead of variable 3
+- **✅ NOT branch encoding**: Fixed - all branch target IDs resolved correctly
+- **🎯 IS generate_verb_matching flow**: Literal pattern code added but not executing
+
+**IMPLEMENTATION STATUS**:
+
+**✅ FIXES APPLIED**:
+1. **✅ Added literal pattern detection code** to `generate_verb_matching` function (lines 2628-2800)
+2. **✅ Fixed parse buffer offset**: Changed from offset 5 to offset 3 for second word
+3. **✅ Fixed local variable conflict**: Using variable 7 instead of variable 3
+4. **✅ Fixed branch target resolution**: All branch IDs properly registered
+
+**❌ REMAINING ISSUE**:
+**Literal pattern matching code compiles but doesn't execute at runtime**
+
+**EVIDENCE OF NON-EXECUTION**:
+- **Missing Debug Output**: No "LITERAL_LOAD_WORD2" or "LITERAL_COMPARE" messages appear
+- **No Variable 7 Usage**: Debug shows no WRITE_VAR operations to variable 7
+- **Verb Matching Works**: "look" verb processing happens, but literal pattern code within it doesn't
+
+**POSSIBLE CAUSES**:
+1. **Control Flow Issue**: Literal pattern detection code never reached due to logic flow
+2. **Pattern Collection Bug**: `literal_patterns` collection filtering not finding "around" pattern
+3. **Condition Check Failing**: Word count check or other condition preventing execution
+4. **Code Placement Issue**: Literal pattern code placed in wrong location within function
+
+**NEXT DEBUGGING STEPS**:
+1. **Add debug output** to literal pattern collection to verify patterns are found
+2. **Add debug output** to word count checks to verify conditions are met
+3. **Verify literal pattern code placement** within generate_verb_matching function flow
+4. **Check if literal pattern code is being reached** with basic debug statements
+
+**THE ARCHITECTURE**:
+- **✅ Verb Processing**: `generate_verb_matching("look", patterns, ...)` called correctly
+- **✅ Pattern Collection**: Should find `"around" => look_around()` literal pattern
+- **✅ Multi-word Handling**: Should check word count = 2, load "around" from offset 3
+- **❌ Execution**: Literal pattern code added but not executing
+
+**CRITICAL QUESTIONS**:
+1. **Is the literal pattern being found** in the patterns collection?
+2. **Is the word count check passing** (word_count == 2)?
+3. **Is the literal pattern code being reached** at all during execution?
+4. **Is there a logic branch** that skips the literal pattern processing?
+
+**FILES MODIFIED**:
+- **✅ src/grue_compiler/codegen.rs**: Lines 2628-2800 literal pattern processing code
+- **✅ Parse buffer offsets**: Fixed throughout file
+- **✅ Local variable usage**: Updated to use variable 7
+
+---
+
+## 🔧 **VARIABLE(3) CORRUPTION AFTER OBJECT LOOKUP** - **RESOLVED** (November 8, 2025)
 
 **CURRENT ISSUE**:
 - ✅ **Object Lookup Works**: Dictionary address matching correctly succeeds (0x0a64 = 0x0a64 for "leaflet")

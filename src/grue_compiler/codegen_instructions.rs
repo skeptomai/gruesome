@@ -1171,6 +1171,17 @@ impl ZMachineCodeGen {
                     }
                 }
 
+                // INSTRUMENTATION: Track all insert_obj instruction generation
+                log::error!("🔧 INSERT_OBJ_EMIT: Emitting insert_obj at PC=0x{:04x}, obj={:?}, dest={:?}, IR obj={}, IR dest={}, function='{}', init_block={}",
+                    self.current_address(),
+                    obj_operand,
+                    dest_operand,
+                    object,
+                    destination,
+                    self.current_function_name.as_deref().unwrap_or("unknown"),
+                    self.in_init_block
+                );
+
                 // Emit insert_obj instruction (2OP:14 = 0x0E)
                 self.emit_instruction_typed(
                     Opcode::Op2(Op2::InsertObj),

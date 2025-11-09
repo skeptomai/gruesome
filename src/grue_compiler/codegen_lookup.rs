@@ -13,7 +13,7 @@ use crate::grue_compiler::codegen_memory::{placeholder_word, MemorySpace};
 use crate::grue_compiler::codegen_objects::Operand;
 use crate::grue_compiler::codegen_references::{LegacyReferenceType, UnresolvedReference};
 use crate::grue_compiler::error::CompilerError;
-use crate::grue_compiler::opcodes::{Op0, Op1, Op2, Opcode};
+use crate::grue_compiler::opcodes::{Op1, Op2, Opcode};
 use log::debug;
 
 impl ZMachineCodeGen {

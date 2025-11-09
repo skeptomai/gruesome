@@ -139,6 +139,10 @@ This shows:
 
 **Usage**: When debugging compiler bugs, always inspect IR first to understand what instructions are being generated before looking at Z-Machine bytecode.
 
+## Project Context
+
+**CRITICAL**: Always read `ONGOING_TASKS.md` at session startup to understand current project status, active bugs, investigation findings, and development priorities.
+
 ## Working Style
 
 1. **No cheerleading**: Don't say "we made great progress" until tasks are 100% complete

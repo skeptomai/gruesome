@@ -743,6 +743,13 @@ impl ZMachineCodeGen {
             destination_operand
         );
 
+        // INSTRUMENTATION: Track insert_obj generation in move builtin
+        log::error!("🔧 INSERT_OBJ_BUILTIN: Emitting insert_obj from move() at PC=0x{:04x}, obj={:?}, dest={:?}",
+            self.current_address(),
+            object_operand,
+            destination_operand
+        );
+
         // Generate Z-Machine insert_obj instruction (2OP:14, opcode 0x0E)
         // This moves object to become the first child of the destination
         // Note: Variables are allowed - the Z-Machine can handle variable operands
