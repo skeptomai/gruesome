@@ -2861,10 +2861,11 @@ impl ZMachineCodeGen {
                         }
 
                         // Emit call_vs instruction to call the function
+                        // call_vs MUST store return value to avoid instruction misalignment
                         let layout = self.emit_instruction_typed(
                             Opcode::OpVar(OpVar::CallVs),
                             &operands,
-                            None, // Return value not stored
+                            Some(1), // Store return value in local variable 1 (unused)
                             None,
                         )?;
 

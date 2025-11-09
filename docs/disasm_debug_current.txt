@@ -1,0 +1,15 @@
+Resident data ends at 1446, program starts at 14af, file ends at 22de
+
+Starting analysis pass at address af4
+
+End of analysis pass, low address = 14af, high address = 14af
+
+[Start of code]
+
+Routine R0001, 3 locals (2d28, 075c, d321)
+
+       PRINT_OBJ       G50
+       PRINT_RET        " and you can see a jewel-encrusted egg nestled inside."
+
+[End of code]
+
