@@ -1182,7 +1182,14 @@ impl Interpreter {
                     });
 
                 // DEBUG: Log all je comparisons for debugging literal patterns
-                log::error!("🔍 JE_ALL: PC=0x{:04x}, op1=0x{:04x}({}), op2=0x{:04x}({})", pc, op1, op1, op2, op2);
+                log::error!(
+                    "🔍 JE_ALL: PC=0x{:04x}, op1=0x{:04x}({}), op2=0x{:04x}({})",
+                    pc,
+                    op1,
+                    op1,
+                    op2,
+                    op2
+                );
 
                 // Special debug for literal pattern matching
                 if op1 == 0x0a04 || op2 == 0x0a04 {
@@ -1693,8 +1700,10 @@ impl Interpreter {
                 );
 
                 // Special tracking for look_around function calls to debug literal pattern issue
-                if routine_addr == 0x1a82 {  // look_around function address (approximate)
-                    log::error!("🔍 LOOK_AROUND_CALL: Called at PC=0x{:04x}, Var2={}, Var3={}",
+                if routine_addr == 0x1a82 {
+                    // look_around function address (approximate)
+                    log::error!(
+                        "🔍 LOOK_AROUND_CALL: Called at PC=0x{:04x}, Var2={}, Var3={}",
                         self.vm.pc,
                         self.vm.read_variable(2).unwrap_or(999),
                         self.vm.read_variable(3).unwrap_or(999)

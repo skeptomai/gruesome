@@ -1219,8 +1219,13 @@ impl VM {
             }
 
             // ENHANCED DEBUGGING: Show where this insert_obj(0) came from
-            log::error!("🚨 VM_INSERT_OBJ_ZERO: insert_object(obj=0, dest={}) called at PC=0x{:04x}", dest_num, self.pc);
-            log::error!("🔍 VM_CONTEXT: Variables: 1={}, 2={}, 3={}",
+            log::error!(
+                "🚨 VM_INSERT_OBJ_ZERO: insert_object(obj=0, dest={}) called at PC=0x{:04x}",
+                dest_num,
+                self.pc
+            );
+            log::error!(
+                "🔍 VM_CONTEXT: Variables: 1={}, 2={}, 3={}",
                 self.read_variable(1).unwrap_or(999),
                 self.read_variable(2).unwrap_or(999),
                 self.read_variable(3).unwrap_or(999)
@@ -1229,7 +1234,8 @@ impl VM {
             // Show raw bytes at PC to understand what instruction this was
             let pc_addr = self.pc as usize;
             if pc_addr + 5 < self.game.memory.len() {
-                log::error!("🔍 VM_BYTES_AT_PC: [{:02x} {:02x} {:02x} {:02x} {:02x}] at PC=0x{:04x}",
+                log::error!(
+                    "🔍 VM_BYTES_AT_PC: [{:02x} {:02x} {:02x} {:02x} {:02x}] at PC=0x{:04x}",
                     self.game.memory[pc_addr],
                     self.game.memory[pc_addr + 1],
                     self.game.memory[pc_addr + 2],

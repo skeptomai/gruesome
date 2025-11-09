@@ -68,8 +68,14 @@ impl Interpreter {
                 let value = self.vm.read_word(addr);
 
                 // Parse buffer debugging: Log ALL loadw operations to debug pattern matching
-                log::error!("📋 ALL_LOADW: base=0x{:04x}, offset={}, addr=0x{:04x}, value=0x{:04x} ({})",
-                    operands[0], operands[1], addr, value, value);
+                log::error!(
+                    "📋 ALL_LOADW: base=0x{:04x}, offset={}, addr=0x{:04x}, value=0x{:04x} ({})",
+                    operands[0],
+                    operands[1],
+                    addr,
+                    value,
+                    value
+                );
 
                 // Temporary debug logging for get_exit debugging (property table addresses)
                 if operands[0] >= 0x03b0 && operands[0] <= 0x03c0 {

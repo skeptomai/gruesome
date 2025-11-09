@@ -2387,10 +2387,13 @@ impl ZMachineCodeGen {
         // address where literal pattern matching is generated, instead of the old address
         // Extract the function ID from the default pattern
         let default_pattern = patterns.iter().find(|p| {
-            p.pattern.contains(&crate::grue_compiler::ir::IrPatternElement::Default)
+            p.pattern
+                .contains(&crate::grue_compiler::ir::IrPatternElement::Default)
         });
         if let Some(pattern) = default_pattern {
-            if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, _args) = &pattern.handler {
+            if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, _args) =
+                &pattern.handler
+            {
                 let relative_offset = verb_start_address - self.final_code_base;
                 debug!(
                     "🔧 FUNCTION_MAPPING_FIX: Updating function ID {} ('{}') mapping from old address to new address 0x{:04x} (relative offset 0x{:04x}) where literal patterns are generated",
@@ -2639,21 +2642,37 @@ impl ZMachineCodeGen {
 
         debug!(
             "🎯 VERB_MATCHED: Continue with verb '{}' handler at 0x{:04x} ({} patterns)",
-            verb, self.code_address, patterns.len()
+            verb,
+            self.code_address,
+            patterns.len()
         );
 
         // Debug: List all patterns for this verb
         for (i, pattern) in patterns.iter().enumerate() {
-            let pattern_desc = pattern.pattern.iter()
+            let pattern_desc = pattern
+                .pattern
+                .iter()
                 .map(|elem| match elem {
                     crate::grue_compiler::ir::IrPatternElement::Default => "default".to_string(),
                     crate::grue_compiler::ir::IrPatternElement::Noun => "noun".to_string(),
-                    crate::grue_compiler::ir::IrPatternElement::Literal(lit) => format!("\"{}\"", lit),
-                    crate::grue_compiler::ir::IrPatternElement::Adjective => "adjective".to_string(),
-                    crate::grue_compiler::ir::IrPatternElement::MultiWordNoun => "multi-word-noun".to_string(),
-                    crate::grue_compiler::ir::IrPatternElement::Preposition => "preposition".to_string(),
-                    crate::grue_compiler::ir::IrPatternElement::MultipleObjects => "multiple-objects".to_string(),
-                    crate::grue_compiler::ir::IrPatternElement::DirectObject => "direct-object".to_string(),
+                    crate::grue_compiler::ir::IrPatternElement::Literal(lit) => {
+                        format!("\"{}\"", lit)
+                    }
+                    crate::grue_compiler::ir::IrPatternElement::Adjective => {
+                        "adjective".to_string()
+                    }
+                    crate::grue_compiler::ir::IrPatternElement::MultiWordNoun => {
+                        "multi-word-noun".to_string()
+                    }
+                    crate::grue_compiler::ir::IrPatternElement::Preposition => {
+                        "preposition".to_string()
+                    }
+                    crate::grue_compiler::ir::IrPatternElement::MultipleObjects => {
+                        "multiple-objects".to_string()
+                    }
+                    crate::grue_compiler::ir::IrPatternElement::DirectObject => {
+                        "direct-object".to_string()
+                    }
                     _ => format!("unknown-pattern"),
                 })
                 .collect::<Vec<_>>()
@@ -2669,22 +2688,37 @@ impl ZMachineCodeGen {
         // If word_count < 2, call handler with no parameters
 
         // Phase 3.0: FIRST: Check for literal patterns within this verb (e.g., "around" in verb "look")
-        debug!("🔤 LITERAL_PATTERN_SEARCH: Starting search for literal patterns in verb '{}'", verb);
-        let literal_patterns: Vec<_> = patterns.iter()
-            .filter(|p| p.pattern.len() == 1 &&
-                    matches!(p.pattern[0], crate::grue_compiler::ir::IrPatternElement::Literal(_)))
+        debug!(
+            "🔤 LITERAL_PATTERN_SEARCH: Starting search for literal patterns in verb '{}'",
+            verb
+        );
+        let literal_patterns: Vec<_> = patterns
+            .iter()
+            .filter(|p| {
+                p.pattern.len() == 1
+                    && matches!(
+                        p.pattern[0],
+                        crate::grue_compiler::ir::IrPatternElement::Literal(_)
+                    )
+            })
             .collect();
-        debug!("🔤 LITERAL_PATTERN_FILTER: Found {} literal patterns", literal_patterns.len());
+        debug!(
+            "🔤 LITERAL_PATTERN_FILTER: Found {} literal patterns",
+            literal_patterns.len()
+        );
 
         if !literal_patterns.is_empty() {
             debug!(
                 "🔤 LITERAL_PATTERNS_FOUND: {} literal patterns in verb '{}'",
-                literal_patterns.len(), verb
+                literal_patterns.len(),
+                verb
             );
 
             // For each literal pattern, generate matching code
             for literal_pattern in literal_patterns {
-                if let crate::grue_compiler::ir::IrPatternElement::Literal(literal_word) = &literal_pattern.pattern[0] {
+                if let crate::grue_compiler::ir::IrPatternElement::Literal(literal_word) =
+                    &literal_pattern.pattern[0]
+                {
                     debug!("🔤 Processing literal pattern: '{}'", literal_word);
 
                     // Create label for skipping this literal pattern if it doesn't match
@@ -2692,11 +2726,14 @@ impl ZMachineCodeGen {
                     self.next_string_id += 1;
 
                     // Check if word count is exactly 2 (verb + literal word)
-                    debug!("🔍 LITERAL_WORDCOUNT_CHECK: Checking if word count == 2 for literal '{}'", literal_word);
+                    debug!(
+                        "🔍 LITERAL_WORDCOUNT_CHECK: Checking if word count == 2 for literal '{}'",
+                        literal_word
+                    );
                     let layout = self.emit_instruction_typed(
                         Opcode::Op2(Op2::Je),
                         &[
-                            Operand::Variable(1), // Word count
+                            Operand::Variable(1),      // Word count
                             Operand::SmallConstant(2), // Must be exactly 2 words
                         ],
                         None,
@@ -2718,7 +2755,10 @@ impl ZMachineCodeGen {
                     }
 
                     // Load word 2 dictionary address from parse buffer offset 5
-                    debug!("🔍 LITERAL_LOAD_WORD2: Loading word 2 dictionary address for literal '{}'", literal_word);
+                    debug!(
+                        "🔍 LITERAL_LOAD_WORD2: Loading word 2 dictionary address for literal '{}'",
+                        literal_word
+                    );
                     self.emit_instruction_typed(
                         Opcode::Op2(Op2::Loadw),
                         &[
@@ -2731,7 +2771,10 @@ impl ZMachineCodeGen {
                     debug!("🔍 LITERAL_LOAD_WORD2_COMPLETE: Stored word 2 in Variable(7) for literal '{}'", literal_word);
 
                     // Compare word 2 with literal dictionary address
-                    debug!("🔍 LITERAL_COMPARE: Comparing word 2 with literal '{}'", literal_word);
+                    debug!(
+                        "🔍 LITERAL_COMPARE: Comparing word 2 with literal '{}'",
+                        literal_word
+                    );
                     debug!("🔍 LITERAL_COMPARE_SETUP: About to emit JE instruction at code_address=0x{:04x}", self.code_address);
                     debug!("🔍 LITERAL_COMPARE_DETAILS: Will compare Variable(7) [word 2] against literal '{}' dictionary address", literal_word);
                     let dict_ref_operand = Operand::LargeConstant(placeholder_word());
@@ -2739,7 +2782,7 @@ impl ZMachineCodeGen {
                         Opcode::Op2(Op2::Je),
                         &[
                             Operand::Variable(7), // Word 2 from parse buffer (stored in variable 7)
-                            dict_ref_operand, // Literal word dictionary address
+                            dict_ref_operand,     // Literal word dictionary address
                         ],
                         None,
                         Some(0x7FFF_u16 as i16), // Branch on FALSE (not equal) - skip if no match
@@ -2763,9 +2806,15 @@ impl ZMachineCodeGen {
                     // Register dictionary reference for literal word
                     if let Some(operand_base) = layout.operand_location {
                         let dict_operand_location = operand_base + 1; // Second operand location
-                        let word_position = self.dictionary_words.iter().position(|w| w == literal_word)
+                        let word_position = self
+                            .dictionary_words
+                            .iter()
+                            .position(|w| w == literal_word)
                             .unwrap_or_else(|| {
-                                panic!("FATAL: Literal word '{}' not found in dictionary!", literal_word);
+                                panic!(
+                                    "FATAL: Literal word '{}' not found in dictionary!",
+                                    literal_word
+                                );
                             });
 
                         debug!("🔍 DICT_REF: Registering dictionary reference for literal word '{}' at location 0x{:04x}", literal_word, dict_operand_location);
@@ -2784,8 +2833,13 @@ impl ZMachineCodeGen {
                     }
 
                     // If we get here, the literal pattern matched - call the function
-                    if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, args) = &literal_pattern.handler {
-                        debug!("🔄 LITERAL_CALL: Calling function {} for literal pattern '{}'", func_id, literal_word);
+                    if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, args) =
+                        &literal_pattern.handler
+                    {
+                        debug!(
+                            "🔄 LITERAL_CALL: Calling function {} for literal pattern '{}'",
+                            func_id, literal_word
+                        );
 
                         // Generate function call
                         let mut operands = vec![Operand::LargeConstant(placeholder_word())];
@@ -2828,26 +2882,32 @@ impl ZMachineCodeGen {
                                 });
                         }
 
-                        // Jump to end of verb handler after executing the literal pattern
+                        // Jump back to main loop after successfully executing literal pattern
+                        debug!(
+                            "🔀 JUMP_MAIN_LOOP: Jumping back to main loop start (label {}) after literal pattern handler",
+                            main_loop_jump_id
+                        );
+
                         let layout = self.emit_instruction_typed(
-                            Opcode::Op1(Op1::Jump),
-                            &[Operand::LargeConstant(placeholder_word())], // Placeholder offset
+                            Opcode::Op1(Op1::Jump),                        // jump
+                            &[Operand::LargeConstant(placeholder_word())], // Will be resolved to main loop start
                             None,
                             None,
                         )?;
 
-                        // Register jump to end_function_label (same as other patterns)
                         if let Some(operand_location) = layout.operand_location {
                             self.reference_context
                                 .unresolved_refs
                                 .push(UnresolvedReference {
                                     reference_type: LegacyReferenceType::Jump,
                                     location: operand_location,
-                                    target_id: end_function_label,
+                                    target_id: main_loop_jump_id,
                                     is_packed_address: false,
                                     offset_size: 2,
                                     location_space: MemorySpace::Code,
                                 });
+                        } else {
+                            panic!("BUG: emit_instruction didn't return operand_location for placeholder");
                         }
                     }
 
@@ -2937,183 +2997,203 @@ impl ZMachineCodeGen {
         // LITERAL PATTERN CHECK: Before noun processing, check for single literal patterns like "around"
         // DISABLED: This old code conflicts with verb-internal literal patterns and causes "I don't understand that"
         // TODO: Remove this old code entirely and replace with proper verb-internal literal pattern support
-        let _old_literal_disabled = true; if false { for pattern in patterns.iter() {
-            if pattern.pattern.len() == 1 {
-                if let crate::grue_compiler::ir::IrPatternElement::Literal(literal_word) = &pattern.pattern[0] {
-                    debug!("🔤 LITERAL_CHECK: Testing for literal word '{}'", literal_word);
+        let _old_literal_disabled = true;
+        if false {
+            for pattern in patterns.iter() {
+                if pattern.pattern.len() == 1 {
+                    if let crate::grue_compiler::ir::IrPatternElement::Literal(literal_word) =
+                        &pattern.pattern[0]
+                    {
+                        debug!(
+                            "🔤 LITERAL_CHECK: Testing for literal word '{}'",
+                            literal_word
+                        );
 
-                    // Generate unique label IDs for this literal pattern (use range 80000-89999 for literals)
-                    let unique_seed = (self.code_address * 13) % 9999;
-                    let literal_handler_label = (80000 + unique_seed) as u32;
-                    let skip_literal_label = (81000 + unique_seed) as u32;
+                        // Generate unique label IDs for this literal pattern (use range 80000-89999 for literals)
+                        let unique_seed = (self.code_address * 13) % 9999;
+                        let literal_handler_label = (80000 + unique_seed) as u32;
+                        let skip_literal_label = (81000 + unique_seed) as u32;
 
-                    // Compare word 1 from parse buffer with literal word dictionary address
-                    let dict_ref_operand = Operand::LargeConstant(placeholder_word());
+                        // Compare word 1 from parse buffer with literal word dictionary address
+                        let dict_ref_operand = Operand::LargeConstant(placeholder_word());
 
-                    // Word count == 2 for single literal patterns
-                    debug!("🔍 LITERAL_WORDCOUNT_CHECK: Checking if word count (Variable 1) == 2 for single literal '{}'", literal_word);
-                    self.emit_instruction_typed(
-                        Opcode::Op2(Op2::Je),
-                        &[
-                            Operand::Variable(1), // Word count
-                            Operand::SmallConstant(2),
-                        ],
-                        None,
-                        Some(0xBFFF_u16 as i16), // Branch on FALSE (not equal) - skip if word count != 2
-                    )?;
+                        // Word count == 2 for single literal patterns
+                        debug!("🔍 LITERAL_WORDCOUNT_CHECK: Checking if word count (Variable 1) == 2 for single literal '{}'", literal_word);
+                        self.emit_instruction_typed(
+                            Opcode::Op2(Op2::Je),
+                            &[
+                                Operand::Variable(1), // Word count
+                                Operand::SmallConstant(2),
+                            ],
+                            None,
+                            Some(0xBFFF_u16 as i16), // Branch on FALSE (not equal) - skip if word count != 2
+                        )?;
 
-                    // Load word 1 dictionary address from parse buffer offset 3
-                    debug!("🔍 LITERAL_LOAD_WORD: Loading word 1 dictionary address for single literal '{}'", literal_word);
-                    self.emit_instruction_typed(
-                        Opcode::Op2(Op2::Loadw),
-                        &[
-                            Operand::Variable(PARSE_BUFFER_GLOBAL),
-                            Operand::SmallConstant(3), // Word 1 dict addr at offset 3 (FIXED: was 4)
-                        ],
-                        Some(2), // Store in local variable 2 (variable 1 is used for word count)
-                        None,
-                    )?;
+                        // Load word 1 dictionary address from parse buffer offset 3
+                        debug!("🔍 LITERAL_LOAD_WORD: Loading word 1 dictionary address for single literal '{}'", literal_word);
+                        self.emit_instruction_typed(
+                            Opcode::Op2(Op2::Loadw),
+                            &[
+                                Operand::Variable(PARSE_BUFFER_GLOBAL),
+                                Operand::SmallConstant(3), // Word 1 dict addr at offset 3 (FIXED: was 4)
+                            ],
+                            Some(2), // Store in local variable 2 (variable 1 is used for word count)
+                            None,
+                        )?;
 
-                    // Compare word 1 with literal dictionary address: je @2 dict_addr skip_literal_label
-                    let layout = self.emit_instruction_typed(
-                        Opcode::Op2(Op2::Je),
-                        &[
-                            Operand::Variable(2), // Word 1 from parse buffer (now in variable 2)
-                            dict_ref_operand, // Literal word dictionary address
-                        ],
-                        None,
-                        Some(0x7FFF_u16 as i16), // Branch on FALSE (not equal) - skip this literal if it doesn't match
-                    )?;
+                        // Compare word 1 with literal dictionary address: je @2 dict_addr skip_literal_label
+                        let layout = self.emit_instruction_typed(
+                            Opcode::Op2(Op2::Je),
+                            &[
+                                Operand::Variable(2), // Word 1 from parse buffer (now in variable 2)
+                                dict_ref_operand,     // Literal word dictionary address
+                            ],
+                            None,
+                            Some(0x7FFF_u16 as i16), // Branch on FALSE (not equal) - skip this literal if it doesn't match
+                        )?;
 
-                    // Calculate proper location for dictionary reference (second operand in je instruction)
-                    // je instruction layout: [opcode][operand1: Variable(1)][operand2: dict_addr]
-                    // For VAR form je: [instruction_byte][operand_types][operand1][operand2]
-                    let dict_operand_location = if let Some(operand_base) = layout.operand_location {
-                        operand_base + 1  // Skip first operand (Variable = 1 byte) to reach second operand
-                    } else {
-                        panic!("BUG: emit_instruction didn't return operand_location for je");
-                    };
+                        // Calculate proper location for dictionary reference (second operand in je instruction)
+                        // je instruction layout: [opcode][operand1: Variable(1)][operand2: dict_addr]
+                        // For VAR form je: [instruction_byte][operand_types][operand1][operand2]
+                        let dict_operand_location = if let Some(operand_base) =
+                            layout.operand_location
+                        {
+                            operand_base + 1 // Skip first operand (Variable = 1 byte) to reach second operand
+                        } else {
+                            panic!("BUG: emit_instruction didn't return operand_location for je");
+                        };
 
-                    debug!("🔍 DICT_REF_PREPARE: About to register dictionary reference for literal word '{}' at location 0x{:04x}", literal_word, dict_operand_location);
+                        debug!("🔍 DICT_REF_PREPARE: About to register dictionary reference for literal word '{}' at location 0x{:04x}", literal_word, dict_operand_location);
 
-                    // Register dictionary reference for literal word
-                    // Look up the word's position in the sorted dictionary
-                    let word_position = self.dictionary_words.iter().position(|w| w == literal_word)
+                        // Register dictionary reference for literal word
+                        // Look up the word's position in the sorted dictionary
+                        let word_position = self.dictionary_words.iter().position(|w| w == literal_word)
                         .unwrap_or_else(|| {
                             panic!("FATAL: Literal word '{}' not found in dictionary_words! Available words: {:?}",
                                    literal_word, self.dictionary_words);
                         });
-                    debug!("🔍 DICT_REF_REGISTER_SINGLE: Registering dictionary reference for single literal word '{}' at location 0x{:04x}, position={}", literal_word, dict_operand_location, word_position);
-                    self.reference_context
-                        .unresolved_refs
-                        .push(UnresolvedReference {
-                            reference_type: LegacyReferenceType::DictionaryRef {
-                                word: literal_word.clone(),
-                            },
-                            location: dict_operand_location,
-                            target_id: word_position as u32, // Use actual dictionary position
-                            is_packed_address: false,
-                            offset_size: 2,
-                            location_space: MemorySpace::Code,
-                        });
-
-                    // Register branch to skip_literal_label
-                    if let Some(branch_location) = layout.branch_location {
+                        debug!("🔍 DICT_REF_REGISTER_SINGLE: Registering dictionary reference for single literal word '{}' at location 0x{:04x}, position={}", literal_word, dict_operand_location, word_position);
                         self.reference_context
                             .unresolved_refs
                             .push(UnresolvedReference {
-                                reference_type: LegacyReferenceType::Branch,
-                                location: branch_location,
-                                target_id: skip_literal_label,
+                                reference_type: LegacyReferenceType::DictionaryRef {
+                                    word: literal_word.clone(),
+                                },
+                                location: dict_operand_location,
+                                target_id: word_position as u32, // Use actual dictionary position
                                 is_packed_address: false,
                                 offset_size: 2,
                                 location_space: MemorySpace::Code,
                             });
-                    }
 
-                    // MATCHED: Execute literal pattern handler
-                    if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, args) = &pattern.handler {
-                        debug!("🔤 LITERAL_EXECUTE: Calling function {} for literal '{}'", func_id, literal_word);
-
-                        // Generate function call - same as existing noun pattern logic
-                        let mut operands = vec![Operand::LargeConstant(placeholder_word())];
-
-                        // Convert arguments to operands (literal patterns typically have no args)
-                        for arg_value in args.iter() {
-                            let arg_operand = match arg_value {
-                                crate::grue_compiler::ir::IrValue::Integer(n) => {
-                                    if *n >= 0 && *n <= 255 {
-                                        Operand::SmallConstant(*n as u8)
-                                    } else {
-                                        Operand::LargeConstant(*n as u16)
-                                    }
-                                },
-                                _ => {
-                                    debug!("🔤 LITERAL_WARNING: Unexpected argument type in literal pattern: {:?}", arg_value);
-                                    Operand::SmallConstant(0)
-                                }
-                            };
-                            operands.push(arg_operand);
-                        }
-
-                        // Emit function call
-                        let layout = self.emit_instruction_typed(
-                            Opcode::OpVar(OpVar::CallVs),
-                            &operands,
-                            Some(0), // Store return value but ignore it
-                            None,
-                        )?;
-
-                        // Register function reference
-                        if let Some(operand_location) = layout.operand_location {
+                        // Register branch to skip_literal_label
+                        if let Some(branch_location) = layout.branch_location {
                             self.reference_context
                                 .unresolved_refs
                                 .push(UnresolvedReference {
-                                    reference_type: LegacyReferenceType::FunctionCall,
-                                    location: operand_location, // Function address operand
-                                    target_id: *func_id,
-                                    is_packed_address: true,
-                                    offset_size: 2,
-                                    location_space: MemorySpace::Code,
-                                });
-                        }
-
-                        // Jump to end of function after executing handler
-                        let layout = self.emit_instruction_typed(
-                            Opcode::Op1(Op1::Jump),
-                            &[Operand::LargeConstant(placeholder_word())], // Jump offset placeholder
-                            None,
-                            None,
-                        )?;
-
-                        // Register jump to end of function
-                        if let Some(operand_location) = layout.operand_location {
-                            self.reference_context
-                                .unresolved_refs
-                                .push(UnresolvedReference {
-                                    reference_type: LegacyReferenceType::Jump,
-                                    location: operand_location, // Jump offset operand
-                                    target_id: end_function_label,
+                                    reference_type: LegacyReferenceType::Branch,
+                                    location: branch_location,
+                                    target_id: skip_literal_label,
                                     is_packed_address: false,
                                     offset_size: 2,
                                     location_space: MemorySpace::Code,
                                 });
                         }
-                    }
 
-                    // Register the skip_literal_label at current address (fall through to next pattern)
-                    self.record_final_address(skip_literal_label, self.code_address);
+                        // MATCHED: Execute literal pattern handler
+                        if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, args) =
+                            &pattern.handler
+                        {
+                            debug!(
+                                "🔤 LITERAL_EXECUTE: Calling function {} for literal '{}'",
+                                func_id, literal_word
+                            );
+
+                            // Generate function call - same as existing noun pattern logic
+                            let mut operands = vec![Operand::LargeConstant(placeholder_word())];
+
+                            // Convert arguments to operands (literal patterns typically have no args)
+                            for arg_value in args.iter() {
+                                let arg_operand = match arg_value {
+                                    crate::grue_compiler::ir::IrValue::Integer(n) => {
+                                        if *n >= 0 && *n <= 255 {
+                                            Operand::SmallConstant(*n as u8)
+                                        } else {
+                                            Operand::LargeConstant(*n as u16)
+                                        }
+                                    }
+                                    _ => {
+                                        debug!("🔤 LITERAL_WARNING: Unexpected argument type in literal pattern: {:?}", arg_value);
+                                        Operand::SmallConstant(0)
+                                    }
+                                };
+                                operands.push(arg_operand);
+                            }
+
+                            // Emit function call
+                            let layout = self.emit_instruction_typed(
+                                Opcode::OpVar(OpVar::CallVs),
+                                &operands,
+                                Some(0), // Store return value but ignore it
+                                None,
+                            )?;
+
+                            // Register function reference
+                            if let Some(operand_location) = layout.operand_location {
+                                self.reference_context
+                                    .unresolved_refs
+                                    .push(UnresolvedReference {
+                                        reference_type: LegacyReferenceType::FunctionCall,
+                                        location: operand_location, // Function address operand
+                                        target_id: *func_id,
+                                        is_packed_address: true,
+                                        offset_size: 2,
+                                        location_space: MemorySpace::Code,
+                                    });
+                            }
+
+                            // Jump to end of function after executing handler
+                            let layout = self.emit_instruction_typed(
+                                Opcode::Op1(Op1::Jump),
+                                &[Operand::LargeConstant(placeholder_word())], // Jump offset placeholder
+                                None,
+                                None,
+                            )?;
+
+                            // Register jump to end of function
+                            if let Some(operand_location) = layout.operand_location {
+                                self.reference_context
+                                    .unresolved_refs
+                                    .push(UnresolvedReference {
+                                        reference_type: LegacyReferenceType::Jump,
+                                        location: operand_location, // Jump offset operand
+                                        target_id: end_function_label,
+                                        is_packed_address: false,
+                                        offset_size: 2,
+                                        location_space: MemorySpace::Code,
+                                    });
+                            }
+                        }
+
+                        // Register the skip_literal_label at current address (fall through to next pattern)
+                        self.record_final_address(skip_literal_label, self.code_address);
+                    }
                 }
             }
-        } } // END DISABLED OLD LITERAL PATTERN CODE
+        } // END DISABLED OLD LITERAL PATTERN CODE
 
         // LITERAL+NOUN CASE: Check for 2-element patterns like [Literal("at"), Noun]
         for pattern in patterns.iter() {
             if pattern.pattern.len() == 2 {
-                if let (crate::grue_compiler::ir::IrPatternElement::Literal(literal_word), crate::grue_compiler::ir::IrPatternElement::Noun) =
-                    (&pattern.pattern[0], &pattern.pattern[1]) {
-
-                    debug!("🔤 LITERAL+NOUN_CHECK: Testing for literal '{}' + noun pattern", literal_word);
+                if let (
+                    crate::grue_compiler::ir::IrPatternElement::Literal(literal_word),
+                    crate::grue_compiler::ir::IrPatternElement::Noun,
+                ) = (&pattern.pattern[0], &pattern.pattern[1])
+                {
+                    debug!(
+                        "🔤 LITERAL+NOUN_CHECK: Testing for literal '{}' + noun pattern",
+                        literal_word
+                    );
 
                     // Check if we have at least 3 words (verb + literal + noun)
                     let skip_insufficient_words = (83000 + (self.code_address * 19) % 9999) as u32;
@@ -3162,15 +3242,16 @@ impl ZMachineCodeGen {
                         Opcode::Op2(Op2::Je),
                         &[
                             Operand::Variable(2), // Word 1 from parse buffer (now in variable 2)
-                            dict_ref_operand, // Literal word dictionary address
+                            dict_ref_operand,     // Literal word dictionary address
                         ],
                         None,
                         Some(0x7FFF_u16 as i16), // Branch on FALSE (not equal) - skip this pattern if literal doesn't match
                     )?;
 
                     // Calculate dictionary reference location (second operand)
-                    let dict_operand_location = if let Some(operand_base) = layout.operand_location {
-                        operand_base + 1  // Skip first operand to reach second operand
+                    let dict_operand_location = if let Some(operand_base) = layout.operand_location
+                    {
+                        operand_base + 1 // Skip first operand to reach second operand
                     } else {
                         panic!("BUG: emit_instruction didn't return operand_location for je");
                     };
@@ -3211,8 +3292,13 @@ impl ZMachineCodeGen {
                     }
 
                     // MATCHED: Load word 2 (offset 3) as noun parameter and execute handler
-                    if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, args) = &pattern.handler {
-                        debug!("🔤 LITERAL+NOUN_EXECUTE: Calling function {} for '{}' + noun", func_id, literal_word);
+                    if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, args) =
+                        &pattern.handler
+                    {
+                        debug!(
+                            "🔤 LITERAL+NOUN_EXECUTE: Calling function {} for '{}' + noun",
+                            func_id, literal_word
+                        );
 
                         // Load word 2 (offset 3) from parse buffer - this is the noun
                         self.emit_instruction_typed(
@@ -3231,19 +3317,24 @@ impl ZMachineCodeGen {
                         // Process RuntimeParameter arguments - should be "2" for second word
                         for arg_value in args.iter() {
                             let arg_operand = match arg_value {
-                                crate::grue_compiler::ir::IrValue::RuntimeParameter(param) if param == "2" => {
+                                crate::grue_compiler::ir::IrValue::RuntimeParameter(param)
+                                    if param == "2" =>
+                                {
                                     // Use word 2 (noun) from local variable 2
                                     Operand::Variable(2)
-                                },
+                                }
                                 crate::grue_compiler::ir::IrValue::Integer(n) => {
                                     if *n >= 0 && *n <= 255 {
                                         Operand::SmallConstant(*n as u8)
                                     } else {
                                         Operand::LargeConstant(*n as u16)
                                     }
-                                },
+                                }
                                 _ => {
-                                    debug!("🔤 LITERAL+NOUN_WARNING: Unexpected argument type: {:?}", arg_value);
+                                    debug!(
+                                        "🔤 LITERAL+NOUN_WARNING: Unexpected argument type: {:?}",
+                                        arg_value
+                                    );
                                     Operand::SmallConstant(0)
                                 }
                             };
