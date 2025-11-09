@@ -266,7 +266,6 @@ fn handle_moves(){
 }
 
 fn look_around() {
-    println("got to look_around");
     clear_quit_state();
     println(player.location.desc);
     list_objects(player.location);

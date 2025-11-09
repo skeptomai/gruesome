@@ -2763,7 +2763,7 @@ impl ZMachineCodeGen {
                         Opcode::Op2(Op2::Loadw),
                         &[
                             Operand::Variable(PARSE_BUFFER_GLOBAL),
-                            Operand::SmallConstant(3), // Word 2 dict addr at offset 3 (word offset, not byte)
+                            Operand::SmallConstant(5), // Word 2 dict addr at offset 5 (word offset, not byte)
                         ],
                         Some(7), // Store in local variable 7 (temporary for grammar operations)
                         None,
@@ -3306,7 +3306,7 @@ impl ZMachineCodeGen {
                             Opcode::Op2(Op2::Loadw),
                             &[
                                 Operand::Variable(PARSE_BUFFER_GLOBAL),
-                                Operand::SmallConstant(3), // Word 2 dict addr at offset 3 (FIXED: was 5)
+                                Operand::SmallConstant(5), // Word 2 dict addr at offset 5
                             ],
                             Some(7), // Store in local variable 7 (temporary for grammar operations)
                             None,
@@ -3315,14 +3315,34 @@ impl ZMachineCodeGen {
                         // Build operands: function address + noun parameter
                         let mut operands = vec![Operand::LargeConstant(placeholder_word())]; // Function address placeholder
 
-                        // Process RuntimeParameter arguments - should be "2" for second word
+                        // LITERAL+NOUN PARAMETER RESOLUTION: Process RuntimeParameter arguments for patterns like "at" + noun
+                        // This fixes the "look at mailbox" crash by properly converting dictionary addresses to object IDs
                         for arg_value in args.iter() {
                             let arg_operand = match arg_value {
                                 crate::grue_compiler::ir::IrValue::RuntimeParameter(param)
                                     if param == "2" =>
                                 {
-                                    // Use word 2 (noun) from local variable 2
-                                    Operand::Variable(2)
+                                    // FIXED: Proper $2 parameter resolution for literal+noun patterns
+                                    // 1. Copy noun dictionary address from variable 7 to variable 2 (lookup function expects input in var 2)
+                                    // 2. Convert dictionary address to object ID using standard lookup mechanism
+                                    // 3. Return object ID from variable 3 (lookup function outputs object ID to var 3)
+
+                                    self.emit_instruction_typed(
+                                        Opcode::Op2(Op2::Store),
+                                        &[
+                                            Operand::SmallConstant(2), // Store to variable 2 (lookup input)
+                                            Operand::Variable(7), // From variable 7 (noun dict addr loaded from parse buffer)
+                                        ],
+                                        None,
+                                        None,
+                                    )?;
+
+                                    // Generate object lookup code to convert dictionary address to object ID
+                                    // This ensures functions receive object IDs (e.g., 10 for mailbox) instead of dict addresses (e.g., 2678)
+                                    self.generate_object_lookup_from_noun()?;
+
+                                    // The object ID is now in variable 3, so return that as the operand for function call
+                                    Operand::Variable(3)
                                 }
                                 crate::grue_compiler::ir::IrValue::Integer(n) => {
                                     if *n >= 0 && *n <= 255 {
@@ -3364,7 +3384,12 @@ impl ZMachineCodeGen {
                                 });
                         }
 
-                        // Jump to end of function after executing handler
+                        // Jump back to main loop after successfully executing literal+noun pattern
+                        debug!(
+                            "🔀 JUMP_MAIN_LOOP: Jumping back to main loop start (label {}) after literal+noun pattern handler",
+                            main_loop_jump_id
+                        );
+
                         let layout = self.emit_instruction_typed(
                             Opcode::Op1(Op1::Jump),
                             &[Operand::LargeConstant(placeholder_word())],
@@ -3372,14 +3397,14 @@ impl ZMachineCodeGen {
                             None,
                         )?;
 
-                        // Register jump to end of function
+                        // Register jump back to main loop (same as simple literal patterns)
                         if let Some(operand_location) = layout.operand_location {
                             self.reference_context
                                 .unresolved_refs
                                 .push(UnresolvedReference {
                                     reference_type: LegacyReferenceType::Jump,
                                     location: operand_location,
-                                    target_id: end_function_label,
+                                    target_id: main_loop_jump_id,
                                     is_packed_address: false,
                                     offset_size: 2,
                                     location_space: MemorySpace::Code,
