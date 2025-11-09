@@ -1181,14 +1181,23 @@ impl Interpreter {
                         None
                     });
 
+                // DEBUG: Log all je comparisons for debugging literal patterns
+                log::error!("🔍 JE_ALL: PC=0x{:04x}, op1=0x{:04x}({}), op2=0x{:04x}({})", pc, op1, op1, op2, op2);
+
                 // Check if these are dictionary addresses and decode to strings
                 let op1_string = self.try_decode_dictionary_address(op1);
                 let op2_string = self.try_decode_dictionary_address(op2);
 
+                // Detect literal pattern checks
+                if op2 == 2 {
+                    log::error!("🔥 LITERAL_WORDCOUNT_CHECK_RUNTIME: PC=0x{:04x}, checking if word count ({}) == 2", pc, op1);
+                } else if op1_string.is_some() && op2_string.is_some() {
+                    log::error!("🔥 LITERAL_WORD_MATCH_RUNTIME: PC=0x{:04x}, comparing literal words for pattern matching", pc);
+                }
+
                 if op1_string.is_some() || op2_string.is_some() {
-                    // LOG LEVEL FIX: Changed from log::warn! to log::debug! to prevent
-                    // dictionary comparison debug info from flooding WARN output during gameplay
-                    log::debug!(
+                    // TEMP DEBUG: Changed to error level to debug literal pattern matching
+                    log::error!(
                         "🔤 DICT_COMPARE at PC=0x{:04x}: \"{}\" vs \"{}\" (0x{:04x} vs 0x{:04x})",
                         pc,
                         op1_string.unwrap_or_else(|| format!("0x{:04x}", op1)),
