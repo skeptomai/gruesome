@@ -134,7 +134,7 @@ impl ZMachineCodeGen {
         debug!("🎯 Allocated main loop prompt string ID: {}", prompt_id);
 
         // Also add the "I don't understand" string for command processing
-        let unknown_command_id = self.find_or_create_string_id("I don't understand that.")?;
+        let unknown_command_id = self.find_or_create_string_id("I don't understand that.\n")?;
         debug!(
             "🎯 Allocated unknown command string ID: {}",
             unknown_command_id

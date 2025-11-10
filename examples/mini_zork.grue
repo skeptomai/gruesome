@@ -234,6 +234,10 @@ grammar {
         default => handle_quit()
     }
 
+    verb "q" {
+        default => handle_quit()
+    }
+
     // Add yes/y/no/n to dictionary (used for quit confirmation)
     verb "yes" {
         default => handle_yes()
