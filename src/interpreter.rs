@@ -1108,8 +1108,8 @@ impl Interpreter {
                 self.vm.pc = new_pc;
                 Ok(ExecutionResult::Branched)
             }
-            0x0D => {
-                // print_paddr - print string at packed address
+            0x8D => {
+                // print_paddr - print string at packed address (1OP:141)
                 let packed_addr = operand;
 
                 // Check for debug breakpoint markers (debug builds only)
