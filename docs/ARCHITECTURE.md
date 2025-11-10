@@ -386,6 +386,56 @@ Each opcode module follows a consistent pattern:
 4. **Code Organization**: Related operations are grouped together logically
 5. **Performance**: Direct method calls with minimal routing overhead
 
+### Opcode Validation
+
+The instruction decoder in `src/instruction.rs` performs critical validation of Z-Machine opcodes to ensure only valid instructions are processed. This validation prevents interpreter crashes from malformed or corrupted game files.
+
+#### Valid Opcode Ranges
+
+Z-Machine opcodes are validated based on their instruction form:
+
+```rust
+// Long form (2OP) instructions: opcodes 0x01-0x1C
+if opcode == 0x00 || opcode > 0x1C {
+    return Err(format!(
+        "Invalid Long form opcode 0x{:02x} at address {addr:04x} (valid range: 0x01-0x1C)",
+        opcode
+    ));
+}
+```
+
+**Critical Opcode Mappings:**
+- `0x14` - add (addition)
+- `0x15` - sub (subtraction)
+- `0x16` - mul (multiplication)
+- `0x17` - div (division)
+- `0x18` - mod (modulo)
+- `0x19` - call_2s (call function, store result)
+- `0x1A` - call_2n (call function, no result)
+- `0x1B` - set_colour (set foreground/background colors)
+- `0x1C` - throw (exception handling)
+
+#### Historical Issue: Opcode 0x15 Regression
+
+A critical regression was introduced in commit `d7dec5c` that incorrectly rejected opcode 0x15 (sub instruction), causing Zork I and other commercial games to fail with "Invalid Long form opcode 0x15" errors. The issue was caused by implementing overly restrictive validation that assumed opcodes only went up to 0x14 (add).
+
+**Root Cause:** The Z-Machine specification defines fundamental arithmetic operations in opcodes 0x14-0x18 (add, sub, mul, div, mod), but the validation code incorrectly limited the range to 0x01-0x14.
+
+**Resolution:** Updated validation to accept the correct range 0x01-0x1C, ensuring all fundamental Z-Machine operations are properly supported.
+
+**Testing:** The fix was validated by successfully running Zork I (`/Users/cb/Projects/infocom-testing-old/infocom/resources/test/zork1/DATA/ZORK1.DAT`), confirming compatibility with commercial Infocom games.
+
+#### Validation Architecture
+
+The decoder performs form-specific validation:
+
+1. **Long Form (2OP)**: Validates opcodes 0x01-0x1C
+2. **Short Form (1OP/0OP)**: Uses different opcode spaces
+3. **Variable Form (VAR)**: Extended opcode validation for multi-operand instructions
+4. **Extended Form (EXT)**: v5+ extended instruction set
+
+This layered validation ensures that instruction decoding failures are caught early with descriptive error messages, preventing silent corruption or undefined behavior during game execution.
+
 ## Core Components Deep Dive
 
 ### 1. Game Loading and Version Detection

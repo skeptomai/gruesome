@@ -11,3 +11,4 @@ debug.log
 
 # Claude Code settings
 .claude/settings.local.json
+pkg/
