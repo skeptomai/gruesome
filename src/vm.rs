@@ -959,11 +959,8 @@ impl VM {
         }
 
         // Attributes are in the first bytes of the object entry
-        // Z-Machine uses big-endian attribute storage:
-        // Byte 0: attrs 31-24, Byte 1: attrs 23-16, Byte 2: attrs 15-8, Byte 3: attrs 7-0
-        let attr_bytes_total = if self.game.header.version <= 3 { 4 } else { 6 };
-        let attr_byte = (attr_bytes_total - 1) - (attr_num / 8);
-        let attr_bit = attr_num % 8; // Bit position within the byte (0=LSB, 7=MSB)
+        let attr_byte = attr_num / 8;
+        let attr_bit = 7 - (attr_num % 8); // Attributes are numbered from high bit to low bit
 
         let byte_val = self.game.memory[obj_addr + attr_byte as usize];
         let is_set = (byte_val & (1 << attr_bit)) != 0;
@@ -1023,11 +1020,8 @@ impl VM {
         }
 
         // Attributes are in the first bytes of the object entry
-        // Z-Machine uses big-endian attribute storage:
-        // Byte 0: attrs 31-24, Byte 1: attrs 23-16, Byte 2: attrs 15-8, Byte 3: attrs 7-0
-        let attr_bytes_total = if self.game.header.version <= 3 { 4 } else { 6 };
-        let attr_byte = (attr_bytes_total - 1) - (attr_num / 8);
-        let attr_bit = attr_num % 8; // Bit position within the byte (0=LSB, 7=MSB)
+        let attr_byte = attr_num / 8;
+        let attr_bit = 7 - (attr_num % 8); // Attributes are numbered from high bit to low bit
 
         let byte_val = self.game.memory[obj_addr + attr_byte as usize];
         let new_byte = if value {
