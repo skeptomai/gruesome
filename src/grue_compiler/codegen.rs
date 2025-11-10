@@ -2754,29 +2754,29 @@ impl ZMachineCodeGen {
                             });
                     }
 
-                    // Load word 2 dictionary address from parse buffer offset 5
+                    // Load word 1 dictionary address from parse buffer offset 3
                     debug!(
-                        "🔍 LITERAL_LOAD_WORD2: Loading word 2 dictionary address for literal '{}'",
+                        "🔍 LITERAL_LOAD_WORD1: Loading word 1 dictionary address for literal '{}'",
                         literal_word
                     );
                     self.emit_instruction_typed(
                         Opcode::Op2(Op2::Loadw),
                         &[
                             Operand::Variable(PARSE_BUFFER_GLOBAL),
-                            Operand::SmallConstant(5), // Word 2 dict addr at offset 5 (word offset, not byte)
+                            Operand::SmallConstant(3), // Word 1 dict addr at offset 3 (word offset, not byte)
                         ],
                         Some(7), // Store in local variable 7 (temporary for grammar operations)
                         None,
                     )?;
-                    debug!("🔍 LITERAL_LOAD_WORD2_COMPLETE: Stored word 2 in Variable(7) for literal '{}'", literal_word);
+                    debug!("🔍 LITERAL_LOAD_WORD1_COMPLETE: Stored word 1 in Variable(7) for literal '{}'", literal_word);
 
-                    // Compare word 2 with literal dictionary address
+                    // Compare word 1 with literal dictionary address
                     debug!(
-                        "🔍 LITERAL_COMPARE: Comparing word 2 with literal '{}'",
+                        "🔍 LITERAL_COMPARE: Comparing word 1 with literal '{}'",
                         literal_word
                     );
                     debug!("🔍 LITERAL_COMPARE_SETUP: About to emit JE instruction at code_address=0x{:04x}", self.code_address);
-                    debug!("🔍 LITERAL_COMPARE_DETAILS: Will compare Variable(7) [word 2] against literal '{}' dictionary address", literal_word);
+                    debug!("🔍 LITERAL_COMPARE_DETAILS: Will compare Variable(7) [word 1] against literal '{}' dictionary address", literal_word);
                     let dict_ref_operand = Operand::LargeConstant(placeholder_word());
                     let layout = self.emit_instruction_typed(
                         Opcode::Op2(Op2::Je),

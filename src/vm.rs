@@ -478,7 +478,7 @@ impl VM {
             };
             // Show call stack depth to distinguish frames
             let stack_depth = self.call_stack.len();
-            log::error!(
+            log::debug!(
                 "🔧 WRITE_VAR_2: value=0x{:04x} ({}), PC=0x{:04x}, frame_depth={}, inst_bytes={:02x?}",
                 value,
                 value,
@@ -513,7 +513,7 @@ impl VM {
         // Log writes to Variable 3 (literal pattern debugging)
         if var == 3 {
             let stack_depth = self.call_stack.len();
-            log::error!(
+            log::debug!(
                 "🔧 WRITE_VAR_3: value=0x{:04x} ({}), PC=0x{:04x}, frame_depth={}",
                 value,
                 value,
@@ -1219,12 +1219,12 @@ impl VM {
             }
 
             // ENHANCED DEBUGGING: Show where this insert_obj(0) came from
-            log::error!(
+            log::warn!(
                 "🚨 VM_INSERT_OBJ_ZERO: insert_object(obj=0, dest={}) called at PC=0x{:04x}",
                 dest_num,
                 self.pc
             );
-            log::error!(
+            log::warn!(
                 "🔍 VM_CONTEXT: Variables: 1={}, 2={}, 3={}",
                 self.read_variable(1).unwrap_or(999),
                 self.read_variable(2).unwrap_or(999),
@@ -1234,7 +1234,7 @@ impl VM {
             // Show raw bytes at PC to understand what instruction this was
             let pc_addr = self.pc as usize;
             if pc_addr + 5 < self.game.memory.len() {
-                log::error!(
+                log::warn!(
                     "🔍 VM_BYTES_AT_PC: [{:02x} {:02x} {:02x} {:02x} {:02x}] at PC=0x{:04x}",
                     self.game.memory[pc_addr],
                     self.game.memory[pc_addr + 1],

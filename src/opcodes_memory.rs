@@ -68,7 +68,7 @@ impl Interpreter {
                 let value = self.vm.read_word(addr);
 
                 // Parse buffer debugging: Log ALL loadw operations to debug pattern matching
-                log::error!(
+                log::debug!(
                     "📋 ALL_LOADW: base=0x{:04x}, offset={}, addr=0x{:04x}, value=0x{:04x} ({})",
                     operands[0],
                     operands[1],

@@ -273,14 +273,14 @@ impl Interpreter {
                 );
 
                 // ENHANCED DEBUGGING: Track exact PC and instruction location
-                log::error!("🔧 INSERT_OBJ_HANDLER: Called with PC=0x{:04x}, current_pc=0x{:04x}, size={}, obj={}, dest={}",
+                log::debug!("🔧 INSERT_OBJ_HANDLER: Called with PC=0x{:04x}, current_pc=0x{:04x}, size={}, obj={}, dest={}",
                     self.vm.pc, current_pc, inst.size, operands[0], operands[1]
                 );
 
                 // Show bytes at the calculated instruction location
                 let inst_addr = current_pc as usize;
                 if inst_addr + 5 < self.vm.game.memory.len() {
-                    log::error!("🔍 INSERT_OBJ_ACTUAL_BYTES: [{:02x} {:02x} {:02x} {:02x} {:02x}] at calculated PC=0x{:04x}",
+                    log::debug!("🔍 INSERT_OBJ_ACTUAL_BYTES: [{:02x} {:02x} {:02x} {:02x} {:02x}] at calculated PC=0x{:04x}",
                         self.vm.game.memory[inst_addr],
                         self.vm.game.memory[inst_addr + 1],
                         self.vm.game.memory[inst_addr + 2],
@@ -295,7 +295,7 @@ impl Interpreter {
                     debug!(" instruction: {:?}", inst);
 
                     // Enhanced debugging for object 0 issue
-                    log::error!("🚨 INSERT_OBJ_ZERO: PC=0x{:04x}, obj={}, dest={}, Variables: 1={}, 2={}, 3={}",
+                    log::warn!("🚨 INSERT_OBJ_ZERO: PC=0x{:04x}, obj={}, dest={}, Variables: 1={}, 2={}, 3={}",
                         self.vm.pc,
                         operands[0],
                         operands[1],
@@ -305,7 +305,7 @@ impl Interpreter {
                     );
 
                     // Show the exact instruction details
-                    log::error!("🔍 INSERT_OBJ_INSTRUCTION: opcode=0x{:02x}, operand_count={:?}, operand_types={:?}, size={}",
+                    log::debug!("🔍 INSERT_OBJ_INSTRUCTION: opcode=0x{:02x}, operand_count={:?}, operand_types={:?}, size={}",
                         inst.opcode,
                         inst.operand_count,
                         inst.operand_types,
@@ -315,7 +315,7 @@ impl Interpreter {
                     // Show raw bytes at PC
                     let pc_addr = self.vm.pc as usize;
                     if pc_addr + 5 < self.vm.game.memory.len() {
-                        log::error!("🔍 INSERT_OBJ_BYTES: [{:02x} {:02x} {:02x} {:02x} {:02x}] at PC=0x{:04x}",
+                        log::debug!("🔍 INSERT_OBJ_BYTES: [{:02x} {:02x} {:02x} {:02x} {:02x}] at PC=0x{:04x}",
                             self.vm.game.memory[pc_addr],
                             self.vm.game.memory[pc_addr + 1],
                             self.vm.game.memory[pc_addr + 2],
@@ -327,7 +327,7 @@ impl Interpreter {
 
                     // Check if we're in literal pattern context
                     if self.vm.read_variable(1).unwrap_or(0) == 2 {
-                        log::error!("🚨 INSERT_OBJ_LITERAL_CONTEXT: This appears to be during literal pattern execution!");
+                        log::warn!("🚨 INSERT_OBJ_LITERAL_CONTEXT: This appears to be during literal pattern execution!");
                     }
                 }
                 self.vm.insert_object(operands[0], operands[1])?;

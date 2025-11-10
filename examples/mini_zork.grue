@@ -380,7 +380,7 @@ fn handle_take(obj) {
 
 fn handle_take(leaflet){
     clear_quit_state();
-    player.score = player.score + 2;
+
     if leaflet.location == player {
         println("You already have that.");
         return;
@@ -390,7 +390,10 @@ fn handle_take(leaflet){
         println("You can't see any such thing.");
         return;
     }
+
     move(leaflet, player);
+    player.score = player.score + 2;
+
     println("Took leaflet.");
 }
 
@@ -407,6 +410,8 @@ fn handle_take(egg){
     }
 
     move(egg, player);
+    player.score = player.score + 5;
+
     println("You are the proud owner of a very special egg.. Is it ticking?");
 }
 
@@ -478,13 +483,15 @@ fn handle_go(direction) {
 }
 
 fn handle_climb(obj) {
-    if (obj == tree) {
-        if (player.location == forest_path) {
-            handle_go("up");
-            player.score = player.score + 5;
-        }
-    } else {
-        println("You can't climb that.");
+    if (player.location == forest_path) {
+        handle_climb(tree);
+    }
+    println("You can't climb that.");
+}
+
+fn handle_climb(tree){
+    if (player.location == forest_path) {
+        handle_go("up");
     }
 }
 
@@ -502,7 +509,7 @@ fn handle_read(obj) {
 }
 
 fn handle_quit() {
-    println("Are you sure you want to quit? (y/n)");
+    print("Are you sure you want to quit? (y/n) ");
     player.quit_pending = true;
 }
 

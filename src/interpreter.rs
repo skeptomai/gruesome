@@ -1182,7 +1182,7 @@ impl Interpreter {
                     });
 
                 // DEBUG: Log all je comparisons for debugging literal patterns
-                log::error!(
+                log::debug!(
                     "🔍 JE_ALL: PC=0x{:04x}, op1=0x{:04x}({}), op2=0x{:04x}({})",
                     pc,
                     op1,
@@ -1193,7 +1193,7 @@ impl Interpreter {
 
                 // Special debug for literal pattern matching
                 if op1 == 0x0a04 || op2 == 0x0a04 {
-                    log::error!("🔥 LITERAL_AROUND_MATCH: PC=0x{:04x}, comparing literal 'around' (0x0a04) - op1=0x{:04x}, op2=0x{:04x}", pc, op1, op2);
+                    log::debug!("🔥 LITERAL_AROUND_MATCH: PC=0x{:04x}, comparing literal 'around' (0x0a04) - op1=0x{:04x}, op2=0x{:04x}", pc, op1, op2);
                 }
 
                 // Check if these are dictionary addresses and decode to strings
@@ -1202,14 +1202,14 @@ impl Interpreter {
 
                 // Detect literal pattern checks
                 if op2 == 2 {
-                    log::error!("🔥 LITERAL_WORDCOUNT_CHECK_RUNTIME: PC=0x{:04x}, checking if word count ({}) == 2", pc, op1);
+                    log::debug!("🔥 LITERAL_WORDCOUNT_CHECK_RUNTIME: PC=0x{:04x}, checking if word count ({}) == 2", pc, op1);
                 } else if op1_string.is_some() && op2_string.is_some() {
-                    log::error!("🔥 LITERAL_WORD_MATCH_RUNTIME: PC=0x{:04x}, comparing literal words for pattern matching", pc);
+                    log::debug!("🔥 LITERAL_WORD_MATCH_RUNTIME: PC=0x{:04x}, comparing literal words for pattern matching", pc);
                 }
 
                 if op1_string.is_some() || op2_string.is_some() {
-                    // TEMP DEBUG: Changed to error level to debug literal pattern matching
-                    log::error!(
+                    // DEBUG: Dictionary comparison logging for pattern matching analysis
+                    log::debug!(
                         "🔤 DICT_COMPARE at PC=0x{:04x}: \"{}\" vs \"{}\" (0x{:04x} vs 0x{:04x})",
                         pc,
                         op1_string.unwrap_or_else(|| format!("0x{:04x}", op1)),
@@ -1594,7 +1594,7 @@ impl Interpreter {
 
                 // Debug output for verb matching area (grammar pattern matching)
                 if pc >= 0x15de && pc <= 0x19ff {
-                    eprintln!(
+                    log::debug!(
                         "🔍 JE at PC=0x{:04x}: comparing {:04x} against {:?}",
                         pc,
                         operands[0],
@@ -1623,7 +1623,7 @@ impl Interpreter {
 
                 // Debug output for verb matching area
                 if pc >= 0x15de && pc <= 0x19ff {
-                    eprintln!(
+                    log::debug!(
                         "🔍 JE result: condition={}, will_branch={}",
                         condition,
                         inst.branch
@@ -1691,7 +1691,7 @@ impl Interpreter {
                 );
 
                 // Special debug logging for all function calls to track parameter differences
-                log::error!(
+                log::debug!(
                     "🔍 ALL_FUNCTION_CALL: PC=0x{:04x}, routine_addr=0x{:04x}, arg_count={}, args={:?}",
                     self.vm.pc,
                     routine_addr,
@@ -1702,7 +1702,7 @@ impl Interpreter {
                 // Special tracking for look_around function calls to debug literal pattern issue
                 if routine_addr == 0x1a82 {
                     // look_around function address (approximate)
-                    log::error!(
+                    log::debug!(
                         "🔍 LOOK_AROUND_CALL: Called at PC=0x{:04x}, Var2={}, Var3={}",
                         self.vm.pc,
                         self.vm.read_variable(2).unwrap_or(999),
