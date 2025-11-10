@@ -642,8 +642,12 @@ impl VM {
         let size_byte = self.game.memory[prop_addr];
 
         if self.game.header.version <= 3 {
-            // V1-3: prop num in bottom 5 bits, size in top 3 bits
-            // All Infocom V3 games (Zork I, etc.) use single-byte format only
+            // V1-3: SINGLE-BYTE FORMAT ONLY per Z-Machine spec Section 12.4.1
+            // Property number in bottom 5 bits, size in top 3 bits
+            // Formula: size = ((size_byte >> 5) & 0x07) + 1 (max 8 bytes)
+            //
+            // CRITICAL: All Infocom V3 games (Zork I, etc.) use only this format
+            // Never use V4+ two-byte format logic here - breaks commercial games!
             let prop_num = size_byte & 0x1F;
             let prop_size = ((size_byte >> 5) & 0x07) + 1;
             Ok((prop_num, prop_size as usize, 1))
