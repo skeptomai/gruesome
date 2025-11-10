@@ -52,6 +52,7 @@ pub enum TokenKind {
     Player,
     Location,
     Mode,
+    Messages,
 
     // Symbols
     LeftBrace,    // {
@@ -500,6 +501,7 @@ impl Lexer {
             "player" => TokenKind::Player,
             "location" => TokenKind::Location,
             "mode" => TokenKind::Mode,
+            "messages" => TokenKind::Messages,
             _ => TokenKind::Identifier(identifier),
         }
     }

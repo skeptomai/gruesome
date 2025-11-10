@@ -1,0 +1,12 @@
+// Phase 5 test: No messages block (should use defaults)
+
+world {
+    room test_room "Test Room" {
+        desc: "A test room with no custom messages - should use defaults."
+    }
+}
+
+init {
+    player.location = test_room;
+    println("Phase 5 test - should use default builtin messages");
+}

@@ -354,6 +354,9 @@ pub struct ZMachineCodeGen {
     /// Set of IR IDs that represent function call results stored in Variable(0)
     /// Phase 1: Track function calls that store results to Variable(0) for proper consumption
     pub function_call_results: IndexSet<IrId>,
+    /// System messages for localization support
+    /// Maps message keys to their localized text with fallback handling
+    pub system_messages: IndexMap<String, String>,
 }
 
 impl ZMachineCodeGen {
@@ -457,7 +460,23 @@ impl ZMachineCodeGen {
             push_pull_ir_ids: IndexSet::new(),
             pulled_ir_id_to_global: IndexMap::new(),
             function_call_results: IndexSet::new(),
+            system_messages: IndexMap::new(),
         }
+    }
+
+    /// Initialize system messages from IR for builtin function access
+    /// Called during codegen setup to copy messages from IR to local storage
+    pub fn initialize_system_messages(&mut self, ir: &IrProgram) {
+        self.system_messages = ir.system_messages.clone();
+    }
+
+    /// Get system message with fallback - internal version for builtin functions
+    /// Uses the local system_messages field populated from IR during initialization
+    pub fn get_builtin_message(&self, key: &str, fallback: &str) -> String {
+        self.system_messages
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| fallback.to_string())
     }
 
     /// Allocate a unique global variable for an IR ID
@@ -3012,7 +3031,7 @@ impl ZMachineCodeGen {
 
                         // Generate unique label IDs for this literal pattern (use range 80000-89999 for literals)
                         let unique_seed = (self.code_address * 13) % 9999;
-                        let literal_handler_label = (80000 + unique_seed) as u32;
+                        let _literal_handler_label = (80000 + unique_seed) as u32;
                         let skip_literal_label = (81000 + unique_seed) as u32;
 
                         // Compare word 1 from parse buffer with literal word dictionary address
@@ -3902,7 +3921,7 @@ impl ZMachineCodeGen {
             function.name,
             function.parameters.len()
         );
-        for (param_index, parameter) in function.parameters.iter().enumerate() {
+        for (_param_index, parameter) in function.parameters.iter().enumerate() {
             self.ir_id_to_local_var
                 .insert(parameter.ir_id, parameter.slot);
             log::debug!(

@@ -52,6 +52,16 @@ impl Program {
             ProgramMode::Script
         }
     }
+
+    pub fn get_messages(&self) -> Option<&MessagesDecl> {
+        self.items.iter().find_map(|item| {
+            if let Item::Messages(messages) = item {
+                Some(messages)
+            } else {
+                None
+            }
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -61,6 +71,7 @@ pub enum Item {
     Function(FunctionDecl),
     Init(InitDecl),
     Mode(ModeDecl),
+    Messages(MessagesDecl),
 }
 
 // Program mode declaration
@@ -74,6 +85,15 @@ pub enum ProgramMode {
     Script,      // init → quit
     Interactive, // init → auto main loop
     Custom,      // init → call main()
+}
+
+/// Messages declaration for localization support
+/// Allows game developers to customize system messages like prompts and error messages
+/// for internationalization. Uses IndexMap for stable iteration order.
+#[derive(Debug, Clone)]
+pub struct MessagesDecl {
+    /// Key-value pairs mapping message identifiers to localized strings
+    pub messages: IndexMap<String, String>,
 }
 
 // World declarations

@@ -1,0 +1,20 @@
+// Phase 5 test: Builtin function message integration
+
+messages {
+    builtin_object_list_placeholder: "Custom object list placeholder",
+    builtin_contents_list_placeholder: "Custom contents placeholder",
+    builtin_random_result_placeholder: "Custom random result",
+    builtin_text_placeholder: "CUSTOM_TEXT",
+    builtin_replace_placeholder: "Custom Hello World"
+}
+
+world {
+    room test_room "Test Room" {
+        desc: "A test room for builtin function message integration."
+    }
+}
+
+init {
+    player.location = test_room;
+    println("Phase 5 test - builtin function message integration");
+}

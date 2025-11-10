@@ -37,6 +37,9 @@ impl ZMachineCodeGen {
         CodeGenUtils::log_ir_inventory(&ir);
         CodeGenUtils::validate_ir_input(&ir)?;
 
+        // Phase 0.5: Initialize system messages for builtin functions
+        self.initialize_system_messages(&ir);
+
         // Phase 1: Analyze and prepare all content
         log::info!("Phase 1: Content analysis and preparation");
         self.layout_memory_structures(&ir)?; // CRITICAL: Plan memory layout before generation
@@ -46,7 +49,7 @@ impl ZMachineCodeGen {
         self.setup_ir_id_to_object_mapping(&ir)?;
         self.analyze_properties(&ir)?;
         self.collect_strings(&ir)?;
-        let (prompt_id, unknown_command_id) = self.add_main_loop_strings()?;
+        let (prompt_id, unknown_command_id) = self.add_main_loop_strings(&ir)?;
         self.main_loop_prompt_id = Some(prompt_id);
         self.main_loop_unknown_command_id = Some(unknown_command_id);
         self.encode_all_strings()?;

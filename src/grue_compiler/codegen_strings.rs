@@ -126,18 +126,34 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Add main loop strings to the collection and return their IDs
-    pub fn add_main_loop_strings(&mut self) -> Result<(IrId, IrId), CompilerError> {
-        // Add specific strings needed for main loop functionality
-        // Allocate dynamically after all other strings to avoid conflicts
-        let prompt_id = self.find_or_create_string_id("> ")?;
-        debug!("🎯 Allocated main loop prompt string ID: {}", prompt_id);
+    /// Get system message text with fallback to default
+    /// Used for localization support - checks IR system_messages first, then uses fallback
+    pub fn get_system_message(ir: &IrProgram, key: &str, fallback: &str) -> String {
+        ir.system_messages
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| fallback.to_string())
+    }
 
-        // Also add the "I don't understand" string for command processing
-        let unknown_command_id = self.find_or_create_string_id("I don't understand that.\n")?;
+    /// Add main loop strings to the collection and return their IDs
+    pub fn add_main_loop_strings(&mut self, ir: &IrProgram) -> Result<(IrId, IrId), CompilerError> {
+        // Add specific strings needed for main loop functionality
+        // Look up from game source with fallbacks for localization support
+        let prompt_text = Self::get_system_message(ir, "prompt", "> ");
+        let unknown_command_text =
+            Self::get_system_message(ir, "unknown_command", "I don't understand that.\n");
+
+        // Allocate dynamically after all other strings to avoid conflicts
+        let prompt_id = self.find_or_create_string_id(&prompt_text)?;
         debug!(
-            "🎯 Allocated unknown command string ID: {}",
-            unknown_command_id
+            "🎯 Allocated main loop prompt string: '{}' -> ID {}",
+            prompt_text, prompt_id
+        );
+
+        let unknown_command_id = self.find_or_create_string_id(&unknown_command_text)?;
+        debug!(
+            "🎯 Allocated unknown command string: '{}' -> ID {}",
+            unknown_command_text, unknown_command_id
         );
 
         Ok((prompt_id, unknown_command_id))

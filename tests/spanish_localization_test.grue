@@ -1,0 +1,53 @@
+// Spanish Localization Example - Demonstrates international message support
+// Note: Using ASCII characters for Z-Machine compatibility
+
+messages {
+    // Spanish system messages
+    prompt: "Comando: ",
+    unknown_command: "Lo siento, no entiendo ese comando. Escriba 'ayuda' para asistencia.\n",
+
+    // Spanish builtin messages
+    builtin_object_list_placeholder: "[Lista de Objetos Personalizada]",
+    builtin_contents_list_placeholder: "[Lista de Contenidos Personalizada]",
+    builtin_random_result_placeholder: "[Resultado Aleatorio]",
+    builtin_text_placeholder: "TEXTO_ESPANOL",
+    builtin_replace_placeholder: "Texto de Reemplazo"
+}
+
+world {
+    room sala_principal "Sala Principal" {
+        desc: "Estas en una sala de prueba para localizacion en espanol."
+
+        object objeto_prueba {
+            names: ["objeto", "prueba", "cosa"]
+            desc: "Un objeto de prueba para verificar la localizacion en espanol."
+            takeable: true
+        }
+    }
+}
+
+fn ayuda() {
+    println("Comandos disponibles:");
+    println("- mirar: examinar tus alrededores");
+    println("- tomar <objeto>: recoger un objeto");
+    println("- inventario: ver lo que llevas");
+    println("- salir: terminar el juego");
+    println("- test_espanol: probar mensajes personalizados");
+}
+
+fn test_espanol() {
+    println("Prueba de localizacion en espanol...");
+    println("Este juego usa mensajes personalizados en espanol.");
+    println("Nota el formato del prompt y mensajes de error.");
+    println("Escriba un comando invalido para probar el mensaje de error.");
+}
+
+init {
+    player.location = sala_principal;
+    println("JUEGO DE PRUEBA DE LOCALIZACION EN ESPANOL");
+    println("=========================================");
+    println("Este juego demuestra la localizacion en espanol.");
+    println("Todos los mensajes del sistema estan en espanol.");
+    println("Escriba 'ayuda' para comandos o 'test_espanol' para guia.");
+    println("");
+}

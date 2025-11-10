@@ -6,7 +6,7 @@ use crate::grue_compiler::codegen_references::{LegacyReferenceType, UnresolvedRe
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::ir::IrBinaryOp;
 use crate::grue_compiler::ir::IrId;
-use crate::grue_compiler::opcodes::{Op1, Opcode};
+use crate::grue_compiler::opcodes::{Op1, Op2, Opcode};
 
 impl ZMachineCodeGen {
     /// Emit proper Z-Machine conditional branch instruction
@@ -268,8 +268,20 @@ impl ZMachineCodeGen {
         log::debug!("EMIT_COMPARISON_BRANCH: Calling emit_instruction with placeholder=0x{:04x} (branch_on_true={}) at code_address=0x{:04x}",
             placeholder as u16, branch_on_true, self.code_address);
 
-        let layout = self.emit_instruction(
-            opcode,
+        let typed_opcode = match opcode {
+            0x01 => Opcode::Op2(Op2::Je), // jump if equal
+            0x02 => Opcode::Op2(Op2::Jl), // jump if less
+            0x03 => Opcode::Op2(Op2::Jg), // jump if greater
+            _ => {
+                return Err(CompilerError::CodeGenError(format!(
+                    "Unsupported comparison opcode: 0x{:02x}",
+                    opcode
+                )))
+            }
+        };
+
+        let layout = self.emit_instruction_typed(
+            typed_opcode,
             operands,
             None,              // No store
             Some(placeholder), // Placeholder encodes branch polarity

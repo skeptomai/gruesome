@@ -1,0 +1,53 @@
+// French Localization Example - Demonstrates international message support
+// Note: Using ASCII characters for Z-Machine compatibility
+
+messages {
+    // French system messages
+    prompt: "Commande: ",
+    unknown_command: "Desolé, je ne comprends pas cette commande. Tapez 'aide' pour assistance.\n",
+
+    // French builtin messages
+    builtin_object_list_placeholder: "[Liste des Objets Personnalisee]",
+    builtin_contents_list_placeholder: "[Liste du Contenu Personnalisee]",
+    builtin_random_result_placeholder: "[Resultat Aleatoire]",
+    builtin_text_placeholder: "TEXTE_FRANCAIS",
+    builtin_replace_placeholder: "Texte de Remplacement"
+}
+
+world {
+    room salle_principale "Salle Principale" {
+        desc: "Vous etes dans une salle de test pour la localisation francaise."
+
+        object objet_test {
+            names: ["objet", "test", "chose"]
+            desc: "Un objet de test pour verifier la localisation francaise."
+            takeable: true
+        }
+    }
+}
+
+fn aide() {
+    println("Commandes disponibles:");
+    println("- regarder: examiner vos alentours");
+    println("- prendre <objet>: ramasser un objet");
+    println("- inventaire: voir ce que vous portez");
+    println("- quitter: sortir du jeu");
+    println("- test_francais: tester les messages personnalises");
+}
+
+fn test_francais() {
+    println("Test de localisation francaise...");
+    println("Ce jeu utilise des messages personnalises en francais.");
+    println("Remarquez le format de l'invite et les messages d'erreur.");
+    println("Tapez une commande invalide pour tester le message d'erreur.");
+}
+
+init {
+    player.location = salle_principale;
+    println("JEU DE TEST DE LOCALISATION FRANCAISE");
+    println("=====================================");
+    println("Ce jeu demontre la localisation en francais.");
+    println("Tous les messages systeme sont en francais.");
+    println("Tapez 'aide' pour voir les commandes ou 'test_francais' pour guidance.");
+    println("");
+}

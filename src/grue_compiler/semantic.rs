@@ -335,6 +335,11 @@ impl SemanticAnalyzer {
                 Item::Mode(_) => {
                     // Mode declarations don't create symbols in the global scope
                 }
+
+                Item::Messages(_) => {
+                    // Messages declarations don't create symbols in the global scope
+                    // Message validation will be handled in analyze_item phase
+                }
             }
         }
 
@@ -395,6 +400,11 @@ impl SemanticAnalyzer {
                 // Mode declarations are handled during program mode detection
                 // No additional semantic analysis needed
             }
+
+            Item::Messages(messages) => {
+                // Validate message keys and values
+                self.analyze_messages(messages)?;
+            }
         }
 
         Ok(())
@@ -436,6 +446,37 @@ impl SemanticAnalyzer {
 
         // Exit function scope
         self.pop_scope();
+
+        Ok(())
+    }
+
+    fn analyze_messages(&mut self, messages: &mut MessagesDecl) -> Result<(), CompilerError> {
+        // Validate message keys and values
+        for (key, value) in &messages.messages {
+            // Validate key format (simple identifier validation)
+            if key.is_empty() {
+                return Err(CompilerError::SemanticError(
+                    "Message key cannot be empty".to_string(),
+                    0,
+                ));
+            }
+
+            // Check for valid identifier characters
+            if !key.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                return Err(CompilerError::SemanticError(
+                    format!("Invalid message key '{}': keys must contain only alphanumeric characters and underscores", key),
+                    0,
+                ));
+            }
+
+            // Validate value (must be non-empty string)
+            if value.is_empty() {
+                return Err(CompilerError::SemanticError(
+                    format!("Message value for key '{}' cannot be empty", key),
+                    0,
+                ));
+            }
+        }
 
         Ok(())
     }

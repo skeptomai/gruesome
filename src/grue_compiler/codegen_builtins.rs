@@ -1037,9 +1037,10 @@ impl ZMachineCodeGen {
         }
 
         // TODO: Implement object iteration and display logic
-        // For now, print placeholder message
-        let placeholder_str = "[OBJECT_LIST]";
-        let string_id = self.find_or_create_string_id(placeholder_str)?;
+        // For now, print placeholder message from message system
+        let placeholder_str =
+            self.get_builtin_message("builtin_object_list_placeholder", "[OBJECT_LIST]");
+        let string_id = self.find_or_create_string_id(&placeholder_str)?;
 
         let layout = self.emit_instruction_typed(
             PRINTPADDR,
@@ -1074,9 +1075,10 @@ impl ZMachineCodeGen {
         }
 
         // TODO: Implement container contents iteration and display
-        // For now, print placeholder message
-        let placeholder_str = "[CONTENTS_LIST]";
-        let string_id = self.find_or_create_string_id(placeholder_str)?;
+        // For now, print placeholder message from message system
+        let placeholder_str =
+            self.get_builtin_message("builtin_contents_list_placeholder", "[CONTENTS_LIST]");
+        let string_id = self.find_or_create_string_id(&placeholder_str)?;
 
         let layout = self.emit_instruction_typed(
             PRINTPADDR,
@@ -1161,9 +1163,9 @@ impl ZMachineCodeGen {
         if let Some(target_id) = target {
             // Register that this target contains a numeric value
             // For string concatenation, we'd need to convert this to string
-            let placeholder_str = "[RANDOM_RESULT]";
-            self.ir_id_to_string
-                .insert(target_id, placeholder_str.to_string());
+            let placeholder_str =
+                self.get_builtin_message("builtin_random_result_placeholder", "[RANDOM_RESULT]");
+            self.ir_id_to_string.insert(target_id, placeholder_str);
         }
 
         log::debug!("Generated RANDOM instruction successfully");
@@ -2266,9 +2268,11 @@ impl ZMachineCodeGen {
 
         // For now, return input string unchanged as a safe default
         if let Some(target_id) = target {
-            self.ir_id_to_string.insert(target_id, "TEXT".to_string());
+            let placeholder_str = self.get_builtin_message("builtin_text_placeholder", "TEXT");
+            self.ir_id_to_string
+                .insert(target_id, placeholder_str.clone());
             self.constant_values
-                .insert(target_id, ConstantValue::String("TEXT".to_string()));
+                .insert(target_id, ConstantValue::String(placeholder_str));
         }
 
         Ok(())
@@ -2341,12 +2345,12 @@ impl ZMachineCodeGen {
 
         // For now, return original string as a safe default
         if let Some(target_id) = target {
+            let placeholder_str =
+                self.get_builtin_message("builtin_replace_placeholder", "Hello Universe");
             self.ir_id_to_string
-                .insert(target_id, "Hello Universe".to_string());
-            self.constant_values.insert(
-                target_id,
-                ConstantValue::String("Hello Universe".to_string()),
-            );
+                .insert(target_id, placeholder_str.clone());
+            self.constant_values
+                .insert(target_id, ConstantValue::String(placeholder_str));
         }
 
         Ok(())

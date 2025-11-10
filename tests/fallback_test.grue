@@ -1,0 +1,32 @@
+// Phase 6: Fallback Behavior Test Game
+// Tests system behavior when NO custom messages are defined - should use defaults
+
+world {
+    room test_room "Fallback Test Room" {
+        desc: "This room tests fallback behavior. No custom messages defined."
+
+        object test_item {
+            names: ["item", "test"]
+            desc: "A test item to verify default behavior."
+            takeable: true
+        }
+    }
+}
+
+fn test_defaults() {
+    println("Testing fallback behavior...");
+    println("This game has NO messages block.");
+    println("All system messages should use the default values.");
+    println("Try an invalid command to see the default error message.");
+    println("Check that the prompt shows the default format.");
+}
+
+init {
+    player.location = test_room;
+    println("FALLBACK BEHAVIOR TEST");
+    println("====================");
+    println("This game has no custom messages defined.");
+    println("Should use default prompt and error messages.");
+    println("Type 'test_defaults' for guidance.");
+    println("");
+}

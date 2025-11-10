@@ -105,6 +105,9 @@ pub struct IrProgram {
     pub property_manager: PropertyManager,
     /// Expression type information for StringAddress system
     pub expression_types: IndexMap<IrId, Type>,
+    /// System messages catalog for localization support
+    /// Maps message keys to localized text (e.g., "no_understand" -> "I don't understand that.")
+    pub system_messages: IndexMap<String, String>,
 }
 
 impl IrProgram {
@@ -962,6 +965,7 @@ impl IrProgram {
             id_registry: IrIdRegistry::new(), // NEW: Initialize ID registry
             property_manager: PropertyManager::new(), // Initialize property manager
             expression_types: IndexMap::new(), // NEW: Initialize expression types for StringAddress system
+            system_messages: IndexMap::new(),  // NEW: Initialize system messages catalog
         }
     }
 
@@ -1332,7 +1336,7 @@ impl IrGenerator {
         };
 
         let mut instructions = Vec::new();
-        let mut label_counter = 0;
+        let mut _label_counter = 0;
 
         // Sort overloads by priority (specific objects first)
         let mut sorted_overloads = overloads.to_vec();
@@ -1341,8 +1345,8 @@ impl IrGenerator {
         // Generate object ID checks for specific objects
         for overload in &sorted_overloads {
             if let ObjectSpecialization::SpecificObject(obj_name) = &overload.specialization {
-                if let Some(&obj_number) = self.object_numbers.get(obj_name) {
-                    label_counter += 1;
+                if let Some(&_obj_number) = self.object_numbers.get(obj_name) {
+                    _label_counter += 1;
                     let match_label = self.next_id();
                     let continue_label = self.next_id();
 
@@ -1771,6 +1775,14 @@ impl IrGenerator {
             Item::Mode(_mode) => {
                 // Mode declarations are handled during program mode detection in generate()
                 // No IR generation needed for the mode declaration itself
+            }
+            Item::Messages(messages) => {
+                // Process system messages catalog for localization support
+                for (key, value) in &messages.messages {
+                    ir_program
+                        .system_messages
+                        .insert(key.clone(), value.clone());
+                }
             }
         }
 
@@ -3571,7 +3583,7 @@ impl IrGenerator {
                 arguments,
             } => {
                 // Check if this is an array method call before moving the object
-                let is_array = self.is_array_type(&object);
+                let _is_array = self.is_array_type(&object);
 
                 // Generate object expression
                 let object_temp = self.generate_expression(*object, block)?;

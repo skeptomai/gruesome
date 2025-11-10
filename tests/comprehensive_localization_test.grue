@@ -1,0 +1,82 @@
+// Phase 6: Comprehensive Localization Test Game
+// Tests all message system functionality with real gameplay scenarios
+
+messages {
+    // Core system messages
+    prompt: "Enter command: ",
+    unknown_command: "Sorry, I don't recognize that command. Try 'help' for assistance.\n",
+
+    // Builtin function messages (for future use)
+    builtin_object_list_placeholder: "[Custom Object List Display]",
+    builtin_contents_list_placeholder: "[Custom Contents List Display]",
+    builtin_random_result_placeholder: "[Custom Random Result]",
+    builtin_text_placeholder: "CUSTOM_TEXT_PROCESSED",
+    builtin_replace_placeholder: "Custom Text Replacement"
+}
+
+world {
+    room start_room "Test Chamber" {
+        desc: "You are in a testing chamber designed to validate the localization system. There's a door to the north and various test objects here."
+
+        exits: {
+            north: test_room
+        }
+
+        object test_item {
+            names: ["item", "test", "object"]
+            desc: "A simple test item for checking object interactions."
+            takeable: true
+        }
+
+        object container_box {
+            names: ["box", "container"]
+            desc: "A test container that can hold items."
+            openable: true
+            container: true
+        }
+    }
+
+    room test_room "Advanced Test Room" {
+        desc: "This room contains more complex test scenarios for the message system."
+
+        exits: {
+            south: start_room
+        }
+
+        object magic_scroll {
+            names: ["scroll", "magic", "paper"]
+            desc: "An ancient scroll with mysterious text."
+            takeable: true
+        }
+    }
+}
+
+// Test functions to trigger various scenarios
+fn help() {
+    println("Available commands:");
+    println("- look: examine your surroundings");
+    println("- take <item>: pick up an item");
+    println("- open <container>: open a container");
+    println("- inventory: see what you're carrying");
+    println("- go <direction>: move around");
+    println("- quit: exit the game");
+    println("- test_messages: test custom error messages");
+}
+
+fn test_messages() {
+    println("Testing various scenarios that should show custom messages...");
+    println("1. Try an unknown command to see custom error message");
+    println("2. Check that prompt shows custom format");
+    println("3. All system messages should use the custom text defined above");
+}
+
+init {
+    player.location = start_room;
+    println("LOCALIZATION TEST GAME STARTED");
+    println("==============================");
+    println("This game tests the complete message localization system.");
+    println("Notice the custom prompt format and try various commands.");
+    println("Type 'help' for available commands or 'test_messages' for guidance.");
+    println("Try invalid commands to test the custom error message system.");
+    println("");
+}

@@ -39,10 +39,11 @@ impl Parser {
             TokenKind::Function => Ok(Item::Function(self.parse_function_decl()?)),
             TokenKind::Init => Ok(Item::Init(self.parse_init_decl()?)),
             TokenKind::Mode => Ok(Item::Mode(self.parse_mode_decl()?)),
+            TokenKind::Messages => Ok(Item::Messages(self.parse_messages_decl()?)),
             _ => {
                 let token = self.peek();
                 Err(CompilerError::ExpectedToken(
-                    "world, grammar, fn, init, or mode".to_string(),
+                    "world, grammar, fn, init, mode, or messages".to_string(),
                     format!("{:?}", token.kind),
                     token.position,
                 ))
@@ -616,6 +617,68 @@ impl Parser {
         };
 
         Ok(ModeDecl { mode })
+    }
+
+    fn parse_messages_decl(&mut self) -> Result<MessagesDecl, CompilerError> {
+        self.consume(TokenKind::Messages, "Expected 'messages'")?;
+        self.consume(TokenKind::LeftBrace, "Expected '{' after 'messages'")?;
+
+        let mut messages = IndexMap::new();
+
+        while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+            // Skip newlines
+            if self.check(&TokenKind::Newline) {
+                self.advance();
+                continue;
+            }
+
+            // Parse key (identifier)
+            let key = match &self.peek().kind {
+                TokenKind::Identifier(name) => {
+                    let key = name.clone();
+                    self.advance();
+                    key
+                }
+                _ => {
+                    let token = self.peek();
+                    return Err(CompilerError::ExpectedToken(
+                        "message key identifier".to_string(),
+                        format!("{:?}", token.kind),
+                        token.position,
+                    ));
+                }
+            };
+
+            self.consume(TokenKind::Colon, "Expected ':' after message key")?;
+
+            // Parse value (string literal)
+            let value = match &self.peek().kind {
+                TokenKind::StringLiteral(text) => {
+                    let value = text.clone();
+                    self.advance();
+                    value
+                }
+                _ => {
+                    let token = self.peek();
+                    return Err(CompilerError::ExpectedToken(
+                        "string literal".to_string(),
+                        format!("{:?}", token.kind),
+                        token.position,
+                    ));
+                }
+            };
+
+            messages.insert(key, value);
+
+            // Optional comma or newline between messages
+            if self.check(&TokenKind::Comma) {
+                self.advance();
+            }
+        }
+
+        self.consume(TokenKind::RightBrace, "Expected '}' after messages block")?;
+
+        Ok(MessagesDecl { messages })
     }
 
     fn parse_block(&mut self) -> Result<BlockStmt, CompilerError> {

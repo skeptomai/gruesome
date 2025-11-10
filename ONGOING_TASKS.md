@@ -1,5 +1,339 @@
 # ONGOING TASKS - PROJECT STATUS
 
+## 🌍 **LOCALIZATION ARCHITECTURE: LIFT HARDCODED STRINGS TO GAME SOURCE** - **PLANNING** (November 10, 2025)
+
+**STATUS**: **COMPREHENSIVE IMPLEMENTATION PLAN COMPLETE** 📋
+
+**OBJECTIVE**: Implement `messages` block system to lift all hardcoded strings (like "I don't understand that") from compiler code to game source level, enabling localization and developer control over all user-facing text.
+
+**ARCHITECTURE OVERVIEW**: Following our localization plan in `docs/LOCALIZATION_PLAN.md`, implement a complete pipeline from game source `messages {}` block through AST → IR → Codegen → Z-Machine execution.
+
+### **IMPLEMENTATION PHASES**
+
+#### **✅ Phase 0: Foundation Analysis**
+**COMPLETED**: Comprehensive localization architecture documented in `docs/LOCALIZATION_PLAN.md` with complete string management pipeline analysis.
+
+#### **🎯 Phase 1: AST Extensions** - **NEXT**
+**OBJECTIVE**: Add `messages` block support to Abstract Syntax Tree
+
+**IMPLEMENTATION**:
+1. **Extend AST Types** (`src/grue_compiler/ast.rs`):
+   ```rust
+   #[derive(Debug, Clone)]
+   pub enum Item {
+       Messages(MessagesDecl), // NEW: System messages
+       // ... existing items
+   }
+
+   #[derive(Debug, Clone)]
+   pub struct MessagesDecl {
+       pub messages: HashMap<String, String>,
+   }
+
+   impl Program {
+       pub fn get_messages(&self) -> Option<&MessagesDecl> {
+           // Implementation to find messages block
+       }
+   }
+   ```
+
+2. **Test Syntax Design**:
+   ```grue
+   messages {
+       prompt: "> ",
+       unknown_command: "I don't understand that.",
+       cant_see_that: "You can't see any such thing.",
+   }
+   ```
+
+**SUCCESS CRITERIA**:
+- ✅ Compile without errors after AST changes
+- ✅ Unit tests for MessagesDecl creation and access
+- ✅ Program.get_messages() returns correct Optional<MessagesDecl>
+
+**TESTING**:
+```bash
+cargo test ast_messages -- --nocapture
+cargo test program_get_messages -- --nocapture
+```
+
+#### **📝 Phase 2: Parser Extensions** ✅ COMPLETED
+**OBJECTIVE**: Parse `messages {}` blocks in .grue source files
+
+**IMPLEMENTATION COMPLETED**:
+1. ✅ **Add Token Recognition** (`src/grue_compiler/lexer.rs`):
+   - Added `Messages` token to `TokenKind` enum
+   - Added "messages" keyword recognition in `keyword_or_identifier()`
+
+2. ✅ **Implemented Parser Method** (`src/grue_compiler/parser.rs`):
+   - Added `Messages` case to `parse_item()` method
+   - Implemented `parse_messages_decl()` method supporting:
+     ```
+     messages {
+         key1: "value1",
+         key2: "value2"
+     }
+     ```
+
+3. ✅ **Integrated into Program Parser**:
+   - Messages parsing works alongside world/grammar/function parsing
+   - Proper error handling for malformed syntax
+
+**SUCCESS CRITERIA VERIFIED**:
+- ✅ Parse test .grue file with messages block successfully
+- ✅ Extract message key-value pairs correctly
+- ✅ Proper error handling for malformed syntax
+- ✅ Integration with existing world/grammar/function parsing
+
+**VALIDATION COMPLETED**:
+```bash
+# Test with /tmp/test_messages.grue:
+cargo run --bin grue-compiler -- /tmp/test_messages.grue --print-ir
+# ✅ Parser successfully recognizes messages block
+# ✅ Compilation advances to IR phase with expected missing pattern errors:
+#     - ir.rs:1745 (Item::Messages not handled)
+#     - semantic.rs:241,377 (Item::Messages not handled)
+# These errors confirm successful parser integration
+```
+
+#### **🧠 Phase 3: Semantic Analysis & IR Extensions** ✅ COMPLETED
+**OBJECTIVE**: Process messages into IR and validate content
+
+**IMPLEMENTATION COMPLETED**:
+1. ✅ **Extended IR Program** (`src/grue_compiler/ir.rs`):
+   - Added `system_messages: HashMap<String, String>` field to IrProgram struct
+   - Updated IrProgram::new() constructor to initialize system_messages
+   - Added Item::Messages case to IR generation match statement
+
+2. ✅ **Semantic Processing** (`src/grue_compiler/semantic.rs`):
+   - Added Item::Messages cases to both symbol collection and analysis phases
+   - Implemented analyze_messages() method with validation:
+     - Empty key validation
+     - Valid identifier character validation
+     - Empty value validation
+   - Messages properly processed from AST to IR
+
+**SUCCESS CRITERIA VERIFIED**:
+- ✅ Messages properly extracted from AST to IR
+- ✅ Semantic validation working correctly (parser catches invalid identifiers, semantic analysis validates structure)
+- ✅ IR.system_messages populated correctly during IR generation
+- ✅ Compilation progresses successfully to codegen phase
+- ✅ No more "non-exhaustive patterns" errors for Item::Messages
+
+**VALIDATION COMPLETED**:
+```bash
+# Valid messages test passes
+cargo run --bin grue-compiler -- /tmp/test_validation.grue --print-ir
+# ✅ Compilation successful with custom messages
+
+# Invalid syntax correctly rejected
+cargo run --bin grue-compiler -- /tmp/test_semantic_invalid.grue --print-ir
+# ✅ "Expected 'Colon' but found 'Minus'" - parser validation working
+```
+
+#### **⚙️ Phase 4: Codegen Integration** ✅ COMPLETED
+**OBJECTIVE**: Replace hardcoded strings with message lookups in code generation
+
+**IMPLEMENTATION COMPLETED**:
+1. ✅ **Updated String Allocation** (`src/grue_compiler/codegen_strings.rs`):
+   - Added `get_system_message()` helper method with IR parameter and fallback support
+   - Modified `add_main_loop_strings()` to use message lookups instead of hardcoded strings:
+     ```rust
+     pub fn add_main_loop_strings(&mut self, ir: &IrProgram) -> Result<(IrId, IrId), CompilerError> {
+         // Look up from game source with fallbacks for localization support
+         let prompt_text = Self::get_system_message(ir, "prompt", "> ");
+         let unknown_command_text = Self::get_system_message(ir, "unknown_command", "I don't understand that.\n");
+         // ... rest of function
+     }
+     ```
+
+2. ✅ **Updated Codegen Call Site** (`src/grue_compiler/codegen_image.rs`):
+   - Modified call to pass IR parameter: `self.add_main_loop_strings(&ir)?`
+
+**SUCCESS CRITERIA VERIFIED**:
+- ✅ Custom prompt appears in compiled games (tested: ">>> " instead of "> ")
+- ✅ Custom unknown_command message appears (tested: "Huh? I have no clue what you mean." instead of "I don't understand that.")
+- ✅ Fallback system works when messages block missing (tested: defaults used correctly)
+- ✅ System messages use game source when available with proper fallbacks
+
+**VALIDATION COMPLETED**:
+```bash
+# Custom messages test - using custom messages from source
+RUST_LOG=debug cargo run --bin grue-compiler -- /tmp/test_phase4_localization.grue -o /tmp/test_phase4.z3
+# ✅ "🎯 Allocated main loop prompt string: '>>> ' -> ID 1006"
+# ✅ "🎯 Allocated unknown command string: 'Huh? I have no clue what you mean.' -> ID 1007"
+
+# Fallback test - no messages block, should use defaults
+RUST_LOG=debug cargo run --bin grue-compiler -- /tmp/test_phase4_fallback.grue -o /tmp/test_fallback.z3
+# ✅ "🎯 Allocated main loop prompt string: '> ' -> ID 1006"
+# ✅ "🎯 Allocated unknown command string: 'I don't understand that.\n' -> ID 1007"
+
+# Gameplay test - custom messages work in actual game
+echo "invalidcommand" | ./target/debug/gruesome /tmp/test_phase4.z3
+# ✅ Shows ">>> " prompt and "Huh? I have no clue what you mean." for unknown commands
+```
+   - Update builtin functions to use message lookups
+   - Maintain backward compatibility with defaults
+
+**SUCCESS CRITERIA**:
+- ✅ Custom prompt appears in compiled games
+- ✅ Custom unknown_command message appears when command not recognized
+- ✅ All system messages use game source when available
+- ✅ Fallback system works when messages block missing
+
+**TESTING**:
+```bash
+# Test custom messages
+echo 'messages { prompt: ">> ", unknown_command: "What?" } world { room test "Test" { desc: "test" } }' > test_custom.grue
+cargo run --bin grue-compiler -- test_custom.grue -o test_custom.z3
+echo "foobar" | ./target/debug/gruesome test_custom.z3
+# Should show ">>" prompt and "What?" for unknown command
+```
+
+#### **🔧 Phase 5: Builtin Function Message Integration**
+**OBJECTIVE**: Extend message system to all builtin functions
+
+**IMPLEMENTATION**:
+1. **Update Builtin Functions** (`src/grue_compiler/codegen_builtins.rs`):
+   - `player_can_see()` → use message "cant_see_that"
+   - `handle_take()` → use messages "already_have_that", "cant_take_that"
+   - `handle_open()` → use messages "cant_open_that", "already_open"
+   - Movement functions → use message "cant_go_that_way"
+
+2. **Message Key Standardization**:
+   ```grue
+   messages {
+       // Core system
+       prompt: "> ",
+       unknown_command: "I don't understand that.",
+
+       // Object interaction
+       cant_see_that: "You can't see any such thing.",
+       already_have_that: "You already have that.",
+       cant_take_that: "You can't take that.",
+
+       // Container interaction
+       cant_open_that: "You can't open that.",
+       already_open: "It's already open.",
+       already_closed: "It's already closed.",
+
+       // Movement
+       cant_go_that_way: "You can't go that way.",
+
+       // Inventory
+       empty_handed: "You are empty-handed.",
+       carrying: "You are carrying:",
+   }
+   ```
+
+**SUCCESS CRITERIA**:
+- ✅ All builtin error messages use message system
+- ✅ Game developers can override any system message
+- ✅ Default English messages maintain current behavior
+- ✅ No breaking changes to existing games
+
+**TESTING**:
+```bash
+# Test builtin message customization
+echo 'messages { cant_see_that: "Nothing there!" } ...' > test_builtins.grue
+# Test that custom cant_see_that message appears
+```
+
+#### **✅ Phase 6: Testing & Validation**
+**OBJECTIVE**: Comprehensive testing of complete localization system
+
+**IMPLEMENTATION**:
+1. **Unit Tests**: Message parsing, IR generation, codegen integration
+2. **Integration Tests**: Full pipeline from .grue source to Z-Machine execution
+3. **Regression Tests**: Ensure existing games still work without messages block
+4. **Localization Tests**: Multiple language files with same world/grammar
+
+**SUCCESS CRITERIA**:
+- ✅ All existing tests pass (no regressions)
+- ✅ New message system tests pass
+- ✅ Mini_zork works with custom messages
+- ✅ Mini_zork works without messages block (fallback system)
+- ✅ Multiple language variants compile successfully
+
+**TESTING**:
+```bash
+# Full test suite
+cargo test
+./scripts/test_key_examples.sh
+
+# Localization validation
+cargo run --bin grue-compiler -- mini_zork_en.grue -o mini_zork_en.z3
+cargo run --bin grue-compiler -- mini_zork_es.grue -o mini_zork_es.z3
+```
+
+#### **🌍 Phase 7: Documentation & Examples**
+**OBJECTIVE**: Complete documentation and example implementations
+
+**IMPLEMENTATION**:
+1. **Update Documentation**:
+   - Language reference with messages block syntax
+   - Localization guide with example workflows
+   - Message key reference for all system messages
+
+2. **Create Example Files**:
+   - `examples/mini_zork_en.grue` - English messages
+   - `examples/mini_zork_es.grue` - Spanish messages
+   - `examples/mini_zork_fr.grue` - French messages
+
+3. **Compiler Documentation**:
+   - Update `--help` with localization options
+   - Document message key conventions
+
+**SUCCESS CRITERIA**:
+- ✅ Complete language documentation
+- ✅ Working localization examples
+- ✅ Developer guide for creating localized games
+
+### **TECHNICAL IMPLEMENTATION NOTES**
+
+**Message Parameter Substitution** (Future Enhancement):
+```grue
+messages {
+    score_display: "Your score is {score} out of {max_score}.",
+    moves_display: "You have taken {moves} moves.",
+}
+```
+
+**Compiler Locale Flag** (Future Enhancement):
+```bash
+cargo run --bin grue-compiler -- games/core_game.grue --locale es -o game_spanish.z3
+```
+
+**File Organization Pattern**:
+```
+games/
+├── mini_zork_core.grue      # Shared world/grammar/functions
+├── mini_zork_en.grue        # English messages + include core
+├── mini_zork_es.grue        # Spanish messages + include core
+└── mini_zork_fr.grue        # French messages + include core
+```
+
+### **ARCHITECTURE BENEFITS**
+
+**✅ LOCALIZATION FOUNDATION**:
+- Complete string externalization from compiler
+- Game developer control over all user-facing text
+- Multi-language support with shared game logic
+- Compile-time locale selection
+
+**✅ BACKWARD COMPATIBILITY**:
+- Existing games work without changes
+- Fallback system provides current behavior
+- No Z-Machine runtime performance impact
+
+**✅ DEVELOPER EXPERIENCE**:
+- Clear separation of content and logic
+- Centralized text management
+- Easy customization of system messages
+- Professional localization workflow support
+
+---
+
 ## 🔧 **LITERAL PATTERN MATCHING BUG IN GENERATE_VERB_MATCHING FUNCTION** - **IN PROGRESS** (November 9, 2025)
 
 **STATUS**: **PROBLEM ISOLATED TO generate_verb_matching FUNCTION** ✅

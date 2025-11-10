@@ -14,6 +14,11 @@
 //
 // Movement flows naturally: house perimeter → forest path → deep forest → clearing
 
+messages {
+    // Core system messages
+    prompt: "> "
+}
+
 world {
     room west_of_house "West of House" {
         desc: "You are standing in an open field west of a white house, with a boarded front door."
@@ -489,6 +494,7 @@ fn handle_go(direction) {
 fn handle_climb(obj) {
     if (player.location == forest_path) {
         handle_climb(tree);
+        return;
     }
     println("You can't climb that.");
 }
