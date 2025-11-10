@@ -1,0 +1,104 @@
+FUNCTION CALL RESOLUTION BUG - QUICK SUMMARY
+=============================================
+
+PROBLEM:
+--------
+Generic functions that call specialized versions cause infinite recursion.
+Example: handle_climb(obj) calling handle_climb(tree) loops infinitely.
+
+ROOT CAUSE:
+-----------
+A THREE-TIMING-ISSUE in ir.rs:
+
+1. PASS 1 (lines 1432-1443): Register all function names to symbol_ids
+   symbol_ids["handle_climb"] = generic_func_id
+
+2. PASS 2 (lines 1445-1471): Generate IR for all functions
+   - Generates handle_climb(obj) body
+   - During body generation, encounters: handle_climb(tree)
+   - Looks up dispatch_functions["handle_climb"] → NOT FOUND (hasn't been created!)
+   - Falls back to symbol_ids["handle_climb"] → Gets generic_func_id (WRONG - calls itself!)
+   - INFINITE RECURSION
+   
+   - Then generates handle_climb(tree) body normally
+
+3. AFTER PASS 2 (line 1471): Create dispatch functions
+   - dispatch_functions["handle_climb"] = dispatch_func_id
+   - TOO LATE! Function bodies already generated with wrong calls
+
+4. LATER (lines 1474-1477): Process grammar with dispatch functions available
+   - Grammar calls handle_climb(tree)
+   - Dispatch functions NOW exist
+   - Works correctly!
+
+THE BUG:
+--------
+Function call resolution at lines 3414-3460:
+  let func_id = if let Some(&dispatch_id) = self.dispatch_functions.get(&name) {
+      dispatch_id
+  } else if let Some(&id) = self.symbol_ids.get(&name) {
+      id  // <-- BUG: This gets the GENERIC function when dispatch_functions is empty!
+  }
+
+Dispatch functions are created at line 1471, AFTER all function bodies are generated.
+So when generating function bodies, dispatch_functions is always empty for user functions.
+Function bodies fall back to symbol_ids, which points to the wrong function.
+
+WHY GRAMMAR WORKS:
+------------------
+Grammar is processed AFTER dispatch functions are created (lines 1474-1477).
+At that point, dispatch_functions is populated, so dispatch routing works.
+
+SOLUTION OPTIONS:
+-----------------
+1. THREE-PASS APPROACH (recommended):
+   - Pass 1: Register functions and detect all overloads
+   - Pass 2: Create dispatch functions based on detected overloads
+   - Pass 3: Generate function bodies (now dispatch functions exist)
+
+2. DEFERRED FUNCTION BODY GENERATION:
+   - Like grammar deferral - collect AST nodes, generate dispatch, then bodies
+
+3. PRE-POPULATE DISPATCH FUNCTION REFERENCES:
+   - During overload detection, pre-allocate dispatch function IDs
+   - Store in symbol_ids or separate map before body generation
+
+KEY FILES AND LINES:
+--------------------
+File: /Users/cb/Projects/infocom-testing-old/infocom/src/grue_compiler/ir.rs
+
+Function call resolution (BUG LOCATION):
+  Lines 3414-3460: generate_expression() - FunctionCall case
+  Line 3429: Check dispatch_functions.get(&name)
+  Line 3436: Fallback to symbol_ids.get(&name) - WRONG for overloads!
+
+Dispatch function creation (TOO LATE):
+  Lines 1260-1284: generate_dispatch_functions()
+  Line 1266: if overloads.len() > 1
+  Line 1471: Called AFTER function body generation
+
+Two-pass generation (PROBLEM):
+  Lines 1430-1471: generate() function
+  Lines 1432-1443: PASS 1 - Register function names only
+  Lines 1445-1456: PASS 2 - Generate IR (including function bodies)
+  Line 1471: Create dispatch functions (TOO LATE!)
+  Lines 1474-1477: Process grammar (works because dispatch now exists)
+
+Function overload tracking:
+  Lines 1232-1258: register_function_overload()
+  Lines 1217-1229: detect_specialization()
+  Lines 1201-1214: mangle_function_name()
+
+DETECTION COMMAND:
+------------------
+To see the bug in action, compile code with:
+  fn handle_climb(obj) {
+      handle_climb(tree);  // Will call itself, not specialized version
+  }
+  fn handle_climb(tree) {
+      // specialized
+  }
+
+Then run with RUST_LOG=debug to see:
+  "Direct call using original function for 'handle_climb': ID X"
+  (Should use dispatch, not original function)

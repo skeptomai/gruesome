@@ -1,0 +1,196 @@
+FUNCTION DISPATCH BUG - VISUAL EXECUTION TIMELINE
+==================================================
+
+INPUT CODE:
+  fn handle_climb(obj) {
+      println("generic");
+      handle_climb(tree);  // <-- THIS IS THE PROBLEM
+  }
+  
+  fn handle_climb(tree) {
+      println("specific");
+  }
+
+CURRENT BROKEN EXECUTION:
+=========================
+
+PASS 1: Register Function Names (lines 1432-1443)
+─────────────────────────────────────────────────
+  for each function in AST:
+    symbol_ids["handle_climb"] = new_id()
+  
+  Result:
+    symbol_ids = {
+      "handle_climb": ID_1  (first registration)
+      "handle_climb": ID_1  (overwrites with ID_2, but which is stored?)
+    }
+
+  State: dispatch_functions = {} (EMPTY)
+         function_overloads = {} (EMPTY)
+
+PASS 2: Generate Function IR (lines 1445-1471)
+──────────────────────────────────────────────
+
+  [Processing handle_climb(obj)]
+  
+    generate_function("handle_climb(obj)"):
+      specialization = Generic
+      func_id = symbol_ids["handle_climb"]  (reuse from PASS 1)
+      
+      register_function_overload("handle_climb", func_id, Generic)
+        function_overloads["handle_climb"] = [
+          { func_id, Generic, "handle_climb_default", priority=2 }
+        ]
+      
+      generate_block(body):
+        generate_statement():
+          generate_expression():
+            Expr::FunctionCall { name: "handle_climb", args: [tree] }
+            
+            *** BUG LOCATION ***
+            
+            Check: dispatch_functions.get("handle_climb")
+              → Returns None  (not created yet!)
+              
+            Fallback: symbol_ids.get("handle_climb")
+              → Returns ID_1 or ID_something
+              → **CALLS THE GENERIC FUNCTION AGAIN**
+              → INFINITE RECURSION!
+  
+  [Processing handle_climb(tree)]
+  
+    generate_function("handle_climb(tree)"):
+      specialization = SpecificObject("tree")
+      func_id = self.next_id()  (new ID, not from symbol_ids)
+      
+      register_function_overload("handle_climb", func_id, SpecificObject("tree"))
+        function_overloads["handle_climb"] = [
+          { ID_1, Generic, "handle_climb_default", priority=2 },
+          { ID_2, SpecificObject("tree"), "handle_climb_tree", priority=0 }
+        ]
+      
+      generate_block(body):  (normal processing, no recursive calls)
+
+  State after PASS 2:
+    symbol_ids = { "handle_climb": ID_? }
+    function_overloads = { "handle_climb": [Generic, SpecificObject] }
+    dispatch_functions = {} (STILL EMPTY - NOT CREATED YET!)
+
+CREATE DISPATCH FUNCTIONS (line 1471)
+─────────────────────────────────────
+  generate_dispatch_functions():
+    for (base_name, overloads) in function_overloads:
+      if overloads.len() > 1:  ✓ True (we have 2 overloads)
+        
+        dispatch_func = create_dispatch_function("handle_climb", overloads):
+          
+          Creates function body:
+            if param == tree:
+              call handle_climb_tree(param)
+              return
+            else:
+              call handle_climb_default(param)
+              return
+          
+          Returns IrFunction for dispatch_handle_climb
+        
+        ir_program.functions.push(dispatch_func)
+        dispatch_functions["handle_climb"] = dispatch_id
+    
+  *** BUT IT'S TOO LATE ***
+  Function bodies already generated above!
+  Calls to handle_climb(tree) from within handle_climb(obj) were already
+  resolved to the wrong function ID!
+
+PROCESS GRAMMAR (lines 1474-1477)
+─────────────────────────────────
+  for each grammar item:
+    generate_grammar():
+      Encounters: handle_climb(tree)
+      
+      Check: dispatch_functions.get("handle_climb")
+        → Returns dispatch_id  ✓ NOW IT EXISTS!
+      
+      Uses dispatch function
+      Dispatch function correctly routes to handle_climb_tree
+      
+      ✓ WORKS CORRECTLY!
+
+STATE AT END:
+  dispatch_functions = { "handle_climb": dispatch_id }
+  But the damage is done - handle_climb(obj) body has wrong call ID
+
+SUMMARY OF TIMING:
+────────────────
+  When used (PASS 2):        dispatch_functions = EMPTY
+  When created (line 1471):  dispatch_functions gets populated
+  
+  The check at line 3429 happens BEFORE the population at line 1471!
+
+CALL GRAPH:
+───────────
+  handle_climb(obj)
+    ├─ [PASS 2] Call: handle_climb(tree)
+    │   └─ Resolution: dispatch_functions.get() → FAIL
+    │      Fallback:   symbol_ids.get() → WRONG ID
+    │      Result:     Calls itself = INFINITE RECURSION ✗
+    │
+    └─ [GRAMMAR] Call: handle_climb(tree)
+        └─ Resolution: dispatch_functions.get() → SUCCESS
+           Result:     Routes via dispatch function ✓
+
+WHAT SHOULD HAPPEN:
+───────────────────
+  handle_climb(obj) calls handle_climb(tree)
+    ↓
+  Should resolve to: dispatch_handle_climb function
+    ↓
+  dispatch_handle_climb checks parameter
+    ↓
+  Since param==tree, routes to handle_climb_tree
+    ↓
+  Executes handle_climb_tree correctly
+
+WHAT ACTUALLY HAPPENS:
+──────────────────────
+  handle_climb(obj) calls handle_climb(tree)
+    ↓
+  dispatch_functions is empty
+    ↓
+  Falls back to symbol_ids["handle_climb"]
+    ↓
+  Calls handle_climb(obj) again
+    ↓
+  Infinite recursion
+
+
+SOLUTION: THREE-PASS APPROACH
+==============================
+
+PASS 1: Register all function names
+  symbol_ids["handle_climb"] = ID_1
+
+PASS 1.5 (NEW): Detect overloads and pre-create dispatch functions
+  function_overloads["handle_climb"] = [Generic, SpecificObject]
+  dispatch_functions["handle_climb"] = pre_allocated_id
+
+PASS 2: Generate function bodies
+  Now when checking dispatch_functions.get("handle_climb")
+  It FINDS the dispatch function ID!
+  Uses it for function call resolution
+  ✓ Correct function called
+
+PASS 3: Create dispatch function bodies
+  dispatch_functions already exist with their IDs
+  Just fill in the routing logic
+
+
+KEY INSIGHT:
+============
+
+The problem is that dispatch_functions is populated AFTER function body 
+generation, but function bodies need dispatch_functions to resolve calls 
+to overloaded functions correctly.
+
+The solution is to populate dispatch_functions BEFORE body generation,
+just like grammar is deferred AFTER dispatch creation.

@@ -492,6 +492,8 @@ fn handle_climb(obj) {
 fn handle_climb(tree){
     if (player.location == forest_path) {
         handle_go("up");
+    } else {
+        println("Nothing here to climb.");
     }
 }
 
@@ -501,11 +503,16 @@ fn handle_read(obj) {
         return;
     }
 
-    if obj == leaflet {
-        println(obj.desc);
-    } else {
-        println("There's nothing to read on that.");
+    println("There's nothing to read on that.");
+}
+
+fn handle_read(leaflet){
+    if !player_can_see(leaflet) {
+        println("You can't see any such thing.");
+        return;
     }
+
+    println(leaflet.desc);
 }
 
 fn handle_quit() {

@@ -1051,6 +1051,7 @@ pub struct IrGenerator {
     function_overloads: IndexMap<String, Vec<FunctionOverload>>, // Function name -> list of overloads
     dispatch_functions: IndexMap<String, IrId>, // Function name -> dispatch function ID
     function_base_names: IndexMap<IrId, String>, // Function ID -> base function name
+    function_id_map: std::collections::HashMap<(String, ObjectSpecialization), u32>, // (name, specialization) -> assigned ID
 }
 
 impl Default for IrGenerator {
@@ -1083,6 +1084,7 @@ impl IrGenerator {
             function_overloads: IndexMap::new(),
             dispatch_functions: IndexMap::new(),
             function_base_names: IndexMap::new(),
+            function_id_map: std::collections::HashMap::new(),
         }
     }
 
@@ -1221,7 +1223,26 @@ impl IrGenerator {
     ) -> ObjectSpecialization {
         // Check if any parameter matches an object name
         for param in parameters {
+            // First check against object_numbers if available (Pass 2+)
             if self.object_numbers.contains_key(&param.name) {
+                return ObjectSpecialization::SpecificObject(param.name.clone());
+            }
+
+            // During Pass 1, object_numbers isn't populated yet.
+            // Use heuristic: specific object names are typically short and specific (tree, leaflet, egg)
+            // Exclude common parameter types that aren't actual objects
+            let generic_names = [
+                "obj",
+                "object",
+                "item",
+                "thing",
+                "target",
+                "arg",
+                "location",
+                "direction",
+                "container",
+            ];
+            if !generic_names.contains(&param.name.as_str()) {
                 return ObjectSpecialization::SpecificObject(param.name.clone());
             }
         }
@@ -1265,18 +1286,26 @@ impl IrGenerator {
         for (base_name, overloads) in &self.function_overloads.clone() {
             if overloads.len() > 1 {
                 log::debug!(
-                    "Generating dispatch function for '{}' with {} overloads",
+                    "PASS 3: Generating dispatch function body for '{}' with {} overloads",
                     base_name,
                     overloads.len()
                 );
 
-                let dispatch_func = self.create_dispatch_function(base_name, overloads)?;
+                // Use pre-allocated dispatch ID from Pass 1.5
+                let dispatch_id = self.dispatch_functions.get(base_name).copied();
+                let dispatch_func =
+                    self.create_dispatch_function(base_name, overloads, dispatch_id)?;
                 ir_program.functions.push(dispatch_func);
 
-                // Store the dispatch function ID for grammar system integration
-                if let Some(dispatch_id) = ir_program.functions.last().map(|f| f.id) {
-                    self.dispatch_functions
-                        .insert(base_name.clone(), dispatch_id);
+                // Verify the ID matches what we pre-allocated
+                if let Some(created_id) = ir_program.functions.last().map(|f| f.id) {
+                    if let Some(expected_id) = dispatch_id {
+                        assert_eq!(
+                            created_id, expected_id,
+                            "Dispatch function ID mismatch for '{}': expected {}, got {}",
+                            base_name, expected_id, created_id
+                        );
+                    }
                 }
             }
         }
@@ -1288,8 +1317,9 @@ impl IrGenerator {
         &mut self,
         base_name: &str,
         overloads: &[FunctionOverload],
+        dispatch_id: Option<u32>,
     ) -> Result<IrFunction, CompilerError> {
-        let dispatch_id = self.next_id();
+        let dispatch_id = dispatch_id.unwrap_or_else(|| self.next_id());
 
         // Create parameter to match the original function signature
         // For now, assume single object parameter (can be extended later)
@@ -1427,22 +1457,94 @@ impl IrGenerator {
         ir_program.program_mode = program_mode.clone();
         log::debug!("Detected program mode: {:?}", program_mode);
 
-        // TWO-PASS APPROACH: First pass registers all function definitions to populate symbol table
-        // This ensures function calls can resolve to actual definitions, not placeholders
+        // THREE-PASS APPROACH: Fixed function dispatch timing bug
+        //
+        // PROBLEM: Function dispatch creation happened AFTER function body generation,
+        // causing generic functions to infinitely call themselves instead of dispatch functions.
+        //
+        // SOLUTION: Pre-register all functions and create dispatch functions BEFORE body generation
+        //
+        // PASS 1: Register all function names and detect which ones have overloads
+        let mut function_counts: std::collections::HashMap<
+            String,
+            Vec<(u32, ObjectSpecialization)>,
+        > = std::collections::HashMap::new();
+
+        // First, count all functions and their specializations
         for item in ast.items.iter() {
             if let crate::grue_compiler::ast::Item::Function(func) = item {
-                // Register function name in symbol table (but don't generate IR body yet)
                 let func_id = self.next_id();
-                self.symbol_ids.insert(func.name.clone(), func_id);
+                let specialization = self.detect_specialization(&func.name, &func.parameters);
+
+                function_counts
+                    .entry(func.name.clone())
+                    .or_insert_with(Vec::new)
+                    .push((func_id, specialization));
+            }
+        }
+
+        // Track individual function IDs for reuse in Pass 2
+        // This prevents ID mismatches between registration and generation phases
+        let mut function_id_map: std::collections::HashMap<(String, ObjectSpecialization), u32> =
+            std::collections::HashMap::new();
+
+        // Now register functions appropriately
+        for (name, versions) in function_counts.iter() {
+            if versions.len() > 1 {
+                // This function has overloads - register each version
+                for (func_id, specialization) in versions {
+                    self.register_function_overload(name, *func_id, specialization.clone());
+                    function_id_map.insert((name.clone(), specialization.clone()), *func_id);
+                }
+
+                // Find the generic version for symbol_ids (or use the first if no generic)
+                let primary_id = versions
+                    .iter()
+                    .find(|(_, spec)| matches!(spec, ObjectSpecialization::Generic))
+                    .map(|(id, _)| *id)
+                    .unwrap_or(versions[0].0);
+
+                self.symbol_ids.insert(name.clone(), primary_id);
                 log::debug!(
-                    "PASS 1: Registered function '{}' with ID {}",
-                    func.name,
+                    "PASS 1: Registered overloaded function '{}' with {} versions, primary ID {}",
+                    name,
+                    versions.len(),
+                    primary_id
+                );
+            } else {
+                // Single function - just register in symbol_ids
+                let (func_id, specialization) = &versions[0];
+                self.symbol_ids.insert(name.clone(), *func_id);
+                function_id_map.insert((name.clone(), specialization.clone()), *func_id);
+                log::debug!(
+                    "PASS 1: Registered single function '{}' (specialization: {:?}) with ID {}",
+                    name,
+                    specialization,
                     func_id
                 );
             }
         }
 
-        // SECOND PASS: Generate IR for all items except grammar (functions will now use registered IDs)
+        // Store the function ID map for use in generate_function
+        self.function_id_map = function_id_map;
+
+        // PASS 1.5: Pre-allocate dispatch function IDs for overloaded functions
+        // This ensures function calls during body generation can resolve to dispatch functions
+        // instead of calling generic functions infinitely
+        for (base_name, overloads) in &self.function_overloads.clone() {
+            if overloads.len() > 1 {
+                let dispatch_id = self.next_id();
+                self.dispatch_functions
+                    .insert(base_name.clone(), dispatch_id);
+                log::debug!(
+                    "PASS 1.5: Pre-allocated dispatch function ID {} for overloaded '{}'",
+                    dispatch_id,
+                    base_name
+                );
+            }
+        }
+
+        // PASS 2: Generate IR for all items except grammar (functions will now use registered IDs)
         let mut deferred_grammar = Vec::new();
         for item in ast.items.iter() {
             match item {
@@ -1467,7 +1569,7 @@ impl IrGenerator {
         ir_program.property_manager = self.property_manager.clone(); // Transfer property manager with consistent mappings
         ir_program.expression_types = self.expression_types.clone(); // NEW: Transfer expression types for StringAddress system
 
-        // Generate dispatch functions for polymorphic functions
+        // PASS 3: Generate dispatch function bodies (IDs already allocated in Pass 1.5)
         self.generate_dispatch_functions(&mut ir_program)?;
 
         // Now process deferred grammar items with dispatch functions available
@@ -1682,23 +1784,27 @@ impl IrGenerator {
         // Detect object specialization based on parameter names
         let specialization = self.detect_specialization(&func.name, &func.parameters);
 
-        // Use existing registered function ID if this is the first/only version of the function
-        let func_id = if let Some(&existing_id) = self.symbol_ids.get(&func.name) {
-            // Check if this is the first occurrence of this function name being generated
-            if !self.function_overloads.contains_key(&func.name) {
-                // This is the first/only version, reuse the registered ID
-                existing_id
+        // Use the specific ID that was assigned to this function in Pass 1
+        // This ensures consistent IDs between registration and generation phases
+        let func_id = if let Some(&assigned_id) = self
+            .function_id_map
+            .get(&(func.name.clone(), specialization.clone()))
+        {
+            assigned_id
+        } else {
+            // Fallback: try symbol_ids for non-overloaded functions
+            if let Some(&existing_id) = self.symbol_ids.get(&func.name) {
+                if !self.function_overloads.contains_key(&func.name) {
+                    existing_id
+                } else {
+                    self.next_id()
+                }
             } else {
-                // This is an additional overload, create a new ID
                 self.next_id()
             }
-        } else {
-            // Fallback: create new ID (shouldn't happen in normal flow)
-            self.next_id()
         };
 
-        // Register this as a function overload
-        self.register_function_overload(&func.name, func_id, specialization.clone());
+        // Function overload already registered in Pass 1
 
         // Store base name mapping for dispatch lookup
         self.function_base_names.insert(func_id, func.name.clone());

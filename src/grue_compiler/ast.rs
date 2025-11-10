@@ -228,7 +228,7 @@ pub struct Parameter {
 }
 
 /// Object specialization types for polymorphic dispatch
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ObjectSpecialization {
     Generic,                // Default handler (e.g., fn handle_take(obj))
     SpecificObject(String), // Handler for specific object (e.g., fn handle_take(leaflet))
