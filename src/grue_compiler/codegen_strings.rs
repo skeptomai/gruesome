@@ -488,7 +488,13 @@ impl ZMachineCodeGen {
             let zchar = match ch {
                 'a'..='z' => (ch as u8 - b'a') + 6,
                 ' ' => 5, // Space is z-char 5 (Infocom convention)
-                _ => 5,   // Default to space for unsupported characters
+                '0'..='9' => {
+                    // For dictionary words, encode digits using escape sequence approach
+                    // Map '0'-'9' to z-chars 8-17 (which would be A2[8-17] in normal encoding)
+                    // But for dictionary, we directly encode without shift
+                    (ch as u8 - b'0') + 8
+                }
+                _ => 5, // Default to space for unsupported characters
             };
             zchars[i] = zchar;
         }

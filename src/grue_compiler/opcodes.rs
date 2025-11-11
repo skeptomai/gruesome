@@ -148,7 +148,7 @@ pub enum Op1 {
     Jump = 0x0C,
     /// Print string at packed address (141)
     /// V1+
-    PrintPaddr = 0x0D,
+    PrintPaddr = 0x8D,
     /// Load variable value (142)
     /// V1+
     Load = 0x0E,
