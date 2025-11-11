@@ -98,7 +98,10 @@ impl Interpreter {
                                 if size_byte == 0 {
                                     64
                                 } else {
-                                    size_byte as usize
+                                    // CRITICAL FIX: Extract 3-bit size field from bits 7-5, then add 1
+                                    // V3 property size encoding: bits 7-5 = size-1, so we add 1
+                                    // This prevents infinite loops from raw byte values (242, 114, etc.)
+                                    ((size_byte >> 5) & 0x07) as usize + 1
                                 }
                             } else {
                                 // Single-byte format: byte at data_addr-1 encodes size in bits 7-5
