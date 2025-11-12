@@ -1,0 +1,17 @@
+=== release_interpreter Test Summary ===
+Timestamp: Wed Nov 12 11:28:27 PST 2025
+Interpreter: ./target/release/gruesome
+Game File: /Users/cb/Projects/infocom-testing-old/infocom/resources/test/zork1/DATA/ZORK1.DAT
+Final Score: 10
+Moves at Score: 8
+Success Indicators: 6/6
+
+STATUS: PASSED ✓
+
+Protocol Checklist:
+- Navigation (North of House): ✓
+- Window interaction: ✓
+- Kitchen entry: ✓
+- Object taking: ✓
+- Score display: ✓
+- Inventory display: ✓

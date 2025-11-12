@@ -64,8 +64,6 @@ pub struct VM {
     pub call_stack: Vec<CallFrame>,
     /// Global variables (stored in memory, but cached here for speed)
     globals_addr: u16,
-    /// Current instruction PC (for debugging - set by interpreter before execution)
-    pub current_instruction_pc: Option<u32>,
 }
 
 impl VM {
@@ -82,7 +80,6 @@ impl VM {
             stack: Vec::with_capacity(STACK_SIZE),
             call_stack: Vec::new(),
             globals_addr,
-            current_instruction_pc: None,
         };
 
         // Set up initial call frame for V1-5 (V6+ uses main routine)
@@ -107,159 +104,32 @@ impl VM {
         self.call_stack.clear();
     }
 
-    /// Decode an instruction at a specific PC (for debugging)
-    pub fn decode_instruction_at(
-        &self,
-        pc: u32,
-    ) -> Result<crate::instruction::Instruction, String> {
-        use crate::instruction::Instruction;
-        let version = self.game.header.version;
-        Instruction::decode(&self.game.memory, pc as usize, version)
-            .map_err(|e| format!("Decode error at PC 0x{:04x}: {}", pc, e))
-    }
-
-    /// Format an instruction at a specific PC as a human-readable string
-    pub fn format_instruction_at(&self, pc: u32) -> String {
-        match self.decode_instruction_at(pc) {
-            Ok(inst) => format!("{:?}", inst),
-            Err(e) => format!("DECODE_ERROR({})", e),
-        }
-    }
-
     /// Push a value onto the evaluation stack
     pub fn push(&mut self, value: u16) -> Result<(), String> {
         if self.stack.len() >= STACK_SIZE {
             return Err("Stack overflow".to_string());
         }
-
-        // Optional stack tracing (enable with TRACE_STACK=1)
-        if std::env::var("TRACE_STACK").is_ok() {
-            log::debug!(
-                "📥 PUSH: value=0x{:04x} ({}), PC=0x{:04x}, depth={}",
-                value,
+        if value == 0x00b4 || self.pc >= 0x06f00 && self.pc <= 0x07000 {
+            debug!(
+                "push({:04x}) at PC {:05x}, stack depth: {}",
                 value,
                 self.pc,
                 self.stack.len()
             );
         }
-
-        // Also log specific interesting values (including 3 which becomes 0xC000)
-        if value == 0xC000 || value == 0x0300 || value == 0xC300 || value == 3 {
-            let executing_inst = if let Some(pc) = self.current_instruction_pc {
-                self.format_instruction_at(pc)
-            } else {
-                "unknown".to_string()
-            };
-            log::debug!(
-                "📥 PUSH_INTERESTING: value=0x{:04x} ({}), executing_inst_pc=0x{:04x}, depth={}, inst: {}",
-                value, value, self.current_instruction_pc.unwrap_or(self.pc), self.stack.len(), executing_inst
-            );
-        }
-
         self.stack.push(value);
         Ok(())
     }
 
     /// Pop a value from the evaluation stack
     pub fn pop(&mut self) -> Result<u16, String> {
-        if self.stack.is_empty() {
-            log::debug!(
-                " STACK UNDERFLOW: Attempted to pop from empty stack at PC 0x{:04x}",
-                self.pc
-            );
-            log::debug!(
-                " Stack state: depth={}, call_stack_depth={}",
-                self.stack.len(),
-                self.call_stack.len()
-            );
-            if let Some(frame) = self.call_stack.last() {
-                log::debug!(
-                    " Current routine: return_PC={:04x}, locals={}",
-                    frame.return_pc,
-                    frame.locals.len()
-                );
-            }
-
-            // Add bytecode analysis at underflow point
-            log::debug!(
-                " Bytecode at PC 0x{:04x}: {:02x} {:02x} {:02x} {:02x} {:02x}",
-                self.pc,
-                self.game.memory.get(self.pc as usize).unwrap_or(&0xff),
-                self.game
-                    .memory
-                    .get((self.pc + 1) as usize)
-                    .unwrap_or(&0xff),
-                self.game
-                    .memory
-                    .get((self.pc + 2) as usize)
-                    .unwrap_or(&0xff),
-                self.game
-                    .memory
-                    .get((self.pc + 3) as usize)
-                    .unwrap_or(&0xff),
-                self.game
-                    .memory
-                    .get((self.pc + 4) as usize)
-                    .unwrap_or(&0xff)
-            );
-
-            // Add stack trace to see what's calling pop()
-            log::debug!(" STACK UNDERFLOW BACKTRACE:");
-            let backtrace = std::backtrace::Backtrace::capture();
-            log::debug!("{}", backtrace);
-
-            return Err("Stack underflow".to_string());
-        }
-
-        let value = self.stack.pop().unwrap();
-
-        // Optional stack tracing (enable with TRACE_STACK=1)
-        if std::env::var("TRACE_STACK").is_ok() {
-            log::debug!(
-                "📤 POP: value=0x{:04x} ({}), PC=0x{:04x}, depth={}",
-                value,
-                value,
-                self.pc,
-                self.stack.len()
-            );
-        }
-
-        // Also log specific interesting values (including 3 which becomes 0xC000)
-        if value == 0xC000 || value == 0x0300 || value == 0xC300 || value == 3 {
-            log::debug!(
-                "📤 POP_INTERESTING: value=0x{:04x} ({}), PC=0x{:04x}, depth={}",
-                value,
-                value,
-                self.pc,
-                self.stack.len()
-            );
-        }
-
-        Ok(value)
+        self.stack
+            .pop()
+            .ok_or_else(|| "Stack underflow".to_string())
     }
 
     /// Peek at the top of the stack without removing it
     pub fn peek(&self) -> Result<u16, String> {
-        if self.stack.is_empty() {
-            log::debug!(
-                "STACK UNDERFLOW: Stack peek attempted on empty stack. PC: 0x{:04x}",
-                self.pc
-            );
-            log::debug!(" Call stack depth: {}", self.call_stack.len());
-            log::debug!(" Last few instructions executed would help debug this...");
-
-            // Try to decode the current instruction to understand what caused this
-            if self.pc < self.game.memory.len() as u32 {
-                let opcode = self.game.memory[self.pc as usize];
-                log::debug!(
-                    " Current instruction opcode: 0x{:02x} at PC 0x{:04x}",
-                    opcode,
-                    self.pc
-                );
-            }
-
-            return Err("Stack is empty".to_string());
-        }
         self.stack
             .last()
             .copied()
@@ -300,29 +170,6 @@ impl VM {
 
     /// Write a word to memory (only in dynamic memory)
     pub fn write_word(&mut self, addr: u32, value: u16) -> Result<(), String> {
-        // Track writes to score/moves globals at 0x42 (score) and 0x44 (moves)
-        if addr == 0x42 {
-            log::debug!(
-                "🚨 SCORE CORRUPTION: Writing 0x{:04x} ({}) to addr 0x{:04x} at PC=0x{:04x}",
-                value,
-                value,
-                addr,
-                self.pc
-            );
-            log::debug!(
-                "   Stack depth: {}, top 5 values: {:?}",
-                self.stack.len(),
-                self.stack.iter().rev().take(5).collect::<Vec<_>>()
-            );
-            log::debug!("   Call stack depth: {}", self.call_stack.len());
-            if let Some(frame) = self.call_stack.last() {
-                log::debug!(
-                    "   Current function: PC start=0x{:04x}, locals: {:?}",
-                    frame.return_pc,
-                    &frame.locals[0..frame.num_locals as usize]
-                );
-            }
-        }
         self.write_byte(addr, (value >> 8) as u8)?;
         self.write_byte(addr + 1, (value & 0xFF) as u8)?;
         Ok(())
@@ -338,13 +185,6 @@ impl VM {
         let value = self.read_word(addr);
 
         // Debug logging for critical globals
-        if var == 0x10 {
-            // Global G00 - Player object reference
-            debug!(
- "Reading global 0x{:02x} (G00/player) from addr 0x{:04x} = 0x{:04x} ({}) at PC {:05x}",
- var, addr, value, value, self.pc
- );
-        }
         if var == 0x52 {
             // LIT variable
             debug!(
@@ -365,18 +205,6 @@ impl VM {
         let addr = self.globals_addr as u32 + offset;
 
         // Debug logging for critical globals
-        // Track writes to score (global 17 = var 0x11) and moves (global 18 = var 0x12)
-        if var == 0x11 || var == 0x12 {
-            log::debug!(
-                "🚨 SCORE/MOVES WRITE_GLOBAL: var=0x{:02x} (G{:02}), addr=0x{:04x}, value=0x{:04x} ({}), PC=0x{:04x}",
-                var,
-                var - 0x10,
-                addr,
-                value,
-                value,
-                self.pc
-            );
-        }
         if var == 0x52 {
             // LIT variable
             let old_value = self.read_word(addr);
@@ -392,14 +220,7 @@ impl VM {
     /// Read a variable (0x00 = stack, 0x01-0x0F = local, 0x10-0xFF = global)
     pub fn read_variable(&self, var: u8) -> Result<u16, String> {
         let result = match var {
-            0x00 => {
-                log::debug!(
-                    "Reading from stack (Variable 0x00) at PC 0x{:04x}, stack size: {}",
-                    self.pc,
-                    self.stack.len()
-                );
-                self.peek()
-            }
+            0x00 => self.peek(),
             0x01..=0x0F => {
                 // Local variable
                 let frame = self
@@ -409,7 +230,7 @@ impl VM {
                 let index = (var - 1) as usize;
                 if index >= frame.num_locals as usize {
                     debug!("WARNING: Reading local variable {} but routine only has {} locals - returning 0", 
- var, frame.num_locals);
+                           var, frame.num_locals);
                     return Ok(0);
                 }
                 Ok(frame.locals[index])
@@ -418,32 +239,6 @@ impl VM {
         };
 
         // Debug logging for critical variable reads
-        if var == 1 {
-            log::debug!(
-                "🔍 READ_VAR: var={}, value={:04x?}, PC=0x{:04x}",
-                var,
-                result,
-                self.pc
-            );
-        }
-        // Log reads of variables used in exit corruption chain
-        if var == 236 || var == 237 || var == 239 {
-            if let Ok(val) = result {
-                log::debug!(
-                    "🔍 READ_VAR_{}: value=0x{:04x} ({}), PC=0x{:04x}",
-                    var,
-                    val,
-                    val,
-                    self.current_instruction_pc.unwrap_or(self.pc)
-                );
-            }
-        }
-        if var == 0x10 {
-            debug!(
-                "read_variable(0x{:02x}) [Variable(16)/G00] at PC {:05x} returning value: {:?}",
-                var, self.pc, result
-            );
-        }
         if var == 0x52 && self.pc >= 0x8d50 && self.pc <= 0x8d60 {
             debug!(
                 "read_variable(0x{:02x}) at PC {:05x} returning value: {:?}",
@@ -456,104 +251,6 @@ impl VM {
 
     /// Write a variable (0x00 = stack, 0x01-0x0F = local, 0x10-0xFF = global)
     pub fn write_variable(&mut self, var: u8, value: u16) -> Result<(), String> {
-        // Track writes to score (variable 17 = 0x11 = global G01)
-        if var == 0x11 {
-            log::debug!(
-                "🚨 SCORE WRITE: var=0x{:02x} (G01/score), value=0x{:04x} ({}), PC=0x{:04x}",
-                var,
-                value,
-                value,
-                self.pc
-            );
-        }
-        // Log writes to Variable 2 (exit local variable)
-        if var == 2 {
-            // Get current instruction bytes for debugging
-            let inst_bytes = if self.pc < self.game.memory.len() as u32 {
-                let pc = self.pc as usize;
-                let end = (pc + 8).min(self.game.memory.len());
-                &self.game.memory[pc..end]
-            } else {
-                &[]
-            };
-            // Show call stack depth to distinguish frames
-            let stack_depth = self.call_stack.len();
-            log::debug!(
-                "🔧 WRITE_VAR_2: value=0x{:04x} ({}), PC=0x{:04x}, frame_depth={}, inst_bytes={:02x?}",
-                value,
-                value,
-                self.pc,
-                stack_depth,
-                inst_bytes
-            );
-
-            // Dump entire call stack with return addresses to "weave together" execution flow
-            log::debug!("🔍 CALL_STACK (depth={}):", self.call_stack.len());
-            for (i, frame) in self.call_stack.iter().enumerate() {
-                log::debug!(
-                    "  Frame[{}]: return_pc=0x{:04x}, num_locals={}, stack_base={}, return_store={:?}",
-                    i,
-                    frame.return_pc,
-                    frame.num_locals,
-                    frame.stack_base,
-                    frame.return_store
-                );
-            }
-
-            // Also show memory around current PC to understand context
-            if self.pc >= 10 && (self.pc as usize) < self.game.memory.len() {
-                let start = (self.pc as usize) - 10;
-                let end = ((self.pc as usize) + 10).min(self.game.memory.len());
-                log::debug!(
-                    "🔍 MEMORY_CONTEXT (PC-10 to PC+10): {:02x?}",
-                    &self.game.memory[start..end]
-                );
-            }
-        }
-        // Log writes to Variable 3 (literal pattern debugging)
-        if var == 3 {
-            let stack_depth = self.call_stack.len();
-            log::debug!(
-                "🔧 WRITE_VAR_3: value=0x{:04x} ({}), PC=0x{:04x}, frame_depth={}",
-                value,
-                value,
-                self.pc,
-                stack_depth
-            );
-        }
-        // Log writes to Variable 216 (0xD8) - source of corruption
-        if var == 216 {
-            // Decode the instruction at current PC
-            let inst_str = self.format_instruction_at(self.pc);
-
-            log::debug!(
-                "🔍 WRITE_VAR_216: value=0x{:04x} ({}), PC=0x{:04x}, frame_depth={}, next_inst: {}",
-                value,
-                value,
-                self.pc,
-                self.call_stack.len(),
-                inst_str
-            );
-        }
-        // Log writes to Variables 236 and 239 (used in loadb that reads value 3 from address 0)
-        if var == 236 || var == 239 {
-            log::debug!(
-                "🔍 WRITE_VAR_{}: value=0x{:04x} ({}), PC=0x{:04x}",
-                var,
-                value,
-                value,
-                self.current_instruction_pc.unwrap_or(self.pc)
-            );
-        }
-        // Log writes to variables 235-244 (used by get_exit builtin) and Variable(1) (direction parameter)
-        if (var >= 235 && var <= 244) || var == 1 {
-            log::debug!(
-                "🔍 WRITE_VAR: var={}, value=0x{:04x}, PC=0x{:04x}",
-                var,
-                value,
-                self.pc
-            );
-        }
         match var {
             0x00 => {
                 // Writing to variable 0 means push onto stack
@@ -568,7 +265,7 @@ impl VM {
                 let index = (var - 1) as usize;
                 if index >= frame.num_locals as usize {
                     debug!("WARNING: Writing to local variable {} but routine only has {} locals - ignoring", 
- var, frame.num_locals);
+                           var, frame.num_locals);
                     return Ok(());
                 }
                 frame.locals[index] = value;
@@ -599,12 +296,6 @@ impl VM {
             65535
         };
         if obj_num > max_objects {
-            log::debug!(
-                "Object validation error at PC 0x{:04x}: invalid object {} exceeds maximum {}",
-                self.pc,
-                obj_num,
-                max_objects
-            );
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
@@ -638,30 +329,14 @@ impl VM {
     }
 
     /// Parse property size byte to get property number, size, and header size
-    /// COMPATIBILITY FIX: Restored standard V3 property parsing after removing hybrid approach
-    /// This ensures compatibility with both commercial games and compiled Grue games
     fn get_property_info(&self, prop_addr: usize) -> Result<(u8, usize, usize), String> {
         let size_byte = self.game.memory[prop_addr];
 
         if self.game.header.version <= 3 {
-            // V1-3: prop num in bottom 5 bits
+            // V1-3: prop num in bottom 5 bits, size in top 3 bits
             let prop_num = size_byte & 0x1F;
-
-            // Check for two-byte format (bit 7 set, bit 6 clear)
-            if size_byte & 0x80 != 0 {
-                // Two-byte header: next byte contains size
-                let size_byte_2 = self.game.memory[prop_addr + 1];
-                let prop_size = if size_byte_2 == 0 {
-                    64
-                } else {
-                    size_byte_2 as usize
-                };
-                Ok((prop_num, prop_size, 2))
-            } else {
-                // Single-byte format: size in top 3 bits (bits 7-5)
-                let prop_size = ((size_byte >> 5) & 0x07) + 1;
-                Ok((prop_num, prop_size as usize, 1))
-            }
+            let prop_size = ((size_byte >> 5) & 0x07) + 1;
+            Ok((prop_num, prop_size as usize, 1))
         } else {
             // V4+: prop num in bottom 6 bits
             let prop_num = size_byte & 0x3F;
@@ -693,14 +368,10 @@ impl VM {
             65535
         };
         if obj_num > max_objects {
-            log::debug!(
-                "Object validation error at PC 0x{:04x}: invalid object {} exceeds maximum {}",
-                self.pc,
-                obj_num,
-                max_objects
-            );
             return Err(format!("Invalid object number: {obj_num}"));
         }
+
+        debug!("get_property_addr: obj={}, prop={}", obj_num, prop_num);
 
         // Get object table base
         let obj_table_addr = self.game.header.object_table_addr;
@@ -728,35 +399,14 @@ impl VM {
         loop {
             let size_byte = self.game.memory[prop_addr];
             if size_byte == 0 {
-                // Log when we hit terminator while searching for properties 20-22
-                if prop_num >= 20 && prop_num <= 22 {
-                    log::debug!("🔍 get_property_addr: obj={}, prop={} -> NOT FOUND (hit terminator at addr=0x{:04x})",
-                        obj_num, prop_num, prop_addr);
-                }
                 return Ok(0); // Property not found
             }
 
             let (prop_id, prop_size, size_bytes) = self.get_property_info(prop_addr)?;
 
-            // Log each property we encounter when searching for properties 20-22
-            if prop_num >= 20 && prop_num <= 22 {
-                log::debug!("🔍 PROP_SEARCH: obj={}, looking_for={}, found_prop={} at addr=0x{:04x}, size_byte=0x{:02x}, prop_size={}, size_bytes={}",
-                    obj_num, prop_num, prop_id, prop_addr, size_byte, prop_size, size_bytes);
-            }
-
             if prop_id == prop_num {
                 // Found the property - return address of data
-                let data_addr = prop_addr + size_bytes;
-                if prop_num >= 20 && prop_num <= 22 {
-                    log::debug!(
-                        "🔍 get_property_addr: obj={}, prop={} -> addr=0x{:04x}, size={}",
-                        obj_num,
-                        prop_num,
-                        data_addr,
-                        prop_size
-                    );
-                }
-                return Ok(data_addr);
+                return Ok(prop_addr + size_bytes);
             }
 
             // Move to next property
@@ -774,12 +424,6 @@ impl VM {
             65535
         };
         if obj_num == 0 || obj_num > max_objects {
-            log::debug!(
-                "Object validation error at PC 0x{:04x}: invalid object {} (zero or exceeds maximum {})",
-                self.pc,
-                obj_num,
-                max_objects
-            );
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
@@ -800,26 +444,14 @@ impl VM {
         // Get property table address
         let prop_addr_offset = if self.game.header.version <= 3 { 7 } else { 12 };
         let prop_table_addr = self.read_word((obj_addr + prop_addr_offset) as u32) as usize;
-        debug!(
-            "put_property: obj_addr=0x{:04x}, prop_table_addr=0x{:04x}",
-            obj_addr, prop_table_addr
-        );
 
         // Skip the description byte length
         let desc_len = self.game.memory[prop_table_addr] as usize;
         let mut prop_addr = prop_table_addr + 1 + desc_len * 2;
-        debug!(
-            "put_property: desc_len={}, prop_addr=0x{:04x}",
-            desc_len, prop_addr
-        );
 
         // Search for the property
         loop {
             let size_byte = self.game.memory[prop_addr];
-            debug!(
-                "put_property: checking prop_addr=0x{:04x}, size_byte=0x{:02x}",
-                prop_addr, size_byte
-            );
             if size_byte == 0 {
                 return Err(format!(
                     "Property {prop_num} not found for object {obj_num}"
@@ -827,10 +459,6 @@ impl VM {
             }
 
             let (prop_id, prop_size, size_bytes) = self.get_property_info(prop_addr)?;
-            debug!(
-                "put_property: prop_id={}, prop_size={}, size_bytes={}",
-                prop_id, prop_size, size_bytes
-            );
 
             if prop_id == prop_num {
                 // Found the property - write the value
@@ -862,12 +490,6 @@ impl VM {
             65535
         };
         if obj_num > max_objects {
-            log::debug!(
-                "Object validation error at PC 0x{:04x}: invalid object {} exceeds maximum {}",
-                self.pc,
-                obj_num,
-                max_objects
-            );
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
@@ -934,17 +556,6 @@ impl VM {
             return Ok(false); // Object 0 has no attributes
         }
 
-        // OBJECT_BOUNDS_CHECK: Handle invalid object IDs gracefully (architectural issue with grammar system)
-        let max_objects = if self.game.header.version <= 3 {
-            255
-        } else {
-            65535
-        };
-        if obj_num > max_objects {
-            log::debug!("OBJECT_BOUNDS_CHECK: Returning false for test_attribute on invalid object ID {} (max: {})", obj_num, max_objects);
-            return Ok(false); // Return false for invalid objects
-        }
-
         let obj_addr = self.get_object_addr(obj_num)?;
 
         let max_attrs = if self.game.header.version <= 3 {
@@ -961,52 +572,21 @@ impl VM {
         }
 
         // Attributes are in the first bytes of the object entry
-        // Z-Machine uses big-endian attribute storage:
-        // Byte 0: attrs 31-24, Byte 1: attrs 23-16, Byte 2: attrs 15-8, Byte 3: attrs 7-0
-        let attr_bytes_total = if self.game.header.version <= 3 { 4 } else { 6 };
-        let attr_byte = (attr_bytes_total - 1) - (attr_num / 8);
-        let attr_bit = attr_num % 8; // Bit position within the byte (0=LSB, 7=MSB)
+        // CRITICAL: Use simple attribute calculation for commercial Zork I compatibility
+        // This implementation matches what original Infocom games expect
+        let attr_byte = attr_num / 8;
+        let attr_bit = 7 - (attr_num % 8); // Attributes are numbered from high bit to low bit
 
         let byte_val = self.game.memory[obj_addr + attr_byte as usize];
         let is_set = (byte_val & (1 << attr_bit)) != 0;
-
-        // DEBUG: Trace attribute tests for objects 1-15
-        if obj_num <= 15 {
-            log::debug!(
-                "🔍 ATTR_TEST: obj={} attr={} addr=0x{:04x} byte_offset={} bit_pos={} byte_val=0x{:02x} mask=0x{:02x} result={}",
-                obj_num, attr_num, obj_addr, attr_byte, attr_bit, byte_val, (1 << attr_bit), is_set
-            );
-        }
 
         Ok(is_set)
     }
 
     /// Set or clear an object attribute
     pub fn set_attribute(&mut self, obj_num: u16, attr_num: u8, value: bool) -> Result<(), String> {
-        log::debug!(
-            "set_attribute called: PC=0x{:04x}, obj={}, attr={}, value={}",
-            self.pc,
-            obj_num,
-            attr_num,
-            value
-        );
         if obj_num == 0 {
             return Ok(()); // Cannot set attributes on object 0
-        }
-
-        // OBJECT_BOUNDS_CHECK: Handle invalid object IDs gracefully (architectural issue with grammar system)
-        let max_objects = if self.game.header.version <= 3 {
-            255
-        } else {
-            65535
-        };
-        if obj_num > max_objects {
-            log::debug!(
-                "OBJECT_BOUNDS_CHECK: Skipping set_attribute for invalid object ID {} (max: {})",
-                obj_num,
-                max_objects
-            );
-            return Ok(()); // Skip invalid operations gracefully
         }
 
         let obj_addr = self.get_object_addr(obj_num)?;
@@ -1025,11 +605,10 @@ impl VM {
         }
 
         // Attributes are in the first bytes of the object entry
-        // Z-Machine uses big-endian attribute storage:
-        // Byte 0: attrs 31-24, Byte 1: attrs 23-16, Byte 2: attrs 15-8, Byte 3: attrs 7-0
-        let attr_bytes_total = if self.game.header.version <= 3 { 4 } else { 6 };
-        let attr_byte = (attr_bytes_total - 1) - (attr_num / 8);
-        let attr_bit = attr_num % 8; // Bit position within the byte (0=LSB, 7=MSB)
+        // CRITICAL: Use simple attribute calculation for commercial Zork I compatibility
+        // This implementation matches what original Infocom games expect
+        let attr_byte = attr_num / 8;
+        let attr_bit = 7 - (attr_num % 8); // Attributes are numbered from high bit to low bit
 
         let byte_val = self.game.memory[obj_addr + attr_byte as usize];
         let new_byte = if value {
@@ -1050,12 +629,6 @@ impl VM {
             65535
         };
         if obj_num == 0 || obj_num > max_objects {
-            log::debug!(
-                "Object validation error at PC 0x{:04x}: invalid object {} (zero or exceeds maximum {})",
-                self.pc,
-                obj_num,
-                max_objects
-            );
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
@@ -1108,14 +681,11 @@ impl VM {
             return Ok(0); // Object 0 has no sibling
         }
         let obj_addr = self.get_object_addr(obj_num)?;
-        let sibling = if self.game.header.version <= 3 {
-            self.game.memory[obj_addr + 5] as u16
+        if self.game.header.version <= 3 {
+            Ok(self.game.memory[obj_addr + 5] as u16)
         } else {
-            self.read_word((obj_addr + 8) as u32)
-        };
-
-        // Return sibling object number (0 = no sibling)
-        Ok(sibling)
+            Ok(self.read_word((obj_addr + 8) as u32))
+        }
     }
 
     /// Set sibling of object
@@ -1141,14 +711,11 @@ impl VM {
             return Ok(0); // Object 0 has no child
         }
         let obj_addr = self.get_object_addr(obj_num)?;
-        let child = if self.game.header.version <= 3 {
-            self.game.memory[obj_addr + 6] as u16
+        if self.game.header.version <= 3 {
+            Ok(self.game.memory[obj_addr + 6] as u16)
         } else {
-            self.read_word((obj_addr + 10) as u32)
-        };
-
-        // Return first child object number (0 = no children)
-        Ok(child)
+            Ok(self.read_word((obj_addr + 10) as u32))
+        }
     }
 
     /// Set child of object
@@ -1204,49 +771,9 @@ impl VM {
         Ok(())
     }
 
-    /// Insert object as first child of destination (Z-Machine insert_obj instruction)
-    ///
-    /// Standard Z-Machine algorithm:
-    /// 1. Remove object from current location
-    /// 2. Get destination's current first child
-    /// 3. Set object as destination's new first child
-    /// 4. Set object's parent to destination
-    /// 5. Set object's sibling to old first child (forming linked list)
+    /// Insert object as first child of destination
     pub fn insert_object(&mut self, obj_num: u16, dest_num: u16) -> Result<(), String> {
         if obj_num == 0 {
-            log::debug!(" insert_object called with object 0 at PC {:05x}", self.pc);
-            log::debug!(" dest_num: {}, stack depth: {}", dest_num, self.stack.len());
-            if !self.stack.is_empty() {
-                log::debug!(" top of stack: {:?}", self.stack.last());
-            }
-
-            // ENHANCED DEBUGGING: Show where this insert_obj(0) came from
-            log::warn!(
-                "🚨 VM_INSERT_OBJ_ZERO: insert_object(obj=0, dest={}) called at PC=0x{:04x}",
-                dest_num,
-                self.pc
-            );
-            log::warn!(
-                "🔍 VM_CONTEXT: Variables: 1={}, 2={}, 3={}",
-                self.read_variable(1).unwrap_or(999),
-                self.read_variable(2).unwrap_or(999),
-                self.read_variable(3).unwrap_or(999)
-            );
-
-            // Show raw bytes at PC to understand what instruction this was
-            let pc_addr = self.pc as usize;
-            if pc_addr + 5 < self.game.memory.len() {
-                log::warn!(
-                    "🔍 VM_BYTES_AT_PC: [{:02x} {:02x} {:02x} {:02x} {:02x}] at PC=0x{:04x}",
-                    self.game.memory[pc_addr],
-                    self.game.memory[pc_addr + 1],
-                    self.game.memory[pc_addr + 2],
-                    self.game.memory[pc_addr + 3],
-                    self.game.memory[pc_addr + 4],
-                    pc_addr
-                );
-            }
-
             return Err("Cannot insert object 0".to_string());
         }
         if dest_num == 0 {
@@ -1259,23 +786,6 @@ impl VM {
         // Get current first child of destination
         let old_child = self.get_child(dest_num)?;
 
-        // CRITICAL FIX: Prevent double insertion bug that causes infinite loops
-        //
-        // Problem: Objects can be inserted both at compile time and runtime. When runtime
-        // code tries to re-insert an object that's already the first child, we would:
-        // 1. Get old_child = obj_num (the object itself)
-        // 2. Set obj_num.sibling = old_child = obj_num (self-reference!)
-        // 3. GetObjectSibling loops infinitely: obj → obj → obj → ...
-        //
-        // Solution: Skip insertion if object is already first child of destination
-        // CRITICAL FIX (Nov 2, 2025): Must still set parent relationship even if skipping insertion
-        if old_child == obj_num {
-            // Object is already correctly positioned as first child (likely from compile-time placement)
-            // but we must ensure the parent pointer is set for visibility checks
-            self.set_parent(obj_num, dest_num)?;
-            return Ok(());
-        }
-
         // Set object as new first child
         self.set_child(dest_num, obj_num)?;
         self.set_parent(obj_num, dest_num)?;
@@ -1286,10 +796,7 @@ impl VM {
 
     /// Get the short name of an object (version-aware)
     pub fn get_object_name(&self, obj_num: u16) -> Result<String, String> {
-        log::debug!(" GET_OBJECT_NAME: Accessing object {}", obj_num);
-
         if obj_num == 0 {
-            log::debug!(" Object 0 requested - returning empty string");
             return Ok(String::new()); // Object 0 has no name
         }
 
@@ -1299,12 +806,6 @@ impl VM {
             65535
         };
         if obj_num > max_objects {
-            log::debug!(
-                "Object validation error at PC 0x{:04x}: invalid object {} exceeds maximum {}",
-                self.pc,
-                obj_num,
-                max_objects
-            );
             return Err(format!("Invalid object number: {obj_num}"));
         }
 
@@ -1318,53 +819,16 @@ impl VM {
         };
         let obj_tree_base = property_defaults + default_props * 2;
 
-        log::debug!(" Object table layout:");
-        log::debug!(" object_table_addr: 0x{:04x}", obj_table_addr);
-        log::debug!(" property_defaults: 0x{:04x}", property_defaults);
-        log::debug!(" default_props: {}", default_props);
-        log::debug!(" obj_tree_base: 0x{:04x}", obj_tree_base);
-
         // Calculate object entry address (version-dependent size)
         let obj_size = if self.game.header.version <= 3 { 9 } else { 14 };
         let obj_addr = obj_tree_base + ((obj_num - 1) as usize * obj_size);
-
-        log::debug!(" Object {} address calculation:", obj_num);
-        log::debug!(" obj_size: {}", obj_size);
-        log::debug!(
-            " obj_addr: 0x{:04x} = 0x{:04x} + (({} - 1) * {})",
-            obj_addr,
-            obj_tree_base,
-            obj_num,
-            obj_size
-        );
 
         // Get property table address (last 2 bytes of object entry for both v3 and v4+)
         let prop_table_offset = if self.game.header.version <= 3 { 7 } else { 12 };
         let prop_table_addr = self.read_word((obj_addr + prop_table_offset) as u32) as usize;
 
-        log::debug!(" Property table lookup:");
-        log::debug!(" prop_table_offset: {}", prop_table_offset);
-        log::debug!(" reading from: 0x{:04x}", obj_addr + prop_table_offset);
-        log::debug!(" prop_table_addr: 0x{:04x}", prop_table_addr);
-        log::debug!(" file size: {} bytes", self.game.memory.len());
-
-        // Bounds check BEFORE accessing memory
-        if prop_table_addr >= self.game.memory.len() {
-            log::debug!(
-                " BOUNDS ERROR: prop_table_addr 0x{:04x} >= file size {}",
-                prop_table_addr,
-                self.game.memory.len()
-            );
-            return Err(format!(
-                "Property table address 0x{:04x} out of bounds (file size: {})",
-                prop_table_addr,
-                self.game.memory.len()
-            ));
-        }
-
         // The first byte is the text-length of the short name
         let text_len = self.game.memory[prop_table_addr] as usize;
-        log::debug!(" Object {} text_len: {}", obj_num, text_len);
 
         if text_len > 0 {
             // Decode the object name (stored as Z-string)
@@ -1373,7 +837,7 @@ impl VM {
 
             match crate::text::decode_string(&self.game.memory, name_addr, abbrev_addr) {
                 Ok((name, _)) => Ok(name),
-                Err(e) => Err(format!("Failed to decode object name: {e}")),
+                Err(e) => Err(format!("Failed to decode object name: {}", e)),
             }
         } else {
             Ok(String::new())
@@ -1384,11 +848,11 @@ impl VM {
 impl fmt::Display for VM {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "VM State:")?;
-        writeln!(f, " PC: {:04x}", self.pc)?;
-        writeln!(f, " Stack depth: {}", self.stack.len())?;
-        writeln!(f, " Call depth: {}", self.call_stack.len())?;
+        writeln!(f, "  PC: {:04x}", self.pc)?;
+        writeln!(f, "  Stack depth: {}", self.stack.len())?;
+        writeln!(f, "  Call depth: {}", self.call_stack.len())?;
         if !self.stack.is_empty() {
-            writeln!(f, " Stack top: {:04x}", self.stack.last().unwrap())?;
+            writeln!(f, "  Stack top: {:04x}", self.stack.last().unwrap())?;
         }
         Ok(())
     }
@@ -1421,10 +885,7 @@ mod tests {
         let vm = create_test_vm();
         assert_eq!(vm.pc, 0x5000);
         assert!(vm.stack.is_empty());
-        // For V1-5 games, there's an initial main frame on the call stack
-        assert_eq!(vm.call_stack.len(), 1);
-        assert_eq!(vm.call_stack[0].num_locals, 0);
-        assert_eq!(vm.call_stack[0].stack_base, 0);
+        assert!(vm.call_stack.is_empty());
     }
 
     #[test]

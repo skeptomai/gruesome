@@ -1,0 +1,12 @@
+[1;1H[2;1HZORK I: The Great Underground Empire
+Copyright (c) 1981, 1982, 1983 Infocom, Inc. All rights reserved.
+ZORK is a registered trademark of Infocom, Inc.
+Revision 88 / Serial number 840726
+
+West of House
+You are standing in an open field west of a white house, with a boarded front door.
+There is a door here.
+There is a small mailbox here.
+
+>7[1;1HWest of House                                                                                                                    Score: 0 Moves: 08You can't go there without a vehicle.
+[?25h[38;1H

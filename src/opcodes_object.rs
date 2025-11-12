@@ -46,25 +46,14 @@ impl Interpreter {
             // 1OP:0x03 - get_parent
             (0x03, crate::instruction::OperandCount::OP1) => {
                 // get_parent
-                log::debug!(
-                    "🏃 RUNTIME get_parent: obj_num={} at PC {:05x}",
+                debug!(
+                    "get_parent: obj_num={} at PC {:05x}",
                     operands[0],
                     self.vm.pc - inst.size as u32
                 );
                 let parent = self.vm.get_parent(operands[0])?;
-                log::debug!(
-                    "🏃 RUNTIME get_parent: obj_num={} -> parent={}, store_var={:?}",
-                    operands[0],
-                    parent,
-                    inst.store_var
-                );
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, parent)?;
-                    log::debug!(
-                        "🏃 RUNTIME get_parent: Stored parent={} to variable {}",
-                        parent,
-                        store_var
-                    );
                 }
                 Ok(ExecutionResult::Continue)
             }
@@ -81,65 +70,15 @@ impl Interpreter {
                 let prop_len = if operands[0] == 0 {
                     0
                 } else {
-                    // get_prop_len is given the property DATA address
-                    // The size byte(s) are immediately BEFORE the data
-                    // V3 two-byte format: byte-2=0x80|prop_num, byte-1=size, byte0=data
-                    // V3 single-byte format: byte-1=size_encoding, byte0=data
-                    let data_addr = operands[0] as u32;
-
-                    let size = if self.vm.game.header.version <= 3 {
-                        // V3: Check if we have two-byte format by looking at byte BEFORE the immediate predecessor
-                        // If data is at address N, size byte could be at N-1 (single-byte) or N-2 (two-byte)
-                        if data_addr >= 2 {
-                            let potential_first_size_byte = self.vm.read_byte(data_addr - 2);
-                            if potential_first_size_byte & 0x80 != 0 {
-                                // Two-byte format: byte at data_addr-2 is first size byte, byte at data_addr-1 is actual size
-                                let size_byte = self.vm.read_byte(data_addr - 1);
-                                if size_byte == 0 {
-                                    64
-                                } else {
-                                    size_byte as usize
-                                }
-                            } else {
-                                // Single-byte format: byte at data_addr-1 encodes size in bits 7-5
-                                let size_byte = self.vm.read_byte(data_addr - 1);
-                                ((size_byte >> 5) & 0x07) as usize + 1
-                            }
-                        } else {
-                            // Edge case: data_addr < 2, treat as single-byte
-                            let size_byte = self.vm.read_byte(data_addr.saturating_sub(1));
-                            ((size_byte >> 5) & 0x07) as usize + 1
-                        }
-                    } else {
-                        // V4+: Similar logic but different size encoding
-                        if data_addr >= 2 {
-                            let potential_first_size_byte = self.vm.read_byte(data_addr - 2);
-                            if potential_first_size_byte & 0x80 != 0 {
-                                let size_byte = self.vm.read_byte(data_addr - 1);
-                                if size_byte == 0 {
-                                    64
-                                } else {
-                                    (size_byte & 0x3F) as usize
-                                }
-                            } else {
-                                let size_byte = self.vm.read_byte(data_addr - 1);
-                                if size_byte & 0x40 != 0 {
-                                    2
-                                } else {
-                                    1
-                                }
-                            }
-                        } else {
-                            let size_byte = self.vm.read_byte(data_addr.saturating_sub(1));
-                            if size_byte & 0x40 != 0 {
-                                2
-                            } else {
-                                1
-                            }
-                        }
-                    };
-
-                    debug!(" get_prop_len: data_addr={:04x}, size={}", data_addr, size);
+                    // In Z-Machine v3, the size byte is immediately before the property data
+                    // The size byte encodes: top 3 bits = size-1, bottom 5 bits = property number
+                    let size_byte_addr = (operands[0] as u32).saturating_sub(1);
+                    let size_byte = self.vm.read_byte(size_byte_addr);
+                    let size = ((size_byte >> 5) & 0x07) + 1;
+                    debug!(
+                        "  Size byte at {:04x}: {:02x}, property size: {}",
+                        size_byte_addr, size_byte, size
+                    );
                     size as u16
                 };
 
@@ -166,36 +105,15 @@ impl Interpreter {
             (0x0A, crate::instruction::OperandCount::OP1) => {
                 // print_obj - print short name of object
                 let obj_num = operands[0];
-                log::debug!(
-                    "PRINT_OBJ DEBUG: obj_num={} at PC {:05x}",
+                debug!(
+                    "print_obj: obj_num={} at PC {:05x}",
                     obj_num,
                     self.vm.pc - inst.size as u32
                 );
-                log::debug!(
-                    "Stack depth: {}, Call stack depth: {}",
-                    self.vm.stack.len(),
-                    self.vm.call_stack.len()
-                );
-
-                // Validate object number range BEFORE accessing
-                if obj_num == 0 || obj_num > 255 {
-                    log::error!(
-                        " INVALID OBJECT NUMBER: {} is out of valid range (1-255)",
-                        obj_num
-                    );
-                    log::error!(" This suggests stack corruption or invalid instruction operand");
-                    log::error!(
-                        " Current instruction size: {}, PC before: {:05x}",
-                        inst.size,
-                        self.vm.pc - inst.size as u32
-                    );
-                    return Err(format!("Invalid object number: {}", obj_num));
-                }
 
                 // Get object's short description
                 match self.vm.get_object_name(obj_num) {
                     Ok(name) => {
-                        log::debug!(" Successfully got object name: '{}'", name);
                         self.output_text(&name)?;
                     }
                     Err(e) => {
@@ -225,12 +143,11 @@ impl Interpreter {
                 let result = self.vm.test_attribute(obj_num, attr_num)?;
                 let current_pc = self.vm.pc - inst.size as u32;
 
-                // DEBUG: Trace test_attr with branch details for mailbox
-                if obj_num == 10 && attr_num == 5 {
-                    log::debug!(
-                        "🔧 TEST_ATTR_BRANCH: PC=0x{:04x} obj={} attr={} result={} branch_on_true={:?}",
-                        current_pc, obj_num, attr_num, result,
-                        inst.branch.as_ref().map(|b| b.on_true)
+                // Let's follow the natural flow
+                if current_pc == 0x4f7e {
+                    debug!(
+                        "test_attr at {:05x}: obj={}, attr={}, result={}",
+                        current_pc, obj_num, attr_num, result
                     );
                 }
 
@@ -266,70 +183,12 @@ impl Interpreter {
             // 2OP:0x0E - insert_obj
             (0x0E, crate::instruction::OperandCount::OP2) => {
                 // insert_obj
-                let current_pc = self.vm.pc - inst.size as u32;
                 debug!(
                     "insert_obj: obj={}, dest={} at PC {:05x}",
-                    operands[0], operands[1], current_pc
+                    operands[0],
+                    operands[1],
+                    self.vm.pc - inst.size as u32
                 );
-
-                // ENHANCED DEBUGGING: Track exact PC and instruction location
-                log::debug!("🔧 INSERT_OBJ_HANDLER: Called with PC=0x{:04x}, current_pc=0x{:04x}, size={}, obj={}, dest={}",
-                    self.vm.pc, current_pc, inst.size, operands[0], operands[1]
-                );
-
-                // Show bytes at the calculated instruction location
-                let inst_addr = current_pc as usize;
-                if inst_addr + 5 < self.vm.game.memory.len() {
-                    log::debug!("🔍 INSERT_OBJ_ACTUAL_BYTES: [{:02x} {:02x} {:02x} {:02x} {:02x}] at calculated PC=0x{:04x}",
-                        self.vm.game.memory[inst_addr],
-                        self.vm.game.memory[inst_addr + 1],
-                        self.vm.game.memory[inst_addr + 2],
-                        self.vm.game.memory[inst_addr + 3],
-                        self.vm.game.memory[inst_addr + 4],
-                        inst_addr
-                    );
-                }
-                if operands[0] == 0 {
-                    debug!(" insert_obj Z-Machine opcode called with object 0!");
-                    debug!(" operands: {:?}", operands);
-                    debug!(" instruction: {:?}", inst);
-
-                    // Enhanced debugging for object 0 issue
-                    log::warn!("🚨 INSERT_OBJ_ZERO: PC=0x{:04x}, obj={}, dest={}, Variables: 1={}, 2={}, 3={}",
-                        self.vm.pc,
-                        operands[0],
-                        operands[1],
-                        self.vm.read_variable(1).unwrap_or(888),
-                        self.vm.read_variable(2).unwrap_or(888),
-                        self.vm.read_variable(3).unwrap_or(888)
-                    );
-
-                    // Show the exact instruction details
-                    log::debug!("🔍 INSERT_OBJ_INSTRUCTION: opcode=0x{:02x}, operand_count={:?}, operand_types={:?}, size={}",
-                        inst.opcode,
-                        inst.operand_count,
-                        inst.operand_types,
-                        inst.size
-                    );
-
-                    // Show raw bytes at PC
-                    let pc_addr = self.vm.pc as usize;
-                    if pc_addr + 5 < self.vm.game.memory.len() {
-                        log::debug!("🔍 INSERT_OBJ_BYTES: [{:02x} {:02x} {:02x} {:02x} {:02x}] at PC=0x{:04x}",
-                            self.vm.game.memory[pc_addr],
-                            self.vm.game.memory[pc_addr + 1],
-                            self.vm.game.memory[pc_addr + 2],
-                            self.vm.game.memory[pc_addr + 3],
-                            self.vm.game.memory[pc_addr + 4],
-                            pc_addr
-                        );
-                    }
-
-                    // Check if we're in literal pattern context
-                    if self.vm.read_variable(1).unwrap_or(0) == 2 {
-                        log::warn!("🚨 INSERT_OBJ_LITERAL_CONTEXT: This appears to be during literal pattern execution!");
-                    }
-                }
                 self.vm.insert_object(operands[0], operands[1])?;
                 Ok(ExecutionResult::Continue)
             }
@@ -339,14 +198,6 @@ impl Interpreter {
                 // get_prop
                 let obj_num = operands[0];
                 let prop_num = operands[1] as u8;
-
-                // Debug logging for object 0 case (the Frotz compatibility issue)
-                if obj_num == 0 {
-                    debug!("WARNING: get_prop called with object 0 at PC {:05x} - this should not happen!", self.vm.pc);
-                    debug!(" Property number: {}", prop_num);
-                    debug!(" This likely means Variable(16) returned 0 instead of 1 (player object number)");
-                }
-
                 let value = self.vm.get_property(obj_num, prop_num)?;
 
                 if let Some(store_var) = inst.store_var {
@@ -360,22 +211,7 @@ impl Interpreter {
                 // get_prop_addr
                 let obj_num = operands[0];
                 let prop_num = operands[1] as u8;
-                log::debug!(
-                    "🔍 GET_PROP_ADDR CALLED: obj={}, prop={}, PC=0x{:04x}",
-                    obj_num,
-                    prop_num,
-                    self.vm.pc - inst.size as u32
-                );
                 let addr = self.vm.get_property_addr(obj_num, prop_num)? as u16;
-                log::debug!(
-                    "🔍 GET_PROP_ADDR RESULT: addr=0x{:04x}, storing to var={:?}",
-                    addr,
-                    inst.store_var
-                );
-                if prop_num >= 20 && prop_num <= 22 {
-                    log::debug!("🔍 GET_PROP_ADDR EXIT: obj={}, prop={}, returning addr=0x{:04x}, storing to var={:?}",
-                        obj_num, prop_num, addr, inst.store_var);
-                }
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, addr)?;
                 }
@@ -386,11 +222,7 @@ impl Interpreter {
             (0x13, crate::instruction::OperandCount::OP2) => {
                 // get_next_prop
                 let obj_num = operands[0];
-                let prop_num = if operands.len() >= 2 {
-                    operands[1] as u8
-                } else {
-                    0u8
-                };
+                let prop_num = operands[1] as u8;
                 let next_prop = self.vm.get_next_property(obj_num, prop_num)? as u16;
                 if let Some(store_var) = inst.store_var {
                     self.vm.write_variable(store_var, next_prop)?;
@@ -403,23 +235,13 @@ impl Interpreter {
             // VAR:0x03 - put_prop
             (0x03, crate::instruction::OperandCount::VAR) => {
                 // put_prop
-                debug!(
-                    "put_prop at PC {:05x}: operands={:?}",
-                    self.vm.pc - inst.size as u32,
-                    operands
-                );
                 if operands.len() < 3 {
                     return Err("put_prop requires 3 operands".to_string());
                 }
                 let obj_num = operands[0];
                 let prop_num = operands[1] as u8;
                 let value = operands[2];
-                debug!(
-                    "put_prop: obj={}, prop={}, value={}",
-                    obj_num, prop_num, value
-                );
                 self.vm.put_property(obj_num, prop_num, value)?;
-                debug!("put_prop completed successfully");
                 Ok(ExecutionResult::Continue)
             }
 
@@ -440,13 +262,13 @@ impl Interpreter {
                     if let Some(store_var) = inst.store_var {
                         self.vm.write_variable(store_var, next_prop)?;
                     }
-                    Ok(ExecutionResult::Continue)
+                    return Ok(ExecutionResult::Continue);
                 } else {
                     // This is output_stream - not an object operation, should not reach here
-                    Err(
+                    return Err(
                         "VAR:0x13 without store_var should be output_stream, not object operation"
                             .to_string(),
-                    )
+                    );
                 }
             }
 
@@ -463,24 +285,24 @@ impl Interpreter {
         matches!(
             (opcode, operand_count),
             // 1OP object operations
-            (0x01, crate::instruction::OperandCount::OP1) | // get_sibling
- (0x02, crate::instruction::OperandCount::OP1) | // get_child
- (0x03, crate::instruction::OperandCount::OP1) | // get_parent
- (0x04, crate::instruction::OperandCount::OP1) | // get_prop_len
- (0x09, crate::instruction::OperandCount::OP1) | // remove_obj
- (0x0A, crate::instruction::OperandCount::OP1) | // print_obj
- // 2OP object operations
- (0x06, crate::instruction::OperandCount::OP2) | // jin
- (0x0A, crate::instruction::OperandCount::OP2) | // test_attr
- (0x0B, crate::instruction::OperandCount::OP2) | // set_attr
- (0x0C, crate::instruction::OperandCount::OP2) | // clear_attr
- (0x0E, crate::instruction::OperandCount::OP2) | // insert_obj
- (0x11, crate::instruction::OperandCount::OP2) | // get_prop
- (0x12, crate::instruction::OperandCount::OP2) | // get_prop_addr
- (0x13, crate::instruction::OperandCount::OP2) | // get_next_prop
- // VAR object operations
- (0x03, crate::instruction::OperandCount::VAR) // put_prop
-                                                           // Note: VAR:0x13 is handled specially in the interpreter routing
+            (0x01, crate::instruction::OperandCount::OP1) |  // get_sibling
+            (0x02, crate::instruction::OperandCount::OP1) |  // get_child
+            (0x03, crate::instruction::OperandCount::OP1) |  // get_parent
+            (0x04, crate::instruction::OperandCount::OP1) |  // get_prop_len
+            (0x09, crate::instruction::OperandCount::OP1) |  // remove_obj
+            (0x0A, crate::instruction::OperandCount::OP1) |  // print_obj
+            // 2OP object operations
+            (0x06, crate::instruction::OperandCount::OP2) |  // jin
+            (0x0A, crate::instruction::OperandCount::OP2) |  // test_attr
+            (0x0B, crate::instruction::OperandCount::OP2) |  // set_attr
+            (0x0C, crate::instruction::OperandCount::OP2) |  // clear_attr
+            (0x0E, crate::instruction::OperandCount::OP2) |  // insert_obj
+            (0x11, crate::instruction::OperandCount::OP2) |  // get_prop
+            (0x12, crate::instruction::OperandCount::OP2) |  // get_prop_addr
+            (0x13, crate::instruction::OperandCount::OP2) |  // get_next_prop
+            // VAR object operations
+            (0x03, crate::instruction::OperandCount::VAR) // put_prop
+                                                          // Note: VAR:0x13 is handled specially in the interpreter routing
         )
     }
 

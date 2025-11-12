@@ -44,7 +44,7 @@ pub struct Interpreter {
     pub step_range: Option<(u32, u32)>,
     /// V3 input handler (for v1-v3 games)
     pub(crate) v3_input: Option<V3Input>,
-    /// V4+ input handler (for v4+ games)
+    /// V4+ input handler (for v4+ games)  
     pub(crate) v4_input: Option<V4Input>,
     /// Display manager
     pub(crate) display: Option<Box<dyn ZMachineDisplay>>,
@@ -138,7 +138,7 @@ impl Interpreter {
         if !routines_in_range.is_empty() {
             println!("Routines in range:");
             for (addr, name) in routines_in_range {
-                println!(" 0x{addr:04x}: {name}");
+                println!("  0x{addr:04x}: {name}");
             }
         }
         println!();
@@ -172,9 +172,9 @@ impl Interpreter {
             if let Ok(val) = self.vm.read_global(i) {
                 let name = crate::debug_symbols::get_global_name(i + 0x10).unwrap_or("");
                 if !name.is_empty() {
-                    println!(" G{i:02x} {name}: {val} (0x{val:04x})");
+                    println!("  G{i:02x} {name}: {val} (0x{val:04x})");
                 } else {
-                    println!(" G{i:02x}: {val} (0x{val:04x})");
+                    println!("  G{i:02x}: {val} (0x{val:04x})");
                 }
             }
         }
@@ -184,7 +184,7 @@ impl Interpreter {
         for i in 0..5.min(self.vm.stack.len()) {
             let idx = self.vm.stack.len() - 1 - i;
             println!(
-                " [{}]: {} (0x{:04x})",
+                "  [{}]: {} (0x{:04x})",
                 i, self.vm.stack[idx], self.vm.stack[idx]
             );
         }
@@ -193,17 +193,17 @@ impl Interpreter {
         if let Some(frame) = self.vm.call_stack.last() {
             println!("\nCurrent call frame:");
             println!(
-                " Return PC: {}",
+                "  Return PC: {}",
                 self.routine_names.format_address(frame.return_pc)
             );
-            println!(" Locals: {:?}", frame.locals);
+            println!("  Locals: {:?}", frame.locals);
         }
 
         // Show call stack
         println!("\nCall stack:");
         for (i, frame) in self.vm.call_stack.iter().rev().enumerate() {
             println!(
-                " [{}] Return to: {}",
+                "  [{}] Return to: {}",
                 i,
                 self.routine_names.format_address(frame.return_pc)
             );
@@ -243,7 +243,7 @@ impl Interpreter {
                     if let Ok(has_attr) = self.vm.test_attribute(location, attr) {
                         if has_attr {
                             debug!(
-                                " Location {} has attribute {} ({})",
+                                "  Location {} has attribute {} ({})",
                                 location,
                                 attr,
                                 match attr {
@@ -263,7 +263,7 @@ impl Interpreter {
                 for light_attr in [2, 3, 8, 15] {
                     if let Ok(has_light) = self.vm.test_attribute(location, light_attr) {
                         debug!(
-                            " Location {} light check attr {} ({}): {}",
+                            "  Location {} light check attr {} ({}): {}",
                             location,
                             light_attr,
                             match light_attr {
@@ -286,7 +286,7 @@ impl Interpreter {
         for attr in 0..32 {
             if let Ok(has_attr) = self.vm.test_attribute(player_obj, attr) {
                 if has_attr {
-                    debug!(" Player {} has attribute {}", player_obj, attr);
+                    debug!("  Player {} has attribute {}", player_obj, attr);
                 }
             }
         }
@@ -297,7 +297,7 @@ impl Interpreter {
             for light_attr in [2, 8, 12, 15] {
                 if let Ok(has_light_attr) = self.vm.test_attribute(obj, light_attr) {
                     if has_light_attr {
-                        debug!(" Object {} has light attribute {}", obj, light_attr);
+                        debug!("  Object {} has light attribute {}", obj, light_attr);
                     }
                 }
             }
@@ -307,9 +307,9 @@ impl Interpreter {
         debug!("=== Attempting to set light attribute on West of House ===");
         if let Ok(location) = self.vm.read_variable(16) {
             if location == 180 {
-                debug!(" West of House (180) currently has no light attributes");
-                debug!(" In a working game, this location should be naturally lit");
-                debug!(" This suggests the lighting check may use a different mechanism");
+                debug!("  West of House (180) currently has no light attributes");
+                debug!("  In a working game, this location should be naturally lit");
+                debug!("  This suggests the lighting check may use a different mechanism");
             }
         }
 
@@ -353,16 +353,6 @@ impl Interpreter {
             // Fetch and decode instruction
             let pc = self.vm.pc;
 
-            // Debug: Track all PC values and advancement
-            if pc > 0x1000 || pc == 0x1717 || (0x0b70..=0x0b80).contains(&pc) {
-                log::debug!(
-                    " EXECUTION LOOP: PC=0x{:04x} ({}) memory_len={}",
-                    pc,
-                    pc,
-                    self.vm.game.memory.len()
-                );
-            }
-
             // Debug: Show raw bytes at critical addresses and quote area execution flow
             if pc == 0xcc6a {
                 let bytes: Vec<u8> = self.vm.game.memory[pc as usize..pc as usize + 8].to_vec();
@@ -381,32 +371,7 @@ impl Interpreter {
 
             // Check for problematic Trinity PC range
             if (0x13fc0..=0x13ff0).contains(&pc) {
-                debug!(" TRINITY EXECUTION at PC {:05x}", pc);
-            }
-
-            // Debug: Track PC bounds checking to find 0x1717 crash source
-            if pc >= self.vm.game.memory.len() as u32 {
-                log::debug!(
-                    " PC OUT OF BOUNDS: PC=0x{:04x} ({}) >= memory_len={}",
-                    pc,
-                    pc,
-                    self.vm.game.memory.len()
-                );
-                log::debug!(
-                    " STACK STATE: depth={}, top values={:?}",
-                    self.vm.stack.len(),
-                    self.vm.stack.iter().rev().take(5).collect::<Vec<_>>()
-                );
-            }
-
-            // CRITICAL PC TRACKING: Log every instruction fetch around crash point
-            if (0x0bd0..=0x0be0).contains(&pc) {
-                let opcode_byte = self.vm.game.memory[pc as usize];
-                log::debug!(
-                    "🎯 CRITICAL_PC: PC=0x{:04x} fetching_byte=0x{:02x}",
-                    pc,
-                    opcode_byte
-                );
+                debug!("🚨 TRINITY EXECUTION at PC {:05x}", pc);
             }
 
             let instruction = match Instruction::decode(
@@ -419,15 +384,6 @@ impl Interpreter {
                     return Err(format!("Failed to decode instruction at {pc:05x}: {e}"));
                 }
             };
-
-            // Debug: trace execution flow around the problematic area
-            if (0x0680..=0x06d0).contains(&pc) {
-                debug!(
-                    "TRACE: PC=0x{:05x}, opcode=0x{:02x}, form={:?}, operand_count={:?}",
-                    pc, instruction.opcode, instruction.form, instruction.operand_count
-                );
-                debug!("TRACE: Stack depth: {}", self.vm.stack.len());
-            }
 
             // Check if we should single-step this instruction
             let should_step = self.single_step
@@ -454,11 +410,11 @@ impl Interpreter {
                 };
                 println!("\n[{pc:05x}] {instruction}{routine_info}");
                 println!(
-                    " Opcode: 0x{:02x}, Form: {:?}",
+                    "  Opcode: 0x{:02x}, Form: {:?}",
                     instruction.opcode, instruction.form
                 );
                 if !instruction.operands.is_empty() {
-                    print!(" Operands:");
+                    print!("  Operands:");
                     for (i, (op_type, value)) in instruction
                         .operand_types
                         .iter()
@@ -482,17 +438,17 @@ impl Interpreter {
                     println!();
                 }
                 if let Some(store) = instruction.store_var {
-                    println!(" Store to: V{store:02x}");
+                    println!("  Store to: V{store:02x}");
                 }
                 if let Some(branch) = &instruction.branch {
                     println!(
-                        " Branch: offset={}, on_true={}",
+                        "  Branch: offset={}, on_true={}",
                         branch.offset, branch.on_true
                     );
                 }
 
                 // Wait for user input
-                print!(" Press Enter to continue (or 'q' to quit, 'm' for memory dump)... ");
+                print!("  Press Enter to continue (or 'q' to quit, 'm' for memory dump)... ");
                 io::stdout().flush().ok();
 
                 let mut input = String::new();
@@ -516,32 +472,12 @@ impl Interpreter {
 
             // Advance PC past the instruction
             let old_pc = self.vm.pc;
-            let new_pc = old_pc + instruction.size as u32;
-
-            // Debug: Track PC advancement that might cause out-of-bounds
-            if new_pc > self.vm.game.memory.len() as u32
-                || new_pc == 0x1717
-                || (0x0b70..=0x0b90).contains(&old_pc)
-            {
-                log::debug!(
-                    " PC ADVANCE: 0x{:04x} + {} -> 0x{:04x} (memory_len={})",
-                    old_pc,
-                    instruction.size,
-                    new_pc,
-                    self.vm.game.memory.len()
-                );
-                log::debug!(" INSTRUCTION: {}", instruction);
-                if new_pc > self.vm.game.memory.len() as u32 {
-                    log::debug!(" *** OUT OF BOUNDS! ***");
-                }
-            }
-
-            self.vm.pc = new_pc;
+            self.vm.pc += instruction.size as u32;
 
             // Debug PC advancement for Trinity offset issue
             if old_pc == 0x125c7 {
                 debug!(
-                    " PC ADVANCEMENT: 0x{:05x} + {} = 0x{:05x} (instruction: {})",
+                    "🚨 PC ADVANCEMENT: 0x{:05x} + {} = 0x{:05x} (instruction: {})",
                     old_pc,
                     instruction.size,
                     self.vm.pc,
@@ -550,7 +486,7 @@ impl Interpreter {
             }
 
             // Add single-step disassembly for Trinity PC tracking
-            if (0x125bf..=0x125e0).contains(&old_pc) {
+            if old_pc >= 0x125bf && old_pc <= 0x125e0 {
                 debug!(
                     "📍 EXECUTE: {:05x}: {} (size={}, next_pc={:05x})",
                     old_pc,
@@ -562,7 +498,7 @@ impl Interpreter {
                 let end_addr = (old_pc as usize + instruction.size).min(self.vm.game.memory.len());
                 let bytes: Vec<String> = self.vm.game.memory[old_pc as usize..end_addr]
                     .iter()
-                    .map(|b| format!("{b:02x}"))
+                    .map(|b| format!("{:02x}", b))
                     .collect();
                 debug!("📍 RAW BYTES: {}", bytes.join(" "));
             }
@@ -570,27 +506,12 @@ impl Interpreter {
             // Track PC changes to catch jumps to invalid addresses like 13fe7
             let pc_before_exec = self.vm.pc;
 
-            // CRITICAL DEBUG: Trace instruction execution around the error point
-            if (0x00bf0..=0x00c10).contains(&old_pc) {
-                debug!(
-                    " EXEC: PC {:05x} opcode {:02x} operands {:?}",
-                    old_pc, instruction.opcode, instruction.operands
-                );
-                if instruction.opcode == 0x0E {
-                    // insert_obj
-                    debug!(
-                        " About to execute insert_obj with operands {:?}",
-                        instruction.operands
-                    );
-                }
-            }
-
             // Execute the instruction
             match self.execute_instruction(&instruction)? {
                 ExecutionResult::Continue => {
                     // Normal execution, PC already advanced
                     // Debug PC state after execution for Trinity tracking
-                    if (0x125bf..=0x125e0).contains(&old_pc) {
+                    if old_pc >= 0x125bf && old_pc <= 0x125e0 {
                         debug!("📍 AFTER EXEC: PC remains at {:05x} (expected)", self.vm.pc);
                     }
                 }
@@ -598,26 +519,24 @@ impl Interpreter {
                     // Branch taken, PC was updated by branch logic
                     let pc_after_exec = self.vm.pc;
                     if pc_after_exec == 0x13fe7 {
-                        debug!(" INVALID JUMP: Branch from {:05x} to invalid PC {:05x} (opcode: {:02x})", 
- pc_before_exec, pc_after_exec, instruction.opcode);
+                        debug!("🚨 INVALID JUMP: Branch from {:05x} to invalid PC {:05x} (opcode: {:02x})", 
+                               pc_before_exec, pc_after_exec, instruction.opcode);
                     }
                 }
                 ExecutionResult::Called => {
                     // Routine called, PC was updated
                     let pc_after_exec = self.vm.pc;
                     if pc_after_exec == 0x13fe7 {
-                        debug!(
-                            " INVALID JUMP: Call from {:05x} to invalid PC {:05x} (opcode: {:02x})",
-                            pc_before_exec, pc_after_exec, instruction.opcode
-                        );
+                        debug!("🚨 INVALID JUMP: Call from {:05x} to invalid PC {:05x} (opcode: {:02x})", 
+                               pc_before_exec, pc_after_exec, instruction.opcode);
                     }
                 }
                 ExecutionResult::Returned(_value) => {
                     // Return value already handled by do_return
                     let pc_after_exec = self.vm.pc;
                     if pc_after_exec == 0x13fe7 {
-                        debug!(" INVALID JUMP: Return from {:05x} to invalid PC {:05x} (opcode: {:02x})", 
- pc_before_exec, pc_after_exec, instruction.opcode);
+                        debug!("🚨 INVALID JUMP: Return from {:05x} to invalid PC {:05x} (opcode: {:02x})", 
+                               pc_before_exec, pc_after_exec, instruction.opcode);
                     }
                 }
                 ExecutionResult::Quit => {
@@ -652,36 +571,6 @@ impl Interpreter {
 
     /// Execute a single instruction
     pub fn execute_instruction(&mut self, inst: &Instruction) -> Result<ExecutionResult, String> {
-        // Store the PC of this instruction BEFORE execution for debugging
-        let instruction_pc = self.vm.pc - inst.size as u32;
-
-        // Optional instruction tracing (enable with TRACE_INSTRUCTIONS=1)
-        if std::env::var("TRACE_INSTRUCTIONS").is_ok() {
-            log::debug!(
-                "🔧 EXEC: PC=0x{:04x} (current PC=0x{:04x}), {:?}",
-                instruction_pc,
-                self.vm.pc,
-                inst
-            );
-        }
-
-        // Store in VM for push/pop logging to reference
-        self.vm.current_instruction_pc = Some(instruction_pc);
-
-        // Log instructions that will write to Variable 216 (debugging corruption)
-        if inst.store_var == Some(216) {
-            log::debug!(
-                "🔍 ABOUT_TO_WRITE_VAR_216: PC=0x{:04x}, inst: {:?}",
-                instruction_pc,
-                inst
-            );
-            log::debug!(
-                "🔍   Stack depth: {}, top values: {:?}",
-                self.vm.stack.len(),
-                self.vm.stack.iter().rev().take(5).collect::<Vec<_>>()
-            );
-        }
-
         // Get operand values
         let operands = self.resolve_operands(inst)?;
 
@@ -690,7 +579,47 @@ impl Interpreter {
             return self.execute_stack_op(inst, &operands);
         }
 
-        let result = match inst.form {
+        // Debug problematic variables
+        if let Some(store_var) = inst.store_var {
+            if (0x01..=0x0F).contains(&store_var) {
+                let frame = self
+                    .vm
+                    .call_stack
+                    .last()
+                    .ok_or("No active routine for local variable access")?;
+                if store_var as usize > frame.num_locals as usize {
+                    let pc = self.vm.pc - inst.size as u32;
+                    debug!("Instruction at {:05x}: {} trying to store to V{:02x} but routine only has {} locals", 
+                           pc, inst, store_var, frame.num_locals);
+                    debug!(
+                        "Call stack depth: {}, routine started at PC {:05x}",
+                        self.vm.call_stack.len(),
+                        frame.return_pc
+                    );
+                }
+            }
+        }
+
+        // Check operands that read from local variables
+        for (i, &operand) in inst.operands.iter().enumerate() {
+            if inst.operand_types[i] == crate::instruction::OperandType::Variable {
+                let var_num = operand as u8;
+                if (0x01..=0x0F).contains(&var_num) {
+                    let frame = self
+                        .vm
+                        .call_stack
+                        .last()
+                        .ok_or("No active routine for local variable access")?;
+                    if var_num as usize > frame.num_locals as usize {
+                        let pc = self.vm.pc - inst.size as u32;
+                        debug!("Instruction at {:05x}: {} trying to read from V{:02x} but routine only has {} locals", 
+                               pc, inst, var_num, frame.num_locals);
+                    }
+                }
+            }
+        }
+
+        match inst.form {
             crate::instruction::InstructionForm::Short => match inst.operand_count {
                 crate::instruction::OperandCount::OP0 => {
                     // Check if this is a display operation and route to display module
@@ -791,9 +720,7 @@ impl Interpreter {
                 }
             }
             crate::instruction::InstructionForm::Extended => self.execute_ext(inst, &operands),
-        };
-
-        result
+        }
     }
 
     /// Resolve operand values (handle variables vs constants)
@@ -813,7 +740,7 @@ impl Interpreter {
                     }
                 }
                 _ => {
-                    // Use literal value (constants are valid for many Z-Machine instructions)
+                    // Use literal value
                     operand
                 }
             };
@@ -928,12 +855,6 @@ impl Interpreter {
                 // quit
                 Ok(ExecutionResult::Quit)
             }
-            0x0E => {
-                // extended opcode (0OP:190) - first byte of extended opcode
-                // This is used in Version 5+ for extended instruction set
-                // For now, we'll treat it as unimplemented until we need extended instructions
-                Err("Extended opcodes not implemented".to_string())
-            }
             0x0F => {
                 // piracy
                 // Copy protection check - interpreters should be "gullible and unconditionally branch"
@@ -980,51 +901,12 @@ impl Interpreter {
                     if let Some(var_num) = inst.operands.first() {
                         if *var_num == 0x52 {
                             // If checking global 0x52 (LIT)
-                            debug!(" -> This is checking LIT global (0x52)");
+                            debug!("  -> This is checking LIT global (0x52)");
                         }
                     }
                 }
 
                 self.do_branch(inst, condition)
-            }
-            0x01 => {
-                // get_sibling - Get next sibling object
-                // Z-Machine spec: get_sibling object -> (result) ?(label)
-                let obj_num = operand;
-
-                debug!("get_sibling: obj={}", obj_num);
-
-                let sibling = self.vm.get_sibling(obj_num)?;
-                if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, sibling)?;
-                }
-                self.do_branch(inst, sibling != 0)
-            }
-            0x02 => {
-                // get_child - Get first child object
-                // Z-Machine spec: get_child object -> (result) ?(label)
-                let obj_num = operand;
-
-                debug!("get_child: obj={}", obj_num);
-
-                let child = self.vm.get_child(obj_num)?;
-                if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, child)?;
-                }
-                self.do_branch(inst, child != 0)
-            }
-            0x03 => {
-                // get_parent - Get parent object
-                // Z-Machine spec: get_parent object -> (result)
-                let obj_num = operand;
-
-                debug!("get_parent: obj={}", obj_num);
-
-                let parent = self.vm.get_parent(obj_num)?;
-                if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, parent)?;
-                }
-                Ok(ExecutionResult::Continue)
             }
             0x05 => {
                 // inc
@@ -1040,112 +922,13 @@ impl Interpreter {
                 self.vm.write_variable(var_num, value.wrapping_sub(1))?;
                 Ok(ExecutionResult::Continue)
             }
-            0x09 => {
-                // remove_obj - Remove object from hierarchy
-                // Z-Machine spec: remove_obj object
-                let obj_num = operand;
-
-                debug!("remove_obj: obj={}", obj_num);
-
-                self.vm.remove_object(obj_num)?;
-                Ok(ExecutionResult::Continue)
-            }
             0x0C => {
                 // jump
                 // Jump is a signed offset from the instruction after the branch data
                 let offset = operand as i16;
                 let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
-
-                // COMPREHENSIVE JUMP LOGGING
-                log::debug!(
- "🔧 JUMP_INSTRUCTION: PC=0x{:04x} operand=0x{:04x} offset={} -> new_PC=0x{:04x}",
- self.vm.pc, operand, offset, new_pc
- );
-                log::debug!(
-                    "🔧 JUMP_CALC: PC(0x{:04x}) + offset({}) - 2 = 0x{:04x} (memory_len={})",
-                    self.vm.pc,
-                    offset,
-                    new_pc,
-                    self.vm.game.memory.len()
-                );
-
-                // Critical bounds checking - this is where PC corruption occurs
-                if new_pc >= self.vm.game.memory.len() as u32 {
-                    log::debug!(
-                        " JUMP_OUT_OF_BOUNDS: new_PC=0x{:04x} >= memory_len={} - INVALID JUMP!",
-                        new_pc,
-                        self.vm.game.memory.len()
-                    );
-                    log::debug!(
-                        " JUMP_DEBUG: raw_operand=0x{:04x} as_signed={} current_PC=0x{:04x}",
-                        operand,
-                        offset,
-                        self.vm.pc
-                    );
-                    return Err(format!(
-                        "Jump to address 0x{:04x} is outside memory bounds ({})",
-                        new_pc,
-                        self.vm.game.memory.len()
-                    ));
-                }
-
-                // Debug: Track jumps that might lead to 0x1717 crash
-                if new_pc == 0x1717 || new_pc > 0x1000 {
-                    log::debug!(
-                        " JUMP CALCULATION: PC=0x{:04x} offset={} (0x{:04x}) -> new_pc=0x{:04x}",
-                        self.vm.pc,
-                        offset,
-                        offset as u16,
-                        new_pc
-                    );
-                    log::debug!(
-                        " JUMP OPERAND: raw_operand=0x{:04x} as_i16={}",
-                        operand,
-                        operand as i16
-                    );
-                }
-
                 self.vm.pc = new_pc;
                 Ok(ExecutionResult::Branched)
-            }
-            0x8D => {
-                // print_paddr - print string at packed address (1OP:141)
-                let packed_addr = operand;
-
-                // Check for debug breakpoint markers (debug builds only)
-                #[cfg(debug_assertions)]
-                {
-                    if packed_addr == 0xFFFE {
-                        // Intentional breakpoint - dump call stack with function names
-                        log::debug!(
-                            "🔴 DEBUG BREAKPOINT HIT at PC 0x{:04x}",
-                            self.vm.pc - inst.size as u32
-                        );
-                        self.dump_call_stack();
-                        return Ok(ExecutionResult::Continue);
-                    } else if packed_addr == 0xFFFF {
-                        // Unresolved reference bug - this should NEVER happen in correct code
-                        log::error!(
-                            "🐛 BUG DETECTED: Unresolved reference at PC 0x{:04x} - compiler failed to patch address",
-                            self.vm.pc - inst.size as u32
-                        );
-                        self.dump_call_stack();
-                        return Err(format!(
-                            "Unresolved reference 0xFFFF at PC 0x{:04x}",
-                            self.vm.pc - inst.size as u32
-                        ));
-                    }
-                }
-
-                let addr = self.unpack_routine_address(packed_addr); // Same unpacking as routines
-                let (text, _) = crate::text::decode_string(
-                    &self.vm.game.memory,
-                    addr,
-                    self.vm.game.header.abbrev_table,
-                )?;
-                print!("{}", text);
-                io::stdout().flush().ok();
-                Ok(ExecutionResult::Continue)
             }
             _ => Err(format!(
                 "Unimplemented 1OP instruction: {:02x}",
@@ -1167,85 +950,12 @@ impl Interpreter {
                 // This might be data being executed as code
                 let pc = self.vm.pc - inst.size as u32;
                 debug!("WARNING: Invalid 2OP:0x00 at PC {:05x} with operands {:04x}, {:04x} - treating as NOP", 
- pc, op1, op2);
+                       pc, op1, op2);
                 Ok(ExecutionResult::Continue)
             }
             0x01 => {
-                // je - branch if equal
-                let pc = self.vm.pc - inst.size as u32;
-                debug!("JE at PC=0x{:04x}: comparing op1={} vs op2={}, stack_depth={}, stack_top_3={:?}",
-                    pc, op1, op2, self.vm.stack.len(),
-                    if self.vm.stack.len() >= 3 {
-                        Some(&self.vm.stack[self.vm.stack.len()-3..])
-                    } else {
-                        None
-                    });
-
-                // DEBUG: Log all je comparisons for debugging literal patterns
-                log::debug!(
-                    "🔍 JE_ALL: PC=0x{:04x}, op1=0x{:04x}({}), op2=0x{:04x}({})",
-                    pc,
-                    op1,
-                    op1,
-                    op2,
-                    op2
-                );
-
-                // Special debug for literal pattern matching
-                if op1 == 0x0a04 || op2 == 0x0a04 {
-                    log::debug!("🔥 LITERAL_AROUND_MATCH: PC=0x{:04x}, comparing literal 'around' (0x0a04) - op1=0x{:04x}, op2=0x{:04x}", pc, op1, op2);
-                }
-
-                // Check if these are dictionary addresses and decode to strings
-                let op1_string = self.try_decode_dictionary_address(op1);
-                let op2_string = self.try_decode_dictionary_address(op2);
-
-                // Detect literal pattern checks
-                if op2 == 2 {
-                    log::debug!("🔥 LITERAL_WORDCOUNT_CHECK_RUNTIME: PC=0x{:04x}, checking if word count ({}) == 2", pc, op1);
-                } else if op1_string.is_some() && op2_string.is_some() {
-                    log::debug!("🔥 LITERAL_WORD_MATCH_RUNTIME: PC=0x{:04x}, comparing literal words for pattern matching", pc);
-                }
-
-                if op1_string.is_some() || op2_string.is_some() {
-                    // DEBUG: Dictionary comparison logging for pattern matching analysis
-                    log::debug!(
-                        "🔤 DICT_COMPARE at PC=0x{:04x}: \"{}\" vs \"{}\" (0x{:04x} vs 0x{:04x})",
-                        pc,
-                        op1_string.unwrap_or_else(|| format!("0x{:04x}", op1)),
-                        op2_string.unwrap_or_else(|| format!("0x{:04x}", op2)),
-                        op1,
-                        op2
-                    );
-                }
-
+                // je
                 let condition = op1 == op2;
-                debug!("JE: condition={} (equal={})", condition, op1 == op2);
-
-                // POLYMORPHIC DISPATCH DEBUG: Track object comparisons for dispatch functions
-                // NOTE: Changed from log::error to log::debug - these are debugging traces, not errors
-                if op1 <= 20 && op2 <= 20 && (op1 > 0 || op2 > 0) {
-                    log::debug!(
-                        "🎯 DISPATCH_OBJECT_COMPARE: op1={} vs op2={}, condition={}, PC=0x{:04x}",
-                        op1,
-                        op2,
-                        condition,
-                        pc
-                    );
-                }
-
-                // OBJECT LOOKUP DEBUG: Track dictionary address comparisons in Property 18 lookup
-                // NOTE: Changed from log::error to log::debug - these are debugging traces, not errors
-                if op2 == 0x0a64 || op1 == 0x0a64 {
-                    log::debug!("🔍 DICT_ADDR_COMPARE: op1=0x{:04x} vs op2=0x{:04x}, condition={}, PC=0x{:04x}, branch={:?}",
-                        op1, op2, condition, pc, inst.branch);
-                }
-                // Log comparisons involving likely exit-related addresses (0x03b0-0x03d0)
-                if (op1 >= 0x03b0 && op1 <= 0x03d0) || (op2 >= 0x03b0 && op2 <= 0x03d0) || op2 == 0
-                {
-                    log::warn!("🔍 JE at PC=0x{:04x}: op1=0x{:04x} vs op2=0x{:04x}, condition={}, branch={:?}",
-                        pc, op1, op2, condition, inst.branch);
-                }
                 self.do_branch(inst, condition)
             }
             0x02 => {
@@ -1279,7 +989,7 @@ impl Interpreter {
 
                 if pc == 0x5fdf && value == 1 {
                     debug!(
-                        " new_value as i16 = {}, op2 as i16 = {}, condition = {}",
+                        "  new_value as i16 = {}, op2 as i16 = {}, condition = {}",
                         new_value as i16, op2 as i16, condition
                     );
                 }
@@ -1297,25 +1007,6 @@ impl Interpreter {
                 let condition = (new_value as i16) > (op2 as i16);
                 self.do_branch(inst, condition)
             }
-            0x06 => {
-                // jin - Jump if object is inside another
-                // Z-Machine spec: jin obj1 obj2 ?(label)
-                // Jump if obj1 is a direct child of obj2 (i.e., parent of obj1 is obj2)
-                let obj1 = op1;
-                let obj2 = op2;
-
-                debug!("jin: checking if obj {} is inside obj {}", obj1, obj2);
-
-                let parent = self.vm.get_parent(obj1)?;
-                let condition = parent == obj2;
-
-                debug!(
-                    "jin: obj {} parent is {}, condition = {}",
-                    obj1, parent, condition
-                );
-
-                self.do_branch(inst, condition)
-            }
             0x07 => {
                 // test
                 // Bitwise AND and test if all bits in op2 are set in op1
@@ -1330,160 +1021,17 @@ impl Interpreter {
                 }
                 self.do_branch(inst, result)
             }
-            0x0A => {
-                // test_attr - Test object attribute
-                // Z-Machine spec: test_attr object attribute ?(label)
-                let obj_num = op1;
-                let attr_num = op2 as u8;
-
-                debug!("test_attr: obj={}, attr={}", obj_num, attr_num);
-
-                let result = self.vm.test_attribute(obj_num, attr_num)?;
-                self.do_branch(inst, result)
-            }
-            0x0B => {
-                // set_attr - Set object attribute
-                // Z-Machine spec: set_attr object attribute
-                let obj_num = op1;
-                let attr_num = op2 as u8;
-
-                debug!("set_attr: obj={}, attr={}", obj_num, attr_num);
-
-                self.vm.set_attribute(obj_num, attr_num, true)?;
-                Ok(ExecutionResult::Continue)
-            }
-            0x0C => {
-                // clear_attr - Clear object attribute
-                // Z-Machine spec: clear_attr object attribute
-                let obj_num = op1;
-                let attr_num = op2 as u8;
-
-                debug!("clear_attr: obj={}, attr={}", obj_num, attr_num);
-
-                self.vm.set_attribute(obj_num, attr_num, false)?;
-                Ok(ExecutionResult::Continue)
-            }
-            0x0D => {
-                // store - Store value to variable (2OP:13)
-                // CRITICAL Z-MACHINE INSTRUCTION: Essential for all variable assignments
-                //
-                // This instruction implements the fundamental Z-Machine store operation,
-                // enabling variable assignments like:
-                // - obj.open = true/false (attribute state changes)
-                // - Variable(3) = object_lookup_result (object resolution)
-                // - player.score = new_score (game state tracking)
-                //
-                // Z-Machine spec: store variable_number value
-                // Operand 1: Variable number (0-255)
-                // Operand 2: Value to store (16-bit signed)
-                let var_num = op1 as u8;
-                let value = op2;
-
-                debug!("store: variable {} <- value {}", var_num, value);
-
-                // OBJECT LOOKUP DEBUG: Track Variable(3) assignments (critical for grammar system)
-                // Variable(3) stores object lookup results from dictionary matching
-                if var_num == 3 {
-                    log::debug!(
-                        "🎯 VAR3_STORE: Variable(3) = {} at PC=0x{:04x}",
-                        value,
-                        self.vm.pc - inst.size as u32
-                    );
-
-                    // CRITICAL ERROR CHECK: Variable(3) should NEVER be 0 after successful dictionary match
-                    // If this happens, it indicates object lookup function returned failure despite
-                    // successful dictionary address matching
-                    if value == 0 {
-                        log::error!("🚨 CRITICAL BUG: Object lookup returned 0 (not found) despite successful dictionary match!");
-                        log::error!("🚨 This indicates a serious control flow error in generate_object_lookup_from_noun()");
-                        // Don't panic yet, but this is definitely wrong
-                    }
-                }
-
-                // Execute the variable assignment using VM's variable management system
-                self.vm.write_variable(var_num, value)?;
-                Ok(ExecutionResult::Continue)
-            }
-            0x0E => {
-                // insert_obj - Insert object into hierarchy
-                // Z-Machine spec: insert_obj object destination
-                let obj_num = op1;
-                let dest_num = op2;
-
-                debug!("insert_obj: obj={}, dest={}", obj_num, dest_num);
-                if obj_num == 0 {
-                    debug!(" insert_obj interpreter called with object 0!");
-                    debug!(" op1: {}, op2: {}", op1, op2);
-                }
-
-                self.vm.insert_object(obj_num, dest_num)?;
-                Ok(ExecutionResult::Continue)
-            }
-            0x0F => {
-                // loadw - Load word from array
-                // Z-Machine spec: loadw array word-index -> (result)
-                // Loads array[word-index] (word at byte offset word-index*2)
-                let array_addr = op1 as u32;
-                let word_index = op2;
-                let byte_addr = array_addr + (word_index as u32 * 2);
-
-                debug!(
-                    "loadw: array_addr=0x{:04x}, word_index={}, byte_addr=0x{:04x}",
-                    array_addr, word_index, byte_addr
-                );
-
-                let value = self.vm.read_word(byte_addr);
-                if let Some(store_var) = inst.store_var {
-                    self.vm.write_variable(store_var, value)?;
-                }
-                Ok(ExecutionResult::Continue)
-            }
-            0x11 => {
-                // get_prop - Get object property
-                // Z-Machine spec: get_prop object property -> (result)
-                let obj_num = op1;
-                let prop_num = op2 as u8;
-
-                log::debug!(
-                    " get_prop at PC 0x{:04x}: obj={}, prop={}",
-                    self.vm.pc - inst.size as u32,
-                    obj_num,
-                    prop_num
-                );
-                log::debug!(" Stack depth before get_property: {}", self.vm.stack.len());
-                log::debug!(" Call stack depth: {}", self.vm.call_stack.len());
-
-                let value = self.vm.get_property(obj_num, prop_num)?;
-
-                log::debug!(" get_property returned: {}", value);
-                log::debug!(" Stack depth after get_property: {}", self.vm.stack.len());
-
-                if let Some(store_var) = inst.store_var {
-                    log::debug!(" Storing result {} in variable {}", value, store_var);
-                    self.vm.write_variable(store_var, value)?;
-                }
-                log::debug!(" get_prop completed successfully");
-                Ok(ExecutionResult::Continue)
-            }
             0x19 => {
                 // call_2s
                 let routine_addr = op1;
                 let arg = op2;
                 let pc = self.vm.pc - inst.size as u32;
 
-                // Debug logging for function calls
-                log::debug!(
-                    "🔍 CALL_2S at PC=0x{:04x}: routine_addr=0x{:04x}, arg=0x{:04x}",
-                    pc,
-                    routine_addr,
-                    arg
-                );
-
                 // Debug logging for spacing routine calls
                 if pc == 0xcc6e || pc == 0xcc84 || pc == 0xcca4 {
                     let unpacked = (routine_addr as u32).wrapping_mul(4);
-                    debug!("*** SPACING ROUTINE CALL at PC {:05x}: calling packed addr {:04x} (unpacked: {:05x}) with arg {}",
- pc, routine_addr, unpacked, arg);
+                    debug!("*** SPACING ROUTINE CALL at PC {:05x}: calling packed addr {:04x} (unpacked: {:05x}) with arg {}", 
+                           pc, routine_addr, unpacked, arg);
                 }
 
                 self.do_call(routine_addr, &[arg], inst.store_var)?;
@@ -1501,17 +1049,8 @@ impl Interpreter {
 
                 // Don't store anything - we don't know what this instruction does
                 // Storing 0 was causing bugs (e.g., clearing the LIT variable)
-                debug!(" -> Treating as NOP, not storing any result");
+                debug!("  -> Treating as NOP, not storing any result");
 
-                Ok(ExecutionResult::Continue)
-            }
-            0x1b => {
-                // set_colour - V5+ display instruction (foreground, background colors)
-                // For now, just treat as no-op to eliminate the error
-                debug!(
-                    "set_colour: ignoring color change (foreground={}, background={})",
-                    op1, op2
-                );
                 Ok(ExecutionResult::Continue)
             }
             _ => {
@@ -1538,12 +1077,6 @@ impl Interpreter {
         inst: &Instruction,
         operands: &[u16],
     ) -> Result<ExecutionResult, String> {
-        // Special case: RANDOM (0x07) is a VAR instruction that should always
-        // be handled by execute_var, even when it has one operand
-        if inst.opcode == 0x07 {
-            return self.execute_var(inst, operands);
-        }
-
         // Handle edge cases first
         if operands.is_empty() {
             let pc = self.vm.pc - inst.size as u32;
@@ -1594,7 +1127,7 @@ impl Interpreter {
                 _ => {}
             }
             return Err(format!("Variable 2OP instruction at PC {:05x} requires at least 2 operands, got {} - opcode: {:02x}", 
- pc, operands.len(), inst.opcode));
+                               pc, operands.len(), inst.opcode));
         }
 
         // Handle each 2OP instruction based on its specific requirements
@@ -1605,24 +1138,14 @@ impl Interpreter {
                 // Jump if a is equal to any of the subsequent operands (b, c, or d)
                 let pc = self.vm.pc - inst.size as u32;
 
-                // Debug output for verb matching area (grammar pattern matching)
-                if pc >= 0x15de && pc <= 0x19ff {
-                    log::debug!(
-                        "🔍 JE at PC=0x{:04x}: comparing {:04x} against {:?}",
-                        pc,
-                        operands[0],
-                        &operands[1..]
-                    );
-                }
-
                 // Debug output for the problematic JE at 13fd7
                 if pc == 0x13fd7 {
                     debug!(
-                        " TRINITY JE at 13fd7: operands={:?}, should branch to 1406d",
+                        "🚨 TRINITY JE at 13fd7: operands={:?}, should branch to 1406d",
                         operands
                     );
                     for (i, op) in operands.iter().enumerate() {
-                        debug!(" operand[{}] = {:04x}", i, op);
+                        debug!("  operand[{}] = {:04x}", i, op);
                     }
                 }
 
@@ -1634,21 +1157,9 @@ impl Interpreter {
                     }
                 }
 
-                // Debug output for verb matching area
-                if pc >= 0x15de && pc <= 0x19ff {
-                    log::debug!(
-                        "🔍 JE result: condition={}, will_branch={}",
-                        condition,
-                        inst.branch
-                            .as_ref()
-                            .map(|b| b.on_true == condition)
-                            .unwrap_or(false)
-                    );
-                }
-
                 if pc == 0x13fd7 {
                     debug!(
-                        " condition={}, branch_on_true={:?}",
+                        "  condition={}, branch_on_true={:?}",
                         condition,
                         inst.branch.as_ref().map(|b| b.on_true)
                     );
@@ -1670,104 +1181,7 @@ impl Interpreter {
         inst: &Instruction,
         operands: &[u16],
     ) -> Result<ExecutionResult, String> {
-        // Log VAR instruction execution
-        if self.vm.pc >= 0x1870 && self.vm.pc <= 0x1895 {
-            log::debug!(
-                "🔶 EXECUTE_VAR at PC 0x{:04x}: opcode=0x{:02x}, operands={:?}",
-                self.vm.pc - inst.size as u32,
-                inst.opcode,
-                operands
-            );
-        }
-
         match inst.opcode {
-            0x00 => {
-                // call_vs - Call routine with variable number of arguments
-                if operands.is_empty() {
-                    return Err("call_vs requires at least 1 operand (routine address)".to_string());
-                }
-
-                let routine_addr = operands[0];
-
-                // Log all calls to trace function invocations
-                log::debug!(
-                    "🔵 CALL_VS at PC 0x{:04x}: packed_addr=0x{:04x}, args={:?}",
-                    self.vm.pc - inst.size as u32,
-                    routine_addr,
-                    &operands[1..]
-                );
-
-                debug!(
-                    "VAR call_vs: routine_addr=0x{:04x}, args={:?}",
-                    routine_addr,
-                    &operands[1..]
-                );
-
-                // Special debug logging for all function calls to track parameter differences
-                log::debug!(
-                    "🔍 ALL_FUNCTION_CALL: PC=0x{:04x}, routine_addr=0x{:04x}, arg_count={}, args={:?}",
-                    self.vm.pc,
-                    routine_addr,
-                    operands.len() - 1,
-                    &operands[1..]
-                );
-
-                // Special tracking for look_around function calls to debug literal pattern issue
-                if routine_addr == 0x1a82 {
-                    // look_around function address (approximate)
-                    log::debug!(
-                        "🔍 LOOK_AROUND_CALL: Called at PC=0x{:04x}, Var2={}, Var3={}",
-                        self.vm.pc,
-                        self.vm.read_variable(2).unwrap_or(999),
-                        self.vm.read_variable(3).unwrap_or(999)
-                    );
-                }
-
-                // Call with remaining operands as arguments
-                let args = &operands[1..];
-                self.do_call(routine_addr, args, inst.store_var)?;
-                Ok(ExecutionResult::Called)
-            }
-            0x01 => {
-                // storew - Store word to array
-                // Z-Machine spec: storew array word-index value
-                // Stores value at array[word-index] (word at byte offset word-index*2)
-                if operands.len() < 3 {
-                    return Err("storew requires 3 operands (array, word-index, value)".to_string());
-                }
-
-                let array_addr = operands[0] as u32;
-                let word_index = operands[1];
-                let value = operands[2];
-                let byte_addr = array_addr + (word_index as u32 * 2);
-
-                debug!("storew: array_addr=0x{:04x}, word_index={}, value=0x{:04x}, byte_addr=0x{:04x}", 
- array_addr, word_index, value, byte_addr);
-
-                self.vm.write_word(byte_addr, value)?;
-                Ok(ExecutionResult::Continue)
-            }
-            0x03 => {
-                // put_prop - Set object property
-                // Z-Machine spec: put_prop object property value
-                if operands.len() < 3 {
-                    return Err(
-                        "put_prop requires 3 operands (object, property, value)".to_string()
-                    );
-                }
-
-                let obj_num = operands[0];
-                let prop_num = operands[1] as u8;
-                let value = operands[2];
-
-                debug!(
-                    "put_prop: obj={}, prop={}, value={}",
-                    obj_num, prop_num, value
-                );
-
-                self.vm.put_property(obj_num, prop_num, value)?;
-                Ok(ExecutionResult::Continue)
-            }
             0x04 => {
                 // sread (V1-4) with timer support (V3+)
                 // Proper implementation that reads from stdin
@@ -1784,7 +1198,7 @@ impl Interpreter {
                     operands.len()
                 );
                 for (i, op) in operands.iter().enumerate() {
-                    debug!("🕐 operand[{}] = 0x{:04x}", i, op);
+                    debug!("🕐   operand[{}] = 0x{:04x}", i, op);
                 }
 
                 // Trinity-specific timer debug
@@ -1846,7 +1260,7 @@ impl Interpreter {
                 // Also flush any buffered text (like '>' prompt that doesn't end with newline)
                 if let Some(ref mut display) = self.display {
                     // First flush any buffered content
-                    if display.set_buffer_mode(false).is_err() {
+                    if let Err(_) = display.set_buffer_mode(false) {
                         // If flush fails, try force refresh
                         display.force_refresh().ok();
                     }
@@ -1931,7 +1345,7 @@ impl Interpreter {
                 debug!("Text buffer contents (len={}):", text_len);
                 for i in 0..text_len {
                     let ch = self.vm.read_byte(text_buffer + 2 + i as u32);
-                    debug!(" [{}] = 0x{:02x} '{}'", i, ch, ch as char);
+                    debug!("  [{}] = 0x{:02x} '{}'", i, ch, ch as char);
                 }
 
                 // Extra debug: dump the exact parse buffer contents
@@ -1939,14 +1353,14 @@ impl Interpreter {
                     info!("*** Parse buffer dump at 0x{:04x}:", parse_buffer);
                     for i in 0..16 {
                         let byte = self.vm.read_byte(parse_buffer + i);
-                        info!(" +{}: 0x{:02x}", i, byte);
+                        info!("  +{}: 0x{:02x}", i, byte);
                     }
                     // Interpret the second word entry
                     let word2_addr = self.vm.read_word(parse_buffer + 6);
                     let word2_len = self.vm.read_byte(parse_buffer + 8);
                     let word2_pos = self.vm.read_byte(parse_buffer + 9);
                     info!(
-                        " Word 2: addr=0x{:04x}, len={}, pos={}",
+                        "  Word 2: addr=0x{:04x}, len={}, pos={}",
                         word2_addr, word2_len, word2_pos
                     );
                 }
@@ -1959,7 +1373,7 @@ impl Interpreter {
                     for i in 0..20 {
                         let ch = self.vm.read_byte(text_buffer + i as u32);
                         info!(
-                            " +{}: 0x{:02x} '{}'",
+                            "  +{}: 0x{:02x} '{}'",
                             i,
                             ch,
                             if (32..127).contains(&ch) {
@@ -1980,14 +1394,14 @@ impl Interpreter {
 
                 // Debug: Show what's in the parse buffer
                 let word_count = self.vm.read_byte(parse_buffer + 1);
-                debug!(" Parse buffer word count: {}", word_count);
+                debug!("  Parse buffer word count: {}", word_count);
                 for i in 0..word_count {
                     let offset = parse_buffer + 2 + (i as u32 * 4);
                     let dict_addr = self.vm.read_word(offset);
                     let word_len = self.vm.read_byte(offset + 2);
                     let text_pos = self.vm.read_byte(offset + 3);
                     debug!(
-                        " Word {}: dict_addr=0x{:04x}, len={}, pos={}",
+                        "    Word {}: dict_addr=0x{:04x}, len={}, pos={}",
                         i, dict_addr, word_len, text_pos
                     );
 
@@ -2008,7 +1422,7 @@ impl Interpreter {
                         for j in 0..8 {
                             let ch = self.vm.read_byte(text_buffer + 2 + text_pos as u32 + j);
                             info!(
-                                " pos {}: 0x{:02x} '{}'",
+                                "      pos {}: 0x{:02x} '{}'",
                                 text_pos + j as u8,
                                 ch,
                                 if (32..127).contains(&ch) {
@@ -2218,9 +1632,9 @@ impl Interpreter {
                 let field_length = (form & 0x7F) as u32;
 
                 debug!(
- "scan_table: searching for 0x{:04x} in table at 0x{:04x}, len={}, form=0x{:02x}",
- search_value, table_addr, table_len, form
- );
+                    "scan_table: searching for 0x{:04x} in table at 0x{:04x}, len={}, form=0x{:02x}",
+                    search_value, table_addr, table_len, form
+                );
                 debug!(
                     "scan_table: current PC = 0x{:05x} (EXPECTED: 0x125cb)",
                     self.vm.pc
@@ -2229,11 +1643,11 @@ impl Interpreter {
                 // Debug the PC before scan_table to trace the offset issue
                 if self.vm.pc >= 0x125c0 && self.vm.pc <= 0x125e0 {
                     debug!(
-                        " PC OFFSET ISSUE: scan_table at PC {:05x}, should be 125cb",
+                        "🚨 PC OFFSET ISSUE: scan_table at PC {:05x}, should be 125cb",
                         self.vm.pc
                     );
                 }
-                debug!(" is_word={}, field_length={}", is_word, field_length);
+                debug!("  is_word={}, field_length={}", is_word, field_length);
 
                 let mut found_addr = 0u16;
                 let mut current_addr = table_addr;
@@ -2247,13 +1661,13 @@ impl Interpreter {
                     };
 
                     debug!(
-                        " Entry {}: 0x{:04x} at addr 0x{:04x}",
+                        "  Entry {}: 0x{:04x} at addr 0x{:04x}",
                         i, table_value, current_addr
                     );
 
                     if table_value == search_value {
                         found_addr = current_addr as u16;
-                        debug!(" *** MATCH FOUND at addr 0x{:04x} ***", found_addr);
+                        debug!("  *** MATCH FOUND at addr 0x{:04x} ***", found_addr);
                         break;
                     }
 
@@ -2278,23 +1692,23 @@ impl Interpreter {
                 // Debug Trinity scan_table branch calculation
                 if self.vm.pc == 0x125cb {
                     debug!(
-                        " TRINITY SCAN_TABLE at 125cb: condition={}, found_addr=0x{:04x}",
+                        "🔍 TRINITY SCAN_TABLE at 125cb: condition={}, found_addr=0x{:04x}",
                         condition, found_addr
                     );
                     if let Some(ref branch) = inst.branch {
                         debug!(
-                            " Branch info: on_true={}, offset={}",
+                            "🔍 Branch info: on_true={}, offset={}",
                             branch.on_true, branch.offset
                         );
                         let should_branch = condition == branch.on_true;
                         debug!(
-                            " Should branch: {} (condition={}, on_true={})",
+                            "🔍 Should branch: {} (condition={}, on_true={})",
                             should_branch, condition, branch.on_true
                         );
                         if should_branch {
                             let calc_target = (self.vm.pc as i32 + branch.offset as i32 - 2) as u32;
                             debug!(
-                                " Calculated target: 0x{:05x} (expected: 0x125dc)",
+                                "🔍 Calculated target: 0x{:05x} (expected: 0x125dc)",
                                 calc_target
                             );
                         }
@@ -2303,32 +1717,8 @@ impl Interpreter {
 
                 self.do_branch(inst, condition)
             }
-            0x19 => {
-                // call_vn - Call routine with variable number of arguments (void, no return)
-                if operands.is_empty() {
-                    return Err("call_vn requires at least 1 operand (routine address)".to_string());
-                }
-
-                let routine_addr = operands[0];
-                debug!(
-                    "VAR call_vn: routine_addr=0x{:04x}, args={:?}",
-                    routine_addr,
-                    &operands[1..]
-                );
-
-                // Call with remaining operands as arguments, no return value storage
-                let args = &operands[1..];
-                self.do_call(routine_addr, args, None)?; // None = no return value storage
-                Ok(ExecutionResult::Called)
-            }
             _ => {
                 let pc = self.vm.pc - inst.size as u32;
-                // CRITICAL DEBUG: Show what byte was actually decoded
-                let opcode_byte = self.vm.game.memory[pc as usize];
-                log::error!(
-                    "❌ UNIMPLEMENTED VAR:0x{:02x} at PC=0x{:04x} opcode_byte=0x{:02x} binary={:08b} form={:?} operand_types={:?}",
-                    inst.opcode, pc, opcode_byte, opcode_byte, inst.operand_count, inst.operand_types
-                );
                 debug!(
                     "Unimplemented VAR instruction: {:02x} at PC {:05x}",
                     inst.opcode, pc
@@ -2359,47 +1749,17 @@ impl Interpreter {
         if let Some(ref branch) = inst.branch {
             let should_branch = condition == branch.on_true;
 
-            // COMPREHENSIVE BRANCH LOGGING
-            log::debug!(
- "🔧 BRANCH_CONDITION: PC=0x{:04x} condition={} branch.on_true={} should_branch={} offset={}",
- self.vm.pc, condition, branch.on_true, should_branch, branch.offset
- );
-
             if should_branch {
                 match branch.offset {
-                    0 => {
-                        log::debug!("🔧 BRANCH_ACTION: Returning FALSE (offset=0)");
-                        return self.do_return(0); // rfalse
-                    }
-                    1 => {
-                        log::debug!("🔧 BRANCH_ACTION: Returning TRUE (offset=1)");
-                        return self.do_return(1); // rtrue
-                    }
+                    0 => return self.do_return(0), // rfalse
+                    1 => return self.do_return(1), // rtrue
                     offset => {
                         // Jump is relative to instruction after branch data
                         let new_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
 
-                        log::debug!(
- "🔧 BRANCH_JUMP: PC=0x{:04x} offset={} -> new_PC=0x{:04x} (memory_len={})",
- self.vm.pc, offset, new_pc, self.vm.game.memory.len()
- );
-
-                        // Critical bounds checking for branches too
-                        if new_pc >= self.vm.game.memory.len() as u32 {
-                            log::debug!(
- " BRANCH_OUT_OF_BOUNDS: new_PC=0x{:04x} >= memory_len={} - INVALID BRANCH!",
- new_pc, self.vm.game.memory.len()
- );
-                            return Err(format!(
-                                "Branch to address 0x{:04x} is outside memory bounds ({})",
-                                new_pc,
-                                self.vm.game.memory.len()
-                            ));
-                        }
-
                         // Debug output for Trinity JE branch
                         if self.vm.pc == 0x13fde {
-                            debug!(" TRINITY BRANCH from 13fde: offset={}, new_pc={:05x} (should be 1406d)", offset, new_pc);
+                            debug!("🚨 TRINITY BRANCH from 13fde: offset={}, new_pc={:05x} (should be 1406d)", offset, new_pc);
                         }
 
                         // Add specific debug for the problematic branch
@@ -2412,12 +1772,12 @@ impl Interpreter {
 
                         // Debug scan_table branch calculation for Trinity quit issue
                         if self.vm.pc >= 0x125cb && self.vm.pc <= 0x125dd {
-                            debug!(" SCAN_TABLE BRANCH at PC {:05x}: condition={}, branch.on_true={}, should_branch={}, offset={}", 
- self.vm.pc, condition, branch.on_true, should_branch, branch.offset);
+                            debug!("🔍 SCAN_TABLE BRANCH at PC {:05x}: condition={}, branch.on_true={}, should_branch={}, offset={}", 
+                                   self.vm.pc, condition, branch.on_true, should_branch, branch.offset);
                             if should_branch {
                                 let calc_pc = (self.vm.pc as i32 + offset as i32 - 2) as u32;
-                                debug!(" SCAN_TABLE: Current PC={:05x}, offset={}, calculated target={:05x} (expected 125dc)", 
- self.vm.pc, offset, calc_pc);
+                                debug!("🔍 SCAN_TABLE: Current PC={:05x}, offset={}, calculated target={:05x} (expected 125dc)", 
+                                       self.vm.pc, offset, calc_pc);
                             }
                         }
 
@@ -2580,15 +1940,6 @@ impl Interpreter {
 
         debug!("do_call: saving return_pc={:05x}", self.vm.pc);
 
-        // Debug: Track function calls that might corrupt PC
-        if self.vm.pc > 0x1000 || addr > 0x1000 {
-            log::debug!(
-                " FUNCTION_CALL: calling addr=0x{:04x} from PC=0x{:04x}",
-                addr,
-                self.vm.pc
-            );
-        }
-
         // Special debug for calls that return to the newlines after the quote
         if self.vm.pc == 0xcc6a {
             debug!(
@@ -2651,32 +2002,17 @@ impl Interpreter {
         let mut new_frame = frame;
         new_frame.num_locals = num_locals as u8;
 
-        // Initialize locals and set PC correctly based on Z-Machine version
+        // Set PC to start of routine code
+        self.vm.pc = addr + 1;
+
+        // Initialize locals
         if self.vm.game.header.version <= 4 {
-            // V1-V4: Header = local_count (1 byte) + default_values (2 bytes each)
-            // Set PC past local count byte, then read default values
-            self.vm.pc = addr + 1;
-
-            debug!(
-                "do_call: addr=0x{:05x}, num_locals={}, initial_pc=0x{:05x}",
-                addr, num_locals, self.vm.pc
-            );
-
-            // Read initial values from routine header
+            // V1-4: Read initial values from routine header
             for i in 0..num_locals {
                 let value = self.vm.read_word(self.vm.pc);
                 new_frame.locals[i] = value;
-                debug!(
-                    "do_call: local[{}] = 0x{:04x}, pc=0x{:05x}",
-                    i, value, self.vm.pc
-                );
                 self.vm.pc += 2;
             }
-            debug!(
-                "do_call: final_pc=0x{:05x} after reading {} locals",
-                self.vm.pc, num_locals
-            );
-            // PC now points to first instruction after all default values
 
             // CRITICAL: Arguments overwrite the first N locals in V1-4
             // This is the key part that was missing!
@@ -2686,11 +2022,7 @@ impl Interpreter {
                 }
             }
         } else {
-            // V5+: Header = local_count (1 byte) only, no default values
-            // Set PC directly to first instruction after local count
-            self.vm.pc = addr + 1;
-
-            // Initialize locals to zero, except for arguments
+            // V5+: Initialize to zero, except for arguments
             new_frame.locals[..num_locals.min(args.len())]
                 .copy_from_slice(&args[..num_locals.min(args.len())]);
         }
@@ -2745,17 +2077,6 @@ impl Interpreter {
         // Store return value if needed
         if let Some(var) = frame.return_store {
             debug!("Storing return value {} to variable {}", value, var);
-
-            // Log get_exit return value
-            if frame.return_pc == 0x12db {
-                log::debug!(
-                    "🟡 GET_EXIT RETURNED: value=0x{:04x} ({}), storing to var={}",
-                    value,
-                    value,
-                    var
-                );
-            }
-
             self.vm.write_variable(var, value)?;
             debug!("Stack len after store: {}", self.vm.stack.len());
         }
@@ -2770,7 +2091,7 @@ impl Interpreter {
 
     /// Unpack a routine address based on version
     fn unpack_routine_address(&self, packed: u16) -> usize {
-        let unpacked = match self.vm.game.header.version {
+        match self.vm.game.header.version {
             1..=3 => (packed as usize) * 2,
             4..=5 => (packed as usize) * 4,
             6..=7 => {
@@ -2779,9 +2100,7 @@ impl Interpreter {
             }
             8 => (packed as usize) * 8,
             _ => (packed as usize) * 2,
-        };
-
-        unpacked
+        }
     }
 
     /// Enable output stream 3 (text redirection to table)
@@ -2825,7 +2144,7 @@ impl Interpreter {
         if let Some(table_addr) = self.output_streams.current_stream3_table {
             let current_count = self.vm.read_word(table_addr as u32);
             debug!("output_text: capturing '{}' to stream 3 table at 0x{:04x}, current_count={} (CAPTURE ONLY)", 
- text, table_addr, current_count);
+                   text, table_addr, current_count);
 
             // Write text to table starting at table+2+current_count
             for (i, ch) in text.chars().enumerate() {
@@ -2849,7 +2168,7 @@ impl Interpreter {
         if let Some(ref mut display) = self.display {
             display.print(text).ok();
         } else {
-            print!("{text}");
+            print!("{}", text);
             io::stdout().flush().ok();
         }
 
@@ -2862,7 +2181,7 @@ impl Interpreter {
         if let Some(table_addr) = self.output_streams.current_stream3_table {
             let current_count = self.vm.read_word(table_addr as u32);
             debug!("output_char: redirecting '{}' to stream 3 table at 0x{:04x}, current_count={} (CAPTURE ONLY)", 
- ch, table_addr, current_count);
+                   ch, table_addr, current_count);
 
             // Write character to table at table+2+current_count
             let addr = table_addr + 2 + current_count;
@@ -2886,7 +2205,7 @@ impl Interpreter {
         if let Some(ref mut display) = self.display {
             display.print_char(ch).ok();
         } else {
-            print!("{ch}");
+            print!("{}", ch);
             io::stdout().flush().ok();
         }
 
@@ -2904,109 +2223,6 @@ impl Interpreter {
         }
 
         debug!("Interpreter: Terminal cleanup completed");
-    }
-
-    /// Dump the current call stack (debug builds only)
-    /// Shows all active function calls with their return addresses and local variables
-    #[cfg(debug_assertions)]
-    fn dump_call_stack(&self) {
-        log::debug!("📚 CALL STACK DUMP:");
-        log::debug!("  Current PC: 0x{:04x}", self.vm.pc);
-        log::debug!("  Call depth: {}", self.vm.call_stack.len());
-
-        if self.vm.call_stack.is_empty() {
-            log::debug!("  (empty stack - main program)");
-            return;
-        }
-
-        for (depth, frame) in self.vm.call_stack.iter().enumerate() {
-            log::debug!(
-                "  Frame {}: return_pc=0x{:04x}, num_locals={}",
-                depth,
-                frame.return_pc,
-                frame.num_locals
-            );
-
-            // Display local variables if any
-            if !frame.locals.is_empty() {
-                log::debug!("    Locals:");
-                for (i, value) in frame.locals.iter().enumerate() {
-                    log::debug!("      L{:02} = 0x{:04x} ({})", i + 1, value, value);
-                }
-            }
-        }
-    }
-
-    /// Try to decode a dictionary address back to its string representation
-    /// Returns Some(string) if the address appears to be a valid dictionary entry
-    fn try_decode_dictionary_address(&self, addr: u16) -> Option<String> {
-        // Dictionary is stored at header offset 0x08
-        let dict_addr = self.vm.game.header.dictionary as u16;
-
-        // Dictionary structure:
-        // - Number of word separators (1 byte)
-        // - Word separators (variable length)
-        // - Entry length (1 byte)
-        // - Number of entries (2 bytes)
-        // - Dictionary entries (sorted array)
-
-        if addr < dict_addr + 4 {
-            return None; // Address is too early to be a dictionary entry
-        }
-
-        // Get dictionary metadata
-        let num_separators = self.vm.game.memory[dict_addr as usize];
-        let entry_length_offset = dict_addr + 1 + num_separators as u16;
-
-        if entry_length_offset as usize >= self.vm.game.memory.len() {
-            return None;
-        }
-
-        let entry_length = self.vm.game.memory[entry_length_offset as usize];
-        let num_entries_offset = entry_length_offset + 1;
-
-        if num_entries_offset as usize + 1 >= self.vm.game.memory.len() {
-            return None;
-        }
-
-        let num_entries = u16::from_be_bytes([
-            self.vm.game.memory[num_entries_offset as usize],
-            self.vm.game.memory[num_entries_offset as usize + 1],
-        ]);
-
-        let entries_start = num_entries_offset + 2;
-        let entries_end = entries_start + (num_entries as u16 * entry_length as u16);
-
-        // Check if addr falls within the dictionary entries range
-        if addr < entries_start || addr >= entries_end {
-            return None;
-        }
-
-        // Check if addr is aligned to entry boundaries
-        if (addr - entries_start) % entry_length as u16 != 0 {
-            return None;
-        }
-
-        // Decode the Z-Machine text at this address
-        let abbrev_addr = self.vm.game.header.abbrev_table;
-        match crate::text::decode_string(&self.vm.game.memory, addr as usize, abbrev_addr) {
-            Ok((decoded_string, _length)) => {
-                // Only return if it looks like a reasonable dictionary word
-                if decoded_string.len() > 0
-                    && decoded_string.len() <= 20
-                    && decoded_string.chars().all(|c| {
-                        c.is_ascii_alphanumeric()
-                            || c.is_ascii_whitespace()
-                            || c.is_ascii_punctuation()
-                    })
-                {
-                    Some(decoded_string)
-                } else {
-                    None
-                }
-            }
-            Err(_) => None,
-        }
     }
 }
 

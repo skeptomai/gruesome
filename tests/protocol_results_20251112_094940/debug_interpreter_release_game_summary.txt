@@ -1,0 +1,10 @@
+=== debug_interpreter_release_game Test Summary ===
+Timestamp: Wed Nov 12 09:50:16 PST 2025
+Interpreter: ./target/debug/gruesome
+Game File: /Users/cb/Projects/infocom-testing-old/infocom/tests/mini_zork_release_20251112_094940.z3
+Final Score: 7
+Final Moves: 4
+Success Indicators: 4/4
+
+STATUS: PASSED ✓
+
