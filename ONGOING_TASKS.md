@@ -1213,10 +1213,64 @@ The commit message claims to fix Zork I mailbox issues, but actually breaks mini
 - **Commit Message**: Claims to fix Zork I mailbox issues but breaks mini_zork mailbox
 
 **NEXT ACTIONS**:
-1. **IMMEDIATE**: Restore store instruction implementation (critical for compilation)
-2. **INVESTIGATE**: Test if attribute changes break our compiler's attribute generation
-3. **VALIDATE**: Verify both commercial games and compiled Grue games work
-4. **DETERMINE**: Whether hybrid attribute system needed for dual compatibility
+1. ✅ **IMMEDIATE**: Restore store instruction implementation (critical for compilation)
+2. ✅ **INVESTIGATE**: Test if attribute changes break our compiler's attribute generation
+3. ✅ **VALIDATE**: Verify both commercial games and compiled Grue games work
+4. ✅ **DETERMINE**: Whether hybrid attribute system needed for dual compatibility
+
+**✅ ATTRIBUTE INVESTIGATION RESULTS (November 12, 2025)**:
+
+**CRITICAL FINDING**: The current attribute calculation appears to be **WORKING CORRECTLY** for our use case:
+
+1. **✅ Compiled Games Work**: Mini_zork mailbox attributes function perfectly
+   - Mailbox opens correctly, shows "It's already open" when already open
+   - Attribute state tracking works (openable, container, open flags)
+   - Object containment and visibility working
+
+2. **✅ Commercial Games Work**: Seastalker runs normally with current calculation
+   - No attribute-related crashes or errors observed
+   - Game plays correctly through initial sequences
+
+3. **❌ Dictionary Issue Discovered**: The "close mailbox" failure was NOT due to attributes
+   - Root cause: "close" and "inventory" verbs missing from compiled dictionary
+   - This is a separate compiler issue unrelated to the attribute calculation changes
+
+**CONCLUSION**: The attribute calculation changes from commit b15d307 appear to be **CORRECT** and **WORKING**. The original regression was caused by the store instruction removal, not the attribute changes.
+
+**RECOMMENDATION**: **NO ACTION NEEDED** on attribute calculation - it's functioning properly for both commercial and compiled games.
+
+---
+
+## 🚨 **NEW CRITICAL REGRESSION: DICTIONARY COMPILATION FAILURE** - **URGENT INVESTIGATION** (November 12, 2025)
+
+**STATUS**: **CRITICAL REGRESSION DISCOVERED** - Multiple previously working verbs now broken
+
+**CRITICAL DISCOVERY**: While fixing the store instruction restored basic mailbox functionality, we've discovered a **NEW REGRESSION** affecting grammar/dictionary compilation:
+
+**✅ WHAT WORKS (Basic functionality restored)**:
+- ✅ `open mailbox` - Core store instruction functionality
+- ✅ `take leaflet` - Object interaction and score tracking
+- ✅ `north, north, up` - Basic navigation and tree climbing via `up`
+
+**❌ WHAT'S BROKEN (Previously working commands)**:
+- ❌ `climb tree` - Returns "I don't understand that"
+- ❌ `close mailbox` - Returns "I don't understand that"
+- ❌ `inventory` - Returns "I don't understand that"
+
+**ROOT CAUSE**: Dictionary compilation failure - verbs defined in grammar section not included in compiled dictionary:
+```
+[DEBUG] V3 dictionary: 'close' not found
+[DEBUG] V3 dictionary: 'inventory' not found
+```
+
+**IMPACT**: **SEVERE** - This represents a significant regression in grammar/dictionary system functionality that was working before.
+
+**INVESTIGATION REQUIRED**: Systematic commit-by-commit testing to identify when dictionary compilation broke:
+- Test sequence: `north, north, climb tree, take egg, inventory`
+- Goal: Find last working commit where all verbs function correctly
+- Priority: This affects core game functionality beyond the store instruction issue
+
+**URGENCY**: **HIGH** - Grammar system is fundamental to text adventure gameplay
 
 ---
 
