@@ -1469,10 +1469,10 @@ impl IrGenerator {
         // SOLUTION: Pre-register all functions and create dispatch functions BEFORE body generation
         //
         // PASS 1: Register all function names and detect which ones have overloads
-        let mut function_counts: std::collections::HashMap<
-            String,
-            Vec<(u32, ObjectSpecialization)>,
-        > = std::collections::HashMap::new();
+        // DETERMINISM FIX: Use IndexMap instead of HashMap for consistent function ordering
+        // This ensures dispatch functions are generated in the same order across builds
+        let mut function_counts: IndexMap<String, Vec<(u32, ObjectSpecialization)>> =
+            IndexMap::new();
 
         // First, count all functions and their specializations
         for item in ast.items.iter() {
