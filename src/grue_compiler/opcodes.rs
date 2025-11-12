@@ -148,9 +148,7 @@ pub enum Op1 {
     Jump = 0x0C,
     /// Print string at packed address (141)
     /// V1+
-    /// CRITICAL FIX: Moved from 0x0D to 0x8D to resolve opcode collision with Store instruction
-    /// This ensures compiler/interpreter opcode compatibility after store instruction restoration
-    PrintPaddr = 0x8D,
+    PrintPaddr = 0x0D,
     /// Load variable value (142)
     /// V1+
     Load = 0x0E,

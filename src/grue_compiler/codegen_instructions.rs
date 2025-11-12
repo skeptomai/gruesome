@@ -1045,7 +1045,7 @@ impl ZMachineCodeGen {
                     Opcode::Op1(Op1::GetSibling), // get_sibling opcode (1OP:1)
                     &[obj_operand],
                     Some(store_var),         // Store result to global variable
-                    Some(0x7FFF_u16 as i16), // Branch when result = 0 (no sibling)
+                    Some(0x3FFF_u16 as i16), // Branch when result = 0 (no sibling) - bit 7=0 for branch-on-FALSE
                 )?;
 
                 // Create unresolved reference for branch target

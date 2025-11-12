@@ -974,50 +974,30 @@ impl ZMachineCodeGen {
             }
         };
 
-        // Calculate size byte according to Z-Machine specification
-        // V3 single-byte format: bit 7=0, bits 6-5=(size-1) capped at 2, bits 4-0=prop_num
-        //   Max size: 4 bytes (when bits 6-5 = 10 = 2, size = 2+1 = 3... wait, that's wrong)
-        //   Actually: bits 6-5 = 00 means 1 byte, 01 means 2 bytes, 10 means 3-8 bytes
-        //   But V3 spec says properties > 8 bytes need two-byte format
-        // V3 two-byte format:
-        //   First byte: bit 7=1, bit 6=0, bits 5-0=property number
-        //   Second byte: size in bytes (0-63)
+        // Calculate size byte according to Z-Machine V3 specification (Section 12.4.1)
+        // V3 single-byte format only: 32 * (size - 1) + property_number
+        // Valid for all property sizes 1-8 bytes (V3 maximum)
 
         let size = data.len() as u8;
         if size == 0 {
             // Empty property - use 1 byte minimum
-            let size_byte = prop_num; // bits 6-5 = 00 means 1 byte
+            let size_byte = prop_num; // 32 * (1-1) + prop_num = prop_num
             return (size_byte, vec![0], None, None);
         }
 
-        // V3 uses two-byte format for properties with more than 8 bytes
-        // But actually, the single-byte format can only encode sizes 1-8 using bits 6-5
-        // Let's check if we need two-byte format
         if size > 8 {
-            // Two-byte format required
-            let size_byte = 0x80 | prop_num; // bit 7=1, bit 6=0, bits 5-0=prop_num
-            return (size_byte, data, string_id_opt, Some(size));
+            // ERROR: V3 doesn't support properties > 8 bytes
+            panic!(
+                "Property size {} exceeds Z-Machine V3 maximum of 8 bytes for property {}. \
+                String properties should be stored as 2-byte packed addresses.",
+                size, prop_num
+            );
         }
 
-        // Single-byte format: bits 6-5 encode (size - 1)
-        // But wait - bits 6-5 can only be 00, 01, 10, 11 = 0, 1, 2, 3
-        // This would give sizes 1, 2, 3, 4
-        // For sizes 5-8, we need... let me check the spec more carefully
-
-        // Actually, from real Z-Machine code analysis:
-        // The formula `32 * (size - 1) + prop_num` works for sizes 1-4
-        // For size > 4, bit 7 becomes 1 which triggers two-byte format
-        // So let's explicitly handle this:
-
-        if size <= 4 {
-            // Single-byte format
-            let size_byte = 32 * (size - 1) + prop_num;
-            (size_byte, data, string_id_opt, None)
-        } else {
-            // Two-byte format (size > 4)
-            let size_byte = 0x80 | prop_num; // bit 7=1, bit 6=0, bits 5-0=prop_num
-            (size_byte, data, string_id_opt, Some(size))
-        }
+        // V3 single-byte format for all sizes 1-8
+        // Formula from Z-Machine Standard: 32 * (size - 1) + property_number
+        let size_byte = 32 * (size - 1) + prop_num;
+        (size_byte, data, string_id_opt, None)
     }
 }
 

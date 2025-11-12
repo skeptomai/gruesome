@@ -1230,20 +1230,28 @@ impl ZMachineCodeGen {
         );
 
         // Attributes (4 bytes for V3)
-        // Convert IR attributes to Z-Machine format and write to object table
-        // Each object has 32 attribute bits stored as 4 bytes in big-endian format
-        // StandardAttribute enums (Openable=4, Open=5, Container=3, etc.) map to specific bit positions
+        // Convert IR attributes to Z-Machine spec-compliant format
+        // Z-Machine spec section 12.3.1: "attributes 0 to 31 are flags... stored topmost bit first:
+        // e.g., attribute 0 is stored in bit 7 of the first byte, attribute 31 is stored in bit 0 of the fourth."
         let attrs = object.attributes.flags;
 
-        let byte3 = ((attrs >> 24) & 0xFF) as u8;
-        let byte2 = ((attrs >> 16) & 0xFF) as u8;
-        let byte1 = ((attrs >> 8) & 0xFF) as u8;
-        let byte0 = (attrs & 0xFF) as u8;
+        // Initialize attribute bytes to zero
+        let mut attr_bytes = [0u8; 4];
 
-        self.write_to_object_space(obj_offset, byte3)?; // Bits 31-24
-        self.write_to_object_space(obj_offset + 1, byte2)?; // Bits 23-16
-        self.write_to_object_space(obj_offset + 2, byte1)?; // Bits 15-8
-        self.write_to_object_space(obj_offset + 3, byte0)?; // Bits 7-0
+        // Set each attribute bit according to Z-Machine specification
+        for attr_num in 0..32 {
+            if (attrs & (1u64 << attr_num)) != 0 {
+                let attr_byte = (attr_num / 8) as usize;
+                let attr_bit = 7 - (attr_num % 8); // Topmost bit first
+                attr_bytes[attr_byte] |= 1u8 << attr_bit;
+            }
+        }
+
+        // Write the spec-compliant attribute bytes
+        self.write_to_object_space(obj_offset, attr_bytes[0])?; // Attributes 0-7
+        self.write_to_object_space(obj_offset + 1, attr_bytes[1])?; // Attributes 8-15
+        self.write_to_object_space(obj_offset + 2, attr_bytes[2])?; // Attributes 16-23
+        self.write_to_object_space(obj_offset + 3, attr_bytes[3])?; // Attributes 24-31
 
         // Parent/sibling/child relationships (V3 uses 1 byte each)
         // Resolve IR IDs to actual Z-Machine object numbers

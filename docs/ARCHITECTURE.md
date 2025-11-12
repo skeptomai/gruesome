@@ -257,6 +257,121 @@ graph TB
     TRAIT_INTERFACE --> OPERATIONS
 ```
 
+### Property String System (StringAddress)
+
+The Z-Machine compiler implements an automatic string property system that handles long text descriptions transparently without requiring manual packed address management in game source code.
+
+#### End-to-End String Property Flow
+
+```mermaid
+graph TB
+    subgraph "Game Source"
+        SOURCE["object mailbox {<br/>  name \"small mailbox\"<br/>  desc \"This is a small mailbox...\"<br/>}"]
+    end
+
+    subgraph "Compiler Processing"
+        SEMANTIC[Semantic Analysis<br/>semantic.rs]
+        TYPE_DETECT[Type Detection<br/>'name' → StringAddress<br/>'desc' → StringAddress]
+        STRING_GEN[String Generation<br/>codegen_strings.rs]
+        PACKED_ADDR[Generate Packed Address<br/>Points to string in high memory]
+        PROP_ENCODE[Property Encoding<br/>Store 2-byte packed address<br/>as property value]
+    end
+
+    subgraph "Z-Machine Memory"
+        PROP_TABLE[Property Table<br/>Property 1: [high_byte, low_byte]<br/>Property 2: [high_byte, low_byte]]
+        HIGH_MEM[High Memory<br/>Compressed Z-Strings<br/>"This is a small mailbox..."]
+    end
+
+    subgraph "Runtime Execution"
+        PRINTLN[println() builtin call]
+        TYPE_CHECK[Check IR type info<br/>StringAddress detected]
+        PRINT_PADDR[Generate print_paddr<br/>instruction (0x8D)]
+        INTERPRETER[Interpreter execution<br/>Dereferences packed address<br/>Decodes Z-string<br/>Displays text]
+    end
+
+    SOURCE --> SEMANTIC
+    SEMANTIC --> TYPE_DETECT
+    TYPE_DETECT --> STRING_GEN
+    STRING_GEN --> PACKED_ADDR
+    PACKED_ADDR --> PROP_ENCODE
+    PROP_ENCODE --> PROP_TABLE
+    STRING_GEN --> HIGH_MEM
+
+    PRINTLN --> TYPE_CHECK
+    TYPE_CHECK --> PRINT_PADDR
+    PRINT_PADDR --> INTERPRETER
+    INTERPRETER --> HIGH_MEM
+```
+
+#### Automatic Type Detection
+
+The compiler automatically detects string properties during semantic analysis:
+
+```rust
+// In semantic.rs - automatic property type detection
+fn get_property_type(&self, property_name: &str) -> Result<Type, CompilerError> {
+    match property_name {
+        "name" => Ok(Type::StringAddress), // Object names are string addresses
+        "desc" => Ok(Type::StringAddress), // Descriptions are string addresses
+        _ => Ok(Type::Number),             // Other properties are numeric
+    }
+}
+```
+
+#### Storage Format Compliance
+
+**V3 Property Encoding**: All properties use single-byte size format only
+- Formula: `32 * (size - 1) + property_number`
+- Maximum property size: 8 bytes
+- String properties stored as 2-byte packed addresses (well within limit)
+
+```rust
+// String properties are always 2 bytes (packed address)
+// Example: "desc" property = [0x12, 0x34] pointing to high memory string
+let size = 2; // packed address is always 2 bytes
+let size_byte = 32 * (2 - 1) + prop_num; // = 32 + prop_num
+```
+
+#### Type-Aware println() Dispatch
+
+The println() builtin automatically uses the correct instruction based on type:
+
+```rust
+// In codegen_builtins.rs - automatic instruction selection
+if let Some(arg_type) = self.ir_type_info.get(&arg_id) {
+    match arg_type {
+        Type::StringAddress => {
+            // Automatically use print_paddr for string properties
+            self.emit_instruction_typed(
+                Opcode::Op1(Op1::PrintPaddr), // Opcode 0x8D
+                &[operand],
+                None,
+                None,
+            )?;
+        }
+        _ => {
+            // Use print_num for numeric values
+            // ... numeric printing logic ...
+        }
+    }
+}
+```
+
+#### Key Benefits
+
+1. **Transparent String Handling**: Game authors write natural property assignments
+2. **Automatic Memory Management**: No manual packed address calculation required
+3. **Specification Compliance**: Respects V3's 8-byte property limit by design
+4. **Type Safety**: Compile-time detection prevents runtime string/number confusion
+5. **Performance**: Direct interpreter print_paddr execution (no intermediate conversion)
+
+#### Implementation Files
+
+- `semantic.rs:910-911` - Property type detection
+- `codegen_strings.rs:977-1000` - V3-compliant property encoding
+- `codegen_builtins.rs:27-54` - Type-aware println() dispatch
+- `opcodes.rs:151` - PrintPaddr opcode definition (0x8D)
+
 ## Modular Opcode Architecture
 
 ### Overview
