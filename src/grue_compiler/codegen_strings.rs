@@ -391,11 +391,14 @@ impl ZMachineCodeGen {
         // Add built-in commands
         words.insert("quit".to_string());
 
-        // Add common numbers to dictionary (0-100) for score commands and other numeric input
-        for i in 0..=100 {
-            words.insert(i.to_string());
-        }
-        debug!("📚 Added numbers 0-100 to dictionary for numeric input support");
+        // REMOVED: Numbers 0-100 from dictionary - they caused dictionary to exceed Z-Machine limits
+        // causing grammar verbs like "climb", "close", "inventory" to fail with "I don't understand that"
+        // Numbers aren't needed in dictionary for text adventure functionality - numeric input
+        // can be handled during parsing without dictionary lookup
+        // Original code was:
+        // for i in 0..=100 {
+        //     words.insert(i.to_string());
+        // }
 
         // Add all grammar verbs
         for grammar in &ir.grammar {

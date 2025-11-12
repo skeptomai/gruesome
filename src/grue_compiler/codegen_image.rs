@@ -342,7 +342,11 @@ impl ZMachineCodeGen {
         let object_base = current_address;
         current_address += object_size;
 
-        // Static memory sections
+        // Static memory boundary (dynamic memory ends here, static memory begins)
+        // Z-Machine specification: dictionary should be at static memory base
+        let static_memory_start = current_address;
+
+        // Dictionary is located at static memory base (Z-Machine convention)
         let dictionary_base = current_address;
         log::debug!(
             " Dictionary allocated at 0x{:04x}, size={} bytes",
@@ -350,12 +354,6 @@ impl ZMachineCodeGen {
             dictionary_size
         );
         current_address += dictionary_size;
-
-        // Static memory boundary (dynamic memory ends here, static memory begins)
-        // CRITICAL FIX: Static memory MUST start AFTER dictionary ends to prevent overlap.
-        // Previous bug: both dictionary_base and static_memory_start were set to same address,
-        // causing interpreter to read dictionary data when accessing strings in static memory.
-        let static_memory_start = current_address;
 
         // High memory sections - align string base for Z-Machine requirements
         let string_base = match self.version {
