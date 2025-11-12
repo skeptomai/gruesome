@@ -1365,14 +1365,24 @@ impl Interpreter {
             }
             0x0D => {
                 // store - Store value to variable (2OP:13)
-                // CRITICAL FIX: This instruction was completely missing from interpreter
-                // Z-Machine spec: store variable value
+                // CRITICAL Z-MACHINE INSTRUCTION: Essential for all variable assignments
+                //
+                // This instruction implements the fundamental Z-Machine store operation,
+                // enabling variable assignments like:
+                // - obj.open = true/false (attribute state changes)
+                // - Variable(3) = object_lookup_result (object resolution)
+                // - player.score = new_score (game state tracking)
+                //
+                // Z-Machine spec: store variable_number value
+                // Operand 1: Variable number (0-255)
+                // Operand 2: Value to store (16-bit signed)
                 let var_num = op1 as u8;
                 let value = op2;
 
                 debug!("store: variable {} <- value {}", var_num, value);
 
-                // OBJECT LOOKUP DEBUG: Track Variable(3) assignments (object lookup result)
+                // OBJECT LOOKUP DEBUG: Track Variable(3) assignments (critical for grammar system)
+                // Variable(3) stores object lookup results from dictionary matching
                 if var_num == 3 {
                     log::debug!(
                         "🎯 VAR3_STORE: Variable(3) = {} at PC=0x{:04x}",
@@ -1381,6 +1391,8 @@ impl Interpreter {
                     );
 
                     // CRITICAL ERROR CHECK: Variable(3) should NEVER be 0 after successful dictionary match
+                    // If this happens, it indicates object lookup function returned failure despite
+                    // successful dictionary address matching
                     if value == 0 {
                         log::error!("🚨 CRITICAL BUG: Object lookup returned 0 (not found) despite successful dictionary match!");
                         log::error!("🚨 This indicates a serious control flow error in generate_object_lookup_from_noun()");
@@ -1388,6 +1400,7 @@ impl Interpreter {
                     }
                 }
 
+                // Execute the variable assignment using VM's variable management system
                 self.vm.write_variable(var_num, value)?;
                 Ok(ExecutionResult::Continue)
             }
