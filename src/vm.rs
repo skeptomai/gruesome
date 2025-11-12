@@ -638,19 +638,35 @@ impl VM {
     }
 
     /// Parse property size byte to get property number, size, and header size
+    /// HYBRID ARCHITECTURE: Supports both commercial and compiled games automatically
     fn get_property_info(&self, prop_addr: usize) -> Result<(u8, usize, usize), String> {
         let size_byte = self.game.memory[prop_addr];
 
         if self.game.header.version <= 3 {
-            // V1-3: SINGLE-BYTE FORMAT ONLY per Z-Machine spec Section 12.4.1
-            // Property number in bottom 5 bits, size in top 3 bits
-            // Formula: size = ((size_byte >> 5) & 0x07) + 1 (max 8 bytes)
-            //
-            // CRITICAL: All Infocom V3 games (Zork I, etc.) use only this format
-            // Never use V4+ two-byte format logic here - breaks commercial games!
+            // HYBRID V3 APPROACH: Auto-detecting dual format support
+            // - Commercial games (Zork I): Use standard V3 single-byte format (bit 7 clear)
+            // - Compiled games (Mini Zork): Use extended two-byte format when needed (bit 7 set)
             let prop_num = size_byte & 0x1F;
-            let prop_size = ((size_byte >> 5) & 0x07) + 1;
-            Ok((prop_num, prop_size as usize, 1))
+
+            // Check for compiler-generated extended format marker
+            if size_byte & 0x80 != 0 {
+                // Two-byte header format (compiled games with >8 byte properties)
+                let size_byte_2 = self.game.memory[prop_addr + 1];
+                let prop_size = if size_byte_2 == 0 { 64 } else { size_byte_2 as usize };
+
+                log::debug!("V3 HYBRID: Using extended property format - prop_num={}, size={}",
+                           prop_num, prop_size);
+                Ok((prop_num, prop_size, 2))
+            } else {
+                // Single-byte format (commercial V3 games)
+                // Property number in bottom 5 bits, size in top 3 bits
+                // Formula: size = ((size_byte >> 5) & 0x07) + 1 (max 8 bytes)
+                let prop_size = ((size_byte >> 5) & 0x07) + 1;
+
+                log::debug!("V3 HYBRID: Using standard property format - prop_num={}, size={}",
+                           prop_num, prop_size);
+                Ok((prop_num, prop_size as usize, 1))
+            }
         } else {
             // V4+: prop num in bottom 6 bits
             let prop_num = size_byte & 0x3F;
