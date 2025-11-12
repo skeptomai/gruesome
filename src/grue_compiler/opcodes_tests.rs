@@ -17,7 +17,7 @@ mod tests {
 
     #[test]
     fn test_op1_raw_values() {
-        assert_eq!(Op1::PrintPaddr.raw_value(), 0x8D);
+        assert_eq!(Op1::PrintPaddr.raw_value(), 0x0D);
         assert_eq!(Op1::Jz.raw_value(), 0x00);
         assert_eq!(Op1::Load.raw_value(), 0x0E);
         assert_eq!(Op1::Jump.raw_value(), 0x0C);
@@ -135,7 +135,7 @@ mod tests {
         let call_vs = Opcode::OpVar(OpVar::CallVs);
 
         assert_eq!(quit.raw_value(), 0x0A);
-        assert_eq!(print_paddr.raw_value(), 0x8D);
+        assert_eq!(print_paddr.raw_value(), 0x0D);
         assert_eq!(add.raw_value(), 0x14);
         assert_eq!(call_vs.raw_value(), 0x00);
 
@@ -150,7 +150,7 @@ mod tests {
         // Test that convenience constants work
         assert_eq!(QUIT.raw_value(), 0x0A);
         assert_eq!(NEWLINE.raw_value(), 0x0B);
-        assert_eq!(PRINTPADDR.raw_value(), 0x8D);
+        assert_eq!(PRINTPADDR.raw_value(), 0x0D);
         assert_eq!(JE.raw_value(), 0x01);
         assert_eq!(ADD.raw_value(), 0x14);
         assert_eq!(CALLVS.raw_value(), 0x00);
@@ -164,7 +164,7 @@ mod tests {
         }
 
         test_metadata(Op0::Quit, 0x0A);
-        test_metadata(Op1::PrintPaddr, 0x8D);
+        test_metadata(Op1::PrintPaddr, 0x0D);
         test_metadata(Op2::Add, 0x14);
         test_metadata(OpVar::CallVs, 0x00);
     }

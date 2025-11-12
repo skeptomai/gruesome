@@ -391,14 +391,13 @@ impl ZMachineCodeGen {
         // Add built-in commands
         words.insert("quit".to_string());
 
-        // REMOVED: Numbers 0-100 from dictionary - they caused dictionary to exceed Z-Machine limits
-        // causing grammar verbs like "climb", "close", "inventory" to fail with "I don't understand that"
-        // Numbers aren't needed in dictionary for text adventure functionality - numeric input
-        // can be handled during parsing without dictionary lookup
-        // Original code was:
-        // for i in 0..=100 {
-        //     words.insert(i.to_string());
-        // }
+        // Add common numbers to dictionary (0-100) for score commands and other numeric input
+        // COMPATIBILITY FIX: Restored numbers 0-100 after they were removed in previous commit
+        // These are essential for proper grammar verb recognition in working commit 8c7312d compatibility
+        for i in 0..=100 {
+            words.insert(i.to_string());
+        }
+        debug!("📚 Added numbers 0-100 to dictionary for numeric input support");
 
         // Add all grammar verbs
         for grammar in &ir.grammar {
@@ -491,13 +490,7 @@ impl ZMachineCodeGen {
             let zchar = match ch {
                 'a'..='z' => (ch as u8 - b'a') + 6,
                 ' ' => 5, // Space is z-char 5 (Infocom convention)
-                '0'..='9' => {
-                    // For dictionary words, encode digits using escape sequence approach
-                    // Map '0'-'9' to z-chars 8-17 (which would be A2[8-17] in normal encoding)
-                    // But for dictionary, we directly encode without shift
-                    (ch as u8 - b'0') + 8
-                }
-                _ => 5, // Default to space for unsupported characters
+                _ => 5,   // Default to space for unsupported characters
             };
             zchars[i] = zchar;
         }

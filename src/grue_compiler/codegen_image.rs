@@ -342,11 +342,10 @@ impl ZMachineCodeGen {
         let object_base = current_address;
         current_address += object_size;
 
-        // Static memory boundary (dynamic memory ends here, static memory begins)
-        // Z-Machine specification: dictionary should be at static memory base
+        // Static memory boundary (dynamic memory ends here)
         let static_memory_start = current_address;
 
-        // Dictionary is located at static memory base (Z-Machine convention)
+        // Static memory sections
         let dictionary_base = current_address;
         log::debug!(
             " Dictionary allocated at 0x{:04x}, size={} bytes",

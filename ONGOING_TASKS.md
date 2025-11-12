@@ -1152,129 +1152,188 @@ cd tools/vscode-grue-simple
 
 ---
 
-## 🔧 **MAILBOX REGRESSION: STORE INSTRUCTION REMOVAL** - **INVESTIGATION COMPLETE** (November 11, 2025)
+## 🐛 **CRITICAL REGRESSION ANALYSIS: OPCODE CONFLICT IN STAGED CHANGES**
 
-**STATUS**: **ROOT CAUSE IDENTIFIED** - Store instruction incorrectly removed from interpreter
+### **Status**: ⚠️ **OPCODE COLLISION DETECTED IN STAGED CHANGES**
 
-**CRITICAL FINDINGS**:
+### **WORKING COMMIT VERIFIED**: `8c7312d` ✅
+- ✅ `open mailbox` → "The a small mailbox contains: leaflet"
+- ✅ `take leaflet` → "Took leaflet." + Score: 0→2
+- ✅ Full gameplay protocol passes completely
 
-**✅ REGRESSION ISOLATED**:
-- **Working Commit**: 1eeedc1 (November 10, 13:10) - Mailbox functionality works correctly
-- **Broken Commit**: b15d307 (November 10, 13:17) - Mailbox functionality fails
+### **CURRENT STAGED CHANGES STATUS ANALYSIS**:
 
-**✅ CONTRADICTION IN COMMIT b15d307**:
-The commit message claims to fix Zork I mailbox issues, but actually breaks mini_zork mailbox functionality through two conflicting changes:
+#### **ACTUAL CURRENT STATE IN STAGING AREA**:
 
-1. **Attribute Calculation Change**:
-   - **Changed FROM**: `attr_byte = (attr_bytes_total - 1) - (attr_num / 8)` + `attr_bit = attr_num % 8`
-   - **Changed TO**: `attr_byte = attr_num / 8` + `attr_bit = 7 - (attr_num % 8)`
-   - **Claimed Purpose**: "Restore original Z-Machine attribute calculation for game compatibility"
+#### **✅ ALREADY FIXED IN STAGED CHANGES**:
+1. **✅ ATTRIBUTES RESTORED**: `src/vm.rs` correctly uses big-endian format (lines 965)
+   ```rust
+   let attr_byte = (attr_bytes_total - 1) - (attr_num / 8);  // CORRECT: Big-endian restored
+   ```
 
-2. **Store Instruction Removal**:
-   - **REMOVED**: Complete store instruction (0x0D) implementation from interpreter.rs
-   - **Impact**: Breaks our compiled mini_zork which depends on store instructions
+2. **✅ DICTIONARY NUMBERS RESTORED**: `src/grue_compiler/codegen_strings.rs` includes numbers 0-100 (lines 395-397)
+   ```rust
+   for i in 0..=100 {
+       words.insert(i.to_string());  // CORRECT: Numbers restored
+   }
+   ```
 
-**✅ SEQUENCE ANALYSIS**:
-- **1eeedc1**: Fixed opcode conflict by moving print_paddr from 0x0D to 0x8D, enabling store (0x0D) to work
-- **b15d307**: **Completely removed store instruction**, undoing the fix and breaking compilation
+#### **❌ CRITICAL ISSUE IN STAGED CHANGES**:
 
-**✅ EVIDENCE**:
-- **Working**: `open mailbox` at 1eeedc1 responds "Opening the small mailbox reveals a leaflet"
-- **Broken**: `open mailbox` at b15d307 responds "You can't open that"
-- **Store Instruction**: Present in 1eeedc1, completely removed in b15d307
+**🔥 OPCODE COLLISION**: `src/interpreter.rs` has DUPLICATE opcode 0x0D definitions:
+- **Line ~1112**: `0x0D => // print_paddr - print string at packed address`
+- **Line ~1366**: `0x0D => // store - Store value to variable (2OP:13)`
 
-**INVESTIGATION QUESTIONS ANSWERED**:
-1. **Attribute changes rationale**: Claimed to fix Zork I compatibility (big-endian vs bit-reversed)
-2. **Store instruction removal**: No explanation - likely unintended side effect of "restoration"
-3. **Consequences**: Store instruction removal breaks ALL compiled Grue games requiring variable storage
+**COMPILER CONFLICT**: `src/grue_compiler/opcodes.rs` has conflicting assignments:
+- **Line 151**: `PrintPaddr = 0x0D` (Op1 enum)
+- **Line 259**: `Store = 0x0D` (Op2 enum)
 
-**DETAILED ANALYSIS**:
+**THIS WILL NOT COMPILE** - Rust doesn't allow duplicate match arms.
 
-**✅ THE CONTRADICTION EXPLAINED**:
-- **1eeedc1**: Fixed opcode conflicts by moving print_paddr from 0x0D to 0x8D, **enabling** store instruction to work
-- **b15d307**: **Completely removed** store instruction, undoing that fix
-- **Result**: Attribute changes may be valid, but store removal is definitely wrong
+#### **ROOT CAUSE**:
+We've been working on multiple fixes simultaneously, and the opcode conflict emerged from trying to:
+1. Keep the essential `store` instruction (0x0D)
+2. Restore `print_paddr` to original position (0x0D)
 
-**✅ CONSEQUENCES ANALYSIS**:
-1. **Store Instruction Removal**: **DEFINITELY BREAKS COMPILATION**
-   - Our mini_zork depends on variable assignments that generate store instructions
-   - No compiled Grue game would work without this instruction
-   - **Evidence**: `obj.open = true/false` assignments require store instructions
+#### **CERTAINTY ANALYSIS**:
 
-2. **Attribute Calculation**: **MAY BE CORRECT FOR Z-MACHINE SPEC**
-   - Could be necessary for proper Infocom game compatibility
-   - **Old format**: Big-endian: `attr_byte = (total-1) - (attr_num/8)` + `attr_bit = attr_num % 8`
-   - **New format**: Simple: `attr_byte = attr_num/8` + `attr_bit = 7 - (attr_num % 8)`
-   - May require adjusting compiler's attribute generation to match
+**WHAT I'M CERTAIN OF**:
+- ✅ Attributes are correctly restored to big-endian in staged changes
+- ✅ Dictionary numbers 0-100 are restored in staged changes
+- ✅ There is definitely an opcode collision at 0x0D in both files
+- ✅ This collision will prevent compilation
 
-**✅ RATIONALE INVESTIGATION**:
-- **Attribute Change**: Claims to restore "original working logic from commit 3711105"
-- **Store Removal**: **NO EXPLANATION PROVIDED** - likely unintended side effect
-- **Commit Message**: Claims to fix Zork I mailbox issues but breaks mini_zork mailbox
+**WHAT I'M UNCERTAIN OF**:
+- 🤷‍♂️ Whether there are other property parsing changes beyond what's visible
+- 🤷‍♂️ Whether the user has additional uncommitted changes in working directory
+- 🤷‍♂️ What exact approach should be taken to resolve the opcode conflict
 
-**NEXT ACTIONS**:
-1. ✅ **IMMEDIATE**: Restore store instruction implementation (critical for compilation)
-2. ✅ **INVESTIGATE**: Test if attribute changes break our compiler's attribute generation
-3. ✅ **VALIDATE**: Verify both commercial games and compiled Grue games work
-4. ✅ **DETERMINE**: Whether hybrid attribute system needed for dual compatibility
+### **SPECIFIC SURGICAL FIX NEEDED**:
 
-**✅ ATTRIBUTE INVESTIGATION RESULTS (November 12, 2025)**:
+#### **ONLY ONE CRITICAL FIX REQUIRED**:
 
-**CRITICAL FINDING**: The current attribute calculation appears to be **WORKING CORRECTLY** for our use case:
+**OPCODE CONFLICT RESOLUTION**: Move store instruction to unused opcode to eliminate collision
 
-1. **✅ Compiled Games Work**: Mini_zork mailbox attributes function perfectly
-   - Mailbox opens correctly, shows "It's already open" when already open
-   - Attribute state tracking works (openable, container, open flags)
-   - Object containment and visibility working
+**Option A: Move store to 0x8D (recommended)**
+```rust
+// In src/grue_compiler/opcodes.rs - line 259:
+Store = 0x8D,  // Move from 0x0D to 0x8D to avoid collision
 
-2. **✅ Commercial Games Work**: Seastalker runs normally with current calculation
-   - No attribute-related crashes or errors observed
-   - Game plays correctly through initial sequences
+// In src/interpreter.rs - line ~1366:
+0x8D => {  // Move store handler from 0x0D to 0x8D
+    // store - Store value to variable (2OP:13)
+    let var_num = op1 as u8;
+    let value = op2;
+    self.vm.write_variable(var_num, value)?;
+}
+// REMOVE the duplicate 0x0D store handler, keep only print_paddr at 0x0D
+```
 
-3. **❌ Dictionary Issue Discovered**: The "close mailbox" failure was NOT due to attributes
-   - Root cause: "close" and "inventory" verbs missing from compiled dictionary
-   - This is a separate compiler issue unrelated to the attribute calculation changes
+**Option B: Move print_paddr to 0x8D**
+```rust
+// In src/grue_compiler/opcodes.rs - line 151:
+PrintPaddr = 0x8D,  // Move from 0x0D to 0x8D
 
-**CONCLUSION**: The attribute calculation changes from commit b15d307 appear to be **CORRECT** and **WORKING**. The original regression was caused by the store instruction removal, not the attribute changes.
+// In src/interpreter.rs - line ~1112:
+0x8D => {  // Move print_paddr handler from 0x0D to 0x8D
+    // print_paddr - print string at packed address
+    let packed_addr = operand;
+    // ... existing handler logic
+}
+// Keep only store at 0x0D
+```
 
-**RECOMMENDATION**: **NO ACTION NEEDED** on attribute calculation - it's functioning properly for both commercial and compiled games.
+#### **VERIFICATION NEEDED**:
+- Check if either 0x8D is currently used in the Z-Machine specification
+- Determine which instruction is more critical to preserve at 0x0D
+- Test that recompiled games work with new opcode assignments
+
+#### **ALL OTHER FIXES ALREADY APPLIED**:
+- ✅ Attributes: Big-endian format restored
+- ✅ Dictionary: Numbers 0-100 restored
+- ✅ Memory layout: Preserved from recent fixes
+- ✅ Infinite loop prevention: Preserved
+
+### **COMPLETE ROLLBACK ANALYSIS**: Why Not Revert Everything?
+
+**VALUABLE COMMITS WORTH KEEPING** (Between 8c7312d and HEAD):
+
+#### **✅ CRITICAL INFRASTRUCTURE FIXES**
+- **`0524535`** - "Restore missing store instruction (0x0D)"
+  - **Value**: Essential Z-Machine instruction was completely missing
+  - **Impact**: Enables all variable assignments (obj.open = true/false, Variable(3) = object_id)
+  - **Risk**: HIGH if lost - breaks all variable assignment functionality
+
+- **`d821b5c`** - "Correct Z-Machine memory layout to prevent dictionary/static memory overlap"
+  - **Value**: Prevents memory corruption and crashes
+  - **Impact**: Stability fix for commercial game compatibility
+  - **Risk**: MEDIUM if lost - potential memory corruption in complex games
+
+- **`3b30023`** - "Correct V3 property size calculation in get_prop_len to prevent infinite loops"
+  - **Value**: Prevents infinite loops in property traversal
+  - **Impact**: Stability fix for Zork I and other commercial games
+  - **Risk**: MEDIUM if lost - infinite loops in get_prop_len operations
+
+#### **✅ VALUABLE DOCUMENTATION**
+- **`341e7e5`** - "Add standardized gameplay test protocols"
+- **`3743994`** - "Document critical dictionary compilation regression discovery"
+- **`26586e7`** - "Add comprehensive post-mortem analysis of Zork I infinite loop bug"
+- **`69951ae`** - "Add comprehensive comments to store instruction implementation"
+  - **Value**: Complete documentation of bug investigations and testing protocols
+  - **Impact**: Developer knowledge preservation, debugging guides
+  - **Risk**: LOW if lost - no functional impact, but valuable knowledge
+
+#### **❌ BREAKING CHANGES TO AVOID**
+- **`4b1eea3`** - "Revert object property size calculation" - **THIS BROKE OBJECT LOOKUP**
+- **`e0f73b8`** - "Implement hybrid V3 property parsing architecture" - **CHANGED PROPERTY PARSING**
+
+**WHY NOT COMPLETE ROLLBACK:**
+
+#### **🔥 CRITICAL LOSS: Store Instruction (0x0D)**
+```rust
+// This essential Z-Machine instruction was MISSING in 8c7312d:
+0x0D => {
+    // store - Store value to variable (2OP:13)
+    let var_num = op1 as u8;
+    let value = op2;
+    self.vm.write_variable(var_num, value)?;
+}
+```
+**Without this**: ALL variable assignments fail - `obj.open = false`, `Variable(3) = 11`, score tracking, etc.
+
+#### **🛡️ STABILITY LOSS: Memory Layout Fix**
+The memory layout correction prevents dictionary/static memory overlap crashes. Rolling back loses crash protection for complex games.
+
+#### **⚡ INFINITE LOOP PROTECTION LOSS**
+The `get_prop_len` infinite loop fix prevents crashes when traversing malformed property data. Critical for commercial game compatibility.
+
+### **THE COMPATIBILITY PROBLEM:**
+
+The issue is **COMPILER/INTERPRETER VERSION MISMATCH**:
+
+1. **Opcode Reassignment**: Games compiled with `print_paddr=0x0D` fail when interpreter expects `store=0x0D`
+2. **Attribute Format**: Games compiled with old attribute layout fail with new big-endian→little-endian change
+3. **Property Format**: Games compiled expecting old property parsing fail with "hybrid" system
+
+### **SOLUTION STRATEGY: Selective Cherry-Pick**
+
+**Instead of full rollback**, we need to:
+
+1. **✅ KEEP** the essential infrastructure fixes (store instruction, memory layout, infinite loop prevention)
+2. **❌ REVERT** the breaking compatibility changes (opcode reassignment, attribute format change, hybrid property parsing)
+3. **🔧 FIX** the compatibility issues without losing the valuable improvements
+
+**TECHNICAL APPROACH:**
+- Restore opcode compatibility while keeping store instruction
+- Restore attribute format while keeping memory fixes
+- Restore property parsing while keeping infinite loop prevention
+- Keep all documentation improvements
+
+This preserves 2+ months of critical bug fixes while restoring functionality.
 
 ---
 
-## 🚨 **NEW CRITICAL REGRESSION: DICTIONARY COMPILATION FAILURE** - **URGENT INVESTIGATION** (November 12, 2025)
-
-**STATUS**: **CRITICAL REGRESSION DISCOVERED** - Multiple previously working verbs now broken
-
-**CRITICAL DISCOVERY**: While fixing the store instruction restored basic mailbox functionality, we've discovered a **NEW REGRESSION** affecting grammar/dictionary compilation:
-
-**✅ WHAT WORKS (Basic functionality restored)**:
-- ✅ `open mailbox` - Core store instruction functionality
-- ✅ `take leaflet` - Object interaction and score tracking
-- ✅ `north, north, up` - Basic navigation and tree climbing via `up`
-
-**❌ WHAT'S BROKEN (Previously working commands)**:
-- ❌ `climb tree` - Returns "I don't understand that"
-- ❌ `close mailbox` - Returns "I don't understand that"
-- ❌ `inventory` - Returns "I don't understand that"
-
-**ROOT CAUSE**: Dictionary compilation failure - verbs defined in grammar section not included in compiled dictionary:
-```
-[DEBUG] V3 dictionary: 'close' not found
-[DEBUG] V3 dictionary: 'inventory' not found
-```
-
-**IMPACT**: **SEVERE** - This represents a significant regression in grammar/dictionary system functionality that was working before.
-
-**INVESTIGATION REQUIRED**: Systematic commit-by-commit testing to identify when dictionary compilation broke:
-- Test sequence: `north, north, climb tree, take egg, inventory`
-- Goal: Find last working commit where all verbs function correctly
-- Priority: This affects core game functionality beyond the store instruction issue
-
-**URGENCY**: **HIGH** - Grammar system is fundamental to text adventure gameplay
-
----
-
-## 🐛 **ACTIVE INVESTIGATION: Polymorphic Dispatch Function Parameter Bug**
+## 🐛 **ARCHIVED INVESTIGATION: Polymorphic Dispatch Function Parameter Bug**
 
 ### **Status**: ✅ **ROOT CAUSE IDENTIFIED** - Ready for fix
 

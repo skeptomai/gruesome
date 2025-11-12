@@ -638,33 +638,28 @@ impl VM {
     }
 
     /// Parse property size byte to get property number, size, and header size
-    /// HYBRID ARCHITECTURE: Supports both commercial and compiled games automatically
+    /// COMPATIBILITY FIX: Restored standard V3 property parsing after removing hybrid approach
+    /// This ensures compatibility with both commercial games and compiled Grue games
     fn get_property_info(&self, prop_addr: usize) -> Result<(u8, usize, usize), String> {
         let size_byte = self.game.memory[prop_addr];
 
         if self.game.header.version <= 3 {
-            // HYBRID V3 APPROACH: Auto-detecting dual format support
-            // - Commercial games (Zork I): Use standard V3 single-byte format (bit 7 clear)
-            // - Compiled games (Mini Zork): Use extended two-byte format when needed (bit 7 set)
+            // V1-3: prop num in bottom 5 bits
             let prop_num = size_byte & 0x1F;
 
-            // Check for compiler-generated extended format marker
+            // Check for two-byte format (bit 7 set, bit 6 clear)
             if size_byte & 0x80 != 0 {
-                // Two-byte header format (compiled games with >8 byte properties)
+                // Two-byte header: next byte contains size
                 let size_byte_2 = self.game.memory[prop_addr + 1];
-                let prop_size = if size_byte_2 == 0 { 64 } else { size_byte_2 as usize };
-
-                log::debug!("V3 HYBRID: Using extended property format - prop_num={}, size={}",
-                           prop_num, prop_size);
+                let prop_size = if size_byte_2 == 0 {
+                    64
+                } else {
+                    size_byte_2 as usize
+                };
                 Ok((prop_num, prop_size, 2))
             } else {
-                // Single-byte format (commercial V3 games)
-                // Property number in bottom 5 bits, size in top 3 bits
-                // Formula: size = ((size_byte >> 5) & 0x07) + 1 (max 8 bytes)
+                // Single-byte format: size in top 3 bits (bits 7-5)
                 let prop_size = ((size_byte >> 5) & 0x07) + 1;
-
-                log::debug!("V3 HYBRID: Using standard property format - prop_num={}, size={}",
-                           prop_num, prop_size);
                 Ok((prop_num, prop_size as usize, 1))
             }
         } else {
@@ -966,8 +961,11 @@ impl VM {
         }
 
         // Attributes are in the first bytes of the object entry
-        let attr_byte = attr_num / 8;
-        let attr_bit = 7 - (attr_num % 8); // Attributes are numbered from high bit to low bit
+        // Z-Machine uses big-endian attribute storage:
+        // Byte 0: attrs 31-24, Byte 1: attrs 23-16, Byte 2: attrs 15-8, Byte 3: attrs 7-0
+        let attr_bytes_total = if self.game.header.version <= 3 { 4 } else { 6 };
+        let attr_byte = (attr_bytes_total - 1) - (attr_num / 8);
+        let attr_bit = attr_num % 8; // Bit position within the byte (0=LSB, 7=MSB)
 
         let byte_val = self.game.memory[obj_addr + attr_byte as usize];
         let is_set = (byte_val & (1 << attr_bit)) != 0;
@@ -1027,8 +1025,11 @@ impl VM {
         }
 
         // Attributes are in the first bytes of the object entry
-        let attr_byte = attr_num / 8;
-        let attr_bit = 7 - (attr_num % 8); // Attributes are numbered from high bit to low bit
+        // Z-Machine uses big-endian attribute storage:
+        // Byte 0: attrs 31-24, Byte 1: attrs 23-16, Byte 2: attrs 15-8, Byte 3: attrs 7-0
+        let attr_bytes_total = if self.game.header.version <= 3 { 4 } else { 6 };
+        let attr_byte = (attr_bytes_total - 1) - (attr_num / 8);
+        let attr_bit = attr_num % 8; // Bit position within the byte (0=LSB, 7=MSB)
 
         let byte_val = self.game.memory[obj_addr + attr_byte as usize];
         let new_byte = if value {
