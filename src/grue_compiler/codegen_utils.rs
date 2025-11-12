@@ -3,7 +3,7 @@
 
 use crate::grue_compiler::ir::{IrInstruction, IrProgram};
 use crate::grue_compiler::CompilerError;
-use std::collections::HashMap;
+use indexmap::IndexMap;
 use std::mem::discriminant;
 
 /// IR Analysis and Debugging Utilities
@@ -74,7 +74,7 @@ impl CodeGenUtils {
 
     /// Log breakdown of IR instruction types for analysis
     pub fn log_ir_instruction_breakdown(ir: &IrProgram) {
-        let mut instruction_counts: HashMap<String, usize> = HashMap::new();
+        let mut instruction_counts: IndexMap<String, usize> = IndexMap::new();
 
         // Count function instructions by type
         for function in &ir.functions {

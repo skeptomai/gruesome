@@ -1,7 +1,6 @@
 // Abstract Syntax Tree definitions for Grue language
 
 use indexmap::IndexMap;
-use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct Program {
@@ -119,9 +118,9 @@ pub struct ObjectDecl {
     pub identifier: String,
     pub names: Vec<String>,
     pub description: String,
-    pub properties: HashMap<String, PropertyValue>,
+    pub properties: IndexMap<String, PropertyValue>,
     pub attributes: Vec<String>, // Named attributes (e.g., "openable", "container")
-    pub numbered_properties: HashMap<u8, PropertyValue>, // Z-Machine numbered properties
+    pub numbered_properties: IndexMap<u8, PropertyValue>, // Z-Machine numbered properties
     pub contains: Vec<ObjectDecl>,
 
     // Enhanced object system integration

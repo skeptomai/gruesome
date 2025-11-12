@@ -6,7 +6,7 @@
 // - Property inheritance and defaults
 // - Object type system (rooms, containers, items, etc.)
 
-use std::collections::HashMap;
+use indexmap::IndexMap;
 // Removed unused import
 
 /// Standard Z-Machine attributes with their assigned numbers
@@ -142,13 +142,13 @@ pub struct ComprehensiveObject {
     pub object_type: ObjectType,
 
     /// Z-Machine attributes (using StandardAttribute enum)
-    pub attributes: HashMap<StandardAttribute, bool>,
+    pub attributes: IndexMap<StandardAttribute, bool>,
 
     /// Z-Machine numbered properties  
-    pub properties: HashMap<StandardProperty, PropertyValue>,
+    pub properties: IndexMap<StandardProperty, PropertyValue>,
 
     /// Custom numbered properties (beyond standard ones)
-    pub custom_properties: HashMap<u8, PropertyValue>,
+    pub custom_properties: IndexMap<u8, PropertyValue>,
 
     /// Object hierarchy
     pub parent: Option<String>,
@@ -182,9 +182,9 @@ impl ComprehensiveObject {
             id,
             names,
             object_type: object_type.clone(),
-            attributes: HashMap::new(),
-            properties: HashMap::new(),
-            custom_properties: HashMap::new(),
+            attributes: IndexMap::new(),
+            properties: IndexMap::new(),
+            custom_properties: IndexMap::new(),
             parent: None,
             children: Vec::new(),
             location: None,
@@ -379,13 +379,13 @@ impl ObjectFactory {
 
 /// Property defaults manager for inheritance
 pub struct PropertyDefaults {
-    defaults: HashMap<StandardProperty, PropertyValue>,
+    defaults: IndexMap<StandardProperty, PropertyValue>,
 }
 
 impl PropertyDefaults {
     pub fn new() -> Self {
         let mut defaults = PropertyDefaults {
-            defaults: HashMap::new(),
+            defaults: IndexMap::new(),
         };
         defaults.set_standard_defaults();
         defaults

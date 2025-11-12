@@ -2,7 +2,7 @@
 
 use crate::grue_compiler::ast::*;
 use crate::grue_compiler::error::CompilerError;
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SymbolType {
@@ -35,7 +35,7 @@ pub struct Symbol {
 
 #[derive(Debug)]
 pub struct Scope {
-    pub symbols: HashMap<String, Symbol>,
+    pub symbols: IndexMap<String, Symbol>,
     pub parent: Option<Box<Scope>>,
     pub scope_type: ScopeType,
 }
@@ -51,7 +51,7 @@ pub enum ScopeType {
 pub struct SemanticAnalyzer {
     current_scope: Box<Scope>,
     errors: Vec<CompilerError>,
-    room_objects: HashMap<String, Vec<String>>, // room_id -> object_ids
+    room_objects: IndexMap<String, Vec<String>>, // room_id -> object_ids
 }
 
 impl Default for SemanticAnalyzer {
@@ -64,12 +64,12 @@ impl SemanticAnalyzer {
     pub fn new() -> Self {
         let mut analyzer = SemanticAnalyzer {
             current_scope: Box::new(Scope {
-                symbols: HashMap::new(),
+                symbols: IndexMap::new(),
                 parent: None,
                 scope_type: ScopeType::Global,
             }),
             errors: Vec::new(),
-            room_objects: HashMap::new(),
+            room_objects: IndexMap::new(),
         };
 
         // Add built-in functions
@@ -1206,11 +1206,11 @@ impl SemanticAnalyzer {
 
     fn push_scope(&mut self, scope_type: ScopeType) {
         let new_scope = Box::new(Scope {
-            symbols: HashMap::new(),
+            symbols: IndexMap::new(),
             parent: Some(std::mem::replace(
                 &mut self.current_scope,
                 Box::new(Scope {
-                    symbols: HashMap::new(),
+                    symbols: IndexMap::new(),
                     parent: None,
                     scope_type: ScopeType::Global,
                 }),

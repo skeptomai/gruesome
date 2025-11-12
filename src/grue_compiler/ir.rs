@@ -7,7 +7,6 @@ use crate::grue_compiler::ast::{Expr, ObjectSpecialization, Program, ProgramMode
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::object_system::ComprehensiveObject;
 use indexmap::{IndexMap, IndexSet};
-use std::collections::HashMap;
 
 /// Context for expression generation to distinguish different usage patterns
 /// This is critical for Z-Machine branch instruction handling
@@ -124,13 +123,13 @@ impl IrProgram {
 /// Z-Machine property defaults table (31 words for V1-3, 63 for V4+)
 #[derive(Debug, Clone)]
 pub struct IrPropertyDefaults {
-    pub defaults: HashMap<u8, u16>, // Property number -> default value
+    pub defaults: IndexMap<u8, u16>, // Property number -> default value
 }
 
 impl IrPropertyDefaults {
     pub fn new() -> Self {
         Self {
-            defaults: HashMap::new(),
+            defaults: IndexMap::new(),
         }
     }
 
@@ -276,13 +275,13 @@ impl Default for IrAttributes {
 /// Z-Machine properties - numbered from 1 upward
 #[derive(Debug, Clone)]
 pub struct IrProperties {
-    pub properties: HashMap<u8, IrPropertyValue>, // Property number -> value
+    pub properties: IndexMap<u8, IrPropertyValue>, // Property number -> value
 }
 
 impl IrProperties {
     pub fn new() -> Self {
         Self {
-            properties: HashMap::new(),
+            properties: IndexMap::new(),
         }
     }
 
@@ -1055,7 +1054,7 @@ pub struct IrGenerator {
     function_overloads: IndexMap<String, Vec<FunctionOverload>>, // Function name -> list of overloads
     dispatch_functions: IndexMap<String, IrId>, // Function name -> dispatch function ID
     function_base_names: IndexMap<IrId, String>, // Function ID -> base function name
-    function_id_map: std::collections::HashMap<(String, ObjectSpecialization), u32>, // (name, specialization) -> assigned ID
+    function_id_map: IndexMap<(String, ObjectSpecialization), u32>, // (name, specialization) -> assigned ID
 }
 
 impl Default for IrGenerator {
@@ -1088,7 +1087,7 @@ impl IrGenerator {
             function_overloads: IndexMap::new(),
             dispatch_functions: IndexMap::new(),
             function_base_names: IndexMap::new(),
-            function_id_map: std::collections::HashMap::new(),
+            function_id_map: IndexMap::new(),
         }
     }
 
@@ -1489,8 +1488,7 @@ impl IrGenerator {
 
         // Track individual function IDs for reuse in Pass 2
         // This prevents ID mismatches between registration and generation phases
-        let mut function_id_map: std::collections::HashMap<(String, ObjectSpecialization), u32> =
-            std::collections::HashMap::new();
+        let mut function_id_map: IndexMap<(String, ObjectSpecialization), u32> = IndexMap::new();
 
         // Now register functions appropriately
         for (name, versions) in function_counts.iter() {

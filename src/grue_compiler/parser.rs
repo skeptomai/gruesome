@@ -4,7 +4,6 @@ use crate::grue_compiler::ast::*;
 use crate::grue_compiler::error::CompilerError;
 use crate::grue_compiler::lexer::{Token, TokenKind};
 use indexmap::IndexMap;
-use std::collections::HashMap;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -155,7 +154,7 @@ impl Parser {
 
         let mut names = Vec::new();
         let mut description = String::new();
-        let mut properties = HashMap::new();
+        let mut properties = IndexMap::new();
         let mut contains = Vec::new();
 
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
@@ -216,7 +215,7 @@ impl Parser {
             description,
             properties,
             attributes: Vec::new(), // TODO: Parse from object syntax
-            numbered_properties: HashMap::new(), // TODO: Parse from object syntax
+            numbered_properties: IndexMap::new(), // TODO: Parse from object syntax
             contains,
             object_type: None, // TODO: Parse object type declaration
             inheritance: None, // TODO: Parse inheritance specification

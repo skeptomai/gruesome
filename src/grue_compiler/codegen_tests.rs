@@ -24,7 +24,7 @@ mod codegen_tests {
             init_block_locals: Vec::new(),
             string_table: indexmap::IndexMap::new(),
             property_defaults: IrPropertyDefaults {
-                defaults: std::collections::HashMap::new(),
+                defaults: indexmap::IndexMap::new(),
             },
             property_manager: crate::grue_compiler::ir::PropertyManager::new(),
             program_mode: crate::grue_compiler::ast::ProgramMode::Script,
