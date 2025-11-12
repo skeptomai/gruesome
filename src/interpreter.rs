@@ -1363,6 +1363,34 @@ impl Interpreter {
                 self.vm.set_attribute(obj_num, attr_num, false)?;
                 Ok(ExecutionResult::Continue)
             }
+            0x0D => {
+                // store - Store value to variable (2OP:13)
+                // CRITICAL FIX: This instruction was completely missing from interpreter
+                // Z-Machine spec: store variable value
+                let var_num = op1 as u8;
+                let value = op2;
+
+                debug!("store: variable {} <- value {}", var_num, value);
+
+                // OBJECT LOOKUP DEBUG: Track Variable(3) assignments (object lookup result)
+                if var_num == 3 {
+                    log::debug!(
+                        "🎯 VAR3_STORE: Variable(3) = {} at PC=0x{:04x}",
+                        value,
+                        self.vm.pc - inst.size as u32
+                    );
+
+                    // CRITICAL ERROR CHECK: Variable(3) should NEVER be 0 after successful dictionary match
+                    if value == 0 {
+                        log::error!("🚨 CRITICAL BUG: Object lookup returned 0 (not found) despite successful dictionary match!");
+                        log::error!("🚨 This indicates a serious control flow error in generate_object_lookup_from_noun()");
+                        // Don't panic yet, but this is definitely wrong
+                    }
+                }
+
+                self.vm.write_variable(var_num, value)?;
+                Ok(ExecutionResult::Continue)
+            }
             0x0E => {
                 // insert_obj - Insert object into hierarchy
                 // Z-Machine spec: insert_obj object destination

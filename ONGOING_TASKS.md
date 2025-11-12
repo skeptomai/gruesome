@@ -1152,6 +1152,74 @@ cd tools/vscode-grue-simple
 
 ---
 
+## 🔧 **MAILBOX REGRESSION: STORE INSTRUCTION REMOVAL** - **INVESTIGATION COMPLETE** (November 11, 2025)
+
+**STATUS**: **ROOT CAUSE IDENTIFIED** - Store instruction incorrectly removed from interpreter
+
+**CRITICAL FINDINGS**:
+
+**✅ REGRESSION ISOLATED**:
+- **Working Commit**: 1eeedc1 (November 10, 13:10) - Mailbox functionality works correctly
+- **Broken Commit**: b15d307 (November 10, 13:17) - Mailbox functionality fails
+
+**✅ CONTRADICTION IN COMMIT b15d307**:
+The commit message claims to fix Zork I mailbox issues, but actually breaks mini_zork mailbox functionality through two conflicting changes:
+
+1. **Attribute Calculation Change**:
+   - **Changed FROM**: `attr_byte = (attr_bytes_total - 1) - (attr_num / 8)` + `attr_bit = attr_num % 8`
+   - **Changed TO**: `attr_byte = attr_num / 8` + `attr_bit = 7 - (attr_num % 8)`
+   - **Claimed Purpose**: "Restore original Z-Machine attribute calculation for game compatibility"
+
+2. **Store Instruction Removal**:
+   - **REMOVED**: Complete store instruction (0x0D) implementation from interpreter.rs
+   - **Impact**: Breaks our compiled mini_zork which depends on store instructions
+
+**✅ SEQUENCE ANALYSIS**:
+- **1eeedc1**: Fixed opcode conflict by moving print_paddr from 0x0D to 0x8D, enabling store (0x0D) to work
+- **b15d307**: **Completely removed store instruction**, undoing the fix and breaking compilation
+
+**✅ EVIDENCE**:
+- **Working**: `open mailbox` at 1eeedc1 responds "Opening the small mailbox reveals a leaflet"
+- **Broken**: `open mailbox` at b15d307 responds "You can't open that"
+- **Store Instruction**: Present in 1eeedc1, completely removed in b15d307
+
+**INVESTIGATION QUESTIONS ANSWERED**:
+1. **Attribute changes rationale**: Claimed to fix Zork I compatibility (big-endian vs bit-reversed)
+2. **Store instruction removal**: No explanation - likely unintended side effect of "restoration"
+3. **Consequences**: Store instruction removal breaks ALL compiled Grue games requiring variable storage
+
+**DETAILED ANALYSIS**:
+
+**✅ THE CONTRADICTION EXPLAINED**:
+- **1eeedc1**: Fixed opcode conflicts by moving print_paddr from 0x0D to 0x8D, **enabling** store instruction to work
+- **b15d307**: **Completely removed** store instruction, undoing that fix
+- **Result**: Attribute changes may be valid, but store removal is definitely wrong
+
+**✅ CONSEQUENCES ANALYSIS**:
+1. **Store Instruction Removal**: **DEFINITELY BREAKS COMPILATION**
+   - Our mini_zork depends on variable assignments that generate store instructions
+   - No compiled Grue game would work without this instruction
+   - **Evidence**: `obj.open = true/false` assignments require store instructions
+
+2. **Attribute Calculation**: **MAY BE CORRECT FOR Z-MACHINE SPEC**
+   - Could be necessary for proper Infocom game compatibility
+   - **Old format**: Big-endian: `attr_byte = (total-1) - (attr_num/8)` + `attr_bit = attr_num % 8`
+   - **New format**: Simple: `attr_byte = attr_num/8` + `attr_bit = 7 - (attr_num % 8)`
+   - May require adjusting compiler's attribute generation to match
+
+**✅ RATIONALE INVESTIGATION**:
+- **Attribute Change**: Claims to restore "original working logic from commit 3711105"
+- **Store Removal**: **NO EXPLANATION PROVIDED** - likely unintended side effect
+- **Commit Message**: Claims to fix Zork I mailbox issues but breaks mini_zork mailbox
+
+**NEXT ACTIONS**:
+1. **IMMEDIATE**: Restore store instruction implementation (critical for compilation)
+2. **INVESTIGATE**: Test if attribute changes break our compiler's attribute generation
+3. **VALIDATE**: Verify both commercial games and compiled Grue games work
+4. **DETERMINE**: Whether hybrid attribute system needed for dual compatibility
+
+---
+
 ## 🐛 **ACTIVE INVESTIGATION: Polymorphic Dispatch Function Parameter Bug**
 
 ### **Status**: ✅ **ROOT CAUSE IDENTIFIED** - Ready for fix
