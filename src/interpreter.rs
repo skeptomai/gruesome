@@ -2091,7 +2091,7 @@ impl Interpreter {
 
     /// Unpack a routine address based on version
     fn unpack_routine_address(&self, packed: u16) -> usize {
-        match self.vm.game.header.version {
+        let unpacked = match self.vm.game.header.version {
             1..=3 => (packed as usize) * 2,
             4..=5 => (packed as usize) * 4,
             6..=7 => {
@@ -2100,7 +2100,17 @@ impl Interpreter {
             }
             8 => (packed as usize) * 8,
             _ => (packed as usize) * 2,
+        };
+
+        // COMPLIANCE: Strict bounds checking - panic on invalid addresses
+        if unpacked >= self.vm.game.memory.len() {
+            panic!(
+                "COMPLIANCE VIOLATION: Invalid packed routine address 0x{:04x} unpacks to 0x{:04x}, exceeds memory size {} bytes",
+                packed, unpacked, self.vm.game.memory.len()
+            );
         }
+
+        unpacked
     }
 
     /// Enable output stream 3 (text redirection to table)

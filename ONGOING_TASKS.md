@@ -87,13 +87,70 @@
 
 ---
 
+---
+
+## 🚨 **CRITICAL: COMPILER & INTERPRETER COMPLIANCE WORK** - **ACTIVE DEVELOPMENT** (November 13, 2025)
+
+**STATUS**: **ROOT CAUSE IDENTIFIED, TOLERANCE MECHANISMS MAPPED** 🔍
+
+**ISSUE**: Our compiler generates Z-Machine files that violate the Z-Machine standard, but our interpreter has tolerance mechanisms that mask these violations, causing silent failures instead of proper error reporting.
+
+### **INVESTIGATION FINDINGS**
+
+**Compiler Issue**: **Invalid Packed Address Generation**
+- Packed address `0x4a52` unpacks to `0x94a5` (37,957 bytes)
+- File size is only 9,156 bytes
+- **Violation**: Unpacked addresses exceed file boundaries by ~4x
+
+**Interpreter Issue**: **Non-Standard Tolerance Mechanisms**
+- **Silent string truncation** (`src/text.rs:40`): Invalid addresses terminate loops gracefully
+- **Abbreviation skipping** (`src/text.rs:91-99`): Bad addresses logged but processing continues
+- **No bounds validation** in unpacking functions: Pure math with no file size checks
+
+**Why Standard Tools Fail vs. Our Interpreter**:
+- **Standard tools (txd)**: Fail fast on invalid addresses → **CRASH**
+- **Our interpreter**: Graceful fallbacks for invalid addresses → **SILENT CONTINUE**
+
+**Detailed Analysis**:
+- `docs/COMPILER_COMPLIANCE_WORK.md` - Compliance violations and investigation
+- `docs/INTERPRETER_TOLERANCE_ANALYSIS.md` - Tolerance mechanisms analysis
+
+### **DEVELOPMENT BRANCH**: `compiler_interpreter_compliance`
+
+**SCOPE**: Fix both compiler address generation AND interpreter tolerance to ensure Z-Machine specification compliance
+
+### **COMPLIANCE WORK TASK LIST**
+
+**PHASE 1: SETUP & VALIDATION**
+1. ✅ **Document compliance violations and tolerance mechanisms**
+2. 🔄 **Create compliance work branch: `compiler_interpreter_compliance`**
+3. 🔄 **Tighten interpreter bounds checking to panic on invalid addresses**
+4. 🔄 **Test tightened interpreter with mini_zork gameplay protocol**
+
+**PHASE 2: COMPILER FIXES**
+5. 🔄 **Identify where compiler generates invalid packed address `0x4a52`**
+6. 🔄 **Fix compiler packed address calculation to stay within bounds**
+
+**PHASE 3: VERIFICATION**
+7. 🔄 **Verify compliance: txd can disassemble our files without errors**
+8. 🔄 **Test fixed system with full gameplay protocol**
+
+**APPROACH**: Expose hidden bugs by making interpreter strict, then fix root causes in compiler, then verify full compliance with standard tools.
+
+---
+
 ## 🔧 **SYSTEM STATUS**
 
-### **✅ ALL MAJOR BUGS RESOLVED** (November 13, 2025)
+### **⚠️ CRITICAL BUGS REQUIRING IMMEDIATE ATTENTION** (November 13, 2025)
+
+- 🚨 **Z-Machine Compliance Violations**: Compiler generates invalid packed addresses
+- 🚨 **Non-Standard Interpreter**: Tolerates specification violations that crash standard tools
+
+### **✅ FUNCTIONAL SYSTEMS** (November 13, 2025)
 
 - ✅ **Container Iteration Infinite Loop**: Fixed circular sibling references (v2.8.3)
 - ✅ **Hash→Index Determinism**: Complete HashMap→IndexMap cleanup applied
-- ✅ **Commercial Game Compatibility**: Zork I and all test protocols pass 100%
+- ✅ **Gameplay Functionality**: Mini_zork test protocol passes 100% with our interpreter
 - ✅ **Core Z-Machine Operations**: All object, container, and navigation systems functional
 
 ### **🚀 CURRENT SYSTEM CAPABILITIES**

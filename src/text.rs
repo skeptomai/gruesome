@@ -87,25 +87,22 @@ fn decode_string_recursive(
                 ((memory[abbrev_entry_addr] as u16) << 8) | (memory[abbrev_entry_addr + 1] as u16);
             let abbrev_byte_addr = (abbrev_word_addr as usize).saturating_mul(2);
 
-            // Check for obviously invalid addresses
+            // COMPLIANCE: Strict bounds checking - panic on invalid abbreviation addresses
             if abbrev_byte_addr >= memory.len() || abbrev_byte_addr == 0 {
-                debug!(
-                    "Invalid abbreviation address {:04x} (memory size: {}), skipping",
+                panic!(
+                    "COMPLIANCE VIOLATION: Invalid abbreviation address 0x{:04x} (memory size: {})",
                     abbrev_byte_addr,
                     memory.len()
                 );
-                abbrev_shift = 0;
-                continue;
             }
 
-            // Additional sanity check - make sure we have at least 2 bytes for a word
+            // COMPLIANCE: Strict bounds checking - panic if insufficient bytes for word
             if abbrev_byte_addr + 1 >= memory.len() {
-                debug!(
-                    "Abbreviation address {:04x} too close to end of memory, skipping",
-                    abbrev_byte_addr
+                panic!(
+                    "COMPLIANCE VIOLATION: Abbreviation address 0x{:04x} too close to end of memory (size: {})",
+                    abbrev_byte_addr,
+                    memory.len()
                 );
-                abbrev_shift = 0;
-                continue;
             }
 
             // Recursively decode the abbreviation string
@@ -213,19 +210,32 @@ pub fn decode_string_at_packed_addr(
     abbrev_table_addr: usize,
 ) -> Result<String, String> {
     let byte_addr = unpack_string_address(packed_addr, version);
+
+    // COMPLIANCE: Strict bounds checking - panic on invalid addresses
+    if byte_addr >= memory.len() {
+        panic!(
+            "COMPLIANCE VIOLATION: Invalid packed string address 0x{:04x} unpacks to 0x{:04x}, exceeds memory size {} bytes",
+            packed_addr, byte_addr, memory.len()
+        );
+    }
+
     let (string, _) = decode_string(memory, byte_addr, abbrev_table_addr)?;
     Ok(string)
 }
 
 /// Unpack a string address based on version
 fn unpack_string_address(packed: u16, version: u8) -> usize {
-    match version {
+    let unpacked = match version {
         1..=3 => (packed as usize) * 2,
         4..=5 => (packed as usize) * 4,
         6..=7 => (packed as usize) * 4, // TODO: Add offset handling
         8 => (packed as usize) * 8,
         _ => (packed as usize) * 2,
-    }
+    };
+
+    // Note: We can't check bounds here because we don't have memory reference
+    // Bounds checking will be done at the call site
+    unpacked
 }
 
 #[cfg(test)]
