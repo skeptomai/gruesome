@@ -1288,6 +1288,122 @@ Main Loop (ID 9000)
 
 This modular architecture provides a robust, maintainable foundation for a complete Z-Machine interpreter with excellent game compatibility, clean code organization, and clear separation of concerns across functional domains.
 
+## Compiler Architecture Lessons Learned
+
+### Critical Bug Pattern: Circular Reference Prevention
+
+**Date**: November 12-13, 2025
+**Issue**: Container iteration infinite loops caused by circular sibling references
+**Root Cause**: Phase 2 object tree processing created objects with `sibling=self` instead of `sibling=0`
+
+**Key Insight**: Object containment systems require explicit circular reference detection:
+```rust
+// WRONG: Can create circular references
+self.write_to_object_space(obj_offset + 5, parent_child)?;
+
+// CORRECT: Check for existing correct placement first
+if parent_child == obj_num {
+    // Object already correctly positioned, no updates needed
+} else if parent_child == 0 {
+    // Parent has no children - make this object the first child
+    self.write_to_object_space(parent_offset + 6, obj_num)?;
+} else {
+    // Insert at beginning of sibling chain with circularity prevention
+    self.write_to_object_space(obj_offset + 5, parent_child)?;
+    self.write_to_object_space(parent_offset + 6, obj_num)?;
+}
+```
+
+**Prevention**: Always verify object tree integrity during Phase 2 processing and prevent self-referencing sibling chains.
+
+### HashMap→IndexMap Determinism Impact
+
+**Date**: November 12, 2025
+**Issue**: Deterministic builds required HashMap→IndexMap migration, which unexpectedly affected function ordering
+**Impact**: Identical source code produced different runtime behavior due to function address changes
+
+**Key Insight**: Function ordering changes can affect Z-Machine branch offset calculations:
+- Function addresses changed due to deterministic iteration order
+- Branch offset calculations depend on absolute addresses in bytecode
+- Identical IR logic can produce different runtime behavior when addresses shift
+
+**Architectural Decision**: Function ordering stability is critical for reproducible builds. IndexMap provides deterministic ordering at the cost of requiring careful verification of address-dependent code.
+
+### String Parameter Passing Architectural Constraint
+
+**Date**: November 6, 2025
+**Issue**: Z-Machine has no native string parameter support, but games need direction strings
+**Challenge**: Original design constraint prohibited string literals as function parameters
+
+**Solution Architecture**:
+1. **Two-Phase Processing**: Collect string info during operand building, process after instruction emission
+2. **Layout-Based Addressing**: Use `InstructionLayout.operand_location` for precise address calculation
+3. **Type Differentiation**: Direction strings (dictionary addresses) vs display strings (packed addresses)
+
+**Key Lesson**: When instruction emission affects addressing, always use layout information rather than manual calculation.
+
+**Critical Bug Pattern**:
+```rust
+// WRONG: Manual calculation (off-by-one errors)
+let operand_location = self.code_address + 1 + operands.len() * 2;
+
+// CORRECT: Layout-based (exact addressing)
+let layout = self.emit_instruction_typed(...);
+let operand_location = layout.operand_location.unwrap() + (index * 2);
+```
+
+### Z-Machine Opcode Form Instability
+
+**Date**: October 2025
+**Issue**: Same opcode number means different instructions across forms (Long/Variable)
+**Example**: Opcode 0x0D = `store` (Long form) vs `output_stream` (Variable form)
+
+**Root Cause**: Form determination in `emit_instruction` automatically switches forms based on operand constraints, but doesn't account for semantic differences.
+
+**Critical Pattern**:
+```rust
+// When LargeConstant > 255, form switches from Long to Variable
+// but opcode 0x0D changes meaning from 'store' to 'output_stream'
+emit_instruction(0x0D, [Variable(dest), LargeConstant(300)]) // BROKEN
+```
+
+**Prevention Strategy**: Add compile-time validation for form-sensitive opcodes to catch semantic conflicts before code generation.
+
+### Builtin Pseudo-Method Detection
+
+**Date**: October 9, 2025
+**Issue**: Method calls with property checks incorrectly skipped builtin pseudo-methods
+**Root Cause**: IR generator applied property check pattern to compiler-provided functions
+
+**Key Insight**: Distinguish between property-based methods and compiler builtins:
+```rust
+// Property-based methods (check if object has custom implementation)
+if property_exists { call_custom() } else { call_default() }
+
+// Builtin pseudo-methods (direct compiler functions)
+call_builtin() // No property check needed
+```
+
+**Detection Strategy**: Use pattern matching on method names to bypass property lookup for known compiler builtins (`get_exit`, `empty`, `none`).
+
+### Complex Expression Control Flow Optimization
+
+**Achievement**: 66% reduction in redundant jumps (32 → 11) through IR pattern optimization
+**Technique**: Eliminate `Jump { end_label }` when else branch is empty
+
+**Remaining Pattern**: LoadImmediate instructions don't emit Z-code, causing offset-2 jumps that convert to NOPs
+**Decision**: Accept current state - remaining NOPs are harmless and rare
+
+### Development Methodology Insights
+
+**Debugging Lesson**: When debugging execution failures, instrument actual execution path first, not binary analysis
+**Effective**: Trace instruction decode → execution flow to find missing execution
+**Ineffective**: Examining bytecode with hex dumps and guessing intent
+
+**Architecture Documentation**: Always document root causes and prevention strategies for systematic bugs - they tend to recur in similar forms.
+
+**Testing Strategy**: Verify semantic correctness, not just syntactic validity. Complex bugs often produce valid bytecode that executes incorrectly.
+
 ## IR Generation for Builtin Pseudo-Methods (October 9, 2025)
 
 ### The Problem

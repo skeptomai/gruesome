@@ -3247,23 +3247,24 @@ impl IrGenerator {
                     source_info
                 );
 
-                let container_object = self.variable_sources.get(&iterable_temp).and_then(
-                    |source| {
-                        if let VariableSource::ObjectTreeRoot(container_id) = source {
-                            log::error!(
+                let container_object =
+                    self.variable_sources
+                        .get(&iterable_temp)
+                        .and_then(|source| {
+                            if let VariableSource::ObjectTreeRoot(container_id) = source {
+                                log::error!(
                                 "🔍 FOR_LOOP_DEBUG: Found ObjectTreeRoot source! Container ID = {}",
                                 container_id
                             );
-                            Some(*container_id)
-                        } else {
-                            log::error!(
-                                "🔍 FOR_LOOP_DEBUG: Found non-ObjectTreeRoot source: {:?}",
-                                source
-                            );
-                            None
-                        }
-                    },
-                );
+                                Some(*container_id)
+                            } else {
+                                log::error!(
+                                    "🔍 FOR_LOOP_DEBUG: Found non-ObjectTreeRoot source: {:?}",
+                                    source
+                                );
+                                None
+                            }
+                        });
 
                 if let Some(container_id) = container_object {
                     log::error!(
