@@ -94,6 +94,9 @@ impl VM {
             vm.call_stack.push(main_frame);
         }
 
+        // 🌳 INTERPRETER INSTRUMENTATION: Show loaded object tree structure
+        // vm.debug_loaded_object_tree(); // Disabled to prevent property table access issues
+
         vm
     }
 
@@ -841,6 +844,118 @@ impl VM {
             }
         } else {
             Ok(String::new())
+        }
+    }
+
+    /// 🌳 INTERPRETER DEBUGGING: Show complete loaded object tree structure
+    fn debug_loaded_object_tree(&self) {
+        log::debug!("🌳 ======= INTERPRETER LOADED OBJECT TREE =======");
+
+        // Get object table info
+        let obj_table_addr = self.game.header.object_table_addr as usize;
+        let max_objects = if self.game.header.version <= 3 {
+            255
+        } else {
+            65535
+        };
+
+        log::debug!("📍 Object table at: 0x{:04x}", obj_table_addr);
+        log::debug!("📊 Z-Machine Version: {}", self.game.header.version);
+
+        // Find actual number of objects by scanning the table
+        let mut actual_objects = 0;
+        for obj_num in 1..=max_objects {
+            if let Ok(obj_addr) = self.get_object_addr(obj_num) {
+                // Check if object exists (has valid parent/sibling/child data)
+                if obj_addr > 0 && obj_addr < self.game.memory.len() {
+                    actual_objects = obj_num;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        log::debug!("🔢 Actual objects found: {}", actual_objects);
+
+        // Show all object relationships
+        log::debug!("🔗 Object Tree Relationships:");
+        for obj_num in 1..=actual_objects {
+            if let (Ok(parent), Ok(sibling), Ok(child)) = (
+                self.get_parent(obj_num),
+                self.get_sibling(obj_num),
+                self.get_child(obj_num),
+            ) {
+                let name = self
+                    .get_object_name(obj_num)
+                    .unwrap_or_else(|_| "???".to_string());
+                log::debug!(
+                    "   Object #{:2} ('{}') parent={}, sibling={}, child={}",
+                    obj_num,
+                    name,
+                    parent,
+                    sibling,
+                    child
+                );
+            }
+        }
+
+        // Show hierarchical tree structure
+        log::debug!("🌳 Object Tree Hierarchy:");
+        self.debug_interpreter_tree_hierarchy(actual_objects);
+
+        log::debug!("🌳 ==============================================");
+    }
+
+    /// Show hierarchical tree structure in interpreter
+    fn debug_interpreter_tree_hierarchy(&self, max_objects: u16) {
+        let mut children_by_parent: std::collections::HashMap<u16, Vec<u16>> =
+            std::collections::HashMap::new();
+
+        // Build parent -> children mapping
+        for obj_num in 1..=max_objects {
+            if let Ok(parent) = self.get_parent(obj_num) {
+                if parent != 0 {
+                    children_by_parent
+                        .entry(parent)
+                        .or_insert_with(Vec::new)
+                        .push(obj_num);
+                }
+            }
+        }
+
+        // Find and show root objects (those with parent = 0)
+        for obj_num in 1..=max_objects {
+            if let Ok(parent) = self.get_parent(obj_num) {
+                if parent == 0 {
+                    // This is a root object
+                    let name = self
+                        .get_object_name(obj_num)
+                        .unwrap_or_else(|_| "???".to_string());
+                    log::debug!("   Root: Object #{} ('{}')", obj_num, name);
+                    self.debug_interpreter_children(&children_by_parent, obj_num, 1);
+                }
+            }
+        }
+    }
+
+    /// Recursively show children in tree format for interpreter
+    fn debug_interpreter_children(
+        &self,
+        children_by_parent: &std::collections::HashMap<u16, Vec<u16>>,
+        parent_num: u16,
+        depth: usize,
+    ) {
+        if let Some(children) = children_by_parent.get(&parent_num) {
+            for &child in children {
+                let indent = "   ".repeat(depth);
+                let name = self
+                    .get_object_name(child)
+                    .unwrap_or_else(|_| "???".to_string());
+                log::debug!("{}└─ Object #{} ('{}')", indent, child, name);
+                self.debug_interpreter_children(children_by_parent, child, depth + 1);
+            }
         }
     }
 }

@@ -877,12 +877,6 @@ impl ZMachineCodeGen {
                     // Retry the builtin call now that it's registered
                     return self.translate_call(target, function, args);
                 }
-                13 => {
-                    log::debug!("HOTFIX: Registering function 13 as list_contents");
-                    self.register_builtin_function(13, "list_contents".to_string());
-                    // Retry the builtin call now that it's registered
-                    return self.translate_call(target, function, args);
-                }
                 277 => {
                     log::debug!("HOTFIX: Registering function 277 as get_exit");
                     self.register_builtin_function(277, "get_exit".to_string());
@@ -1295,6 +1289,9 @@ impl ZMachineCodeGen {
         // When object A has parent B set at compile time, we need to:
         // 1. Make A the first child of B (or add to sibling chain if B already has children)
         // This mirrors what insert_obj does at runtime
+        // log::debug!("🐛 SIBLING_DEBUG: Before PHASE 2 - Object #{} ('{}') parent={}, sibling={}, child={}",
+        //            obj_num, object.short_name, parent, sibling, child);
+
         if parent != 0
             && self
                 .initial_locations_by_number
@@ -1305,24 +1302,21 @@ impl ZMachineCodeGen {
             // Read parent's current child pointer
             let parent_child = self.object_space[parent_offset + 6];
 
-            if parent_child == 0 {
+            // 🐛 CRITICAL FIX: Skip if object is already its parent's first child
+            // This prevents circular sibling references when IR already established correct relationships
+            if parent_child == obj_num {
+                // Object is already correctly positioned as parent's first child, no updates needed
+            } else if parent_child == 0 {
                 // Parent has no children yet - make this object the first child
                 self.write_to_object_space(parent_offset + 6, obj_num)?;
-                log::warn!(
-                    "🏗️ TREE_UPDATE: Parent {} child pointer set to {} (was 0)",
-                    parent,
-                    obj_num
-                );
             } else {
                 // Parent already has a child - insert this object at the beginning of sibling chain
+
                 // Update this object's sibling to point to parent's current child
                 self.write_to_object_space(obj_offset + 5, parent_child)?;
+
                 // Update parent's child to point to this object
                 self.write_to_object_space(parent_offset + 6, obj_num)?;
-                log::warn!(
-                    "🏗️ TREE_UPDATE: Parent {} child pointer changed from {} to {}, {} sibling set to {}",
-                    parent, parent_child, obj_num, obj_num, parent_child
-                );
             }
         }
 
@@ -5074,7 +5068,109 @@ impl ZMachineCodeGen {
             "Pre-processing complete: {} initial object placements found",
             self.initial_locations_by_number.len()
         );
+
+        // 🌳 OBJECT TREE INSTRUMENTATION: Show complete initial object tree structure
+        // self.debug_initial_object_tree_structure(); // Disabled after successful debugging
+
         Ok(())
+    }
+
+    /// 🌳 OBJECT TREE DEBUGGING: Show complete compiler's understanding of object tree structure
+    fn debug_initial_object_tree_structure(&self) {
+        log::debug!("🌳 ======= COMPILER OBJECT TREE STRUCTURE =======");
+
+        // Show all object mappings
+        log::debug!("🗺️ Object Name -> Number mappings:");
+        for (name, number) in &self.object_numbers {
+            log::debug!("   '{}' -> Object #{}", name, number);
+        }
+
+        // Show IR ID -> Object Number mappings
+        log::debug!("🔗 IR ID -> Object Number mappings:");
+        for (ir_id, number) in &self.ir_id_to_object_number {
+            log::debug!("   IR ID {} -> Object #{}", ir_id, number);
+        }
+
+        // Show initial parent-child relationships
+        log::debug!("🏗️ Initial Object Tree Relationships (child -> parent):");
+        if self.initial_locations_by_number.is_empty() {
+            log::debug!(
+                "   ⚠️  NO INITIAL RELATIONSHIPS FOUND! All objects will start with parent=0"
+            );
+        } else {
+            for (child, parent) in &self.initial_locations_by_number {
+                log::debug!("   Object #{} -> Parent #{}", child, parent);
+            }
+        }
+
+        // Build and show tree structure
+        log::debug!("🌳 Object Tree Hierarchy:");
+        self.debug_tree_hierarchy();
+
+        log::debug!("🌳 ===============================================");
+    }
+
+    /// Show hierarchical tree structure
+    fn debug_tree_hierarchy(&self) {
+        let mut children_by_parent: std::collections::HashMap<u16, Vec<u16>> =
+            std::collections::HashMap::new();
+
+        // Build parent -> children mapping
+        for (child, parent) in &self.initial_locations_by_number {
+            children_by_parent
+                .entry(*parent)
+                .or_insert_with(Vec::new)
+                .push(*child);
+        }
+
+        // Find root objects (those not in any parent-child relationship as children)
+        let all_children: std::collections::HashSet<u16> =
+            self.initial_locations_by_number.keys().copied().collect();
+        let all_objects: std::collections::HashSet<u16> =
+            self.ir_id_to_object_number.values().map(|&n| n).collect();
+
+        for obj_num in all_objects {
+            if !all_children.contains(&obj_num) {
+                // This is a root object
+                let name = self.get_debug_object_name(obj_num);
+                log::debug!("   Root: Object #{} ({})", obj_num, name);
+                self.debug_tree_children(&children_by_parent, obj_num, 1);
+            }
+        }
+    }
+
+    /// Recursively show children in tree format
+    fn debug_tree_children(
+        &self,
+        children_by_parent: &std::collections::HashMap<u16, Vec<u16>>,
+        parent_num: u16,
+        depth: usize,
+    ) {
+        if let Some(children) = children_by_parent.get(&parent_num) {
+            for &child in children {
+                let indent = "   ".repeat(depth);
+                let name = self.get_debug_object_name(child);
+                log::debug!("{}└─ Object #{} ({})", indent, child, name);
+                self.debug_tree_children(children_by_parent, child, depth + 1);
+            }
+        }
+    }
+
+    /// Helper to get object name by number for debugging
+    fn get_debug_object_name(&self, obj_num: u16) -> String {
+        // Search for object name by number
+        for (name, &number) in &self.object_numbers {
+            if number == obj_num {
+                return name.clone();
+            }
+        }
+        // Fallback: search IR ID mapping
+        for (ir_id, &number) in &self.ir_id_to_object_number {
+            if number == obj_num {
+                return format!("IR_{}", ir_id);
+            }
+        }
+        "Unknown".to_string()
     }
 
     /// Generate return instruction
@@ -6769,7 +6865,6 @@ impl ZMachineCodeGen {
             // Game logic builtins
             "player_can_see" => self.generate_player_can_see_builtin(args),
             "list_objects" => self.generate_list_objects_builtin(args),
-            "list_contents" => self.generate_list_contents_builtin(args),
             "get_object_contents" => self.generate_get_object_contents_builtin(args, target),
             "object_is_empty" => self.generate_object_is_empty_builtin(args, target),
             "value_is_none" => self.generate_value_is_none_builtin(args, target),

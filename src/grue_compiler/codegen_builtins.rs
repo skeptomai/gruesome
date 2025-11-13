@@ -1065,44 +1065,6 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Generate list_contents builtin function - lists contents of a container
-    pub fn generate_list_contents_builtin(&mut self, args: &[IrId]) -> Result<(), CompilerError> {
-        if args.len() != 1 {
-            return Err(CompilerError::CodeGenError(format!(
-                "list_contents expects 1 argument, got {}",
-                args.len()
-            )));
-        }
-
-        // TODO: Implement container contents iteration and display
-        // For now, print placeholder message from message system
-        let placeholder_str =
-            self.get_builtin_message("builtin_contents_list_placeholder", "[CONTENTS_LIST]");
-        let string_id = self.find_or_create_string_id(&placeholder_str)?;
-
-        let layout = self.emit_instruction_typed(
-            PRINTPADDR,
-            &[Operand::LargeConstant(placeholder_word())], // Placeholder address
-            None,
-            None,
-        )?;
-
-        let operand_address = layout
-            .operand_location
-            .expect("print instruction must have operand");
-        let reference = UnresolvedReference {
-            reference_type: LegacyReferenceType::StringRef,
-            location: operand_address,
-            target_id: string_id,
-            is_packed_address: true,
-            offset_size: 2,
-            location_space: MemorySpace::Code,
-        };
-        self.reference_context.unresolved_refs.push(reference);
-
-        Ok(())
-    }
-
     /// Generate to_string builtin function - converts values to strings
     pub fn generate_to_string_builtin(
         &mut self,

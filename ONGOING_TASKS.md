@@ -514,6 +514,113 @@ games/
 
 ## 🎯 **ACTIVE DEVELOPMENT AREAS**
 
+## 🔄 **INFINITE LOOP INVESTIGATION - CONTAINER ITERATION BUG** - **IN PROGRESS** (November 12, 2025)
+
+**STATUS**: **CRITICAL INVESTIGATION UNDERWAY** 🔍
+
+**OBJECTIVE**: Resolve infinite loop in container contents iteration that prints endless "leaflet" entries when opening mailbox
+
+**BEHAVIOR CONFIRMED**:
+- **Working commit 8c7312d**: Prints exactly **one "leaflet"** and terminates correctly ✅
+- **Current HEAD**: **Infinite loop** printing "leaflet" repeatedly ❌
+- **Commercial games**: Zork I unaffected, works perfectly ✅
+
+**ARCHITECTURE UNDERSTANDING COMPLETED**:
+✅ **Iterator vs Array Rule**: System correctly uses object tree iteration via GetObjectChild/GetObjectSibling opcodes
+✅ **Exit Condition Logic**: Proper termination exists in `generate_object_tree_iteration_with_container` - branches when GetObjectSibling returns 0
+✅ **[CONTENTS LIST] Mystery**: Solved - unimplemented builtin placeholder, now removed from codebase
+✅ **Source Code Comparison**: Container iteration logic appears identical between commits, yet behavior differs completely
+
+**PUZZLING FINDINGS**:
+❓ **The container iteration source code appears identical between working and broken commits** - same `get_object_contents` implementation, same ObjectTreeRoot detection logic, same `generate_object_tree_iteration_with_container` logic, yet completely different runtime behavior
+
+**INVESTIGATION PLAN**:
+
+### **Phase 1: Debug Iteration Path Detection** 🔍 **[CURRENT]**
+**Objective**: Determine if ObjectTreeRoot detection is working vs falling back to broken array iteration
+
+**Implementation**:
+1. **Add logging to ObjectTreeRoot detection** - Track variable source tracking in for-loop processing
+2. **Debug iteration strategy selection** - Verify if `generate_object_tree_iteration_with_container` is called vs array fallback
+3. **Trace container.contents() flow** - Follow IR generation from method call through variable source tracking
+4. **Monitor for-loop dispatch** - Check which iteration path is taken (object tree vs array)
+
+**Success Criteria**:
+- Clear evidence of which iteration strategy is being used
+- Understanding of why working commit behaves differently
+- Identification of failure point in ObjectTreeRoot detection chain
+
+### **Phase 2: Compare IR Generation** 📊 **[PENDING]**
+**Objective**: Identify differences in intermediate representation between commits
+
+**Implementation**:
+1. **Generate IR dumps** for both working commit 8c7312d and current HEAD
+2. **Compare container iteration IR** - Focus on contents() method call and for-loop generation
+3. **Analyze ObjectTreeRoot tracking** - Verify variable source propagation differences
+4. **Check function ordering effects** - See if IndexMap changes affected iteration logic
+
+### **Phase 3: Examine Function Dispatch Effects** 🎯 **[PENDING]**
+**Objective**: Determine if IndexMap determinism changes affected function calling unexpectedly
+
+**Implementation**:
+1. **Compare function call sequences** between commits
+2. **Check function ID assignments** - Verify consistent dispatch function mapping
+3. **Analyze branch offset calculations** - Look for systematic addressing differences
+4. **Validate IR-to-bytecode generation** - Ensure identical source produces identical bytecode
+
+**TECHNICAL CONTEXT**:
+- **Root Issue**: For-loop over `container.contents()` should detect ObjectTreeRoot and use proper object tree iteration
+- **Suspected Failure**: ObjectTreeRoot detection failing, falling back to broken array iteration causing infinite loops
+- **Mystery Factor**: Identical source code between commits but completely different runtime behavior
+
+**FILES TO INVESTIGATE**:
+- `src/grue_compiler/ir.rs:3234-3257` - For-loop ObjectTreeRoot detection logic
+- `src/grue_compiler/ir.rs:3651-3672` - contents() method ObjectTreeRoot tracking
+- `src/grue_compiler/ir.rs:2726-2825` - Object tree iteration implementation
+- `src/grue_compiler/codegen_builtins.rs:1188-1285` - get_object_contents builtin implementation
+- `examples/mini_zork.grue:601-606` - User list_contents function causing infinite loop
+
+**CRITICAL QUESTIONS**:
+1. Is the ObjectTreeRoot detection actually working in current HEAD?
+2. What type of iteration is being generated (object tree vs array)?
+3. Why does identical source code produce different behavior between commits?
+4. Is there a subtle change in function ordering/addressing affecting branch calculations?
+
+### **🔍 INVESTIGATION FINDINGS** - **UPDATED** (November 12, 2025)
+
+**PHASE 1 RESULTS**: ✅ **ObjectTreeRoot Detection Works Correctly**
+- **Debug logging confirms**: All for-loops correctly detect ObjectTreeRoot sources
+- **All for-loops take object tree iteration path**, NOT array iteration fallback
+- **Debug output**: "TAKING OBJECT TREE ITERATION PATH! Container ID = XXX" for all loops
+- **Conclusion**: Issue is NOT in iteration path detection
+
+**PHASE 2 RESULTS**: ✅ **Function Reordering Root Cause Identified**
+- **IR comparison revealed**: Function IDs have been **reordered** between working commit and current HEAD
+- **Working commit 8c7312d function order**:
+  - func#26 = dispatch_handle_take
+  - func#27 = dispatch_handle_climb
+  - func#28 = dispatch_handle_read
+  - func#29 = dispatch_handle_drop
+- **Current HEAD function order**:
+  - func#26 = dispatch_handle_read
+  - func#27 = dispatch_handle_take
+  - func#28 = dispatch_handle_drop
+  - func#29 = dispatch_handle_climb
+
+**PHASE 3 RESULTS**: ✅ **IndexMap Changes Caused Function Reordering**
+- **Root cause**: HashMap→IndexMap changes for determinism affected function registration order
+- **Impact**: Different function IDs mean different addresses in Z-Machine bytecode
+- **Effect**: Different function addresses affect branch offset calculations and memory layout
+- **Object tree iteration logic identical**, but **compiled bytecode addresses differ**
+
+**CURRENT HYPOTHESIS**: 🎯 **Function Address Dependencies in Object Tree Iteration**
+The different function addresses from reordering are affecting:
+1. **Branch offset calculations** in object tree iteration loop termination
+2. **Jump addresses** that control when loops should exit
+3. **Memory layout dependencies** in object traversal logic
+
+This explains why **identical source code** with **identical IR logic** produces **different runtime behavior**.
+
 ### **CLIMB TREE BUG** ✅ **RESOLVED** (November 6, 2025)
 
 **ISSUE RESOLVED**: Object variable compilation bug causing infinite loops in climb tree functionality
