@@ -1,0 +1,42 @@
+messages {
+    prompt: "Comando: ",
+    unknown_command: "No comprendo ese comando.\n",
+}
+
+world {
+    room sala_inicio "Sala de Prueba" {
+        desc: "Estás en una sala de pruebas con descripciones en español."
+
+        object libro_magico {
+            names: ["libro"]
+            desc: "Un libro mágico con texto en español."
+            takeable: true
+        }
+    }
+}
+
+grammar {
+    verb "mirar" {
+        default => mirar_habitacion()
+    }
+
+    verb "look" {
+        default => mirar_habitacion()
+    }
+}
+
+fn mirar_habitacion() {
+    print("Puedes ver:");
+    new_line();
+    if (libro_magico.location == player.location) {
+        print("- un libro mágico");
+        new_line();
+    }
+}
+
+init {
+    player.location = sala_inicio;
+    print("=== PRUEBA SIMPLE DE LOCALIZACIÓN ===");
+    new_line();
+    mirar_habitacion();
+}

@@ -1,82 +1,188 @@
-// Phase 6: Comprehensive Localization Test Game
-// Tests all message system functionality with real gameplay scenarios
-
 messages {
-    // Core system messages
-    prompt: "Enter command: ",
-    unknown_command: "Sorry, I don't recognize that command. Try 'help' for assistance.\n",
+    prompt: "Comando: ",
+    unknown_command: "No comprendo ese comando.\n",
 
-    // Builtin function messages (for future use)
-    builtin_object_list_placeholder: "[Custom Object List Display]",
-    builtin_contents_list_placeholder: "[Custom Contents List Display]",
-    builtin_random_result_placeholder: "[Custom Random Result]",
-    builtin_text_placeholder: "CUSTOM_TEXT_PROCESSED",
-    builtin_replace_placeholder: "Custom Text Replacement"
+    // Test additional message contexts
+    cant_see_that: "No puedes ver eso aquí.",
+    cant_go_that_way: "No puedes ir en esa dirección.",
+    already_have_that: "Ya tienes eso.",
+    cant_take_that: "No puedes tomar eso.",
 }
 
 world {
-    room start_room "Test Chamber" {
-        desc: "You are in a testing chamber designed to validate the localization system. There's a door to the north and various test objects here."
+    room sala_inicio "Sala de Prueba" {
+        desc: "Estás en una sala de pruebas con descripciones en español. Hay una puerta al norte."
 
         exits: {
-            north: test_room
+            north: segunda_sala
         }
 
-        object test_item {
-            names: ["item", "test", "object"]
-            desc: "A simple test item for checking object interactions."
+        object libro_magico {
+            names: ["libro", "book", "magic"]
+            desc: "Un libro mágico con texto en español."
             takeable: true
         }
 
-        object container_box {
-            names: ["box", "container"]
-            desc: "A test container that can hold items."
-            openable: true
-            container: true
+        object mesa_pesada {
+            names: ["mesa", "table", "desk"]
+            desc: "Una mesa muy pesada que no se puede mover."
+            takeable: false
         }
     }
 
-    room test_room "Advanced Test Room" {
-        desc: "This room contains more complex test scenarios for the message system."
+    room segunda_sala "Laboratorio Mágico" {
+        desc: "Un laboratorio lleno de pociones y pergaminos antiguos."
 
         exits: {
-            south: start_room
+            south: sala_inicio
         }
 
-        object magic_scroll {
-            names: ["scroll", "magic", "paper"]
-            desc: "An ancient scroll with mysterious text."
+        object pocion_azul {
+            names: ["pocion", "potion", "blue", "azul"]
+            desc: "Una poción azul que brilla con luz propia."
             takeable: true
         }
     }
 }
 
-// Test functions to trigger various scenarios
-fn help() {
-    println("Available commands:");
-    println("- look: examine your surroundings");
-    println("- take <item>: pick up an item");
-    println("- open <container>: open a container");
-    println("- inventory: see what you're carrying");
-    println("- go <direction>: move around");
-    println("- quit: exit the game");
-    println("- test_messages: test custom error messages");
+grammar {
+    verb "examinar" {
+        noun => examinar_objeto($noun)
+    }
+
+    verb "mirar", "look" {
+        default => mirar_habitacion()
+    }
+
+    verb "tomar", "take" {
+        noun => tomar_objeto($noun)
+    }
+
+    verb "inventario", "i", "inventory" {
+        default => mostrar_inventario()
+    }
+
+    verb "north", "norte", "n" {
+        default => ir_norte()
+    }
+
+    verb "south", "sur", "s" {
+        default => ir_sur()
+    }
 }
 
-fn test_messages() {
-    println("Testing various scenarios that should show custom messages...");
-    println("1. Try an unknown command to see custom error message");
-    println("2. Check that prompt shows custom format");
-    println("3. All system messages should use the custom text defined above");
+fn examinar_objeto(objeto) {
+    if (player_can_see(objeto)) {
+        print(objeto.desc);
+        new_line();
+    } else {
+        print("No puedes ver ese objeto aquí.");
+        new_line();
+    }
+}
+
+fn mirar_habitacion() {
+    print(player.location.desc);
+    new_line();
+    new_line();
+    print("Puedes ver:");
+    new_line();
+
+    // List objects in Spanish
+    if (libro_magico.location == player.location) {
+        print("- un libro mágico");
+        new_line();
+    }
+    if (mesa_pesada.location == player.location) {
+        print("- una mesa pesada");
+        new_line();
+    }
+    if (pocion_azul.location == player.location) {
+        print("- una poción azul");
+        new_line();
+    }
+}
+
+fn tomar_objeto(objeto) {
+    if (!player_can_see(objeto)) {
+        print("No puedes ver ese objeto aquí.");
+        new_line();
+        return;
+    }
+
+    if (objeto == mesa_pesada) {
+        print("La mesa es demasiado pesada para moverla.");
+        new_line();
+        return;
+    }
+
+    if (objeto.location == player) {
+        print("Ya tienes eso.");
+        new_line();
+        return;
+    }
+
+    move(objeto, player);
+    print("Tomado.");
+    new_line();
+}
+
+fn mostrar_inventario() {
+    print("Llevas:");
+    new_line();
+
+    if (libro_magico.location == player) {
+        print("- un libro mágico");
+        new_line();
+    }
+    if (pocion_azul.location == player) {
+        print("- una poción azul");
+        new_line();
+    }
+
+    // Check if inventory is empty
+    if (libro_magico.location != player && pocion_azul.location != player) {
+        print("No llevas nada.");
+        new_line();
+    }
+}
+
+fn ir_norte() {
+    move(player, segunda_sala);
+    print("Te diriges hacia el norte.");
+    new_line();
+    mirar_habitacion();
+}
+
+fn ir_sur() {
+    if (player.location == segunda_sala) {
+        move(player, sala_inicio);
+        print("Regresas hacia el sur.");
+        new_line();
+        mirar_habitacion();
+    } else {
+        print("La puerta sur está cerrada con llave.");
+        new_line();
+    }
 }
 
 init {
-    player.location = start_room;
-    println("LOCALIZATION TEST GAME STARTED");
-    println("==============================");
-    println("This game tests the complete message localization system.");
-    println("Notice the custom prompt format and try various commands.");
-    println("Type 'help' for available commands or 'test_messages' for guidance.");
-    println("Try invalid commands to test the custom error message system.");
-    println("");
+    player.location = sala_inicio;
+    print("=== PRUEBA COMPLETA DE LOCALIZACIÓN ===");
+    new_line();
+    print("Este juego prueba textos localizados en:");
+    new_line();
+    print("- Descripciones de habitaciones");
+    new_line();
+    print("- Descripciones de objetos");
+    new_line();
+    print("- Mensajes de sistema");
+    new_line();
+    print("- Texto de interacciones");
+    new_line();
+    print("");
+    print("Comandos: mirar, examinar [objeto], tomar [objeto], inventario, north, south");
+    new_line();
+    print("");
+    mirar_habitacion();
 }
