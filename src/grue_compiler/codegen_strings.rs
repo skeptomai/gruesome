@@ -391,13 +391,9 @@ impl ZMachineCodeGen {
         // Add built-in commands
         words.insert("quit".to_string());
 
-        // Add common numbers to dictionary (0-100) for score commands and other numeric input
-        // COMPATIBILITY FIX: Restored numbers 0-100 after they were removed in previous commit
-        // These are essential for proper grammar verb recognition in working commit 8c7312d compatibility
-        for i in 0..=100 {
-            words.insert(i.to_string());
-        }
-        debug!("📚 Added numbers 0-100 to dictionary for numeric input support");
+        // REMOVED: Numbers 0-100 (caused systematic Z-Machine compliance violations)
+        // Analysis showed these were never used and created invalid packed address patterns
+        // that crash standard Z-Machine tools (TXD disassembler) - see docs/NUMERIC_DICTIONARY_REMOVAL_IMPACT.md
 
         // Add all grammar verbs
         for grammar in &ir.grammar {

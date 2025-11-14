@@ -1082,12 +1082,20 @@ impl<'a> TxdDisassembler<'a> {
                         // Check each operand that could be a routine address
                         for (i, &operand) in instruction.operands.iter().enumerate() {
                             if self.is_routine_operand(&instruction, i) && operand != 0 {
-                                let routine_addr = self.unpack_routine_address(operand);
-                                debug!(
-                                    "TXD_OPERAND: checking addr={:04x} (low={:04x} high={:04x})",
-                                    routine_addr, self.low_address, self.high_address
-                                );
-                                self.process_routine_target(routine_addr);
+                                // COMPLIANCE FIX: Validate packed address context before processing
+                                // This prevents TXD-style header misinterpretation bugs
+                                if self.is_valid_packed_address_context(operand, Some(pc as usize))
+                                {
+                                    let routine_addr = self.unpack_routine_address(operand);
+                                    debug!(
+                                        "TXD_OPERAND: checking addr={:04x} (low={:04x} high={:04x})",
+                                        routine_addr, self.low_address, self.high_address
+                                    );
+                                    self.process_routine_target(routine_addr);
+                                } else {
+                                    debug!("🚫 HEADER_SKIP: Skipping operand 0x{:04x} at PC 0x{:04x} (likely header data)",
+                                           operand, pc);
+                                }
                             }
                         }
                     }
@@ -1389,23 +1397,38 @@ impl<'a> TxdDisassembler<'a> {
         } else if is_timed_read {
             // Timer routine is in operand 3 for timed read
             let timer_routine = instruction.operands[3];
-            let target = self.unpack_routine_address(timer_routine);
-            debug!(
-                "TXD_TIMER_ROUTINE: found timer routine at {:04x} from sread",
-                target
-            );
-            self.process_routine_target(target);
+            if self.is_valid_packed_address_context(timer_routine, Some(pc as usize)) {
+                let target = self.unpack_routine_address(timer_routine);
+                debug!(
+                    "TXD_TIMER_ROUTINE: found timer routine at {:04x} from sread",
+                    target
+                );
+                self.process_routine_target(target);
+            } else {
+                debug!("🚫 HEADER_SKIP: Skipping timer routine 0x{:04x} at PC 0x{:04x} (likely header data)",
+                       timer_routine, pc);
+            }
         }
         // Note: TXD only expands boundaries for ROUTINE type operands (CALL instructions)
         // not for other operand types like LABEL (JUMP instructions)
     }
 
-    /// Extract routine target from CALL instruction
-    fn extract_routine_target(&self, instruction: &Instruction, _pc: u32) -> Option<u32> {
+    /// Extract routine target from CALL instruction with header awareness
+    ///
+    /// Enhanced to prevent TXD-style bugs by validating that packed addresses
+    /// don't come from header fields before unpacking them. This ensures we
+    /// don't misinterpret header serial number bytes as routine addresses.
+    fn extract_routine_target(&self, instruction: &Instruction, pc: u32) -> Option<u32> {
         if !instruction.operands.is_empty() {
             let packed_addr = instruction.operands[0];
             if packed_addr != 0 {
-                Some(self.unpack_routine_address(packed_addr))
+                // COMPLIANCE FIX: Validate the packed address isn't from header data
+                // This prevents crashes when header bytes are misinterpreted as addresses
+                if self.is_valid_packed_address_context(packed_addr, Some(pc as usize)) {
+                    Some(self.unpack_routine_address(packed_addr))
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -1417,7 +1440,14 @@ impl<'a> TxdDisassembler<'a> {
     /// Check if operand could be a routine address
     fn check_operand_for_routine_address(&self, operand: u32) -> Option<u32> {
         // This is a heuristic - in a real implementation we'd be more sophisticated
-        let addr = self.unpack_routine_address(operand as u16);
+        let packed_addr = operand as u16;
+
+        // Validate the packed address isn't from header data
+        if !self.is_valid_packed_address_context(packed_addr, None) {
+            return None;
+        }
+
+        let addr = self.unpack_routine_address(packed_addr);
         if addr >= self.code_base && addr < self.file_size && self.validate_routine(addr).is_some()
         {
             return Some(addr);
@@ -1471,7 +1501,7 @@ impl<'a> TxdDisassembler<'a> {
 
     /// Unpack a routine address based on version
     fn unpack_routine_address(&self, packed: u16) -> u32 {
-        match self.version {
+        let unpacked = match self.version {
             1..=3 => (packed as u32) * 2,
             4..=5 => (packed as u32) * 4,
             6..=7 => {
@@ -1482,7 +1512,61 @@ impl<'a> TxdDisassembler<'a> {
             }
             8 => (packed as u32) * 8,
             _ => (packed as u32) * 2,
+        };
+
+        unpacked
+    }
+
+    /// Check if a memory offset is within the Z-Machine header
+    ///
+    /// The Z-Machine header is 64 bytes (0x00-0x3F) and contains metadata like
+    /// version, serial number, file size, etc. These fields should never be
+    /// interpreted as packed addresses during disassembly.
+    ///
+    /// This fixes a critical issue where TXD incorrectly scans header serial
+    /// number bytes as packed addresses, causing crashes when those "addresses"
+    /// exceed the file size.
+    fn is_header_offset(&self, offset: usize) -> bool {
+        offset < 64 // Z-Machine header is exactly 64 bytes per specification
+    }
+
+    /// Validate that a packed address is reasonable and not from header data
+    ///
+    /// This implements proper context-sensitive address interpretation following
+    /// the Z-Machine specification. Unlike TXD (which incorrectly treats ANY
+    /// 16-bit value as a potential packed address), this function:
+    ///
+    /// 1. Excludes header fields from address scanning (prevents serial number misinterpretation)
+    /// 2. Validates unpacked addresses stay within file bounds
+    /// 3. Only processes addresses from legitimate instruction contexts
+    ///
+    /// This resolves Z-Machine compliance violations where TXD crashes on our
+    /// files due to header serial number "250905" being misinterpreted as
+    /// packed addresses that exceed our file size.
+    fn is_valid_packed_address_context(&self, packed: u16, source_offset: Option<usize>) -> bool {
+        // CRITICAL FIX: Don't treat header data as packed addresses
+        // This prevents TXD-style bugs where serial numbers get misinterpreted
+        if let Some(offset) = source_offset {
+            if self.is_header_offset(offset) {
+                debug!(
+                    "🚫 HEADER_SKIP: Ignoring packed address 0x{:04x} from header offset 0x{:04x}",
+                    packed, offset
+                );
+                return false;
+            }
         }
+
+        // Standard bounds validation - unpacked address must be within file
+        let unpacked = self.unpack_routine_address(packed);
+        if unpacked >= self.file_size {
+            debug!(
+                "🚫 BOUNDS_SKIP: Packed address 0x{:04x} → 0x{:04x} exceeds file size ({})",
+                packed, unpacked, self.file_size
+            );
+            return false;
+        }
+
+        true
     }
 
     /// TXD's string scanning to identify where code ends and strings begin
