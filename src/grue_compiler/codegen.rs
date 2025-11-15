@@ -1174,15 +1174,27 @@ impl ZMachineCodeGen {
         // Debug: Check state after creating property table
 
         // Property table address (word) - bytes 7-8 of object entry
+        // CRITICAL FIX: Store placeholders and create UnresolvedReferences for proper address resolution
         debug!(
-            "Writing property table address 0x{:04x} to object {} at space offset 0x{:04x}",
+            "Creating PropertyTableAddress reference for prop_table_addr 0x{:04x} to object {} at space offset 0x{:04x}",
             prop_table_addr,
             obj_num,
             obj_offset + 7
         );
-        self.write_to_object_space(obj_offset + 7, (prop_table_addr >> 8) as u8)?; // High byte
-        self.write_to_object_space(obj_offset + 8, (prop_table_addr & 0xFF) as u8)?; // Low byte
-                                                                                     // Debug: Property address written successfully
+        self.write_to_object_space(obj_offset + 7, 0xFF)?; // Placeholder high byte
+        self.write_to_object_space(obj_offset + 8, 0xFF)?; // Placeholder low byte
+
+        // Create UnresolvedReference to resolve property table address during address resolution phase
+        self.add_unresolved_reference_at_location(
+            LegacyReferenceType::PropertyTableAddress {
+                property_table_offset: prop_table_addr,
+            },
+            prop_table_addr as u32, // Use property table offset as target_id
+            false,                  // is_packed
+            MemorySpace::Objects,
+            obj_offset + 7, // location_offset where the address needs to be patched
+        )?;
+        // Debug: Property address written successfully
 
         Ok(())
     }
@@ -1349,8 +1361,21 @@ impl ZMachineCodeGen {
         );
 
         // Property table address (word) - bytes 7-8 of object entry
-        self.write_to_object_space(obj_offset + 7, (prop_table_addr >> 8) as u8)?; // High byte
-        self.write_to_object_space(obj_offset + 8, (prop_table_addr & 0xFF) as u8)?; // Low byte
+        // CRITICAL FIX: Instead of storing object-space-relative addresses that break with optimization,
+        // store placeholders and create UnresolvedReferences for proper address resolution
+        self.write_to_object_space(obj_offset + 7, 0xFF)?; // Placeholder high byte
+        self.write_to_object_space(obj_offset + 8, 0xFF)?; // Placeholder low byte
+
+        // Create UnresolvedReference to resolve property table address during address resolution phase
+        self.add_unresolved_reference_at_location(
+            LegacyReferenceType::PropertyTableAddress {
+                property_table_offset: prop_table_addr,
+            },
+            prop_table_addr as u32, // Use property table offset as target_id
+            false,                  // is_packed
+            MemorySpace::Objects,
+            obj_offset + 7, // location_offset where the address needs to be patched
+        )?;
 
         // DEBUG: Verify what was actually written
         let written_high = self.object_space[obj_offset + 7];
@@ -1807,7 +1832,14 @@ impl ZMachineCodeGen {
         &mut self,
         object_base: usize,
     ) -> Result<(), CompilerError> {
-        log::debug!(" PATCH: Starting property table address patching");
+        log::warn!(
+            "🔧 PATCH_PROP_DEBUG: Starting property table patching with object_base=0x{:04x}",
+            object_base
+        );
+        log::warn!(
+            "🔧 PATCH_PROP_DEBUG: Object space size = {} bytes",
+            self.object_space.len()
+        );
 
         // Calculate how many objects exist based on object space size
         // Each object entry is 9 bytes in V3: attributes(4) + parent(1) + sibling(1) + child(1) + prop_table_addr(2)
@@ -1925,8 +1957,8 @@ impl ZMachineCodeGen {
 
             // Calculate absolute final memory address
             let absolute_addr = object_base + (space_relative_addr as usize);
-            debug!(" - Calculated absolute_addr: 0x{:04x} (object_base 0x{:04x} + space_relative 0x{:04x})", 
- absolute_addr, object_base, space_relative_addr);
+            log::warn!("🔧 PATCH_ADDR_CALC: Object {} - space_relative=0x{:04x} + object_base=0x{:04x} = absolute=0x{:04x}",
+                obj_index + 1, space_relative_addr, object_base, absolute_addr);
 
             // Write the corrected absolute address back to final_data
             let new_high_byte = (absolute_addr >> 8) as u8;
@@ -6748,18 +6780,22 @@ impl ZMachineCodeGen {
             ZMachineVersion::V3 => {
                 // v3: packed address = byte address / 2
                 if byte_address % 2 != 0 {
-                    return Err(CompilerError::CodeGenError(
-                        "Routine address must be even for v3".to_string(),
-                    ));
+                    panic!(
+                        "CRITICAL ALIGNMENT ERROR: Function address 0x{:04x} is odd, violating Z-Machine packed address requirement. \
+                        V3 functions must be at even addresses for correct division. This indicates a bug in function placement logic.",
+                        byte_address
+                    );
                 }
                 Ok((byte_address / 2) as u16)
             }
             ZMachineVersion::V4 | ZMachineVersion::V5 => {
                 // v4/v5: packed address = byte address / 4
                 if byte_address % 4 != 0 {
-                    return Err(CompilerError::CodeGenError(
-                        "Routine address must be multiple of 4 for v4/v5".to_string(),
-                    ));
+                    panic!(
+                        "CRITICAL ALIGNMENT ERROR: Function address 0x{:04x} is not 4-byte aligned, violating Z-Machine packed address requirement. \
+                        V4/V5 functions must be 4-byte aligned for correct division. This indicates a bug in function placement logic.",
+                        byte_address
+                    );
                 }
                 Ok((byte_address / 4) as u16)
             }
@@ -7007,7 +7043,10 @@ impl ZMachineCodeGen {
                     MemorySpace::Header => panic!("COMPILER BUG: Header space references not implemented - cannot use add_unresolved_reference() for Header space"),
                     MemorySpace::Globals => panic!("COMPILER BUG: Globals space references not implemented - cannot use add_unresolved_reference() for Globals space"),
                     MemorySpace::Abbreviations => panic!("COMPILER BUG: Abbreviations space references not implemented - cannot use add_unresolved_reference() for Abbreviations space"),
-                    MemorySpace::Objects => panic!("COMPILER BUG: Objects space references not implemented - cannot use add_unresolved_reference() for Objects space"),
+                    MemorySpace::Objects => {
+                        // Use the exact offset provided by caller - will be translated during resolution
+                        location_offset
+                    },
                     MemorySpace::Dictionary => panic!("COMPILER BUG: Dictionary space references not implemented - cannot use add_unresolved_reference() for Dictionary space"),
                     MemorySpace::Strings => panic!("COMPILER BUG: Strings space references not implemented - cannot use add_unresolved_reference() for Strings space"),
                 },

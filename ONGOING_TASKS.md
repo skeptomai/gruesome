@@ -159,69 +159,95 @@ The core localization system is **complete and ready for production use**. Addit
 
 ## ✅ **COMPLETED: MULTI-PHASE MEMORY OPTIMIZATION CAMPAIGN** (November 15, 2025)
 
-**STATUS**: **CAMPAIGN COMPLETE WITH SIGNIFICANT IMPROVEMENTS** 🎯
+**STATUS**: **MAJOR OPTIMIZATIONS ACHIEVED, SOME OPPORTUNITIES REMAINING** 🎯
 
 **OBJECTIVE**: Optimize Z-Machine compiler memory efficiency while maintaining full game functionality.
 
 ### **PHASES COMPLETED**
 
-**✅ PHASE 1: Memory Layout Reordering**
+**✅ PHASE 1: Memory Layout Reordering & Function Alignment**
 - Implemented standard Z-Machine memory layout (static tables, dynamic memory, strings, code)
-- **RESULT**: 87% reduction in dictionary-code gap (2780→368 bytes)
+- **CRITICAL FIX**: Resolved function address alignment bug with padding system
+- **RESULT**: 87% reduction in dictionary-code gap + **9.3% total file size reduction (874 bytes saved)**
 - Updated header field generation for correct memory boundaries
 - Comprehensive regression testing confirms functionality preservation
 
-**✅ PHASE 2.1: Abbreviation System**
-- Implemented intelligent string frequency analysis for compression
-- Added sophisticated abbreviation candidate selection algorithm
-- **RESULT**: Identified 32 high-value abbreviation candidates (e.g., "You can't" ×13, "You" ×28)
-- Framework ready for significant file size reduction through string deduplication
+**🔄 PHASE 2.1: Abbreviation System - INCOMPLETE**
+- ✅ Implemented intelligent string frequency analysis for compression
+- ✅ Added sophisticated abbreviation candidate selection algorithm
+- ✅ **RESULT**: Identified 32 high-value abbreviation candidates (e.g., "You can't" ×13, "You" ×28)
+- ❌ **CRITICAL GAP**: Abbreviations created but **NOT used in string encoding**
+- **Missing Benefit**: 10-20% additional file size reduction not realized
 
-**✅ PHASE 2.2: Object Layout Investigation**
-- Created `estimate_property_table_space()` for precise property space calculation
-- Discovered property table optimization requires deeper investigation
-- **RESULT**: Achieved 17%-42% space reductions in testing but encountered instruction corruption
-- Reverted to stable hardcoded allocation while preserving optimization framework
+**✅ PHASE 2.2: Function Address Alignment - RESOLVED**
+- ✅ Identified alignment bug causing "180 locals" corruption
+- ✅ Implemented padding system for even address alignment
+- ✅ Added comprehensive validation to prevent future alignment violations
+- ✅ **RESULT**: Property table optimization framework ready for re-activation
 
 ### **OPTIMIZATION RESULTS**
 
-**Successful Improvements**:
-- ✅ Dictionary-code gap: 87% reduction (major memory efficiency improvement)
-- ✅ Abbreviation system: Framework for string compression implemented
-- ✅ Property space: Investigation framework created for future optimization
-- ✅ Overall: Significant memory improvements with 100% functionality preservation
+**✅ Achieved Improvements**:
+- ✅ **File size**: 9.3% reduction (9,420 → 8,546 bytes)
+- ✅ **Memory layout**: Dramatic gap reduction (2777 → ~107 bytes)
+- ✅ **Section ordering**: Z-Machine spec-compliant layout implemented
+- ✅ **Alignment compliance**: Function address alignment bug completely resolved
+
+**❌ Missed Opportunities**:
+- ❌ **Abbreviation encoding**: Framework complete but string encoding not implemented
+- ❌ **Disassembler compatibility**: Still finds only 1 routine instead of ~25 functions
+- ❌ **Property optimization**: Framework ready but not yet re-activated
 
 **Testing Results**:
 - ✅ All game functionality preserved (movement, objects, inventory, scoring)
-- ✅ Full abbreviation system functionality verified
-- ✅ Memory layout improvements maintain commercial game compatibility
-- ✅ Both optimized versions pass comprehensive gameplay testing
+- ✅ Complex gameplay scenarios working (property access, object manipulation)
+- ✅ Both V3 and V4 compilation working with proper alignment
+- ✅ Runtime execution fully functional with no corruption
 
-### **PROPERTY OPTIMIZATION ANALYSIS**
+### **DETAILED ANALYSIS**
 
-**Challenge Identified**: Property table optimization triggers same **boundary calculation issues** that affect memory layout compatibility:
-- Property optimization requires byte-perfect calculations across interdependent memory structures
-- Even small alignment changes break cross-reference integrity
-- **Resolution Path**: Fix property boundary calculations for safe optimization resumption
+**Complete Analysis**: See `docs/COMPILER_COMPLIANCE_AND_OPTIMIZATION.md` - Updated with comprehensive final status including all Sparky's questions answered:
+- Abbreviation usage status (not implemented in encoding)
+- Section ordering compliance verification
+- Disassembler routine detection issues
+- File size improvements and gap reduction analysis
 
 ---
 
-## 🔧 **CURRENT DEVELOPMENT PRIORITIES** (November 15, 2025)
+## 🎯 **CURRENT DEVELOPMENT PRIORITIES** (November 15, 2025)
 
-**PRIORITY 1: Property Optimization Debugging** (MEDIUM PRIORITY)
-- Debug boundary calculation errors in `estimate_property_table_space()`
-- Fix memory alignment issues causing instruction corruption
-- Implement safe property optimization with proper validation
+Based on comprehensive optimization analysis and Sparky's directive that **"layout and gamefile compliance such that the disassembler will work correctly should be our main priority"**.
 
-**PRIORITY 2: Layout Compatibility** (OPTIONAL)
-- Consider adopting commercial layout patterns for better external tool compatibility
-- Weigh benefits vs. current working implementation
-- Only pursue if significant ecosystem integration benefits identified
+**PRIORITY 1: LAYOUT AND GAMEFILE COMPLIANCE** (CRITICAL)
+- **Problem**: Disassembler finds only 1 routine instead of ~25 functions from mini_zork
+- **Root Cause**: Layout differs from commercial patterns affecting routine detection
+- **Objective**: Achieve full ecosystem compatibility with standard Z-Machine tools
+- **Implementation**: Investigate routine detection failure and adjust layout for tool compatibility
 
-**PRIORITY 3: Disassembler Enhancement** (LOW PRIORITY)
-- Enhance gruedasm-txd to handle our layout patterns
-- Add routine detection improvements for non-standard layouts
-- Create layout-agnostic disassembly algorithms
+**PRIORITY 2: ABBREVIATION ENCODING IMPLEMENTATION** (HIGH)
+- **Problem**: Abbreviation system created but NOT used in string encoding
+- **Missing Benefit**: 10-20% additional file size reduction not realized
+- **Objective**: Activate string compression to realize full optimization potential
+- **Implementation**: Add abbreviation replacement during string generation phase
+
+**PRIORITY 3: PROPERTY TABLE OPTIMIZATION RE-ACTIVATION** (MEDIUM)
+- **Status**: Framework complete, previously blocked by alignment bug (now resolved)
+- **Potential**: 3-7% additional file size reduction available
+- **Objective**: Complete the optimization campaign with property space reduction
+- **Implementation**: Re-enable property optimization with alignment fixes
+
+**PRIORITY 4: DISASSEMBLER TOOL ENHANCEMENT** (LOW)
+- **Fallback Approach**: Improve our tools if layout changes prove insufficient
+- **Objective**: Better handling of non-standard layouts in gruedasm-txd
+- **Implementation**: Enhanced routine detection and layout-agnostic parsing
+
+### **DETAILED ANALYSIS AND IMPLEMENTATION PLAN**
+
+**Complete Analysis**: `docs/COMPILER_COMPLIANCE_AND_OPTIMIZATION.md` - Updated with:
+- Comprehensive final status of all optimization work
+- Detailed answers to all questions about abbreviation usage, section ordering, file sizes, and disassembler issues
+- **Prioritized implementation roadmap** with Phase A (Layout Compliance) as top priority per Sparky's direction
+- Technical analysis of why disassembler finds only 1 routine instead of expected ~25
 
 
 ---

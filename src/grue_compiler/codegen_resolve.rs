@@ -40,11 +40,28 @@ impl ZMachineCodeGen {
             );
         }
 
-        for reference in &self.reference_context.unresolved_refs.clone() {
+        for (ref_index, reference) in self
+            .reference_context
+            .unresolved_refs
+            .clone()
+            .iter()
+            .enumerate()
+        {
+            log::warn!("🔧 DEBUG: Processing reference #{}: type={:?}, original_location=0x{:04x}, target_id={}, space={:?}",
+                ref_index, reference.reference_type, reference.location, reference.target_id, reference.location_space);
+
             // CRITICAL FIX: Translate reference location from space-relative to final-assembly layout
             // References now include which memory space they belong to for deterministic translation
             let adjusted_location = self
                 .translate_space_address_to_final(reference.location_space, reference.location)?;
+
+            log::warn!(
+                "🔧 DEBUG: Translation result #{}: 0x{:04x} -> 0x{:04x} (space {:?})",
+                ref_index,
+                reference.location,
+                adjusted_location,
+                reference.location_space
+            );
 
             let adjusted_reference = UnresolvedReference {
                 reference_type: reference.reference_type.clone(),
@@ -106,7 +123,22 @@ impl ZMachineCodeGen {
                 }
             }
 
-            self.resolve_unresolved_reference(&adjusted_reference)?;
+            // Call resolution and capture any errors with enhanced debugging
+            match self.resolve_unresolved_reference(&adjusted_reference) {
+                Ok(()) => {
+                    log::warn!("🔧 DEBUG: Reference #{} resolved successfully", ref_index);
+                }
+                Err(e) => {
+                    log::error!(
+                        "🔧 DEBUG: Reference #{} FAILED to resolve: {}",
+                        ref_index,
+                        e
+                    );
+                    log::error!("🔧 DEBUG: Failed reference details: type={:?}, location=0x{:04x}, target_id={}",
+                        adjusted_reference.reference_type, adjusted_reference.location, adjusted_reference.target_id);
+                    return Err(e);
+                }
+            }
         }
         log::info!(" All unresolved references processed");
 
@@ -170,8 +202,8 @@ impl ZMachineCodeGen {
         &mut self,
         reference: &UnresolvedReference,
     ) -> Result<(), CompilerError> {
-        log::debug!(
-            " RESOLVE_REF: {:?} target_id={} location=0x{:04x} packed={} offset_size={}",
+        log::warn!(
+            "🔧 RESOLVE_REF: type={:?} target_id={} location=0x{:04x} packed={} offset_size={}",
             reference.reference_type,
             reference.target_id,
             reference.location,
@@ -179,11 +211,19 @@ impl ZMachineCodeGen {
             reference.offset_size
         );
 
+        log::warn!("🔧 BASE_ADDRESSES: final_code_base=0x{:04x}, final_string_base=0x{:04x}, dictionary_addr=0x{:04x}",
+            self.final_code_base, self.final_string_base, self.dictionary_addr);
+
         // DEBUG: Check current state before resolution
         log::debug!(
  " RESOLVE_REF_STATE: code_space.len()={}, final_data.len()={}, final_code_base=0x{:04x}",
  self.code_space.len(), self.final_data.len(), self.final_code_base
  );
+
+        log::warn!(
+            "🔧 CALCULATING target address for reference type: {:?}",
+            reference.reference_type
+        );
 
         let target_address = match &reference.reference_type {
             LegacyReferenceType::StringRef => {
@@ -216,8 +256,26 @@ impl ZMachineCodeGen {
                     let final_addr = self.final_string_base + string_offset;
                     // Pack the address according to Z-Machine version
                     let packed_addr = match self.version {
-                        ZMachineVersion::V3 => final_addr / 2,
-                        ZMachineVersion::V4 | ZMachineVersion::V5 => final_addr / 4,
+                        ZMachineVersion::V3 => {
+                            if final_addr % 2 != 0 {
+                                panic!(
+                                    "CRITICAL ALIGNMENT ERROR: String address 0x{:04x} is odd, violating Z-Machine V3 packed address requirement. \
+                                    Strings must be at even addresses. This indicates misaligned string placement.",
+                                    final_addr
+                                );
+                            }
+                            final_addr / 2
+                        }
+                        ZMachineVersion::V4 | ZMachineVersion::V5 => {
+                            if final_addr % 4 != 0 {
+                                panic!(
+                                    "CRITICAL ALIGNMENT ERROR: String address 0x{:04x} is not 4-byte aligned, violating Z-Machine V4/V5 packed address requirement. \
+                                    Strings must be 4-byte aligned. This indicates misaligned string placement.",
+                                    final_addr
+                                );
+                            }
+                            final_addr / 4
+                        }
                     };
                     log::debug!(
                         "STRING_PACKED_RESOLVE: String ID {} offset=0x{:04x} + base=0x{:04x} = final=0x{:04x} → packed=0x{:04x}",
@@ -338,8 +396,26 @@ impl ZMachineCodeGen {
                     // Z-Machine packed address calculation
                     let packed_result = if reference.is_packed_address {
                         let packed = match self.version {
-                            ZMachineVersion::V3 => final_addr / 2,
-                            ZMachineVersion::V4 | ZMachineVersion::V5 => final_addr / 4,
+                            ZMachineVersion::V3 => {
+                                if final_addr % 2 != 0 {
+                                    panic!(
+                                        "CRITICAL ALIGNMENT ERROR: FunctionCall reference to address 0x{:04x} is odd, violating Z-Machine V3 packed address requirement. \
+                                        Functions must be at even addresses. This indicates misaligned function placement.",
+                                        final_addr
+                                    );
+                                }
+                                final_addr / 2
+                            }
+                            ZMachineVersion::V4 | ZMachineVersion::V5 => {
+                                if final_addr % 4 != 0 {
+                                    panic!(
+                                        "CRITICAL ALIGNMENT ERROR: FunctionCall reference to address 0x{:04x} is not 4-byte aligned, violating Z-Machine V4/V5 packed address requirement. \
+                                        Functions must be 4-byte aligned. This indicates misaligned function placement.",
+                                        final_addr
+                                    );
+                                }
+                                final_addr / 4
+                            }
                         };
                         log::debug!(
  " ADDRESS_RESOLUTION_DEBUG: Packed address calculation: 0x{:04x} / {} = 0x{:04x}",
@@ -664,7 +740,25 @@ impl ZMachineCodeGen {
                     )));
                 }
             }
+
+            LegacyReferenceType::PropertyTableAddress {
+                property_table_offset,
+            } => {
+                // CRITICAL FIX: Calculate property table absolute address using final object base
+                // This replaces the stale patch_property_table_addresses() logic
+                let absolute_addr = self.final_object_base + property_table_offset;
+                log::warn!("🔧 PROP_TABLE_RESOLVE: property_table_offset=0x{:04x} + final_object_base=0x{:04x} = absolute=0x{:04x}",
+                    property_table_offset, self.final_object_base, absolute_addr);
+                absolute_addr
+            }
         };
+
+        log::warn!(
+            "🔧 CALCULATED target_address=0x{:04x} for reference type {:?}, target_id={}",
+            target_address,
+            reference.reference_type,
+            reference.target_id
+        );
 
         // This legacy system handles StringRef and FunctionCall references with absolute addresses
         // Jump and Branch references are handled by the modern system above with early returns

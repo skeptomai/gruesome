@@ -39,13 +39,14 @@ pub struct UnresolvedReference {
 /// Legacy reference types for the old unified memory system
 #[derive(Debug, Clone, PartialEq)]
 pub enum LegacyReferenceType {
-    Jump,                                    // Unconditional jump to label
-    Branch,                                  // Conditional branch to label
-    Label(IrId),                             // Reference to label
-    FunctionCall,                            // Call to function address
-    StringRef,                               // Reference to string address
+    Jump,                                                  // Unconditional jump to label
+    Branch,                                                // Conditional branch to label
+    Label(IrId),                                           // Reference to label
+    FunctionCall,                                          // Call to function address
+    StringRef,                                             // Reference to string address
     StringPackedAddress { string_id: IrId }, // Reference to packed string address for properties
     DictionaryRef { word: String },          // Reference to dictionary entry address
+    PropertyTableAddress { property_table_offset: usize }, // Reference to property table absolute address
     GlobalsBase, // Reference to global variables base address from header
 }
 
@@ -96,7 +97,10 @@ impl ReferenceContext {
                 MemorySpace::Header => panic!("COMPILER BUG: Header space references not implemented - cannot use add_unresolved_reference() for Header space"),
                 MemorySpace::Globals => panic!("COMPILER BUG: Globals space references not implemented - cannot use add_unresolved_reference() for Globals space"),
                 MemorySpace::Abbreviations => panic!("COMPILER BUG: Abbreviations space references not implemented - cannot use add_unresolved_reference() for Abbreviations space"),
-                MemorySpace::Objects => panic!("COMPILER BUG: Objects space references not implemented - cannot use add_unresolved_reference() for Objects space"),
+                MemorySpace::Objects => {
+                    // Use the exact offset provided by caller - will be translated during resolution
+                    location_offset
+                },
                 MemorySpace::Dictionary => panic!("COMPILER BUG: Dictionary space references not implemented - cannot use add_unresolved_reference() for Dictionary space"),
                 MemorySpace::Strings => panic!("COMPILER BUG: Strings space references not implemented - cannot use add_unresolved_reference() for Strings space"),
             },

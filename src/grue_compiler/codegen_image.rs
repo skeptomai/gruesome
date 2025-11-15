@@ -367,7 +367,35 @@ impl ZMachineCodeGen {
         // - Reduced dictionary-code gap (87% improvement: 2780 → 368 bytes)
         // - Matches Z-Machine specification recommendations
         // - Compatible with commercial games (Zork I, etc.)
-        let code_base = current_address;
+
+        // CRITICAL FIX: Ensure code base is aligned for Z-Machine packed address requirements
+        // Functions must be at even addresses (V3) or 4-byte aligned (V4+) for correct division
+        let code_base = match self.version {
+            ZMachineVersion::V3 => {
+                // V3 requires function addresses to be even for packed address division
+                if current_address % 2 != 0 {
+                    log::debug!(
+                        " CODE_ALIGNMENT: Padding 1 byte for V3 function alignment (0x{:04x} -> 0x{:04x})",
+                        current_address, current_address + 1
+                    );
+                    current_address += 1; // Add padding byte
+                }
+                current_address
+            }
+            ZMachineVersion::V4 | ZMachineVersion::V5 => {
+                // V4/V5 require function addresses to be 4-byte aligned
+                let remainder = current_address % 4;
+                if remainder != 0 {
+                    let padding = 4 - remainder;
+                    log::debug!(
+                        " CODE_ALIGNMENT: Padding {} bytes for V4/V5 function alignment (0x{:04x} -> 0x{:04x})",
+                        padding, current_address, current_address + padding
+                    );
+                    current_address += padding; // Add padding bytes
+                }
+                current_address
+            }
+        };
         log::debug!(
             " Code allocated at 0x{:04x}, size={} bytes (HIGH MEMORY START)",
             code_base,
@@ -643,8 +671,8 @@ impl ZMachineCodeGen {
                 object_base
             );
 
-            // CRITICAL FIX: Patch property table addresses from object space relative to absolute addresses
-            self.patch_property_table_addresses(object_base)?;
+            // CRITICAL FIX: Property table addresses now resolved via UnresolvedReference system
+            // This eliminates the need for post-assembly patching that breaks with optimization
         }
 
         // Copy dictionary space

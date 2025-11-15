@@ -1988,15 +1988,13 @@ impl Interpreter {
         }
 
         // Read routine header
-        let mut num_locals = self.vm.read_byte(addr) as usize;
+        let num_locals = self.vm.read_byte(addr) as usize;
         if num_locals > 15 {
-            debug!(
-                "Routine at {:05x} claims {} locals - clamping to 15",
+            panic!(
+                "CORRUPTION DETECTED: Routine at {:05x} claims {} locals but Z-Machine max is 15. \
+                This indicates severe bytecode corruption that must not be silently ignored.",
                 addr, num_locals
             );
-            // Some games have corrupt headers or use this byte for other purposes
-            // Clamp to 15 locals for V3
-            num_locals = 15;
         }
 
         let mut new_frame = frame;

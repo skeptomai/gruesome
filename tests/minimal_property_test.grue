@@ -1,0 +1,24 @@
+// Minimal test case for property optimization debugging
+// Simple structure to isolate property table issues
+
+world {
+    room start "Test Room" {
+        desc: "A minimal test room for debugging property optimization."
+
+        object testobj {
+            names: ["test object", "object"]
+            desc: "A simple test object."
+            takeable: true
+        }
+
+        on_enter: {
+            println("Entering test room.");
+        }
+    }
+}
+
+init {
+    player.location = start;
+    println("Minimal property test game started.");
+    println("Type 'look' to test basic functionality.");
+}
