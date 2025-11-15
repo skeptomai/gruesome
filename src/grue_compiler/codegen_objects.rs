@@ -49,6 +49,86 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
+    /// Estimate property table space requirements for optimized allocation
+    ///
+    /// This function attempts to calculate the exact bytes needed for property tables
+    /// instead of using hardcoded allocations. However, property table layout is complex
+    /// and requires precise byte-level calculations that interact with object references.
+    ///
+    /// Current status: Framework implemented but disabled due to instruction corruption
+    /// when safety margins are insufficient. Property table space estimation needs
+    /// deeper investigation into Z-Machine property encoding and reference resolution.
+    fn estimate_property_table_space(&self, ir: &IrProgram) -> usize {
+        let mut estimated_space = 0;
+
+        // Estimate property tables for rooms
+        for room in &ir.rooms {
+            // Each room has: short name, description, exits, and possibly on_enter/on_exit/on_look
+            let mut room_prop_size = 0;
+
+            // Short name property (usually 2-3 bytes)
+            if !room.display_name.is_empty() {
+                room_prop_size += 3; // Property header + short string reference
+            }
+
+            // Description property (usually 2-3 bytes)
+            if !room.description.is_empty() {
+                room_prop_size += 3; // Property header + string reference
+            }
+
+            // Exits property (variable, but usually ~10-20 bytes for typical room)
+            room_prop_size += 12; // Property header + exit data
+
+            // Event handlers (if present)
+            if room.on_enter.is_some() {
+                room_prop_size += 3;
+            }
+            if room.on_exit.is_some() {
+                room_prop_size += 3;
+            }
+            if room.on_look.is_some() {
+                room_prop_size += 3;
+            }
+
+            room_prop_size += 1; // Property table terminator
+            estimated_space += room_prop_size;
+        }
+
+        // Estimate property tables for objects
+        for object in &ir.objects {
+            let mut obj_prop_size = 0;
+
+            // Standard object properties: short name, description
+            if !object.short_name.is_empty() {
+                obj_prop_size += 3; // Property header + string reference
+            }
+            if !object.description.is_empty() {
+                obj_prop_size += 3; // Property header + string reference
+            }
+
+            // Additional properties based on object type
+            obj_prop_size += object.properties.properties.len() * 3; // Estimate 3 bytes per property
+
+            obj_prop_size += 1; // Property table terminator
+            estimated_space += obj_prop_size;
+        }
+
+        // Player object (minimal properties)
+        estimated_space += 10; // Player object property table
+
+        // Add safety margin (conservative but still much smaller than 1000 bytes)
+        estimated_space += 500;
+
+        log::debug!(
+            "📏 PROP_ESTIMATE: Estimated {} bytes for property tables (rooms:{}, objects:{}, player:10, margin:500)",
+            estimated_space,
+            ir.rooms.len(),
+            ir.objects.len()
+        );
+
+        estimated_space
+    }
+
     /// Generate objects and properties to object space
     pub fn generate_objects_to_space(&mut self, _ir: &IrProgram) -> Result<(), CompilerError> {
         log::debug!(" Generating minimal object table for Z-Machine compliance");
@@ -309,7 +389,12 @@ impl ZMachineCodeGen {
             ZMachineVersion::V3 => 9,
             ZMachineVersion::V4 | ZMachineVersion::V5 => 14,
         };
-        let estimated_size = default_props_size + num_objects * obj_entry_size + 1000; // Extra for property tables
+        // Use hardcoded allocation for stability (property estimation needs further investigation)
+        // TODO: Future optimization - implement precise property table space calculation
+        // Current hardcoded approach ensures game stability while preserving optimization framework
+        let hardcoded_prop_space = 1000; // Conservative allocation for property tables
+        let estimated_size =
+            default_props_size + num_objects * obj_entry_size + hardcoded_prop_space;
 
         self.allocate_object_space(estimated_size)?;
         log::debug!(" Object space allocated: {} bytes", estimated_size);

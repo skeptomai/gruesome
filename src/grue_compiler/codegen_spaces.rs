@@ -31,20 +31,132 @@ impl ZMachineCodeGen {
     pub fn generate_abbreviations_space(&mut self, _ir: &IrProgram) -> Result<(), CompilerError> {
         log::debug!("📚 Generating abbreviations space");
 
-        // Create minimal abbreviations table (empty for now)
         // Z-Machine abbreviations table has 3 tables of 32 entries each (96 total)
         // Each entry is a word address (2 bytes), so total is 192 bytes
         const NUM_ABBREVIATIONS: usize = 96;
         const BYTES_PER_ABBREVIATION: usize = 2;
         const TOTAL_ABBREVIATIONS_SIZE: usize = NUM_ABBREVIATIONS * BYTES_PER_ABBREVIATION;
 
+        // Analyze strings to identify common patterns for abbreviation
+        let abbreviation_candidates = self.analyze_strings_for_abbreviations();
+
+        // Create abbreviation table
         self.abbreviations_space.resize(TOTAL_ABBREVIATIONS_SIZE, 0);
+
+        // Store common abbreviations as strings to be encoded later
+        // For now, we'll create placeholders that will be filled during final assembly
+        let mut abbreviations_created = 0;
+        for (index, candidate) in abbreviation_candidates
+            .iter()
+            .take(NUM_ABBREVIATIONS)
+            .enumerate()
+        {
+            // Store the abbreviation string for later encoding
+            // Each abbreviation gets a unique ID starting from a high number to avoid conflicts
+            let abbrev_id = 10000 + index as IrId;
+            self.strings.push((abbrev_id, candidate.clone()));
+            log::debug!("📚 Created abbreviation {}: '{}'", index, candidate);
+            abbreviations_created += 1;
+        }
+
         log::debug!(
-            " Abbreviations space created: {} bytes ({} abbreviations)",
+            " Abbreviations space created: {} bytes ({}/{} abbreviations populated)",
             self.abbreviations_space.len(),
+            abbreviations_created,
             NUM_ABBREVIATIONS
         );
         Ok(())
+    }
+
+    /// Analyze collected strings to identify the best abbreviation candidates
+    ///
+    /// This function implements intelligent string analysis to find optimal abbreviation
+    /// candidates based on frequency analysis and space savings potential. It examines
+    /// both individual words and short phrases to maximize compression efficiency.
+    ///
+    /// The Z-Machine abbreviation system allows up to 32 abbreviations (numbered 0-31)
+    /// that can significantly reduce file size by eliminating string duplication.
+    fn analyze_strings_for_abbreviations(&self) -> Vec<String> {
+        use std::collections::HashMap;
+
+        let mut word_counts = HashMap::new();
+        let mut phrase_counts = HashMap::new();
+
+        // Count individual words and short phrases
+        for (_, string) in &self.strings {
+            // Count words
+            for word in string.split_whitespace() {
+                if word.len() >= 3 && word.len() <= 8 {
+                    *word_counts.entry(word.to_string()).or_insert(0) += 1;
+                }
+            }
+
+            // Count 2-word phrases
+            let words: Vec<&str> = string.split_whitespace().collect();
+            for window in words.windows(2) {
+                let phrase = format!("{} {}", window[0], window[1]);
+                if phrase.len() >= 4 && phrase.len() <= 12 {
+                    *phrase_counts.entry(phrase).or_insert(0) += 1;
+                }
+            }
+        }
+
+        // Collect candidates, prioritizing by frequency and savings potential
+        let mut candidates = Vec::new();
+
+        // Add high-frequency words first (minimum 3 occurrences, good savings potential)
+        let mut words: Vec<(String, usize)> = word_counts
+            .into_iter()
+            .filter(|(word, count)| *count >= 3 && word.len() >= 3)
+            .collect();
+        words.sort_by(|(_, a), (_, b)| b.cmp(a)); // Sort by frequency descending
+
+        for (word, count) in words.iter().take(20) {
+            let savings = (word.len() - 1) * count; // Rough savings calculation
+            log::debug!(
+                "📊 Word candidate: '{}' (×{}, ~{} bytes saved)",
+                word,
+                count,
+                savings
+            );
+            candidates.push(word.clone());
+        }
+
+        // Add high-frequency phrases
+        let mut phrases: Vec<(String, usize)> = phrase_counts
+            .into_iter()
+            .filter(|(phrase, count)| *count >= 2 && phrase.len() >= 4)
+            .collect();
+        phrases.sort_by(|(_, a), (_, b)| b.cmp(a)); // Sort by frequency descending
+
+        for (phrase, count) in phrases.iter().take(10) {
+            let savings = (phrase.len() - 1) * count;
+            log::debug!(
+                "📊 Phrase candidate: '{}' (×{}, ~{} bytes saved)",
+                phrase,
+                count,
+                savings
+            );
+            candidates.push(phrase.clone());
+        }
+
+        // Add some common Z-Machine game patterns manually
+        let common_patterns = vec![
+            "You can't".to_string(),
+            "You are".to_string(),
+            "You have".to_string(),
+            "There is".to_string(),
+            "the ".to_string(),
+        ];
+
+        for pattern in common_patterns {
+            if !candidates.contains(&pattern) {
+                candidates.push(pattern);
+            }
+        }
+
+        log::debug!("📚 Generated {} abbreviation candidates", candidates.len());
+        candidates
     }
 
     /// Generate code instructions to code space
