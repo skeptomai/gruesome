@@ -1,0 +1,1 @@
+/Users/cb/Projects/infocom-testing-old/infocom/tests/mini_zork_release_20251115_071806.z3

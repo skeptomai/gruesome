@@ -1,0 +1,12 @@
+[2J[1;1H[2;1HDORK I: The Last Great Empire
+Copyright (c) 2025 Grue Games. All rights reserved.
+ZORK is a registered trademark of Infocom, Inc.
+DORK is .... not
+Revision 1 / Serial number 8675309
+   
+You are standing in an open field west of a white house, with a boarded front door.
+There is a small mailbox here.
+> 7[1;1H[7m                                                               Score: 0 Moves: 0[0m8You are standing in an open field west of a white house, with a boarded front door.
+There is a small mailbox here.
+> 7[1;1H[7m                                                               Score: 0 Moves: 0[0m8You are carrying:
+> 7[1;1H[7m                                                               Score: 0 Moves: 0[0m8Are you sure you want to quit? (y/n) > 7[1;1H[7m                                                               Score: 0 Moves: 0[0m8

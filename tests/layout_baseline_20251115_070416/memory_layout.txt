@@ -1,0 +1,17 @@
+=== CURRENT MEMORY LAYOUT ===
+Analysis Date: Sat Nov 15 07:04:17 PST 2025
+File: /Users/cb/Projects/infocom-testing-old/infocom/tests/layout_baseline_20251115_070416/mini_zork_baseline.z3
+File Size: 8550 bytes
+
+Header Analysis:
+  Initial PC (0x06-0x07): 1272
+  Dictionary (0x08-0x09): 0796
+  Objects (0x0a-0x0b): 02e0
+  Globals (0x0c-0x0d): 0040
+  Static mem (0x0e-0x0f): 0796
+
+Address Calculations:
+  Initial PC starts at: 0x1272
+  Dictionary starts at: 0x0796
+  Static memory starts at: 0x0796
+  Gap between dictionary and code: 2780 bytes

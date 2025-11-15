@@ -157,6 +157,14 @@ run_disassembler_test() {
     if [ "$function_count" -gt 0 ]; then ((success_indicators++)); fi
     if [ "$opcode_count" -ge 2 ]; then ((success_indicators++)); fi
 
+    # LAYOUT REORDERING: Check for expected function count (should be 25)
+    local expected_functions=25
+    local function_count_ok=0
+    if [ "$function_count" -ge "$expected_functions" ]; then
+        function_count_ok=1
+        ((success_indicators++))
+    fi
+
     # Check for errors (ignore debug-level failures)
     local error_count=$(wc -l < "$error_file" | xargs)
     local has_critical_errors=0
@@ -177,10 +185,10 @@ run_disassembler_test() {
         echo "Objects Found: $object_count"
         echo "Rooms Found: $room_count"
         echo "Error Lines: $error_count"
-        echo "Success Indicators: $success_indicators/5"
+        echo "Success Indicators: $success_indicators/6"
         echo ""
 
-        if [ "$success_indicators" -eq 5 ] && [ "$has_critical_errors" -eq 0 ] && [ "$total_lines" -gt 10 ]; then
+        if [ "$success_indicators" -eq 6 ] && [ "$has_critical_errors" -eq 0 ] && [ "$total_lines" -gt 10 ]; then
             echo "STATUS: PASSED ✓"
         else
             echo "STATUS: FAILED ✗"
@@ -193,11 +201,12 @@ run_disassembler_test() {
         echo "- Objects/globals: $(grep -q "G[0-9]\|yourself" "$output_file" && echo "✓" || echo "✗")"
         echo "- Function count > 0: $([[ $function_count -gt 0 ]] && echo "✓" || echo "✗")"
         echo "- Opcode count >= 2: $([[ $opcode_count -ge 2 ]] && echo "✓" || echo "✗")"
+        echo "- Expected function count (≥25): $([[ $function_count -ge $expected_functions ]] && echo "✓ ($function_count/$expected_functions)" || echo "✗ ($function_count/$expected_functions)")"
         echo "- No critical errors: $([[ $has_critical_errors -eq 0 ]] && echo "✓" || echo "✗")"
 
     } > "$RESULTS_DIR/${test_name}_summary.txt"
 
-    log_info "  Lines: $total_lines, Functions: $function_count, Opcodes: $opcode_count, Indicators: $success_indicators/5"
+    log_info "  Lines: $total_lines, Functions: $function_count, Opcodes: $opcode_count, Indicators: $success_indicators/6"
 }
 
 # Step 4: Run comprehensive disassembler tests
