@@ -1172,7 +1172,7 @@ impl ZMachineCodeGen {
                 }
 
                 // INSTRUMENTATION: Track all insert_obj instruction generation
-                log::error!("🔧 INSERT_OBJ_EMIT: Emitting insert_obj at PC=0x{:04x}, obj={:?}, dest={:?}, IR obj={}, IR dest={}, function='{}', init_block={}",
+                log::debug!("🔧 INSERT_OBJ_EMIT: Emitting insert_obj at PC=0x{:04x}, obj={:?}, dest={:?}, IR obj={}, IR dest={}, function='{}', init_block={}",
                     self.current_address(),
                     obj_operand,
                     dest_operand,

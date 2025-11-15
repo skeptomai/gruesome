@@ -1,0 +1,23 @@
+=== release_disasm_debug_game Test Summary ===
+Timestamp: Sat Nov 15 06:00:17 PST 2025
+Disassembler: ./target/release/gruedasm-txd
+Game File: /Users/cb/Projects/infocom-testing-old/infocom/tests/mini_zork_debug_disasm_20251115_055942.z3
+Total Output Lines: 15
+Functions Found: 1
+Opcodes Found: 2
+Strings Found: 2
+Objects Found: 1
+Rooms Found: 0
+0
+Error Lines: 2804
+Success Indicators: 4/5
+
+STATUS: FAILED ✗
+
+Content Checklist:
+- Routines found: ✓
+- Print instructions: ✓
+- Objects/globals: ✓
+- Function count > 0: ✓
+- Opcode count > 2: ✗
+- No critical errors: ✗

@@ -3233,7 +3233,7 @@ impl IrGenerator {
                 // Generate the iterable expression first
                 let iterable_temp = self.generate_expression(for_stmt.iterable, block)?;
 
-                log::error!(
+                log::debug!(
                     "🔍 FOR_LOOP_DEBUG: Generated iterable_temp IR ID {} for for-loop",
                     iterable_temp
                 );
@@ -3241,7 +3241,7 @@ impl IrGenerator {
                 // Use variable source tracking to determine iteration strategy
                 // This handles variable indirection (e.g., let items = obj.contents(); for item in items)
                 let source_info = self.variable_sources.get(&iterable_temp);
-                log::error!(
+                log::debug!(
                     "🔍 FOR_LOOP_DEBUG: Variable source lookup for IR ID {} = {:?}",
                     iterable_temp,
                     source_info
@@ -3252,13 +3252,13 @@ impl IrGenerator {
                         .get(&iterable_temp)
                         .and_then(|source| {
                             if let VariableSource::ObjectTreeRoot(container_id) = source {
-                                log::error!(
+                                log::debug!(
                                 "🔍 FOR_LOOP_DEBUG: Found ObjectTreeRoot source! Container ID = {}",
                                 container_id
                             );
                                 Some(*container_id)
                             } else {
-                                log::error!(
+                                log::debug!(
                                     "🔍 FOR_LOOP_DEBUG: Found non-ObjectTreeRoot source: {:?}",
                                     source
                                 );
@@ -3267,7 +3267,7 @@ impl IrGenerator {
                         });
 
                 if let Some(container_id) = container_object {
-                    log::error!(
+                    log::debug!(
                         "🔍 FOR_LOOP_DEBUG: TAKING OBJECT TREE ITERATION PATH! Container ID = {}",
                         container_id
                     );
@@ -3280,7 +3280,7 @@ impl IrGenerator {
                     );
                 }
 
-                log::error!(
+                log::debug!(
                     "🔍 FOR_LOOP_DEBUG: TAKING ARRAY ITERATION PATH! ObjectTreeRoot not found"
                 );
 

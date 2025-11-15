@@ -172,10 +172,73 @@ The core localization system is **complete and ready for production use**. Addit
 
 ---
 
+## 🚨 **CRITICAL: Z-MACHINE MEMORY LAYOUT REORDERING** (November 15, 2025)
+
+**STATUS**: **ROOT CAUSE IDENTIFIED, IMPLEMENTATION PLAN READY** 🔍
+
+**ISSUE**: The gruedasm-txd disassembler is not correctly processing our compiled Z-Machine files, finding only 1 routine when mini_zork should contain 25 functions.
+
+**ROOT CAUSE IDENTIFIED**: Our compiler uses non-standard Z-Machine memory layout that breaks disassembler expectations.
+
+**IMPLEMENTATION PLAN**: `docs/COMPILER_REORDERING.md` - Comprehensive phased plan to implement standard Z-Machine layout.
+
+### **PROBLEM IDENTIFIED**
+
+**Symptom**: Disassembler output shows minimal functionality detection
+- **Expected**: 25 functions from mini_zork.grue source analysis
+- **Actual**: Only 1 routine detected by gruedasm-txd (Routine R0001)
+- **Impact**: Cannot verify compiler output correctness or debug Z-Machine generation
+
+**Verification**:
+- ✅ **Source verification**: `grep -c "^fn "` confirms 25 functions in mini_zork.grue
+- ✅ **Commercial comparison**: gruedasm-txd works correctly on Zork I (finds multiple routines)
+- ❌ **Our files**: gruedasm-txd finds minimal content in our compiled files
+
+**Test Output** (`debug_disasm_debug_game_output.txt`):
+```
+Routine R0001, 3 locals (2d28, 075c, d321)
+       PRINT_OBJ       G50
+       PRINT_RET        " and you can see a jewel-encrusted egg nestled inside."
+[End of code]
+```
+
+### **ROOT CAUSE INVESTIGATION NEEDED**
+
+**Potential Issues**:
+1. **Compiler Z-Machine generation**: Our compiler may not be generating proper Z-Machine routine structures
+2. **Function layout**: Routines may be encoded incorrectly or in unexpected formats
+3. **Address mapping**: Function addresses may be miscalculated preventing detection
+4. **Header information**: Z-Machine header may lack proper routine table information
+
+### **INVESTIGATION TASKS**
+
+**PHASE 1: ANALYSIS**
+1. 🔄 **Compare Z-Machine file structure**: Hex analysis of our files vs. commercial Zork I
+2. 🔄 **Analyze routine table**: Check Z-Machine routine table generation in our compiler
+3. 🔄 **Debug function compilation**: Verify each mini_zork function generates proper Z-Machine routine
+
+**PHASE 2: COMPILER INVESTIGATION**
+4. 🔄 **Codegen function analysis**: Review how `generate_function()` creates Z-Machine routines
+5. 🔄 **Address calculation**: Verify routine addresses are correctly calculated and stored
+6. 🔄 **Header generation**: Ensure Z-Machine header contains correct routine table pointers
+
+**PHASE 3: DISASSEMBLER VERIFICATION**
+7. 🔄 **Enhancement verification**: Confirm gruedasm-txd header awareness changes didn't break routine detection
+8. 🔄 **Pattern matching**: Verify disassembler routine detection logic works on our format
+
+**CRITICAL PRIORITY**: This issue prevents validation of compiler output and debugging of Z-Machine generation quality.
+
+**Files Referenced**:
+- Testing scripts: `scripts/test_disassembler_mini_zork.sh`, `scripts/test_disassembler_zork1.sh`
+- Test results: `tests/disasm_mini_zork_results_20251115_055942/`
+
+---
+
 ## 🔧 **SYSTEM STATUS**
 
-### **⚠️ CRITICAL BUGS REQUIRING IMMEDIATE ATTENTION** (November 13, 2025)
+### **⚠️ CRITICAL BUGS REQUIRING IMMEDIATE ATTENTION** (November 15, 2025)
 
+- 🚨 **Disassembler Functionality Failure**: gruedasm-txd only finds 1 routine instead of 25 functions
 - 🚨 **Z-Machine Compliance Violations**: Compiler generates invalid packed addresses
 - 🚨 **Non-Standard Interpreter**: Tolerates specification violations that crash standard tools
 

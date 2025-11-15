@@ -1,0 +1,1 @@
+/Users/cb/Projects/infocom-testing-old/infocom/tests/mini_zork_debug_disasm_20251115_055942.z3

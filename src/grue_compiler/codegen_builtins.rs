@@ -744,7 +744,7 @@ impl ZMachineCodeGen {
         );
 
         // INSTRUMENTATION: Track insert_obj generation in move builtin
-        log::error!("🔧 INSERT_OBJ_BUILTIN: Emitting insert_obj from move() at PC=0x{:04x}, obj={:?}, dest={:?}",
+        log::debug!("🔧 INSERT_OBJ_BUILTIN: Emitting insert_obj from move() at PC=0x{:04x}, obj={:?}, dest={:?}",
             self.current_address(),
             object_operand,
             destination_operand
