@@ -1,0 +1,189 @@
+=============================================================================
+MINI ZORK FUNCTION COUNT - QUICK REFERENCE
+=============================================================================
+
+SOURCE FILE: /Users/cb/Projects/infocom-testing-old/infocom/examples/mini_zork.grue
+
+=============================================================================
+USER-DEFINED FUNCTIONS (26)
+=============================================================================
+
+1.  handle_score/0              - Display score
+2.  handle_moves/0              - Display move count
+3.  look_around/0               - Display room and on_look handler
+4.  examine/1                   - Examine object (with special cases)
+5.  handle_open/1               - Open object
+6.  handle_close/1              - Close object
+7.  handle_take/1 (generic)     - Take any object
+8.  handle_take/1 (leaflet)     - Take leaflet (+2 score)
+9.  handle_take/1 (egg)         - Take egg (+5 score)
+10. handle_drop/1 (generic)     - Drop object
+11. handle_drop/1 (egg)         - Drop egg (special msg)
+12. show_inventory/0            - List inventory
+13. handle_go/1                 - Move in direction
+14. handle_climb/1 (generic)    - Generic climb
+15. handle_climb/1 (tree)       - Climb tree (→ up)
+16. handle_read/1 (generic)     - Generic read (not readable)
+17. handle_read/1 (leaflet)     - Read leaflet
+18. handle_quit/0               - Start quit dialog
+19. handle_yes/0                - Confirm quit
+20. handle_no/0                 - Cancel quit
+21. clear_quit_state/0          - Reset quit flag
+22. player_can_see/1 → bool     - Check visibility
+23. list_objects/1              - List room contents
+24. list_contents/1             - List container contents
+25. take_all/0                  - Take all takeable items
+26. init/0                      - Initialize game (entry point)
+
+=============================================================================
+COMPILER-GENERATED BUILTINS (5)
+=============================================================================
+
+1. get_exit/1                   - Get exit from room
+2. print_num/1                  - Print integer
+3. add_score/1                  - Add points to score (G17)
+4. subtract_score/1             - Subtract points from score (G17)
+5. word_to_number/1             - Convert word to number
+
+=============================================================================
+FUNCTION OVERLOADS
+=============================================================================
+
+handle_take/1:
+  - handle_take(obj)            - Generic version
+  - handle_take(leaflet)        - Specialized for leaflet
+  - handle_take(egg)            - Specialized for egg
+
+handle_drop/1:
+  - handle_drop(obj)            - Generic version
+  - handle_drop(egg)            - Specialized for egg
+
+handle_climb/1:
+  - handle_climb(obj)           - Generic version
+  - handle_climb(tree)          - Specialized for tree
+
+handle_read/1:
+  - handle_read(obj)            - Generic version
+  - handle_read(leaflet)        - Specialized for leaflet
+
+=============================================================================
+ROOMS (8)
+=============================================================================
+
+1. west_of_house               - Starting location
+2. north_of_house              - North of house
+3. south_of_house              - South of house
+4. behind_house                - Behind the house
+5. forest_path                 - Path through forest
+6. up_a_tree                   - High in tree
+7. forest                      - Deep forest
+8. clearing                    - Forest clearing
+
+=============================================================================
+OBJECTS (9)
+=============================================================================
+
+1. mailbox (in west_of_house)  - Container, openable
+   └─ leaflet                  - Item inside mailbox
+2. tree (in forest_path)       - Non-takeable
+3. window (in behind_house)    - Non-takeable, openable
+4. nest (in up_a_tree)         - Container, open
+   └─ egg                      - Item inside nest
+
+Plus system/implicit objects:
+5. player                      - Main character (G16)
+   Properties: location, score, moves, quit_pending
+
+=============================================================================
+EXPECTED ROUTINE COUNTS
+=============================================================================
+
+MINIMUM:    31 routines
+            - 26 user functions
+            - 5 builtin functions
+
+TYPICAL:    32-35 routines
+            - 26 user functions
+            - 5 builtin functions
+            - 1-4 system/helper functions
+
+MAXIMUM:    40-50 routines
+            - If grammar dispatch is generated
+            - If room/object handlers are separate
+            - If optimization creates helper functions
+
+=============================================================================
+GRAMMAR ACTIONS (21 VERB PATTERNS)
+=============================================================================
+
+Score/Stats:
+  - "score"                     → handle_score()
+  - "moves"                     → handle_moves()
+
+Looking:
+  - "look" (default)            → look_around()
+  - "look" + "at" + noun        → examine($2)
+  - "look" + "around"           → look_around()
+
+Examination:
+  - "examine" + noun            → examine($noun)
+
+Container Ops:
+  - "open" + noun               → handle_open($noun)
+  - "close" + noun              → handle_close($noun)
+
+Item Handling:
+  - "take" + noun               → handle_take($noun)
+  - "take" + "all"              → take_all()
+  - "drop" + noun               → handle_drop($noun)
+
+Navigation:
+  - "inventory"                 → show_inventory()
+  - "go" + noun                 → handle_go($noun)
+  - "north"                     → handle_go("north")
+  - "south"                     → handle_go("south")
+  - "east"                      → handle_go("east")
+  - "west"                      → handle_go("west")
+  - "up"                        → handle_go("up")
+  - "down"                      → handle_go("down")
+
+Special Actions:
+  - "climb" + noun              → handle_climb($noun)
+  - "read" + noun               → handle_read($noun)
+
+Quit System:
+  - "quit"/"exit"/"q"           → handle_quit()
+  - "yes"/"y"                   → handle_yes()
+  - "no"/"n"                    → handle_no()
+
+=============================================================================
+IMPORTANT NOTES
+=============================================================================
+
+1. Function Overloading
+   - Grue supports multiple definitions of same function name
+   - Each overload checks parameter type or object identity
+   - Compiled as separate branches or dispatch code
+
+2. Room Event Handlers
+   - west_of_house.on_enter     - Welcome message on first visit
+   - behind_house.on_look       - Shows kitchen if window open
+   - These are typically inlined or simple wrappers
+
+3. Builtin Functions
+   - Automatically generated by compiler
+   - Not written in Grue source
+   - Essential for game functionality
+
+4. Player Object
+   - Implicit object created by game system
+   - Stored in Z-Machine global variable G16
+   - Properties: location, score, moves, quit_pending
+
+5. Score System
+   - Initial: 0 points
+   - Leaflet: +2 points
+   - Egg: +5 points
+   - Total possible: 7 points
+
+=============================================================================

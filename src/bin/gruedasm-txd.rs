@@ -14,6 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse command line options
     let mut show_addresses = false;
     let mut dump_hex = false;
+    let mut show_filter_rules = false;
     let mut filename = None;
 
     let mut i = 1;
@@ -21,12 +22,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match args[i].as_str() {
             "-n" => show_addresses = true,
             "-d" => dump_hex = true,
+            "--show-filter-rules" => show_filter_rules = true,
             "-h" | "--help" => {
                 eprintln!("Usage: {} [options] <game-file>", args[0]);
                 eprintln!("\nOptions:");
-                eprintln!("  -n    Use addresses instead of labels");
-                eprintln!("  -d    Dump hex bytes of instructions");
-                eprintln!("  -h    Show this help message");
+                eprintln!("  -n                   Use addresses instead of labels");
+                eprintln!("  -d                   Dump hex bytes of instructions");
+                eprintln!("  --show-filter-rules  Show which filtering rules each routine passed");
+                eprintln!("  -h                   Show this help message");
                 std::process::exit(0);
             }
             arg if !arg.starts_with('-') => {
@@ -62,6 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = OutputOptions {
         show_addresses,
         dump_hex,
+        show_filter_rules,
     };
     disasm.set_output_options(options);
 
@@ -70,8 +74,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         game.header.version
     );
     debug!(
-        "Output options: addresses={}, hex={}",
-        show_addresses, dump_hex
+        "Output options: addresses={}, hex={}, show_filter_rules={}",
+        show_addresses, dump_hex, show_filter_rules
     );
 
     // Run discovery process

@@ -193,6 +193,9 @@ impl ZMachineCodeGen {
             }
         }
 
+        // Validate that object property table addresses were correctly resolved
+        self.validate_object_property_addresses()?;
+
         log::info!(" All address references resolved successfully");
         Ok(())
     }
@@ -907,5 +910,79 @@ impl ZMachineCodeGen {
                 Err(e)
             }
         }
+    }
+
+    /// Validate that object property table addresses were correctly resolved after address resolution
+    fn validate_object_property_addresses(&self) -> Result<(), CompilerError> {
+        // Get object table location from final header
+        let object_table_addr =
+            ((self.final_data[0x0A] as u16) << 8) | (self.final_data[0x0B] as u16);
+
+        // Skip property defaults to get to first object entry
+        let property_defaults_size = match self.version {
+            ZMachineVersion::V3 => 31 * 2, // 31 properties * 2 bytes each
+            ZMachineVersion::V4 | ZMachineVersion::V5 => 63 * 2, // 63 properties * 2 bytes each
+        };
+        let first_object_offset = object_table_addr as usize + property_defaults_size;
+
+        // Object entry size for validation
+        let object_entry_size = match self.version {
+            ZMachineVersion::V3 => 9,
+            ZMachineVersion::V4 | ZMachineVersion::V5 => 14,
+        };
+
+        // Validate property table pointers for objects that have property tables
+        let mut validated_count = 0;
+        let mut object_num = 1;
+        let mut current_offset = first_object_offset;
+
+        while current_offset + object_entry_size <= self.final_data.len() {
+            // Property table pointer is at bytes 7-8 of object entry
+            let prop_ptr_offset = current_offset + 7;
+            if prop_ptr_offset + 1 < self.final_data.len() {
+                let prop_table_addr = ((self.final_data[prop_ptr_offset] as u16) << 8)
+                    | (self.final_data[prop_ptr_offset + 1] as u16);
+
+                // Validate that property table address is reasonable (not 0xFFFF placeholder)
+                if prop_table_addr != 0xFFFF && prop_table_addr != 0x0000 {
+                    // Further validate that address points within the file
+                    if (prop_table_addr as usize) < self.final_data.len() {
+                        log::debug!(
+                            "✅ OBJ_PTR_VALIDATED: obj_num={} prop_table_addr=0x{:04x} (resolved correctly)",
+                            object_num, prop_table_addr
+                        );
+                        validated_count += 1;
+                    } else {
+                        log::warn!(
+                            "⚠️ OBJ_PTR_OUT_OF_BOUNDS: obj_num={} prop_table_addr=0x{:04x} exceeds file size {}",
+                            object_num, prop_table_addr, self.final_data.len()
+                        );
+                    }
+                } else if prop_table_addr == 0xFFFF {
+                    log::error!(
+                        "❌ OBJ_PTR_UNRESOLVED: obj_num={} still contains placeholder 0xFFFF after address resolution!",
+                        object_num
+                    );
+                    return Err(CompilerError::UnresolvedReference(format!(
+                        "Object {} property table address not resolved",
+                        object_num
+                    )));
+                }
+            }
+
+            object_num += 1;
+            current_offset += object_entry_size;
+
+            // Safety: Don't validate too many objects
+            if object_num > 100 {
+                break;
+            }
+        }
+
+        log::info!(
+            "✅ Object property table validation complete: {} addresses validated",
+            validated_count
+        );
+        Ok(())
     }
 }

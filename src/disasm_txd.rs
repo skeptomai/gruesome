@@ -1,7 +1,7 @@
 use crate::instruction::{Instruction, InstructionForm, OperandCount, OperandType};
 use crate::vm::Game;
+use indexmap::IndexMap;
 use log::debug;
-use std::collections::HashMap;
 
 /// A comprehensive Z-Machine disassembler inspired by TXD's approach
 ///
@@ -51,6 +51,8 @@ pub struct OutputOptions {
     pub show_addresses: bool,
     /// Dump hex bytes of instructions (-d flag)
     pub dump_hex: bool,
+    /// Show filter rules that each routine passed (--show-filter-rules flag)
+    pub show_filter_rules: bool,
 }
 
 pub struct TxdDisassembler<'a> {
@@ -71,7 +73,7 @@ pub struct TxdDisassembler<'a> {
     /// Story scaling factor (typically 1)
     story_scaler: u32,
     /// Discovered routines
-    routines: HashMap<u32, RoutineInfo>,
+    routines: IndexMap<u32, RoutineInfo>,
     /// Routine addresses to process
     routine_queue: Vec<u32>,
     /// First pass flag
@@ -96,6 +98,8 @@ struct RoutineInfo {
     instructions: Vec<InstructionInfo>,
     /// Initial values for local variables (V1-4 only)
     local_inits: Vec<u16>,
+    /// Filter rules that this routine passed during analysis
+    filter_rules_passed: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -105,6 +109,12 @@ struct InstructionInfo {
     targets: Vec<u32>, // Call targets or branch targets
     /// Label for this address if it's a branch target
     label: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct FilterAnalysis {
+    is_false_positive: bool,
+    reason: String,
 }
 
 impl<'a> TxdDisassembler<'a> {
@@ -163,7 +173,7 @@ impl<'a> TxdDisassembler<'a> {
             file_size,
             code_scaler,
             story_scaler,
-            routines: HashMap::new(),
+            routines: IndexMap::new(),
             routine_queue: Vec::new(),
             first_pass: true,
             pcindex: 0,
@@ -465,17 +475,29 @@ impl<'a> TxdDisassembler<'a> {
             }
 
             if let Some(locals_count) = self.validate_routine(addr) {
+                debug!(
+                    "🟢 ROUTINE_VALIDATION: {:04x} PASSED header validation ({} locals)",
+                    rounded_addr, locals_count
+                );
+
+                // Header-based filtering moved to output stage for clean discovery/filtering separation
+                debug!(
+                    "🟢 ROUTINE_VALIDATION: {:04x} PASSED header validation, proceeding to add",
+                    rounded_addr
+                );
+
                 let routine_info = RoutineInfo {
                     address: rounded_addr,
                     locals_count,
                     validated: false,
                     instructions: Vec::new(),
                     local_inits: Vec::new(),
+                    filter_rules_passed: Vec::new(),
                 };
                 self.routines.insert(rounded_addr, routine_info);
                 self.routine_queue.push(rounded_addr);
 
-                debug!("TXD_ADD_ROUTINE: SUCCESS - Added routine {:04x} with {} locals, total routines: {}",
+                debug!("✅ ROUTINE_ADDED: {:04x} with {} locals (total: {}) - REASON: Passed header validation + false positive test",
                        rounded_addr, locals_count, self.routines.len());
             } else {
                 debug!(
@@ -561,7 +583,7 @@ impl<'a> TxdDisassembler<'a> {
 
         // Generate labels for branch targets
         // First, create a map of addresses to labels
-        let mut label_map = std::collections::HashMap::new();
+        let mut label_map = IndexMap::new();
         let mut label_counter = 1;
         for target in &branch_targets {
             // Find if this target is within our routine
@@ -724,7 +746,7 @@ impl<'a> TxdDisassembler<'a> {
             // Remove orphan addresses from our routine list
             let mut filtered_count = 0;
             for &orphan_addr in &self.pctable {
-                if self.routines.remove(&orphan_addr).is_some() {
+                if self.routines.shift_remove(&orphan_addr).is_some() {
                     debug!("TXD_ORPHAN_REMOVED: {:04x}", orphan_addr);
                     filtered_count += 1;
                 }
@@ -1100,7 +1122,12 @@ impl<'a> TxdDisassembler<'a> {
             }
 
             if flag {
-                debug!("PASS_DECODE");
+                debug!(
+                    "🟢 TRIPLE_DECODE: {:04x} PASSED triple validation",
+                    rounded_addr
+                );
+                // Post-validation filtering moved to output stage for clean discovery/filtering separation
+                debug!("✅ ROUTINE_VALIDATED: {:04x} - REASON: Passed triple decode (filtering deferred to output)", rounded_addr);
                 (true, routine_end_pc)
             } else {
                 debug!("FAIL_DECODE");
@@ -1393,6 +1420,385 @@ impl<'a> TxdDisassembler<'a> {
         Ok(())
     }
 
+    /// Header-based false positive detection (for use during add_routine)
+    fn is_header_false_positive(&self, addr: u32, locals_count: u8) -> bool {
+        debug!(
+            "🔍 HEADER_FP_CHECK: {:04x} with {} locals",
+            addr, locals_count
+        );
+
+        // Check for extremely suspicious local value patterns
+        if locals_count >= 8 {
+            let mut extreme_locals = 0;
+            let mut zero_locals = 0;
+            let locals_start = addr + 1;
+
+            for i in 0..locals_count {
+                let init_addr = locals_start + (i as u32 * 2);
+                if (init_addr + 1) as usize >= self.game.memory.len() {
+                    continue;
+                }
+
+                let init_value = ((self.game.memory[init_addr as usize] as u16) << 8)
+                    | (self.game.memory[(init_addr + 1) as usize] as u16);
+
+                if init_value == 0 {
+                    zero_locals += 1;
+                } else if init_value > 0xa000 {
+                    extreme_locals += 1;
+                }
+            }
+
+            // If mostly extreme values or ALL zeros (except for legitimate large routines), likely false positive
+            let extreme_ratio = (extreme_locals * 100) / locals_count as u32;
+            debug!(
+                "🔍 HEADER_FP_LOCALS: {:04x} - extreme:{}/{} ({}%), zero:{}/{}",
+                addr, extreme_locals, locals_count, extreme_ratio, zero_locals, locals_count
+            );
+
+            if extreme_ratio > 25 {
+                // More aggressive threshold to catch compiled game false positives
+                debug!(
+                    "❌ HEADER_FP_REJECT: {:04x} - {} extreme locals out of {} ({}% > 25%)",
+                    addr, extreme_locals, locals_count, extreme_ratio
+                );
+                return true;
+            } else {
+                debug!(
+                    "✅ HEADER_FP_PASS: {:04x} - extreme ratio {}% <= 25%",
+                    addr, extreme_ratio
+                );
+            }
+        } else {
+            debug!(
+                "✅ HEADER_FP_SKIP: {:04x} - {} locals < 8, skipping extreme check",
+                addr, locals_count
+            );
+        }
+
+        false
+    }
+
+    /// Enhanced false positive detection for compiled games
+    fn is_likely_false_positive(&self, addr: u32, locals_count: u8, end_pc: u32) -> bool {
+        // Calculate routine length in bytes
+        let routine_length = end_pc.saturating_sub(addr);
+        let header_size = 1 + (locals_count as u32 * 2); // 1 byte for count + 2 bytes per local
+        let instruction_bytes = routine_length.saturating_sub(header_size);
+
+        debug!(
+            "🔍 POST_FP_CHECK: {:04x} locals={} routine_len={} instruction_bytes={}",
+            addr, locals_count, routine_length, instruction_bytes
+        );
+
+        // Pattern 1: No actual instructions (header only or very short)
+        if instruction_bytes <= 8 {
+            debug!(
+                "❌ POST_FP_PATTERN_1: {:04x} - minimal instructions ({}bytes <= 8)",
+                addr, instruction_bytes
+            );
+            return true;
+        } else {
+            debug!(
+                "✅ POST_FP_PATTERN_1: {:04x} - sufficient instructions ({}bytes > 8)",
+                addr, instruction_bytes
+            );
+        }
+
+        // Pattern 2: Routines with many locals but suspicious patterns
+        if locals_count >= 10 {
+            let mut suspicious_locals = 0;
+            let mut extreme_locals = 0;
+            let locals_start = addr + 1;
+
+            for i in 0..locals_count {
+                let init_addr = locals_start + (i as u32 * 2);
+                if (init_addr + 1) as usize >= self.game.memory.len() {
+                    continue;
+                }
+
+                let init_value = ((self.game.memory[init_addr as usize] as u16) << 8)
+                    | (self.game.memory[(init_addr + 1) as usize] as u16);
+
+                // Count different levels of suspicion
+                if init_value > 0xa000 {
+                    extreme_locals += 1;
+                } else if init_value > 0x4000 {
+                    suspicious_locals += 1;
+                }
+            }
+
+            // If too many suspicious locals with minimal instructions
+            let total_suspicious = suspicious_locals + extreme_locals;
+            let suspicious_ratio = (total_suspicious * 100) / locals_count as u32;
+
+            debug!(
+                "🔍 POST_FP_PATTERN_2: {:04x} - suspicious:{}/{} ({}%), instruction_bytes={}",
+                addr, total_suspicious, locals_count, suspicious_ratio, instruction_bytes
+            );
+
+            if suspicious_ratio > 60 && instruction_bytes < 20 {
+                debug!("❌ POST_FP_PATTERN_2: {:04x} - high suspicious locals ({}% > 60%) + few instructions ({}bytes < 20)",
+                       addr, suspicious_ratio, instruction_bytes);
+                return true;
+            } else {
+                debug!(
+                    "✅ POST_FP_PATTERN_2: {:04x} - acceptable ({}% <= 60% OR {}bytes >= 20)",
+                    addr, suspicious_ratio, instruction_bytes
+                );
+            }
+        } else {
+            debug!(
+                "✅ POST_FP_PATTERN_2: {:04x} - skipped ({} locals < 10)",
+                addr, locals_count
+            );
+        }
+
+        // Pattern 3: Very short routines that are likely fragments
+        if instruction_bytes < 15 && locals_count <= 2 {
+            debug!("❌ POST_FP_PATTERN_3: {:04x} - short routine ({}bytes < 15) with few locals ({}locals <= 2)",
+                   addr, instruction_bytes, locals_count);
+            return true;
+        } else {
+            debug!(
+                "✅ POST_FP_PATTERN_3: {:04x} - acceptable ({}bytes >= 15 OR {}locals > 2)",
+                addr, instruction_bytes, locals_count
+            );
+        }
+
+        debug!(
+            "✅ POST_FP_OVERALL: {:04x} - PASSED all false positive tests",
+            addr
+        );
+        false
+    }
+
+    /// Apply comprehensive false positive filtering to discovered routines with detailed rule tracking
+    /// Returns filtered IndexMap containing only legitimate routines
+    fn filter_false_positives(&self) -> IndexMap<u32, RoutineInfo> {
+        let mut filtered_routines = IndexMap::new();
+        let mut header_fp_count = 0;
+        let mut post_fp_count = 0;
+        let mut rule_pass_counts = std::collections::HashMap::new();
+
+        debug!(
+            "OUTPUT_FILTERING: Starting with {} discovered routines",
+            self.routines.len()
+        );
+        debug!("OUTPUT_FILTERING: ========== DETAILED RULE ANALYSIS ==========");
+
+        for (&addr, routine_info) in &self.routines {
+            let mut is_false_positive = false;
+            let mut pass_reasons = Vec::new();
+            let mut fail_reasons = Vec::new();
+
+            debug!(
+                "🔍 FILTER_ANALYSIS: {:04x} locals={}",
+                addr, routine_info.locals_count
+            );
+
+            // Phase 1: Header-level filtering with detailed rule breakdown
+            let header_result = self.analyze_header_rules(addr, routine_info.locals_count);
+            if header_result.is_false_positive {
+                debug!(
+                    "❌ OUTPUT_FP_HEADER: {:04x} REJECTED - {}",
+                    addr, header_result.reason
+                );
+                fail_reasons.push(header_result.reason.clone());
+                header_fp_count += 1;
+                is_false_positive = true;
+            } else {
+                debug!(
+                    "✅ OUTPUT_FP_HEADER: {:04x} PASSED - {}",
+                    addr, header_result.reason
+                );
+                pass_reasons.push(header_result.reason.clone());
+            }
+
+            // Phase 2: Post-validation filtering (only if passed header filtering)
+            if !is_false_positive {
+                // Calculate routine end address for post-validation
+                let header_size = 1 + (routine_info.locals_count as u32 * 2);
+                let estimated_instruction_length = routine_info.instructions.len() as u32;
+                let routine_end_pc = addr + header_size + estimated_instruction_length.max(20);
+
+                let post_result = self.analyze_post_validation_rules(
+                    addr,
+                    routine_info.locals_count,
+                    routine_end_pc,
+                );
+                if post_result.is_false_positive {
+                    debug!(
+                        "❌ OUTPUT_FP_POST: {:04x} REJECTED - {}",
+                        addr, post_result.reason
+                    );
+                    fail_reasons.push(post_result.reason.clone());
+                    post_fp_count += 1;
+                    is_false_positive = true;
+                } else {
+                    debug!(
+                        "✅ OUTPUT_FP_POST: {:04x} PASSED - {}",
+                        addr, post_result.reason
+                    );
+                    pass_reasons.push(post_result.reason.clone());
+                }
+            }
+
+            if !is_false_positive {
+                debug!(
+                    "🎯 FILTER_FINAL: {:04x} ACCEPTED - Passed all rules: {}",
+                    addr,
+                    pass_reasons.join(" + ")
+                );
+                for reason in &pass_reasons {
+                    *rule_pass_counts.entry(reason.clone()).or_insert(0) += 1;
+                }
+                // Store the filter rules with the routine
+                let mut routine_with_filters = routine_info.clone();
+                routine_with_filters.filter_rules_passed = pass_reasons.clone();
+                filtered_routines.insert(addr, routine_with_filters);
+            } else {
+                debug!(
+                    "🚫 FILTER_FINAL: {:04x} REJECTED - Failed: {}",
+                    addr,
+                    fail_reasons.join(" | ")
+                );
+            }
+        }
+
+        debug!("OUTPUT_FILTERING: ========== RULE STATISTICS ==========");
+        debug!(
+            "OUTPUT_FILTERING: Removed {} header FP + {} post FP = {} total false positives",
+            header_fp_count,
+            post_fp_count,
+            header_fp_count + post_fp_count
+        );
+        debug!(
+            "OUTPUT_FILTERING: Final legitimate routines: {}",
+            filtered_routines.len()
+        );
+
+        debug!("OUTPUT_FILTERING: Rule pass counts:");
+        for (rule, count) in rule_pass_counts.iter() {
+            debug!("  📊 {}: {} routines", rule, count);
+        }
+
+        filtered_routines
+    }
+
+    /// Detailed analysis of header-level filtering rules with enhanced criteria
+    fn analyze_header_rules(&self, addr: u32, locals_count: u8) -> FilterAnalysis {
+        // Rule 1: Strict locals count validation
+        if locals_count > 15 {
+            return FilterAnalysis {
+                is_false_positive: true,
+                reason: format!("Too many locals: {} > 15", locals_count),
+            };
+        }
+
+        // Rule 2: Very strict locals count for high addresses (likely false positives)
+        if locals_count > 8 && addr > self.file_size / 2 {
+            return FilterAnalysis {
+                is_false_positive: true,
+                reason: format!(
+                    "Suspicious: {} locals at high address {:04x}",
+                    locals_count, addr
+                ),
+            };
+        }
+
+        // Rule 3: Check if this address is in header region
+        if self.is_header_offset(addr as usize) {
+            return FilterAnalysis {
+                is_false_positive: true,
+                reason: "Address is in header region (0x00-0x3F)".to_string(),
+            };
+        }
+
+        // Rule 4: Address alignment check (less strict than before)
+        if addr % 2 != 0 {
+            return FilterAnalysis {
+                is_false_positive: true,
+                reason: format!("Poor alignment: {:04x} not 2-byte aligned", addr),
+            };
+        }
+
+        FilterAnalysis {
+            is_false_positive: false,
+            reason: format!(
+                "VALID: {} locals, aligned, valid packed address",
+                locals_count
+            ),
+        }
+    }
+
+    /// Enhanced post-validation filtering with stricter criteria
+    fn analyze_post_validation_rules(
+        &self,
+        addr: u32,
+        locals_count: u8,
+        routine_end_pc: u32,
+    ) -> FilterAnalysis {
+        let routine_size = routine_end_pc - addr;
+
+        // Rule 1: File bounds check
+        if routine_end_pc > self.file_size {
+            return FilterAnalysis {
+                is_false_positive: true,
+                reason: format!(
+                    "Extends beyond file: end={:04x} > file_size={:04x}",
+                    routine_end_pc, self.file_size
+                ),
+            };
+        }
+
+        // Rule 2: Moderate minimum size
+        if routine_size < 4 {
+            return FilterAnalysis {
+                is_false_positive: true,
+                reason: format!("Too small: {} bytes < 4", routine_size),
+            };
+        }
+
+        // Rule 3: More reasonable maximum size
+        if routine_size > 1000 {
+            return FilterAnalysis {
+                is_false_positive: true,
+                reason: format!("Too large: {} bytes > 1000", routine_size),
+            };
+        }
+
+        // Rule 4: Reject extremely small routines with many locals (likely false positives)
+        if routine_size <= 10 && locals_count > 5 {
+            return FilterAnalysis {
+                is_false_positive: true,
+                reason: format!(
+                    "Suspicious: {} bytes with {} locals",
+                    routine_size, locals_count
+                ),
+            };
+        }
+
+        // Rule 5: Very large routines with excessive locals are suspect
+        if routine_size > 200 && locals_count > 10 {
+            return FilterAnalysis {
+                is_false_positive: true,
+                reason: format!(
+                    "Large routine with many locals: {} bytes, {} locals",
+                    routine_size, locals_count
+                ),
+            };
+        }
+
+        FilterAnalysis {
+            is_false_positive: false,
+            reason: format!(
+                "VALID: {} bytes, good location, reasonable size",
+                routine_size
+            ),
+        }
+    }
+
     /// TXD's exact boundary expansion logic (lines 1376-1401)
     fn check_operand_for_boundary_expansion(&mut self, operand: u32) {
         // Check operand as routine address (for CALL instructions)
@@ -1616,12 +2022,25 @@ impl<'a> TxdDisassembler<'a> {
             } else {
                 // Calculate branch target address using Z-Machine standard formula:
                 // target = current_pc + instruction_size + branch_offset - 2
-                let target = pc + instruction.size as u32 + branch_info.offset as u32 - 2;
-                debug!(
-                    "BRANCH_TARGET: Found branch at {:04x} targeting {:04x} (offset={})",
-                    pc, target, branch_info.offset
-                );
-                Some(target)
+                // Use signed arithmetic to handle negative offsets safely
+                let base_addr = (pc + instruction.size as u32 - 2) as i32;
+                let target_signed = base_addr + branch_info.offset as i32;
+
+                // Only proceed if the result is positive and within valid range
+                if target_signed < 0 || target_signed as u32 >= self.file_size {
+                    debug!(
+                        "BRANCH_TARGET: Invalid branch at {:04x} targeting {:04x} (offset={}) - out of bounds",
+                        pc, target_signed, branch_info.offset
+                    );
+                    None
+                } else {
+                    let target = target_signed as u32;
+                    debug!(
+                        "BRANCH_TARGET: Found branch at {:04x} targeting {:04x} (offset={})",
+                        pc, target, branch_info.offset
+                    );
+                    Some(target)
+                }
             };
 
             if let Some(target) = branch_target {
@@ -1927,7 +2346,7 @@ impl<'a> TxdDisassembler<'a> {
                 }
 
                 for addr in routines_to_remove {
-                    self.routines.remove(&addr);
+                    self.routines.shift_remove(&addr);
                     removed_count += 1;
                 }
 
@@ -1980,11 +2399,13 @@ impl<'a> TxdDisassembler<'a> {
         }
 
         // Generate routine disassembly in TXD format
-        let mut sorted_routines: Vec<_> = self.routines.iter().collect();
+        // Apply final filtering to remove false positives
+        let filtered_routines = self.filter_false_positives();
+        let mut sorted_routines: Vec<_> = filtered_routines.iter().collect();
         sorted_routines.sort_by_key(|(addr, _)| *addr);
 
         // Create a mapping of routine addresses to routine numbers for CALL formatting
-        let mut routine_map = HashMap::new();
+        let mut routine_map = IndexMap::new();
         let mut routine_num = 1;
         for (addr, _) in &sorted_routines {
             routine_map.insert(**addr, routine_num);
@@ -2037,7 +2458,19 @@ impl<'a> TxdDisassembler<'a> {
                     .collect();
                 output.push_str(&zeros.join(", "));
             }
-            output.push_str(")\n\n");
+            output.push(')');
+
+            // Add filter rules if requested
+            if self.output_options.show_filter_rules {
+                output.push_str("\n       ; Filter rules passed: ");
+                if routine.filter_rules_passed.is_empty() {
+                    output.push_str("(none stored)");
+                } else {
+                    output.push_str(&routine.filter_rules_passed.join(", "));
+                }
+            }
+
+            output.push_str("\n\n");
 
             // Add instruction disassembly
             if routine.instructions.is_empty() {
@@ -2289,7 +2722,7 @@ impl<'a> TxdDisassembler<'a> {
         instruction: &Instruction,
         instruction_address: u32,
         routine_instructions: &[InstructionInfo],
-        routine_map: &HashMap<u32, usize>,
+        routine_map: &IndexMap<u32, usize>,
     ) -> String {
         let mut result = String::new();
 

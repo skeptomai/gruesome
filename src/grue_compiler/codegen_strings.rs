@@ -201,7 +201,7 @@ impl ZMachineCodeGen {
         Ok(())
     }
 
-    /// Encode a single string using Z-Machine ZSCII encoding
+    /// Encode a single string using Z-Machine ZSCII encoding with abbreviation support
     pub fn encode_string(&self, s: &str) -> Result<Vec<u8>, CompilerError> {
         // Z-Machine text encoding per Z-Machine Standard 1.1, Section 3.5.3
         // Alphabet A0 (6-31): abcdefghijklmnopqrstuvwxyz
@@ -210,124 +210,174 @@ impl ZMachineCodeGen {
 
         let mut zchars = Vec::new();
 
-        for ch in s.chars() {
-            match ch {
-                // Space is always Z-character 0
-                ' ' => zchars.push(0),
-
-                // Newline is A2[7] = newline (ZSCII 13)
-                '\n' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(7); // A2[7] = newline
-                }
-
-                // Alphabet A0: lowercase letters (Z-chars 6-31)
-                'a'..='z' => {
-                    zchars.push(ch as u8 - b'a' + 6);
-                }
-
-                // Alphabet A1: uppercase letters (single-shift with 4, then Z-char 6-31)
-                'A'..='Z' => {
-                    zchars.push(4); // Single shift to alphabet A1
-                    zchars.push(ch as u8 - b'A' + 6);
-                }
-
-                // Alphabet A2: digits and punctuation (single-shift with 5, then Z-char 6-31)
-                '0'..='9' => {
-                    zchars.push(5); // Single shift to alphabet A2
-                    zchars.push(ch as u8 - b'0' + 8); // A2[8-17] = "0123456789"
-                }
-
-                '.' => {
-                    zchars.push(5);
-                    zchars.push(18); // A2[18] = '.'
-                }
-
-                ',' => {
-                    zchars.push(5);
-                    zchars.push(19); // A2[19] = ','
-                }
-
-                '!' => {
-                    zchars.push(5);
-                    zchars.push(20); // A2[20] = '!'
-                }
-
-                '?' => {
-                    zchars.push(5);
-                    zchars.push(21); // A2[21] = '?'
-                }
-
-                '_' => {
-                    zchars.push(5);
-                    zchars.push(22); // A2[22] = '_'
-                }
-
-                '#' => {
-                    zchars.push(5);
-                    zchars.push(23); // A2[23] = '#'
-                }
-
-                '\'' => {
-                    zchars.push(5);
-                    zchars.push(24); // A2[24] = '\''
-                }
-
-                '"' => {
-                    zchars.push(5);
-                    zchars.push(25); // A2[25] = '"'
-                }
-
-                '/' => {
-                    zchars.push(5);
-                    zchars.push(26); // A2[26] = '/'
-                }
-
-                '\\' => {
-                    zchars.push(5);
-                    zchars.push(27); // A2[27] = '\'
-                }
-
-                '-' => {
-                    zchars.push(5);
-                    zchars.push(28); // A2[28] = '-'
-                }
-
-                ':' => {
-                    zchars.push(5);
-                    zchars.push(29); // A2[29] = ':'
-                }
-
-                '(' => {
-                    zchars.push(5);
-                    zchars.push(30); // A2[30] = '('
-                }
-
-                ')' => {
-                    zchars.push(5);
-                    zchars.push(31); // A2[31] = ')'
-                }
-
-                // Handle other characters with escape sequence
-                _ => {
-                    // Use escape sequence for characters not in standard alphabets
-                    let unicode_val = ch as u32;
-                    if unicode_val <= 255 {
-                        zchars.push(5); // Shift to A2
-                        zchars.push(6); // Escape sequence
-                        zchars.push(((unicode_val >> 5) & 0x1F) as u8);
-                        zchars.push((unicode_val & 0x1F) as u8);
-                    } else {
-                        return Err(CompilerError::CodeGenError(format!(
-                            "Unicode character '{}' (U+{:04X}) cannot be encoded in Z-Machine text",
-                            ch, unicode_val
-                        )));
-                    }
-                }
+        // Build abbreviation lookup map from strings with IDs 10000+
+        let mut abbreviation_map = std::collections::HashMap::new();
+        for (id, abbreviation) in &self.strings {
+            if *id >= 10000 && *id < 11000 {
+                let index = (*id - 10000) as u8;
+                abbreviation_map.insert(abbreviation.clone(), index);
             }
         }
 
-        // Pack Z-characters into bytes (3 Z-chars per 2 bytes)
+        // Process string with abbreviation matching
+        let mut remaining = s;
+        while !remaining.is_empty() {
+            // Try to find longest abbreviation match at current position
+            let mut best_match: Option<(&str, u8)> = None;
+            for (abbreviation, &index) in &abbreviation_map {
+                if remaining.starts_with(abbreviation) {
+                    // Prefer longer matches
+                    if best_match.is_none() || abbreviation.len() > best_match.unwrap().0.len() {
+                        best_match = Some((abbreviation, index));
+                    }
+                }
+            }
+
+            if let Some((abbreviation, index)) = best_match {
+                // Encode abbreviation reference per Z-Machine specification
+                // Z-characters 1, 2, 3 refer to abbreviation tables 0, 1, 2
+                // For now, use table 0 (Z-character 1) for all abbreviations
+                zchars.push(1); // Table 0
+                zchars.push(index); // Abbreviation index in table 0
+
+                log::debug!(
+                    "🔤 ABBREVIATION_ENCODED: '{}' -> table 0, index {}",
+                    abbreviation,
+                    index
+                );
+                remaining = &remaining[abbreviation.len()..];
+            } else {
+                // No abbreviation match, encode next character normally
+                let next_char = remaining.chars().next().unwrap();
+                self.encode_character(next_char, &mut zchars);
+                remaining = &remaining[next_char.len_utf8()..];
+            }
+        }
+
+        // Pack Z-characters into bytes
+        self.pack_zchars_to_bytes(zchars)
+    }
+
+    /// Encode a single character into Z-characters
+    fn encode_character(&self, ch: char, zchars: &mut Vec<u8>) {
+        match ch {
+            // Space is always Z-character 0
+            ' ' => zchars.push(0),
+
+            // Newline is A2[7] = newline (ZSCII 13)
+            '\n' => {
+                zchars.push(5); // Single shift to alphabet A2
+                zchars.push(7); // A2[7] = newline
+            }
+
+            // Alphabet A0: lowercase letters (Z-chars 6-31)
+            'a'..='z' => {
+                zchars.push(ch as u8 - b'a' + 6);
+            }
+
+            // Alphabet A1: uppercase letters (single-shift with 4, then Z-char 6-31)
+            'A'..='Z' => {
+                zchars.push(4); // Single shift to alphabet A1
+                zchars.push(ch as u8 - b'A' + 6);
+            }
+
+            // Alphabet A2: digits and punctuation (single-shift with 5, then Z-char 6-31)
+            '0'..='9' => {
+                zchars.push(5); // Single shift to alphabet A2
+                zchars.push(ch as u8 - b'0' + 8); // A2[8-17] = "0123456789"
+            }
+
+            '.' => {
+                zchars.push(5);
+                zchars.push(18); // A2[18] = '.'
+            }
+
+            ',' => {
+                zchars.push(5);
+                zchars.push(19); // A2[19] = ','
+            }
+
+            '!' => {
+                zchars.push(5);
+                zchars.push(20); // A2[20] = '!'
+            }
+
+            '?' => {
+                zchars.push(5);
+                zchars.push(21); // A2[21] = '?'
+            }
+
+            '_' => {
+                zchars.push(5);
+                zchars.push(22); // A2[22] = '_'
+            }
+
+            '#' => {
+                zchars.push(5);
+                zchars.push(23); // A2[23] = '#'
+            }
+
+            '\'' => {
+                zchars.push(5);
+                zchars.push(24); // A2[24] = '\''
+            }
+
+            '"' => {
+                zchars.push(5);
+                zchars.push(25); // A2[25] = '"'
+            }
+
+            '/' => {
+                zchars.push(5);
+                zchars.push(26); // A2[26] = '/'
+            }
+
+            '\\' => {
+                zchars.push(5);
+                zchars.push(27); // A2[27] = '\'
+            }
+
+            '-' => {
+                zchars.push(5);
+                zchars.push(28); // A2[28] = '-'
+            }
+
+            ':' => {
+                zchars.push(5);
+                zchars.push(29); // A2[29] = ':'
+            }
+
+            '(' => {
+                zchars.push(5);
+                zchars.push(30); // A2[30] = '('
+            }
+
+            ')' => {
+                zchars.push(5);
+                zchars.push(31); // A2[31] = ')'
+            }
+
+            // Handle other characters with escape sequence
+            _ => {
+                // Use escape sequence for characters not in standard alphabets
+                let unicode_val = ch as u32;
+                if unicode_val <= 255 {
+                    zchars.push(5); // Shift to A2
+                    zchars.push(6); // Escape sequence
+                    zchars.push(((unicode_val >> 5) & 0x1F) as u8);
+                    zchars.push((unicode_val & 0x1F) as u8);
+                } else {
+                    log::warn!(
+                        "Unicode character '{}' (U+{:04X}) cannot be encoded in Z-Machine text, skipping",
+                        ch, unicode_val
+                    );
+                }
+            }
+        }
+    }
+
+    /// Pack Z-characters into bytes (3 Z-chars per 2 bytes)
+    fn pack_zchars_to_bytes(&self, zchars: Vec<u8>) -> Result<Vec<u8>, CompilerError> {
         let mut bytes = Vec::new();
         let mut i = 0;
 
@@ -364,8 +414,7 @@ impl ZMachineCodeGen {
         }
 
         debug!(
-            "🔤 Encoded string '{}' -> {} Z-chars -> {} bytes",
-            s,
+            "🔤 Packed {} Z-chars into {} bytes",
             zchars.len(),
             bytes.len()
         );

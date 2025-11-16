@@ -1377,23 +1377,11 @@ impl ZMachineCodeGen {
             obj_offset + 7, // location_offset where the address needs to be patched
         )?;
 
-        // DEBUG: Verify what was actually written
-        let written_high = self.object_space[obj_offset + 7];
-        let written_low = self.object_space[obj_offset + 8];
-        let written_addr = ((written_high as u16) << 8) | (written_low as u16);
-        log::warn!(
-            "🔗 OBJ_PTR_WRITE: obj_num={} name='{}' obj_offset=0x{:04x} prop_table_addr=0x{:04x} written=0x{:04x}",
-            obj_num, object.short_name, obj_offset, prop_table_addr, written_addr
+        // Property table address will be resolved during address resolution phase
+        log::debug!(
+            "🔗 OBJ_PTR_PLACEHOLDER: obj_num={} name='{}' obj_offset=0x{:04x} prop_table_addr=0x{:04x} (placeholder 0xFFFF written)",
+            obj_num, object.short_name, obj_offset, prop_table_addr
         );
-
-        if written_addr != prop_table_addr as u16 {
-            log::error!(
-                "❌ OBJ_PTR_MISMATCH: obj_num={} Expected 0x{:04x} but wrote 0x{:04x}!",
-                obj_num,
-                prop_table_addr,
-                written_addr
-            );
-        }
 
         debug!(
             "Created object #{}: '{}' at offset 0x{:04x}, attributes=0x{:08x}, prop_table=0x{:04x}",
