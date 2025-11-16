@@ -1,0 +1,17 @@
+fn handle_climb(obj) {
+    print("obj = ");
+    print_num(obj);
+    new_line();
+    print("tree = ");
+    print_num(tree);
+    new_line();
+
+    if (obj == tree) {
+        if (player.location == forest_path) {
+            println("Climbing the tree!");
+            handle_go("up");
+        }
+    } else {
+        println("You can't climb that.");
+    }
+}

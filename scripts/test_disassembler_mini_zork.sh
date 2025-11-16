@@ -64,25 +64,33 @@ clean_build() {
 
 # Step 2: Build debug and release versions
 build_all_versions() {
-    log_step "STEP 2: Build Debug and Release Versions"
+    log_step "STEP 2: Build Versions"
     cd "$PROJECT_DIR"
 
-    # Build debug version
-    log_info "Building debug version..."
-    if cargo build; then
-        log_success "Debug build completed"
+    # Build debug version unless release-only
+    if [ "$RELEASE_ONLY" = false ]; then
+        log_info "Building debug version..."
+        if cargo build; then
+            log_success "Debug build completed"
+        else
+            log_error "Debug build failed"
+            exit 1
+        fi
     else
-        log_error "Debug build failed"
-        exit 1
+        log_info "Skipping debug build (--release-only specified)"
     fi
 
-    # Build release version
-    log_info "Building release version..."
-    if cargo build --release; then
-        log_success "Release build completed"
+    # Build release version unless debug-only
+    if [ "$DEBUG_ONLY" = false ]; then
+        log_info "Building release version..."
+        if cargo build --release; then
+            log_success "Release build completed"
+        else
+            log_error "Release build failed"
+            exit 1
+        fi
     else
-        log_error "Release build failed"
-        exit 1
+        log_info "Skipping release build (--debug-only specified)"
     fi
 }
 
@@ -94,24 +102,34 @@ compile_game_files() {
     local debug_game="$TESTS_DIR/mini_zork_debug_disasm_${TIMESTAMP}.z3"
     local release_game="$TESTS_DIR/mini_zork_release_disasm_${TIMESTAMP}.z3"
 
-    # Compile with debug compiler
-    log_info "Compiling game with debug compiler..."
-    if cargo run --bin grue-compiler -- examples/mini_zork.grue -o "$debug_game"; then
-        log_success "Debug game compiled: $(basename "$debug_game")"
-        echo "$debug_game" > "$RESULTS_DIR/debug_game_path.txt"
+    # Compile with debug compiler unless release-only
+    if [ "$RELEASE_ONLY" = false ]; then
+        log_info "Compiling game with debug compiler..."
+        if cargo run --bin grue-compiler -- examples/mini_zork.grue -o "$debug_game"; then
+            log_success "Debug game compiled: $(basename "$debug_game")"
+            echo "$debug_game" > "$RESULTS_DIR/debug_game_path.txt"
+        else
+            log_error "Debug game compilation failed"
+            exit 1
+        fi
     else
-        log_error "Debug game compilation failed"
-        exit 1
+        log_info "Skipping debug game compilation (--release-only specified)"
+        echo "" > "$RESULTS_DIR/debug_game_path.txt"
     fi
 
-    # Compile with release compiler
-    log_info "Compiling game with release compiler..."
-    if cargo run --bin grue-compiler --release -- examples/mini_zork.grue -o "$release_game"; then
-        log_success "Release game compiled: $(basename "$release_game")"
-        echo "$release_game" > "$RESULTS_DIR/release_game_path.txt"
+    # Compile with release compiler unless debug-only
+    if [ "$DEBUG_ONLY" = false ]; then
+        log_info "Compiling game with release compiler..."
+        if cargo run --bin grue-compiler --release -- examples/mini_zork.grue -o "$release_game"; then
+            log_success "Release game compiled: $(basename "$release_game")"
+            echo "$release_game" > "$RESULTS_DIR/release_game_path.txt"
+        else
+            log_error "Release game compilation failed"
+            exit 1
+        fi
     else
-        log_error "Release game compilation failed"
-        exit 1
+        log_info "Skipping release game compilation (--debug-only specified)"
+        echo "" > "$RESULTS_DIR/release_game_path.txt"
     fi
 }
 
@@ -121,15 +139,26 @@ run_disassembler_test() {
     local game_type="$2"          # "debug" or "release"
     local disassembler_path="$3"
     local game_path="$4"
+    local filter_flag="${5:-}"     # Optional: "--show-filter-rules"
 
     local test_name="${disassembler_type}_disasm_${game_type}_game"
+    if [ -n "$filter_flag" ]; then
+        test_name="${test_name}_filter_rules"
+    fi
+
     local output_file="$RESULTS_DIR/${test_name}_output.txt"
     local error_file="$RESULTS_DIR/${test_name}_errors.txt"
 
     log_info "Running $test_name test..."
 
     # Run the disassembler with output capture
-    if timeout 60s "$disassembler_path" "$game_path" > "$output_file" 2> "$error_file"; then
+    local cmd_args=("$disassembler_path")
+    if [ -n "$filter_flag" ]; then
+        cmd_args+=("$filter_flag")
+    fi
+    cmd_args+=("$game_path")
+
+    if timeout 60s "${cmd_args[@]}" > "$output_file" 2> "$error_file"; then
         log_success "$test_name completed successfully"
     else
         local exit_code=$?
@@ -172,6 +201,18 @@ run_disassembler_test() {
         has_critical_errors=1
     fi
 
+    # Filter rule validation if enabled
+    local filter_rules_count=0
+    local filter_rules_ok=0
+    if [ -n "$filter_flag" ]; then
+        local routine_count=$(grep -c -E "(^Main routine|^Routine R)" "$output_file" 2>/dev/null || echo 0)
+        filter_rules_count=$(grep -c "; Filter rules passed:" "$output_file" 2>/dev/null || echo 0)
+        if [ "$routine_count" -eq "$filter_rules_count" ] && [ "$routine_count" -gt 0 ]; then
+            filter_rules_ok=1
+            ((success_indicators++))
+        fi
+    fi
+
     # Generate test summary
     {
         echo "=== $test_name Test Summary ==="
@@ -185,10 +226,20 @@ run_disassembler_test() {
         echo "Objects Found: $object_count"
         echo "Rooms Found: $room_count"
         echo "Error Lines: $error_count"
-        echo "Success Indicators: $success_indicators/6"
+        if [ -n "$filter_flag" ]; then
+            echo "Filter Rules Found: $filter_rules_count"
+            echo "Success Indicators: $success_indicators/7"
+        else
+            echo "Success Indicators: $success_indicators/6"
+        fi
         echo ""
 
-        if [ "$success_indicators" -eq 6 ] && [ "$has_critical_errors" -eq 0 ] && [ "$total_lines" -gt 10 ]; then
+        local expected_indicators=6
+        if [ -n "$filter_flag" ]; then
+            expected_indicators=7
+        fi
+
+        if [ "$success_indicators" -eq "$expected_indicators" ] && [ "$has_critical_errors" -eq 0 ] && [ "$total_lines" -gt 10 ]; then
             echo "STATUS: PASSED ✓"
         else
             echo "STATUS: FAILED ✗"
@@ -203,10 +254,17 @@ run_disassembler_test() {
         echo "- Opcode count >= 2: $([[ $opcode_count -ge 2 ]] && echo "✓" || echo "✗")"
         echo "- Expected function count (≥25): $([[ $function_count -ge $expected_functions ]] && echo "✓ ($function_count/$expected_functions)" || echo "✗ ($function_count/$expected_functions)")"
         echo "- No critical errors: $([[ $has_critical_errors -eq 0 ]] && echo "✓" || echo "✗")"
+        if [ -n "$filter_flag" ]; then
+            echo "- Filter rules match routines: $([[ $filter_rules_ok -eq 1 ]] && echo "✓ ($filter_rules_count rules)" || echo "✗ ($filter_rules_count rules)")"
+        fi
 
     } > "$RESULTS_DIR/${test_name}_summary.txt"
 
-    log_info "  Lines: $total_lines, Functions: $function_count, Opcodes: $opcode_count, Indicators: $success_indicators/6"
+    if [ -n "$filter_flag" ]; then
+        log_info "  Lines: $total_lines, Functions: $function_count, Filter Rules: $filter_rules_count, Indicators: $success_indicators/7"
+    else
+        log_info "  Lines: $total_lines, Functions: $function_count, Opcodes: $opcode_count, Indicators: $success_indicators/6"
+    fi
 }
 
 # Step 4: Run comprehensive disassembler tests
@@ -220,20 +278,46 @@ run_all_disassembler_tests() {
     local debug_disassembler="./target/debug/gruedasm-txd"
     local release_disassembler="./target/release/gruedasm-txd"
 
-    # Test all combinations
-    log_info "Testing all disassembler/game combinations..."
+    # Test combinations based on flags
+    log_info "Testing disassembler/game combinations (debug-only=$DEBUG_ONLY, release-only=$RELEASE_ONLY, with-filter-rules=$WITH_FILTER_RULES)..."
 
-    # Debug disassembler + Debug game
-    run_disassembler_test "debug" "debug" "$debug_disassembler" "$debug_game"
+    # Test debug combinations unless release-only
+    if [ "$RELEASE_ONLY" = false ]; then
+        if [ "$DEBUG_ONLY" = false ] && [ -n "$release_game" ]; then
+            # Debug disassembler + Release game
+            run_disassembler_test "debug" "release" "$debug_disassembler" "$release_game"
+            if [ "$WITH_FILTER_RULES" = true ]; then
+                run_disassembler_test "debug" "release" "$debug_disassembler" "$release_game" "--show-filter-rules"
+            fi
+        fi
 
-    # Debug disassembler + Release game
-    run_disassembler_test "debug" "release" "$debug_disassembler" "$release_game"
+        if [ -n "$debug_game" ]; then
+            # Debug disassembler + Debug game
+            run_disassembler_test "debug" "debug" "$debug_disassembler" "$debug_game"
+            if [ "$WITH_FILTER_RULES" = true ]; then
+                run_disassembler_test "debug" "debug" "$debug_disassembler" "$debug_game" "--show-filter-rules"
+            fi
+        fi
+    fi
 
-    # Release disassembler + Debug game
-    run_disassembler_test "release" "debug" "$release_disassembler" "$debug_game"
+    # Test release combinations unless debug-only
+    if [ "$DEBUG_ONLY" = false ]; then
+        if [ "$RELEASE_ONLY" = false ] && [ -n "$debug_game" ]; then
+            # Release disassembler + Debug game
+            run_disassembler_test "release" "debug" "$release_disassembler" "$debug_game"
+            if [ "$WITH_FILTER_RULES" = true ]; then
+                run_disassembler_test "release" "debug" "$release_disassembler" "$debug_game" "--show-filter-rules"
+            fi
+        fi
 
-    # Release disassembler + Release game
-    run_disassembler_test "release" "release" "$release_disassembler" "$release_game"
+        if [ -n "$release_game" ]; then
+            # Release disassembler + Release game
+            run_disassembler_test "release" "release" "$release_disassembler" "$release_game"
+            if [ "$WITH_FILTER_RULES" = true ]; then
+                run_disassembler_test "release" "release" "$release_disassembler" "$release_game" "--show-filter-rules"
+            fi
+        fi
+    fi
 }
 
 # Step 5: Generate comprehensive report
@@ -348,15 +432,111 @@ generate_final_report() {
     fi
 }
 
+# Parse command line arguments
+parse_args() {
+    NO_BUILD=false
+    CLEAN_BUILD=false
+    DEBUG_ONLY=false
+    RELEASE_ONLY=false
+    WITH_FILTER_RULES=false
+
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --no-build)
+                NO_BUILD=true
+                shift
+                ;;
+            --clean-build)
+                CLEAN_BUILD=true
+                shift
+                ;;
+            --debug-only)
+                DEBUG_ONLY=true
+                shift
+                ;;
+            --release-only)
+                RELEASE_ONLY=true
+                shift
+                ;;
+            --with-filter-rules)
+                WITH_FILTER_RULES=true
+                shift
+                ;;
+            --help|-h)
+                echo "Usage: $0 [OPTIONS]"
+                echo ""
+                echo "Build Control:"
+                echo "  --no-build          Skip all building, use existing binaries"
+                echo "  --clean-build       Full clean + rebuild (default: incremental build)"
+                echo ""
+                echo "Build Selection:"
+                echo "  --debug-only        Test only debug builds"
+                echo "  --release-only      Test only release builds"
+                echo "                      (default: test both debug and release)"
+                echo ""
+                echo "Feature Testing:"
+                echo "  --with-filter-rules Include filter transparency testing"
+                echo ""
+                echo "Examples:"
+                echo "  $0 --no-build --release-only --with-filter-rules"
+                echo "  $0 --clean-build --with-filter-rules"
+                echo "  $0 --debug-only"
+                exit 0
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                echo "Use --help for usage information"
+                exit 1
+                ;;
+        esac
+    done
+
+    # Validation
+    if [ "$DEBUG_ONLY" = true ] && [ "$RELEASE_ONLY" = true ]; then
+        log_error "Cannot specify both --debug-only and --release-only"
+        exit 1
+    fi
+
+    if [ "$NO_BUILD" = true ] && [ "$CLEAN_BUILD" = true ]; then
+        log_error "Cannot specify both --no-build and --clean-build"
+        exit 1
+    fi
+}
+
 # Main execution
 main() {
+    parse_args "$@"
+
     log_info "Starting Mini Zork Disassembler Test Protocol"
     log_info "Timestamp: $TIMESTAMP"
+    log_info "Configuration: no-build=$NO_BUILD, clean-build=$CLEAN_BUILD, debug-only=$DEBUG_ONLY, release-only=$RELEASE_ONLY, with-filter-rules=$WITH_FILTER_RULES"
 
     create_results_dir
-    clean_build
-    build_all_versions
-    compile_game_files
+
+    if [ "$NO_BUILD" = false ]; then
+        if [ "$CLEAN_BUILD" = true ]; then
+            clean_build
+        fi
+        build_all_versions
+        compile_game_files
+    else
+        log_info "Skipping build phase (--no-build specified)"
+        # Use existing compiled game files
+        log_info "Using existing compiled game files..."
+        if [ "$RELEASE_ONLY" = false ]; then
+            echo "$TESTS_DIR/mini_zork_debug.z3" > "$RESULTS_DIR/debug_game_path.txt"
+            log_info "Using debug game: mini_zork_debug.z3"
+        else
+            echo "" > "$RESULTS_DIR/debug_game_path.txt"
+        fi
+        if [ "$DEBUG_ONLY" = false ]; then
+            echo "$TESTS_DIR/mini_zork_fixed_validation.z3" > "$RESULTS_DIR/release_game_path.txt"
+            log_info "Using release game: mini_zork_fixed_validation.z3"
+        else
+            echo "" > "$RESULTS_DIR/release_game_path.txt"
+        fi
+    fi
+
     run_all_disassembler_tests
     generate_final_report
 

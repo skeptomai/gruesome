@@ -1,0 +1,22 @@
+messages {
+    prompt: ">> ",
+    unknown_command: "Lo siento, no entiendo ese comando.\n",
+}
+
+world {
+    start_room: Room {
+        description: "You are in a test room.",
+    }
+}
+
+grammar {
+    test: {
+        pattern: "test";
+        action: test_action();
+    }
+}
+
+fn test_action() {
+    print("Test action executed!");
+    new_line();
+}

@@ -1,0 +1,45 @@
+// Minimal test to isolate exit.message vs exit.destination issue
+
+world {
+    room test_room "Test Room" {
+        desc: "Test room"
+        exits: {
+            east: blocked("Test blocked message")
+        }
+    }
+}
+
+grammar {
+    verb "test" {
+        default => handle_test()
+    }
+    verb "quit" {
+        default => handle_quit()
+    }
+    verb "y" {
+        default => handle_yes()
+    }
+}
+
+fn handle_test() {
+    let exit = player.location.get_exit("east");
+    println("=== Exit Debug Test ===");
+    println("Raw exit value: " + exit);
+    println("exit.destination: " + exit.destination);
+    println("exit.message: " + exit.message);
+    println("exit.blocked: " + exit.blocked);
+}
+
+fn handle_quit() {
+    println("Are you sure? (y/n)");
+}
+
+fn handle_yes() {
+    quit();
+}
+
+init {
+    player.location = test_room;
+    println("Enter 'test' to run exit debug test");
+    println("Enter 'quit' to exit");
+}

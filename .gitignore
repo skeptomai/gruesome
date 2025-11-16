@@ -9,6 +9,9 @@ debug.log
 /*.z5
 /*.grue
 
+# Save files
+*.sav
+
 # Claude Code settings
 .claude/settings.local.json
 pkg/

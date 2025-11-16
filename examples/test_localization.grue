@@ -1,0 +1,22 @@
+messages {
+    prompt: "🎮 ",
+    unknown_command: "No comprendo ese comando.\n",
+}
+
+world {
+    Room test_room {
+        description: "You are in a localization test room.",
+    }
+}
+
+grammar {
+    hello: {
+        pattern: "hello";
+        action: hello_action();
+    }
+}
+
+fn hello_action() {
+    print("¡Hola! The localization system works!");
+    new_line();
+}

@@ -65,25 +65,33 @@ clean_build() {
 
 # Step 2: Build debug and release disassemblers
 build_disassemblers() {
-    log_step "STEP 2: Build Debug and Release Disassemblers"
+    log_step "STEP 2: Build Disassemblers"
     cd "$PROJECT_DIR"
 
-    # Build debug version
-    log_info "Building debug disassembler..."
-    if cargo build --bin gruedasm-txd; then
-        log_success "Debug disassembler build completed"
+    # Build debug version unless release-only
+    if [ "$RELEASE_ONLY" = false ]; then
+        log_info "Building debug disassembler..."
+        if cargo build --bin gruedasm-txd; then
+            log_success "Debug disassembler build completed"
+        else
+            log_error "Debug disassembler build failed"
+            exit 1
+        fi
     else
-        log_error "Debug disassembler build failed"
-        exit 1
+        log_info "Skipping debug disassembler build (--release-only specified)"
     fi
 
-    # Build release version
-    log_info "Building release disassembler..."
-    if cargo build --bin gruedasm-txd --release; then
-        log_success "Release disassembler build completed"
+    # Build release version unless debug-only
+    if [ "$DEBUG_ONLY" = false ]; then
+        log_info "Building release disassembler..."
+        if cargo build --bin gruedasm-txd --release; then
+            log_success "Release disassembler build completed"
+        else
+            log_error "Release disassembler build failed"
+            exit 1
+        fi
     else
-        log_error "Release disassembler build failed"
-        exit 1
+        log_info "Skipping release disassembler build (--debug-only specified)"
     fi
 }
 
@@ -104,15 +112,26 @@ verify_game_file() {
 run_zork1_disasm_test() {
     local disassembler_type="$1"  # "debug" or "release"
     local disassembler_path="$2"
+    local filter_flag="${3:-}"     # Optional: "--show-filter-rules"
 
     local test_name="${disassembler_type}_disasm"
+    if [ -n "$filter_flag" ]; then
+        test_name="${test_name}_filter_rules"
+    fi
+
     local output_file="$RESULTS_DIR/${test_name}_output.txt"
     local error_file="$RESULTS_DIR/${test_name}_errors.txt"
 
     log_info "Running $test_name test against Zork I..."
 
     # Run the disassembler with output capture
-    if timeout 300s "$disassembler_path" "$GAME_FILE" > "$output_file" 2> "$error_file"; then
+    local cmd_args=("$disassembler_path")
+    if [ -n "$filter_flag" ]; then
+        cmd_args+=("$filter_flag")
+    fi
+    cmd_args+=("$GAME_FILE")
+
+    if timeout 300s "${cmd_args[@]}" > "$output_file" 2> "$error_file"; then
         log_success "$test_name completed successfully"
     else
         local exit_code=$?
@@ -149,6 +168,18 @@ run_zork1_disasm_test() {
         has_critical_errors=1
     fi
 
+    # Filter rule validation if enabled
+    local filter_rules_count=0
+    local filter_rules_ok=0
+    if [ -n "$filter_flag" ]; then
+        local total_routines=$(grep -c -E "(^Main routine|^Routine R)" "$output_file" 2>/dev/null || echo 0)
+        filter_rules_count=$(grep -c "; Filter rules passed:" "$output_file" 2>/dev/null || echo 0)
+        if [ "$total_routines" -eq "$filter_rules_count" ] && [ "$total_routines" -gt 0 ]; then
+            filter_rules_ok=1
+            ((success_indicators++))
+        fi
+    fi
+
     # Check for Z-Machine format compliance
     local format_indicators=0
     if grep -q "Header\|Z-Machine" "$output_file"; then ((format_indicators++)); fi
@@ -169,11 +200,23 @@ run_zork1_disasm_test() {
         echo "Objects Found: $object_count"
         echo "Rooms Found: $room_count"
         echo "Error Lines: $error_count"
-        echo "Success Indicators: $success_indicators/6"
+        if [ -n "$filter_flag" ]; then
+            echo "Filter Rules Found: $filter_rules_count"
+            echo "Success Indicators: $success_indicators/7"
+        else
+            echo "Success Indicators: $success_indicators/6"
+        fi
         echo "Format Indicators: $format_indicators/3"
         echo ""
 
-        if [ "$success_indicators" -ge 5 ] && [ "$has_critical_errors" -eq 0 ] && [ "$total_lines" -gt 5000 ]; then
+        local expected_indicators=6
+        local min_success_indicators=5
+        if [ -n "$filter_flag" ]; then
+            expected_indicators=7
+            min_success_indicators=6
+        fi
+
+        if [ "$success_indicators" -ge "$min_success_indicators" ] && [ "$has_critical_errors" -eq 0 ] && [ "$total_lines" -gt 5000 ]; then
             echo "STATUS: PASSED ✓"
         else
             echo "STATUS: FAILED ✗"
@@ -193,10 +236,19 @@ run_zork1_disasm_test() {
         echo "- Dictionary structure: $(grep -q "Dictionary\|Vocab" "$output_file" && echo "✓" || echo "✗")"
         echo "- Abbreviations table: $(grep -q "Abbreviation\|Abbrev" "$output_file" && echo "✓" || echo "✗")"
         echo "- No critical errors: $([[ $has_critical_errors -eq 0 ]] && echo "✓" || echo "✗")"
+        if [ -n "$filter_flag" ]; then
+            echo ""
+            echo "Filter Transparency Checklist:"
+            echo "- Filter rules match routines: $([[ $filter_rules_ok -eq 1 ]] && echo "✓ ($filter_rules_count rules)" || echo "✗ ($filter_rules_count rules)")"
+        fi
 
     } > "$RESULTS_DIR/${test_name}_summary.txt"
 
-    log_info "  Lines: $total_lines, Functions: $function_count, Routines: $routine_count, Strings: $string_count, Indicators: $success_indicators/6"
+    if [ -n "$filter_flag" ]; then
+        log_info "  Lines: $total_lines, Routines: $routine_count, Filter Rules: $filter_rules_count, Indicators: $success_indicators/7"
+    else
+        log_info "  Lines: $total_lines, Functions: $function_count, Routines: $routine_count, Strings: $string_count, Indicators: $success_indicators/6"
+    fi
 }
 
 # Step 4: Run Zork I disassembler tests
@@ -207,14 +259,24 @@ run_all_zork1_disasm_tests() {
     local debug_disassembler="./target/debug/gruedasm-txd"
     local release_disassembler="./target/release/gruedasm-txd"
 
-    # Test both disassembler versions
-    log_info "Testing both disassembler versions against Zork I..."
+    # Test disassembler versions based on flags
+    log_info "Testing disassembler versions against Zork I (debug-only=$DEBUG_ONLY, release-only=$RELEASE_ONLY, with-filter-rules=$WITH_FILTER_RULES)..."
 
-    # Debug disassembler
-    run_zork1_disasm_test "debug" "$debug_disassembler"
+    # Test debug disassembler unless release-only
+    if [ "$RELEASE_ONLY" = false ]; then
+        run_zork1_disasm_test "debug" "$debug_disassembler"
+        if [ "$WITH_FILTER_RULES" = true ]; then
+            run_zork1_disasm_test "debug" "$debug_disassembler" "--show-filter-rules"
+        fi
+    fi
 
-    # Release disassembler
-    run_zork1_disasm_test "release" "$release_disassembler"
+    # Test release disassembler unless debug-only
+    if [ "$DEBUG_ONLY" = false ]; then
+        run_zork1_disasm_test "release" "$release_disassembler"
+        if [ "$WITH_FILTER_RULES" = true ]; then
+            run_zork1_disasm_test "release" "$release_disassembler" "--show-filter-rules"
+        fi
+    fi
 }
 
 # Step 5: Generate comprehensive report
@@ -339,14 +401,96 @@ generate_final_report() {
     fi
 }
 
+# Parse command line arguments
+parse_args() {
+    NO_BUILD=false
+    CLEAN_BUILD=false
+    DEBUG_ONLY=false
+    RELEASE_ONLY=false
+    WITH_FILTER_RULES=false
+
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --no-build)
+                NO_BUILD=true
+                shift
+                ;;
+            --clean-build)
+                CLEAN_BUILD=true
+                shift
+                ;;
+            --debug-only)
+                DEBUG_ONLY=true
+                shift
+                ;;
+            --release-only)
+                RELEASE_ONLY=true
+                shift
+                ;;
+            --with-filter-rules)
+                WITH_FILTER_RULES=true
+                shift
+                ;;
+            --help|-h)
+                echo "Usage: $0 [OPTIONS]"
+                echo ""
+                echo "Build Control:"
+                echo "  --no-build          Skip all building, use existing binaries"
+                echo "  --clean-build       Full clean + rebuild (default: incremental build)"
+                echo ""
+                echo "Build Selection:"
+                echo "  --debug-only        Test only debug builds"
+                echo "  --release-only      Test only release builds"
+                echo "                      (default: test both debug and release)"
+                echo ""
+                echo "Feature Testing:"
+                echo "  --with-filter-rules Include filter transparency testing"
+                echo ""
+                echo "Examples:"
+                echo "  $0 --no-build --release-only --with-filter-rules"
+                echo "  $0 --clean-build --with-filter-rules"
+                echo "  $0 --debug-only"
+                exit 0
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                echo "Use --help for usage information"
+                exit 1
+                ;;
+        esac
+    done
+
+    # Validation
+    if [ "$DEBUG_ONLY" = true ] && [ "$RELEASE_ONLY" = true ]; then
+        log_error "Cannot specify both --debug-only and --release-only"
+        exit 1
+    fi
+
+    if [ "$NO_BUILD" = true ] && [ "$CLEAN_BUILD" = true ]; then
+        log_error "Cannot specify both --no-build and --clean-build"
+        exit 1
+    fi
+}
+
 # Main execution
 main() {
+    parse_args "$@"
+
     log_info "Starting Zork I Disassembler Test Protocol"
     log_info "Timestamp: $TIMESTAMP"
+    log_info "Configuration: no-build=$NO_BUILD, clean-build=$CLEAN_BUILD, debug-only=$DEBUG_ONLY, release-only=$RELEASE_ONLY, with-filter-rules=$WITH_FILTER_RULES"
 
     create_results_dir
-    clean_build
-    build_disassemblers
+
+    if [ "$NO_BUILD" = false ]; then
+        if [ "$CLEAN_BUILD" = true ]; then
+            clean_build
+        fi
+        build_disassemblers
+    else
+        log_info "Skipping build phase (--no-build specified)"
+    fi
+
     verify_game_file
     run_all_zork1_disasm_tests
     generate_final_report

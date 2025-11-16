@@ -1,0 +1,45 @@
+// Direct exit test - call get_exit directly on room object
+
+world {
+    room test_room "Test Room" {
+        desc: "Test room"
+        exits: {
+            east: blocked("Test blocked message")
+        }
+    }
+}
+
+grammar {
+    verb "test" {
+        default => handle_test()
+    }
+    verb "quit" {
+        default => handle_quit()
+    }
+    verb "y" {
+        default => handle_yes()
+    }
+}
+
+fn handle_test() {
+    let exit = test_room.get_exit("east");  // Direct room access instead of player.location
+    println("=== Direct Exit Test ===");
+    println("Raw exit value: " + exit);
+    println("exit.destination: " + exit.destination);
+    println("exit.message: " + exit.message);
+    println("exit.blocked: " + exit.blocked);
+}
+
+fn handle_quit() {
+    println("Are you sure? (y/n)");
+}
+
+fn handle_yes() {
+    quit();
+}
+
+init {
+    player.location = test_room;
+    println("Enter 'test' to run direct exit test");
+    println("Enter 'quit' to exit");
+}
