@@ -806,26 +806,27 @@ impl ZMachineCodeGen {
         // Critical: Never touches static fields like serial number or version.
         // Updates: PC start, dictionary, objects, globals, static memory, abbreviations, high memory base
         log::debug!(" Step 3e: Updating header address fields with final memory layout");
-        // ARCHITECTURAL FIX: PC calculation for main program with proper routine header
-        // PC must point to first instruction AFTER the routine header (header size = 1 byte for local count)
+        // DISASSEMBLER COMPATIBILITY FIX: PC calculation for main program
+        // CHANGE: main_program_offset now points directly to first instruction (after dummy header)
+        // No need to add +1 since generate_init_block() returns actual_init_start (post-dummy-header)
         // CRITICAL FIX: Account for builtin functions that precede the main program in code_space
-        let calculated_pc = (self.final_code_base + self.main_program_offset + 1) as u16;
+        let calculated_pc = (self.final_code_base + self.main_program_offset) as u16;
         log::debug!(
  " PC_CALCULATION_DEBUG: final_code_base=0x{:04x}, main_program_offset=0x{:04x}, calculated_pc=0x{:04x}",
  self.final_code_base, self.main_program_offset, calculated_pc
  );
         log::debug!(
- " PC_CALCULATION_DEBUG: PC will point to first instruction at 0x{:04x} (after routine header)",
+ " PC_CALCULATION_DEBUG: PC will point to first instruction at 0x{:04x} (after dummy header)",
  calculated_pc
  );
         self.fixup_header_addresses(
-            calculated_pc,                 // pc_start (points after routine header)
-            self.dictionary_addr as u16,   // dictionary_addr
+            calculated_pc, // pc_start (points to first instruction after dummy header)
+            self.dictionary_addr as u16, // dictionary_addr
             self.final_object_base as u16, // objects_addr
-            self.global_vars_addr as u16,  // globals_addr
-            static_memory_start as u16,    // static_memory_base
-            abbreviations_base as u16,     // abbreviations_addr
-            self.final_code_base as u16,   // high_mem_base
+            self.global_vars_addr as u16, // globals_addr
+            static_memory_start as u16, // static_memory_base
+            abbreviations_base as u16, // abbreviations_addr
+            self.final_code_base as u16, // high_mem_base
         )?;
 
         // Phase 3e.5: Map all object IR IDs to addresses (CRITICAL FIX for UnresolvedReference resolution)

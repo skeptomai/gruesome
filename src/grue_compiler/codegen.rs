@@ -6020,13 +6020,31 @@ impl ZMachineCodeGen {
         // Set init block context flag
         self.in_init_block = true;
 
-        // Record this as the init routine that PC will point to (main program entry point)
-        let init_routine_address = self.code_address;
+        // DISASSEMBLER COMPATIBILITY FIX: Emit dummy routine header for disassembler tools
+        //
+        // PROBLEM: Disassembler tools expect routine headers at initial_pc-1 for validation
+        // SOLUTION: Emit dummy header (0 locals) before actual init code
+        //
+        // MECHANISM:
+        // 1. Disassembler reads initial_pc from header, validates by checking initial_pc-1 for routine header
+        // 2. Interpreter reads initial_pc from header, executes starting at initial_pc (first instruction)
+        // 3. Same memory layout satisfies both tools with different access patterns
+
+        let dummy_header_address = self.code_address;
+        log::debug!(
+            "🔧 DISASSEMBLER_COMPAT: Emitting dummy routine header (0 locals) at 0x{:04x}",
+            dummy_header_address
+        );
+        self.emit_byte(0x00)?; // Dummy routine header: 0 locals (for disassembler validation)
+
+        // Record actual init start address (after dummy header) - this is where PC will point
+        let actual_init_start = self.code_address;
         let init_routine_id = 8000u32;
 
         log::info!(
-            " ZORK_ARCHITECTURE: Generating init routine at 0x{:04x} (PC target, header first)",
-            init_routine_address
+            " DISASSEMBLER_COMPAT: Dummy header at 0x{:04x}, actual init start at 0x{:04x} (PC target)",
+            dummy_header_address,
+            actual_init_start
         );
 
         // Set up function context for init block
@@ -6049,32 +6067,18 @@ impl ZMachineCodeGen {
         self.current_function_locals = _ir.init_block_locals.len() as u8;
         self.current_function_name = Some("main".to_string());
 
-        // ARCHITECTURAL FIX: Generate proper V3 function header with correct local variable allocation
-        // The main program must be a proper Z-Machine function - PC points to function start (header)
-        // Z-Machine spec: "Execution of instructions begins from the byte after this header information"
+        // COMPATIBILITY NOTE: We don't emit a real routine header here because init blocks
+        // should execute as bare code (per Z-Machine spec V1-V5). The dummy header above
+        // is only for disassembler tool compatibility, not for Z-Machine execution.
         log::debug!(
-            "🏁 MAIN_PROGRAM: Generating routine header at 0x{:04x} (PC will point here)",
+            "🏁 INIT_INSTRUCTIONS: Starting init block code generation at 0x{:04x}",
             self.code_address
         );
 
-        // Generate V3 function header: Local count
-        // Now that we know the actual local count from init_block_locals, emit it directly
-        let header_location = self.code_address;
-        self.emit_byte(self.current_function_locals)?; // Emit actual local count
-
-        log::debug!(
-            "🏁 MAIN_ROUTINE: Header complete at 0x{:04x}, instructions follow",
-            self.code_address
-        );
-
-        // Record main routine address and header location for patching
+        // Record main routine address (actual init start, not dummy header)
         self.function_addresses
-            .insert(init_routine_id, init_routine_address);
-        self.record_final_address(init_routine_id, init_routine_address);
-
-        // Store header location for later local count patching
-        self.function_header_locations
-            .insert(init_routine_id, header_location);
+            .insert(init_routine_id, actual_init_start);
+        self.record_final_address(init_routine_id, actual_init_start);
 
         // Generate the init block code directly after the header
         // CRITICAL: Use translate_ir_instruction to ensure proper instruction generation
@@ -6120,14 +6124,11 @@ impl ZMachineCodeGen {
             }
         }
 
-        // ARCHITECTURAL FIX: Finalize init routine header with actual local variable count
-        // NOTE: Init routine (ID 8000) IS the main program entry point that PC starts at
-        // This is NOT the main loop routine (ID 9000) - that gets finalized separately
+        // DUMMY HEADER NOTE: No finalization needed for dummy header (just 0x00)
+        // The dummy header is static and doesn't require patching like real routine headers
         log::debug!(
- "🔧 INIT_ROUTINE_FINALIZE: Patching init routine header (ID {}) with {} local variables used",
- init_routine_id, self.current_function_locals
- );
-        self.finalize_function_header(init_routine_id)?;
+            "🔧 INIT_ROUTINE: Skipping header finalization (using dummy header for disassembler compatibility)"
+        );
 
         // Add program-mode specific termination
         match _ir.program_mode {
@@ -6200,13 +6201,15 @@ impl ZMachineCodeGen {
         self.in_init_block = false;
 
         log::info!(
-            " INIT_ROUTINE: Complete at 0x{:04x} (PC target: 0x{:04x}, 0 locals)",
+            " INIT_ROUTINE: Complete at 0x{:04x} (PC target: 0x{:04x}, dummy header at 0x{:04x})",
             self.code_address - 1,
-            init_routine_address
+            actual_init_start,
+            dummy_header_address
         );
 
-        // Return init routine address and 0 locals (simple init block)
-        Ok((init_routine_address, 0))
+        // Return actual init start address (after dummy header) and 0 locals
+        // PC will point to actual_init_start, disassembler will validate dummy header at actual_init_start-1
+        Ok((actual_init_start, 0))
     }
 
     /// Validate story data integrity and boundary calculations

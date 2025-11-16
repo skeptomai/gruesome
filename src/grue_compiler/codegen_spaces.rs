@@ -262,10 +262,10 @@ impl ZMachineCodeGen {
             self.builtin_space_end
         );
 
-        // PHASE 2A.7: Set main program offset AFTER builtin functions are generated
-        // CRITICAL FIX: main_program_offset must account for builtin functions preceding it
-        self.main_program_offset = self.builtin_space_end;
-        log::debug!("🎯 MAIN_PROGRAM_OFFSET: Main program will start at code_space[0x{:04x}] after builtin functions", self.main_program_offset);
+        // PHASE 2A.7: Set temporary main program offset for builtin alignment
+        // This will be updated to actual init start address after init block generation
+        let temp_main_program_offset = self.builtin_space_end;
+        log::debug!("🎯 TEMP_MAIN_PROGRAM_OFFSET: Init block generation will start at code_space[0x{:04x}] after builtin functions", temp_main_program_offset);
         self.code_address = self.code_space.len(); // Set to current code_space position
 
         // PHASE 2A.8: Generate init block AFTER builtin functions (CRITICAL FIX)
@@ -276,15 +276,22 @@ impl ZMachineCodeGen {
                 init_block.instructions.len()
             );
             let (startup_address, init_locals_count) = self.generate_init_block(init_block, ir)?;
+
+            // DISASSEMBLER COMPATIBILITY FIX: Use actual init start for PC calculation
+            // startup_address now points to first instruction (after dummy header)
+            self.main_program_offset = startup_address;
+
             self.init_routine_locals_count = init_locals_count;
             log::info!(
-                " Init block generated as routine at startup address 0x{:04x} with {} locals",
-                startup_address,
-                init_locals_count
+                " Init block generated - dummy header at 0x{:04x}, actual PC target at 0x{:04x}",
+                temp_main_program_offset,
+                startup_address
             );
             init_locals_count
         } else {
             log::debug!("No init block found");
+            // No init block - use temp offset as final offset
+            self.main_program_offset = temp_main_program_offset;
             0
         };
 
