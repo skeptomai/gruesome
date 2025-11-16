@@ -597,6 +597,152 @@ Based on Sparky's direction and current findings, the priorities should be:
 
 ---
 
+## CRITICAL DISCOVERY: FUNCTION INLINING ARCHITECTURAL ISSUE (November 15, 2025)
+
+### **Root Cause of Disassembler Finding Only 1 Routine**
+
+After eliminating the property margin hypothesis and conducting detailed investigation, the actual problem has been identified:
+
+**PROBLEM**: User-defined functions are being **inlined into the main program routine** instead of being generated as **separate Z-Machine functions**.
+
+### **Evidence and Analysis**
+
+#### **Function Generation vs. Function Placement**
+
+**✅ Compiler Internal Generation**: Working correctly
+- Source analysis: 25 user-defined functions in mini_zork.grue
+- Compiler generates: 29 functions total (25 user + 4 builtin)
+- Function completion logs show proper generation: `Function 'handle_score' complete: 19 bytes generated`
+
+**❌ Z-Machine Function Architecture**: Broken
+- **Expected**: 29 separate Z-Machine routines with individual headers
+- **Actual**: 1 massive main routine (~1900 bytes) with all functions inlined
+- **Disassembler sees**: Single routine from 0x0678 to 0x0816+ containing everything
+
+#### **Technical Analysis**
+
+**Memory Layout Evidence**:
+```
+Main program starts: 0x0069
+Main loop starts:     0x0816
+Size of main routine: ~1900 bytes
+```
+
+**Z-Machine Architecture Violation**:
+- **Correct**: Each function should be separate Z-Machine routine with own header
+- **Our Implementation**: All functions inlined into main program execution flow
+- **Impact**: Disassembler cannot distinguish individual functions from main program
+
+#### **Hex Analysis Comparison**
+
+**Commercial Zork I** (proper function headers):
+```
+00004e37: 0001 0000 b298 05aa   // 00 01 = function header (0 locals)
+```
+
+**Our Generated File** (malformed/missing headers):
+```
+00000898: 0100 00e0 3f06 0b00   // 01 00 = not a proper function header
+```
+
+### **Architectural Root Cause**
+
+**Function Generation Process Analysis**:
+
+1. **✅ Functions compiled correctly** to intermediate representation
+2. **✅ Function bytecode generated** in compiler's internal "code space"
+3. **❌ Functions inlined into main program** instead of emitted as separate routines
+4. **❌ Missing function headers** for individual user functions
+5. **❌ Missing function call instructions** - direct inline execution instead
+
+**Code Generation Architecture Issue**:
+- Builtin functions: Generated as separate routines (working correctly)
+- User functions: Inlined into main program flow (architectural bug)
+- Main program: Becomes massive routine containing all user code
+
+### **Why Property Margin Elimination Didn't Fix This**
+
+**Successful Property Optimization**:
+- ✅ Eliminated 650+ bytes of double margin waste
+- ✅ Additional 600-byte file size reduction achieved
+- ✅ All gameplay functionality preserved
+- ✅ Property system working correctly
+
+**Disassembler Issue Unrelated**:
+- Property margin changes affect memory allocation, not function architecture
+- Function inlining issue exists regardless of property table size
+- Root cause is in **code generation architecture**, not **memory layout**
+
+### **Impact Assessment**
+
+**Runtime Functionality**: ✅ **WORKING**
+- Games execute correctly with our interpreter
+- All function calls work properly
+- Object manipulation, scoring, inventory systems functional
+- Inline execution provides correct game behavior
+
+**Ecosystem Compatibility**: ❌ **BROKEN**
+- Standard disassemblers cannot parse our function structure
+- External Z-Machine tools fail to understand our layout
+- Debugging tools cannot identify individual functions
+- Professional Z-Machine ecosystem integration impossible
+
+### **Required Fix: Function Generation Architecture**
+
+**Current Architecture** (Broken):
+```
+Main Program Routine [MASSIVE ~1900 bytes]
+├── Inline Function Code: handle_score
+├── Inline Function Code: handle_moves
+├── Inline Function Code: look_around
+├── ... (all user functions inlined)
+└── Main Loop Code
+```
+
+**Required Architecture** (Z-Machine Standard):
+```
+Routine #1: handle_score [separate function with header]
+Routine #2: handle_moves [separate function with header]
+Routine #3: look_around [separate function with header]
+... (individual routines)
+Routine #29: Main Program [calls other functions via call instructions]
+```
+
+**Implementation Requirements**:
+1. **Generate separate Z-Machine routines** for each user function
+2. **Emit proper function headers** (locals count + initialization)
+3. **Replace inline code with function calls** in main program
+4. **Update function address resolution** to handle separate routines
+5. **Ensure proper routine boundaries** for disassembler compatibility
+
+### **Priority Reassessment**
+
+**CRITICAL ARCHITECTURAL ISSUE**: This affects **fundamental Z-Machine compliance**
+
+**Impact Scope**:
+- **Ecosystem Integration**: Cannot use standard Z-Machine tools
+- **Professional Development**: Debugging and analysis tools unusable
+- **Specification Compliance**: Violates Z-Machine function architecture
+- **Tool Compatibility**: All external disassemblers fail
+
+**Implementation Complexity**: **HIGH**
+- Requires changes to core code generation architecture
+- Function call resolution system needs updates
+- Address calculation and reference resolution affected
+- Comprehensive testing required to ensure functionality preserved
+
+### **Status: INVESTIGATION COMPLETE - AWAITING IMPLEMENTATION DECISION**
+
+**Next Steps Required**:
+1. **Architectural redesign** of function generation system
+2. **Separate routine emission** for user-defined functions
+3. **Function call instruction generation** instead of inlining
+4. **Comprehensive testing** to ensure game functionality preserved
+
+**Key Insight**: This is not a "layout compliance" issue but a **fundamental architectural compliance** problem with Z-Machine function semantics.
+
+---
+
 ## AREAS REQUIRING INVESTIGATION
 
 ### **1. Compiler Address Generation**

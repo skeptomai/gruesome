@@ -410,7 +410,7 @@ impl<'a> TxdDisassembler<'a> {
 
     /// Add a routine to the discovery list
     fn add_routine(&mut self, addr: u32) {
-        debug!("TXD_ADD_ROUTINE: {:04x}", addr);
+        debug!("TXD_ADD_ROUTINE: Attempting to add {:04x}", addr);
 
         let rounded_addr = self.round_code(addr);
         if !self.routines.contains_key(&rounded_addr) {
@@ -433,7 +433,20 @@ impl<'a> TxdDisassembler<'a> {
                 };
                 self.routines.insert(rounded_addr, routine_info);
                 self.routine_queue.push(rounded_addr);
+
+                debug!("TXD_ADD_ROUTINE: SUCCESS - Added routine {:04x} with {} locals, total routines: {}",
+                       rounded_addr, locals_count, self.routines.len());
+            } else {
+                debug!(
+                    "TXD_ADD_ROUTINE: REJECT - Invalid routine at {:04x} (failed validation)",
+                    addr
+                );
             }
+        } else {
+            debug!(
+                "TXD_ADD_ROUTINE: SKIP - Routine {:04x} already exists",
+                rounded_addr
+            );
         }
     }
 
@@ -579,9 +592,54 @@ impl<'a> TxdDisassembler<'a> {
     /// routines that TXD discovers through additional mechanisms we haven't
     /// reverse-engineered yet (likely object property scanning, action tables, etc.).
     pub fn discover_routines(&mut self) -> Result<(), String> {
+        // CRITICAL DEBUG: Show what we're starting with
+        debug!("=== DISASSEMBLER STARTING PC ANALYSIS ===");
+        debug!("Game PC from header: {:04x}", self.initial_pc);
+        debug!("Code base: {:04x}", self.code_base);
+
+        // Show first 32 bytes at PC location
+        debug!("First 32 bytes at PC {:04x}:", self.initial_pc);
+        let start_idx = self.initial_pc as usize;
+        if start_idx + 32 <= self.game.memory.len() {
+            let bytes = &self.game.memory[start_idx..start_idx + 32];
+            debug!("  {:04x}: {:02x?}", self.initial_pc, &bytes[0..16]);
+            debug!("  {:04x}: {:02x?}", self.initial_pc + 16, &bytes[16..32]);
+        }
+
         // TXD's initial scan to find starting point (lines 408-421)
         // This updates self.code_base to the found routine or initial_pc
         let start_pc = self.initial_preliminary_scan()?;
+
+        // CRITICAL FIX: Process routine queue to analyze calls in discovered routines
+        // This is the key missing step that allows call-following analysis
+        debug!(
+            "=== QUEUE_PROCESSING: Starting call analysis of {} queued routines ===",
+            self.routine_queue.len()
+        );
+
+        // Process all routines in queue to analyze their calls
+        while !self.routine_queue.is_empty() {
+            // Take a copy of current queue to avoid borrow conflicts
+            let current_queue: Vec<u32> = self.routine_queue.drain(..).collect();
+
+            for routine_addr in current_queue {
+                debug!(
+                    "QUEUE_PROCESSING: Analyzing calls in routine {:04x}",
+                    routine_addr
+                );
+                if let Err(e) = self.analyze_routine_calls_with_expansion(routine_addr) {
+                    debug!(
+                        "QUEUE_PROCESSING: Failed to analyze routine {:04x}: {}",
+                        routine_addr, e
+                    );
+                }
+            }
+        }
+
+        debug!(
+            "=== QUEUE_PROCESSING: Completed - {} total routines discovered ===",
+            self.routines.len()
+        );
 
         // TXD's main boundary expansion algorithm (lines 444-513)
         // TXD: decode.low_address = decode.pc; decode.high_address = decode.pc;
@@ -650,6 +708,47 @@ impl<'a> TxdDisassembler<'a> {
     /// TXD's preliminary scan to find good starting point (lines 408-421)
     /// Returns the starting PC for the main scan
     fn initial_preliminary_scan(&mut self) -> Result<u32, String> {
+        debug!("=== INITIAL PRELIMINARY SCAN ===");
+        debug!(
+            "Trying to validate routine at PC location: {:04x}",
+            self.initial_pc
+        );
+
+        // Check if PC location looks like a valid routine
+        if let Some(locals) = self.validate_routine(self.initial_pc) {
+            debug!(
+                "✅ PC location {:04x} IS a valid routine with {} locals",
+                self.initial_pc, locals
+            );
+            debug!(
+                "Bytes at PC: {:02x?}",
+                &self.game.memory[self.initial_pc as usize..self.initial_pc as usize + 8]
+            );
+
+            // Try to decode first few instructions
+            let mut pc = self.initial_pc + 1; // Skip local count byte
+            for i in 0..3 {
+                if let Ok(instruction) =
+                    Instruction::decode(&self.game.memory, pc as usize, self.version)
+                {
+                    debug!("Instruction {}: {:04x}: {:?}", i, pc, instruction);
+                    pc += instruction.size as u32;
+                } else {
+                    debug!("Failed to decode instruction {} at {:04x}", i, pc);
+                    break;
+                }
+            }
+        } else {
+            debug!(
+                "❌ PC location {:04x} is NOT a valid routine",
+                self.initial_pc
+            );
+            debug!(
+                "Bytes at PC: {:02x?}",
+                &self.game.memory[self.initial_pc as usize..self.initial_pc as usize + 8]
+            );
+        }
+
         // TXD scans from code_base to initial_pc looking for low routines
         let mut decode_pc = self.code_base;
 
@@ -1168,17 +1267,50 @@ impl<'a> TxdDisassembler<'a> {
         let rounded_addr = self.round_code(routine_addr);
         let locals_count = self.game.memory[rounded_addr as usize];
 
+        debug!(
+            "=== CALL_ANALYSIS: Starting analysis of routine at {:04x} ===",
+            routine_addr
+        );
+        debug!("CALL_ANALYSIS: Locals count: {}", locals_count);
+
         let mut pc = rounded_addr + 1;
 
         // Skip local variable initial values in V1-4
         if self.version <= 4 {
             pc += (locals_count as u32) * 2;
+            debug!(
+                "CALL_ANALYSIS: Skipped {} bytes for V{} locals, PC now: {:04x}",
+                (locals_count as u32) * 2,
+                self.version,
+                pc
+            );
         }
+
+        let mut instruction_count = 0;
+        let mut call_count = 0;
 
         // Decode instructions and look for operands that expand boundaries
         while (pc as usize) < self.game.memory.len() {
             match Instruction::decode(&self.game.memory, pc as usize, self.version) {
                 Ok(instruction) => {
+                    instruction_count += 1;
+
+                    // Check if this is a call instruction
+                    let is_call = Self::is_call_instruction(&instruction, self.version);
+                    if is_call {
+                        call_count += 1;
+                        debug!(
+                            "CALL_ANALYSIS: Found CALL instruction #{} at {:04x}: {:?}",
+                            call_count, pc, instruction
+                        );
+                    } else if instruction_count <= 10 {
+                        // Log first few non-call instructions for context
+                        debug!(
+                            "CALL_ANALYSIS: Instruction at {:04x}: {:?}",
+                            pc, instruction
+                        );
+                    }
+
                     // Use the proper instruction target checking that handles V4 opcodes
                     self.check_instruction_targets(&instruction, pc);
 
@@ -1186,13 +1318,27 @@ impl<'a> TxdDisassembler<'a> {
 
                     // Stop at return instructions
                     if Self::is_return_instruction(&instruction) {
+                        debug!(
+                            "CALL_ANALYSIS: Hit return instruction at {:04x}, ending analysis",
+                            pc - instruction.size as u32
+                        );
                         break;
                     }
                 }
-                Err(_) => break,
+                Err(_) => {
+                    debug!(
+                        "CALL_ANALYSIS: Failed to decode instruction at {:04x}, ending analysis",
+                        pc
+                    );
+                    break;
+                }
             }
         }
 
+        debug!(
+            "CALL_ANALYSIS: Completed routine {:04x} - found {} instructions, {} calls",
+            routine_addr, instruction_count, call_count
+        );
         Ok(())
     }
 
@@ -1391,10 +1537,54 @@ impl<'a> TxdDisassembler<'a> {
             && instruction.operands[3] != 0; // timer routine is non-zero
 
         if is_call {
+            debug!(
+                "CALL_TARGET: Processing CALL at {:04x} with {} operands",
+                pc,
+                instruction.operands.len()
+            );
             if let Some(target) = self.extract_routine_target(instruction, pc) {
+                debug!(
+                    "CALL_TARGET: Extracted target {:04x} from CALL at {:04x}",
+                    target, pc
+                );
                 self.process_routine_target(target);
+            } else {
+                debug!(
+                    "CALL_TARGET: Failed to extract target from CALL at {:04x}",
+                    pc
+                );
             }
-        } else if is_timed_read {
+        }
+
+        // Follow branch targets to discover additional code areas that may contain calls
+        // This is critical for compiled games where init routines jump to main rather than call it
+        if let Some(ref branch_info) = instruction.branch {
+            let branch_target = if branch_info.offset == 0 || branch_info.offset == 1 {
+                // Special cases: 0 = rfalse, 1 = rtrue - don't follow these
+                None
+            } else {
+                // Calculate branch target address using Z-Machine standard formula:
+                // target = current_pc + instruction_size + branch_offset - 2
+                let target = pc + instruction.size as u32 + branch_info.offset as u32 - 2;
+                debug!(
+                    "BRANCH_TARGET: Found branch at {:04x} targeting {:04x} (offset={})",
+                    pc, target, branch_info.offset
+                );
+                Some(target)
+            };
+
+            if let Some(target) = branch_target {
+                // Expand boundaries to include branch target in scanning area
+                self.try_expand_boundaries(target);
+
+                // Also analyze the branch target as a potential routine starting point
+                // This allows discovery of routines that are jumped to rather than called,
+                // which is essential for compiled games where control flow uses jumps
+                self.add_routine(target);
+            }
+        }
+
+        if is_timed_read {
             // Timer routine is in operand 3 for timed read
             let timer_routine = instruction.operands[3];
             if self.is_valid_packed_address_context(timer_routine, Some(pc as usize)) {
@@ -1470,7 +1660,31 @@ impl<'a> TxdDisassembler<'a> {
         // Always try to add the routine, regardless of boundaries
         // TXD adds any routine found through operands to the list
         if target >= self.code_base && target < self.file_size {
+            let was_already_known = self.routines.contains_key(&target);
             self.add_routine(target);
+
+            if was_already_known {
+                debug!("ROUTINE_TARGET: Target {:04x} was already known", target);
+            } else {
+                debug!(
+                    "ROUTINE_TARGET: NEW routine discovered at {:04x} - total routines now: {}",
+                    target,
+                    self.routines.len()
+                );
+
+                // Try to follow calls in this newly discovered routine
+                if let Err(e) = self.analyze_routine_calls_with_expansion(target) {
+                    debug!(
+                        "ROUTINE_TARGET: Failed to analyze calls in new routine {:04x}: {}",
+                        target, e
+                    );
+                }
+            }
+        } else {
+            debug!(
+                "ROUTINE_TARGET: Target {:04x} outside valid range ({:04x}-{:04x})",
+                target, self.code_base, self.file_size
+            );
         }
 
         // Also expand boundaries if needed

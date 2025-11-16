@@ -6177,6 +6177,15 @@ impl ZMachineCodeGen {
                         offset_size: 2,
                         location_space: MemorySpace::Code,
                     });
+
+                // CRITICAL FIX: Add return statement to properly terminate init routine
+                // Without this, the init routine continues into subsequent function code,
+                // making the disassembler think everything is one giant routine
+                log::debug!(
+                    "Adding RET instruction to terminate init routine at 0x{:04x}",
+                    self.code_address
+                );
+                self.emit_byte(0xBB)?; // ret (return from routine)
             }
             crate::grue_compiler::ast::ProgramMode::Custom => {
                 log::debug!(

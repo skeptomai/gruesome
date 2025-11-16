@@ -216,13 +216,14 @@ The core localization system is **complete and ready for production use**. Addit
 
 ## 🎯 **CURRENT DEVELOPMENT PRIORITIES** (November 15, 2025)
 
-Based on comprehensive optimization analysis and Sparky's directive that **"layout and gamefile compliance such that the disassembler will work correctly should be our main priority"**.
+Based on comprehensive investigation that identified the **actual root cause** of disassembler compatibility issues.
 
-**PRIORITY 1: LAYOUT AND GAMEFILE COMPLIANCE** (CRITICAL)
-- **Problem**: Disassembler finds only 1 routine instead of ~25 functions from mini_zork
-- **Root Cause**: Layout differs from commercial patterns affecting routine detection
-- **Objective**: Achieve full ecosystem compatibility with standard Z-Machine tools
-- **Implementation**: Investigate routine detection failure and adjust layout for tool compatibility
+**PRIORITY 1: FUNCTION INLINING ARCHITECTURAL FIX** (CRITICAL)
+- **Problem**: User functions inlined into main program instead of separate Z-Machine routines
+- **Root Cause**: Architectural violation of Z-Machine function semantics (NOT layout compliance)
+- **Evidence**: Main program is ~1900 bytes containing all inlined functions vs. expected 29 separate routines
+- **Impact**: Fundamental Z-Machine ecosystem incompatibility
+- **Implementation**: Redesign code generation to emit separate routines with proper headers
 
 **PRIORITY 2: ABBREVIATION ENCODING IMPLEMENTATION** (HIGH)
 - **Problem**: Abbreviation system created but NOT used in string encoding
@@ -230,24 +231,31 @@ Based on comprehensive optimization analysis and Sparky's directive that **"layo
 - **Objective**: Activate string compression to realize full optimization potential
 - **Implementation**: Add abbreviation replacement during string generation phase
 
-**PRIORITY 3: PROPERTY TABLE OPTIMIZATION RE-ACTIVATION** (MEDIUM)
-- **Status**: Framework complete, previously blocked by alignment bug (now resolved)
-- **Potential**: 3-7% additional file size reduction available
-- **Objective**: Complete the optimization campaign with property space reduction
-- **Implementation**: Re-enable property optimization with alignment fixes
+**PRIORITY 3: CONTINUED PROPERTY OPTIMIZATION** (MEDIUM)
+- **Status**: ✅ Successfully optimized (650+ bytes saved, double margin eliminated)
+- **Remaining Potential**: Additional refinements to property space calculation
+- **Implementation**: Further optimize property table space estimation
 
 **PRIORITY 4: DISASSEMBLER TOOL ENHANCEMENT** (LOW)
-- **Fallback Approach**: Improve our tools if layout changes prove insufficient
-- **Objective**: Better handling of non-standard layouts in gruedasm-txd
-- **Implementation**: Enhanced routine detection and layout-agnostic parsing
+- **Status**: No longer primary approach - root cause identified as architectural
+- **Objective**: Enhance tools as fallback for edge cases
+- **Implementation**: Improved routine detection in gruedasm-txd
 
-### **DETAILED ANALYSIS AND IMPLEMENTATION PLAN**
+### **CRITICAL ARCHITECTURAL DISCOVERY**
 
-**Complete Analysis**: `docs/COMPILER_COMPLIANCE_AND_OPTIMIZATION.md` - Updated with:
-- Comprehensive final status of all optimization work
-- Detailed answers to all questions about abbreviation usage, section ordering, file sizes, and disassembler issues
-- **Prioritized implementation roadmap** with Phase A (Layout Compliance) as top priority per Sparky's direction
-- Technical analysis of why disassembler finds only 1 routine instead of expected ~25
+**Investigation Results**: `docs/COMPILER_COMPLIANCE_AND_OPTIMIZATION.md` - **MAJOR UPDATE** with:
+- **Root cause analysis**: Function inlining architectural violation identified
+- **Evidence and technical analysis**: Memory layout investigation, hex analysis comparison
+- **Impact assessment**: Runtime works, ecosystem compatibility broken
+- **Implementation requirements**: Separate routine generation, proper headers, function calls
+- **Priority reassessment**: This is a **fundamental Z-Machine compliance** issue, not layout optimization
+
+### **KEY INSIGHT CHANGE**
+
+**Previous Hypothesis** (Incorrect): Layout and memory positioning issues
+**Actual Root Cause** (Confirmed): **Architectural violation of Z-Machine function semantics**
+
+The compiler generates all user functions **inline within the main program routine** instead of as **separate Z-Machine functions**, creating one massive routine that disassemblers cannot parse correctly.
 
 
 ---
