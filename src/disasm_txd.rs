@@ -134,8 +134,9 @@ impl<'a> TxdDisassembler<'a> {
             // V1-5: code starts after dictionary, initial PC from header
             let dict_end = Self::calculate_dict_end(game);
             let start_pc = ((game.memory[0x06] as u32) << 8) | (game.memory[0x07] as u32);
-            // TXD: decode.initial_pc = (unsigned long)header.start_pc - 1; (line 320)
-            let initial_pc = start_pc - 1;
+            // FIXED: Use correct initial_pc from header (was incorrectly subtracting 1)
+            // Both bare code and routine headers are valid per Z-Machine spec V1-V5
+            let initial_pc = start_pc;
             // TXD: code_base = dict_end (line 319)
             (dict_end, initial_pc)
         };
