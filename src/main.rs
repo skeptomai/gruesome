@@ -11,21 +11,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get command line arguments
     let args: Vec<String> = env::args().collect();
+
+    // Display help information if no game file provided
+    // Exit with success status since user is requesting help, not encountering an error
     if args.len() < 2 {
-        eprintln!(
+        println!("gruesome - Z-Machine interpreter for Infocom text adventure games");
+        println!();
+        println!(
             "Usage: {} <game_file.dat> [--step start_pc end_pc]",
             args[0]
         );
-        eprintln!("Examples:");
-        eprintln!("  {} resources/test/zork1/DATA/ZORK1.DAT", args[0]);
-        eprintln!(
+        println!("Examples:");
+        println!("  {} resources/test/zork1/DATA/ZORK1.DAT", args[0]);
+        println!(
             "  {} resources/test/zork1/DATA/ZORK1.DAT --step 0x577c 0x5880",
             args[0]
         );
-        eprintln!();
-        eprintln!("The --step option enables single-step debugging for instructions");
-        eprintln!("in the specified PC range (hex values with or without 0x prefix)");
-        return Err("Invalid arguments".into());
+        println!();
+        println!("The --step option enables single-step debugging for instructions");
+        println!("in the specified PC range (hex values with or without 0x prefix)");
+        return Ok(());
     }
 
     let game_path = &args[1];
