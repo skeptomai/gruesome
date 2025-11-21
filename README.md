@@ -6,6 +6,35 @@ A Rust implementation of the Z-Machine virtual machine for playing classic Infoc
 
 This project implements a Z-Machine interpreter capable of running Infocom's text adventure games from the 1980s. The Z-Machine was the virtual machine used by Infocom to create portable interactive fiction that could run on multiple platforms.
 
+## Installation
+
+### macOS (Recommended)
+
+```bash
+brew install skeptomai/gruesome/gruesome
+```
+
+This installs all three tools: `gruesome`, `grue-compiler`, and `gruedasm-txd`.
+
+### Direct Download
+
+Download binaries from [GitHub Releases](https://github.com/skeptomai/gruesome/releases):
+
+**macOS Security Note**: If you see "cannot be opened" warnings:
+```bash
+xattr -d com.apple.quarantine /path/to/gruesome
+xattr -d com.apple.quarantine /path/to/grue-compiler
+xattr -d com.apple.quarantine /path/to/gruedasm-txd
+```
+
+### Build from Source
+
+```bash
+git clone https://github.com/skeptomai/gruesome.git
+cd gruesome
+cargo build --release
+```
+
 ### Current Status
 
 - ✅ **Fully playable** - Multiple Infocom games run perfectly
