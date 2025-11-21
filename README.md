@@ -16,6 +16,8 @@ brew install skeptomai/gruesome/gruesome
 
 This installs all three tools: `gruesome`, `grue-compiler`, and `gruedasm-txd`.
 
+**Security Benefits**: Homebrew builds from source on your machine, eliminating macOS Gatekeeper warnings and quarantine issues that affect downloaded binaries.
+
 ### Direct Download
 
 Download binaries from [GitHub Releases](https://github.com/skeptomai/gruesome/releases):
