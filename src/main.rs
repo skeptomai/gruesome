@@ -49,11 +49,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    // Load the game file
+    // Load the game file with user-friendly error handling
+    // Use explicit match instead of ? operator to provide clean, formatted error messages
+    // that guide users to solve common problems like incorrect paths or wrong directories
     debug!("Loading Z-Machine game: {}", game_path);
-    let mut file = File::open(game_path)?;
+    let mut file = match File::open(game_path) {
+        Ok(file) => file,
+        Err(e) => {
+            match e.kind() {
+                std::io::ErrorKind::NotFound => {
+                    eprintln!("Error: Game file not found: {}", game_path);
+                    eprintln!();
+                    eprintln!("Please check:");
+                    eprintln!("• File path is correct");
+                    eprintln!("• You're running from the right directory");
+                    eprintln!("• File exists and is readable");
+                }
+                std::io::ErrorKind::PermissionDenied => {
+                    eprintln!(
+                        "Error: Permission denied accessing game file: {}",
+                        game_path
+                    );
+                    eprintln!();
+                    eprintln!("Please check file permissions.");
+                }
+                _ => {
+                    eprintln!("Error: Cannot open game file '{}': {}", game_path, e);
+                }
+            }
+            std::process::exit(1);
+        }
+    };
     let mut game_data = Vec::new();
-    file.read_to_end(&mut game_data)?;
+    if let Err(e) = file.read_to_end(&mut game_data) {
+        eprintln!("Error: Cannot read game file '{}': {}", game_path, e);
+        std::process::exit(1);
+    }
 
     // Create the game and VM
     let game = Game::from_memory(game_data)?;

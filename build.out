@@ -1,0 +1,16 @@
+warning: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors
+    --> src/grue_compiler/codegen.rs:4383:22
+     |
+4383 |                 self.emit_instruction(
+     |                      ^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `grue_compiler::codegen_instructions::<impl grue_compiler::codegen::ZMachineCodeGen>::emit_instruction`: Use emit_instruction_typed for type safety and to avoid opcode number errors
+    --> src/grue_compiler/codegen_builtins.rs:1828:14
+     |
+1828 |         self.emit_instruction(
+     |              ^^^^^^^^^^^^^^^^
+
+warning: `gruesome` (lib) generated 2 warnings
+    Finished `release` profile [optimized] target(s) in 0.13s
