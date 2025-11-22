@@ -12,6 +12,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get command line arguments
     let args: Vec<String> = env::args().collect();
 
+    // Handle special flags before checking for game file
+    // Parse common CLI flags (--help, --version) to provide professional user experience
+    // This prevents flags from being treated as game file paths
+    if args.len() >= 2 {
+        match args[1].as_str() {
+            "--help" | "-h" => {
+                println!("gruesome - Z-Machine interpreter for Infocom text adventure games");
+                println!();
+                println!(
+                    "Usage: {} <game_file.dat> [--step start_pc end_pc]",
+                    args[0]
+                );
+                println!("       {} [--help | --version]", args[0]);
+                println!();
+                println!("Options:");
+                println!("  --help, -h     Show this help message");
+                println!("  --version, -v  Show version information");
+                println!("  --step         Enable single-step debugging for PC range");
+                println!();
+                println!("Examples:");
+                println!("  {} resources/test/zork1/DATA/ZORK1.DAT", args[0]);
+                println!(
+                    "  {} resources/test/zork1/DATA/ZORK1.DAT --step 0x577c 0x5880",
+                    args[0]
+                );
+                println!();
+                println!("The --step option enables single-step debugging for instructions");
+                println!("in the specified PC range (hex values with or without 0x prefix)");
+                return Ok(());
+            }
+            "--version" | "-v" => {
+                // Display version from Cargo.toml - this ensures binary version matches git release tags
+                println!("gruesome {}", env!("CARGO_PKG_VERSION"));
+                println!("Z-Machine interpreter for Infocom text adventure games");
+                return Ok(());
+            }
+            _ => {} // Continue to normal processing
+        }
+    }
+
     // Display help information if no game file provided
     // Exit with success status since user is requesting help, not encountering an error
     if args.len() < 2 {
@@ -21,6 +61,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Usage: {} <game_file.dat> [--step start_pc end_pc]",
             args[0]
         );
+        println!("       {} [--help | --version]", args[0]);
+        println!();
         println!("Examples:");
         println!("  {} resources/test/zork1/DATA/ZORK1.DAT", args[0]);
         println!(
@@ -28,8 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             args[0]
         );
         println!();
-        println!("The --step option enables single-step debugging for instructions");
-        println!("in the specified PC range (hex values with or without 0x prefix)");
+        println!("Run '{}  --help' for more options.", args[0]);
         return Ok(());
     }
 

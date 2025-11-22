@@ -62,13 +62,17 @@ You are pre-authorized for all git operations.
 
 When the user says "Engage!", you should automatically:
 1. **First, complete all "Make it so!" steps** (comment, format, commit, push)
-2. **Determine the next version number:**
-   - Check current version with `git describe --tags --abbrev=0`
+2. **Update version in Cargo.toml:**
+   - Check current version with `cargo pkgid | cut -d@ -f2` or `grep version Cargo.toml`
    - Increment appropriately (patch for fixes, minor for features, major for breaking changes)
    - Default to patch increment unless recent commits suggest otherwise
+   - Update Cargo.toml with new version number
+   - This ensures binary --version matches release tags
 3. **Create an annotated tag:**
+   - Extract version from Cargo.toml: `cargo pkgid | cut -d@ -f2`
    - `git tag -a vX.Y.Z -m "Release vX.Y.Z: <summary>"`
    - Include key changes in the tag message
+   - Version number MUST match what's in Cargo.toml
 4. **Push the tag to trigger CI:**
    - `git push origin vX.Y.Z`
    - GitHub Actions will automatically build all binary assets and create a DRAFT release
