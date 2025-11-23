@@ -9,7 +9,7 @@
 ///
 /// Tests both basic input and timed input with callbacks to ensure the
 /// system works correctly across different terminal environments.
-use gruesome::timed_input::TimedInput;
+use gruesome::interpreter::input::timed_input::TimedInput;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logger

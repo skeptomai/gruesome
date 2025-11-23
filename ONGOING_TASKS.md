@@ -358,6 +358,103 @@ The compiler generates all user functions **inline within the main program routi
 
 ---
 
+## ✅ **REPOSITORY REORGANIZATION COMPLETE** (November 23, 2025)
+
+**STATUS**: **SUCCESSFULLY IMPLEMENTED** 🎯
+
+**OBJECTIVE**: Reorganize repository structure to improve modularity by moving interpreter components into dedicated subdirectories under `src/interpreter/`, with quetzal as a subdirectory of the interpreter.
+
+### **ANALYSIS FINDINGS**
+
+**Current Structure Issues**:
+- 40+ interpreter files scattered in `src/` root directory
+- Poor logical grouping (display, input, opcodes, objects all mixed)
+- Unclear ownership boundaries
+- Difficult navigation and maintenance
+
+**Recommended Approach**: **Option 1: Modular Separation**
+```
+src/
+├── interpreter/           # Main Z-Machine interpreter
+│   ├── core/             # vm.rs, interpreter.rs, instruction.rs, game.rs
+│   ├── display/          # 6 display_*.rs files organized by purpose
+│   ├── input/            # input_v3.rs, input_v4.rs, timed_input.rs
+│   ├── opcodes/          # 6 opcodes_*.rs files + opcode_tables.rs
+│   ├── objects/          # zobject*.rs, property_defaults.rs
+│   ├── text/             # text.rs, dictionary.rs, parser_engine.rs, etc.
+│   ├── quetzal/          # Save system (moved under interpreter)
+│   └── utils/            # header.rs, debugger.rs, util.rs, etc.
+├── disassembler/         # disassembler.rs, disasm_txd.rs (separate tool)
+├── grue_compiler/        # Compiler (unchanged)
+└── bin/                  # Binary executables
+```
+
+**Key Benefits**:
+- ✅ Clean separation of concerns with logical grouping
+- ✅ Quetzal properly placed under interpreter (saves are interpreter state)
+- ✅ Clear public interfaces via mod.rs files
+- ✅ Improved navigation and maintenance
+- ✅ Follows Rust module conventions
+
+**Implementation Impact**:
+- **Module Changes**: Moderate - ~100+ `use` statements to update
+- **Binary Tools**: Low impact - main changes in `lib.rs` declarations
+- **Build System**: Minimal - Cargo auto-discovers modules
+- **Testing**: Low impact - tests use public interfaces
+
+**Disassembler Placement**: Separate `disassembler/` directory recommended - it's an analysis tool, not runtime interpreter functionality.
+
+**DETAILED ANALYSIS**: `docs/REPOSITORY_REORGANIZATION_ANALYSIS.md` - Complete technical assessment including:
+- Current structure analysis with component categorization
+- Two reorganization approaches with trade-offs
+- Dependency flow analysis and namespace benefits
+- Implementation complexity assessment
+- Specific recommendations for each component
+
+### **IMPLEMENTATION RESULTS**
+
+**✅ COMPLETED SUCCESSFULLY**:
+- ✅ All 40+ interpreter files reorganized into logical subdirectories
+- ✅ Clean module hierarchy: `src/interpreter/{core, display, input, opcodes, objects, text, utils, quetzal}`
+- ✅ Disassembler moved to separate `src/disassembler/` directory
+- ✅ All mod.rs files created with proper exports
+- ✅ Complete import statement updates across entire codebase (~100+ files)
+- ✅ Library and main binary builds working correctly
+- ✅ Compiler integration preserved
+
+**NEW STRUCTURE**:
+```
+src/
+├── interpreter/           # Z-Machine interpreter (✅ COMPLETE)
+│   ├── core/             # vm.rs, interpreter.rs, instruction.rs, game.rs
+│   ├── display/          # All display_*.rs files organized
+│   ├── input/            # input_v3.rs, input_v4.rs, timed_input.rs
+│   ├── opcodes/          # All opcodes_*.rs files + opcode_tables.rs
+│   ├── objects/          # zobject*.rs, property_defaults.rs
+│   ├── text/             # text.rs, dictionary.rs, parser_engine.rs, etc.
+│   ├── utils/            # header.rs, debugger.rs, util.rs, etc.
+│   └── quetzal/          # Save system (properly under interpreter)
+├── disassembler/         # disassembler.rs, disasm_txd.rs (✅ SEPARATE)
+├── grue_compiler/        # Compiler (unchanged)
+└── bin/                  # Binary executables (imports updated)
+```
+
+**IMPLEMENTATION IMPACT REALIZED**:
+- ✅ **Navigation**: Dramatically improved - clear logical grouping
+- ✅ **Maintenance**: Much easier to find and update related functionality
+- ✅ **Modularity**: Clean boundaries between interpreter subsystems
+- ✅ **Namespace**: Proper hierarchical module structure
+- ✅ **Build System**: All imports updated, no functionality lost
+
+**BENEFITS ACHIEVED**:
+- ✅ 40+ files moved from flat structure to organized hierarchy
+- ✅ Quetzal save system properly placed under interpreter
+- ✅ Clear separation of analysis tools (disassembler) from runtime (interpreter)
+- ✅ Follows Rust module conventions with proper `mod.rs` interfaces
+- ✅ Import updates completed across ~100+ files including all binaries
+
+---
+
 ## 📋 **MAINTENANCE NOTES**
 
 **Documentation**:

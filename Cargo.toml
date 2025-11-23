@@ -23,26 +23,16 @@ indexmap = "2.0"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 
+# Core Components
+[[bin]]
+name = "grue-compiler"
+path = "src/bin/grue_compiler.rs"
+
 [[bin]]
 name = "gruedasm-txd"
 path = "src/bin/gruedasm-txd.rs"
 
-[[bin]]
-name = "analyze-false-positives"
-path = "src/bin/analyze_false_positives.rs"
-
-[[bin]]
-name = "trace-false-positive"
-path = "src/bin/trace_false_positive.rs"
-
-[[bin]]
-name = "check-fallthrough"
-path = "src/bin/check_fallthrough.rs"
-
-[[bin]]
-name = "test-orphan-v4"
-path = "src/bin/test_orphan_v4.rs"
-
+# Essential Testing Tools
 [[bin]]
 name = "test-v3-regression"
 path = "src/bin/test_v3_regression.rs"
@@ -52,85 +42,40 @@ name = "test-opcode-validation"
 path = "src/bin/test_opcode_validation.rs"
 
 [[bin]]
-name = "compare-routine-validity"
-path = "src/bin/compare_routine_validity.rs"
+name = "test-save-restore"
+path = "src/bin/test_save_restore.rs"
 
 [[bin]]
-name = "analyze-extra-routines"
-path = "src/bin/analyze_extra_routines.rs"
+name = "test-timed-input"
+path = "src/bin/test_timed_input.rs"
 
 [[bin]]
-name = "analyze-routine-patterns"
-path = "src/bin/analyze_routine_patterns.rs"
+name = "test-random"
+path = "src/bin/test_random.rs"
 
 [[bin]]
-name = "analyze-txd-heuristics"
-path = "src/bin/analyze_txd_heuristics.rs"
+name = "test-seastalker"
+path = "src/bin/test_seastalker.rs"
 
 [[bin]]
-name = "filter-nested-routines"
-path = "src/bin/filter_nested_routines.rs"
+name = "test-amfv-opening"
+path = "src/bin/test_amfv_opening.rs"
+
+# Game Analysis Tools
+[[bin]]
+name = "disasm-amfv"
+path = "src/bin/disasm_amfv.rs"
+
+# Development Utilities
+[[bin]]
+name = "demo-window-ops"
+path = "src/bin/demo_window_ops.rs"
 
 [[bin]]
-name = "implement-txd-filters"
-path = "src/bin/implement_txd_filters.rs"
+name = "check-addr"
+path = "src/bin/check_addr.rs"
 
-[[bin]]
-name = "debug-call-graph"
-path = "src/bin/debug_call_graph.rs"
-
-[[bin]]
-name = "fix-alternate-entries"
-path = "src/bin/fix_alternate_entries.rs"
-
-[[bin]]
-name = "analyze-nested-difference"
-path = "src/bin/analyze_nested_difference.rs"
-
-[[bin]]
-name = "check-nested-calls"
-path = "src/bin/check_nested_calls.rs"
-
-[[bin]]
-name = "analyze-txd-nested"
-path = "src/bin/analyze_txd_nested.rs"
-
-[[bin]]
-name = "verify-cafc-rejected"
-path = "src/bin/verify_cafc_rejected.rs"
-
-[[bin]]
-name = "verify-strict-superset"
-path = "src/bin/verify_strict_superset.rs"
-
-[[bin]]
-name = "dump-our-routines"
-path = "src/bin/dump_our_routines.rs"
-
-[[bin]]
-name = "validate-extra-routines"
-path = "src/bin/validate_extra_routines.rs"
-
-[[bin]]
-name = "debug-e114-validation"
-path = "src/bin/debug_e114_validation.rs"
-
-[[bin]]
-name = "check-routine-references"
-path = "src/bin/check_routine_references.rs"
-
-[[bin]]
-name = "debug-12a04"
-path = "src/bin/debug_12a04.rs"
-
-[[bin]]
-name = "categorize-missing"
-path = "src/bin/categorize_missing.rs"
-
-[[bin]]
-name = "grue-compiler"
-path = "src/bin/grue_compiler.rs"
-
+# Build Script
 [[bin]]
 name = "generate-opcodes"
 path = "scripts/generate_opcodes.rs"

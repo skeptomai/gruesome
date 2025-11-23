@@ -1,5 +1,5 @@
 use gruesome::disassembler::Disassembler;
-use gruesome::vm::Game;
+use gruesome::interpreter::core::vm::Game;
 use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,7 +35,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for addr in 0x1000..0x10000 {
         if let Ok((inst, _)) = disasm.disassemble_instruction(addr as u32) {
             match inst.opcode {
-                0x0A if inst.form == gruesome::instruction::InstructionForm::Variable => {
+                0x0A if inst.form
+                    == gruesome::interpreter::core::instruction::InstructionForm::Variable =>
+                {
                     if !found_split {
                         println!("Found split_window at 0x{addr:04x}:");
                         if let Ok(output) = disasm.disassemble_range(addr as u32, (addr + 8) as u32)
@@ -47,7 +49,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         found_split = true;
                     }
                 }
-                0x0D if inst.form == gruesome::instruction::InstructionForm::Variable => {
+                0x0D if inst.form
+                    == gruesome::interpreter::core::instruction::InstructionForm::Variable =>
+                {
                     if !found_erase {
                         println!("\nFound erase_window at 0x{addr:04x}:");
                         if let Ok(output) = disasm.disassemble_range(addr as u32, (addr + 8) as u32)
@@ -59,7 +63,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         found_erase = true;
                     }
                 }
-                0x0B if inst.form == gruesome::instruction::InstructionForm::Variable => {
+                0x0B if inst.form
+                    == gruesome::interpreter::core::instruction::InstructionForm::Variable =>
+                {
                     if !found_set_window {
                         println!("\nFound set_window at 0x{addr:04x}:");
                         if let Ok(output) = disasm.disassemble_range(addr as u32, (addr + 8) as u32)
@@ -71,7 +77,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         found_set_window = true;
                     }
                 }
-                0x0F if inst.form == gruesome::instruction::InstructionForm::Variable => {
+                0x0F if inst.form
+                    == gruesome::interpreter::core::instruction::InstructionForm::Variable =>
+                {
                     if !found_set_cursor {
                         println!("\nFound set_cursor at 0x{addr:04x}:");
                         if let Ok(output) = disasm.disassemble_range(addr as u32, (addr + 8) as u32)

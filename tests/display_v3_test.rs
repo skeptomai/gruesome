@@ -1,7 +1,7 @@
 //! Tests for V3 display implementation
 
-use gruesome::display_trait::ZMachineDisplay;
-use gruesome::display_v3::V3Display;
+use gruesome::interpreter::display::display_trait::ZMachineDisplay;
+use gruesome::interpreter::display::display_v3::V3Display;
 
 #[test]
 fn test_v3_immediate_status_refresh() {

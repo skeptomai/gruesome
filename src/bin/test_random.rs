@@ -10,9 +10,9 @@
 /// The test creates a minimal Z-Machine program that calls the random opcode
 /// three times and verifies the results are not all identical (which would
 /// indicate broken randomization).
-use gruesome::instruction::Instruction;
+use gruesome::interpreter::core::instruction::Instruction;
+use gruesome::interpreter::core::vm::{Game, VM};
 use gruesome::interpreter::{ExecutionResult, Interpreter};
-use gruesome::vm::{Game, VM};
 use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

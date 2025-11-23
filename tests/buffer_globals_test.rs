@@ -1,7 +1,7 @@
 /// Test that buffer addresses are correctly stored in globals before sread
 use gruesome::grue_compiler::GrueCompiler;
 use gruesome::grue_compiler::ZMachineVersion;
-use gruesome::vm::{Game, VM};
+use gruesome::interpreter::core::vm::{Game, VM};
 
 #[test]
 fn test_buffer_addresses_stored_in_globals() {

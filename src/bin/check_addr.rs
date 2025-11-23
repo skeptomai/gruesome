@@ -1,4 +1,4 @@
-use gruesome::vm::Game;
+use gruesome::interpreter::core::vm::Game;
 use std::env;
 use std::fs::File;
 use std::io::Read;

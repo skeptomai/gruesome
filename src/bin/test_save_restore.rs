@@ -1,4 +1,4 @@
-use gruesome::vm::{Game, VM};
+use gruesome::interpreter::core::vm::{Game, VM};
 use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -15,8 +15,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Testing Quetzal save/restore functionality...\n");
 
-    // Create a save game directly
-    match gruesome::quetzal::save::save_game(&vm) {
+    // Create a save game using the non-interactive API (for testing)
+    use gruesome::interpreter::quetzal::save::SaveGame;
+    let save = SaveGame::from_vm(&vm).expect("Failed to create SaveGame");
+    match save.save_to_file(std::path::Path::new("game.sav")) {
         Ok(()) => println!("Save completed successfully!"),
         Err(e) => println!("Save failed: {e}"),
     }
@@ -26,11 +28,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let metadata = std::fs::metadata("game.sav")?;
         println!("Created save file: game.sav ({} bytes)", metadata.len());
 
-        // Try to restore
+        // Test restore using the non-interactive API
         let mut vm2 = vm;
-        match gruesome::quetzal::restore::restore_game(&mut vm2) {
-            Ok(()) => println!("Restore completed successfully!"),
-            Err(e) => println!("Restore failed: {e}"),
+        use gruesome::interpreter::quetzal::restore::RestoreGame;
+        match RestoreGame::from_file(std::path::Path::new("game.sav")) {
+            Ok(restore) => match restore.restore_to_vm(&mut vm2) {
+                Ok(()) => println!("Restore completed successfully!"),
+                Err(e) => println!("Restore failed: {e}"),
+            },
+            Err(e) => println!("Failed to load save file: {e}"),
         }
     } else {
         println!("Save file was not created");

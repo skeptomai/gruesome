@@ -1,5 +1,5 @@
 use gruesome::disassembler::Disassembler;
-use gruesome::vm::{Game, VM};
+use gruesome::interpreter::core::vm::{Game, VM};
 use std::env;
 
 fn main() {

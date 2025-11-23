@@ -1,5 +1,5 @@
-use gruesome::disasm_txd::TxdDisassembler;
-use gruesome::vm::Game;
+use gruesome::disassembler::disasm_txd::TxdDisassembler;
+use gruesome::interpreter::core::vm::Game;
 use log::info;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

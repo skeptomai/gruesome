@@ -1,5 +1,5 @@
-use gruesome::interpreter::Interpreter;
-use gruesome::vm::{Game, VM};
+use gruesome::interpreter::core::interpreter::Interpreter;
+use gruesome::interpreter::core::vm::{Game, VM};
 use log::{debug, info};
 use std::env;
 use std::fs::File;

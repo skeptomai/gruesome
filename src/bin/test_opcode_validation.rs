@@ -1,4 +1,4 @@
-use gruesome::instruction::{Instruction, InstructionForm};
+use gruesome::interpreter::core::instruction::{Instruction, InstructionForm};
 use log::info;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

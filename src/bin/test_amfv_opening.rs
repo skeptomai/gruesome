@@ -1,4 +1,4 @@
-use gruesome::display_manager::{create_display, DisplayMode};
+use gruesome::interpreter::display::display_manager::{create_display, DisplayMode};
 use std::io::{self};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

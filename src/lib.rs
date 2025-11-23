@@ -4,59 +4,18 @@
 #[macro_use]
 extern crate lazy_static;
 
-pub mod debug_symbols;
-pub mod debugger;
-pub mod dictionary;
-pub mod disasm_txd;
 pub mod disassembler;
-pub mod display_crossterm;
-pub mod display_headless;
-pub mod display_logging;
-pub mod display_manager;
-pub mod display_ratatui;
-pub mod display_trait;
-pub mod display_v3;
-pub mod game;
-pub mod gamememorymap;
 pub mod grue_compiler;
-pub mod header;
-pub mod input_v3;
-pub mod input_v4;
-pub mod instruction;
 pub mod interpreter;
-pub mod opcode_tables;
-pub mod opcodes_display;
-pub mod opcodes_io;
-pub mod opcodes_math;
-pub mod opcodes_memory;
-pub mod opcodes_object;
-pub mod opcodes_stack;
-pub mod parser_engine;
-pub mod property_defaults;
-pub mod quetzal;
-pub mod routine;
-pub mod runtime_parser;
-pub mod text;
-pub mod timed_input;
-pub mod util;
-pub mod vm;
-pub mod zobject;
-pub mod zobject_interface;
-pub mod zobject_v3;
-pub mod zobject_v4;
-pub mod zrand;
-
-#[cfg(test)]
-mod test_execution;
 
 #[cfg(test)]
 mod tests {
-    use crate::disassembler::Disassembler;
-    use crate::game::GameFile;
-    use crate::instruction::Instruction;
-    use crate::interpreter::Interpreter;
-    use crate::vm::{Game, VM};
-    use crate::zrand::ZRand;
+    use crate::disassembler::disassembler::Disassembler;
+    use crate::interpreter::core::game::GameFile;
+    use crate::interpreter::core::instruction::Instruction;
+    use crate::interpreter::core::interpreter::Interpreter;
+    use crate::interpreter::core::vm::{Game, VM};
+    use crate::interpreter::utils::zrand::ZRand;
     use std::env;
     use std::fs::File;
     use std::io;

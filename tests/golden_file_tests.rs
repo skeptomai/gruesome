@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use gruesome::grue_compiler::{codegen, ir, lexer, parser, semantic, ZMachineVersion};
-use gruesome::vm::Game;
+use gruesome::interpreter::core::vm::Game;
 
 /// Golden file test configuration
 struct GoldenTest {
