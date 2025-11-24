@@ -28,7 +28,8 @@ use indexmap::{IndexMap, IndexSet};
 use log::debug;
 
 /// CRITICAL: Invalid opcode marker for unimplemented IR instructions
-/// This opcode (0x00) is deliberately invalid in the Z-Machine specification.
+///
+/// This opcode (0xFF) is deliberately invalid in the Z-Machine specification.
 /// Any attempt to emit this opcode will cause a COMPILE-TIME ERROR, preventing
 /// broken bytecode from being generated. This forces proper implementation of
 /// all IR instruction handlers before the compiler can successfully generate bytecode.
@@ -37,13 +38,11 @@ use log::debug;
 /// a clear marker that the instruction needs proper Z-Machine implementation.
 /// The emit_instruction() method will detect and reject this opcode with a clear
 /// error message indicating which feature needs to be implemented.
-/// Marker value for unimplemented opcodes that need proper Z-Machine implementation.
 ///
-/// CRITICAL: This must NOT be a valid Z-Machine opcode. Previously we used 0x00,
-/// but that's the valid opcode for jz (jump if zero) in 1OP form, which caused
-/// the compiler to reject valid jz instructions as "unimplemented".
-///
-/// 0xFF is not a valid Z-Machine opcode in any form, making it safe for this purpose.
+/// CRITICAL: This must NOT be a valid Z-Machine opcode. We use 0xFF because
+/// it is not a valid Z-Machine opcode in any form, making it safe for this purpose.
+/// (Previously we used 0x00, but that's the valid opcode for jz in 1OP form,
+/// which caused the compiler to reject valid jz instructions as "unimplemented".)
 pub const UNIMPLEMENTED_OPCODE: u8 = 0xFF;
 
 /// Reference types for fixup tracking
@@ -63,7 +62,7 @@ pub struct PendingFixup {
     pub source_address: usize,
     pub reference_type: ReferenceType,
     pub instruction_name: String,
-    pub operand_size: usize, // 1 or 2 bytes
+    pub operand_size: usize,
     pub resolved: bool,
 }
 
