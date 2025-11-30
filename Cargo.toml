@@ -5,23 +5,40 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-# No feature flags needed - ratatui is always required for v4+ games
+[features]
+default = ["native"]
+native = ["dep:crossterm", "dep:ratatui", "dep:atty", "dep:env_logger"]
+wasm = ["dep:wasm-bindgen", "dep:web-sys", "dep:js-sys", "dep:console_log", "dep:console_error_panic_hook", "getrandom/js"]
 
 [dependencies]
+# Core dependencies (both native and wasm)
 rand = "*"
 bitreader = "*"
 bitvec = "*"
 lazy_static = "*"
 log = "*"
-env_logger = "*"
 test-log = "*"
 sub-array = "*"
-crossterm = "0.27"
-atty = "0.2"
-ratatui = "0.26"
 indexmap = "2.0"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
+getrandom = "0.2"
+
+# Native-only dependencies
+crossterm = { version = "0.27", optional = true }
+atty = { version = "0.2", optional = true }
+ratatui = { version = "0.26", optional = true }
+env_logger = { version = "*", optional = true }
+
+# WASM-only dependencies
+wasm-bindgen = { version = "0.2", optional = true }
+web-sys = { version = "0.3", optional = true, features = ["console", "Window", "Performance"] }
+js-sys = { version = "0.3", optional = true }
+console_log = { version = "1.0", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
 
 # Core Components
 [[bin]]

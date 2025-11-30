@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gruesome - Z-Machine Interpreter</title>
+  <link rel="stylesheet" href="css/terminal.css">
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- Preact + HTM from CDN (no build step) -->
+  <script type="module">
+    import { h, render } from 'https://esm.sh/preact@10.19.3';
+    import { useState, useEffect, useRef } from 'https://esm.sh/preact@10.19.3/hooks';
+    import htm from 'https://esm.sh/htm@3.1.1';
+
+    // Bind htm to Preact's h function
+    const html = htm.bind(h);
+
+    // Make available globally for our modules
+    window.preact = { h, render, useState, useEffect, useRef, html };
+  </script>
+
+  <!-- Application modules -->
+  <script type="module" src="js/terminal.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

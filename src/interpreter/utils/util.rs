@@ -2,7 +2,6 @@ use crate::interpreter::core::game::GameFile;
 use bitreader::{BitReader, BitReaderError};
 use std::array::TryFromSliceError;
 use std::collections::HashMap;
-use std::io;
 
 ///There are three possible alphabets: lower case, upper case, and number/symbol
 ///
@@ -82,7 +81,7 @@ impl<'a, const U: usize> IntoIterator for &'a UnpackedZChars<U> {
 
 pub trait ZTextReader {
     /// Read a rust string from ZChar packed text
-    fn read_text(g: &GameFile, cso: usize) -> Result<String, io::Error>;
+    fn read_text(g: &GameFile, cso: usize) -> Result<String, String>;
 }
 
 /// Look up a char in the alphabet mapping

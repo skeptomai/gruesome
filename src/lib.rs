@@ -8,6 +8,15 @@ pub mod disassembler;
 pub mod grue_compiler;
 pub mod interpreter;
 
+// Re-export VM module at top level for backwards compatibility with tests
+pub mod vm {
+    pub use crate::interpreter::core::vm::*;
+}
+
+// WASM module - only compiled when targeting wasm
+#[cfg(feature = "wasm")]
+pub mod wasm;
+
 #[cfg(test)]
 mod tests {
     use crate::disassembler::disassembler::Disassembler;

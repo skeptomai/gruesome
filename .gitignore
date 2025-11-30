@@ -14,5 +14,8 @@ debug.log
 
 # Claude Code settings
 .claude/settings.local.json
-pkg/
 build.out
+
+# WASM build output
+pkg/
+web/pkg/

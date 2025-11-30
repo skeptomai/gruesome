@@ -1,0 +1,462 @@
+/*
+ * Gruesome Z-Machine Terminal Styling
+ *
+ * Authentic retro terminal look with multiple phosphor color options.
+ * Designed for Infocom text adventures.
+ */
+
+/* ============================================
+   CSS Custom Properties (Theme Configuration)
+   ============================================ */
+
+:root {
+  /* Green Phosphor (P1) - Classic Apple II / early terminal look */
+  --phosphor-green-bg: #0a0a0a;
+  --phosphor-green-fg: #33ff33;
+  --phosphor-green-dim: #1a8c1a;
+  --phosphor-green-glow: rgba(51, 255, 51, 0.4);
+
+  /* Amber Phosphor (P3) - IBM 3270 / PC monochrome */
+  --phosphor-amber-bg: #0a0800;
+  --phosphor-amber-fg: #ffb000;
+  --phosphor-amber-dim: #8c6000;
+  --phosphor-amber-glow: rgba(255, 176, 0, 0.4);
+
+  /* White Phosphor - Later terminals */
+  --phosphor-white-bg: #0a0a0a;
+  --phosphor-white-fg: #e0e0e0;
+  --phosphor-white-dim: #707070;
+  --phosphor-white-glow: rgba(224, 224, 224, 0.3);
+
+  /* Default theme: Green Phosphor */
+  --terminal-bg: var(--phosphor-green-bg);
+  --terminal-fg: var(--phosphor-green-fg);
+  --terminal-dim: var(--phosphor-green-dim);
+  --terminal-glow: var(--phosphor-green-glow);
+
+  /* Typography */
+  --font-terminal: "IBM Plex Mono", "Consolas", "Monaco", "Courier New", monospace;
+  --font-size: 16px;
+  --line-height: 1.4;
+
+  /* Spacing */
+  --terminal-padding: 20px;
+  --status-bar-height: 28px;
+}
+
+/* Theme classes - apply to body or .terminal */
+.theme-green {
+  --terminal-bg: var(--phosphor-green-bg);
+  --terminal-fg: var(--phosphor-green-fg);
+  --terminal-dim: var(--phosphor-green-dim);
+  --terminal-glow: var(--phosphor-green-glow);
+}
+
+.theme-amber {
+  --terminal-bg: var(--phosphor-amber-bg);
+  --terminal-fg: var(--phosphor-amber-fg);
+  --terminal-dim: var(--phosphor-amber-dim);
+  --terminal-glow: var(--phosphor-amber-glow);
+}
+
+.theme-white {
+  --terminal-bg: var(--phosphor-white-bg);
+  --terminal-fg: var(--phosphor-white-fg);
+  --terminal-dim: var(--phosphor-white-dim);
+  --terminal-glow: var(--phosphor-white-glow);
+}
+
+/* ============================================
+   Base Reset
+   ============================================ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: #000000;
+}
+
+#app {
+  height: 100%;
+}
+
+/* ============================================
+   Terminal Container
+   ============================================ */
+
+.terminal {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--terminal-bg);
+  color: var(--terminal-fg);
+  font-family: var(--font-terminal);
+  font-size: var(--font-size);
+  line-height: var(--line-height);
+}
+
+/* Subtle text glow for phosphor effect */
+.terminal.effects-enabled {
+  text-shadow: 0 0 5px var(--terminal-glow);
+}
+
+/* ============================================
+   Status Bar (V3+ games)
+   ============================================ */
+
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: var(--status-bar-height);
+  padding: 0 var(--terminal-padding);
+  background: var(--terminal-fg);
+  color: var(--terminal-bg);
+  font-weight: bold;
+  flex-shrink: 0;
+  /* Inverse video - no glow */
+  text-shadow: none;
+}
+
+.status-bar .location {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-bar .score-moves {
+  flex-shrink: 0;
+  text-align: right;
+  margin-left: 20px;
+}
+
+/* Time mode (some games show time instead of score) */
+.status-bar .time {
+  flex-shrink: 0;
+  text-align: right;
+  margin-left: 20px;
+}
+
+/* ============================================
+   Main Output Area
+   ============================================ */
+
+.output-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--terminal-padding);
+  padding-bottom: 0;
+}
+
+.output-area pre {
+  margin: 0;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Room descriptions and important text */
+.output-area .room-title {
+  font-weight: bold;
+}
+
+/* Scrollbar styling */
+.output-area::-webkit-scrollbar {
+  width: 8px;
+}
+
+.output-area::-webkit-scrollbar-track {
+  background: var(--terminal-bg);
+}
+
+.output-area::-webkit-scrollbar-thumb {
+  background: var(--terminal-dim);
+  border-radius: 4px;
+}
+
+.output-area::-webkit-scrollbar-thumb:hover {
+  background: var(--terminal-fg);
+}
+
+/* ============================================
+   Input Area
+   ============================================ */
+
+.input-area {
+  display: flex;
+  align-items: center;
+  padding: var(--terminal-padding);
+  padding-top: 10px;
+  flex-shrink: 0;
+}
+
+.input-area .prompt {
+  margin-right: 8px;
+  user-select: none;
+}
+
+.input-area input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  caret-color: var(--terminal-fg);
+  padding: 0;
+}
+
+/* Remove default input styling */
+.input-area input::placeholder {
+  color: var(--terminal-dim);
+}
+
+.input-area input:focus {
+  outline: none;
+}
+
+/* ============================================
+   Blinking Cursor (optional, for custom cursor)
+   ============================================ */
+
+.cursor {
+  display: inline-block;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ============================================
+   CRT Effects (Optional - toggle with class)
+   ============================================ */
+
+/* Scanlines overlay */
+.terminal.effects-enabled::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 1px,
+    rgba(0, 0, 0, 0.15) 1px,
+    rgba(0, 0, 0, 0.15) 2px
+  );
+  pointer-events: none;
+  z-index: 1000;
+}
+
+/* Screen flicker effect (subtle) */
+.terminal.effects-enabled.flicker {
+  animation: flicker 0.15s infinite;
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.98; }
+}
+
+/* ============================================
+   Upper Window (V4+ games - split screen)
+   ============================================ */
+
+.upper-window {
+  flex-shrink: 0;
+  padding: var(--terminal-padding);
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--terminal-dim);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.upper-window pre {
+  margin: 0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+/* ============================================
+   Loading State
+   ============================================ */
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  text-align: center;
+}
+
+.loading .spinner {
+  font-size: 24px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 20px;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.loading .message {
+  color: var(--terminal-dim);
+}
+
+/* ============================================
+   File Upload
+   ============================================ */
+
+.file-upload-container {
+  margin-top: 30px;
+  text-align: center;
+}
+
+.file-upload-label {
+  display: inline-block;
+  cursor: pointer;
+}
+
+.file-upload-label input[type="file"] {
+  display: none;
+}
+
+.file-upload-button {
+  display: inline-block;
+  padding: 12px 24px;
+  border: 2px solid var(--terminal-text);
+  color: var(--terminal-text);
+  font-family: inherit;
+  font-size: inherit;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.file-upload-button:hover {
+  background: var(--terminal-text);
+  color: var(--terminal-bg);
+}
+
+.file-upload-hint {
+  margin-top: 15px;
+  color: var(--terminal-dim);
+  font-size: 0.9em;
+}
+
+/* ============================================
+   Error State
+   ============================================ */
+
+.error {
+  padding: var(--terminal-padding);
+  color: #ff6666;
+}
+
+.error h2 {
+  margin-top: 0;
+}
+
+/* ============================================
+   Game Selection (future feature)
+   ============================================ */
+
+.game-selector {
+  padding: var(--terminal-padding);
+}
+
+.game-selector h2 {
+  margin-top: 0;
+  border-bottom: 1px solid var(--terminal-dim);
+  padding-bottom: 10px;
+}
+
+.game-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.game-list li {
+  padding: 8px 0;
+  cursor: pointer;
+  border-bottom: 1px solid var(--terminal-dim);
+}
+
+.game-list li:hover {
+  background: var(--terminal-dim);
+  color: var(--terminal-bg);
+}
+
+/* ============================================
+   Responsive Adjustments
+   ============================================ */
+
+@media (max-width: 600px) {
+  :root {
+    --font-size: 14px;
+    --terminal-padding: 12px;
+  }
+
+  .status-bar {
+    font-size: 12px;
+  }
+}
+
+/* Larger screens - limit width for readability */
+@media (min-width: 1200px) {
+  .terminal {
+    max-width: 1000px;
+    margin: 0 auto;
+    border-left: 1px solid var(--terminal-dim);
+    border-right: 1px solid var(--terminal-dim);
+  }
+}
+
+/* ============================================
+   Print Styles (for transcripts)
+   ============================================ */
+
+@media print {
+  .terminal {
+    background: white;
+    color: black;
+    text-shadow: none;
+  }
+
+  .terminal::after {
+    display: none;
+  }
+
+  .status-bar {
+    background: black;
+    color: white;
+  }
+
+  .input-area {
+    display: none;
+  }
+}
