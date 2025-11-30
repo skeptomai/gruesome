@@ -1074,8 +1074,8 @@ impl WasmInterpreter {
                     .print("[Save is not yet supported in the browser version]")
                     .ok();
                 self.display.print_char('\n').ok();
-                // Indicate save failed (branch with false condition)
-                self.handle_branch(inst, false)?;
+                // Branch with true to avoid game printing "Failed" after our message
+                self.handle_branch(inst, true)?;
                 Ok(WasmExecutionResult::Continue)
             }
 
@@ -1084,7 +1084,7 @@ impl WasmInterpreter {
                     .print("[Restore is not yet supported in the browser version]")
                     .ok();
                 self.display.print_char('\n').ok();
-                // Indicate restore failed (branch with false condition)
+                // Restore should indicate failure (game needs to know restore didn't happen)
                 self.handle_branch(inst, false)?;
                 Ok(WasmExecutionResult::Continue)
             }

@@ -67,12 +67,14 @@ export function InputArea({ onSubmit, disabled, prompt }) {
   }, [disabled]);
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && value.trim()) {
-      // Add to history
-      setHistory(prev => [...prev, value]);
+    if (e.key === 'Enter') {
+      // Add non-empty commands to history
+      if (value.trim()) {
+        setHistory(prev => [...prev, value]);
+      }
       setHistoryIndex(-1);
 
-      // Submit command
+      // Submit command (including empty for "press Enter to continue")
       onSubmit(value);
       setValue('');
     } else if (e.key === 'ArrowUp') {
