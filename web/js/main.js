@@ -84,6 +84,10 @@ function Disclaimer({ onContinue, onLoadOwn }) {
           By continuing, you acknowledge this notice and accept responsibility
           for your use of any copyrighted material.
         </p>
+
+        <p class="disclaimer-footer">
+          <a href="https://github.com/skeptomai/gruesome" target="_blank" rel="noopener">View source on GitHub</a>
+        </p>
       </div>
     </div>
   `;
