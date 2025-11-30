@@ -1068,6 +1068,27 @@ impl WasmInterpreter {
 
             "nop" => Ok(WasmExecutionResult::Continue),
 
+            // Save/restore not supported in browser - show friendly message
+            "save" => {
+                self.display
+                    .print("[Save is not yet supported in the browser version]")
+                    .ok();
+                self.display.print_char('\n').ok();
+                // Indicate save failed (branch with false condition)
+                self.handle_branch(inst, false)?;
+                Ok(WasmExecutionResult::Continue)
+            }
+
+            "restore" => {
+                self.display
+                    .print("[Restore is not yet supported in the browser version]")
+                    .ok();
+                self.display.print_char('\n').ok();
+                // Indicate restore failed (branch with false condition)
+                self.handle_branch(inst, false)?;
+                Ok(WasmExecutionResult::Continue)
+            }
+
             _ => Err(format!(
                 "Unimplemented opcode: {} (0x{:02x}) at {:04x}",
                 opcode_name,

@@ -34,6 +34,10 @@
   --terminal-dim: var(--phosphor-green-dim);
   --terminal-glow: var(--phosphor-green-glow);
 
+  /* Aliases for consistency */
+  --terminal-text: var(--terminal-fg);
+  --terminal-bright: #66ff66;
+
   /* Typography */
   --font-terminal: "IBM Plex Mono", "Consolas", "Monaco", "Courier New", monospace;
   --font-size: 16px;
@@ -378,6 +382,138 @@ body {
 
 .error h2 {
   margin-top: 0;
+}
+
+/* ============================================
+   Disclaimer Page
+   ============================================ */
+
+.disclaimer {
+  padding: var(--terminal-padding);
+  max-width: 700px;
+  margin: 0 auto;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.disclaimer-title {
+  font-size: 2.5em;
+  margin: 0;
+  text-align: center;
+  letter-spacing: 0.2em;
+}
+
+.disclaimer-subtitle {
+  text-align: center;
+  color: var(--terminal-dim);
+  margin-top: 5px;
+  margin-bottom: 30px;
+}
+
+.disclaimer-section {
+  margin-bottom: 25px;
+}
+
+.disclaimer-section h2 {
+  font-size: 1.1em;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--terminal-dim);
+  padding-bottom: 5px;
+}
+
+.disclaimer-section p {
+  margin: 10px 0;
+  line-height: 1.5;
+}
+
+.disclaimer-links {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+}
+
+.disclaimer-links li {
+  padding: 5px 0;
+}
+
+.disclaimer-links a,
+.disclaimer-section a {
+  color: var(--terminal-text);
+  text-decoration: underline;
+}
+
+.disclaimer-links a:hover,
+.disclaimer-section a:hover {
+  color: var(--terminal-bright);
+}
+
+.disclaimer-cta {
+  text-align: center;
+  margin: 35px 0 25px 0;
+}
+
+.play-button {
+  padding: 20px 50px;
+  font-family: inherit;
+  font-size: 1.5em;
+  font-weight: bold;
+  cursor: pointer;
+  border: 3px solid var(--terminal-text);
+  background: var(--terminal-text);
+  color: #000000;
+  transition: all 0.2s ease;
+  letter-spacing: 0.1em;
+  position: relative;
+  z-index: 10;
+}
+
+.play-button:hover {
+  background: var(--terminal-bright);
+  border-color: var(--terminal-bright);
+  color: #000000;
+  transform: scale(1.05);
+}
+
+.play-hint {
+  margin-top: 10px;
+  color: var(--terminal-dim);
+  font-size: 0.9em;
+}
+
+.disclaimer-alt {
+  text-align: center;
+  margin: 20px 0;
+}
+
+.disclaimer-button {
+  padding: 10px 20px;
+  font-family: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+  border: 1px solid var(--terminal-dim);
+  background: transparent;
+  color: var(--terminal-dim);
+  transition: all 0.2s ease;
+  position: relative;
+  z-index: 10;
+}
+
+.disclaimer-button:hover {
+  border-color: var(--terminal-text);
+  color: var(--terminal-text);
+}
+
+.disclaimer-button.secondary {
+  background: transparent;
+}
+
+.disclaimer-footer {
+  text-align: center;
+  font-size: 0.85em;
+  color: var(--terminal-dim);
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid var(--terminal-dim);
 }
 
 /* ============================================

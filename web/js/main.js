@@ -12,6 +12,7 @@ const { DemoTerminal, Loading, ErrorDisplay, Terminal } = window.GruesomeTermina
  * Application State
  */
 const AppState = {
+  DISCLAIMER: 'disclaimer',
   LOADING: 'loading',
   LOADING_GAME: 'loading_game',
   DEMO: 'demo',
@@ -20,14 +21,84 @@ const AppState = {
 };
 
 /**
+ * Disclaimer Component
+ * Shown before loading the game with legal notices
+ */
+function Disclaimer({ onContinue, onLoadOwn }) {
+  return html`
+    <div class="terminal theme-green">
+      <div class="disclaimer">
+        <h1 class="disclaimer-title">GRUESOME</h1>
+        <p class="disclaimer-subtitle">Z-Machine Interpreter</p>
+
+        <div class="disclaimer-section">
+          <h2>About This Project</h2>
+          <p>
+            This is an educational project demonstrating Z-Machine interpreter
+            implementation in Rust, compiled to WebAssembly for in-browser gameplay.
+          </p>
+        </div>
+
+        <div class="disclaimer-section">
+          <h2>Legal Notice</h2>
+          <p>
+            Zork I and other Infocom games are copyrighted by Activision Publishing, Inc.
+            This site is not affiliated with or endorsed by Activision.
+          </p>
+          <p>
+            This interpreter is provided for educational and preservation purposes.
+          </p>
+        </div>
+
+        <div class="disclaimer-section">
+          <h2>Acquire Zork Legally</h2>
+          <ul class="disclaimer-links">
+            <li><a href="https://www.gog.com/en/game/the_zork_anthology" target="_blank" rel="noopener">GOG.com - The Zork Anthology</a></li>
+            <li><a href="https://store.steampowered.com/app/570580/Zork_Anthology/" target="_blank" rel="noopener">Steam - Zork Anthology</a></li>
+            <li><a href="https://www.infocom-if.org/games/games.html" target="_blank" rel="noopener">Infocom-IF.org - Game Information</a></li>
+          </ul>
+        </div>
+
+        <div class="disclaimer-section">
+          <h2>Free Alternatives</h2>
+          <p>
+            The <a href="https://www.ifarchive.org/" target="_blank" rel="noopener">Interactive Fiction Archive</a> hosts
+            hundreds of free Z-Machine games you can play legally.
+          </p>
+        </div>
+
+        <div class="disclaimer-cta">
+          <button class="play-button" onClick=${onContinue}>
+            Play Zork I
+          </button>
+          <p class="play-hint">Click to start the classic text adventure</p>
+        </div>
+
+        <div class="disclaimer-alt">
+          <button class="disclaimer-button secondary" onClick=${onLoadOwn}>
+            Or Load Your Own Game File
+          </button>
+        </div>
+
+        <p class="disclaimer-footer">
+          By continuing, you acknowledge this notice and accept responsibility
+          for your use of any copyrighted material.
+        </p>
+      </div>
+    </div>
+  `;
+}
+
+/**
  * Main Application Component
  */
 function App() {
   const { useState, useEffect, useRef } = window.preact;
 
-  const [appState, setAppState] = useState(AppState.LOADING);
+  const [appState, setAppState] = useState(AppState.DISCLAIMER);
   const [loadingMessage, setLoadingMessage] = useState('Loading Gruesome Z-Machine...');
   const [error, setError] = useState(null);
+  const [loadOwnGame, setLoadOwnGame] = useState(false);
 
   // WASM interpreter instance
   const interpreterRef = useRef(null);
@@ -46,11 +117,19 @@ function App() {
     effectsEnabled: true,
   });
 
-  useEffect(() => {
-    initializeApp();
-  }, []);
+  async function handleDisclaimerContinue() {
+    setLoadOwnGame(false);
+    setAppState(AppState.LOADING);
+    await initializeApp(false);
+  }
 
-  async function initializeApp() {
+  async function handleLoadOwnGame() {
+    setLoadOwnGame(true);
+    setAppState(AppState.LOADING);
+    await initializeApp(true);
+  }
+
+  async function initializeApp(skipDefaultGame = false) {
     try {
       // Check if WASM module is available
       const wasmAvailable = await checkWasmAvailable();
@@ -66,18 +145,21 @@ function App() {
         // Store wasm module reference
         window.gruesomeWasm = wasm;
 
-        // Now we need game data - check for a default game or prompt user
-        setAppState(AppState.LOADING_GAME);
-        setLoadingMessage('Select a game file to play...');
-
-        // Try to load a default game file
-        const gameData = await tryLoadDefaultGame();
-        if (gameData) {
-          await startGame(wasm, gameData);
+        if (skipDefaultGame) {
+          // Go directly to file picker
+          setAppState(AppState.LOADING_GAME);
+          setLoadingMessage('Select a game file to play...');
         } else {
-          // Stay in LOADING_GAME state to show file picker
-          console.log('No default game found, showing file picker');
-          // State is already LOADING_GAME, which shows the file picker
+          // Try to load the default Zork I game
+          setLoadingMessage('Loading Zork I...');
+          const gameData = await tryLoadDefaultGame();
+          if (gameData) {
+            await startGame(wasm, gameData);
+          } else {
+            // No default game, show file picker
+            setAppState(AppState.LOADING_GAME);
+            setLoadingMessage('Zork I not found. Select a game file...');
+          }
         }
       } else {
         // Fall back to demo mode
@@ -86,8 +168,8 @@ function App() {
       }
     } catch (err) {
       console.error('Failed to initialize:', err);
-      // Fall back to demo mode on error
-      setAppState(AppState.DEMO);
+      setError({ message: 'Failed to initialize: ' + err.message });
+      setAppState(AppState.ERROR);
     }
   }
 
@@ -111,7 +193,7 @@ function App() {
 
   async function tryLoadDefaultGame() {
     try {
-      // Try to load a default game file from the games directory
+      // Try to load the default Zork I game file
       const response = await fetch('./games/zork1.z3');
       if (response.ok) {
         const arrayBuffer = await response.arrayBuffer();
@@ -219,7 +301,7 @@ function App() {
     if (!file) return;
 
     try {
-      setAppState(AppState.LOADING_GAME);
+      setAppState(AppState.LOADING);
       setLoadingMessage('Loading ' + file.name + '...');
 
       const arrayBuffer = await file.arrayBuffer();
@@ -244,6 +326,14 @@ function App() {
 
   // Render based on current state
   switch (appState) {
+    case AppState.DISCLAIMER:
+      return html`
+        <${Disclaimer}
+          onContinue=${handleDisclaimerContinue}
+          onLoadOwn=${handleLoadOwnGame}
+        />
+      `;
+
     case AppState.LOADING:
       return html`<${Loading} message=${loadingMessage} />`;
 
