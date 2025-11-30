@@ -7,10 +7,11 @@
 
 use wasm_bindgen::prelude::*;
 
-use crate::interpreter::core::instruction::{BranchInfo, Instruction, OperandType};
+use crate::interpreter::core::instruction::{Instruction, OperandType};
 use crate::interpreter::core::vm::{CallFrame, Game, VM};
 use crate::interpreter::display::display_wasm::WasmDisplay;
 use crate::interpreter::display::ZMachineDisplay;
+use crate::interpreter::quetzal::{restore_from_bytes, save_to_bytes};
 use crate::interpreter::text;
 
 /// Initialize panic hook for better error messages in browser console
@@ -30,6 +31,10 @@ pub struct StepResult {
     status_score: i16,
     status_moves: u16,
     error: Option<String>,
+    /// If set, contains save game data that JavaScript should handle (download)
+    save_data: Option<Vec<u8>>,
+    /// If true, interpreter is waiting for restore data from JavaScript
+    needs_restore_data: bool,
 }
 
 #[wasm_bindgen]
@@ -68,6 +73,16 @@ impl StepResult {
     pub fn error(&self) -> Option<String> {
         self.error.clone()
     }
+
+    #[wasm_bindgen(getter)]
+    pub fn save_data(&self) -> Option<Vec<u8>> {
+        self.save_data.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn needs_restore_data(&self) -> bool {
+        self.needs_restore_data
+    }
 }
 
 /// WASM-friendly Z-Machine interpreter
@@ -81,6 +96,12 @@ pub struct WasmInterpreter {
     status_location: String,
     status_score: i16,
     status_moves: u16,
+    /// Save data to pass to JavaScript (set when save opcode executes)
+    pending_save_data: Option<Vec<u8>>,
+    /// If true, waiting for JavaScript to provide restore data
+    waiting_for_restore: bool,
+    /// Restore data provided by JavaScript
+    pending_restore_data: Option<Vec<u8>>,
 }
 
 #[wasm_bindgen]
@@ -105,6 +126,9 @@ impl WasmInterpreter {
             status_location: String::new(),
             status_score: 0,
             status_moves: 0,
+            pending_save_data: None,
+            waiting_for_restore: false,
+            pending_restore_data: None,
         })
     }
 
@@ -113,6 +137,20 @@ impl WasmInterpreter {
     pub fn provide_input(&mut self, input: &str) {
         self.pending_input = Some(input.to_string());
         self.waiting_for_input = false;
+    }
+
+    /// Provide restore data from JavaScript (after user selects a save file)
+    #[wasm_bindgen]
+    pub fn provide_restore_data(&mut self, data: &[u8]) {
+        self.pending_restore_data = Some(data.to_vec());
+        self.waiting_for_restore = false;
+    }
+
+    /// Cancel a pending restore (user cancelled file picker)
+    #[wasm_bindgen]
+    pub fn cancel_restore(&mut self) {
+        self.pending_restore_data = None;
+        self.waiting_for_restore = false;
     }
 
     /// Run the interpreter until it needs input or quits
@@ -125,9 +163,19 @@ impl WasmInterpreter {
         let mut instruction_count = 0;
 
         while instruction_count < MAX_INSTRUCTIONS {
+            // Check if waiting for input
             if self.waiting_for_input {
                 if self.pending_input.is_some() {
                     self.waiting_for_input = false;
+                } else {
+                    break;
+                }
+            }
+
+            // Check if waiting for restore data
+            if self.waiting_for_restore {
+                if self.pending_restore_data.is_some() {
+                    self.waiting_for_restore = false;
                 } else {
                     break;
                 }
@@ -181,6 +229,9 @@ impl WasmInterpreter {
             }
         }
 
+        // Take pending save data to return to JavaScript
+        let save_data = self.pending_save_data.take();
+
         StepResult {
             output,
             needs_input: self.waiting_for_input,
@@ -189,12 +240,27 @@ impl WasmInterpreter {
             status_score: self.status_score,
             status_moves: self.status_moves,
             error,
+            save_data,
+            needs_restore_data: self.waiting_for_restore,
         }
     }
 
     #[wasm_bindgen(getter)]
     pub fn version(&self) -> u8 {
         self.version
+    }
+
+    /// Save game state to Quetzal format bytes
+    /// Returns the save data as a Uint8Array for JavaScript
+    #[wasm_bindgen]
+    pub fn save_game(&self) -> Result<Vec<u8>, JsValue> {
+        save_to_bytes(&self.vm).map_err(|e| JsValue::from_str(&e))
+    }
+
+    /// Restore game state from Quetzal format bytes
+    #[wasm_bindgen]
+    pub fn restore_game(&mut self, data: &[u8]) -> Result<(), JsValue> {
+        restore_from_bytes(&mut self.vm, data).map_err(|e| JsValue::from_str(&e))
     }
 }
 
@@ -1068,25 +1134,51 @@ impl WasmInterpreter {
 
             "nop" => Ok(WasmExecutionResult::Continue),
 
-            // Save/restore not supported in browser - show friendly message
+            // Save game - create Quetzal data and signal JavaScript to download it
             "save" => {
-                self.display
-                    .print("[Save is not yet supported in the browser version]")
-                    .ok();
-                self.display.print_char('\n').ok();
-                // Branch with true to avoid game printing "Failed" after our message
-                self.handle_branch(inst, true)?;
-                Ok(WasmExecutionResult::Continue)
+                match save_to_bytes(&self.vm) {
+                    Ok(save_data) => {
+                        self.pending_save_data = Some(save_data);
+                        // Branch with true to indicate save succeeded
+                        self.handle_branch(inst, true)?;
+                        Ok(WasmExecutionResult::Continue)
+                    }
+                    Err(e) => {
+                        self.display.print(&format!("[Save failed: {}]", e)).ok();
+                        self.display.print_char('\n').ok();
+                        self.handle_branch(inst, false)?;
+                        Ok(WasmExecutionResult::Continue)
+                    }
+                }
             }
 
+            // Restore game - either process pending data or wait for JavaScript
             "restore" => {
-                self.display
-                    .print("[Restore is not yet supported in the browser version]")
-                    .ok();
-                self.display.print_char('\n').ok();
-                // Restore should indicate failure (game needs to know restore didn't happen)
-                self.handle_branch(inst, false)?;
-                Ok(WasmExecutionResult::Continue)
+                if let Some(restore_data) = self.pending_restore_data.take() {
+                    // We have restore data from JavaScript, apply it
+                    match restore_from_bytes(&mut self.vm, &restore_data) {
+                        Ok(()) => {
+                            self.display.print("[Game restored]").ok();
+                            self.display.print_char('\n').ok();
+                            // After restore, branch with true to indicate success
+                            // The game will continue from the restored state
+                            self.handle_branch(inst, true)?;
+                            Ok(WasmExecutionResult::Continue)
+                        }
+                        Err(e) => {
+                            self.display.print(&format!("[Restore failed: {}]", e)).ok();
+                            self.display.print_char('\n').ok();
+                            self.handle_branch(inst, false)?;
+                            Ok(WasmExecutionResult::Continue)
+                        }
+                    }
+                } else {
+                    // No restore data yet, signal JavaScript to show file picker
+                    // Rewind PC so we re-execute restore when data arrives
+                    self.vm.pc -= inst.size as u32;
+                    self.waiting_for_restore = true;
+                    Ok(WasmExecutionResult::Continue)
+                }
             }
 
             _ => Err(format!(

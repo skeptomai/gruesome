@@ -97,6 +97,8 @@ web/
 class WasmInterpreter {
   constructor(game_data: Uint8Array);
   provide_input(input: string): void;
+  provide_restore_data(data: Uint8Array): void;
+  cancel_restore(): void;
   step(): StepResult;
   readonly version: number;
 }
@@ -107,12 +109,14 @@ class WasmInterpreter {
 ```typescript
 class StepResult {
   readonly needs_input: boolean;
+  readonly needs_restore_data: boolean;
   readonly status_moves: number;
   readonly status_score: number;
   readonly status_location: string;
   readonly quit: boolean;
   readonly error: string | undefined;
   readonly output: string;
+  readonly save_data: Uint8Array | undefined;
   free(): void;
 }
 ```
@@ -275,24 +279,60 @@ Z-Machine game files (like Zork I) are copyrighted by Activision Publishing, Inc
 - User acknowledgment required
 - File picker allows users to supply their own legally-obtained games
 
+## Save/Restore Support
+
+The WASM interpreter supports save and restore using the standard **Quetzal format** (`.qzl` files). This provides cross-interpreter compatibility - save files created in the web interface can be loaded in native interpreters and vice versa.
+
+### How It Works
+
+**Save:**
+1. User types "save" command in game
+2. Interpreter serializes game state to Quetzal format
+3. Browser triggers download of `gruesome_save.qzl` file
+4. Game continues (branch taken on success)
+
+**Restore:**
+1. User types "restore" command in game
+2. Browser shows file picker dialog
+3. User selects a `.qzl` or `.sav` file
+4. Interpreter deserializes state from file
+5. Game resumes from saved position
+
+### Save File Format
+
+Uses standard Quetzal IFF format with chunks:
+- **IFhd** - Game identification (release, serial, checksum)
+- **CMem** - Compressed dynamic memory (XOR-RLE compression)
+- **Stks** - Call stack frames
+- **IntD** - Interpreter identification ("RUST")
+
+### JavaScript API for Save/Restore
+
+```javascript
+// After calling step(), check for save/restore needs:
+const result = interpreter.step();
+
+// If save data is available, trigger download
+if (result.save_data && result.save_data.length > 0) {
+  const blob = new Blob([result.save_data], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  // Trigger download...
+}
+
+// If restore data is needed, show file picker
+if (result.needs_restore_data) {
+  // User selects file, then:
+  const data = new Uint8Array(await file.arrayBuffer());
+  interpreter.provide_restore_data(data);
+  interpreter.step(); // Continue execution
+}
+
+// If user cancels restore:
+interpreter.cancel_restore();
+interpreter.step();
+```
+
 ## Known Limitations
-
-### Save/Restore Not Implemented
-
-The WASM interpreter does not currently support the `save` and `restore` opcodes. Attempting to save will show an error:
-
-```
-Unimplemented opcode: save (0x05) at <address>
-```
-
-**Why**: The native interpreter uses file I/O (Quetzal format) which isn't available in WASM/browser environment.
-
-**Future options**:
-1. **Browser localStorage** - Save game state as a blob, persists across sessions
-2. **IndexedDB** - More storage space, also persists
-3. **Download file** - Generate a save file the user downloads, upload to restore
-
-### Other Limitations
 
 - Some advanced opcodes may not be implemented
 - No sound support (V5+ games)
@@ -319,9 +359,9 @@ The WASM interpreter implements a subset of Z-Machine opcodes sufficient for mos
 ## Future Enhancements
 
 Potential improvements:
-- Save/restore via browser localStorage or IndexedDB
 - Multiple color themes (UI to switch between green/amber/white)
 - Sound support (for games that use it)
 - Transcript download
 - Mobile-friendly touch controls
 - Keyboard shortcuts for common commands
+- Browser localStorage for auto-save persistence

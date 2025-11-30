@@ -7,6 +7,10 @@
 pub mod chunks;
 pub mod compressed_memory;
 
+// Byte-based save/restore - works in both native and WASM
+pub mod save_bytes;
+pub use save_bytes::{restore_from_bytes, save_to_bytes};
+
 // File I/O based save/restore - native only
 #[cfg(feature = "native")]
 pub mod iff;

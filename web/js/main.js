@@ -249,9 +249,20 @@ function App() {
           moves: result.status_moves,
         },
         outputLines: [...prev.outputLines, ...newOutput],
-        waitingForInput: result.needs_input,
+        waitingForInput: result.needs_input || result.needs_restore_data,
         quit: result.quit,
       }));
+
+      // Handle save data - trigger download
+      const saveData = result.save_data;
+      if (saveData && saveData.length > 0) {
+        downloadSaveFile(saveData);
+      }
+
+      // Handle restore request - show file picker
+      if (result.needs_restore_data) {
+        showRestoreFilePicker();
+      }
 
       // Check for errors
       if (result.error) {
@@ -277,6 +288,46 @@ function App() {
       setError({ message: err.message });
       setAppState(AppState.ERROR);
     }
+  }
+
+  // Download save file to user's computer
+  function downloadSaveFile(data) {
+    const blob = new Blob([data], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'gruesome_save.qzl';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // Show file picker for restore
+  function showRestoreFilePicker() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.qzl,.sav';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const data = new Uint8Array(arrayBuffer);
+          interpreterRef.current.provide_restore_data(data);
+          runInterpreterStep();
+        } catch (err) {
+          console.error('Failed to load save file:', err);
+          interpreterRef.current.cancel_restore();
+          runInterpreterStep();
+        }
+      } else {
+        // User cancelled
+        interpreterRef.current.cancel_restore();
+        runInterpreterStep();
+      }
+    };
+    input.click();
   }
 
   function handleCommand(command) {
