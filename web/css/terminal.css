@@ -407,7 +407,40 @@ body {
   text-align: center;
   color: var(--terminal-dim);
   margin-top: 5px;
-  margin-bottom: 30px;
+  margin-bottom: 20px;
+}
+
+/* ============================================
+   Theme Toggle
+   ============================================ */
+
+.theme-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 25px;
+}
+
+.theme-button {
+  padding: 8px 20px;
+  font-family: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+  border: 1px solid var(--terminal-dim);
+  background: transparent;
+  color: var(--terminal-dim);
+  transition: all 0.2s ease;
+}
+
+.theme-button:hover {
+  border-color: var(--terminal-text);
+  color: var(--terminal-text);
+}
+
+.theme-button.active {
+  border-color: var(--terminal-text);
+  background: var(--terminal-text);
+  color: var(--terminal-bg);
 }
 
 .disclaimer-section {

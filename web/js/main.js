@@ -21,15 +21,35 @@ const AppState = {
 };
 
 /**
+ * Theme Toggle Component
+ */
+function ThemeToggle({ theme, onToggle }) {
+  return html`
+    <div class="theme-toggle">
+      <button
+        class="theme-button ${theme === 'green' ? 'active' : ''}"
+        onClick=${() => onToggle('green')}
+      >Green</button>
+      <button
+        class="theme-button ${theme === 'amber' ? 'active' : ''}"
+        onClick=${() => onToggle('amber')}
+      >Amber</button>
+    </div>
+  `;
+}
+
+/**
  * Disclaimer Component
  * Shown before loading the game with legal notices
  */
-function Disclaimer({ onContinue, onLoadOwn }) {
+function Disclaimer({ onContinue, onLoadOwn, theme, onThemeChange }) {
   return html`
-    <div class="terminal theme-green">
+    <div class="terminal theme-${theme}">
       <div class="disclaimer">
         <h1 class="disclaimer-title">GRUESOME</h1>
         <p class="disclaimer-subtitle">Z-Machine Interpreter</p>
+
+        <${ThemeToggle} theme=${theme} onToggle=${onThemeChange} />
 
         <div class="disclaimer-section">
           <h2>About This Project</h2>
@@ -115,11 +135,25 @@ function App() {
     quit: false,
   });
 
-  // Settings
-  const [settings, setSettings] = useState({
-    theme: 'green',
-    effectsEnabled: true,
+  // Settings - load from localStorage if available
+  const [settings, setSettings] = useState(() => {
+    const saved = localStorage.getItem('gruesome-settings');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+    return { theme: 'green', effectsEnabled: true };
   });
+
+  // Save settings to localStorage when they change
+  function handleThemeChange(newTheme) {
+    const newSettings = { ...settings, theme: newTheme };
+    setSettings(newSettings);
+    localStorage.setItem('gruesome-settings', JSON.stringify(newSettings));
+  }
 
   async function handleDisclaimerContinue() {
     setLoadOwnGame(false);
@@ -386,6 +420,8 @@ function App() {
         <${Disclaimer}
           onContinue=${handleDisclaimerContinue}
           onLoadOwn=${handleLoadOwnGame}
+          theme=${settings.theme}
+          onThemeChange=${handleThemeChange}
         />
       `;
 
@@ -394,7 +430,7 @@ function App() {
 
     case AppState.LOADING_GAME:
       return html`
-        <div class="terminal theme-green">
+        <div class="terminal theme-${settings.theme}">
           <div class="loading">
             <div class="message">${loadingMessage}</div>
             <div class="file-upload-container">
