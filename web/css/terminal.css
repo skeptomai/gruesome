@@ -54,6 +54,8 @@
   --terminal-fg: var(--phosphor-green-fg);
   --terminal-dim: var(--phosphor-green-dim);
   --terminal-glow: var(--phosphor-green-glow);
+  --terminal-text: var(--phosphor-green-fg);
+  --terminal-bright: #66ff66;
 }
 
 .theme-amber {
@@ -61,6 +63,8 @@
   --terminal-fg: var(--phosphor-amber-fg);
   --terminal-dim: var(--phosphor-amber-dim);
   --terminal-glow: var(--phosphor-amber-glow);
+  --terminal-text: var(--phosphor-amber-fg);
+  --terminal-bright: #ffcc44;
 }
 
 .theme-white {
@@ -68,6 +72,8 @@
   --terminal-fg: var(--phosphor-white-fg);
   --terminal-dim: var(--phosphor-white-dim);
   --terminal-glow: var(--phosphor-white-glow);
+  --terminal-text: var(--phosphor-white-fg);
+  --terminal-bright: #ffffff;
 }
 
 /* ============================================
