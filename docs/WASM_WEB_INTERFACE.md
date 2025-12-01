@@ -359,9 +359,88 @@ The WASM interpreter implements a subset of Z-Machine opcodes sufficient for mos
 ## Future Enhancements
 
 Potential improvements:
-- Multiple color themes (UI to switch between green/amber/white)
+- ~~Multiple color themes (UI to switch between green/amber/white)~~ ✅ Implemented (green/amber toggle)
 - Sound support (for games that use it)
 - Transcript download
 - Mobile-friendly touch controls
 - Keyboard shortcuts for common commands
 - Browser localStorage for auto-save persistence
+- Enhanced CRT visual effects (see below)
+
+## CRT Visual Enhancement Options
+
+The current implementation uses CSS-only effects (scanlines, text glow). Here are options for more authentic CRT aesthetics, ranging from simple to complex.
+
+### Specialty Terminal Fonts
+
+**Authentic Terminal Fonts (Google Fonts, easy to add):**
+- **VT323** - Based on DEC VT320 terminal, very authentic
+- **IBM 3270** - IBM mainframe terminal look, excellent for the era
+- **Share Tech Mono** - Clean terminal aesthetic
+
+**Pixel/Bitmap Style:**
+- **Press Start 2P** - 8-bit game aesthetic
+- **Commodore 64** fonts - Home computer feel
+- **Perfect DOS VGA** - Classic DOS look
+
+### CSS Enhancement Libraries
+
+**crt.css** (https://github.com/mskocik/crt.css)
+- Lightweight CSS-only CRT effects
+- Adds: flicker, glow, color separation
+- **Improvement over current**: Moderate - adds subtle flicker and chromatic aberration we don't have
+- **Complexity**: Low - just include CSS file
+- **Drawback**: Effects are subtle, not dramatically different from our current implementation
+
+**Our current CSS** already implements:
+- Scanlines overlay
+- Text glow via text-shadow
+- Phosphor color themes
+
+**Additional CSS-only effects we could add:**
+- Screen curvature (barrel distortion via CSS border-radius tricks)
+- Vignette (darkened corners via radial-gradient overlay)
+- Subtle flicker animation
+- Interlacing effect
+
+### JavaScript/Canvas Libraries
+
+**Retro.js** and similar
+- **Improvement over current**: Moderate - adds animated noise, better flicker
+- **Complexity**: Medium - requires JS integration
+- **Drawback**: May impact performance on low-end devices
+
+### WebGL Shader Approaches (Most Authentic)
+
+**Three.js + postprocessing**
+- Full shader pipeline with FilmPass, UnrealBloomPass
+- **Improvement over current**: Dramatic - phosphor persistence, true bloom, barrel distortion
+- **Complexity**: High - significant code addition, WebGL dependency
+- **Drawback**: Won't work on older browsers/devices, adds ~100KB+ to bundle
+
+**Custom CRT Fragment Shaders** (via ShaderToy patterns)
+- Phosphor persistence/ghosting (text leaves trails)
+- True bloom effect (light bleeds realistically)
+- Barrel distortion (curved screen effect)
+- RGB shadow mask pattern (visible subpixels)
+- Chromatic aberration (color fringing at edges)
+
+**cool-retro-term** style effects
+- The gold standard for CRT emulation (used by the cool-retro-term Linux app)
+- Would require porting GLSL shaders to WebGL
+- **Improvement over current**: Transformative - looks like actual CRT monitor
+- **Complexity**: Very high
+
+### Recommendation by Effort/Impact
+
+| Approach | Effort | Visual Impact | Compatibility |
+|----------|--------|---------------|---------------|
+| Add VT323/IBM 3270 font | Low | Medium | Excellent |
+| Add vignette + curvature CSS | Low | Low-Medium | Excellent |
+| Include crt.css | Low | Low | Excellent |
+| Custom flicker/noise CSS | Medium | Medium | Excellent |
+| WebGL CRT shader | High | Very High | Good (modern browsers) |
+
+**Quick wins**: Adding an authentic terminal font (VT323 or IBM 3270) would have the highest impact-to-effort ratio. The font choice significantly affects perceived authenticity.
+
+**Maximum authenticity**: A WebGL shader approach would give the most dramatic "old CRT monitor" feel but represents a significant complexity increase and potential compatibility concerns.
