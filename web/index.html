@@ -13,6 +13,39 @@
   <link rel="stylesheet" href="css/terminal.css">
 </head>
 <body>
+  <!-- SVG Filters for CRT effects -->
+  <svg style="position: absolute; width: 0; height: 0;">
+    <defs>
+      <!-- Barrel distortion (screen curvature) -->
+      <filter id="crt-curvature">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="0" result="blur"/>
+        <feDisplacementMap in="blur" in2="SourceGraphic" scale="3" xChannelSelector="R" yChannelSelector="G"/>
+      </filter>
+
+      <!-- Phosphor glow -->
+      <filter id="crt-glow">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="0.5" result="blur"/>
+        <feMerge>
+          <feMergeNode in="blur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+
+      <!-- Combined CRT effect -->
+      <filter id="crt-full" x="-5%" y="-5%" width="110%" height="110%">
+        <!-- Slight blur for phosphor softness -->
+        <feGaussianBlur in="SourceGraphic" stdDeviation="0.3" result="softened"/>
+        <!-- Glow layer -->
+        <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="glow"/>
+        <!-- Combine -->
+        <feMerge>
+          <feMergeNode in="glow"/>
+          <feMergeNode in="softened"/>
+        </feMerge>
+      </filter>
+    </defs>
+  </svg>
+
   <div id="app"></div>
 
   <!-- Preact + HTM from CDN (no build step) -->

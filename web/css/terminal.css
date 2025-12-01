@@ -515,9 +515,14 @@ body {
 /* Enhanced CRT effects */
 .crt-enhanced {
   position: relative;
+  /* Apply SVG filter for phosphor glow */
+  filter: url(#crt-full);
+  /* Screen curvature via border-radius on a pseudo-element */
+  border-radius: 20px;
+  overflow: hidden;
 }
 
-/* Vignette effect */
+/* Vignette effect (darkened corners) */
 .crt-enhanced::before {
   content: "";
   position: fixed;
@@ -528,30 +533,58 @@ body {
   background: radial-gradient(
     ellipse at center,
     transparent 0%,
-    transparent 60%,
-    rgba(0, 0, 0, 0.4) 100%
+    transparent 50%,
+    rgba(0, 0, 0, 0.5) 100%
   );
   pointer-events: none;
   z-index: 999;
+  border-radius: 20px;
+}
+
+/* Screen bezel effect */
+.crt-enhanced::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 20px;
+  box-shadow:
+    inset 0 0 100px rgba(0, 0, 0, 0.5),
+    inset 0 0 20px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  z-index: 998;
 }
 
 /* Subtle flicker */
 .crt-enhanced {
-  animation: crt-flicker 0.1s infinite;
+  animation: crt-flicker 0.15s infinite;
 }
 
 @keyframes crt-flicker {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.98; }
+  50% { opacity: 0.97; }
 }
 
 /* Chromatic aberration on text */
 .crt-enhanced .output-area,
 .crt-enhanced .disclaimer {
   text-shadow:
-    0 0 5px var(--terminal-glow),
-    -1px 0 1px rgba(255, 0, 0, 0.1),
-    1px 0 1px rgba(0, 255, 255, 0.1);
+    0 0 8px var(--terminal-glow),
+    -0.5px 0 1px rgba(255, 0, 0, 0.15),
+    0.5px 0 1px rgba(0, 255, 255, 0.15);
+}
+
+/* Enhanced scanlines when CRT is on */
+.crt-enhanced.effects-enabled::after {
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.2) 2px,
+    rgba(0, 0, 0, 0.2) 4px
+  );
 }
 
 .disclaimer-section {
