@@ -39,17 +39,64 @@ function ThemeToggle({ theme, onToggle }) {
 }
 
 /**
+ * Font Toggle Component
+ */
+function FontToggle({ font, onToggle }) {
+  return html`
+    <div class="font-toggle">
+      <button
+        class="font-button ${font === 'default' ? 'active' : ''}"
+        onClick=${() => onToggle('default')}
+      >Default</button>
+      <button
+        class="font-button ${font === 'vt323' ? 'active' : ''}"
+        onClick=${() => onToggle('vt323')}
+      >VT323</button>
+      <button
+        class="font-button ${font === 'ibm3270' ? 'active' : ''}"
+        onClick=${() => onToggle('ibm3270')}
+      >IBM 3270</button>
+      <button
+        class="font-button ${font === 'sharetech' ? 'active' : ''}"
+        onClick=${() => onToggle('sharetech')}
+      >Share Tech</button>
+    </div>
+  `;
+}
+
+/**
+ * CRT Effects Toggle Component
+ */
+function CrtToggle({ crtEnabled, onToggle }) {
+  return html`
+    <div class="crt-toggle">
+      <button
+        class="theme-button ${!crtEnabled ? 'active' : ''}"
+        onClick=${() => onToggle(false)}
+      >CRT Off</button>
+      <button
+        class="theme-button ${crtEnabled ? 'active' : ''}"
+        onClick=${() => onToggle(true)}
+      >CRT On</button>
+    </div>
+  `;
+}
+
+/**
  * Disclaimer Component
  * Shown before loading the game with legal notices
  */
-function Disclaimer({ onContinue, onLoadOwn, theme, onThemeChange }) {
+function Disclaimer({ onContinue, onLoadOwn, theme, onThemeChange, font, onFontChange, crtEnabled, onCrtChange }) {
+  const crtClass = crtEnabled ? 'crt-enhanced' : '';
   return html`
-    <div class="terminal theme-${theme}">
+    <div class="terminal theme-${theme} font-${font} ${crtClass}">
       <div class="disclaimer">
         <h1 class="disclaimer-title">GRUESOME</h1>
         <p class="disclaimer-subtitle">Z-Machine Interpreter</p>
 
         <${ThemeToggle} theme=${theme} onToggle=${onThemeChange} />
+        <${FontToggle} font=${font} onToggle=${onFontChange} />
+        <${CrtToggle} crtEnabled=${crtEnabled} onToggle=${onCrtChange} />
 
         <div class="disclaimer-section">
           <h2>About This Project</h2>
@@ -145,14 +192,25 @@ function App() {
         // Ignore parse errors
       }
     }
-    return { theme: 'green', effectsEnabled: true };
+    return { theme: 'green', font: 'default', crtEnabled: false, effectsEnabled: true };
   });
 
   // Save settings to localStorage when they change
-  function handleThemeChange(newTheme) {
-    const newSettings = { ...settings, theme: newTheme };
+  function updateSettings(newSettings) {
     setSettings(newSettings);
     localStorage.setItem('gruesome-settings', JSON.stringify(newSettings));
+  }
+
+  function handleThemeChange(newTheme) {
+    updateSettings({ ...settings, theme: newTheme });
+  }
+
+  function handleFontChange(newFont) {
+    updateSettings({ ...settings, font: newFont });
+  }
+
+  function handleCrtChange(enabled) {
+    updateSettings({ ...settings, crtEnabled: enabled });
   }
 
   async function handleDisclaimerContinue() {
@@ -422,6 +480,10 @@ function App() {
           onLoadOwn=${handleLoadOwnGame}
           theme=${settings.theme}
           onThemeChange=${handleThemeChange}
+          font=${settings.font || 'default'}
+          onFontChange=${handleFontChange}
+          crtEnabled=${settings.crtEnabled || false}
+          onCrtChange=${handleCrtChange}
         />
       `;
 
@@ -429,8 +491,9 @@ function App() {
       return html`<${Loading} message=${loadingMessage} />`;
 
     case AppState.LOADING_GAME:
+      const crtClass = settings.crtEnabled ? 'crt-enhanced' : '';
       return html`
-        <div class="terminal theme-${settings.theme}">
+        <div class="terminal theme-${settings.theme} font-${settings.font || 'default'} ${crtClass}">
           <div class="loading">
             <div class="message">${loadingMessage}</div>
             <div class="file-upload-container">
@@ -468,6 +531,8 @@ function App() {
           waitingForInput=${gameState.waitingForInput}
           onCommand=${handleCommand}
           theme=${settings.theme}
+          font=${settings.font || 'default'}
+          crtEnabled=${settings.crtEnabled || false}
           effectsEnabled=${settings.effectsEnabled}
         />
       `;

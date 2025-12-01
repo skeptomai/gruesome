@@ -166,11 +166,15 @@ export function Terminal({
 
   // Settings
   theme = 'green',
+  font = 'default',
+  crtEnabled = false,
   effectsEnabled = false,
   prompt = '>',
 }) {
   const themeClass = `theme-${theme}`;
+  const fontClass = `font-${font}`;
   const effectsClass = effectsEnabled ? 'effects-enabled' : '';
+  const crtClass = crtEnabled ? 'crt-enhanced' : '';
 
   const handleCommand = (command) => {
     if (onCommand) {
@@ -187,7 +191,7 @@ export function Terminal({
   };
 
   return html`
-    <div class="terminal ${themeClass} ${effectsClass}" onClick=${handleClick}>
+    <div class="terminal ${themeClass} ${fontClass} ${effectsClass} ${crtClass}" onClick=${handleClick}>
       <${StatusBar}
         location=${status.location}
         score=${status.score}

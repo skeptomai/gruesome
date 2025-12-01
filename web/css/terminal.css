@@ -449,6 +449,111 @@ body {
   color: var(--terminal-bg);
 }
 
+/* ============================================
+   Font Classes
+   ============================================ */
+
+.font-default {
+  font-family: "IBM Plex Mono", "Consolas", "Monaco", "Courier New", monospace;
+}
+
+.font-vt323 {
+  font-family: "VT323", monospace;
+  font-size: 1.3em; /* VT323 renders small, scale up */
+}
+
+.font-ibm3270 {
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.font-sharetech {
+  font-family: "Share Tech Mono", monospace;
+}
+
+/* Font selector styling */
+.font-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.font-button {
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 0.8em;
+  cursor: pointer;
+  border: 1px solid var(--terminal-dim);
+  background: transparent;
+  color: var(--terminal-dim);
+  transition: all 0.2s ease;
+}
+
+.font-button:hover {
+  border-color: var(--terminal-text);
+  color: var(--terminal-text);
+}
+
+.font-button.active {
+  border-color: var(--terminal-text);
+  background: var(--terminal-text);
+  color: var(--terminal-bg);
+}
+
+/* ============================================
+   CRT Effects Toggle
+   ============================================ */
+
+.crt-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 25px;
+}
+
+/* Enhanced CRT effects */
+.crt-enhanced {
+  position: relative;
+}
+
+/* Vignette effect */
+.crt-enhanced::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 0%,
+    transparent 60%,
+    rgba(0, 0, 0, 0.4) 100%
+  );
+  pointer-events: none;
+  z-index: 999;
+}
+
+/* Subtle flicker */
+.crt-enhanced {
+  animation: crt-flicker 0.1s infinite;
+}
+
+@keyframes crt-flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.98; }
+}
+
+/* Chromatic aberration on text */
+.crt-enhanced .output-area,
+.crt-enhanced .disclaimer {
+  text-shadow:
+    0 0 5px var(--terminal-glow),
+    -1px 0 1px rgba(255, 0, 0, 0.1),
+    1px 0 1px rgba(0, 255, 255, 0.1);
+}
+
 .disclaimer-section {
   margin-bottom: 25px;
 }
