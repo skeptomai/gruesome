@@ -169,12 +169,13 @@ export function Terminal({
   font = 'default',
   crtEnabled = false,
   effectsEnabled = false,
+  blurLevel = 'medium',
   prompt = '>',
 }) {
   const themeClass = `theme-${theme}`;
   const fontClass = `font-${font}`;
   const effectsClass = effectsEnabled ? 'effects-enabled' : '';
-  const crtClass = crtEnabled ? 'crt-enhanced' : '';
+  const crtClass = crtEnabled ? `crt-enhanced crt-blur-${blurLevel}` : '';
 
   const handleCommand = (command) => {
     if (onCommand) {

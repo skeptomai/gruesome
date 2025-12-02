@@ -509,17 +509,83 @@ body {
   display: flex;
   justify-content: center;
   gap: 10px;
+  margin-bottom: 15px;
+}
+
+/* ============================================
+   Blur Intensity Toggle
+   ============================================ */
+
+.blur-toggle {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 25px;
+}
+
+.blur-toggle.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.blur-label {
+  color: var(--terminal-dim);
+  font-size: 0.9em;
+  margin-right: 4px;
+}
+
+.blur-button {
+  padding: 5px 12px;
+  font-family: inherit;
+  font-size: 0.8em;
+  cursor: pointer;
+  border: 1px solid var(--terminal-dim);
+  background: transparent;
+  color: var(--terminal-dim);
+  transition: all 0.2s ease;
+}
+
+.blur-button:hover:not(:disabled) {
+  border-color: var(--terminal-text);
+  color: var(--terminal-text);
+}
+
+.blur-button.active {
+  border-color: var(--terminal-text);
+  background: var(--terminal-text);
+  color: var(--terminal-bg);
+}
+
+.blur-button:disabled {
+  cursor: not-allowed;
 }
 
 /* Enhanced CRT effects */
 .crt-enhanced {
   position: relative;
-  /* Apply SVG filter for phosphor glow */
-  filter: url(#crt-full);
+  /* Default filter - will be overridden by blur level classes */
+  filter: url(#crt-blur-medium);
   /* Screen curvature via border-radius on a pseudo-element */
   border-radius: 20px;
   overflow: hidden;
+}
+
+/* Blur level classes - override the filter */
+.crt-enhanced.crt-blur-none {
+  filter: url(#crt-blur-none);
+}
+
+.crt-enhanced.crt-blur-light {
+  filter: url(#crt-blur-light);
+}
+
+.crt-enhanced.crt-blur-medium {
+  filter: url(#crt-blur-medium);
+}
+
+.crt-enhanced.crt-blur-heavy {
+  filter: url(#crt-blur-heavy);
 }
 
 /* Vignette effect (darkened corners) */

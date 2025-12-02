@@ -31,7 +31,47 @@
         </feMerge>
       </filter>
 
-      <!-- Combined CRT effect -->
+      <!-- CRT effect - No blur (sharp text, no glow) -->
+      <filter id="crt-blur-none" x="-5%" y="-5%" width="110%" height="110%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="0" result="softened"/>
+        <feGaussianBlur in="SourceGraphic" stdDeviation="0" result="glow"/>
+        <feMerge>
+          <feMergeNode in="glow"/>
+          <feMergeNode in="softened"/>
+        </feMerge>
+      </filter>
+
+      <!-- CRT effect - Light blur -->
+      <filter id="crt-blur-light" x="-5%" y="-5%" width="110%" height="110%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="0.2" result="softened"/>
+        <feGaussianBlur in="SourceGraphic" stdDeviation="1.0" result="glow"/>
+        <feMerge>
+          <feMergeNode in="glow"/>
+          <feMergeNode in="softened"/>
+        </feMerge>
+      </filter>
+
+      <!-- CRT effect - Medium blur -->
+      <filter id="crt-blur-medium" x="-5%" y="-5%" width="110%" height="110%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="0.5" result="softened"/>
+        <feGaussianBlur in="SourceGraphic" stdDeviation="2.0" result="glow"/>
+        <feMerge>
+          <feMergeNode in="glow"/>
+          <feMergeNode in="softened"/>
+        </feMerge>
+      </filter>
+
+      <!-- CRT effect - Heavy blur (very blurry CRT look) -->
+      <filter id="crt-blur-heavy" x="-5%" y="-5%" width="110%" height="110%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="1.0" result="softened"/>
+        <feGaussianBlur in="SourceGraphic" stdDeviation="4.0" result="glow"/>
+        <feMerge>
+          <feMergeNode in="glow"/>
+          <feMergeNode in="softened"/>
+        </feMerge>
+      </filter>
+
+      <!-- Combined CRT effect (legacy, kept for compatibility) -->
       <filter id="crt-full" x="-5%" y="-5%" width="110%" height="110%">
         <!-- Slight blur for phosphor softness -->
         <feGaussianBlur in="SourceGraphic" stdDeviation="0.3" result="softened"/>

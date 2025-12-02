@@ -83,11 +83,37 @@ function CrtToggle({ crtEnabled, onToggle }) {
 }
 
 /**
+ * Blur Intensity Toggle Component
+ * Controls the amount of phosphor blur in CRT mode
+ */
+function BlurToggle({ blurLevel, onToggle, disabled }) {
+  const levels = [
+    { id: 'none', label: 'Sharp' },
+    { id: 'light', label: 'Light' },
+    { id: 'medium', label: 'Medium' },
+    { id: 'heavy', label: 'Heavy' },
+  ];
+
+  return html`
+    <div class="blur-toggle ${disabled ? 'disabled' : ''}">
+      <span class="blur-label">Blur:</span>
+      ${levels.map(level => html`
+        <button
+          class="blur-button ${blurLevel === level.id ? 'active' : ''}"
+          onClick=${() => !disabled && onToggle(level.id)}
+          disabled=${disabled}
+        >${level.label}</button>
+      `)}
+    </div>
+  `;
+}
+
+/**
  * Disclaimer Component
  * Shown before loading the game with legal notices
  */
-function Disclaimer({ onContinue, onLoadOwn, theme, onThemeChange, font, onFontChange, crtEnabled, onCrtChange }) {
-  const crtClass = crtEnabled ? 'crt-enhanced' : '';
+function Disclaimer({ onContinue, onLoadOwn, theme, onThemeChange, font, onFontChange, crtEnabled, onCrtChange, blurLevel, onBlurChange }) {
+  const crtClass = crtEnabled ? `crt-enhanced crt-blur-${blurLevel || 'medium'}` : '';
   return html`
     <div class="terminal theme-${theme} font-${font} ${crtClass}">
       <div class="disclaimer">
@@ -97,6 +123,7 @@ function Disclaimer({ onContinue, onLoadOwn, theme, onThemeChange, font, onFontC
         <${ThemeToggle} theme=${theme} onToggle=${onThemeChange} />
         <${FontToggle} font=${font} onToggle=${onFontChange} />
         <${CrtToggle} crtEnabled=${crtEnabled} onToggle=${onCrtChange} />
+        <${BlurToggle} blurLevel=${blurLevel || 'medium'} onToggle=${onBlurChange} disabled=${!crtEnabled} />
 
         <div class="disclaimer-section">
           <h2>About This Project</h2>
@@ -192,7 +219,7 @@ function App() {
         // Ignore parse errors
       }
     }
-    return { theme: 'green', font: 'default', crtEnabled: false, effectsEnabled: true };
+    return { theme: 'green', font: 'default', crtEnabled: false, effectsEnabled: true, blurLevel: 'medium' };
   });
 
   // Save settings to localStorage when they change
@@ -211,6 +238,10 @@ function App() {
 
   function handleCrtChange(enabled) {
     updateSettings({ ...settings, crtEnabled: enabled });
+  }
+
+  function handleBlurChange(level) {
+    updateSettings({ ...settings, blurLevel: level });
   }
 
   async function handleDisclaimerContinue() {
@@ -484,6 +515,8 @@ function App() {
           onFontChange=${handleFontChange}
           crtEnabled=${settings.crtEnabled || false}
           onCrtChange=${handleCrtChange}
+          blurLevel=${settings.blurLevel || 'medium'}
+          onBlurChange=${handleBlurChange}
         />
       `;
 
@@ -491,7 +524,7 @@ function App() {
       return html`<${Loading} message=${loadingMessage} />`;
 
     case AppState.LOADING_GAME:
-      const crtClass = settings.crtEnabled ? 'crt-enhanced' : '';
+      const crtClass = settings.crtEnabled ? `crt-enhanced crt-blur-${settings.blurLevel || 'medium'}` : '';
       return html`
         <div class="terminal theme-${settings.theme} font-${settings.font || 'default'} ${crtClass}">
           <div class="loading">
@@ -534,6 +567,7 @@ function App() {
           font=${settings.font || 'default'}
           crtEnabled=${settings.crtEnabled || false}
           effectsEnabled=${settings.effectsEnabled}
+          blurLevel=${settings.blurLevel || 'medium'}
         />
       `;
 
