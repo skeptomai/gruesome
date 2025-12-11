@@ -134,10 +134,14 @@ else
 fi
 
 # 9. End-to-end compiler test
+# Matches CI workflow: .github/workflows/ci.yml lines 82-87
+# Compiles basic_test.grue and runs it with "quit" command
 print_step "Testing end-to-end compilation and execution"
 if ./target/debug/grue-compiler examples/basic_test.grue -o tests/ci_test_output.z3 >/dev/null 2>&1; then
-    if echo "quit\ny" | timeout 10s ./target/debug/gruesome tests/ci_test_output.z3 >/dev/null 2>&1; then
+    # Note: echo "quit" (not echo -e) matches CI workflow exactly
+    if echo "quit" | timeout 10s ./target/debug/gruesome tests/ci_test_output.z3 >/dev/null 2>&1; then
         print_success "End-to-end compilation and execution successful"
+        rm -f tests/ci_test_output.z3
     else
         print_error "Compiled game execution failed"
         rm -f tests/ci_test_output.z3
@@ -149,43 +153,35 @@ else
 fi
 
 # 10. Test disassembler functionality
+# Matches CI workflow: .github/workflows/ci.yml lines 89-99
+# Tests basic disassembly, hex dump (-d), and address display (-n)
 print_step "Testing disassembler functionality"
-# First test with our compiled file
-if [ -f "tests/ci_test_output.z3" ]; then
+if ./target/debug/grue-compiler examples/basic_test.grue -o tests/ci_disasm_test.z3 >/dev/null 2>&1; then
     # Test basic disassembly
-    if ./target/debug/gruedasm-txd tests/ci_test_output.z3 >/dev/null 2>&1; then
-        # Test disassembly with hex dump
-        if ./target/debug/gruedasm-txd -d tests/ci_test_output.z3 >/dev/null 2>&1; then
-            # Test disassembly with addresses
-            if ./target/debug/gruedasm-txd -n tests/ci_test_output.z3 >/dev/null 2>&1; then
+    if ./target/debug/gruedasm-txd tests/ci_disasm_test.z3 >/dev/null 2>&1; then
+        # Test disassembly with hex dump (-d flag)
+        if ./target/debug/gruedasm-txd -d tests/ci_disasm_test.z3 >/dev/null 2>&1; then
+            # Test disassembly with addresses (-n flag)
+            if ./target/debug/gruedasm-txd -n tests/ci_disasm_test.z3 >/dev/null 2>&1; then
                 print_success "Disassembler functionality verified (basic, hex dump, addresses)"
+                rm -f tests/ci_disasm_test.z3
             else
                 print_error "Disassembler failed with -n (addresses) flag"
+                rm -f tests/ci_disasm_test.z3
                 FAILED=1
             fi
         else
             print_error "Disassembler failed with -d (hex dump) flag"
+            rm -f tests/ci_disasm_test.z3
             FAILED=1
         fi
     else
         print_error "Basic disassembler functionality failed"
+        rm -f tests/ci_disasm_test.z3
         FAILED=1
     fi
-
-    # Test with real Infocom game file (if available)
-    if [ -f "resources/test/seastalker/seastalker-r18-s850919.z3" ]; then
-        if ./target/debug/gruedasm-txd resources/test/seastalker/seastalker-r18-s850919.z3 >/dev/null 2>&1; then
-            print_success "Disassembler verified with real Infocom game file"
-        else
-            print_error "Disassembler failed on real Infocom game file"
-            FAILED=1
-        fi
-    fi
-
-    # Clean up test file
-    rm -f tests/ci_test_output.z3
 else
-    print_error "No test Z3 file available for disassembler testing"
+    print_error "Failed to compile test file for disassembler"
     FAILED=1
 fi
 
