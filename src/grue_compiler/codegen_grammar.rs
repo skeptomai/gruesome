@@ -419,204 +419,8 @@ self.code_address
         }
 
 
-        // LITERAL+NOUN CASE: Check for 2-element patterns like [Literal("at"), Noun]
-        for pattern in patterns.iter() {
-            if pattern.pattern.len() == 2 {
-                if let (
-                    crate::grue_compiler::ir::IrPatternElement::Literal(literal_word),
-                    crate::grue_compiler::ir::IrPatternElement::Noun,
-                ) = (&pattern.pattern[0], &pattern.pattern[1])
-                {
-                    debug!(
-                        "🔤 LITERAL+NOUN_CHECK: Testing for literal '{}' + noun pattern",
-                        literal_word
-                    );
-
-                    // Check if we have at least 3 words (verb + literal + noun)
-                    let skip_insufficient_words = (83000 + (self.code_address * 19) % 9999) as u32;
-                    let layout = self.emit_instruction_typed(
-                        Opcode::Op2(Op2::Jl), // jl: jump if less than
-                        &[
-                            Operand::Variable(1),      // word count
-                            Operand::SmallConstant(3), // compare with 3
-                        ],
-                        None,
-                        Some(0xBFFF_u16 as i16), // Branch-on-TRUE (skip if word_count < 3)
-                    )?;
-
-                    // Register branch to skip this pattern if insufficient words
-                    if let Some(branch_location) = layout.branch_location {
-                        self.reference_context
-                            .unresolved_refs
-                            .push(UnresolvedReference {
-                                reference_type: LegacyReferenceType::Branch,
-                                location: branch_location,
-                                target_id: skip_insufficient_words,
-                                is_packed_address: false,
-                                offset_size: 2,
-                                location_space: MemorySpace::Code,
-                            });
-                    }
-
-                    // Generate unique label IDs for this literal+noun pattern
-                    let unique_seed = (self.code_address * 17) % 9999;
-                    let skip_literal_noun_label = (82000 + unique_seed) as u32;
-
-                    // Load word 1 (offset 3) from parse buffer - this should be the literal "at"
-                    self.emit_instruction_typed(
-                        Opcode::Op2(Op2::Loadw),
-                        &[
-                            Operand::Variable(PARSE_BUFFER_GLOBAL),
-                            Operand::SmallConstant(3), // Word 1 dict addr at offset 3 (FIXED: was 4)
-                        ],
-                        Some(2), // Store in local variable 2 (variable 1 is used for word count)
-                        None,
-                    )?;
-
-                    // Compare word 1 with literal dictionary address: je @2 dict_addr skip_label
-                    let dict_ref_operand = Operand::LargeConstant(placeholder_word());
-                    let layout = self.emit_instruction_typed(
-                        Opcode::Op2(Op2::Je),
-                        &[
-                            Operand::Variable(2), // Word 1 from parse buffer (now in variable 2)
-                            dict_ref_operand,     // Literal word dictionary address
-                        ],
-                        None,
-                        Some(0x7FFF_u16 as i16), // Branch on FALSE (not equal) - skip this pattern if literal doesn't match
-                    )?;
-
-                    // Calculate dictionary reference location (second operand)
-                    let dict_operand_location = if let Some(operand_base) = layout.operand_location
-                    {
-                        operand_base + 1 // Skip first operand to reach second operand
-                    } else {
-                        panic!("BUG: emit_instruction didn't return operand_location for je");
-                    };
-
-                    // Register dictionary reference for literal word
-                    // Look up the word's position in the sorted dictionary
-                    let word_position = self.dictionary_words.iter().position(|w| w == literal_word)
-                        .unwrap_or_else(|| {
-                            panic!("FATAL: Literal word '{}' not found in dictionary_words! Available words: {:?}",
-                                   literal_word, self.dictionary_words);
-                        });
-                    debug!("🔍 DICT_REF_REGISTER: Registering dictionary reference for literal word '{}' at location 0x{:04x}, position={}", literal_word, dict_operand_location, word_position);
-                    self.reference_context
-                        .unresolved_refs
-                        .push(UnresolvedReference {
-                            reference_type: LegacyReferenceType::DictionaryRef {
-                                word: literal_word.clone(),
-                            },
-                            location: dict_operand_location,
-                            target_id: word_position as u32, // Use actual dictionary position
-                            is_packed_address: false,
-                            offset_size: 2,
-                            location_space: MemorySpace::Code,
-                        });
-
-                    // Register branch to skip this pattern if literal doesn't match
-                    if let Some(branch_location) = layout.branch_location {
-                        self.reference_context
-                            .unresolved_refs
-                            .push(UnresolvedReference {
-                                reference_type: LegacyReferenceType::Branch,
-                                location: branch_location,
-                                target_id: skip_literal_noun_label,
-                                is_packed_address: false,
-                                offset_size: 2,
-                                location_space: MemorySpace::Code,
-                            });
-                    }
-
-                    // MATCHED: Load word 2 (offset 3) as noun parameter and execute handler
-                    if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, args) =
-                        &pattern.handler
-                    {
-                        debug!(
-                            "🔤 LITERAL+NOUN_EXECUTE: Calling function {} for '{}' + noun",
-                            func_id, literal_word
-                        );
-
-                        // Load word 2 (offset 3) from parse buffer - this is the noun
-                        self.emit_instruction_typed(
-                            Opcode::Op2(Op2::Loadw),
-                            &[
-                                Operand::Variable(PARSE_BUFFER_GLOBAL),
-                                Operand::SmallConstant(5), // Word 2 dict addr at offset 5
-                            ],
-                            Some(7), // Store in local variable 7 (temporary for grammar operations)
-                            None,
-                        )?;
-
-                        // Build argument operands for function call
-                        let mut arg_operands = Vec::new();
-
-                        // LITERAL+NOUN PARAMETER RESOLUTION: Process RuntimeParameter arguments for patterns like "at" + noun
-                        // This fixes the "look at mailbox" crash by properly converting dictionary addresses to object IDs
-                        for arg_value in args.iter() {
-                            let arg_operand = match arg_value {
-                                crate::grue_compiler::ir::IrValue::RuntimeParameter(param)
-                                    if param == "2" =>
-                                {
-                                    // FIXED: Proper $2 parameter resolution for literal+noun patterns
-                                    // 1. Copy noun dictionary address from variable 7 to variable 2 (lookup function expects input in var 2)
-                                    // 2. Convert dictionary address to object ID using standard lookup mechanism
-                                    // 3. Return object ID from variable 3 (lookup function outputs object ID to var 3)
-
-                                    self.emit_instruction_typed(
-                                        Opcode::Op2(Op2::Store),
-                                        &[
-                                            Operand::SmallConstant(2), // Store to variable 2 (lookup input)
-                                            Operand::Variable(7), // From variable 7 (noun dict addr loaded from parse buffer)
-                                        ],
-                                        None,
-                                        None,
-                                    )?;
-
-                                    // Generate object lookup code to convert dictionary address to object ID
-                                    // This ensures functions receive object IDs (e.g., 10 for mailbox) instead of dict addresses (e.g., 2678)
-                                    self.generate_object_lookup_from_noun()?;
-
-                                    // The object ID is now in variable 3, so return that as the operand for function call
-                                    Operand::Variable(3)
-                                }
-                                crate::grue_compiler::ir::IrValue::Integer(n) => {
-                                    if *n >= 0 && *n <= 255 {
-                                        Operand::SmallConstant(*n as u8)
-                                    } else {
-                                        Operand::LargeConstant(*n as u16)
-                                    }
-                                }
-                                _ => {
-                                    debug!(
-                                        "🔤 LITERAL+NOUN_WARNING: Unexpected argument type: {:?}",
-                                        arg_value
-                                    );
-                                    Operand::SmallConstant(0)
-                                }
-                            };
-                            arg_operands.push(arg_operand);
-                        }
-
-                        // Emit call to pattern handler function
-                        self.emit_handler_call(*func_id, arg_operands, false, 0)?;
-
-                        // Jump back to main loop after successfully executing literal+noun pattern
-                        debug!(
-                            "🔀 JUMP_MAIN_LOOP: Jumping back to main loop start (label {}) after literal+noun pattern handler",
-                            main_loop_jump_id
-                        );
-                        self.emit_jump_to_main_loop(main_loop_jump_id)?;
-                    }
-
-                    // Register the skip_literal_noun_label at current address
-                    self.record_final_address(skip_literal_noun_label, self.code_address);
-
-                    // Register the skip_insufficient_words label at the same address (both conditions skip this pattern)
-                    self.record_final_address(skip_insufficient_words, self.code_address);
-                }
-            }
-        }
+        // Phase 3.2: Generate literal+noun pattern matching code
+        self.generate_literal_noun_patterns(patterns, main_loop_jump_id)?;
 
         // VERB+NOUN CASE: We have at least 2 words, process noun pattern
         if let Some(pattern) = noun_pattern {
@@ -1296,6 +1100,218 @@ verb, func_id
                     self.reference_context
                         .ir_id_to_address
                         .insert(skip_literal_label, self.code_address);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Generate code for literal+noun patterns (e.g., "at" + noun in "look at mailbox")
+    ///
+    /// Filters patterns for 2-element [Literal, Noun] patterns, checks word count >= 3,
+    /// compares word 1 with literal dictionary address, extracts noun from word 2,
+    /// converts noun dictionary address to object ID, and calls handler with object parameter.
+    fn generate_literal_noun_patterns(
+        &mut self,
+        patterns: &[crate::grue_compiler::ir::IrPattern],
+        main_loop_jump_id: u32,
+    ) -> Result<(), CompilerError> {
+        // LITERAL+NOUN CASE: Check for 2-element patterns like [Literal("at"), Noun]
+        for pattern in patterns.iter() {
+            if pattern.pattern.len() == 2 {
+                if let (
+                    crate::grue_compiler::ir::IrPatternElement::Literal(literal_word),
+                    crate::grue_compiler::ir::IrPatternElement::Noun,
+                ) = (&pattern.pattern[0], &pattern.pattern[1])
+                {
+                    debug!(
+                        "🔤 LITERAL+NOUN_CHECK: Testing for literal '{}' + noun pattern",
+                        literal_word
+                    );
+
+                    // Check if we have at least 3 words (verb + literal + noun)
+                    let skip_insufficient_words = (83000 + (self.code_address * 19) % 9999) as u32;
+                    let layout = self.emit_instruction_typed(
+                        Opcode::Op2(Op2::Jl), // jl: jump if less than
+                        &[
+                            Operand::Variable(1),      // word count
+                            Operand::SmallConstant(3), // compare with 3
+                        ],
+                        None,
+                        Some(0xBFFF_u16 as i16), // Branch-on-TRUE (skip if word_count < 3)
+                    )?;
+
+                    // Register branch to skip this pattern if insufficient words
+                    if let Some(branch_location) = layout.branch_location {
+                        self.reference_context
+                            .unresolved_refs
+                            .push(UnresolvedReference {
+                                reference_type: LegacyReferenceType::Branch,
+                                location: branch_location,
+                                target_id: skip_insufficient_words,
+                                is_packed_address: false,
+                                offset_size: 2,
+                                location_space: MemorySpace::Code,
+                            });
+                    }
+
+                    // Generate unique label IDs for this literal+noun pattern
+                    let unique_seed = (self.code_address * 17) % 9999;
+                    let skip_literal_noun_label = (82000 + unique_seed) as u32;
+
+                    // Load word 1 (offset 3) from parse buffer - this should be the literal "at"
+                    self.emit_instruction_typed(
+                        Opcode::Op2(Op2::Loadw),
+                        &[
+                            Operand::Variable(PARSE_BUFFER_GLOBAL),
+                            Operand::SmallConstant(3), // Word 1 dict addr at offset 3 (FIXED: was 4)
+                        ],
+                        Some(2), // Store in local variable 2 (variable 1 is used for word count)
+                        None,
+                    )?;
+
+                    // Compare word 1 with literal dictionary address: je @2 dict_addr skip_label
+                    let dict_ref_operand = Operand::LargeConstant(placeholder_word());
+                    let layout = self.emit_instruction_typed(
+                        Opcode::Op2(Op2::Je),
+                        &[
+                            Operand::Variable(2), // Word 1 from parse buffer (now in variable 2)
+                            dict_ref_operand,     // Literal word dictionary address
+                        ],
+                        None,
+                        Some(0x7FFF_u16 as i16), // Branch on FALSE (not equal) - skip this pattern if literal doesn't match
+                    )?;
+
+                    // Calculate dictionary reference location (second operand)
+                    let dict_operand_location = if let Some(operand_base) = layout.operand_location
+                    {
+                        operand_base + 1 // Skip first operand to reach second operand
+                    } else {
+                        panic!("BUG: emit_instruction didn't return operand_location for je");
+                    };
+
+                    // Register dictionary reference for literal word
+                    // Look up the word's position in the sorted dictionary
+                    let word_position = self.dictionary_words.iter().position(|w| w == literal_word)
+                        .unwrap_or_else(|| {
+                            panic!("FATAL: Literal word '{}' not found in dictionary_words! Available words: {:?}",
+                                   literal_word, self.dictionary_words);
+                        });
+                    debug!("🔍 DICT_REF_REGISTER: Registering dictionary reference for literal word '{}' at location 0x{:04x}, position={}", literal_word, dict_operand_location, word_position);
+                    self.reference_context
+                        .unresolved_refs
+                        .push(UnresolvedReference {
+                            reference_type: LegacyReferenceType::DictionaryRef {
+                                word: literal_word.clone(),
+                            },
+                            location: dict_operand_location,
+                            target_id: word_position as u32, // Use actual dictionary position
+                            is_packed_address: false,
+                            offset_size: 2,
+                            location_space: MemorySpace::Code,
+                        });
+
+                    // Register branch to skip this pattern if literal doesn't match
+                    if let Some(branch_location) = layout.branch_location {
+                        self.reference_context
+                            .unresolved_refs
+                            .push(UnresolvedReference {
+                                reference_type: LegacyReferenceType::Branch,
+                                location: branch_location,
+                                target_id: skip_literal_noun_label,
+                                is_packed_address: false,
+                                offset_size: 2,
+                                location_space: MemorySpace::Code,
+                            });
+                    }
+
+                    // MATCHED: Load word 2 (offset 3) as noun parameter and execute handler
+                    if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, args) =
+                        &pattern.handler
+                    {
+                        debug!(
+                            "🔤 LITERAL+NOUN_EXECUTE: Calling function {} for '{}' + noun",
+                            func_id, literal_word
+                        );
+
+                        // Load word 2 (offset 3) from parse buffer - this is the noun
+                        self.emit_instruction_typed(
+                            Opcode::Op2(Op2::Loadw),
+                            &[
+                                Operand::Variable(PARSE_BUFFER_GLOBAL),
+                                Operand::SmallConstant(5), // Word 2 dict addr at offset 5
+                            ],
+                            Some(7), // Store in local variable 7 (temporary for grammar operations)
+                            None,
+                        )?;
+
+                        // Build argument operands for function call
+                        let mut arg_operands = Vec::new();
+
+                        // LITERAL+NOUN PARAMETER RESOLUTION: Process RuntimeParameter arguments for patterns like "at" + noun
+                        // This fixes the "look at mailbox" crash by properly converting dictionary addresses to object IDs
+                        for arg_value in args.iter() {
+                            let arg_operand = match arg_value {
+                                crate::grue_compiler::ir::IrValue::RuntimeParameter(param)
+                                    if param == "2" =>
+                                {
+                                    // FIXED: Proper $2 parameter resolution for literal+noun patterns
+                                    // 1. Copy noun dictionary address from variable 7 to variable 2 (lookup function expects input in var 2)
+                                    // 2. Convert dictionary address to object ID using standard lookup mechanism
+                                    // 3. Return object ID from variable 3 (lookup function outputs object ID to var 3)
+
+                                    self.emit_instruction_typed(
+                                        Opcode::Op2(Op2::Store),
+                                        &[
+                                            Operand::SmallConstant(2), // Store to variable 2 (lookup input)
+                                            Operand::Variable(7), // From variable 7 (noun dict addr loaded from parse buffer)
+                                        ],
+                                        None,
+                                        None,
+                                    )?;
+
+                                    // Generate object lookup code to convert dictionary address to object ID
+                                    // This ensures functions receive object IDs (e.g., 10 for mailbox) instead of dict addresses (e.g., 2678)
+                                    self.generate_object_lookup_from_noun()?;
+
+                                    // The object ID is now in variable 3, so return that as the operand for function call
+                                    Operand::Variable(3)
+                                }
+                                crate::grue_compiler::ir::IrValue::Integer(n) => {
+                                    if *n >= 0 && *n <= 255 {
+                                        Operand::SmallConstant(*n as u8)
+                                    } else {
+                                        Operand::LargeConstant(*n as u16)
+                                    }
+                                }
+                                _ => {
+                                    debug!(
+                                        "🔤 LITERAL+NOUN_WARNING: Unexpected argument type: {:?}",
+                                        arg_value
+                                    );
+                                    Operand::SmallConstant(0)
+                                }
+                            };
+                            arg_operands.push(arg_operand);
+                        }
+
+                        // Emit call to pattern handler function
+                        self.emit_handler_call(*func_id, arg_operands, false, 0)?;
+
+                        // Jump back to main loop after successfully executing literal+noun pattern
+                        debug!(
+                            "🔀 JUMP_MAIN_LOOP: Jumping back to main loop start (label {}) after literal+noun pattern handler",
+                            main_loop_jump_id
+                        );
+                        self.emit_jump_to_main_loop(main_loop_jump_id)?;
+                    }
+
+                    // Register the skip_literal_noun_label at current address
+                    self.record_final_address(skip_literal_noun_label, self.code_address);
+
+                    // Register the skip_insufficient_words label at the same address (both conditions skip this pattern)
+                    self.record_final_address(skip_insufficient_words, self.code_address);
                 }
             }
         }
