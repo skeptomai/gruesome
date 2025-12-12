@@ -418,7 +418,6 @@ self.code_address
             panic!("BUG: emit_instruction didn't return branch_location for jl instruction");
         }
 
-
         // Phase 3.2: Generate literal+noun pattern matching code
         self.generate_literal_noun_patterns(patterns, main_loop_jump_id)?;
 
@@ -890,7 +889,7 @@ verb, func_id
                     let layout = self.emit_instruction_typed(
                         Opcode::Op2(Op2::Je), // je: jump if equal
                         &[
-                            Operand::Variable(7),                    // word 1 dict addr from parse buffer
+                            Operand::Variable(7),                       // word 1 dict addr from parse buffer
                             Operand::LargeConstant(placeholder_word()), // literal dict addr (placeholder)
                         ],
                         None,
@@ -1241,9 +1240,7 @@ verb, func_id
         pattern: &crate::grue_compiler::ir::IrPattern,
         main_loop_jump_id: u32,
     ) -> Result<(), CompilerError> {
-        if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, args) =
-            &pattern.handler
-        {
+        if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, args) = &pattern.handler {
             debug!(
 " NOUN_CASE_EXECUTING: Generating noun pattern call to function ID {} for verb '{}' at 0x{:04x}",
 func_id, verb, self.code_address
