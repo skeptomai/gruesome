@@ -543,28 +543,7 @@ self.code_address
                             "🔀 JUMP_MAIN_LOOP: Jumping back to main loop start (label {}) after literal pattern handler",
                             main_loop_jump_id
                         );
-
-                        let layout = self.emit_instruction_typed(
-                            Opcode::Op1(Op1::Jump),                        // jump
-                            &[Operand::LargeConstant(placeholder_word())], // Will be resolved to main loop start
-                            None,
-                            None,
-                        )?;
-
-                        if let Some(operand_location) = layout.operand_location {
-                            self.reference_context
-                                .unresolved_refs
-                                .push(UnresolvedReference {
-                                    reference_type: LegacyReferenceType::Jump,
-                                    location: operand_location,
-                                    target_id: main_loop_jump_id,
-                                    is_packed_address: false,
-                                    offset_size: 2,
-                                    location_space: MemorySpace::Code,
-                                });
-                        } else {
-                            panic!("BUG: emit_instruction didn't return operand_location for placeholder");
-                        }
+                        self.emit_jump_to_main_loop(main_loop_jump_id)?;
                     }
 
                     // Define the skip_literal_label here for branches that skip this pattern
@@ -857,27 +836,7 @@ self.code_address
                             "🔀 JUMP_MAIN_LOOP: Jumping back to main loop start (label {}) after literal+noun pattern handler",
                             main_loop_jump_id
                         );
-
-                        let layout = self.emit_instruction_typed(
-                            Opcode::Op1(Op1::Jump),
-                            &[Operand::LargeConstant(placeholder_word())],
-                            None,
-                            None,
-                        )?;
-
-                        // Register jump back to main loop (same as simple literal patterns)
-                        if let Some(operand_location) = layout.operand_location {
-                            self.reference_context
-                                .unresolved_refs
-                                .push(UnresolvedReference {
-                                    reference_type: LegacyReferenceType::Jump,
-                                    location: operand_location,
-                                    target_id: main_loop_jump_id,
-                                    is_packed_address: false,
-                                    offset_size: 2,
-                                    location_space: MemorySpace::Code,
-                                });
-                        }
+                        self.emit_jump_to_main_loop(main_loop_jump_id)?;
                     }
 
                     // Register the skip_literal_noun_label at current address
@@ -1018,31 +977,7 @@ func_id, verb, self.code_address
                     "🔀 JUMP_MAIN_LOOP: Jumping back to main loop start (label {}) after successful handler",
                     main_loop_jump_id
                 );
-
-                let layout = self.emit_instruction_typed(
-                    Opcode::Op1(Op1::Jump),                        // jump
-                    &[Operand::LargeConstant(placeholder_word())], // Will be resolved to main loop start
-                    None,
-                    None,
-                )?;
-
-                // Create UnresolvedReference for jump back to main loop start
-                if let Some(operand_location) = layout.operand_location {
-                    self.reference_context
-                        .unresolved_refs
-                        .push(UnresolvedReference {
-                            reference_type: LegacyReferenceType::Jump,
-                            location: operand_location,
-                            target_id: main_loop_jump_id,
-                            is_packed_address: false,
-                            offset_size: 2,
-                            location_space: MemorySpace::Code,
-                        });
-                } else {
-                    panic!(
-                        "BUG: emit_instruction didn't return operand_location for jump placeholder"
-                    );
-                }
+                self.emit_jump_to_main_loop(main_loop_jump_id)?;
             }
         }
 
@@ -1254,30 +1189,7 @@ func_id, verb, self.code_address
                     "🔀 JUMP_MAIN_LOOP: Jumping back to main loop start (label {}) after default handler",
                     main_loop_jump_id
                 );
-
-                let layout = self.emit_instruction_typed(
-                    Opcode::Op1(Op1::Jump),                        // jump
-                    &[Operand::LargeConstant(placeholder_word())], // Will be resolved to main loop start
-                    None,
-                    None,
-                )?;
-
-                if let Some(operand_location) = layout.operand_location {
-                    self.reference_context
-                        .unresolved_refs
-                        .push(UnresolvedReference {
-                            reference_type: LegacyReferenceType::Jump,
-                            location: operand_location,
-                            target_id: main_loop_jump_id,
-                            is_packed_address: false,
-                            offset_size: 2,
-                            location_space: MemorySpace::Code,
-                        });
-                } else {
-                    panic!(
-                        "BUG: emit_instruction didn't return operand_location for jump placeholder"
-                    );
-                }
+                self.emit_jump_to_main_loop(main_loop_jump_id)?;
             }
         } else if let Some(pattern) = noun_pattern {
             // No default pattern, but we have a noun pattern - call it with object ID 0
@@ -1322,30 +1234,7 @@ verb, func_id
                     "🔀 JUMP_MAIN_LOOP: Jumping back to main loop start (label {}) after noun handler (ID 0)",
                     main_loop_jump_id
                 );
-
-                let layout = self.emit_instruction_typed(
-                    Opcode::Op1(Op1::Jump),                        // jump
-                    &[Operand::LargeConstant(placeholder_word())], // Will be resolved to main loop start
-                    None,
-                    None,
-                )?;
-
-                if let Some(operand_location) = layout.operand_location {
-                    self.reference_context
-                        .unresolved_refs
-                        .push(UnresolvedReference {
-                            reference_type: LegacyReferenceType::Jump,
-                            location: operand_location,
-                            target_id: main_loop_jump_id,
-                            is_packed_address: false,
-                            offset_size: 2,
-                            location_space: MemorySpace::Code,
-                        });
-                } else {
-                    panic!(
-                        "BUG: emit_instruction didn't return operand_location for jump placeholder"
-                    );
-                }
+                self.emit_jump_to_main_loop(main_loop_jump_id)?;
             }
         }
 
@@ -1358,6 +1247,36 @@ verb, func_id
             verb_start_address,
             self.code_address
         );
+
+        Ok(())
+    }
+
+    /// Helper: Emit a jump instruction back to the main loop
+    ///
+    /// This is used after pattern handlers execute to return control to the main input loop.
+    /// Emits a jump instruction with placeholder that gets resolved to the main loop label.
+    fn emit_jump_to_main_loop(&mut self, main_loop_label: u32) -> Result<(), CompilerError> {
+        let layout = self.emit_instruction_typed(
+            Opcode::Op1(Op1::Jump),
+            &[Operand::LargeConstant(placeholder_word())],
+            None,
+            None,
+        )?;
+
+        if let Some(operand_location) = layout.operand_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::Jump,
+                    location: operand_location,
+                    target_id: main_loop_label,
+                    is_packed_address: false,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        } else {
+            panic!("BUG: emit_instruction didn't return operand_location for jump");
+        }
 
         Ok(())
     }
