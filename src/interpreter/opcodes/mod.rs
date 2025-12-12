@@ -15,16 +15,3 @@ pub mod opcodes_memory;
 pub mod opcodes_object;
 #[cfg(feature = "native")]
 pub mod opcodes_stack;
-
-#[cfg(feature = "native")]
-pub use self::opcodes_display::*;
-#[cfg(feature = "native")]
-pub use self::opcodes_io::*;
-#[cfg(feature = "native")]
-pub use self::opcodes_math::*;
-#[cfg(feature = "native")]
-pub use self::opcodes_memory::*;
-#[cfg(feature = "native")]
-pub use self::opcodes_object::*;
-#[cfg(feature = "native")]
-pub use self::opcodes_stack::*;

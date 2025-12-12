@@ -1825,6 +1825,7 @@ impl ZMachineCodeGen {
 
         // Divide by 2 to get num_exits (property length is in bytes, each word is 2 bytes)
         // CRITICAL: Use raw opcode to ensure V3 form determination applies
+        #[allow(deprecated)]
         self.emit_instruction(
             0x17, // div opcode - V3 compatibility handled by determine_instruction_form_with_operands
             &[Operand::Variable(num_exits_var), Operand::SmallConstant(2)],

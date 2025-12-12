@@ -2852,6 +2852,7 @@ impl ZMachineCodeGen {
             IrBinaryOp::Divide => {
                 // CRITICAL: Use raw opcode to ensure V3 form determination applies
                 // V3 compatibility constraints in determine_instruction_form_with_operands require raw opcode
+                #[allow(deprecated)]
                 self.emit_instruction(
                     0x17, // div opcode - V3 compatibility handled by determine_instruction_form_with_operands
                     &operands, store_var, None,

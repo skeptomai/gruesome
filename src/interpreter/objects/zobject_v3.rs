@@ -11,7 +11,7 @@ use log::debug;
 
 pub const MAX_OBJECTS_V3: u16 = 255;
 pub const MAX_ATTRIBUTES_V3: u16 = 31;
-pub const MAX_PROPERTIES_V3: u16 = 31;
+pub(crate) const MAX_PROPERTIES_V3: u16 = 31;
 pub const OBJECT_ENTRY_SIZE_V3: usize = 9;
 
 pub trait ObjectSystemV3 {
