@@ -540,6 +540,88 @@ src/
 
 ---
 
+## 🔍 **CODEGEN.RS REFACTORING OPPORTUNITY** (December 11, 2025)
+
+**STATUS**: **ANALYZED - AWAITING IMPLEMENTATION** 📋
+
+**OBJECTIVE**: Refactor the large `codegen.rs` file (8,010 lines) to improve maintainability and readability.
+
+### **CURRENT STATE**
+
+**File Size**: 364KB, 8,010 lines (down from 10,232 in November - 22% reduction already achieved!)
+- **90 functions** in one massive `impl ZMachineCodeGen` block
+- **16 modules already extracted** (~635KB total): instructions, builtins, image, strings, resolve, objects, spaces, lookup, arrays, branch, headers, references, utils, emit, memory, tests
+
+### **THE CORE PROBLEM: MONSTER FUNCTION** 🔴
+
+**`generate_verb_matching`** (lines 2411-3939): **1,529 lines** (19% of entire file!)
+- Single function larger than 12 of 16 extracted modules
+- Handles all verb pattern matching for grammar system
+- Deeply nested control flow
+- Main blocker for further refactoring
+
+**Top 10 largest functions = 4,139 lines (52% of file)**:
+1. `generate_verb_matching` - 1,529 lines 🔴
+2. `layout_memory_structures` - 578 lines
+3. `generate_builtin_functions` - 412 lines
+4. `create_property_table_from_ir` - 338 lines
+5. `generate_comparison_with_result` - 300 lines
+6. `resolve_ir_id_to_operand` - 213 lines
+7. `generate_init_block` - 209 lines
+8. `generate_main_loop` - 199 lines
+9. `create_object_entry_from_ir_with_mapping` - 192 lines
+10. `patch_property_table_addresses` - 169 lines
+
+### **RECOMMENDED STRATEGY** (4-Phase Approach)
+
+**DETAILED ANALYSIS**: `docs/CODEGEN_REFACTORING_ANALYSIS.md` - Complete technical assessment including:
+- Current state analysis with line-by-line breakdown
+- Six refactoring options with benefits/challenges
+- Multi-phase implementation strategy
+- Why previous refactoring attempts likely failed
+- Manual editing guidance
+
+**Phase 1: Tame the Monster (Option 1)** ⭐⭐⭐ SAFEST - START HERE
+- Break up `generate_verb_matching` into 5 pattern handler methods (~300 lines each)
+- All stay within codegen.rs (no module boundaries to cross)
+- No import changes, easy rollback
+- Main function becomes ~200 lines
+- **Why first**: Previous attempts likely failed because this function is too big to move
+
+**Phase 2: Consolidate Objects (Option 4)**
+- Move 856 lines to existing `codegen_objects.rs`
+- Low risk, good practice for larger extractions
+
+**Phase 3: Extract Grammar Module (Option 2)**
+- Now that monster is tamed, extract entire grammar to `codegen_grammar.rs`
+- Remove 1,805 lines (23% of file)
+
+**Phase 4: Extract Memory Layout (Option 3)**
+- Extract `layout_memory_structures` to `codegen_layout.rs`
+- Remove 600+ lines (7.5% of file)
+
+**Total Potential Reduction**: ~3,500 lines (44% → ~4,500 lines remaining)
+
+### **WHY PREVIOUS ATTEMPTS FAILED**
+
+Likely reasons:
+1. **Monster function (1,529 lines) too big to reason about or move**
+2. **Tight state coupling** - Many functions access extensive codegen state
+3. **No clear boundaries** - Grammar, layout, and emission mixed together
+4. **All-or-nothing approach** - Trying to extract too much at once
+
+This strategy addresses all four by taming the monster first with internal refactoring.
+
+### **NEXT STEPS** (When Returning to This Task)
+
+1. Review `docs/CODEGEN_REFACTORING_ANALYSIS.md` for detailed options
+2. Decide on approach (Phase 1 only, Phases 1+2, or full multi-phase)
+3. Commit before starting any phase (easy rollback)
+4. Start with Phase 1 internal refactoring (lowest risk, highest impact)
+5. Test after each extraction to verify no regressions
+
+---
+
 ## 📋 **MAINTENANCE NOTES**
 
 **Documentation**:

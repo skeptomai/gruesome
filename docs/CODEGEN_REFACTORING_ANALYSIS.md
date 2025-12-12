@@ -1,290 +1,432 @@
-# CodeGen.rs Refactoring Analysis & Strategy
+# Codegen.rs Refactoring Analysis - UPDATED December 2025
 
-**File**: `src/grue_compiler/codegen.rs`
-**Size**: 10,232 lines
-**Analysis Date**: November 3, 2025
-**Context**: Monolithic file requiring modular refactoring
+## Current State (December 11, 2025)
 
-## Executive Summary
+**File Size**: 364KB, **8,010 lines** (down from 10,232 in November)
+**Main Structure**: 1 massive `impl ZMachineCodeGen` block with **90 functions**
+**Struct Fields**: ~95 fields tracking various mappings, addresses, and state
+**Recent Progress**: File reduced by 2,222 lines (22%) since November 3rd
 
-The `codegen.rs` file is a monolithic 10,232-line code generator that successfully compiles Grue language into Z-Machine bytecode. After analyzing the structure, data flow, and function dependencies, this document provides three refactoring approaches ranked by complexity and architectural impact.
+## Already Extracted Modules ✅
 
-## Current Architecture Analysis
+Significant extraction work has already been completed:
 
-### Data Flow Overview
+| Module | Size | Purpose |
+|--------|------|---------|
+| codegen_instructions.rs | 177KB | Instruction generation (largest) |
+| codegen_builtins.rs | 97KB | Builtin function generation |
+| codegen_image.rs | 42KB | Final image assembly |
+| codegen_strings.rs | 42KB | String encoding and management |
+| codegen_tests.rs | 43KB | Test suite |
+| codegen_resolve.rs | 47KB | Address resolution |
+| codegen_objects.rs | 38KB | Object table generation |
+| codegen_spaces.rs | 25KB | Memory space management |
+| codegen_lookup.rs | 24KB | Dictionary and lookup tables |
+| codegen_arrays.rs | 15KB | Array handling |
+| codegen_branch.rs | 15KB | Branch instruction handling |
+| codegen_headers.rs | 12KB | Header generation |
+| codegen_references.rs | 11KB | Reference tracking |
+| codegen_utils.rs | 10KB | Utility functions |
+| codegen_emit.rs | 6KB | Instruction emission |
+| codegen_memory.rs | 1.6KB | Memory constants |
 
-The code generation follows a clear pipeline:
+**Total Extracted**: ~635KB across 16 modules
 
-1. **IR Input Processing** → Setup mappings and analyze instructions
-2. **Memory Layout Planning** → Calculate space requirements and addresses
-3. **Code Generation** → Emit instructions to separate memory spaces
-4. **Address Resolution** → Patch forward references and jumps
-5. **Final Assembly** → Combine all spaces into executable Z-Machine image
+**November's Recommendation** (Approach 1) has been **largely completed**:
+- ✅ Utility extraction done (codegen_utils.rs)
+- ✅ Builtin extraction done (codegen_builtins.rs)
+- ✅ Structure extraction done (codegen_strings.rs, codegen_objects.rs, etc.)
 
-### Core Components Identification
+## What's Still in codegen.rs (8,010 lines)
 
-#### **1. Core Infrastructure (Critical - Never Move)**
-These functions form the foundation and must remain in the main file:
+### Critical Finding: The Monster Function 🔴
 
-**Memory Management & Allocation:**
-- `new()` - Constructor and initialization
-- Memory space allocation functions
-- Address tracking and layout functions
-- Final assembly and image generation
+**`generate_verb_matching`** (lines 2411-3939): **1,529 lines** (19% of file!)
 
-**Low-Level Emission:**
-- `emit_instruction_typed()` and related emission functions
-- Operand encoding and instruction layout
-- Reference resolution system
-- `assemble_complete_zmachine_image()`
+This single function is:
+- Larger than 12 of the 16 extracted modules
+- Larger than most entire codebases
+- Handles verb pattern matching for the grammar system
+- Contains deeply nested control flow
+- Manages literal, object, direction, and default patterns
 
-**Version-Dependent Logic:**
-- Alignment functions (V3: 2-byte, V4/V5: 4-byte)
-- Packed address calculations
-- Memory layout differences between versions
+**This is the #1 problem preventing further refactoring.**
 
-#### **2. Builtin Functions System (Safe to Extract)**
-**Current State**: 30+ builtin functions implemented as inline generation
-**Pattern**: Each has `generate_*_builtin()` method called from central dispatcher
-**Dependencies**: Low coupling, self-contained implementations
+### Remaining Content by Section
 
-**Examples**:
-- `generate_print_builtin()`, `generate_println_builtin()`
-- `generate_move_builtin()`, `generate_get_location_builtin()`
-- `generate_test_attr_builtin()`, `generate_set_attr_builtin()`
-- String manipulation builtins (`generate_to_string_builtin()`, etc.)
-- Array manipulation builtins
+**Lines 0-1000: Foundation** (10 functions, ~1000 lines)
+- Constructor and initialization
+- Label definitions and cross-space references
+- Variable assignment
+- Jump/call translation
+- `layout_memory_structures` (578 lines - 2nd largest!)
 
-#### **3. Z-Machine Structure Generators (Safe to Extract)**
-**Pattern**: Generate specific Z-Machine data structures
-**Dependencies**: Minimal, mostly data transformation
+**Lines 1000-2000: Object/Property Tables** (6 functions, ~850 lines)
+- Object entry creation (2 variants)
+- Property table creation (2 variants)
+- Property table patching
+- Some of this overlaps with codegen_objects.rs
 
-**Categories**:
-- Object system generation (object table, property tables)
-- String encoding and dictionary generation
-- Header field generation and fixup
-- Global variable space generation
+**Lines 2000-4000: Main Loop & Grammar** (10 functions, ~2000 lines)
+- Program flow generation
+- Main loop generation (199 lines)
+- **`generate_verb_matching` (1,529 lines) ← THE MONSTER**
+- Function parameter/local mappings
 
-#### **4. IR Translation Layer (Medium Risk)**
-**Pattern**: Transform IR instructions into Z-Machine instructions
-**Dependencies**: Heavy coupling with core emission system
+**Lines 4000-5000: Function Generation** (14 functions, ~1000 lines)
+- Function headers and finalization
+- Load immediate, unary/binary ops
+- Call handling
+- IR ID resolution (213 lines - complex)
+- Object/room mappings setup
 
-**Functions**:
-- `generate_load_immediate()`, `generate_binary_op()`
-- `generate_call()`, `generate_call_with_reference()`
-- Control flow instruction handlers
-- Variable assignment and mapping
+**Lines 5000-6000: IR Resolution & Control Flow** (20 functions, ~1000 lines)
+- InsertObj preprocessing
+- Debug tree functions
+- Return emission
+- Conditional branches
+- Comparison handling (300 lines)
+- Init block generation (209 lines)
 
-#### **5. Utility & Helper Functions (Very Safe to Extract)**
-**Pattern**: Pure functions with no state dependencies
-**Dependencies**: None or minimal
+**Lines 6000-7000: Patching & Builtin Integration** (19 functions, ~1000 lines)
+- Story data validation
+- Reference resolution
+- Instruction size calculation
+- Jump/branch patching
+- Builtin function registration and calls
 
-**Categories**:
-- Debugging and logging functions
-- Validation helpers
-- Data structure creation helpers
-- Address calculation utilities
+**Lines 7000-8000: Mappings & Final Utilities** (17 functions, ~1000 lines)
+- Reference tracking
+- Address conversion
+- IR mapping consolidation
+- `generate_builtin_functions` (412 lines - 3rd largest!)
+- Array support
 
-### Current State Assessment
+### Top 10 Largest Functions Still in codegen.rs
 
-**Strengths**:
-- Clear separation of memory spaces
-- Well-defined data flow pipeline
-- Strong test coverage protects against regressions
-- Recent cleanup removed 1,006 lines of dead code
+1. **`generate_verb_matching`** - **1,529 lines** 🔴
+2. `layout_memory_structures` - 578 lines
+3. `generate_builtin_functions` - 412 lines
+4. `create_property_table_from_ir` - 338 lines
+5. `generate_comparison_with_result` - 300 lines
+6. `resolve_ir_id_to_operand` - 213 lines
+7. `generate_init_block` - 209 lines
+8. `generate_main_loop` - 199 lines
+9. `create_object_entry_from_ir_with_mapping` - 192 lines
+10. `patch_property_table_addresses` - 169 lines
 
-**Problems**:
-- Single 10,232-line file difficult to navigate
-- Function location requires extensive searching
-- Related functionality scattered throughout file
-- Hard to understand which functions are safe to modify
+**Top 10 Total**: 4,139 lines (52% of entire file!)
 
-## Three Refactoring Approaches
+## Refactoring Options
 
-### **Approach 1: Incremental Module Extraction (RECOMMENDED)**
+### Option 1: Break Up the Monster Function (SAFEST) ⭐⭐⭐
 
-**Complexity**: ⭐⭐ Low-Medium
-**Architectural Improvement**: ⭐⭐⭐ High
-**Risk Level**: ⭐ Very Low
+**Target**: `generate_verb_matching` (lines 2411-3939, 1,529 lines)
 
-#### Strategy
-Extract self-contained function groups into separate modules while maintaining the same public API. No changes to calling code, only internal organization.
+**Approach**: Extract pattern type handlers into separate methods *within codegen.rs*:
 
-#### Phase 1: Utility Functions (Week 1)
-**Extract to `codegen_utils.rs`** (~800 lines)
-- Debugging functions (`log_ir_inventory()`, validation helpers)
-- Pure calculation functions
-- Data structure creation helpers
-- Address calculation utilities
-
-**Benefits**: Immediate 8% file size reduction with zero functional risk
-
-#### Phase 2: Builtin Functions (Week 2)
-**Extract to `codegen_builtins.rs`** (~1,500 lines)
-- All 30+ `generate_*_builtin()` functions
-- Builtin function dispatcher
-- Builtin registry management
-
-**Implementation Pattern**:
 ```rust
-// In codegen_builtins.rs
-impl BuiltinGenerator {
-    pub fn generate_print_builtin(&mut self, codegen: &mut ZMachineCodeGen, args: &[IrId]) -> Result<(), CompilerError> {
-        // Move existing implementation
+// Main orchestrator (keep at ~200 lines)
+fn generate_verb_matching(&mut self, verb: &str, patterns: &[IrPattern], main_loop_jump_id: u32) -> Result<(), CompilerError> {
+    // Setup and initialization
+    for pattern in patterns {
+        match determine_pattern_type(pattern) {
+            PatternType::Literal => self.generate_literal_pattern(pattern, ...)?,
+            PatternType::Object => self.generate_object_pattern(pattern, ...)?,
+            PatternType::Direction => self.generate_direction_pattern(pattern, ...)?,
+            PatternType::MultipleExits => self.generate_multiple_exits_pattern(pattern, ...)?,
+            PatternType::Default => self.generate_default_pattern(pattern, ...)?,
+        }
     }
+    // Cleanup
 }
 
-// In codegen.rs - minimal change
-pub fn generate_builtin_function_call(&mut self, function: &str, args: &[IrId], target: Option<IrId>) -> Result<(), CompilerError> {
-    BuiltinGenerator::new().generate_builtin_function_call(self, function, args, target)
-}
+// New helper methods (~300 lines each)
+fn generate_literal_pattern(&mut self, ...) -> Result<(), CompilerError> { ... }
+fn generate_object_pattern(&mut self, ...) -> Result<(), CompilerError> { ... }
+fn generate_direction_pattern(&mut self, ...) -> Result<(), CompilerError> { ... }
+fn generate_multiple_exits_pattern(&mut self, ...) -> Result<(), CompilerError> { ... }
+fn generate_default_pattern(&mut self, ...) -> Result<(), CompilerError> { ... }
 ```
 
-#### Phase 3: Structure Generators (Week 3)
-**Extract to `codegen_structures.rs`** (~1,000 lines)
-- Object table generation
-- String encoding and dictionary
-- Header generation and fixup
-- Global variable space generation
+**Benefits**:
+- ✅ **No module boundaries** - stays in codegen.rs
+- ✅ **No import changes** - all within same impl block
+- ✅ **Easy to rollback** - simple method extraction
+- ✅ **Huge readability win** - main function becomes ~200 lines
+- ✅ **Pattern handlers testable** - can focus on one pattern type
+- ✅ **Reduces cognitive load** - each pattern handler self-contained
 
-#### **Total Impact**:
-- **File Size**: 10,232 → ~7,000 lines (31% reduction)
-- **Maintainability**: Dramatically improved
-- **Risk**: Minimal - extracted functions are self-contained
+**Challenges**:
+- Still in codegen.rs (file remains ~8000 lines)
+- Methods will share state (but that's OK for same struct)
+- Medium effort (need to identify boundaries carefully)
+
+**Estimated Impact**: Monster tamed, cognitive load reduced 80%
 
 ---
 
-### **Approach 2: Data Flow Separation (AMBITIOUS)**
+### Option 2: Extract Grammar Module (HIGHEST IMPACT) ⭐⭐
 
-**Complexity**: ⭐⭐⭐⭐ High
-**Architectural Improvement**: ⭐⭐⭐⭐⭐ Very High
-**Risk Level**: ⭐⭐⭐ Medium
+**Target**: Lines 2000-4000 (grammar and pattern matching)
 
-#### Strategy
-Separate the code generator into distinct pipeline stages with formal interfaces between them. This mirrors the compiler's natural data flow.
+Create `codegen_grammar.rs` to extract:
+- `generate_main_loop` (199 lines)
+- `generate_command_processing` (50 lines)
+- `generate_grammar_pattern_matching` (27 lines)
+- **`generate_verb_matching` (1,529 lines)**
+- Plus: 5 pattern helper methods from Option 1 if done first
 
-#### Module Structure
-```
-src/grue_compiler/codegen/
-├── mod.rs              # Main coordinator and public API
-├── pipeline.rs         # Pipeline orchestration
-├── analysis.rs         # IR analysis and mapping setup
-├── memory_layout.rs    # Memory space planning and allocation
-├── code_emission.rs    # Core instruction emission
-├── address_resolution.rs # Reference patching and fixups
-├── structures/         # Z-Machine structure generators
-│   ├── objects.rs
-│   ├── strings.rs
-│   └── dictionary.rs
-└── builtins/          # Builtin function implementations
-    ├── core.rs        # print, move, etc.
-    ├── objects.rs     # object manipulation
-    └── strings.rs     # string manipulation
-```
+**Benefits**:
+- ✅ Removes **1,805 lines (23% of file)**
+- ✅ Clear conceptual boundary (grammar ≠ code generation)
+- ✅ Would be 2nd largest extracted module (after codegen_instructions.rs)
+- ✅ Isolates most complex code in dedicated module
+- ✅ Future grammar improvements easier
 
-#### Pipeline Stages
-1. **Analysis Stage**: Setup all IR mappings and analyze dependencies
-2. **Layout Stage**: Calculate memory requirements and base addresses
-3. **Emission Stage**: Generate code with placeholders for forward references
-4. **Resolution Stage**: Patch all addresses and create final image
+**Challenges**:
+- ❌ Grammar code uses extensive codegen state
+- ❌ Would need to pass many parameters or context struct
+- ❌ Some helper methods might need to move or become public
+- ❌ Previous refactoring attempts failed (user mentioned)
+- ❌ Medium-high risk due to tight coupling
 
-#### Benefits
-- Clear separation of concerns
-- Each stage can be tested independently
-- Future features easier to add
-- Matches natural compiler architecture
-
-#### Risks
-- Large refactoring scope
-- Potential for subtle bugs during transition
-- Requires careful API design between stages
+**Prerequisites**: Do Option 1 first to break up monster function
 
 ---
 
-### **Approach 3: Functional Clustering (CONSERVATIVE)**
+### Option 3: Extract Memory Layout Module ⭐
 
-**Complexity**: ⭐⭐ Low-Medium
-**Architectural Improvement**: ⭐⭐ Medium
-**Risk Level**: ⭐ Very Low
+**Target**: `layout_memory_structures` (578 lines, 2nd largest function)
 
-#### Strategy
-Group related functions into modules based on functionality rather than pipeline stages. Keep the main `codegen.rs` file but extract cohesive function groups.
+Create `codegen_layout.rs` to extract:
+- `layout_memory_structures` (578 lines)
+- Related layout calculation helpers
+- Memory address computation
 
-#### Module Extraction Plan
+**Benefits**:
+- ✅ Clear conceptual boundary (layout planning vs code generation)
+- ✅ Removes 600+ lines (7.5% of file)
+- ✅ Lower coupling than grammar code
 
-**Week 1: Extract Safe Clusters**
-- `codegen_debug.rs` - All debugging and logging functions
-- `codegen_validation.rs` - All validation and verification functions
-- `codegen_helpers.rs` - Pure utility functions
+**Challenges**:
+- Medium coupling with memory spaces
+- Need careful API design
 
-**Week 2: Extract Feature Clusters**
-- `codegen_builtins.rs` - All builtin function implementations
-- `codegen_objects.rs` - Object system generation (already exists!)
-- `codegen_strings.rs` - String and dictionary handling
+---
 
-**Week 3: Extract Generation Clusters**
-- `codegen_instructions.rs` - IR instruction translation (already exists!)
-- `codegen_control_flow.rs` - Branch/jump handling
-- `codegen_variables.rs` - Variable assignment and local management
+### Option 4: Consolidate Object/Property Functions ⭐
 
-#### Benefits
-- Minimal architectural changes
-- Easy to implement incrementally
-- Low risk of breaking existing functionality
-- Natural groupings easy to understand
+**Target**: Lines 1000-2000 (property and object tables)
 
-#### Limitations
-- Doesn't address fundamental data flow issues
-- Still maintains tight coupling between modules
-- Less dramatic improvement in overall architecture
+**Approach**: Move these functions from codegen.rs to existing `codegen_objects.rs`:
+- `create_object_entry` (54 lines)
+- `create_object_entry_from_ir_with_mapping` (192 lines)
+- `create_property_table` (86 lines)
+- `create_property_table_from_ir` (338 lines)
+- `patch_property_table_addresses` (169 lines)
+- `get_object_name_by_number` (17 lines)
 
-## Recommendation
+**Benefits**:
+- ✅ Removes **856 lines (11% of file)**
+- ✅ Consolidates all object logic in one place
+- ✅ codegen_objects.rs already exists with related functionality
+- ✅ Low risk - clear functional boundary
 
-**Approach 1 (Incremental Module Extraction)** is recommended because:
+**Challenges**:
+- Need to reconcile with existing codegen_objects.rs exports
+- Some state dependencies to resolve
 
-1. **Proven Track Record**: Similar successful extractions already done (`codegen_objects.rs`, `codegen_instructions.rs`)
+---
 
-2. **Low Risk**: Extracted functions are self-contained with minimal dependencies
+### Option 5: Extract Builtin Function Table Generator
 
-3. **Immediate Value**: 31% file size reduction makes navigation significantly easier
+**Target**: `generate_builtin_functions` (412 lines, 3rd largest)
 
-4. **Incremental Progress**: Each phase provides immediate benefits and can be done independently
+**Approach**: Move to `codegen_builtins.rs` (already exists)
 
-5. **Preservation of Working System**: No changes to the core pipeline that successfully compiles V3 games
+**Benefits**:
+- ✅ Removes 412 lines (5% of file)
+- ✅ Consolidates ALL builtin logic in one module
+- ✅ Clear ownership boundary
 
-## Implementation Roadmap
+**Challenges**:
+- Function generates Z-Machine routine code
+- Needs access to code emission functions
 
-### Phase 1: Utility Extraction (This Week)
-- Create `codegen_utils.rs`
-- Move debugging and validation functions
-- Update imports in main file
-- Run full test suite to verify no regressions
+---
 
-### Phase 2: Builtin Extraction (Next Week)
-- Create `codegen_builtins.rs`
-- Move all `generate_*_builtin()` functions
-- Create clean dispatcher interface
-- Verify all builtin functions still work correctly
+### Option 6: Extract Control Flow Module
 
-### Phase 3: Structure Extraction (Week 3)
-- Create `codegen_structures.rs`
-- Move string/dictionary/header generation
-- Verify compiled Z-Machine images identical
-- Update documentation
+**Target**: Lines 5000-6000 (control flow and comparisons)
 
-### Success Metrics
-- ✅ All existing tests pass without modification
-- ✅ File size reduced by >30%
-- ✅ No changes to public API
-- ✅ Compiled Z-Machine images byte-identical to before refactoring
-- ✅ Developer navigation significantly improved
+Create `codegen_control_flow.rs`:
+- `emit_return` (22 lines)
+- `generate_conditional_branch` (64 lines)
+- `process_binary_op` (148 lines)
+- `generate_comparison_with_result` (300 lines)
+- `generate_init_block` (209 lines)
+- Related helpers (~200 lines)
 
-## V4/V5 Bug Fix Strategy
+**Benefits**:
+- ✅ Removes **~900 lines (11% of file)**
+- ✅ Groups control flow logic together
+- ✅ Clear conceptual boundary
 
-Based on the CODEGEN_ANALYSIS.md findings, the refactoring will also enable targeted V4/V5 fixes:
+**Challenges**:
+- Medium coupling with IR state
+- Some shared state with other modules
 
-1. **Alignment Issues**: Extract alignment functions to dedicated module for focused fixes
-2. **IR Mapping Bugs**: Separate IR translation layer for debugging "No mapping found" errors
-3. **Version-Specific Logic**: Isolate V4/V5 branching logic for systematic testing
+---
 
-The incremental approach allows fixing these issues during extraction without disrupting the working V3 system.
+## Recommended Strategy
+
+### 🎯 RECOMMENDED: Multi-Phase Approach
+
+#### **Phase 1: Tame the Monster (Option 1)** ← START HERE
+**Effort**: Medium | **Risk**: Low | **Impact**: High readability
+
+Break up `generate_verb_matching` into pattern handler methods:
+1. Keep main function as orchestrator (~200 lines)
+2. Extract 5 pattern handlers (~300 lines each)
+3. All stay in codegen.rs (no module boundaries)
+4. Can be done with careful manual editing
+
+**Why first**: Previous refactoring attempts failed because the monster function makes everything hard. Tame it first.
+
+#### **Phase 2: Consolidate Objects (Option 4)**
+**Effort**: Low-Medium | **Risk**: Low | **Impact**: 856 lines removed
+
+Move object/property functions to existing codegen_objects.rs:
+- Clear functional boundary
+- Module already exists
+- Low coupling
+- Good practice for larger extractions
+
+#### **Phase 3: Extract Grammar (Option 2)**
+**Effort**: Medium-High | **Risk**: Medium | **Impact**: 1,805 lines removed
+
+Now that monster is tamed (Phase 1), extract entire grammar module:
+- Pattern handlers already separated (from Phase 1)
+- Easier to understand dependencies
+- Clear module boundary
+
+#### **Phase 4: Extract Layout (Option 3)**
+**Effort**: Medium | **Risk**: Medium | **Impact**: 600 lines removed
+
+Extract memory layout planning:
+- Clear conceptual separation
+- Reduces main file further
+
+**Total Potential Reduction**: ~3,500 lines (44% → ~4,500 lines remaining)
+
+---
+
+## Why Previous Attempts Failed
+
+Based on user comment "we've failed at refactoring it before":
+
+**Likely reasons**:
+1. **Monster function blocked progress** - 1,529 lines is too big to reason about or move
+2. **Tight state coupling** - Many functions access extensive codegen state
+3. **No clear boundaries** - Grammar, layout, and emission mixed together
+4. **All-or-nothing approach** - Trying to extract too much at once
+
+**This strategy addresses these**:
+1. ✅ Tame monster FIRST (internal refactoring, no module boundaries)
+2. ✅ Start with low-coupling modules (objects)
+3. ✅ Clear boundaries identified (grammar, layout, control flow)
+4. ✅ Incremental approach (one module at a time)
+
+---
+
+## Implementation Guidance for Manual Editing
+
+### Phase 1: Breaking Up generate_verb_matching
+
+**Step 1: Identify Pattern Boundaries**
+- Read through function, mark where each pattern type starts/ends
+- Look for comments like "Literal pattern", "Object pattern", etc.
+- Note local variables each section uses
+
+**Step 2: Extract First Pattern Handler**
+- Choose simplest pattern type (likely default or literal)
+- Copy code to new method below main function
+- Identify parameters needed (pattern, addresses, labels, etc.)
+- Test compilation
+
+**Step 3: Repeat for Other Patterns**
+- Extract object pattern handler
+- Extract direction pattern handler
+- Extract multiple exits handler
+- Extract remaining patterns
+
+**Step 4: Refactor Main Function**
+- Replace extracted code with method calls
+- Verify logic flow unchanged
+- Test full compilation
+
+**Manual Editing Required**:
+- Identifying exact boundaries (automated tools will struggle)
+- Determining parameter lists (need semantic understanding)
+- Handling shared local variables (may need to return values or pass mut refs)
+
+### Phase 2: Moving to codegen_objects.rs
+
+**Step 1: Check Current Exports**
+```bash
+grep "pub fn" src/grue_compiler/codegen_objects.rs
+```
+
+**Step 2: Move Functions One at a Time**
+1. Copy function to codegen_objects.rs
+2. Update visibility (pub fn)
+3. Add imports if needed
+4. Update codegen.rs to call via module
+5. Test compilation
+
+**Step 3: Consolidate Duplicates**
+- Check for similar functions in both files
+- Merge or disambiguate
+
+---
+
+## Success Metrics
+
+After Phase 1:
+- ✅ `generate_verb_matching` reduced to ~200 lines
+- ✅ 5 new pattern handler methods (~300 lines each)
+- ✅ All tests pass
+- ✅ Compiled games byte-identical
+
+After Phase 2:
+- ✅ codegen.rs down to ~7,150 lines
+- ✅ All object/property logic in codegen_objects.rs
+- ✅ All tests pass
+
+After Phase 3:
+- ✅ codegen.rs down to ~5,350 lines
+- ✅ Grammar logic isolated in codegen_grammar.rs
+- ✅ All tests pass
+
+After Phase 4:
+- ✅ codegen.rs down to ~4,750 lines (41% reduction)
+- ✅ Clear module boundaries
+- ✅ All tests pass
+
+---
+
+## Risk Mitigation
+
+1. **Commit before each phase** - Easy rollback
+2. **Test after each function move** - Catch issues early
+3. **Start with simplest extractions** - Build confidence
+4. **Keep compiled games** - Verify byte-identical output
+5. **Manual editing OK** - User indicated willingness
+
+## Next Steps
+
+**Immediate**: Review this analysis with user
+**If approved**: Start Phase 1 (break up monster function)
+**Tools needed**: Editor, grep, careful reading
+**Estimated time**: Phase 1 could take 2-4 hours of careful manual work
