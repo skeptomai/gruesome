@@ -422,114 +422,9 @@ self.code_address
         // Phase 3.2: Generate literal+noun pattern matching code
         self.generate_literal_noun_patterns(patterns, main_loop_jump_id)?;
 
-        // VERB+NOUN CASE: We have at least 2 words, process noun pattern
+        // Phase 3.3: Generate verb+noun pattern matching code
         if let Some(pattern) = noun_pattern {
-            if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, args) =
-                &pattern.handler
-            {
-                debug!(
-" NOUN_CASE_EXECUTING: Generating noun pattern call to function ID {} for verb '{}' at 0x{:04x}",
-func_id, verb, self.code_address
-);
-
-                log::debug!(
-                    "📍 PATTERN_HANDLER: '{}' noun pattern at 0x{:04x} with {} arguments",
-                    verb,
-                    self.code_address,
-                    args.len()
-                );
-
-                // POLYMORPHIC DISPATCH FIX: Process RuntimeParameter arguments properly
-                // Instead of hardcoding object lookup, use the existing RuntimeParameter resolution system
-
-                // Build argument operands for function call
-                let mut arg_operands = Vec::new();
-
-                // Convert IrValue arguments to operands
-                for arg_value in args.iter() {
-                    let arg_operand = match arg_value {
-                        crate::grue_compiler::ir::IrValue::RuntimeParameter(param) => {
-                            // Runtime grammar parameter - needs to be resolved from parse buffer
-                            if param == "noun" {
-                                // Semantic "noun" parameter - load word 1 from parse buffer
-                                self.emit_instruction_typed(
-                                    Opcode::Op2(Op2::Loadw), // loadw: load word from array
-                                    &[
-                                        Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
-                                        Operand::SmallConstant(3), // Offset 3 = word 1 dict addr (noun) - CORRECT: Fixed parse buffer offset
-                                    ],
-                                    Some(2), // Store word 1 dict addr in local variable 2 (expected by lookup function)
-                                    None,
-                                )?;
-
-                                // Generate object lookup code to convert dictionary address to object ID
-                                self.generate_object_lookup_from_noun()?;
-
-                                // The object ID is now in variable 3, so return that as the operand
-                                Operand::Variable(3)
-                            } else if let Ok(word_position) = param.parse::<u8>() {
-                                // Positional parameter like "2", "3", etc. - load word at specified position
-                                if word_position >= 1 && word_position <= 15 {
-                                    // Load word N dictionary address from parse buffer offset N
-                                    self.emit_instruction_typed(
-                                        Opcode::Op2(Op2::Loadw), // loadw: load word from array
-                                        &[
-                                            Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
-                                            Operand::SmallConstant(word_position), // Offset N = word N dict addr
-                                        ],
-                                        Some(2), // Store word N dict addr in local variable 2 (expected by lookup function)
-                                        None,
-                                    )?;
-
-                                    // Generate object lookup code to convert dictionary address to object ID
-                                    self.generate_object_lookup_from_noun()?;
-
-                                    // The object ID is now in variable 3, so return that as the operand
-                                    Operand::Variable(3)
-                                } else {
-                                    return Err(CompilerError::CodeGenError(format!(
-                                        "Invalid word position '{}' in RuntimeParameter. Must be between 1 and 15.",
-                                        word_position
-                                    )));
-                                }
-                            } else {
-                                return Err(CompilerError::CodeGenError(format!(
-                                    "UNIMPLEMENTED: Runtime parameter '{}' resolution not yet implemented. Supported parameters: 'noun' or numeric positions (1-15).",
-                                    param
-                                )));
-                            }
-                        }
-                        crate::grue_compiler::ir::IrValue::Object(object_name) => {
-                            // Compile-time object reference - resolve to object number
-                            if let Some(&obj_number) = self.object_numbers.get(object_name) {
-                                Operand::SmallConstant(obj_number as u8)
-                            } else {
-                                return Err(CompilerError::CodeGenError(format!(
-                                    "Object '{}' not found in object_numbers mapping for function argument",
-                                    object_name
-                                )));
-                            }
-                        }
-                        _ => {
-                            return Err(CompilerError::CodeGenError(format!(
-                                "UNIMPLEMENTED: Unsupported IrValue type in grammar handler arguments: {:?}",
-                                arg_value
-                            )));
-                        }
-                    };
-                    arg_operands.push(arg_operand);
-                }
-
-                // Call handler with polymorphic dispatch
-                self.emit_handler_call(*func_id, arg_operands, true, 0)?;
-
-                // Jump back to main loop to read new input - handler has successfully executed
-                debug!(
-                    "🔀 JUMP_MAIN_LOOP: Jumping back to main loop start (label {}) after successful handler",
-                    main_loop_jump_id
-                );
-                self.emit_jump_to_main_loop(main_loop_jump_id)?;
-            }
+            self.generate_verb_noun_patterns(verb, pattern, main_loop_jump_id)?;
         }
 
         // VERB-ONLY CASE: We have less than 2 words, process default pattern or noun pattern with object ID 0
@@ -1314,6 +1209,126 @@ verb, func_id
                     self.record_final_address(skip_insufficient_words, self.code_address);
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    /// Generate code for verb+noun patterns (e.g., "take <object>", "drop <object>")
+    ///
+    /// Handles simple verb+noun patterns where word count >= 2.
+    /// Loads noun from parse buffer, converts to object ID, calls handler with object parameter.
+    fn generate_verb_noun_patterns(
+        &mut self,
+        verb: &str,
+        pattern: &crate::grue_compiler::ir::IrPattern,
+        main_loop_jump_id: u32,
+    ) -> Result<(), CompilerError> {
+        if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, args) =
+            &pattern.handler
+        {
+            debug!(
+" NOUN_CASE_EXECUTING: Generating noun pattern call to function ID {} for verb '{}' at 0x{:04x}",
+func_id, verb, self.code_address
+);
+
+            log::debug!(
+                "📍 PATTERN_HANDLER: '{}' noun pattern at 0x{:04x} with {} arguments",
+                verb,
+                self.code_address,
+                args.len()
+            );
+
+            // POLYMORPHIC DISPATCH FIX: Process RuntimeParameter arguments properly
+            // Instead of hardcoding object lookup, use the existing RuntimeParameter resolution system
+
+            // Build argument operands for function call
+            let mut arg_operands = Vec::new();
+
+            // Convert IrValue arguments to operands
+            for arg_value in args.iter() {
+                let arg_operand = match arg_value {
+                    crate::grue_compiler::ir::IrValue::RuntimeParameter(param) => {
+                        // Runtime grammar parameter - needs to be resolved from parse buffer
+                        if param == "noun" {
+                            // Semantic "noun" parameter - load word 1 from parse buffer
+                            self.emit_instruction_typed(
+                                Opcode::Op2(Op2::Loadw), // loadw: load word from array
+                                &[
+                                    Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
+                                    Operand::SmallConstant(3), // Offset 3 = word 1 dict addr (noun) - CORRECT: Fixed parse buffer offset
+                                ],
+                                Some(2), // Store word 1 dict addr in local variable 2 (expected by lookup function)
+                                None,
+                            )?;
+
+                            // Generate object lookup code to convert dictionary address to object ID
+                            self.generate_object_lookup_from_noun()?;
+
+                            // The object ID is now in variable 3, so return that as the operand
+                            Operand::Variable(3)
+                        } else if let Ok(word_position) = param.parse::<u8>() {
+                            // Positional parameter like "2", "3", etc. - load word at specified position
+                            if word_position >= 1 && word_position <= 15 {
+                                // Load word N dictionary address from parse buffer offset N
+                                self.emit_instruction_typed(
+                                    Opcode::Op2(Op2::Loadw), // loadw: load word from array
+                                    &[
+                                        Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
+                                        Operand::SmallConstant(word_position), // Offset N = word N dict addr
+                                    ],
+                                    Some(2), // Store word N dict addr in local variable 2 (expected by lookup function)
+                                    None,
+                                )?;
+
+                                // Generate object lookup code to convert dictionary address to object ID
+                                self.generate_object_lookup_from_noun()?;
+
+                                // The object ID is now in variable 3, so return that as the operand
+                                Operand::Variable(3)
+                            } else {
+                                return Err(CompilerError::CodeGenError(format!(
+                                    "Invalid word position '{}' in RuntimeParameter. Must be between 1 and 15.",
+                                    word_position
+                                )));
+                            }
+                        } else {
+                            return Err(CompilerError::CodeGenError(format!(
+                                "UNIMPLEMENTED: Runtime parameter '{}' resolution not yet implemented. Supported parameters: 'noun' or numeric positions (1-15).",
+                                param
+                            )));
+                        }
+                    }
+                    crate::grue_compiler::ir::IrValue::Object(object_name) => {
+                        // Compile-time object reference - resolve to object number
+                        if let Some(&obj_number) = self.object_numbers.get(object_name) {
+                            Operand::SmallConstant(obj_number as u8)
+                        } else {
+                            return Err(CompilerError::CodeGenError(format!(
+                                "Object '{}' not found in object_numbers mapping for function argument",
+                                object_name
+                            )));
+                        }
+                    }
+                    _ => {
+                        return Err(CompilerError::CodeGenError(format!(
+                            "UNIMPLEMENTED: Unsupported IrValue type in grammar handler arguments: {:?}",
+                            arg_value
+                        )));
+                    }
+                };
+                arg_operands.push(arg_operand);
+            }
+
+            // Call handler with polymorphic dispatch
+            self.emit_handler_call(*func_id, arg_operands, true, 0)?;
+
+            // Jump back to main loop to read new input - handler has successfully executed
+            debug!(
+                "🔀 JUMP_MAIN_LOOP: Jumping back to main loop start (label {}) after successful handler",
+                main_loop_jump_id
+            );
+            self.emit_jump_to_main_loop(main_loop_jump_id)?;
         }
 
         Ok(())
