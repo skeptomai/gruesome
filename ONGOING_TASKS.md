@@ -586,7 +586,9 @@ src/
 3. `a7d5e1c` - refactor: Extract verb+noun patterns handler (Phase 3 Step 3)
 4. `3d9e2a9` - refactor: Extract default pattern handler (Phase 3 Step 4)
 
-**Detailed Documentation**: `docs/GRAMMAR_CODEGEN_REFACTORING_COMPLETE.md`
+**Detailed Documentation**:
+- `docs/GRAMMAR_CODEGEN_REFACTORING_COMPLETE.md` - Complete refactoring summary
+- `docs/GRAMMAR_REFACTORING_BYTECODE_ANALYSIS.md` - Forensic analysis of bytecode differences
 
 ### **REMAINING CODEGEN.RS STATE**
 
