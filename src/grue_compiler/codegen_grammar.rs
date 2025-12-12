@@ -437,6 +437,33 @@ self.code_address
             verb_only_label, self.code_address
         );
 
+        // Phase 3.4: Generate default/verb-only pattern matching code
+        self.generate_default_pattern(verb, default_pattern, noun_pattern, main_loop_jump_id)?;
+
+        // End of verb matching function - register the label for jump resolution
+        self.record_final_address(end_function_label, self.code_address);
+
+        log::debug!(
+            "📍 VERB_HANDLER: '{}' code range 0x{:04x}-0x{:04x}",
+            verb,
+            verb_start_address,
+            self.code_address
+        );
+
+        Ok(())
+    }
+
+    /// Generate code for default (verb-only) pattern or noun pattern fallback
+    ///
+    /// Handles verb-only case when word count < 2.
+    /// Calls default pattern handler if available, otherwise calls noun pattern with object ID 0.
+    fn generate_default_pattern(
+        &mut self,
+        verb: &str,
+        default_pattern: Option<&crate::grue_compiler::ir::IrPattern>,
+        noun_pattern: Option<&crate::grue_compiler::ir::IrPattern>,
+        main_loop_jump_id: u32,
+    ) -> Result<(), CompilerError> {
         if let Some(pattern) = default_pattern {
             // Handle default pattern (verb-only)
             if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, args) =
@@ -658,16 +685,6 @@ verb, func_id
                 self.emit_jump_to_main_loop(main_loop_jump_id)?;
             }
         }
-
-        // End of verb matching function - register the label for jump resolution
-        self.record_final_address(end_function_label, self.code_address);
-
-        log::debug!(
-            "📍 VERB_HANDLER: '{}' code range 0x{:04x}-0x{:04x}",
-            verb,
-            verb_start_address,
-            self.code_address
-        );
 
         Ok(())
     }
