@@ -392,7 +392,7 @@ impl ZMachineCodeGen {
         // Property optimization: Use calculated space instead of hardcoded allocation
         // Previous version used 1000+ bytes hardcoded space plus additional 200-byte margin
         // New version calculates precise space requirements with minimal 50-byte safety margin
-        let optimized_prop_space = self.estimate_property_table_space(&ir);
+        let optimized_prop_space = self.estimate_property_table_space(ir);
 
         log::warn!("🔧 PROPERTY OPTIMIZATION: Enabled with precise space calculation");
         log::warn!(
@@ -813,7 +813,7 @@ impl ZMachineCodeGen {
         // For now, keep the original mapping but we've fixed the main ir_id_to_object_number issue
 
         // Step 4: Create object table entries
-        for (_index, object) in all_objects.iter().enumerate() {
+        for object in all_objects.iter() {
             // CRITICAL FIX: Use the correct object number from IR mapping, not sequential index
             // This fixes the dual numbering system bug where IR ID 106 (mailbox) was mapped to Object #3
             // but Object #3 in the table was getting populated with data from all_objects[2] (North of House)

@@ -262,13 +262,13 @@ impl Interpreter {
                     if let Some(store_var) = inst.store_var {
                         self.vm.write_variable(store_var, next_prop)?;
                     }
-                    return Ok(ExecutionResult::Continue);
+                    Ok(ExecutionResult::Continue)
                 } else {
                     // This is output_stream - not an object operation, should not reach here
-                    return Err(
+                    Err(
                         "VAR:0x13 without store_var should be output_stream, not object operation"
                             .to_string(),
-                    );
+                    )
                 }
             }
 

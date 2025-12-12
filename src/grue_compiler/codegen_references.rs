@@ -57,6 +57,12 @@ pub struct ReferenceContext {
     pub unresolved_refs: Vec<UnresolvedReference>, // References waiting for resolution
 }
 
+impl Default for ReferenceContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ReferenceContext {
     /// Create a new empty reference context
     pub fn new() -> Self {

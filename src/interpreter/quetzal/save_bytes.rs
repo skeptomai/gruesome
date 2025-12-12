@@ -193,7 +193,5 @@ pub fn restore_from_bytes(vm: &mut VM, data: &[u8]) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     // Tests would go here if we had a way to create a test VM
 }

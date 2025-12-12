@@ -659,7 +659,7 @@ mod ir_tests {
             nested_objects: vec![],
         };
 
-        let room_objects = vec![mailbox, tree];
+        let room_objects = [mailbox, tree];
 
         assert_eq!(room_objects.len(), 2);
         assert_eq!(room_objects[0].name, "mailbox");
@@ -671,7 +671,7 @@ mod ir_tests {
     #[test]
     fn test_ir_generator_room_objects_field() {
         // Test IrGenerator room_objects field operations
-        let mut ir_generator = IrGenerator::new();
+        let ir_generator = IrGenerator::new();
 
         // Verify field is initialized empty
         let room_objects = ir_generator.get_room_objects();
@@ -742,10 +742,10 @@ mod ir_tests {
         };
 
         // west_of_house has mailbox (with leaflet inside)
-        let west_house_objects = vec![mailbox];
+        let west_house_objects = [mailbox];
 
         // armory has sword and shield
-        let armory_objects = vec![sword, shield];
+        let armory_objects = [sword, shield];
 
         assert_eq!(west_house_objects.len(), 1);
         assert_eq!(west_house_objects[0].name, "mailbox");
@@ -932,13 +932,10 @@ mod ir_tests {
         let mut call_instructions = 0;
 
         for instruction in &function.body.instructions {
-            match instruction {
-                IrInstruction::Call { args, .. } => {
-                    // Should be one function call with one argument (the score to add)
-                    call_instructions += 1;
-                    assert_eq!(args.len(), 1, "add_score should take one argument");
-                }
-                _ => {}
+            if let IrInstruction::Call { args, .. } = instruction {
+                // Should be one function call with one argument (the score to add)
+                call_instructions += 1;
+                assert_eq!(args.len(), 1, "add_score should take one argument");
             }
         }
 
@@ -970,13 +967,10 @@ mod ir_tests {
         let mut call_instructions = 0;
 
         for instruction in &function.body.instructions {
-            match instruction {
-                IrInstruction::Call { args, .. } => {
-                    // Should be one function call with one argument (the score to subtract)
-                    call_instructions += 1;
-                    assert_eq!(args.len(), 1, "subtract_score should take one argument");
-                }
-                _ => {}
+            if let IrInstruction::Call { args, .. } = instruction {
+                // Should be one function call with one argument (the score to subtract)
+                call_instructions += 1;
+                assert_eq!(args.len(), 1, "subtract_score should take one argument");
             }
         }
 

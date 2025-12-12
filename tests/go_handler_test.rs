@@ -99,7 +99,7 @@ fn decode_v3(bytes: &[u8]) -> String {
         if z == 5 {
             break;
         }
-        if z >= 6 && z <= 31 {
+        if (6..=31).contains(&z) {
             result.push((b'a' + (z - 6)) as char);
         }
     }

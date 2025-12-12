@@ -1096,13 +1096,13 @@ impl ZMachineCodeGen {
             match self.version {
                 ZMachineVersion::V3 => {
                     // v3: strings must be at even addresses
-                    if addr % 2 != 0 {
+                    if !addr.is_multiple_of(2) {
                         addr += 1;
                     }
                 }
                 ZMachineVersion::V4 | ZMachineVersion::V5 => {
                     // v4/v5: strings must be at 4-byte boundaries
-                    while addr % 4 != 0 {
+                    while !addr.is_multiple_of(4) {
                         addr += 1;
                     }
                 }
@@ -2117,13 +2117,13 @@ impl ZMachineCodeGen {
         match self.version {
             ZMachineVersion::V3 => {
                 // v3: functions must be at even addresses
-                if self.code_address % 2 != 0 {
+                if !self.code_address.is_multiple_of(2) {
                     self.emit_byte(0xB4)?; // nop instruction (safe padding that won't crash)
                 }
             }
             ZMachineVersion::V4 | ZMachineVersion::V5 => {
                 // v4/v5: functions must be at 4-byte boundaries
-                while self.code_address % 4 != 0 {
+                while !self.code_address.is_multiple_of(4) {
                     self.emit_byte(0xB4)?; // nop instruction (safe padding that won't crash)
                 }
             }
@@ -2415,7 +2415,7 @@ impl ZMachineCodeGen {
             function.name,
             function.parameters.len()
         );
-        for (_param_index, parameter) in function.parameters.iter().enumerate() {
+        for parameter in function.parameters.iter() {
             self.ir_id_to_local_var
                 .insert(parameter.ir_id, parameter.slot);
             log::debug!(
@@ -3610,17 +3610,14 @@ impl ZMachineCodeGen {
 
         // Build parent -> children mapping
         for (child, parent) in &self.initial_locations_by_number {
-            children_by_parent
-                .entry(*parent)
-                .or_insert_with(Vec::new)
-                .push(*child);
+            children_by_parent.entry(*parent).or_default().push(*child);
         }
 
         // Find root objects (those not in any parent-child relationship as children)
         let all_children: std::collections::HashSet<u16> =
             self.initial_locations_by_number.keys().copied().collect();
         let all_objects: std::collections::HashSet<u16> =
-            self.ir_id_to_object_number.values().map(|&n| n).collect();
+            self.ir_id_to_object_number.values().copied().collect();
 
         for obj_num in all_objects {
             if !all_children.contains(&obj_num) {
@@ -5252,7 +5249,7 @@ impl ZMachineCodeGen {
         match self.version {
             ZMachineVersion::V3 => {
                 // v3: packed address = byte address / 2
-                if byte_address % 2 != 0 {
+                if !byte_address.is_multiple_of(2) {
                     panic!(
                         "CRITICAL ALIGNMENT ERROR: Function address 0x{:04x} is odd, violating Z-Machine packed address requirement. \
                         V3 functions must be at even addresses for correct division. This indicates a bug in function placement logic.",
@@ -5263,7 +5260,7 @@ impl ZMachineCodeGen {
             }
             ZMachineVersion::V4 | ZMachineVersion::V5 => {
                 // v4/v5: packed address = byte address / 4
-                if byte_address % 4 != 0 {
+                if !byte_address.is_multiple_of(4) {
                     panic!(
                         "CRITICAL ALIGNMENT ERROR: Function address 0x{:04x} is not 4-byte aligned, violating Z-Machine packed address requirement. \
                         V4/V5 functions must be 4-byte aligned for correct division. This indicates a bug in function placement logic.",
@@ -5388,7 +5385,7 @@ impl ZMachineCodeGen {
                     "🚪 STANDARD: Calling get_exit via standard builtin function mechanism"
                 );
 
-                return self.call_builtin_function("get_exit", args, target);
+                self.call_builtin_function("get_exit", args, target)
             }
             "print_num" => {
                 // IMPLEMENTATION NOTE (Nov 2, 2025): print_num() builtin for direct integer printing
@@ -5398,7 +5395,7 @@ impl ZMachineCodeGen {
                     "🔢 STANDARD: Calling print_num via standard builtin function mechanism"
                 );
 
-                return self.call_builtin_function("print_num", args, target);
+                self.call_builtin_function("print_num", args, target)
             }
             "exit_is_blocked" => self.generate_exit_is_blocked_builtin(args, target),
             "exit_get_destination" => self.generate_exit_get_data_builtin(args, target),
@@ -5872,10 +5869,7 @@ impl ZMachineCodeGen {
             self.pc_to_ir_map.len()
         );
         eprintln!("Code base offset: 0x{:04x}", self.final_code_base);
-        eprintln!(
-            "{:<8} {:<20} {:<10} {}",
-            "PC", "Function", "IR ID", "Instruction"
-        );
+        eprintln!("{:<8} {:<20} {:<10} Instruction", "PC", "Function", "IR ID");
         eprintln!("{}", "-".repeat(80));
 
         for (pc, (func_name, ir_id, desc)) in &self.pc_to_ir_map {
@@ -5925,7 +5919,7 @@ impl ZMachineCodeGen {
             log::debug!("🏗️ BUILTIN_GEN: Generating get_exit function");
 
             // Ensure even address alignment for function
-            if self.code_address % 2 != 0 {
+            if !self.code_address.is_multiple_of(2) {
                 log::debug!("🏗️ BUILTIN_GEN: Adding padding byte for alignment");
                 self.emit_byte(0xB4)?;
             }
@@ -5976,7 +5970,7 @@ impl ZMachineCodeGen {
             log::debug!("🏗️ BUILTIN_GEN: Generating print_num function");
 
             // Ensure even address alignment for function
-            if self.code_address % 2 != 0 {
+            if !self.code_address.is_multiple_of(2) {
                 log::debug!("🏗️ BUILTIN_GEN: Adding padding byte for alignment");
                 self.emit_byte(0xB4)?;
             }
@@ -6041,7 +6035,7 @@ impl ZMachineCodeGen {
             log::debug!("🏗️ BUILTIN_GEN: Generating add_score function");
 
             // Ensure even address alignment for function
-            if self.code_address % 2 != 0 {
+            if !self.code_address.is_multiple_of(2) {
                 log::debug!("🏗️ BUILTIN_GEN: Adding padding byte for alignment");
                 self.emit_byte(0xB4)?;
             }
@@ -6136,7 +6130,7 @@ impl ZMachineCodeGen {
             log::debug!("🏗️ BUILTIN_GEN: Generating subtract_score function");
 
             // Ensure even address alignment for function
-            if self.code_address % 2 != 0 {
+            if !self.code_address.is_multiple_of(2) {
                 log::debug!("🏗️ BUILTIN_GEN: Adding padding byte for alignment");
                 self.emit_byte(0xB4)?;
             }
@@ -6231,7 +6225,7 @@ impl ZMachineCodeGen {
             log::debug!("🏗️ BUILTIN_GEN: Generating word_to_number function");
 
             // Ensure even address alignment for function
-            if self.code_address % 2 != 0 {
+            if !self.code_address.is_multiple_of(2) {
                 log::debug!("🏗️ BUILTIN_GEN: Adding padding byte for alignment");
                 self.emit_byte(0xB4)?;
             }

@@ -1718,7 +1718,7 @@ impl<'a> TxdDisassembler<'a> {
         }
 
         // Rule 4: Address alignment check (less strict than before)
-        if addr % 2 != 0 {
+        if !addr.is_multiple_of(2) {
             return FilterAnalysis {
                 is_false_positive: true,
                 reason: format!("Poor alignment: {:04x} not 2-byte aligned", addr),
@@ -2187,7 +2187,7 @@ impl<'a> TxdDisassembler<'a> {
 
     /// Unpack a routine address based on version
     fn unpack_routine_address(&self, packed: u16) -> u32 {
-        let unpacked = match self.version {
+        match self.version {
             1..=3 => (packed as u32) * 2,
             4..=5 => (packed as u32) * 4,
             6..=7 => {
@@ -2198,9 +2198,7 @@ impl<'a> TxdDisassembler<'a> {
             }
             8 => (packed as u32) * 8,
             _ => (packed as u32) * 2,
-        };
-
-        unpacked
+        }
     }
 
     /// Check if a memory offset is within the Z-Machine header

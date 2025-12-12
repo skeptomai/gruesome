@@ -487,7 +487,7 @@ impl Interpreter {
             }
 
             // Add single-step disassembly for Trinity PC tracking
-            if old_pc >= 0x125bf && old_pc <= 0x125e0 {
+            if (0x125bf..=0x125e0).contains(&old_pc) {
                 debug!(
                     "📍 EXECUTE: {:05x}: {} (size={}, next_pc={:05x})",
                     old_pc,
@@ -512,7 +512,7 @@ impl Interpreter {
                 ExecutionResult::Continue => {
                     // Normal execution, PC already advanced
                     // Debug PC state after execution for Trinity tracking
-                    if old_pc >= 0x125bf && old_pc <= 0x125e0 {
+                    if (0x125bf..=0x125e0).contains(&old_pc) {
                         debug!("📍 AFTER EXEC: PC remains at {:05x} (expected)", self.vm.pc);
                     }
                 }
@@ -1267,7 +1267,7 @@ impl Interpreter {
                 // Also flush any buffered text (like '>' prompt that doesn't end with newline)
                 if let Some(ref mut display) = self.display {
                     // First flush any buffered content
-                    if let Err(_) = display.set_buffer_mode(false) {
+                    if display.set_buffer_mode(false).is_err() {
                         // If flush fails, try force refresh
                         display.force_refresh().ok();
                     }

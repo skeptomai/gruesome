@@ -331,7 +331,7 @@ self.code_address
                     crate::grue_compiler::ir::IrPatternElement::DirectObject => {
                         "direct-object".to_string()
                     }
-                    _ => format!("unknown-pattern"),
+                    _ => "unknown-pattern".to_string(),
                 })
                 .collect::<Vec<_>>()
                 .join(" + ");
@@ -339,7 +339,7 @@ self.code_address
         }
 
         // Step 2: Now check word count for pattern selection (noun vs default)
-        for (_i, _pattern) in patterns.iter().enumerate() {}
+        for _pattern in patterns.iter() {}
 
         // Step 2: Check if we have at least 2 words (verb + noun)
         // If word_count >= 2, extract noun and call handler with object parameter
@@ -568,9 +568,7 @@ self.code_address
                             }
                         }
                         crate::grue_compiler::ir::IrValue::StringRef(_) => {
-                            return Err(CompilerError::CodeGenError(format!(
-                                "Grammar handler arguments cannot use StringRef - use String instead"
-                            )));
+                            return Err(CompilerError::CodeGenError("Grammar handler arguments cannot use StringRef - use String instead".to_string()));
                         }
                         crate::grue_compiler::ir::IrValue::StringAddress(addr) => {
                             // StringAddress holds a packed string address (i16)
@@ -1284,7 +1282,7 @@ func_id, verb, self.code_address
                             Operand::Variable(3)
                         } else if let Ok(word_position) = param.parse::<u8>() {
                             // Positional parameter like "2", "3", etc. - load word at specified position
-                            if word_position >= 1 && word_position <= 15 {
+                            if (1..=15).contains(&word_position) {
                                 // Load word N dictionary address from parse buffer offset N
                                 self.emit_instruction_typed(
                                     Opcode::Op2(Op2::Loadw), // loadw: load word from array

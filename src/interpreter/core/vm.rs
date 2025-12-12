@@ -853,7 +853,7 @@ impl VM {
         log::debug!("🌳 ======= INTERPRETER LOADED OBJECT TREE =======");
 
         // Get object table info
-        let obj_table_addr = self.game.header.object_table_addr as usize;
+        let obj_table_addr = self.game.header.object_table_addr;
         let max_objects = if self.game.header.version <= 3 {
             255
         } else {
@@ -918,10 +918,7 @@ impl VM {
         for obj_num in 1..=max_objects {
             if let Ok(parent) = self.get_parent(obj_num) {
                 if parent != 0 {
-                    children_by_parent
-                        .entry(parent)
-                        .or_insert_with(Vec::new)
-                        .push(obj_num);
+                    children_by_parent.entry(parent).or_default().push(obj_num);
                 }
             }
         }

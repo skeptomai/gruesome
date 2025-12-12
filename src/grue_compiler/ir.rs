@@ -1481,7 +1481,7 @@ impl IrGenerator {
 
                 function_counts
                     .entry(func.name.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push((func_id, specialization));
             }
         }
@@ -3060,7 +3060,7 @@ impl IrGenerator {
                 // Check if condition is attribute access for direct TestAttributeBranch optimization
                 match &if_stmt.condition {
                     Expr::PropertyAccess { object, property } => {
-                        if let Some(standard_attr) = self.get_standard_attribute(&property) {
+                        if let Some(standard_attr) = self.get_standard_attribute(property) {
                             let object_temp = self.generate_expression_with_context(
                                 (**object).clone(),
                                 block,
@@ -4334,21 +4334,19 @@ impl IrGenerator {
                 if self.object_numbers.contains_key(&name) {
                     Ok(IrValue::Object(name.clone()))
                 } else {
-                    return Err(CompilerError::SemanticError(
+                    Err(CompilerError::SemanticError(
                         format!("Cannot resolve identifier '{}' in grammar expression - not a known object or variable", name),
                         0
-                    ));
+                    ))
                 }
             }
-            _ => {
-                return Err(CompilerError::SemanticError(
-                    format!(
-                        "UNIMPLEMENTED: Complex expression in grammar handler: {:?}",
-                        expr
-                    ),
-                    0,
-                ));
-            }
+            _ => Err(CompilerError::SemanticError(
+                format!(
+                    "UNIMPLEMENTED: Complex expression in grammar handler: {:?}",
+                    expr
+                ),
+                0,
+            )),
         }
     }
 

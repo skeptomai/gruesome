@@ -260,7 +260,7 @@ impl ZMachineCodeGen {
                     // Pack the address according to Z-Machine version
                     let packed_addr = match self.version {
                         ZMachineVersion::V3 => {
-                            if final_addr % 2 != 0 {
+                            if !final_addr.is_multiple_of(2) {
                                 panic!(
                                     "CRITICAL ALIGNMENT ERROR: String address 0x{:04x} is odd, violating Z-Machine V3 packed address requirement. \
                                     Strings must be at even addresses. This indicates misaligned string placement.",
@@ -270,7 +270,7 @@ impl ZMachineCodeGen {
                             final_addr / 2
                         }
                         ZMachineVersion::V4 | ZMachineVersion::V5 => {
-                            if final_addr % 4 != 0 {
+                            if !final_addr.is_multiple_of(4) {
                                 panic!(
                                     "CRITICAL ALIGNMENT ERROR: String address 0x{:04x} is not 4-byte aligned, violating Z-Machine V4/V5 packed address requirement. \
                                     Strings must be 4-byte aligned. This indicates misaligned string placement.",
@@ -518,7 +518,7 @@ impl ZMachineCodeGen {
                     let pc_after_instruction = instruction_pc + 3; // PC after the 3-byte jump instruction
                     let offset = resolved_address as i32 - pc_after_instruction as i32 + 2;
 
-                    if offset < -32768 || offset > 32767 {
+                    if !(-32768..=32767).contains(&offset) {
                         return Err(CompilerError::CodeGenError(format!(
                             "Jump offset {} is out of range for 16-bit signed integer",
                             offset

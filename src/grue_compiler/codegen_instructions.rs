@@ -406,18 +406,18 @@ impl ZMachineCodeGen {
                 let var_operand = Operand::SmallConstant(var_num);
 
                 // Allocate a global variable for the loaded value using existing allocation method
-                let result_var = self.allocate_global_for_ir_id(*target as u32);
+                let result_var = self.allocate_global_for_ir_id(*target);
 
                 // CRITICAL FIX (Oct 19, 2025): Store to allocated global variable, NOT stack
                 // Bug: Commit 48fccdf accidentally changed this to Some(0), causing all LoadVar
                 // operations to store to Variable(0) (stack) instead of unique global variables.
                 // This broke navigation because player object resolved to Variable(0) instead of Variable(217).
-                self.emit_instruction_typed(LOAD, &[var_operand], Some(result_var as u8), None)?;
+                self.emit_instruction_typed(LOAD, &[var_operand], Some(result_var), None)?;
 
                 // Track this IR ID as using the allocated global (NOT stack)
                 // CRITICAL FIX (Oct 19, 2025): Map to allocated global variable, NOT Variable(0)
                 // Bug: This was accidentally changed to 0, breaking variable resolution for all loaded objects
-                self.ir_id_to_stack_var.insert(*target, result_var as u8);
+                self.ir_id_to_stack_var.insert(*target, result_var);
                 log::debug!(
                     "LoadVar: IR ID {} loaded from Z-Machine variable {} -> Variable({}) [Allocated global G{}]",
                     var_id,
@@ -653,7 +653,7 @@ impl ZMachineCodeGen {
                 // The problem was (*attribute_num).into() converts 2 to an IR ID which resolves
                 // to LargeConstant(262) instead of SmallConstant(2)
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
-                let attr_operand = Operand::SmallConstant(*attribute_num as u8);
+                let attr_operand = Operand::SmallConstant(*attribute_num);
 
                 log::debug!(
                     "TestAttribute FIX: obj={:?}, attr={:?} (fixed from LargeConstant(262))",
@@ -735,7 +735,7 @@ impl ZMachineCodeGen {
 
                 // Resolve object operand and use attribute_num as direct SmallConstant
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
-                let attr_operand = Operand::SmallConstant(*attribute_num as u8);
+                let attr_operand = Operand::SmallConstant(*attribute_num);
 
                 log::debug!(
                     "TestAttributeBranch: obj={:?}, attr={:?}",
@@ -813,7 +813,7 @@ impl ZMachineCodeGen {
 
                 // Resolve object operand and use attribute_num as direct SmallConstant
                 let obj_operand = self.resolve_ir_id_to_operand(*object)?;
-                let attr_operand = Operand::SmallConstant(*attribute_num as u8);
+                let attr_operand = Operand::SmallConstant(*attribute_num);
 
                 log::debug!(
                     "TestAttributeValue: obj={:?}, attr={:?}",
@@ -2262,9 +2262,7 @@ impl ZMachineCodeGen {
             0xE6 => InstructionForm::Variable, // print_num (VAR:230 = opcode 6, full byte 0xE6) is always VAR
             0xE7 => InstructionForm::Variable, // random (VAR:231 = opcode 7, full byte 0xE7) is always VAR
             // V3 compatibility: Force VAR form for opcodes > 0x14 that can't use Long form
-            0x15 | 0x16 | 0x17 | 0x18 if self.version == super::ZMachineVersion::V3 => {
-                InstructionForm::Variable
-            }
+            0x15..=0x18 if self.version == super::ZMachineVersion::V3 => InstructionForm::Variable,
             _ => match operand_count {
                 0 => InstructionForm::Short, // 0OP
                 1 => InstructionForm::Short, // 1OP
@@ -2667,7 +2665,7 @@ impl ZMachineCodeGen {
             // For placeholders (like 0x7FFF): preserve value, will be patched later
 
             // Check if this is a small hardcoded offset (0-63) that can be encoded directly
-            if offset >= 0 && offset <= 63 {
+            if (0..=63).contains(&offset) {
                 // Direct offset: extract branch sense from sign convention
                 // By convention: positive = branch on true (this is the common case)
                 let on_true = true; // Direct small offsets default to "branch on true"
@@ -2892,7 +2890,7 @@ impl ZMachineCodeGen {
             // For placeholders (like 0x7FFF): preserve value, will be patched later
 
             // Check if this is a small hardcoded offset (0-63) that can be encoded directly
-            if offset >= 0 && offset <= 63 {
+            if (0..=63).contains(&offset) {
                 // Direct offset: extract branch sense from sign convention
                 // By convention: positive = branch on true (this is the common case)
                 let on_true = true; // Direct small offsets default to "branch on true"
@@ -3083,7 +3081,7 @@ impl ZMachineCodeGen {
             // For placeholders (like 0x7FFF): preserve value, will be patched later
 
             // Check if this is a small hardcoded offset (0-63) that can be encoded directly
-            if offset >= 0 && offset <= 63 {
+            if (0..=63).contains(&offset) {
                 // Direct offset: extract branch sense from sign convention
                 // By convention: positive = branch on true (this is the common case)
                 let on_true = true; // Direct small offsets default to "branch on true"

@@ -708,7 +708,7 @@ impl ZMachineCodeGen {
     pub fn pack_string_address(&self, byte_address: usize) -> Result<u16, CompilerError> {
         let packed = match self.version {
             ZMachineVersion::V3 => {
-                if byte_address % 2 != 0 {
+                if !byte_address.is_multiple_of(2) {
                     return Err(CompilerError::CodeGenError(format!(
                         "V3 string address 0x{:04x} is not even-aligned",
                         byte_address
@@ -717,7 +717,7 @@ impl ZMachineCodeGen {
                 byte_address / 2
             }
             ZMachineVersion::V4 | ZMachineVersion::V5 => {
-                if byte_address % 4 != 0 {
+                if !byte_address.is_multiple_of(4) {
                     return Err(CompilerError::CodeGenError(format!(
                         "V4/V5 string address 0x{:04x} is not 4-byte aligned",
                         byte_address
@@ -810,7 +810,7 @@ impl ZMachineCodeGen {
                     let value = ((high_byte as u16) << 8) | (low_byte as u16);
 
                     // Check if this value is a string ID (1000+)
-                    if value >= 1000 && value < 10000 {
+                    if (1000..10000).contains(&value) {
                         if let Some(&packed_addr) = string_packed_addresses.get(&(value as u32)) {
                             // Replace with packed address in final_data
                             self.final_data[i + 1] = (packed_addr >> 8) as u8;
@@ -985,11 +985,9 @@ impl ZMachineCodeGen {
                     .iter()
                     .find(|(_, text)| text == s)
                     .map(|(id, _)| *id)
-                    .expect(&format!(
-                        "Property string '{}' for property {} not found in collected strings! \
+                    .unwrap_or_else(|| panic!("Property string '{}' for property {} not found in collected strings! \
                         This indicates a bug in collect_strings() - all property strings should be collected in Phase 1.",
-                        s, prop_num
-                    ));
+                        s, prop_num));
 
                 log::debug!(
                     "STRING_PROPERTY: Property {} string='{}' -> ID {}",

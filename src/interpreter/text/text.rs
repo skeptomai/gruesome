@@ -225,17 +225,15 @@ pub fn decode_string_at_packed_addr(
 
 /// Unpack a string address based on version
 fn unpack_string_address(packed: u16, version: u8) -> usize {
-    let unpacked = match version {
+    // Note: We can't check bounds here because we don't have memory reference
+    // Bounds checking will be done at the call site
+    match version {
         1..=3 => (packed as usize) * 2,
         4..=5 => (packed as usize) * 4,
         6..=7 => (packed as usize) * 4, // TODO: Add offset handling
         8 => (packed as usize) * 8,
         _ => (packed as usize) * 2,
-    };
-
-    // Note: We can't check bounds here because we don't have memory reference
-    // Bounds checking will be done at the call site
-    unpacked
+    }
 }
 
 #[cfg(test)]

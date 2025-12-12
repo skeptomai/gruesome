@@ -63,9 +63,7 @@ impl Op0 {
 
     /// Does this opcode store a result?
     pub const fn stores_result(&self) -> bool {
-        match self {
-            _ => false,
-        }
+        false
     }
 
     /// Does this opcode branch?

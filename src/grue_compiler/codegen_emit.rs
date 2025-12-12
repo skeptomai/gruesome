@@ -69,41 +69,6 @@ impl ZMachineCodeGen {
 
         debug!("Emit word: word=0x{:04x} -> high_byte=0x{:02x}, low_byte=0x{:02x} at code_address 0x{:04x}", word, high_byte, low_byte, self.code_address);
 
-        // TEMPORARY DEBUG: Check for suspicious value
-        if word == 0x019f || word == 415 {
-            log::debug!(
-                "CRITICAL BUG: emit_word called with 0x{:04x} (415) at code_address=0x{:04x}",
-                word,
-                self.code_address
-            );
-            log::debug!(
-                "This will produce bytes 0x{:02x} 0x{:02x} which is our problem!",
-                word >> 8,
-                word & 0xff
-            );
-            panic!("FOUND THE BUG: emit_word is being called with 415 instead of 0xFFFF!");
-        }
-
-        // Also check if we're close to the problematic address
-        if self.code_address >= 0x1278 && self.code_address <= 0x1285 {
-            log::debug!(
-                "emit_word at critical address 0x{:04x}: word=0x{:04x}",
-                self.code_address,
-                word
-            );
-        }
-
-        // CRITICAL: Track exactly where null words come from
-        if word == 0x0000 {
-            log::debug!(
-                " NULL_WORD_SOURCE: emit_word(0x0000) called at code_address 0x{:04x}",
-                self.code_address
-            );
-            log::debug!(
-                " This might be valid V3 default local values OR invalid placeholder operands"
-            );
-        }
-
         self.emit_byte(high_byte)?;
         self.emit_byte(low_byte)?;
         Ok(())

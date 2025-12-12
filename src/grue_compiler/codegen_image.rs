@@ -373,7 +373,7 @@ impl ZMachineCodeGen {
         let code_base = match self.version {
             ZMachineVersion::V3 => {
                 // V3 requires function addresses to be even for packed address division
-                if current_address % 2 != 0 {
+                if !current_address.is_multiple_of(2) {
                     log::debug!(
                         " CODE_ALIGNMENT: Padding 1 byte for V3 function alignment (0x{:04x} -> 0x{:04x})",
                         current_address, current_address + 1
@@ -407,7 +407,7 @@ impl ZMachineCodeGen {
         let string_base = match self.version {
             ZMachineVersion::V3 => {
                 // V3 requires string addresses to be even
-                if current_address % 2 != 0 {
+                if !current_address.is_multiple_of(2) {
                     current_address += 1; // Add padding byte
                 }
                 current_address

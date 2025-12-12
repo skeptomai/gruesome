@@ -155,7 +155,7 @@ fn encode_word_v3(word: &str) -> [u8; 4] {
 
     // Encode each character to Z-chars
     for ch in chars {
-        let z_char = if ch >= 'a' && ch <= 'z' {
+        let z_char = if ('a'..='z').contains(&ch) {
             (ch as u8 - b'a') + 6
         } else {
             // For non-letters, use shift sequences (simplified)
@@ -202,7 +202,7 @@ fn decode_word_v3(bytes: &[u8; 4]) -> String {
         if z_char == 5 {
             break; // Padding
         }
-        if z_char >= 6 && z_char <= 31 {
+        if (6..=31).contains(&z_char) {
             result.push((b'a' + (z_char - 6)) as char);
         }
     }

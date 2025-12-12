@@ -221,10 +221,10 @@ impl ZMachineCodeGen {
         // PHASE 2A: Pre-register all function addresses to solve forward reference issues
         log::info!(" PRE-REGISTERING: All function addresses for forward reference resolution");
         let mut simulated_address = self.code_space.len();
-        for (_i, function) in ir.functions.iter().enumerate() {
+        for function in ir.functions.iter() {
             // Simulate alignment padding
             if matches!(self.version, ZMachineVersion::V4 | ZMachineVersion::V5) {
-                while simulated_address % 4 != 0 {
+                while !simulated_address.is_multiple_of(4) {
                     simulated_address += 1; // Account for padding bytes
                 }
             }
@@ -315,14 +315,14 @@ impl ZMachineCodeGen {
             match self.version {
                 ZMachineVersion::V3 => {
                     // v3: functions must be at even addresses
-                    if self.code_address % 2 != 0 {
+                    if !self.code_address.is_multiple_of(2) {
                         log::debug!(" FUNCTION_ALIGN: Adding padding byte for even alignment");
                         self.emit_byte(0xB4)?; // nop instruction (safe padding that won't crash)
                     }
                 }
                 ZMachineVersion::V4 | ZMachineVersion::V5 => {
                     // v4/v5: functions must be at 4-byte boundaries
-                    while self.code_address % 4 != 0 {
+                    while !self.code_address.is_multiple_of(4) {
                         self.emit_byte(0xB4)?; // nop instruction (safe padding that won't crash)
                     }
                 }

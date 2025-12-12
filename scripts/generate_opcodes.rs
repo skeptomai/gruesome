@@ -122,10 +122,7 @@ fn generate_enum(name: &str, opcodes: &[OpcodeEntry], doc: &str) -> String {
     // Group opcodes by value to detect conflicts
     let mut value_groups: HashMap<u8, Vec<&OpcodeEntry>> = HashMap::new();
     for opcode in opcodes {
-        value_groups
-            .entry(opcode.value)
-            .or_insert_with(Vec::new)
-            .push(opcode);
+        value_groups.entry(opcode.value).or_default().push(opcode);
     }
 
     for opcode in opcodes {
@@ -212,7 +209,7 @@ fn generate_metadata_impl(enum_name: &str, opcodes: &[OpcodeEntry], form: &str) 
     for opcode in opcodes {
         by_version
             .entry(opcode.min_version)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(&opcode.name);
     }
 
@@ -352,7 +349,7 @@ fn generate_convenience_constants(spec: &OpcodeSpec) -> String {
             ));
         }
     }
-    output.push_str("\n");
+    output.push('\n');
 
     // Most common 1OP opcodes
     for name in &["PrintPaddr", "Jz", "Load", "Ret", "Jump"] {
@@ -364,7 +361,7 @@ fn generate_convenience_constants(spec: &OpcodeSpec) -> String {
             ));
         }
     }
-    output.push_str("\n");
+    output.push('\n');
 
     // Most common 2OP opcodes
     for name in &["Je", "Jl", "Jg", "Add", "Sub", "Mul", "Div", "Store"] {
@@ -376,7 +373,7 @@ fn generate_convenience_constants(spec: &OpcodeSpec) -> String {
             ));
         }
     }
-    output.push_str("\n");
+    output.push('\n');
 
     // Most common VAR opcodes
     for name in &["CallVs", "PutProp", "Sread", "PrintChar", "PrintNum"] {
