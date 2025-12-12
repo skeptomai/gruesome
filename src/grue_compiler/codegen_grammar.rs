@@ -8,7 +8,7 @@ use crate::grue_compiler::codegen::{Operand, ZMachineCodeGen};
 use crate::grue_compiler::codegen_memory::{placeholder_word, MemorySpace};
 use crate::grue_compiler::codegen_references::{LegacyReferenceType, UnresolvedReference};
 use crate::grue_compiler::error::CompilerError;
-use crate::grue_compiler::ir::IrValue;
+use crate::grue_compiler::ir::{IrId, IrValue};
 use crate::grue_compiler::opcodes::*;
 use log::debug;
 
@@ -497,9 +497,8 @@ self.code_address
                         );
 
                         // Generate function call
-                        let mut operands = vec![Operand::LargeConstant(placeholder_word())];
-
                         // Convert arguments to operands (literal patterns typically have no args)
+                        let mut arg_operands = Vec::new();
                         for arg_value in args.iter() {
                             let arg_operand = match arg_value {
                                 IrValue::Integer(val) => Operand::SmallConstant(*val as u8),
@@ -512,31 +511,11 @@ self.code_address
                                 IrValue::Object(_) => Operand::SmallConstant(0), // Object ref not supported as function arg
                                 IrValue::RuntimeParameter(_) => Operand::SmallConstant(0), // Runtime param not supported as function arg
                             };
-                            operands.push(arg_operand);
+                            arg_operands.push(arg_operand);
                         }
 
-                        // Emit call_vs instruction to call the function
-                        // call_vs MUST store return value to avoid instruction misalignment
-                        let layout = self.emit_instruction_typed(
-                            Opcode::OpVar(OpVar::CallVs),
-                            &operands,
-                            Some(1), // Store return value in local variable 1 (unused)
-                            None,
-                        )?;
-
-                        // Register function reference for the first operand
-                        if let Some(operand_base) = layout.operand_location {
-                            self.reference_context
-                                .unresolved_refs
-                                .push(UnresolvedReference {
-                                    reference_type: LegacyReferenceType::FunctionCall,
-                                    location: operand_base,
-                                    target_id: *func_id,
-                                    is_packed_address: true,
-                                    offset_size: 2,
-                                    location_space: MemorySpace::Code,
-                                });
-                        }
+                        // Emit call to pattern handler function
+                        self.emit_handler_call(*func_id, arg_operands, false, 1)?;
 
                         // Jump back to main loop after successfully executing literal pattern
                         debug!(
@@ -759,8 +738,8 @@ self.code_address
                             None,
                         )?;
 
-                        // Build operands: function address + noun parameter
-                        let mut operands = vec![Operand::LargeConstant(placeholder_word())]; // Function address placeholder
+                        // Build argument operands for function call
+                        let mut arg_operands = Vec::new();
 
                         // LITERAL+NOUN PARAMETER RESOLUTION: Process RuntimeParameter arguments for patterns like "at" + noun
                         // This fixes the "look at mailbox" crash by properly converting dictionary addresses to object IDs
@@ -806,30 +785,11 @@ self.code_address
                                     Operand::SmallConstant(0)
                                 }
                             };
-                            operands.push(arg_operand);
+                            arg_operands.push(arg_operand);
                         }
 
-                        // Emit function call
-                        let layout = self.emit_instruction_typed(
-                            Opcode::OpVar(OpVar::CallVs),
-                            &operands,
-                            Some(0), // Store return value but ignore it
-                            None,
-                        )?;
-
-                        // Register function reference
-                        if let Some(operand_location) = layout.operand_location {
-                            self.reference_context
-                                .unresolved_refs
-                                .push(UnresolvedReference {
-                                    reference_type: LegacyReferenceType::FunctionCall,
-                                    location: operand_location,
-                                    target_id: *func_id,
-                                    is_packed_address: true,
-                                    offset_size: 2,
-                                    location_space: MemorySpace::Code,
-                                });
-                        }
+                        // Emit call to pattern handler function
+                        self.emit_handler_call(*func_id, arg_operands, false, 0)?;
 
                         // Jump back to main loop after successfully executing literal+noun pattern
                         debug!(
@@ -868,8 +828,8 @@ func_id, verb, self.code_address
                 // POLYMORPHIC DISPATCH FIX: Process RuntimeParameter arguments properly
                 // Instead of hardcoding object lookup, use the existing RuntimeParameter resolution system
 
-                // Build operands: function address + arguments
-                let mut operands = vec![Operand::LargeConstant(placeholder_word())]; // Function address placeholder
+                // Build argument operands for function call
+                let mut arg_operands = Vec::new();
 
                 // Convert IrValue arguments to operands
                 for arg_value in args.iter() {
@@ -943,34 +903,11 @@ func_id, verb, self.code_address
                             )));
                         }
                     };
-                    operands.push(arg_operand);
+                    arg_operands.push(arg_operand);
                 }
 
-                // Call handler with properly resolved parameters
-                let layout = self.emit_instruction_typed(
-                    Opcode::OpVar(OpVar::CallVs), // call_vs: call routine with arguments, returns value (VAR:0/VAR:224)
-                    &operands,
-                    Some(0), // Store result on stack
-                    None,    // No branch
-                )?;
-
-                // FIXED: Use layout.operand_location instead of hardcoded offset calculation
-                // This was previously using self.code_address - 2 which caused placeholder resolution failures
-                if let Some(operand_location) = layout.operand_location {
-                    let dispatch_func_id = self.get_function_id_with_dispatch(*func_id);
-                    self.reference_context
-                        .unresolved_refs
-                        .push(UnresolvedReference {
-                            reference_type: LegacyReferenceType::FunctionCall,
-                            location: operand_location, // Correct operand location from emit_instruction
-                            target_id: dispatch_func_id,
-                            is_packed_address: true,
-                            offset_size: 2,
-                            location_space: MemorySpace::Code,
-                        });
-                } else {
-                    panic!("BUG: emit_instruction didn't return operand_location for placeholder");
-                }
+                // Call handler with polymorphic dispatch
+                self.emit_handler_call(*func_id, arg_operands, true, 0)?;
 
                 // Jump back to main loop to read new input - handler has successfully executed
                 debug!(
@@ -1201,33 +1138,8 @@ func_id, verb, self.code_address
 verb, func_id
 );
 
-                let layout = self.emit_instruction_typed(
-                    Opcode::OpVar(OpVar::CallVs), // call_vs: V3 compatible call routine with arguments
-                    &[
-                        Operand::LargeConstant(placeholder_word()), // Function address placeholder
-                        Operand::SmallConstant(0),                  // Object ID 0 (no object)
-                    ],
-                    Some(0), // Store result on stack
-                    None,    // No branch
-                )?;
-
-                // FIXED: Use layout.operand_location instead of hardcoded offset calculation
-                // This was previously using self.code_address - 2 which caused placeholder resolution failures
-                if let Some(operand_location) = layout.operand_location {
-                    let dispatch_func_id = self.get_function_id_with_dispatch(*func_id);
-                    self.reference_context
-                        .unresolved_refs
-                        .push(UnresolvedReference {
-                            reference_type: LegacyReferenceType::FunctionCall,
-                            location: operand_location, // Correct operand location from emit_instruction
-                            target_id: dispatch_func_id,
-                            is_packed_address: true,
-                            offset_size: 2,
-                            location_space: MemorySpace::Code,
-                        });
-                } else {
-                    panic!("BUG: emit_instruction didn't return operand_location for placeholder");
-                }
+                // Call noun handler with object ID 0 (fallback case)
+                self.emit_handler_call(*func_id, vec![Operand::SmallConstant(0)], true, 0)?;
 
                 // Jump back to main loop to read new input - noun handler (with ID 0) has successfully executed
                 debug!(
@@ -1276,6 +1188,59 @@ verb, func_id
                 });
         } else {
             panic!("BUG: emit_instruction didn't return operand_location for jump");
+        }
+
+        Ok(())
+    }
+
+    /// Helper: Emit a call to a pattern handler function
+    ///
+    /// This emits a call_vs instruction to invoke a grammar pattern handler function.
+    /// The function address is a placeholder that gets resolved later.
+    /// The return value is stored in the specified variable (typically 0 or 1, both ignored).
+    ///
+    /// If `use_dispatch` is true, resolves the function ID through the dispatch table
+    /// for polymorphic method dispatch.
+    fn emit_handler_call(
+        &mut self,
+        func_id: IrId,
+        operands: Vec<Operand>,
+        use_dispatch: bool,
+        store_var: u8,
+    ) -> Result<(), CompilerError> {
+        // Build call operands: function address placeholder + arguments
+        let mut call_operands = vec![Operand::LargeConstant(placeholder_word())];
+        call_operands.extend(operands);
+
+        // Emit function call
+        let layout = self.emit_instruction_typed(
+            Opcode::OpVar(OpVar::CallVs),
+            &call_operands,
+            Some(store_var), // Store return value (typically ignored)
+            None,
+        )?;
+
+        // Resolve function ID (with dispatch if needed)
+        let target_func_id = if use_dispatch {
+            self.get_function_id_with_dispatch(func_id)
+        } else {
+            func_id
+        };
+
+        // Register function reference for later resolution
+        if let Some(operand_location) = layout.operand_location {
+            self.reference_context
+                .unresolved_refs
+                .push(UnresolvedReference {
+                    reference_type: LegacyReferenceType::FunctionCall,
+                    location: operand_location,
+                    target_id: target_func_id,
+                    is_packed_address: true,
+                    offset_size: 2,
+                    location_space: MemorySpace::Code,
+                });
+        } else {
+            panic!("BUG: emit_instruction didn't return operand_location for call_vs");
         }
 
         Ok(())
