@@ -19,13 +19,14 @@ const PARSE_BUFFER_GLOBAL: u8 = 110;
 impl ZMachineCodeGen {
     /// Generate verb pattern matching code
     ///
-    /// This monster function (1,529 lines!) handles all verb pattern matching logic:
-    /// - Literal patterns ("around" in "look around")
-    /// - Literal+Noun patterns ("at mailbox" in "look at mailbox")
-    /// - Noun patterns (verb + object)
-    /// - Default patterns (verb only)
+    /// Main entry point for grammar pattern matching code generation (~426 lines).
+    /// Delegates to specialized pattern handler methods:
+    /// - Literal patterns ("around" in "look around") → handle_literal_patterns()
+    /// - Literal+Noun patterns ("at mailbox" in "look at mailbox") → handle_literal_noun_patterns()
+    /// - Verb+Noun patterns (verb + object) → handle_verb_noun_patterns()
+    /// - Default patterns (verb only) → handle_default_patterns()
     ///
-    /// TODO: Break this up into pattern-specific handler methods
+    /// Note: Successfully refactored from 1,529 lines to 426 lines (December 2025)
     pub fn generate_verb_matching(
         &mut self,
         verb: &str,
