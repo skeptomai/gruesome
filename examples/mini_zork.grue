@@ -24,7 +24,7 @@ world {
         desc: "You are standing in an open field west of a white house, with a boarded front door."
 
         object mailbox {
-            names: ["a small mailbox", "mailbox", "box"]
+            names: ["small mailbox", "mailbox", "box"]
             desc: "a small mailbox"
             openable: true
             container: true
@@ -592,7 +592,7 @@ fn list_objects(location) {
                     println("There is an empty bird's nest here.");
                 }
             } else {
-                println("There is " + obj.name + " here.");
+                println("There is a " + obj.name + " here.");
             }
         }
     }
