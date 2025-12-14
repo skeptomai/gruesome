@@ -1,5 +1,141 @@
 # ONGOING TASKS - PROJECT STATUS
 
+## 🔴 **ACTIVE BUG: HASH-BASED LABEL ID FRAGILITY** (December 14, 2025)
+
+**STATUS**: **CRITICAL BUG - PATTERN MATCHING BROKEN** 🔴
+
+**SYMPTOM**: "look at mailbox" returns room description instead of mailbox description
+- "examine mailbox" → "The small mailbox is closed." ✅ (correct)
+- "look at mailbox" → Room description ❌ (wrong - should show mailbox)
+
+**ROOT CAUSE**: Hash-based label ID generation in `codegen_grammar.rs` is sensitive to code emission order
+
+### **THE PROBLEM**
+
+**File**: `src/grue_compiler/codegen_grammar.rs`
+
+**Problematic Code**:
+```rust
+Line 79:   let end_function_label = 90000 + (hasher.finish() % 9999) as u32;
+Line 1044: let skip_insufficient_words = (83000 + (self.code_address * 19) % 9999) as u32;
+Line 1070: let unique_seed = (self.code_address * 17) % 9999;
+```
+
+**Why This Breaks**:
+1. Labels use `self.code_address` (current bytecode position) to generate unique IDs
+2. Grammar refactoring (Dec 11-12) changed code emission order
+3. Changed emission order → different `self.code_address` values when labels created
+4. Different label IDs → jump targets don't match → pattern matching fails
+
+**The Fragility**:
+- ANY refactoring that changes code emission order breaks these label IDs
+- Hash-based IDs created non-deterministic label generation
+- Pattern matching appears to work initially, breaks after unrelated changes
+
+### **HISTORY**
+
+**Lost Fix** (commit e419588, Dec 14, 2025 12:36 PM):
+- Converted all hash-based label IDs to monotonic generation
+- Used `self.next_string_id` counter for deterministic IDs
+- Tested and verified working ("look at mailbox" worked correctly)
+- Lost when computer crashed before pushing to remote
+
+**Previous Investigation** (November 2025):
+- `docs/literal_pattern_regression_analysis.md` - Similar pattern matching issues
+- `docs/GRAMMAR_REFACTORING_BYTECODE_ANALYSIS.md` - Code emission order changes
+
+### **THE SOLUTION**
+
+**Approach**: Convert hash-based label IDs to monotonic generation
+
+**Implementation**:
+```rust
+// BEFORE (fragile - breaks on refactoring):
+let skip_insufficient_words = (83000 + (self.code_address * 19) % 9999) as u32;
+
+// AFTER (robust - deterministic):
+self.next_label_id += 1;
+let skip_insufficient_words = self.next_label_id;
+```
+
+**Required Changes**:
+1. **Use existing `self.next_string_id` counter** (already in `ZMachineCodeGen` struct at line 264)
+   - Already initialized to 1000 in constructor (line 421)
+   - Already used for label generation in other parts of codegen.rs (lines 2724-2727, 4191-4193)
+2. Replace 3 hash-based label generation sites in `codegen_grammar.rs`:
+   - Line 79: `end_function_label` (verb hasher)
+   - Line 1044: `skip_insufficient_words` (literal+noun patterns)
+   - Line 1070: `unique_seed` (literal patterns)
+3. Replace 2 hash-based label generation sites in `codegen_instructions.rs`:
+   - Line 665: `unique_seed` (TestAttributeValue)
+   - Line 825: `unique_seed` (TestAttributeValue)
+4. Pattern for each replacement:
+   ```rust
+   let label_id = self.next_string_id;
+   self.next_string_id += 1;
+   ```
+
+**Testing Protocol**:
+```bash
+cargo run --bin grue-compiler -- examples/mini_zork.grue -o tests/mini_zork_test.z3
+printf "look at mailbox\nquit\ny\n" | cargo run --bin gruesome tests/mini_zork_test.z3
+# Expected: "The small mailbox is closed."
+printf "examine mailbox\nquit\ny\n" | cargo run --bin gruesome tests/mini_zork_test.z3
+# Expected: "The small mailbox is closed." (verify no regression)
+```
+
+### **WHY MONOTONIC IDS ARE BETTER**
+
+**Hash-based (current)**:
+- ❌ Non-deterministic across refactorings
+- ❌ Depends on code emission order
+- ❌ Breaks when unrelated code changes
+- ❌ Hard to debug (labels change unpredictably)
+
+**Monotonic (proposed)**:
+- ✅ Deterministic regardless of emission order
+- ✅ Sequential IDs easy to reason about
+- ✅ Refactoring-safe
+- ✅ Predictable debugging
+
+### **RELATED ISSUES IN CODEGEN_INSTRUCTIONS.RS**
+
+**File**: `src/grue_compiler/codegen_instructions.rs`
+
+**Additional hash-based label sites**:
+```rust
+Line 665: let unique_seed = (self.code_address * 7919) % 100000;
+Line 825: let unique_seed = (self.code_address * 7919) % 100000;
+```
+
+These are TestAttributeValue branch labels (per lost commit e419588 message) and need the same monotonic conversion.
+
+### **NEXT STEPS**
+
+1. Convert 3 hash-based label sites in `codegen_grammar.rs`:
+   - Line 79: `end_function_label` (replace hasher with monotonic counter)
+   - Line 1044: `skip_insufficient_words` (replace `self.code_address * 19` formula)
+   - Line 1070: `unique_seed` (replace `self.code_address * 17` formula)
+
+2. Convert 2 hash-based label sites in `codegen_instructions.rs`:
+   - Line 665: `unique_seed` (replace `self.code_address * 7919` formula)
+   - Line 825: `unique_seed` (replace `self.code_address * 7919` formula)
+
+3. Test pattern matching thoroughly:
+   ```bash
+   cargo build
+   cargo run --bin grue-compiler -- examples/mini_zork.grue -o tests/mini_zork_test.z3
+   printf "look at mailbox\nquit\ny\n" | cargo run --bin gruesome tests/mini_zork_test.z3
+   printf "examine mailbox\nquit\ny\n" | cargo run --bin gruesome tests/mini_zork_test.z3
+   printf "open mailbox\ntake leaflet\nread leaflet\nquit\ny\n" | cargo run --bin gruesome tests/mini_zork_test.z3
+   ```
+
+4. Verify no regressions - all mini_zork gameplay should work
+
+5. Commit with clear message referencing this bug and the lost commit e419588
+
+---
+
 ## ✅ **RESOLVED: Z-MACHINE COMPLIANCE VIOLATIONS** (November 13, 2025)
 
 **STATUS**: **BOTH ISSUES FULLY RESOLVED** 🎯
