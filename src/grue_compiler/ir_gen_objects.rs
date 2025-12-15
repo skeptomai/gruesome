@@ -443,7 +443,10 @@ impl IrGenerator {
     /// - Object number #1 (assigned during codegen)
     /// - Initial location in first room
     /// - Standard properties (location, description, quit_pending)
-    pub(super) fn add_player_object(&mut self, ir_program: &mut IrProgram) -> Result<(), CompilerError> {
+    pub(super) fn add_player_object(
+        &mut self,
+        ir_program: &mut IrProgram,
+    ) -> Result<(), CompilerError> {
         // Create player object with ID 9999 (high ID to avoid conflicts)
         let player_id = 9999u32;
 
