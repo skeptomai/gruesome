@@ -249,11 +249,31 @@ impl VM {
             );
         }
 
+        // DEBUG: Log ALL Variable 7 reads to see what values are being used
+        if var == 0x07 {
+            log::warn!(
+                "🔍 VAR_READ: read_variable(0x{:02x}) at PC 0x{:04x} returning value: {:04x}",
+                var,
+                self.pc,
+                result.as_ref().ok().unwrap_or(&0xFFFF)
+            );
+        }
+
         result
     }
 
     /// Write a variable (0x00 = stack, 0x01-0x0F = local, 0x10-0xFF = global)
     pub fn write_variable(&mut self, var: u8, value: u16) -> Result<(), String> {
+        // DEBUG: Log ALL Variable 7 writes to see what values are being loaded
+        if var == 0x07 {
+            log::warn!(
+                "🔍 VAR_WRITE: write_variable(0x{:02x}) at PC 0x{:04x} with value: 0x{:04x}",
+                var,
+                self.pc,
+                value
+            );
+        }
+
         match var {
             0x00 => {
                 // Writing to variable 0 means push onto stack

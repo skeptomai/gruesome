@@ -345,6 +345,15 @@ impl Instruction {
                         return Err("Large constant out of bounds".to_string());
                     }
                     let value = ((memory[offset] as u16) << 8) | (memory[offset + 1] as u16);
+
+                    // DEBUG: Log operand reading at 0x0ec2 for JE at 0x0ebf
+                    if addr == 0x0ebf || offset == 0x0ec2 {
+                        log::warn!(
+                            "🔍 OPERAND_READ at instruction_addr=0x{:04x}, reading LargeConstant at offset=0x{:04x}: memory[0x{:04x}]=0x{:02x}, memory[0x{:04x}]=0x{:02x}, value=0x{:04x}",
+                            addr, offset, offset, memory[offset], offset + 1, memory[offset + 1], value
+                        );
+                    }
+
                     operands.push(value);
                     offset += 2;
                 }
@@ -352,7 +361,17 @@ impl Instruction {
                     if offset >= memory.len() {
                         return Err("Small constant/variable out of bounds".to_string());
                     }
-                    operands.push(memory[offset] as u16);
+                    let value = memory[offset] as u16;
+
+                    // DEBUG: Log operand reading at 0x0ec1 for JE at 0x0ebf
+                    if addr == 0x0ebf || offset == 0x0ec1 {
+                        log::warn!(
+                            "🔍 OPERAND_READ at instruction_addr=0x{:04x}, reading Variable/SmallConstant at offset=0x{:04x}: memory[0x{:04x}]=0x{:02x}, value=0x{:04x}",
+                            addr, offset, offset, memory[offset], value
+                        );
+                    }
+
+                    operands.push(value);
                     offset += 1;
                 }
                 OperandType::Omitted => break,

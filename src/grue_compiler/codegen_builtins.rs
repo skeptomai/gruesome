@@ -792,10 +792,11 @@ impl ZMachineCodeGen {
         );
 
         // CRITICAL FIX: Generate unique IR IDs for each TestAttribute to avoid label collisions
-        // Use a simple approach: multiply current code address by large prime to ensure uniqueness
-        let unique_seed = (self.code_address * 7919) % 100000; // Large prime to spread IDs
-        let true_label_id: u32 = (50000 + unique_seed) as u32; // Use high IR ID range to avoid conflicts
-        let end_label_id: u32 = (60000 + unique_seed) as u32; // Use even higher range for end labels
+        // Use monotonic counter for deterministic label IDs (refactoring-safe)
+        let true_label_id = self.next_string_id;
+        self.next_string_id += 1;
+        let end_label_id = self.next_string_id;
+        self.next_string_id += 1;
 
         log::debug!(
             "test_attr builtin: unique labels true_id={}, end_id={}",

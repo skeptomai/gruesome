@@ -487,10 +487,15 @@ impl ZMachineCodeGen {
         ];
 
         // Encode and add each word
-        for word in &words {
+        for (index, word) in words.iter().enumerate() {
             let encoded = self.encode_word_to_zchars(word)?;
             dictionary_data.extend_from_slice(&encoded);
-            debug!("📚 Added dictionary entry: '{}' -> {:02x?}", word, encoded);
+            log::warn!(
+                "📚 DICT_WRITE: Entry {} = '{}' -> {:02x?}",
+                index,
+                word,
+                encoded
+            );
         }
 
         // Allocate dictionary space and write data
