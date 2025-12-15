@@ -947,7 +947,7 @@ impl super::IrGenerator {
                         return match source {
                             // Arrays removed - no variables are arrays anymore
                             VariableSource::ObjectTreeRoot(_) => false, // Contents result - NOT an array
-                            VariableSource::Scalar(_) => false,         // Scalar value - NOT an array
+                            VariableSource::Scalar(_) => false, // Scalar value - NOT an array
                         };
                     }
                 }

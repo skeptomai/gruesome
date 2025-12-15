@@ -491,9 +491,6 @@ impl IrGenerator {
         Ok(ir_block)
     }
 
-
-
-
     /// Testing method to expose room_objects mapping for integration tests
     #[cfg(test)]
     pub fn get_room_objects(&self) -> &IndexMap<String, Vec<RoomObjectInfo>> {
