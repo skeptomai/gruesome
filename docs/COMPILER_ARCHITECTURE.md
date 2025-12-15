@@ -409,6 +409,101 @@ let corrected_location = final_location - 1; // This breaks branch patching!
 
 ---
 
+## Branch Placeholder Encoding Semantics (December 14, 2025) ✅
+
+**CRITICAL UNDERSTANDING**: Branch placeholder values encode branch polarity via bit 15, not branch format.
+
+### Z-Machine Branch Encoding Review
+
+**Final Branch Format** (after resolution):
+- Bit 7: Branch polarity (1 = branch on TRUE, 0 = branch on FALSE)
+- Bit 6: Format (1 = 1-byte, 0 = 2-byte)
+- Bits 5-0 (+ second byte if 2-byte): Branch offset
+
+**Compiler Policy**: ALL branches use 2-byte format (bit 6 = 0 always)
+
+### Placeholder Encoding System
+
+The compiler uses placeholder values to communicate branch polarity to the resolution phase:
+
+```rust
+// In emit_comparison_branch (codegen_branch.rs:262-266):
+let placeholder = if branch_on_true {
+    0xBFFF_u16 as i16 // bit 15=1 encodes "branch on TRUE"
+} else {
+    0x7FFF_u16 as i16 // bit 15=0 encodes "branch on FALSE"
+};
+```
+
+**Resolution Phase** (codegen.rs:5097-5100):
+```rust
+// Read placeholder to determine intended polarity
+let high_byte = self.final_data[location] as u16;
+let low_byte = self.final_data[location + 1] as u16;
+let placeholder = (high_byte << 8) | low_byte;
+let branch_on_true = (placeholder & 0x8000) != 0; // Check bit 15
+```
+
+### Why Mixed Encodings Are Correct
+
+**Current codebase has**:
+- 5 instances of 0xBFFF (branch on TRUE)
+- 1 instance of 0x7FFF (branch on FALSE at line 829)
+
+**All are semantically correct** - they encode the intended branch polarity:
+
+| Location | Instruction | Intended Logic | Encoding | Correct? |
+|----------|-------------|----------------|----------|----------|
+| codegen_grammar.rs:121 | `jl word_count < 1` | Branch when TRUE (skip when no input) | 0xBFFF | ✅ |
+| codegen_grammar.rs:243 | `je verb == this_verb` | Branch when TRUE (matched) | 0xBFFF | ✅ |
+| codegen_grammar.rs:396 | `jl word_count < 2` | Branch when TRUE (insufficient words) | 0xBFFF | ✅ |
+| codegen_grammar.rs:829 | `je word_count == 2` | Branch when FALSE (word count != 2) | 0x7FFF | ✅ |
+| codegen_grammar.rs:1026 | `jl word_count < 3` | Branch when TRUE (insufficient words) | 0xBFFF | ✅ |
+| codegen_lookup.rs:201 | `jg object > max` | Branch when TRUE (out of bounds) | 0xBFFF | ✅ |
+
+### Common Misunderstanding: Bit 15 vs Bit 7
+
+**WRONG interpretation**: "0xBFFF has bit 6=1, so it's 1-byte format"
+- This confuses placeholder encoding (bit 15) with final branch encoding (bit 6)
+- Placeholder values are TEMPORARY markers, not final branch bytes
+
+**CORRECT interpretation**: "0xBFFF has bit 15=1, so `patch_branch_offset` will set bit 7=1 (branch on TRUE)"
+- Placeholder bit 15 → Final branch bit 7 (polarity)
+- Final branch bit 6 is ALWAYS 0 (compiler enforces 2-byte format)
+
+### Previous Bug: Line 829 Encoding
+
+**Original code**: Used 0xBFFF for `je word_count == 2` with "skip if NOT equal" intent
+- Intent: Skip pattern handler when word count != 2
+- Instruction: `je` branches when EQUAL
+- Logic: Branch when word_count == 2 (TRUE) would skip when matched (WRONG!)
+- Required: Branch when word_count != 2 (FALSE condition)
+
+**Fixed code**: Changed to 0x7FFF (branch on FALSE)
+- Now correctly skips when je is FALSE (word_count != 2)
+
+### Detection vs Prevention
+
+**Search Results** (December 14, 2025):
+- Found 6 instances of 0xBFFF branch encoding
+- Analyzed each for semantic correctness
+- Confirmed 5/6 are correct, 1 fixed in previous session
+
+**Prevention Strategy**:
+- Always verify branch polarity matches intended control flow
+- Test pattern matching commands after branch encoding changes
+- Use descriptive comments explaining branch intent
+
+### Files Referenced
+
+- `src/grue_compiler/codegen_branch.rs:262-266` - Placeholder emission
+- `src/grue_compiler/codegen.rs:5097-5100` - Placeholder reading
+- `src/grue_compiler/codegen.rs:5103-5108` - Final encoding with forced 2-byte format
+- `src/grue_compiler/codegen_grammar.rs` - Pattern matching logic (6 branch instances)
+- `src/grue_compiler/codegen_lookup.rs` - Object lookup bounds check
+
+---
+
 ## Deferred Features
 
 ### Computed Property System (Archived November 1, 2025)
