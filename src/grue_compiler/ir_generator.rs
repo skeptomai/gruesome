@@ -21,7 +21,7 @@ pub struct IrGenerator {
     current_locals: Vec<IrLocal>,       // Track local variables in current function
     next_local_slot: u8,                // Next available local variable slot
     builtin_functions: IndexMap<IrId, String>, // Function ID -> Function name for builtins
-    object_numbers: IndexMap<String, u16>, // Object name -> Object number mapping
+    pub(super) object_numbers: IndexMap<String, u16>, // Object name -> Object number mapping
     object_counter: u16,                // Next available object number (starts at 2, player is 1)
     property_manager: PropertyManager,  // Manages property numbering and inheritance
     id_registry: IrIdRegistry,          // NEW: Track all IR IDs for debugging and mapping
@@ -29,7 +29,7 @@ pub struct IrGenerator {
     expression_types: IndexMap<IrId, Type>, // NEW: Track expression result types for StringAddress system
     /// Mapping of room names to objects contained within them
     /// Used for automatic object placement during init block generation
-    room_objects: IndexMap<String, Vec<RoomObjectInfo>>,
+    pub(super) room_objects: IndexMap<String, Vec<RoomObjectInfo>>,
 
     // Polymorphic dispatch support
     function_overloads: IndexMap<String, Vec<FunctionOverload>>, // Function name -> list of overloads
@@ -1239,7 +1239,7 @@ impl IrGenerator {
         Ok(result)
     }
 
-    fn register_object_and_nested(
+    pub(super) fn register_object_and_nested(
         &mut self,
         obj: &crate::grue_compiler::ast::ObjectDecl,
     ) -> Result<(), CompilerError> {
@@ -1266,7 +1266,7 @@ impl IrGenerator {
 
     /// Extract object hierarchy from AST ObjectDecl for room object mapping
     /// Converts ObjectDecl and its nested objects into RoomObjectInfo structure
-    fn extract_object_hierarchy(
+    pub(super) fn extract_object_hierarchy(
         &self,
         obj: &crate::grue_compiler::ast::ObjectDecl,
     ) -> RoomObjectInfo {
@@ -1427,120 +1427,7 @@ impl IrGenerator {
         Ok(())
     }
 
-    fn generate_room(
-        &mut self,
-        room: crate::grue_compiler::ast::RoomDecl,
-    ) -> Result<IrRoom, CompilerError> {
-        // Room ID should already be pre-registered during first pass
-        let room_id = *self.symbol_ids.get(&room.identifier).unwrap_or_else(|| {
-            panic!(
-                "Room '{}' should have been pre-registered in first pass",
-                room.identifier
-            )
-        });
-
-        // Object numbers should already be assigned during registration pass
-        // Don't reassign if already exists (avoids duplicate assignment bug)
-        if let Some(&existing_number) = self.object_numbers.get(&room.identifier) {
-            log::debug!(
-                "IR generate_room: Room '{}' already has object number {} from registration pass",
-                room.identifier,
-                existing_number
-            );
-        } else {
-            // This should never happen with systematic object numbering
-            return Err(CompilerError::CodeGenError(format!(
-                "IR generate_room: Room '{}' should have been assigned an object number during systematic assignment but wasn't found",
-                room.identifier
-            )));
-        }
-
-        let mut exits = IndexMap::new();
-        log::debug!(
-            "IR generate_room: Processing {} exits for room '{}'",
-            room.exits.len(),
-            room.identifier
-        );
-        for (direction, target) in room.exits {
-            log::debug!("IR generate_room: Exit '{}' -> {:?}", direction, target);
-            let ir_target = match target {
-                crate::grue_compiler::ast::ExitTarget::Room(room_name) => {
-                    // Look up target room IR ID from symbol table
-                    let target_room_id = *self.symbol_ids.get(&room_name).unwrap_or(&0);
-                    if target_room_id == 0 {
-                        return Err(CompilerError::CodeGenError(format!(
-                            "Exit from room '{}' references undefined room '{}'",
-                            room.identifier, room_name
-                        )));
-                    }
-                    IrExitTarget::Room(target_room_id)
-                }
-                crate::grue_compiler::ast::ExitTarget::Blocked(message) => {
-                    IrExitTarget::Blocked(message)
-                }
-            };
-            exits.insert(direction, ir_target);
-        }
-
-        // Process room objects FIRST - add them to symbol_ids for identifier resolution
-        // This must happen before processing handlers that might reference these objects
-        log::debug!(
-            "Processing {} objects for room '{}'",
-            room.objects.len(),
-            room.identifier
-        );
-
-        // Phase 1b: Record object hierarchy in room_objects mapping
-        let mut room_object_infos = Vec::new();
-        for obj in &room.objects {
-            self.register_object_and_nested(obj)?;
-
-            // Extract object hierarchy and add to room mapping
-            let object_info = self.extract_object_hierarchy(obj);
-            room_object_infos.push(object_info);
-        }
-
-        // Store the complete object hierarchy for this room
-        if !room_object_infos.is_empty() {
-            self.room_objects
-                .insert(room.identifier.clone(), room_object_infos);
-            log::debug!(
-                "Phase 1b: Recorded {} object hierarchies for room '{}'",
-                self.room_objects[&room.identifier].len(),
-                room.identifier
-            );
-        }
-
-        // Now process handlers - objects are available for reference
-        let on_enter = if let Some(block) = room.on_enter {
-            Some(self.generate_block(block)?)
-        } else {
-            None
-        };
-
-        let on_exit = if let Some(block) = room.on_exit {
-            Some(self.generate_block(block)?)
-        } else {
-            None
-        };
-
-        let on_look = if let Some(block) = room.on_look {
-            Some(self.generate_block(block)?)
-        } else {
-            None
-        };
-
-        Ok(IrRoom {
-            id: room_id,
-            name: room.identifier,
-            display_name: room.display_name,
-            description: room.description,
-            exits,
-            on_enter,
-            on_exit,
-            on_look,
-        })
-    }
+    // generate_room() moved to ir_gen_rooms.rs
 
     // generate_grammar() moved to ir_gen_grammar.rs
 
@@ -3612,3 +3499,4 @@ impl IrGenerator {
 
 // Extracted modules for functional organization
 mod ir_gen_grammar;
+mod ir_gen_rooms;
