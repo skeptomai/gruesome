@@ -2,7 +2,7 @@
 
 ## 🔄 **IN PROGRESS: IR GENERATOR MODULARIZATION** (December 15, 2025)
 
-**STATUS**: **PHASES 1-7 COMPLETE - PHASE 8 NEXT** 🎯
+**STATUS**: **PHASES 1-8 COMPLETE - PHASE 9 NEXT** 🎯
 
 **OBJECTIVE**: Refactor the large `ir_generator.rs` file (3,724 lines) into focused functional modules following the proven pattern from `codegen_*.rs` files.
 
@@ -55,36 +55,39 @@
 - **Verification**: ✓ Bytecode identical, ✓ Compilation clean, ✓ Tests pass, ✓ Gameplay verified
 - **Commit**: `4276ed5` - refactor: Extract statement generation to ir_gen_statements.rs (Phase 7)
 
-**⏳ PHASE 8: Expression Generation Extraction** (NEXT)
-- Extract expression generation methods (~930 lines)
-- Create `src/grue_compiler/ir_gen_expressions.rs`
-- Methods: generate_expression, generate_expression_with_context, plus helper methods
-- **Status**: Ready to start
+**✅ PHASE 8: Expression Generation Extraction** (Completed)
+- Extracted expression generation methods (969 lines)
+- Created `src/grue_compiler/ir_gen_expressions.rs`
+- Methods: generate_expression, generate_expression_with_context, expr_to_ir_value, is_array_type, record_expression_type, get_expression_type
+- Handles: Literals, identifiers, binary/unary ops, function/method calls, property access, ternary conditionals, arrays, parser expressions
+- **Verification**: ✓ Bytecode identical (7896 bytes), ✓ Compilation clean, ✓ Tests pass (24 tests), ✓ Gameplay verified
+- **Commit**: `76e9dc2` - refactor: Extract expression generation to ir_gen_expressions.rs (Phase 8)
 
-**⏳ PHASE 9: Final Comprehensive Verification** (PENDING)
+**⏳ PHASE 9: Final Comprehensive Verification** (NEXT)
 - Run complete test suite
 - Verify all bytecode identical
 - Full gameplay protocol test
 - Documentation update
-- **Status**: Awaiting Phase 8 completion
+- **Status**: Ready to start
 
 ### **PROGRESS SUMMARY**
 
 **File Size Reduction**:
 ```
 Original ir_generator.rs: 3,724 lines
-Current ir_generator.rs:  1,464 lines
-Total reduction:          2,260 lines (61% reduction)
+Current ir_generator.rs:    511 lines
+Total reduction:          3,213 lines (86% reduction)
 ```
 
 **Extracted Modules**:
-- `ir_gen_grammar.rs`:     129 lines (Phase 2)
-- `ir_gen_rooms.rs`:       130 lines (Phase 3)
-- `ir_gen_functions.rs`:   427 lines (Phase 4)
-- `ir_gen_objects.rs`:     532 lines (Phase 5)
-- `ir_gen_builtins.rs`:    461 lines (Phase 6)
-- `ir_gen_statements.rs`:  723 lines (Phase 7)
-- **Total extracted**:   2,402 lines
+- `ir_gen_grammar.rs`:      129 lines (Phase 2)
+- `ir_gen_rooms.rs`:        130 lines (Phase 3)
+- `ir_gen_functions.rs`:    427 lines (Phase 4)
+- `ir_gen_objects.rs`:      532 lines (Phase 5)
+- `ir_gen_builtins.rs`:     461 lines (Phase 6)
+- `ir_gen_statements.rs`:   723 lines (Phase 7)
+- `ir_gen_expressions.rs`:  969 lines (Phase 8)
+- **Total extracted**:    3,371 lines
 
 ### **VERIFICATION PROTOCOL**
 
@@ -159,18 +162,19 @@ climb tree → take egg → down → score → inventory → quit
 
 - `60b2331` - refactor: Extract builtin handling to ir_gen_builtins.rs (Phase 6)
 - `4276ed5` - refactor: Extract statement generation to ir_gen_statements.rs (Phase 7)
+- `76e9dc2` - refactor: Extract expression generation to ir_gen_expressions.rs (Phase 8)
 
 ### **NEXT SESSION RESUME POINT**
 
 **To Continue**:
-1. Start Phase 8: Expression generation extraction
-2. Follow established pattern from Phases 2-7
-3. Use gameplay test with Mini Zork commands
-4. Verify bytecode identical after extraction
-5. Commit Phase 8 when complete
-6. Proceed to Phase 9 final verification
+1. Start Phase 9: Final comprehensive verification
+2. Run complete test suite across all modules
+3. Verify bytecode identical to original baseline
+4. Full gameplay protocol test
+5. Update documentation if needed
+6. Final commit with summary
 
-**Current State**: All Phases 1-7 committed and verified. Ready for Phase 8.
+**Current State**: All Phases 1-8 committed and verified. Ready for Phase 9.
 
 ---
 
