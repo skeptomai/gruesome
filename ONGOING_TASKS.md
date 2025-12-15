@@ -1,5 +1,179 @@
 # ONGOING TASKS - PROJECT STATUS
 
+## 🔄 **IN PROGRESS: IR GENERATOR MODULARIZATION** (December 15, 2025)
+
+**STATUS**: **PHASES 1-7 COMPLETE - PHASE 8 NEXT** 🎯
+
+**OBJECTIVE**: Refactor the large `ir_generator.rs` file (3,724 lines) into focused functional modules following the proven pattern from `codegen_*.rs` files.
+
+### **IMPLEMENTATION PROGRESS**
+
+**✅ PHASE 1: Baseline Commit** (Completed)
+- Committed current ir.rs/ir_generator.rs split as baseline for rollback
+- Established foundation for incremental refactoring
+- **Commit**: Initial baseline state
+
+**✅ PHASE 2: Grammar Generation Extraction** (Completed)
+- Extracted `generate_grammar()` method (129 lines)
+- Created `src/grue_compiler/ir_gen_grammar.rs`
+- Handles AST grammar declarations → IR conversion
+- **Verification**: ✓ Bytecode identical, ✓ Compilation clean, ✓ Tests pass
+
+**✅ PHASE 3: Room Generation Extraction** (Completed)
+- Extracted `generate_room()` method (130 lines)
+- Created `src/grue_compiler/ir_gen_rooms.rs`
+- Handles room exits, objects, handler blocks
+- **Verification**: ✓ Bytecode identical, ✓ Compilation clean, ✓ Tests pass
+
+**✅ PHASE 4: Function Generation Extraction** (Completed)
+- Extracted 6 function-related methods (427 lines)
+- Created `src/grue_compiler/ir_gen_functions.rs`
+- Methods: mangle_function_name, detect_specialization, register_function_overload, generate_dispatch_functions, create_dispatch_function, generate_function
+- Handles polymorphic dispatch and function compilation
+- **Verification**: ✓ Bytecode identical, ✓ Compilation clean, ✓ Tests pass
+
+**✅ PHASE 5: Object System Extraction** (Completed)
+- Extracted 9 object-related methods (532 lines)
+- Created `src/grue_compiler/ir_gen_objects.rs`
+- Three-pass world generation: register, number, generate
+- **Verification**: ✓ Bytecode identical, ✓ Compilation clean, ✓ Tests pass, ✓ Gameplay verified
+
+**✅ PHASE 6: Builtin Handling Extraction** (Completed)
+- Extracted builtin function handling (461 lines)
+- Created `src/grue_compiler/ir_gen_builtins.rs`
+- Methods: is_builtin_function (40+ builtins), generate_builtin_function_call
+- Categories: output, object system, scoring, utilities, string ops, math ops, type checking, debug
+- **Verification**: ✓ Bytecode identical, ✓ Compilation clean, ✓ Tests pass, ✓ Gameplay verified
+- **Commit**: `60b2331` - refactor: Extract builtin handling to ir_gen_builtins.rs (Phase 6)
+
+**✅ PHASE 7: Statement Generation Extraction** (Completed)
+- Extracted statement generation (723 lines)
+- Created `src/grue_compiler/ir_gen_statements.rs`
+- Methods: generate_object_tree_iteration, generate_object_tree_iteration_with_container, generate_statement
+- Handles: Expression statements, VarDecl, Assignment, If/else, While, For loops, Return, Block
+- Special handling: object tree iteration, property assignments, attribute optimization, TestAttributeBranch
+- **Verification**: ✓ Bytecode identical, ✓ Compilation clean, ✓ Tests pass, ✓ Gameplay verified
+- **Commit**: `4276ed5` - refactor: Extract statement generation to ir_gen_statements.rs (Phase 7)
+
+**⏳ PHASE 8: Expression Generation Extraction** (NEXT)
+- Extract expression generation methods (~930 lines)
+- Create `src/grue_compiler/ir_gen_expressions.rs`
+- Methods: generate_expression, generate_expression_with_context, plus helper methods
+- **Status**: Ready to start
+
+**⏳ PHASE 9: Final Comprehensive Verification** (PENDING)
+- Run complete test suite
+- Verify all bytecode identical
+- Full gameplay protocol test
+- Documentation update
+- **Status**: Awaiting Phase 8 completion
+
+### **PROGRESS SUMMARY**
+
+**File Size Reduction**:
+```
+Original ir_generator.rs: 3,724 lines
+Current ir_generator.rs:  1,464 lines
+Total reduction:          2,260 lines (61% reduction)
+```
+
+**Extracted Modules**:
+- `ir_gen_grammar.rs`:     129 lines (Phase 2)
+- `ir_gen_rooms.rs`:       130 lines (Phase 3)
+- `ir_gen_functions.rs`:   427 lines (Phase 4)
+- `ir_gen_objects.rs`:     532 lines (Phase 5)
+- `ir_gen_builtins.rs`:    461 lines (Phase 6)
+- `ir_gen_statements.rs`:  723 lines (Phase 7)
+- **Total extracted**:   2,402 lines
+
+### **VERIFICATION PROTOCOL**
+
+**After Each Phase**:
+1. ✓ Zero compilation warnings
+2. ✓ Bytecode comparison (cmp old.z3 new.z3)
+3. ✓ Comprehensive gameplay test (Mini Zork full playthrough)
+4. ✓ All unit tests pass
+5. ✓ Git commit with detailed notes
+
+**Comprehensive Gameplay Test Commands**:
+```
+open mailbox → take leaflet → read leaflet → north → north →
+climb tree → take egg → down → score → inventory → quit
+```
+
+**Test Coverage**:
+- ✓ Room descriptions and navigation
+- ✓ Container system (open mailbox)
+- ✓ Object interaction (take, read)
+- ✓ Scoring system (0 → 2 → 7 points)
+- ✓ Inventory tracking
+- ✓ All commands working
+
+### **TECHNICAL APPROACH**
+
+**Pattern Followed**:
+1. Create new module file (e.g., `ir_gen_*.rs`)
+2. Add file header and imports
+3. Extract methods from `ir_generator.rs`
+4. Make methods `pub(super)` for module access
+5. Add module declaration to `ir_generator.rs`
+6. Remove duplicate methods from `ir_generator.rs`
+7. Fix imports and visibility
+8. Verify compilation
+9. Run bytecode comparison
+10. Run gameplay tests
+11. Run unit tests
+12. Commit with verification notes
+
+**Safety Mechanisms**:
+- Git commits after each phase for easy rollback
+- Bytecode comparison to verify identical output
+- Comprehensive gameplay testing
+- Unit test verification
+- Incremental approach (one phase at a time)
+
+### **REMAINING WORK**
+
+**Phase 8 Details** (Expression Generation):
+- Identify all expression-related methods in ir_generator.rs
+- Extract to `ir_gen_expressions.rs`
+- Estimated ~930 lines to extract
+- Will bring ir_generator.rs down to ~500-600 lines
+
+**Phase 9 Details** (Final Verification):
+- Run complete test suite across all modules
+- Verify bytecode identical to baseline
+- Full gameplay protocol test
+- Update documentation
+- Final commit with summary
+
+### **KEY SUCCESS FACTORS**
+
+1. **Incremental Approach**: One phase at a time with full verification
+2. **Bytecode Verification**: Confirms correctness after each extraction
+3. **Gameplay Testing**: Real-world validation beyond compilation
+4. **Git Discipline**: Committed each phase independently for rollback safety
+5. **Module Pattern**: Following proven codegen_*.rs pattern
+
+### **COMMITS**
+
+- `60b2331` - refactor: Extract builtin handling to ir_gen_builtins.rs (Phase 6)
+- `4276ed5` - refactor: Extract statement generation to ir_gen_statements.rs (Phase 7)
+
+### **NEXT SESSION RESUME POINT**
+
+**To Continue**:
+1. Start Phase 8: Expression generation extraction
+2. Follow established pattern from Phases 2-7
+3. Use gameplay test with Mini Zork commands
+4. Verify bytecode identical after extraction
+5. Commit Phase 8 when complete
+6. Proceed to Phase 9 final verification
+
+**Current State**: All Phases 1-7 committed and verified. Ready for Phase 8.
+
+---
+
 ## ✅ **RESOLVED: REFACTORING BRANCH ENCODING BUG** (December 14, 2025)
 
 **STATUS**: **FIXED - ALL PATTERN MATCHING WORKING** ✅
