@@ -58,10 +58,12 @@ Some(0x7FFF_u16 as i16), // 2-byte form (correct)
 - Could not get it working with any branch encoding (0x4000, 0x7FFF, 0x3FFF all failed)
 - Reverted to efficient pre-refactoring pattern (branch-to-skip, fall-through-to-execute)
 
-**TODO**: Create experimental branch to investigate why extra jump pattern fails
+**EXPERIMENTAL BRANCH CREATED**: `experimental/extra-jump-pattern-investigation`
+- Branch created December 14, 2025 to investigate why extra jump pattern fails
 - Pattern should work logically but breaks in practice
 - May reveal compiler invariant violations or undocumented assumptions
 - Worth understanding for future refactoring efforts
+- See `docs/EXPERIMENTAL_EXTRA_JUMP_PATTERN.md` for investigation plan
 
 ### **VERIFICATION**
 
@@ -80,7 +82,7 @@ All tests pass after fix:
 - `docs/BRANCH_ENCODING_ANALYSIS.md` - Detailed branch encoding explanation
 - `docs/BRANCH_LOGIC_INVERSION_ANALYSIS.md` - Extra jump pattern analysis
 
-### **COMMIT**: TBD - To be committed with this fix
+### **COMMIT**: ba96784 - "fix: Restore 2-byte branch encoding violated by refactoring"
 
 ---
 
