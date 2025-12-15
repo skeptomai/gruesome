@@ -17,7 +17,7 @@ use super::{
 /// IR Generator - converts AST to IR
 pub struct IrGenerator {
     id_counter: IrId,
-    symbol_ids: IndexMap<String, IrId>, // Symbol name -> IR ID mapping
+    pub(super) symbol_ids: IndexMap<String, IrId>, // Symbol name -> IR ID mapping
     current_locals: Vec<IrLocal>,       // Track local variables in current function
     next_local_slot: u8,                // Next available local variable slot
     builtin_functions: IndexMap<IrId, String>, // Function ID -> Function name for builtins
@@ -33,7 +33,7 @@ pub struct IrGenerator {
 
     // Polymorphic dispatch support
     function_overloads: IndexMap<String, Vec<FunctionOverload>>, // Function name -> list of overloads
-    dispatch_functions: IndexMap<String, IrId>, // Function name -> dispatch function ID
+    pub(super) dispatch_functions: IndexMap<String, IrId>, // Function name -> dispatch function ID
     function_base_names: IndexMap<IrId, String>, // Function ID -> base function name
     function_id_map: IndexMap<(String, ObjectSpecialization), u32>, // (name, specialization) -> assigned ID
 }
@@ -1542,122 +1542,9 @@ impl IrGenerator {
         })
     }
 
-    fn generate_grammar(
-        &mut self,
-        grammar: crate::grue_compiler::ast::GrammarDecl,
-    ) -> Result<Vec<IrGrammar>, CompilerError> {
-        let mut ir_grammar = Vec::new();
+    // generate_grammar() moved to ir_gen_grammar.rs
 
-        for verb in grammar.verbs {
-            let mut patterns = Vec::new();
-
-            for pattern in verb.patterns {
-                let ir_pattern_elements: Vec<IrPatternElement> = pattern
-                    .pattern
-                    .into_iter()
-                    .map(|elem| match elem {
-                        crate::grue_compiler::ast::PatternElement::Literal(s) => {
-                            IrPatternElement::Literal(s)
-                        }
-                        crate::grue_compiler::ast::PatternElement::Noun => IrPatternElement::Noun,
-                        crate::grue_compiler::ast::PatternElement::Default => {
-                            IrPatternElement::Default
-                        }
-                        // Enhanced parser elements - full support for Zork I-level parsing
-                        crate::grue_compiler::ast::PatternElement::Adjective => {
-                            IrPatternElement::Adjective
-                        }
-                        crate::grue_compiler::ast::PatternElement::MultiWordNoun => {
-                            IrPatternElement::MultiWordNoun
-                        }
-                        crate::grue_compiler::ast::PatternElement::Preposition => {
-                            IrPatternElement::Preposition
-                        }
-                        crate::grue_compiler::ast::PatternElement::MultipleObjects => {
-                            IrPatternElement::MultipleObjects
-                        }
-                        crate::grue_compiler::ast::PatternElement::DirectObject => {
-                            IrPatternElement::DirectObject
-                        }
-                        crate::grue_compiler::ast::PatternElement::IndirectObject => {
-                            IrPatternElement::IndirectObject
-                        }
-                        crate::grue_compiler::ast::PatternElement::OptionalAdjective => {
-                            IrPatternElement::OptionalAdjective
-                        }
-                        crate::grue_compiler::ast::PatternElement::AnyPreposition => {
-                            IrPatternElement::AnyPreposition
-                        }
-                        crate::grue_compiler::ast::PatternElement::NumberedNoun => {
-                            IrPatternElement::NumberedNoun
-                        }
-                    })
-                    .collect();
-
-                let ir_handler = match pattern.handler {
-                    crate::grue_compiler::ast::Handler::FunctionCall(name, args) => {
-                        // Convert arguments to IR values
-                        let mut ir_args = Vec::new();
-                        for arg in args {
-                            let ir_value = self.expr_to_ir_value(arg)?;
-                            ir_args.push(ir_value);
-                        }
-
-                        // CRITICAL FIX: Look up function ID using symbol table resolution
-                        // Previously used placeholder function ID 0, causing "Routine ID 0 not found" errors
-                        // during code generation. Now properly resolves function names to their assigned IR IDs.
-                        // This enables grammar pattern handlers like handle_look() to be correctly called.
-
-                        // POLYMORPHIC DISPATCH FIX: Use dispatch function if available
-                        let func_id = if let Some(&dispatch_id) = self.dispatch_functions.get(&name)
-                        {
-                            log::debug!(
-                                "🎯 Grammar using dispatch function for '{}': ID {}",
-                                name,
-                                dispatch_id
-                            );
-                            dispatch_id
-                        } else if let Some(&id) = self.symbol_ids.get(&name) {
-                            log::debug!(
-                                "🎯 Grammar using original function for '{}': ID {}",
-                                name,
-                                id
-                            );
-                            id
-                        } else {
-                            return Err(CompilerError::SemanticError(
-                                format!(
-                                    "Grammar handler function '{}' not found. All functions must be defined before grammar patterns.",
-                                    name
-                                ),
-                                0,
-                            ));
-                        };
-
-                        IrHandler::FunctionCall(func_id, ir_args)
-                    }
-                    crate::grue_compiler::ast::Handler::Block(block) => {
-                        let ir_block = self.generate_block(block)?;
-                        IrHandler::Block(ir_block)
-                    }
-                };
-
-                patterns.push(IrPattern {
-                    pattern: ir_pattern_elements,
-                    handler: ir_handler,
-                });
-            }
-
-            ir_grammar.push(IrGrammar {
-                verb: verb.word,
-                patterns,
-            });
-        }
-
-        Ok(ir_grammar)
-    }
-
-    fn generate_block(
+    pub(super) fn generate_block(
         &mut self,
         block: crate::grue_compiler::ast::BlockStmt,
     ) -> Result<IrBlock, CompilerError> {
@@ -3295,7 +3182,7 @@ impl IrGenerator {
         }
     }
 
-    fn expr_to_ir_value(
+    pub(super) fn expr_to_ir_value(
         &mut self,
         expr: crate::grue_compiler::ast::Expr,
     ) -> Result<IrValue, CompilerError> {
@@ -3722,3 +3609,6 @@ impl IrGenerator {
         &self.room_objects
     }
 }
+
+// Extracted modules for functional organization
+mod ir_gen_grammar;
