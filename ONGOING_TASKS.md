@@ -49,40 +49,64 @@ Some(0xBFFF_u16 as i16), // 1-byte form (broken)
 Some(0x7FFF_u16 as i16), // 2-byte form (correct)
 ```
 
-### **INVESTIGATION NOTES**
+### **COMPREHENSIVE VERIFICATION** (December 14, 2025)
 
-**Extra Jump Pattern Investigation**:
-- Refactoring also inverted branch logic (branch-to-execute vs branch-to-skip)
-- This added extra jump instruction (+3 bytes overhead per pattern)
-- Attempted to verify extra jump pattern works with 2-byte branches
-- Could not get it working with any branch encoding (0x4000, 0x7FFF, 0x3FFF all failed)
-- Reverted to efficient pre-refactoring pattern (branch-to-skip, fall-through-to-execute)
+**All 0xBFFF Branch Encodings Analyzed**:
+- ✅ Searched entire codebase for all 0xBFFF instances (6 found)
+- ✅ Verified each instance is semantically correct (branch on TRUE where needed)
+- ✅ Documented placeholder encoding semantics in `docs/COMPILER_ARCHITECTURE.md`
+- ✅ Understanding: Placeholder bit 15 encodes polarity, NOT final format
+  - 0xBFFF = branch on TRUE (bit 15=1) → resolved to 2-byte format
+  - 0x7FFF = branch on FALSE (bit 15=0) → resolved to 2-byte format
+  - Final encoding always uses bit 6=0 (2-byte format)
 
-**EXPERIMENTAL BRANCH CREATED**: `experimental/extra-jump-pattern-investigation`
-- Branch created December 14, 2025 to investigate why extra jump pattern fails
-- Pattern should work logically but breaks in practice
-- May reveal compiler invariant violations or undocumented assumptions
-- Worth understanding for future refactoring efforts
-- See `docs/EXPERIMENTAL_EXTRA_JUMP_PATTERN.md` for investigation plan
+**Extra Jump Pattern Investigation** ✅ **COMPLETED**:
+- ✅ Created experimental branch `experimental/extra-jump-pattern-investigation`
+- ✅ Implemented branch-to-execute pattern with extra jump instruction
+- ✅ **FINDING**: Pattern works perfectly with proper 2-byte encoding (0xBFFF)
+- ✅ **ROOT CAUSE**: Original failure was mixed 1-byte/2-byte bug, NOT control flow
+- ✅ **DECISION**: Keep simpler branch-to-skip pattern on main (smaller, less complex)
+- ✅ Experimental branch deleted, documentation preserved
+- ✅ See `docs/EXPERIMENTAL_EXTRA_JUMP_PATTERN.md` for complete findings
 
-### **VERIFICATION**
+### **REGRESSION TESTS ADDED** (December 14, 2025)
 
-All tests pass after fix:
-- ✅ "look around" → Room description (literal pattern)
-- ✅ "look at mailbox" → "The small mailbox is closed." (literal+noun)
-- ✅ "look" → Room description (default pattern)
-- ✅ "examine mailbox" → "The small mailbox is closed." (regression)
-- ✅ "open mailbox" / "read leaflet" → Gameplay working
-- ✅ Movement and look in rooms working
+**Comprehensive Test Coverage**:
+- ✅ **Rust Unit Tests** (`tests/literal_pattern_matching_test.rs`)
+  - Literal pattern compilation test
+  - Multiple literal patterns per verb
+  - Branch encoding verification
+- ✅ **Integration Test Game** (`tests/integration/test_literal_pattern_matching.grue`)
+  - Test game with literal, verb-only, and literal+noun patterns
+  - Documents bug history and fix in source comments
+- ✅ **Gameplay Test Script** (`scripts/test_literal_pattern_matching.sh`)
+  - Compiles and executes test game with specific commands
+  - Verifies 5 critical behaviors (all patterns execute correctly)
+  - Tests: 'look', 'look around', 'look at X', 'examine carefully'
 
-### **DOCUMENTATION**
+**Verification Results**:
+- ✅ "look around" → LITERAL handler (THE BUG FIX)
+- ✅ "look at mailbox" → NOUN handler (literal+noun)
+- ✅ "look" → DEFAULT handler (verb-only)
+- ✅ "examine carefully" → LITERAL handler (different verb)
+- ✅ Literal patterns don't fall through to verb-only
+- ✅ All gameplay tests pass
+- ✅ Full mini_zork gameplay working
+
+### **DOCUMENTATION CREATED**
 
 - `docs/PATTERN_MATCHING_SKIP_LABEL_BUG.md` - Initial analysis (skip label hypothesis)
 - `docs/REFACTORING_BRANCH_INVERSION_BUG.md` - Control flow analysis
 - `docs/BRANCH_ENCODING_ANALYSIS.md` - Detailed branch encoding explanation
 - `docs/BRANCH_LOGIC_INVERSION_ANALYSIS.md` - Extra jump pattern analysis
+- `docs/EXPERIMENTAL_EXTRA_JUMP_PATTERN.md` - Investigation complete with findings ✅
+- `docs/COMPILER_ARCHITECTURE.md` - Branch placeholder encoding semantics section ✅
 
-### **COMMIT**: ba96784 - "fix: Restore 2-byte branch encoding violated by refactoring"
+### **COMMITS**
+
+- `ba96784` - "fix: Restore 2-byte branch encoding violated by refactoring"
+- `a72ca75` - "docs: Add experimental extra jump pattern investigation findings"
+- `d4a6102` - "test: Add regression tests for literal pattern matching" ✅
 
 ---
 
