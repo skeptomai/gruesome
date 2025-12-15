@@ -15,7 +15,6 @@
 /// 2. Verb-only patterns like "look" compile correctly
 /// 3. Literal+noun patterns like "look at mailbox" compile correctly
 /// 4. Branch encoding uses consistent 2-byte format (0x7FFF for branch-on-FALSE)
-
 use gruesome::grue_compiler::GrueCompiler;
 use gruesome::grue_compiler::ZMachineVersion;
 
