@@ -21,6 +21,12 @@ pub fn init() {
     console_log::init_with_level(log::Level::Debug).ok();
 }
 
+/// Get the interpreter version string (e.g., "2.16.0")
+#[wasm_bindgen]
+pub fn get_interpreter_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 /// Result returned from stepping the interpreter
 #[wasm_bindgen]
 pub struct StepResult {
@@ -248,12 +254,6 @@ impl WasmInterpreter {
     #[wasm_bindgen(getter)]
     pub fn version(&self) -> u8 {
         self.version
-    }
-
-    /// Get the interpreter version string (e.g., "2.16.0")
-    #[wasm_bindgen]
-    pub fn interpreter_version() -> String {
-        env!("CARGO_PKG_VERSION").to_string()
     }
 
     /// Save game state to Quetzal format bytes

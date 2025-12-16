@@ -273,7 +273,7 @@ function App() {
         wasm.init();
 
         // Get interpreter version
-        const version = wasm.WasmInterpreter.interpreter_version();
+        const version = wasm.get_interpreter_version();
         setInterpreterVersion(version);
         console.log('Gruesome interpreter version:', version);
 
