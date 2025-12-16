@@ -112,13 +112,13 @@ function BlurToggle({ blurLevel, onToggle, disabled }) {
  * Disclaimer Component
  * Shown before loading the game with legal notices
  */
-function Disclaimer({ onContinue, onLoadOwn, theme, onThemeChange, font, onFontChange, crtEnabled, onCrtChange, blurLevel, onBlurChange }) {
+function Disclaimer({ onContinue, onLoadOwn, theme, onThemeChange, font, onFontChange, crtEnabled, onCrtChange, blurLevel, onBlurChange, version }) {
   const crtClass = crtEnabled ? `crt-enhanced crt-blur-${blurLevel || 'medium'}` : '';
   return html`
     <div class="terminal theme-${theme} font-${font} ${crtClass}">
       <div class="disclaimer">
         <h1 class="disclaimer-title">GRUESOME</h1>
-        <p class="disclaimer-subtitle">Z-Machine Interpreter</p>
+        <p class="disclaimer-subtitle">Z-Machine Interpreter v${version}</p>
 
         <${ThemeToggle} theme=${theme} onToggle=${onThemeChange} />
         <${FontToggle} font=${font} onToggle=${onFontChange} />
@@ -187,6 +187,9 @@ function Disclaimer({ onContinue, onLoadOwn, theme, onThemeChange, font, onFontC
   `;
 }
 
+// Version is set at build time - this should match Cargo.toml
+const GRUESOME_VERSION = '2.16.0';
+
 /**
  * Main Application Component
  */
@@ -201,8 +204,8 @@ function App() {
   // WASM interpreter instance
   const interpreterRef = useRef(null);
 
-  // Interpreter version
-  const [interpreterVersion, setInterpreterVersion] = useState(null);
+  // Interpreter version - use constant for immediate display
+  const interpreterVersion = GRUESOME_VERSION;
 
   // Game state (when playing with real WASM)
   const [gameState, setGameState] = useState({
@@ -271,16 +274,6 @@ function App() {
 
         // Initialize panic hook for better error messages
         wasm.init();
-
-        // Get interpreter version
-        try {
-          const version = wasm.get_interpreter_version();
-          setInterpreterVersion(version);
-          console.log('Gruesome interpreter version:', version);
-        } catch (err) {
-          console.error('Failed to get interpreter version:', err);
-          console.log('Available WASM functions:', Object.keys(wasm).filter(k => typeof wasm[k] === 'function'));
-        }
 
         // Store wasm module reference
         window.gruesomeWasm = wasm;
@@ -530,6 +523,7 @@ function App() {
           onCrtChange=${handleCrtChange}
           blurLevel=${settings.blurLevel || 'medium'}
           onBlurChange=${handleBlurChange}
+          version=${interpreterVersion}
         />
       `;
 
