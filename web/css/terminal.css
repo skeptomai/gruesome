@@ -420,8 +420,6 @@ body {
   padding: var(--terminal-padding);
   max-width: 700px;
   margin: 0 auto;
-  overflow-y: auto;
-  max-height: 100vh;
   box-sizing: border-box;
 }
 

@@ -118,7 +118,7 @@ function Disclaimer({ onContinue, onLoadOwn, theme, onThemeChange, font, onFontC
     <div class="terminal theme-${theme} font-${font} ${crtClass}">
       <div class="disclaimer">
         <h1 class="disclaimer-title">GRUESOME</h1>
-        <p class="disclaimer-subtitle">Z-Machine Interpreter v${version}</p>
+        <p class="disclaimer-subtitle">Z-Machine Interpreter${version ? ` v${version}` : ''}</p>
 
         <${ThemeToggle} theme=${theme} onToggle=${onThemeChange} />
         <${FontToggle} font=${font} onToggle=${onFontChange} />
@@ -187,9 +187,6 @@ function Disclaimer({ onContinue, onLoadOwn, theme, onThemeChange, font, onFontC
   `;
 }
 
-// Version is set at build time - this should match Cargo.toml
-const GRUESOME_VERSION = '2.16.0';
-
 /**
  * Main Application Component
  */
@@ -204,8 +201,8 @@ function App() {
   // WASM interpreter instance
   const interpreterRef = useRef(null);
 
-  // Interpreter version - use constant for immediate display
-  const interpreterVersion = GRUESOME_VERSION;
+  // Interpreter version - fetch from WASM on load
+  const [interpreterVersion, setInterpreterVersion] = useState(null);
 
   // Game state (when playing with real WASM)
   const [gameState, setGameState] = useState({
@@ -214,6 +211,25 @@ function App() {
     waitingForInput: false,
     quit: false,
   });
+
+  // Load WASM and get version on app startup
+  useEffect(() => {
+    async function loadVersion() {
+      try {
+        const response = await fetch('./pkg/gruesome.js', { method: 'HEAD' });
+        if (response.ok) {
+          const wasm = await import('../pkg/gruesome.js');
+          await wasm.default();
+          const version = wasm.get_interpreter_version();
+          setInterpreterVersion(version);
+          console.log('Gruesome version:', version);
+        }
+      } catch (err) {
+        console.log('Could not load version:', err);
+      }
+    }
+    loadVersion();
+  }, []);
 
   // Settings - load from localStorage if available
   const [settings, setSettings] = useState(() => {
