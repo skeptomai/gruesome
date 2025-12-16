@@ -433,9 +433,7 @@ impl WasmInterpreter {
 
     /// Process text input
     fn process_input(&mut self, inst: &Instruction, input: &str) -> Result<(), String> {
-        self.display.print(">").ok();
-        self.display.print(input).ok();
-        self.display.print_char('\n').ok();
+        // Note: Web UI handles echoing the prompt and command, so we don't print it here
 
         let text_buffer = self.get_operand(inst, 0)?;
         let parse_buffer = if inst.operands.len() > 1 {

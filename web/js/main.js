@@ -490,6 +490,13 @@ function App() {
     if (!interpreter) return;
 
     try {
+      // Echo the command to output with prompt (since WASM no longer does this)
+      setGameState(prev => ({
+        ...prev,
+        outputLines: [...prev.outputLines, `>${command}`],
+        waitingForInput: false,
+      }));
+
       // Send command to WASM interpreter
       interpreter.provide_input(command);
 
