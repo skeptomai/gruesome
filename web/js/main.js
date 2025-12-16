@@ -112,13 +112,16 @@ function BlurToggle({ blurLevel, onToggle, disabled }) {
  * Disclaimer Component
  * Shown before loading the game with legal notices
  */
-function Disclaimer({ onContinue, onLoadOwn, theme, onThemeChange, font, onFontChange, crtEnabled, onCrtChange, blurLevel, onBlurChange, version }) {
+function Disclaimer({ onContinue, onLoadOwn, theme, onThemeChange, font, onFontChange, crtEnabled, onCrtChange, blurLevel, onBlurChange, version, buildInfo }) {
   const crtClass = crtEnabled ? `crt-enhanced crt-blur-${blurLevel || 'medium'}` : '';
   return html`
     <div class="terminal theme-${theme} font-${font} ${crtClass}">
       <div class="disclaimer">
         <h1 class="disclaimer-title">GRUESOME</h1>
         <p class="disclaimer-subtitle">Z-Machine Interpreter${version ? ` v${version}` : ''}</p>
+        ${buildInfo && html`
+          <p class="build-info">Build: ${buildInfo.commit} @ ${new Date(buildInfo.timestamp).toLocaleString()}</p>
+        `}
 
         <${ThemeToggle} theme=${theme} onToggle=${onThemeChange} />
         <${FontToggle} font=${font} onToggle=${onFontChange} />
@@ -204,6 +207,9 @@ function App() {
   // Interpreter version - fetch from WASM on load
   const [interpreterVersion, setInterpreterVersion] = useState(null);
 
+  // Build info for deployment tracking
+  const [buildInfo, setBuildInfo] = useState(null);
+
   // Game state (when playing with real WASM)
   const [gameState, setGameState] = useState({
     status: { location: '', score: 0, moves: 0 },
@@ -211,6 +217,23 @@ function App() {
     waitingForInput: false,
     quit: false,
   });
+
+  // Load build info on app startup for deployment tracking
+  useEffect(() => {
+    async function loadBuildInfo() {
+      try {
+        const response = await fetch('./buildinfo.json');
+        if (response.ok) {
+          const info = await response.json();
+          setBuildInfo(info);
+          console.log('Build info:', info);
+        }
+      } catch (err) {
+        console.log('Could not load build info:', err);
+      }
+    }
+    loadBuildInfo();
+  }, []);
 
   // Load WASM module on app startup to fetch version
   // This runs once when the app loads, before the user clicks "Play Zork"
@@ -554,6 +577,7 @@ function App() {
           blurLevel=${settings.blurLevel || 'medium'}
           onBlurChange=${handleBlurChange}
           version=${interpreterVersion}
+          buildInfo=${buildInfo}
         />
       `;
 
