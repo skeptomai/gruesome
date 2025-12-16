@@ -494,7 +494,6 @@ function App() {
       setGameState(prev => ({
         ...prev,
         outputLines: [...prev.outputLines, `>${command}`],
-        waitingForInput: false,
       }));
 
       // Send command to WASM interpreter
