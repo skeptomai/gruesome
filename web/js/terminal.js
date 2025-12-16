@@ -155,11 +155,9 @@ export function ErrorDisplay({ title, message, details }) {
  * Displays interpreter version
  */
 export function Footer({ version }) {
-  if (!version) return null;
-
   return html`
     <div class="footer">
-      <span class="version">Gruesome v${version}</span>
+      <span class="version">Gruesome ${version ? `v${version}` : ''}</span>
     </div>
   `;
 }

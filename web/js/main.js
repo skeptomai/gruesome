@@ -273,9 +273,14 @@ function App() {
         wasm.init();
 
         // Get interpreter version
-        const version = wasm.get_interpreter_version();
-        setInterpreterVersion(version);
-        console.log('Gruesome interpreter version:', version);
+        try {
+          const version = wasm.get_interpreter_version();
+          setInterpreterVersion(version);
+          console.log('Gruesome interpreter version:', version);
+        } catch (err) {
+          console.error('Failed to get interpreter version:', err);
+          console.log('Available WASM functions:', Object.keys(wasm).filter(k => typeof wasm[k] === 'function'));
+        }
 
         // Store wasm module reference
         window.gruesomeWasm = wasm;
