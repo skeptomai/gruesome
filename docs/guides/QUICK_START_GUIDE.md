@@ -20,8 +20,8 @@ The Gruesome Z-Machine Platform gives you three powerful tools:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/gruesome-z-machine
-cd gruesome-z-machine
+git clone https://github.com/skeptomai/gruesome.git
+cd gruesome
 
 # Build all tools (takes ~2 minutes)
 cargo build --release

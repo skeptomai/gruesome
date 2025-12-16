@@ -166,12 +166,11 @@ cargo run --release --no-default-features -- path/to/game.z3
 For developers new to the project:
 
 - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Complete system architecture with diagrams
-- **[CODEBASE_GUIDE.md](docs/CODEBASE_GUIDE.md)** - Detailed guide for new contributors
-- **[QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md)** - Quick reference for common tasks
-- **[TIMER_IMPLEMENTATION.md](docs/TIMER_IMPLEMENTATION.md)** - Timer and real-time support details
-- **[NONBLOCKING_IO.md](docs/NONBLOCKING_IO.md)** - Non-blocking I/O architecture
-- **[READ_CHAR_IMPLEMENTATION.md](docs/READ_CHAR_IMPLEMENTATION.md)** - Character input implementation
-- **[ROUTINE_ADDRESSES.md](docs/ROUTINE_ADDRESSES.md)** - Known Zork I routine documentation
+- **[CODEBASE_GUIDE.md](docs/guides/CODEBASE_GUIDE.md)** - Detailed guide for new contributors
+- **[QUICK_REFERENCE.md](docs/guides/QUICK_REFERENCE.md)** - Quick reference for common tasks
+- **[TIMER_IMPLEMENTATION.md](docs/active-work/TIMER_IMPLEMENTATION.md)** - Timer and real-time support details
+- **[NONBLOCKING_IO.md](docs/release/NONBLOCKING_IO.md)** - Non-blocking I/O architecture
+- **[READ_CHAR_IMPLEMENTATION.md](docs/active-work/READ_CHAR_IMPLEMENTATION.md)** - Character input implementation
 - **[CLAUDE.md](CLAUDE.md)** - Implementation notes and guidelines
 
 ## Architecture Overview
@@ -219,7 +218,7 @@ Contributions are welcome! Key areas for improvement:
 7. **Buffer mode** - Implement proper output buffering
 8. **Undo support** - Implement save_undo/restore_undo for v5+ games
 
-See [CODEBASE_GUIDE.md](docs/CODEBASE_GUIDE.md) for getting started and [CLAUDE.md](CLAUDE.md) for implementation notes.
+See [CODEBASE_GUIDE.md](docs/guides/CODEBASE_GUIDE.md) for getting started and [CLAUDE.md](CLAUDE.md) for implementation notes.
 
 ## Technical Details
 
@@ -229,7 +228,7 @@ This implementation follows the Z-Machine Standards Document 1.1. Notable featur
 - **Branch detection** - Proper branch handling for all opcodes including scan_table (VAR:0x17)
 - **Version-aware execution** - Smart dispatch between v3 and v4+ instruction handling
 - **Robust error handling** - Graceful degradation with comprehensive debugging
-- Discovers and handles undocumented opcode 0x1F (see [undocumented_opcode_0x1f.md](undocumented_opcode_0x1f.md))
+- Discovers and handles undocumented opcode 0x1F (see [undocumented_opcode_0x1f.md](docs/reference/undocumented_opcode_0x1f.md))
 - Implements 2OP:0x1C (not) for v1-v3 games (moved to VAR:143 in v5+)
 - Implements proper Quetzal save format with XOR-RLE compression
 - Handles both Variable and Long forms of 2OP instructions
