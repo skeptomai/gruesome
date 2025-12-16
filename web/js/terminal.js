@@ -113,7 +113,6 @@ export function InputArea({ onSubmit, disabled, prompt }) {
 
   return html`
     <div class="input-area">
-      <span class="prompt">${prompt || '>'}</span>
       <input
         ref=${inputRef}
         type="text"

@@ -202,19 +202,13 @@ body {
    ============================================ */
 
 .input-area {
-  display: flex;
-  align-items: center;
+  display: inline;
   padding: 0;
-  margin-top: 0;
-}
-
-.input-area .prompt {
-  margin-right: 8px;
-  user-select: none;
+  margin: 0;
 }
 
 .input-area input {
-  flex: 1;
+  display: inline;
   background: transparent;
   border: none;
   outline: none;
@@ -224,6 +218,8 @@ body {
   line-height: inherit;
   caret-color: var(--terminal-fg);
   padding: 0;
+  margin: 0;
+  width: 100%;
 }
 
 /* Remove default input styling */
