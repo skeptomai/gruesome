@@ -212,19 +212,27 @@ function App() {
     quit: false,
   });
 
-  // Load WASM and get version on app startup
+  // Load WASM module on app startup to fetch version
+  // This runs once when the app loads, before the user clicks "Play Zork"
+  // Version is pulled from Cargo.toml via CARGO_PKG_VERSION at build time
+  // Single source of truth - no need to manually update version in JavaScript
   useEffect(() => {
     async function loadVersion() {
       try {
+        // Check if WASM package exists
         const response = await fetch('./pkg/gruesome.js', { method: 'HEAD' });
         if (response.ok) {
+          // Load and initialize WASM module
           const wasm = await import('../pkg/gruesome.js');
           await wasm.default();
+
+          // Fetch version from Rust code (compiled from Cargo.toml)
           const version = wasm.get_interpreter_version();
           setInterpreterVersion(version);
           console.log('Gruesome version:', version);
         }
       } catch (err) {
+        // Non-critical - version display is optional
         console.log('Could not load version:', err);
       }
     }

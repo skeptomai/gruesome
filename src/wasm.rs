@@ -22,6 +22,10 @@ pub fn init() {
 }
 
 /// Get the interpreter version string (e.g., "2.16.0")
+///
+/// Returns the version from Cargo.toml at compile time.
+/// This is exposed to JavaScript so the web interface can display
+/// the current interpreter version without hardcoding it.
 #[wasm_bindgen]
 pub fn get_interpreter_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()

@@ -152,7 +152,11 @@ export function ErrorDisplay({ title, message, details }) {
 
 /**
  * Footer Component
- * Displays interpreter version
+ * Displays interpreter version at bottom of terminal
+ *
+ * Version is fetched from WASM on app load and automatically
+ * updated when a new release is deployed (no manual updates needed).
+ * Shows empty string if version hasn't loaded yet.
  */
 export function Footer({ version }) {
   return html`
