@@ -112,8 +112,7 @@ export function InputArea({ onSubmit, disabled, prompt }) {
   };
 
   return html`
-    <div class="input-area">
-      <input
+    <pre class="input-area">${prompt || '>'}${' '}<input
         ref=${inputRef}
         type="text"
         value=${value}
@@ -123,8 +122,7 @@ export function InputArea({ onSubmit, disabled, prompt }) {
         autocomplete="off"
         autocapitalize="off"
         spellcheck="false"
-      />
-    </div>
+      /></pre>
   `;
 }
 
