@@ -1,0 +1,1 @@
+/Users/christopherbrown/Projects/Zork/gruesome/tests/mini_zork_release_20251215_053551.z3

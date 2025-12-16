@@ -1,0 +1,27 @@
+[1;1H[2;1HDORK I: The Last Great Empire
+Copyright (c) 2025 Grue Games. All rights reserved.
+ZORK is a registered trademark of Infocom, Inc.
+DORK is .... not
+Revision 1 / Serial number 8675309
+   
+You are standing in an open field west of a white house, with a boarded front door.
+There is a small mailbox here.
+> 7[1;1H                                                                                                                                                                                                                                                     Score: 0 Moves: 08The small mailbox contains:
+  leaflet
+> 7[1;1H                                                                                                                                                                                                                                                     Score: 0 Moves: 08Took leaflet.
+> 7[1;1H                                                                                                                                                                                                                                                     Score: 2 Moves: 08"WELCOME TO DORK!
+
+DORK is a game of adventure, danger, and low cunning. In it you will explore some of the most amazing territory ever seen by mortals. No computer should be without one!"
+> 7[1;1H                                                                                                                                                                                                                                                     Score: 2 Moves: 08You are facing the north side of a white house. There is no door here, and all the windows are boarded up. To the north a narrow path winds through the trees.
+> 7[1;1H                                                                                                                                                                                                                                                     Score: 2 Moves: 18This is a path winding through a dimly lit forest. The path heads north-south here. One particularly large tree with some low branches stands at the edge of the path.
+There is a tree here.
+> 7[1;1H                                                                                                                                                                                                                                                     Score: 2 Moves: 28You are about 10 feet above the ground nestled among some large branches. The nearest branch above you is above your reach.
+There is a bird's nest here with a jewel-encrusted egg visible inside.
+> 7[1;1H                                                                                                                                                                                                                                                     Score: 2 Moves: 38You are the proud owner of a very special egg.. Is it ticking?
+> 7[1;1H                                                                                                                                                                                                                                                     Score: 7 Moves: 38This is a path winding through a dimly lit forest. The path heads north-south here. One particularly large tree with some low branches stands at the edge of the path.
+There is a tree here.
+> 7[1;1H                                                                                                                                                                                                                                                     Score: 7 Moves: 48Your score is 7
+> 7[1;1H                                                                                                                                                                                                                                                     Score: 7 Moves: 48You are carrying:
+  jewel-encrusted egg
+  leaflet
+> 7[1;1H                                                                                                                                                                                                                                                     Score: 7 Moves: 48Are you sure you want to quit? (y/n) > 7[1;1H                                                                                                                                                                                                                                                     Score: 7 Moves: 48
