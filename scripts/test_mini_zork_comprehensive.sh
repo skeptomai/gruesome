@@ -223,6 +223,8 @@ run_all_gameplay_tests() {
 generate_final_report() {
     log_step "STEP 5: Generate Final Report"
 
+    local debug_game=$(cat "$RESULTS_DIR/debug_game_path.txt")
+    local release_game=$(cat "$RESULTS_DIR/release_game_path.txt")
     local report_file="$RESULTS_DIR/COMPREHENSIVE_TEST_REPORT.md"
     local passed_tests=0
     local total_tests=4
@@ -311,10 +313,6 @@ generate_final_report() {
         echo "All files are located in: \`$RESULTS_DIR\`"
 
     } > "$report_file"
-
-    # Set variables for summary
-    debug_game=$(cat "$RESULTS_DIR/debug_game_path.txt")
-    release_game=$(cat "$RESULTS_DIR/release_game_path.txt")
 
     log_success "Final report generated: $report_file"
 
