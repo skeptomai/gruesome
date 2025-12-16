@@ -151,6 +151,20 @@ export function ErrorDisplay({ title, message, details }) {
 }
 
 /**
+ * Footer Component
+ * Displays interpreter version
+ */
+export function Footer({ version }) {
+  if (!version) return null;
+
+  return html`
+    <div class="footer">
+      <span class="version">Gruesome v${version}</span>
+    </div>
+  `;
+}
+
+/**
  * Main Terminal Component
  * Orchestrates the full terminal interface
  */
@@ -171,6 +185,7 @@ export function Terminal({
   effectsEnabled = false,
   blurLevel = 'medium',
   prompt = '>',
+  interpreterVersion = null,
 }) {
   const themeClass = `theme-${theme}`;
   const fontClass = `font-${font}`;
@@ -209,6 +224,7 @@ export function Terminal({
         disabled=${!waitingForInput}
         prompt=${prompt}
       />
+      <${Footer} version=${interpreterVersion} />
     </div>
   `;
 }
@@ -325,4 +341,5 @@ window.GruesomeTerminal = {
   StatusBar,
   OutputArea,
   InputArea,
+  Footer,
 };

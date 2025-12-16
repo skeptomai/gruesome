@@ -242,6 +242,26 @@ body {
 }
 
 /* ============================================
+   Footer (Version Display)
+   ============================================ */
+
+.footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px var(--terminal-padding);
+  border-top: 1px solid var(--terminal-dim);
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.footer .version {
+  font-size: 12px;
+  color: var(--terminal-dim);
+  text-align: center;
+}
+
+/* ============================================
    Blinking Cursor (optional, for custom cursor)
    ============================================ */
 

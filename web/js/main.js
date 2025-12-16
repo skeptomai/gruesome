@@ -201,6 +201,9 @@ function App() {
   // WASM interpreter instance
   const interpreterRef = useRef(null);
 
+  // Interpreter version
+  const [interpreterVersion, setInterpreterVersion] = useState(null);
+
   // Game state (when playing with real WASM)
   const [gameState, setGameState] = useState({
     status: { location: '', score: 0, moves: 0 },
@@ -268,6 +271,11 @@ function App() {
 
         // Initialize panic hook for better error messages
         wasm.init();
+
+        // Get interpreter version
+        const version = wasm.WasmInterpreter.interpreter_version();
+        setInterpreterVersion(version);
+        console.log('Gruesome interpreter version:', version);
 
         // Store wasm module reference
         window.gruesomeWasm = wasm;
@@ -568,6 +576,7 @@ function App() {
           crtEnabled=${settings.crtEnabled || false}
           effectsEnabled=${settings.effectsEnabled}
           blurLevel=${settings.blurLevel || 'medium'}
+          interpreterVersion=${interpreterVersion}
         />
       `;
 

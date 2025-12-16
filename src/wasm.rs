@@ -250,6 +250,12 @@ impl WasmInterpreter {
         self.version
     }
 
+    /// Get the interpreter version string (e.g., "2.16.0")
+    #[wasm_bindgen]
+    pub fn interpreter_version() -> String {
+        env!("CARGO_PKG_VERSION").to_string()
+    }
+
     /// Save game state to Quetzal format bytes
     /// Returns the save data as a Uint8Array for JavaScript
     #[wasm_bindgen]
