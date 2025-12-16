@@ -423,6 +423,14 @@ body {
   box-sizing: border-box;
   overflow-y: auto;
   max-height: 100vh;
+  /* Hide scrollbar while maintaining scroll functionality */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+/* Hide scrollbar for Chrome, Safari, and Opera */
+.disclaimer::-webkit-scrollbar {
+  display: none;
 }
 
 .disclaimer-title {
