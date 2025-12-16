@@ -112,7 +112,7 @@ export function InputArea({ onSubmit, disabled, prompt }) {
   };
 
   return html`
-    <pre class="input-area">${value === '' ? (prompt || '>') + ' ' : ''}<input
+    <pre class="input-area">${prompt || '>'} <input
         ref=${inputRef}
         type="text"
         value=${value}

@@ -414,8 +414,8 @@ function App() {
       // Run interpreter until it needs input or finishes
       const result = interpreter.step();
 
-      // Parse output - split by newlines
-      const newOutput = result.output ? result.output.split('\n') : [];
+      // Parse output - split by newlines and filter out standalone prompts
+      const newOutput = result.output ? result.output.split('\n').filter(line => line !== '>') : [];
 
       // Update game state from result
       setGameState(prev => ({
