@@ -26,16 +26,17 @@ export function StatusBar({ location, score, moves, time, isTimeGame }) {
 /**
  * Output Area Component
  * Displays game output with auto-scroll
+ * Now includes the input area inline at the bottom for traditional terminal feel
  */
-export function OutputArea({ lines, upperWindow }) {
+export function OutputArea({ lines, upperWindow, waitingForInput, onSubmit, prompt }) {
   const outputRef = useRef(null);
 
-  // Auto-scroll to bottom when new content is added
+  // Auto-scroll to bottom when new content is added or input state changes
   useEffect(() => {
     if (outputRef.current) {
       outputRef.current.scrollTop = outputRef.current.scrollHeight;
     }
-  }, [lines]);
+  }, [lines, waitingForInput]);
 
   return html`
     ${upperWindow && upperWindow.length > 0 && html`
@@ -45,6 +46,13 @@ export function OutputArea({ lines, upperWindow }) {
     `}
     <div class="output-area" ref=${outputRef}>
       ${lines.map((line, i) => html`<pre key=${i}>${line}</pre>`)}
+      ${waitingForInput && html`
+        <${InputArea}
+          onSubmit=${onSubmit}
+          disabled=${!waitingForInput}
+          prompt=${prompt}
+        />
+      `}
     </div>
   `;
 }
@@ -220,10 +228,8 @@ export function Terminal({
       <${OutputArea}
         lines=${outputLines}
         upperWindow=${upperWindow}
-      />
-      <${InputArea}
+        waitingForInput=${waitingForInput}
         onSubmit=${handleCommand}
-        disabled=${!waitingForInput}
         prompt=${prompt}
       />
       <${Footer} version=${interpreterVersion} />

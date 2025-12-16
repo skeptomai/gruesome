@@ -187,22 +187,14 @@ body {
   font-weight: bold;
 }
 
-/* Scrollbar styling */
+/* Hide scrollbar while maintaining scroll functionality */
+.output-area {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
 .output-area::-webkit-scrollbar {
-  width: 8px;
-}
-
-.output-area::-webkit-scrollbar-track {
-  background: var(--terminal-bg);
-}
-
-.output-area::-webkit-scrollbar-thumb {
-  background: var(--terminal-dim);
-  border-radius: 4px;
-}
-
-.output-area::-webkit-scrollbar-thumb:hover {
-  background: var(--terminal-fg);
+  display: none; /* Chrome, Safari, Opera */
 }
 
 /* ============================================
@@ -212,9 +204,8 @@ body {
 .input-area {
   display: flex;
   align-items: center;
-  padding: var(--terminal-padding);
-  padding-top: 10px;
-  flex-shrink: 0;
+  padding: 0;
+  margin-top: 0;
 }
 
 .input-area .prompt {
