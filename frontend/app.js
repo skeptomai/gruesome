@@ -126,10 +126,16 @@ function handleLogout() {
     wasmInterpreter = null;
 }
 
-// Toggle between login and signup modes
+// Toggle between login and signup modes (or back to login from reset modes)
 function toggleAuthMode(e) {
     e.preventDefault();
-    authMode = authMode === 'login' ? 'signup' : 'login';
+    // If in reset mode, "Back to Login" should go to login
+    if (authMode === 'reset' || authMode === 'confirm-reset') {
+        authMode = 'login';
+    } else {
+        // Normal toggle between login and signup
+        authMode = authMode === 'login' ? 'signup' : 'login';
+    }
     updateAuthUI();
 }
 
