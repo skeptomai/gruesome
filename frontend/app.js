@@ -11,9 +11,11 @@ const API_BASE = 'https://api.gruesome.skeptomai.com';
 let accessToken = null;        // JWT authentication token
 let currentGame = null;        // Currently loaded game ID
 let wasmInterpreter = null;    // WASM Z-Machine interpreter instance
+let authMode = 'login';        // Authentication mode: 'login' or 'signup'
 
 // DOM Elements - initialized after DOM is ready
 let loginSection, gameLibrary, gamePlayer, authStatus, gamesList, gameOutput, gameInput, logoutButton;
+let emailInput, usernameInput, passwordInput, authSubmit, toggleAuthLink;
 
 // Application Initialization
 // Sets up DOM references, event handlers, and checks for existing auth session
@@ -28,6 +30,13 @@ async function initApp() {
     gameInput = document.getElementById('game-input');
     logoutButton = document.getElementById('logout-button');
 
+    // Auth form elements
+    emailInput = document.getElementById('email');
+    usernameInput = document.getElementById('username');
+    passwordInput = document.getElementById('password');
+    authSubmit = document.getElementById('auth-submit');
+    toggleAuthLink = document.getElementById('toggle-auth-mode');
+
     // Set up logout button handler
     if (logoutButton) {
         logoutButton.addEventListener('click', handleLogout);
@@ -35,10 +44,15 @@ async function initApp() {
         console.error('ERROR: logout button element not found in DOM!');
     }
 
-    // Set up login form handler
-    const loginForm = document.getElementById('login-form');
-    if (loginForm) {
-        loginForm.addEventListener('submit', handleLogin);
+    // Set up auth form handler (login/signup)
+    const authForm = document.getElementById('auth-form');
+    if (authForm) {
+        authForm.addEventListener('submit', handleAuthSubmit);
+    }
+
+    // Set up toggle auth mode handler
+    if (toggleAuthLink) {
+        toggleAuthLink.addEventListener('click', toggleAuthMode);
     }
 
     // Set up game input handler
@@ -90,19 +104,82 @@ function handleLogout() {
     logoutButton.style.display = 'none';
 
     // Clear form
-    document.getElementById('username').value = '';
-    document.getElementById('password').value = '';
+    emailInput.value = '';
+    usernameInput.value = '';
+    passwordInput.value = '';
+
+    // Reset to login mode
+    authMode = 'login';
+    updateAuthUI();
 
     // Reset game state
     currentGame = null;
     wasmInterpreter = null;
 }
 
-// Authentication
-async function handleLogin(e) {
+// Toggle between login and signup modes
+function toggleAuthMode(e) {
     e.preventDefault();
-    const username = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
+    authMode = authMode === 'login' ? 'signup' : 'login';
+    updateAuthUI();
+}
+
+// Update UI based on current auth mode
+function updateAuthUI() {
+    if (authMode === 'signup') {
+        emailInput.style.display = 'block';
+        emailInput.required = true;
+        authSubmit.textContent = 'Create Account';
+        toggleAuthLink.textContent = 'Already have an account? Login';
+    } else {
+        emailInput.style.display = 'none';
+        emailInput.required = false;
+        authSubmit.textContent = 'Login';
+        toggleAuthLink.textContent = 'Need an account? Sign up';
+    }
+}
+
+// Handle form submission - route to login or signup
+async function handleAuthSubmit(e) {
+    e.preventDefault();
+    if (authMode === 'signup') {
+        await handleSignup();
+    } else {
+        await handleLogin();
+    }
+}
+
+// Signup - Create new account
+async function handleSignup() {
+    const email = emailInput.value;
+    const username = usernameInput.value;
+    const password = passwordInput.value;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/auth/signup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, username, password })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.message || 'Signup failed');
+        }
+
+        // Success! Auto-login the user
+        alert('Account created successfully! Logging you in...');
+        await handleLogin();
+    } catch (error) {
+        alert('Signup failed: ' + error.message);
+    }
+}
+
+// Login - Authenticate existing user
+async function handleLogin() {
+    const username = usernameInput.value;
+    const password = passwordInput.value;
 
     try {
         const response = await fetch(`${API_BASE}/api/auth/login`, {
@@ -112,6 +189,11 @@ async function handleLogin(e) {
         });
 
         const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.message || 'Login failed');
+        }
+
         if (data.access_token) {
             accessToken = data.access_token;
             localStorage.setItem('accessToken', accessToken);

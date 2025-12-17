@@ -30,11 +30,16 @@
                 Play classic interactive fiction games in your browser. Create an account to get started.
             </p>
 
-            <form id="login-form">
+            <form id="auth-form">
+                <input type="email" id="email" placeholder="Email" required style="display:none;">
                 <input type="text" id="username" placeholder="Username" required>
                 <input type="password" id="password" placeholder="Password" required>
-                <button type="submit">Login</button>
+                <button type="submit" id="auth-submit">Login</button>
             </form>
+
+            <p class="auth-toggle">
+                <a href="#" id="toggle-auth-mode">Need an account? Sign up</a>
+            </p>
 
             <!-- Educational Disclaimer -->
             <div class="disclaimer-box">

@@ -103,6 +103,21 @@ button:hover {
     margin-bottom: 20px;
 }
 
+.auth-toggle {
+    text-align: center;
+    margin-top: 15px;
+}
+
+.auth-toggle a {
+    color: #00ff00;
+    text-decoration: none;
+    font-size: 0.9em;
+}
+
+.auth-toggle a:hover {
+    text-decoration: underline;
+}
+
 #games-list {
     display: grid;
     gap: 15px;
