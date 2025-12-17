@@ -165,14 +165,25 @@ async function handleSignup() {
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.message || 'Signup failed');
+            // Show detailed error message from API
+            const errorMsg = data.message || data.error || 'Signup failed';
+            const errorDetails = data.details ? ` (${data.details})` : '';
+            throw new Error(errorMsg + errorDetails);
         }
 
         // Success! Auto-login the user
         alert('Account created successfully! Logging you in...');
         await handleLogin();
     } catch (error) {
-        alert('Signup failed: ' + error.message);
+        // Check if it's a "user already exists" error
+        if (error.message && error.message.toLowerCase().includes('already exists')) {
+            alert('This username or email is already registered. Try logging in instead.');
+            // Switch to login mode
+            authMode = 'login';
+            updateAuthUI();
+        } else {
+            alert('Signup failed: ' + error.message);
+        }
     }
 }
 
