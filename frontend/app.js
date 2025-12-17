@@ -11,11 +11,12 @@ const API_BASE = 'https://api.gruesome.skeptomai.com';
 let accessToken = null;        // JWT authentication token
 let currentGame = null;        // Currently loaded game ID
 let wasmInterpreter = null;    // WASM Z-Machine interpreter instance
-let authMode = 'login';        // Authentication mode: 'login' or 'signup'
+let authMode = 'login';        // Authentication mode: 'login', 'signup', 'reset', or 'confirm-reset'
 
 // DOM Elements - initialized after DOM is ready
 let loginSection, gameLibrary, gamePlayer, authStatus, gamesList, gameOutput, gameInput, logoutButton;
-let emailInput, usernameInput, passwordInput, authSubmit, toggleAuthLink;
+let emailInput, usernameInput, passwordInput, authSubmit, toggleAuthLink, forgotPasswordLink;
+let resetCodeInput, newPasswordInput;
 
 // Application Initialization
 // Sets up DOM references, event handlers, and checks for existing auth session
@@ -34,8 +35,11 @@ async function initApp() {
     emailInput = document.getElementById('email');
     usernameInput = document.getElementById('username');
     passwordInput = document.getElementById('password');
+    resetCodeInput = document.getElementById('reset-code');
+    newPasswordInput = document.getElementById('new-password');
     authSubmit = document.getElementById('auth-submit');
     toggleAuthLink = document.getElementById('toggle-auth-mode');
+    forgotPasswordLink = document.getElementById('forgot-password-link');
 
     // Set up logout button handler
     if (logoutButton) {
@@ -53,6 +57,11 @@ async function initApp() {
     // Set up toggle auth mode handler
     if (toggleAuthLink) {
         toggleAuthLink.addEventListener('click', toggleAuthMode);
+    }
+
+    // Set up forgot password handler
+    if (forgotPasswordLink) {
+        forgotPasswordLink.addEventListener('click', handleForgotPasswordClick);
     }
 
     // Set up game input handler
@@ -124,26 +133,77 @@ function toggleAuthMode(e) {
     updateAuthUI();
 }
 
+// Handle forgot password link click
+function handleForgotPasswordClick(e) {
+    e.preventDefault();
+    authMode = 'reset';
+    updateAuthUI();
+}
+
 // Update UI based on current auth mode
 function updateAuthUI() {
+    // Hide all optional fields first
+    emailInput.style.display = 'none';
+    resetCodeInput.style.display = 'none';
+    newPasswordInput.style.display = 'none';
+    emailInput.required = false;
+    resetCodeInput.required = false;
+    newPasswordInput.required = false;
+
     if (authMode === 'signup') {
+        // Signup mode: show email
         emailInput.style.display = 'block';
         emailInput.required = true;
+        passwordInput.style.display = 'block';
+        passwordInput.required = true;
+        usernameInput.style.display = 'block';
+        usernameInput.required = true;
         authSubmit.textContent = 'Create Account';
         toggleAuthLink.textContent = 'Already have an account? Login';
+        forgotPasswordLink.style.display = 'inline';
+    } else if (authMode === 'reset') {
+        // Password reset step 1: username only
+        usernameInput.style.display = 'block';
+        usernameInput.required = true;
+        passwordInput.style.display = 'none';
+        passwordInput.required = false;
+        authSubmit.textContent = 'Send Reset Code';
+        toggleAuthLink.textContent = 'Back to Login';
+        forgotPasswordLink.style.display = 'none';
+    } else if (authMode === 'confirm-reset') {
+        // Password reset step 2: username, code, new password
+        usernameInput.style.display = 'block';
+        usernameInput.required = true;
+        passwordInput.style.display = 'none';
+        passwordInput.required = false;
+        resetCodeInput.style.display = 'block';
+        resetCodeInput.required = true;
+        newPasswordInput.style.display = 'block';
+        newPasswordInput.required = true;
+        authSubmit.textContent = 'Reset Password';
+        toggleAuthLink.textContent = 'Back to Login';
+        forgotPasswordLink.style.display = 'none';
     } else {
-        emailInput.style.display = 'none';
-        emailInput.required = false;
+        // Login mode
+        usernameInput.style.display = 'block';
+        usernameInput.required = true;
+        passwordInput.style.display = 'block';
+        passwordInput.required = true;
         authSubmit.textContent = 'Login';
         toggleAuthLink.textContent = 'Need an account? Sign up';
+        forgotPasswordLink.style.display = 'inline';
     }
 }
 
-// Handle form submission - route to login or signup
+// Handle form submission - route based on auth mode
 async function handleAuthSubmit(e) {
     e.preventDefault();
     if (authMode === 'signup') {
         await handleSignup();
+    } else if (authMode === 'reset') {
+        await handleForgotPassword();
+    } else if (authMode === 'confirm-reset') {
+        await handleConfirmReset();
     } else {
         await handleLogin();
     }
@@ -184,6 +244,62 @@ async function handleSignup() {
         } else {
             alert('Signup failed: ' + error.message);
         }
+    }
+}
+
+// Forgot Password - Request reset code
+async function handleForgotPassword() {
+    const username = usernameInput.value;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.message || 'Failed to send reset code');
+        }
+
+        // Success! Move to confirmation step
+        alert('Password reset code sent to your email. Please check your inbox.');
+        authMode = 'confirm-reset';
+        updateAuthUI();
+    } catch (error) {
+        alert('Failed to send reset code: ' + error.message);
+    }
+}
+
+// Confirm Reset - Complete password reset with code
+async function handleConfirmReset() {
+    const username = usernameInput.value;
+    const confirmation_code = resetCodeInput.value;
+    const new_password = newPasswordInput.value;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/auth/confirm-forgot-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, confirmation_code, new_password })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.message || 'Failed to reset password');
+        }
+
+        // Success! Back to login
+        alert('Password reset successfully! Please login with your new password.');
+        authMode = 'login';
+        resetCodeInput.value = '';
+        newPasswordInput.value = '';
+        updateAuthUI();
+    } catch (error) {
+        alert('Failed to reset password: ' + error.message);
     }
 }
 

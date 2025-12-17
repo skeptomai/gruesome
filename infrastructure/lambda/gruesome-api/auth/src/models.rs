@@ -74,6 +74,32 @@ pub struct MeResponse {
 }
 
 // ============================================================================
+// Password Reset
+// ============================================================================
+
+#[derive(Deserialize, Debug)]
+pub struct ForgotPasswordRequest {
+    pub username: String,
+}
+
+#[derive(Serialize)]
+pub struct ForgotPasswordResponse {
+    pub message: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ConfirmForgotPasswordRequest {
+    pub username: String,
+    pub confirmation_code: String,
+    pub new_password: String,
+}
+
+#[derive(Serialize)]
+pub struct ConfirmForgotPasswordResponse {
+    pub message: String,
+}
+
+// ============================================================================
 // DynamoDB User Record
 // ============================================================================
 

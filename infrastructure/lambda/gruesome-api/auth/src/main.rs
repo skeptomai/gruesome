@@ -40,6 +40,12 @@ async fn function_handler(
         ("POST", "/api/auth/refresh") => {
             handlers::handle_refresh(event, cognito).await
         }
+        ("POST", "/api/auth/forgot-password") => {
+            handlers::handle_forgot_password(event, cognito).await
+        }
+        ("POST", "/api/auth/confirm-forgot-password") => {
+            handlers::handle_confirm_forgot_password(event, cognito).await
+        }
         ("GET", "/api/auth/me") => {
             handlers::handle_me(event, jwt_validator, dynamodb).await
         }

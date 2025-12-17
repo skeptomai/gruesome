@@ -119,6 +119,12 @@ button:hover {
     text-decoration: underline;
 }
 
+.auth-divider {
+    color: #00ff00;
+    margin: 0 10px;
+    font-size: 0.9em;
+}
+
 #games-list {
     display: grid;
     gap: 15px;

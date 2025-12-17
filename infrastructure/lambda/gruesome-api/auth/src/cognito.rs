@@ -184,6 +184,68 @@ impl CognitoService {
         Ok(tokens)
     }
 
+    /// Initiate password reset (forgot password)
+    pub async fn forgot_password(&self, username: &str) -> AuthResult<()> {
+        info!("Initiating password reset for: {}", username);
+
+        self.client
+            .forgot_password()
+            .client_id(&self.client_id)
+            .username(username)
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Cognito ForgotPassword error: {:?}", e);
+                match e.to_string() {
+                    s if s.contains("UserNotFoundException") => AuthError::UserNotFound,
+                    s if s.contains("LimitExceededException") => {
+                        AuthError::InvalidRequest("Too many password reset attempts. Please try again later.".to_string())
+                    }
+                    _ => AuthError::CognitoError(e.to_string()),
+                }
+            })?;
+
+        info!("Password reset code sent successfully");
+        Ok(())
+    }
+
+    /// Confirm password reset with verification code
+    pub async fn confirm_forgot_password(
+        &self,
+        username: &str,
+        confirmation_code: &str,
+        new_password: &str,
+    ) -> AuthResult<()> {
+        info!("Confirming password reset for: {}", username);
+
+        self.client
+            .confirm_forgot_password()
+            .client_id(&self.client_id)
+            .username(username)
+            .confirmation_code(confirmation_code)
+            .password(new_password)
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Cognito ConfirmForgotPassword error: {:?}", e);
+                match e.to_string() {
+                    s if s.contains("CodeMismatchException") => {
+                        AuthError::InvalidRequest("Invalid verification code".to_string())
+                    }
+                    s if s.contains("ExpiredCodeException") => {
+                        AuthError::InvalidRequest("Verification code has expired".to_string())
+                    }
+                    s if s.contains("InvalidPasswordException") => {
+                        AuthError::InvalidRequest("Password does not meet requirements".to_string())
+                    }
+                    _ => AuthError::CognitoError(e.to_string()),
+                }
+            })?;
+
+        info!("Password reset confirmed successfully");
+        Ok(())
+    }
+
     /// Get user by access token
     pub async fn get_user(&self, access_token: &str) -> AuthResult<HashMap<String, String>> {
         info!("Getting user from access token");

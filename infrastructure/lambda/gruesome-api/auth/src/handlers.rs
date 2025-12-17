@@ -153,6 +153,88 @@ pub async fn handle_refresh(
         .unwrap())
 }
 
+/// Handle forgot password request
+pub async fn handle_forgot_password(
+    request: Request,
+    cognito: &CognitoService,
+) -> AuthResult<Response<Body>> {
+    info!("Handling forgot password request");
+
+    // Parse request body
+    let body = request.body();
+    let forgot_req: ForgotPasswordRequest = serde_json::from_slice(body.as_ref())
+        .map_err(|e| AuthError::InvalidRequest(format!("Invalid JSON: {}", e)))?;
+
+    // Validate input
+    if forgot_req.username.is_empty() {
+        return Err(AuthError::InvalidRequest("Username is required".to_string()));
+    }
+
+    // Send password reset code
+    cognito.forgot_password(&forgot_req.username).await?;
+
+    // Build response
+    let response = ForgotPasswordResponse {
+        message: "If this user exists, a password reset code has been sent to the registered email.".to_string(),
+    };
+
+    let response_body = serde_json::to_string(&response)
+        .map_err(|e| AuthError::InternalError(format!("Failed to serialize response: {}", e)))?;
+
+    Ok(Response::builder()
+        .status(200)
+        .header("Content-Type", "application/json")
+        .body(response_body.into())
+        .unwrap())
+}
+
+/// Handle confirm forgot password request
+pub async fn handle_confirm_forgot_password(
+    request: Request,
+    cognito: &CognitoService,
+) -> AuthResult<Response<Body>> {
+    info!("Handling confirm forgot password request");
+
+    // Parse request body
+    let body = request.body();
+    let confirm_req: ConfirmForgotPasswordRequest = serde_json::from_slice(body.as_ref())
+        .map_err(|e| AuthError::InvalidRequest(format!("Invalid JSON: {}", e)))?;
+
+    // Validate input
+    if confirm_req.username.is_empty() {
+        return Err(AuthError::InvalidRequest("Username is required".to_string()));
+    }
+    if confirm_req.confirmation_code.is_empty() {
+        return Err(AuthError::InvalidRequest("Confirmation code is required".to_string()));
+    }
+    if confirm_req.new_password.is_empty() {
+        return Err(AuthError::InvalidRequest("New password is required".to_string()));
+    }
+
+    // Confirm password reset
+    cognito
+        .confirm_forgot_password(
+            &confirm_req.username,
+            &confirm_req.confirmation_code,
+            &confirm_req.new_password,
+        )
+        .await?;
+
+    // Build response
+    let response = ConfirmForgotPasswordResponse {
+        message: "Password has been reset successfully".to_string(),
+    };
+
+    let response_body = serde_json::to_string(&response)
+        .map_err(|e| AuthError::InternalError(format!("Failed to serialize response: {}", e)))?;
+
+    Ok(Response::builder()
+        .status(200)
+        .header("Content-Type", "application/json")
+        .body(response_body.into())
+        .unwrap())
+}
+
 /// Handle get user profile request
 pub async fn handle_me(
     request: Request,

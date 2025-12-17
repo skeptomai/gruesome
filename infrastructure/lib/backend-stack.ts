@@ -111,6 +111,20 @@ export class BackendStack extends cdk.Stack {
       integration: authIntegration,
     });
 
+    // Forgot password endpoint
+    httpApi.addRoutes({
+      path: '/api/auth/forgot-password',
+      methods: [apigatewayv2.HttpMethod.POST],
+      integration: authIntegration,
+    });
+
+    // Confirm forgot password endpoint
+    httpApi.addRoutes({
+      path: '/api/auth/confirm-forgot-password',
+      methods: [apigatewayv2.HttpMethod.POST],
+      integration: authIntegration,
+    });
+
     // Get user profile endpoint
     httpApi.addRoutes({
       path: '/api/auth/me',
