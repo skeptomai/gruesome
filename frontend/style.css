@@ -96,6 +96,13 @@ button:hover {
     font-size: 0.9em;
 }
 
+.intro {
+    color: #00ff00;
+    font-size: 1.1em;
+    line-height: 1.8;
+    margin-bottom: 20px;
+}
+
 #games-list {
     display: grid;
     gap: 15px;
@@ -185,20 +192,25 @@ button:hover {
     margin-top: 10px;
 }
 
-/* Educational Disclaimer Styling */
+/* Educational Disclaimer Styling
+ * Intentionally muted to avoid overwhelming users before login
+ * Legal information is available but not visually dominant
+ */
 .disclaimer-box {
     background: #0a0a0a;
-    border: 1px solid #00aa00;
-    padding: 20px;
-    margin-bottom: 20px;
-    line-height: 1.6;
+    border: 1px solid #333;
+    padding: 15px;
+    margin-top: 30px;
+    line-height: 1.5;
 }
 
 .disclaimer-box h3 {
-    color: #00ff00;
-    font-size: 1.1em;
-    margin-top: 15px;
-    margin-bottom: 10px;
+    color: #666;
+    font-size: 0.9em;
+    margin-top: 12px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .disclaimer-box h3:first-child {
@@ -206,34 +218,36 @@ button:hover {
 }
 
 .disclaimer-box p {
-    color: #00cc00;
-    margin-bottom: 10px;
+    color: #555;
+    margin-bottom: 8px;
+    font-size: 0.85em;
 }
 
 .disclaimer-box ul.disclaimer-links {
     list-style: none;
     padding-left: 0;
-    margin: 10px 0;
+    margin: 8px 0;
 }
 
 .disclaimer-box ul.disclaimer-links li {
-    margin: 5px 0;
+    margin: 4px 0;
 }
 
 .disclaimer-box a {
-    color: #00ff00;
+    color: #666;
     text-decoration: underline;
+    font-size: 0.85em;
 }
 
 .disclaimer-box a:hover {
-    color: #00ff00;
-    background: #003300;
+    color: #888;
 }
 
 .disclaimer-footer {
-    color: #888;
-    font-size: 0.9em;
-    margin-top: 15px;
-    padding-top: 15px;
-    border-top: 1px solid #004400;
+    color: #444;
+    font-size: 0.8em;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #222;
+    font-style: italic;
 }
