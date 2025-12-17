@@ -184,3 +184,56 @@ button:hover {
     border: 1px solid #ff0000;
     margin-top: 10px;
 }
+
+/* Educational Disclaimer Styling */
+.disclaimer-box {
+    background: #0a0a0a;
+    border: 1px solid #00aa00;
+    padding: 20px;
+    margin-bottom: 20px;
+    line-height: 1.6;
+}
+
+.disclaimer-box h3 {
+    color: #00ff00;
+    font-size: 1.1em;
+    margin-top: 15px;
+    margin-bottom: 10px;
+}
+
+.disclaimer-box h3:first-child {
+    margin-top: 0;
+}
+
+.disclaimer-box p {
+    color: #00cc00;
+    margin-bottom: 10px;
+}
+
+.disclaimer-box ul.disclaimer-links {
+    list-style: none;
+    padding-left: 0;
+    margin: 10px 0;
+}
+
+.disclaimer-box ul.disclaimer-links li {
+    margin: 5px 0;
+}
+
+.disclaimer-box a {
+    color: #00ff00;
+    text-decoration: underline;
+}
+
+.disclaimer-box a:hover {
+    color: #00ff00;
+    background: #003300;
+}
+
+.disclaimer-footer {
+    color: #888;
+    font-size: 0.9em;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #004400;
+}
