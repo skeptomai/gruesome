@@ -148,22 +148,26 @@ function handleForgotPasswordClick(e) {
 
 // Update UI based on current auth mode
 function updateAuthUI() {
-    // Hide all optional fields first
+    // Reset all fields to hidden and not required
     emailInput.style.display = 'none';
-    resetCodeInput.style.display = 'none';
-    newPasswordInput.style.display = 'none';
     emailInput.required = false;
+    passwordInput.style.display = 'none';
+    passwordInput.required = false;
+    usernameInput.style.display = 'none';
+    usernameInput.required = false;
+    resetCodeInput.style.display = 'none';
     resetCodeInput.required = false;
+    newPasswordInput.style.display = 'none';
     newPasswordInput.required = false;
 
     if (authMode === 'signup') {
-        // Signup mode: show email
+        // Signup mode: email + username + password
         emailInput.style.display = 'block';
         emailInput.required = true;
-        passwordInput.style.display = 'block';
-        passwordInput.required = true;
         usernameInput.style.display = 'block';
         usernameInput.required = true;
+        passwordInput.style.display = 'block';
+        passwordInput.required = true;
         authSubmit.textContent = 'Create Account';
         toggleAuthLink.textContent = 'Already have an account? Login';
         forgotPasswordLink.style.display = 'inline';
@@ -171,17 +175,13 @@ function updateAuthUI() {
         // Password reset step 1: username only
         usernameInput.style.display = 'block';
         usernameInput.required = true;
-        passwordInput.style.display = 'none';
-        passwordInput.required = false;
         authSubmit.textContent = 'Send Reset Code';
         toggleAuthLink.textContent = 'Back to Login';
         forgotPasswordLink.style.display = 'none';
     } else if (authMode === 'confirm-reset') {
-        // Password reset step 2: username, code, new password
+        // Password reset step 2: username + code + new password
         usernameInput.style.display = 'block';
         usernameInput.required = true;
-        passwordInput.style.display = 'none';
-        passwordInput.required = false;
         resetCodeInput.style.display = 'block';
         resetCodeInput.required = true;
         newPasswordInput.style.display = 'block';
@@ -190,7 +190,7 @@ function updateAuthUI() {
         toggleAuthLink.textContent = 'Back to Login';
         forgotPasswordLink.style.display = 'none';
     } else {
-        // Login mode
+        // Login mode: username + password
         usernameInput.style.display = 'block';
         usernameInput.required = true;
         passwordInput.style.display = 'block';
