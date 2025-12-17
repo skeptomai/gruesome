@@ -87,13 +87,14 @@ pub struct UserRecord {
     pub email: String,
     pub username: String,
     pub display_name: String,
-    pub created_at: String,
+    pub created_at: i64, // Unix timestamp for DynamoDB GSI
+    pub entity_type: String, // Required for GSI
 }
 
 impl UserRecord {
     pub fn new(user_id: String, email: String, username: String) -> Self {
         let display_name = username.clone();
-        let created_at = chrono::Utc::now().to_rfc3339();
+        let created_at = chrono::Utc::now().timestamp();
 
         Self {
             pk: format!("USER#{}", user_id),
@@ -103,16 +104,22 @@ impl UserRecord {
             username,
             display_name,
             created_at,
+            entity_type: "USER".to_string(),
         }
     }
 
     pub fn to_profile(&self) -> UserProfile {
+        // Convert Unix timestamp to RFC3339 string for API response
+        let created_at_str = chrono::DateTime::from_timestamp(self.created_at, 0)
+            .map(|dt| dt.to_rfc3339())
+            .unwrap_or_else(|| "unknown".to_string());
+
         UserProfile {
             user_id: self.user_id.clone(),
             email: self.email.clone(),
             username: self.username.clone(),
             display_name: self.display_name.clone(),
-            created_at: self.created_at.clone(),
+            created_at: created_at_str,
         }
     }
 }

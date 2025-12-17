@@ -40,7 +40,11 @@ impl DynamoDbService {
         );
         item.insert(
             "created_at".to_string(),
-            AttributeValue::S(record.created_at.clone()),
+            AttributeValue::N(record.created_at.to_string()),
+        );
+        item.insert(
+            "entity_type".to_string(),
+            AttributeValue::S(record.entity_type.clone()),
         );
 
         self.client
@@ -86,7 +90,12 @@ impl DynamoDbService {
         let email = get_string_attr(item, "email")?;
         let username = get_string_attr(item, "username")?;
         let display_name = get_string_attr(item, "display_name")?;
-        let created_at = get_string_attr(item, "created_at")?;
+
+        // Get created_at as number and convert to RFC3339 string
+        let created_at_timestamp = get_number_attr(item, "created_at")?;
+        let created_at = chrono::DateTime::from_timestamp(created_at_timestamp, 0)
+            .map(|dt| dt.to_rfc3339())
+            .unwrap_or_else(|| "unknown".to_string());
 
         Ok(UserProfile {
             user_id,
@@ -133,5 +142,15 @@ fn get_string_attr(item: &HashMap<String, AttributeValue>, key: &str) -> AuthRes
         .map(|s| s.to_string())
         .ok_or_else(|| {
             AuthError::InternalError(format!("Missing or invalid attribute: {}", key))
+        })
+}
+
+/// Helper function to extract number attribute from DynamoDB item
+fn get_number_attr(item: &HashMap<String, AttributeValue>, key: &str) -> AuthResult<i64> {
+    item.get(key)
+        .and_then(|v| v.as_n().ok())
+        .and_then(|s| s.parse::<i64>().ok())
+        .ok_or_else(|| {
+            AuthError::InternalError(format!("Missing or invalid number attribute: {}", key))
         })
 }
