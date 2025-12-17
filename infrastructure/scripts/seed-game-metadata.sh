@@ -60,13 +60,13 @@ add_game \
     "mini-zork.z3"
 
 # Add more games here as needed
-# add_game \
-#     "zork1" \
-#     "Zork I: The Great Underground Empire" \
-#     "Infocom" \
-#     "The first in the Zork trilogy. Your mission is to find the legendary Treasures of Zork and install yourself as Master of the Great Underground Empire." \
-#     "3" \
-#     "zork1.z3"
+add_game \
+    "zork1" \
+    "Zork I: The Great Underground Empire" \
+    "Infocom" \
+    "The first in the Zork trilogy of interactive fiction masterpieces. As a nameless adventurer, you find yourself standing before a white house with a boarded front door. Your mission: explore the Great Underground Empire, solve devious puzzles, outwit dangerous creatures, and recover the legendary Twenty Treasures of Zork." \
+    "3" \
+    "zork1.z3"
 
 echo ""
 echo "========================================="
