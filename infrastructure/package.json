@@ -1,0 +1,22 @@
+{
+  "name": "gruesome-infrastructure",
+  "version": "1.0.0",
+  "bin": {
+    "gruesome-platform": "bin/gruesome-platform.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.5",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.7.2"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.172.0",
+    "constructs": "^10.0.0",
+    "source-map-support": "^0.5.21"
+  }
+}

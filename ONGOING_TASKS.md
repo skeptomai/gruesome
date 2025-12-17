@@ -926,12 +926,71 @@ src/
 
 ---
 
+## ✅ **GRUESOME PLATFORM: AWS INFRASTRUCTURE & AUTHENTICATION** (December 16-17, 2025)
+
+**STATUS**: **PHASE 1 COMPLETE - AUTHENTICATION SYSTEM OPERATIONAL** 🎯
+
+**OBJECTIVE**: Multi-user Z-Machine interpreter web platform with AWS backend
+
+**DETAILED DOCUMENTATION**: `/Users/christopherbrown/.claude/plans/gruesome-platform-infrastructure.md`
+
+### **COMPLETED INFRASTRUCTURE**
+
+**AWS Deployment** (5 CloudFormation Stacks):
+- ✅ **Multi-region architecture**: us-east-1 (DNS/CloudFront) + us-west-1 (backend)
+- ✅ **DNS & SSL**: gruesome.skeptomai.com + api.gruesome.skeptomai.com with ACM certificates
+- ✅ **Backend Stack**: API Gateway + Lambda (Rust ARM64) + CloudFront
+- ✅ **Data Stack**: DynamoDB (single-table design) + S3 (save files)
+- ✅ **Auth Stack**: Cognito User Pool with USER_PASSWORD_AUTH flow
+
+**Authentication System** (Rust Lambda):
+- ✅ **5 Endpoints**: signup, login, refresh, /me (profile), health
+- ✅ **JWT Tokens**: Access/refresh tokens with 1-hour expiration
+- ✅ **Data Model**: DynamoDB PK/SK pattern (USER#id/PROFILE)
+- ✅ **Cognito Integration**: Username-based auth with auto-confirm for development
+- ✅ **CloudFront Fix**: Custom CachePolicy for Authorization header forwarding
+
+**Verification**:
+- ✅ **Automated Testing**: `verify-infrastructure.sh` - 30 tests passing
+- ✅ **Complete Auth Flow**: Signup → Login → Get Profile → Refresh Token
+- ✅ **End-to-End**: All infrastructure components verified operational
+
+### **CRITICAL FIXES APPLIED**
+
+1. **Cross-Region Certificate** - Added `crossRegionReferences: true` for us-east-1 ↔ us-west-1
+2. **CloudFront Authorization** - Custom CachePolicy to forward Authorization headers
+3. **Cognito Username Flow** - Updated to username-based login (not email)
+4. **JWT Claims Structure** - Made email field optional (access tokens vs ID tokens)
+
+### **NEXT DEVELOPMENT OPPORTUNITIES**
+
+**Option 1: Game-Playing Lambda** (RECOMMENDED)
+- Core functionality: Z-Machine interpreter as Lambda service
+- Session management with DynamoDB
+- Save/restore integration with S3 using Quetzal format
+- WebSocket or REST API for game commands
+
+**Option 2: Frontend Web Application**
+- React/TypeScript UI for login and game playing
+- Terminal-style game interface
+- Integration with auth and game APIs
+
+**Option 3: Game Management System**
+- Game file storage and metadata
+- Upload/management APIs
+- Game library browsing
+
+**Infrastructure Details**: See plan file for complete architecture, IDs, deployment commands, and security notes
+
+---
+
 ## 📋 **MAINTENANCE NOTES**
 
 **Documentation**:
 - Technical architecture: `docs/ARCHITECTURE.md`
 - Historical analysis: `docs/` directory
 - Active development: This file (ONGOING_TASKS.md)
+- AWS Infrastructure: `/Users/christopherbrown/.claude/plans/gruesome-platform-infrastructure.md`
 
 **Development Principles**:
 - No time estimates or completion percentages

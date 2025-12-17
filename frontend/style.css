@@ -1,0 +1,186 @@
+/*
+ * Gruesome Z-Machine Platform - Stylesheet
+ * Retro terminal green-on-black theme
+ * Responsive layout for game player interface
+ */
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Courier New', monospace;
+    background: #1a1a1a;
+    color: #00ff00;
+    line-height: 1.6;
+    padding: 20px;
+}
+
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid #00ff00;
+}
+
+header h1 {
+    margin: 0;
+    flex: 1;
+    text-align: center;
+}
+
+.header-spacer {
+    min-width: 100px;
+}
+
+h1 {
+    color: #00ff00;
+    margin-bottom: 10px;
+}
+
+h2 {
+    color: #00ff00;
+    margin-bottom: 15px;
+}
+
+.section {
+    background: #0a0a0a;
+    border: 2px solid #00ff00;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 5px;
+}
+
+#login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 400px;
+}
+
+input[type="text"],
+input[type="password"] {
+    padding: 10px;
+    background: #1a1a1a;
+    border: 1px solid #00ff00;
+    color: #00ff00;
+    font-family: inherit;
+}
+
+button {
+    padding: 10px 20px;
+    background: #00ff00;
+    color: #000;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: bold;
+}
+
+button:hover {
+    background: #00cc00;
+}
+
+.info {
+    margin-top: 10px;
+    color: #888;
+    font-size: 0.9em;
+}
+
+#games-list {
+    display: grid;
+    gap: 15px;
+}
+
+.game-card {
+    background: #1a1a1a;
+    border: 1px solid #00ff00;
+    padding: 15px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.game-card:hover {
+    background: #2a2a2a;
+    border-color: #00ff00;
+    box-shadow: 0 0 10px #00ff00;
+}
+
+.game-card h3 {
+    color: #00ff00;
+    margin-bottom: 5px;
+}
+
+.game-card p {
+    color: #888;
+    font-size: 0.9em;
+}
+
+#game-output {
+    background: #000;
+    border: 1px solid #00ff00;
+    padding: 20px;
+    min-height: 400px;
+    max-height: 600px;
+    overflow-y: auto;
+    margin: 20px 0;
+    white-space: pre-wrap;
+    font-family: inherit;
+}
+
+.input-area {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.prompt {
+    color: #00ff00;
+    font-weight: bold;
+}
+
+#game-input {
+    flex: 1;
+}
+
+.game-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+#auth-status {
+    display: flex;
+    align-items: center;
+    min-width: 100px;
+    justify-content: flex-end;
+}
+
+#logout-button {
+    background: transparent;
+    color: #00ff00;
+    border: 1px solid #00ff00;
+    padding: 8px 16px;
+    font-size: 0.9em;
+}
+
+#logout-button:hover {
+    background: #00ff00;
+    color: #000;
+}
+
+.error {
+    color: #ff0000;
+    padding: 10px;
+    border: 1px solid #ff0000;
+    margin-top: 10px;
+}
