@@ -4,8 +4,10 @@
 
 import init, { WasmInterpreter } from './gruesome.js';
 
-// Configuration
-const API_BASE = 'https://api.gruesome.skeptomai.com';
+// Configuration - use dev-config if available, otherwise default to production
+const API_BASE = (typeof DEV_CONFIG !== 'undefined')
+    ? DEV_CONFIG.getApiBase()
+    : 'https://api.gruesome.skeptomai.com';
 
 // Application State
 let accessToken = null;        // JWT authentication token
