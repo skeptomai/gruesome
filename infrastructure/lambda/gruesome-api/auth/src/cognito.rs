@@ -107,11 +107,19 @@ impl CognitoService {
             .await
             .map_err(|e| {
                 error!("Cognito InitiateAuth error: {:?}", e);
-                match e.to_string() {
-                    s if s.contains("NotAuthorizedException") => AuthError::InvalidCredentials,
-                    s if s.contains("UserNotFoundException") => AuthError::UserNotFound,
-                    s if s.contains("UserNotConfirmedException") => AuthError::EmailNotVerified,
-                    _ => AuthError::CognitoError(e.to_string()),
+                let error_string = e.to_string();
+                let error_lower = error_string.to_lowercase();
+
+                if error_lower.contains("notauthorized") || error_lower.contains("incorrect") {
+                    AuthError::InvalidCredentials
+                } else if error_lower.contains("usernotfound") {
+                    AuthError::UserNotFound
+                } else if error_lower.contains("usernotconfirmed") {
+                    AuthError::EmailNotVerified
+                } else {
+                    // Log full error for debugging
+                    error!("Unmapped Cognito error: {}", error_string);
+                    AuthError::CognitoError(error_string)
                 }
             })?;
 
