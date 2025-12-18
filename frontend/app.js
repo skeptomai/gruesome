@@ -701,7 +701,55 @@ function runUntilInput() {
             if (saveButton) saveButton.disabled = true;
             break;
         }
-    } while (!result.needs_input && !result.quit);
+        // Handle in-game save command
+        if (result.save_data) {
+            const blob = new Blob([result.save_data], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'save.qzl';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        // Handle in-game restore command
+        if (result.needs_restore_data) {
+            handleInGameRestore();
+            break;
+        }
+    } while (!result.needs_input && !result.quit && !result.needs_restore_data);
+}
+
+// Handle in-game restore command (when user types "restore")
+async function handleInGameRestore() {
+    // Create file input for restore
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.qzl,.sav';
+
+    input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const data = new Uint8Array(await file.arrayBuffer());
+            wasmInterpreter.provide_restore_data(data);
+
+            // Clear output and continue game
+            gameOutput.textContent = '';
+            runUntilInput();
+
+            // Recreate input area
+            createInputArea();
+            if (gameInput) gameInput.focus();
+        } else {
+            // User cancelled - tell interpreter to cancel restore
+            wasmInterpreter.cancel_restore();
+            runUntilInput();
+            createInputArea();
+            if (gameInput) gameInput.focus();
+        }
+    };
+
+    // Show file picker
+    input.click();
 }
 
 // Game Input
