@@ -816,7 +816,9 @@ async function handleLoadGame() {
 
         // Restore save state
         wasmInterpreter.restore_game(saveData);
-        gameOutput.textContent = '\n[Save loaded successfully!]\n\n';
+
+        // Clear output and show restore message
+        gameOutput.textContent = '';
 
         // Enable Save and Load buttons (in case they were disabled from previous game quit)
         const saveButton = document.getElementById('save-button');
@@ -824,7 +826,7 @@ async function handleLoadGame() {
         if (saveButton) saveButton.disabled = false;
         if (loadButton) loadButton.disabled = false;
 
-        // Run until input needed to show current game state
+        // After restore, let game output current state
         runUntilInput();
 
         // Recreate input area after restore
