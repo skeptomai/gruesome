@@ -696,11 +696,9 @@ function runUntilInput() {
         }
         if (result.quit) {
             gameOutput.textContent += '\n\n[Game Over]';
-            // Disable Save and Load buttons when game ends
+            // Disable Save button when game ends (Load remains enabled to restart from save)
             const saveButton = document.getElementById('save-button');
-            const loadButton = document.getElementById('load-button');
             if (saveButton) saveButton.disabled = true;
-            if (loadButton) loadButton.disabled = true;
             break;
         }
     } while (!result.needs_input && !result.quit);
