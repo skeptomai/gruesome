@@ -1,5 +1,57 @@
 # ONGOING TASKS - PROJECT STATUS
 
+## 🎯 **CURRENT STATE** (December 18, 2025)
+
+**Latest Session**: Retro Terminal Styling & Gameplay Fixes - **COMPLETE** ✅
+
+### **Production Systems Status**
+
+**Web Platform** (gruesome.skeptomai.com):
+- ✅ **Frontend**: Retro terminal styling with CRT effects, 3 themes, 4 fonts
+- ✅ **Authentication**: Cognito-based user system with improved error messages
+- ✅ **Game Playing**: WASM Z-Machine interpreter with save/load functionality
+- ✅ **User Experience**: Collapsible controls, responsive viewport, authentic terminal feel
+- ✅ **Deployment**: Both staging and production environments synchronized
+
+**Compiler & Interpreter**:
+- ✅ **Grue Compiler**: V3 production ready, modularized codebase
+- ✅ **Z-Machine Interpreter**: Complete V3/V4+ support, cross-platform binaries
+- ✅ **WASM Build**: Working in-browser interpreter with Quetzal save format
+- ✅ **CI/CD**: Automated testing and release generation via GitHub Actions
+
+### **Next Development Opportunities**
+
+**Immediate Options**:
+1. **Game Library Management** - Upload/manage game files, metadata system
+2. **Save/Load Cloud Integration** - DynamoDB-backed save game storage per user
+3. **Additional Features** - Transcript recording, command history, accessibility improvements
+4. **Mobile Optimization** - Touch-friendly controls, responsive design enhancements
+
+**Infrastructure Ready**:
+- DynamoDB single-table design with USER/GAME/SAVE entities
+- S3 buckets for game files and save data
+- Lambda functions for auth and future game-playing API
+- Multi-region architecture (us-east-1 + us-west-1)
+
+### **Key Files & Locations**
+
+**Frontend**: `/Users/christopherbrown/Projects/Zork/gruesome/frontend/`
+- `index.html` - Main page structure with SVG filters
+- `style.css` - CRT effects, themes, fonts, responsive layout
+- `app.js` - Game logic, settings management, WASM integration
+
+**Backend**: `/Users/christopherbrown/Projects/Zork/gruesome/infrastructure/`
+- `lambda/gruesome-api/auth/` - Authentication Lambda (Rust)
+- `lib/*-stack.ts` - CDK infrastructure definitions
+- `scripts/deploy-frontend.sh` - Frontend deployment script
+
+**Documentation**:
+- `ONGOING_TASKS.md` - This file (project status)
+- `docs/` - Technical architecture and analysis documents
+- `/Users/christopherbrown/.claude/plans/` - Active development plans
+
+---
+
 ## ✅ **COMPLETED: IR GENERATOR MODULARIZATION** (December 15, 2025)
 
 **STATUS**: **ALL PHASES 1-9 COMPLETE** ✅
@@ -984,30 +1036,71 @@ src/
 
 ---
 
-## 🎨 **IN PROGRESS: RETRO TERMINAL STYLING FOR WEB PLATFORM** (December 17, 2025)
+## ✅ **COMPLETED: RETRO TERMINAL STYLING & GAMEPLAY FIXES** (December 17-18, 2025)
 
-**STATUS**: **IMPLEMENTATION STARTING** 🚀
+**STATUS**: **FULLY IMPLEMENTED AND DEPLOYED** 🎯
 
-**OBJECTIVE**: Transfer CRT terminal aesthetics and font styling from GitHub Pages demo to production web platform
+**OBJECTIVE**: Transfer CRT terminal aesthetics from GitHub Pages demo + fix critical gameplay issues
 
-**PLAN FILE**: `/Users/christopherbrown/.claude/plans/retro-terminal-styling.md`
+### **IMPLEMENTATION COMPLETED**
 
-**SCOPE**: Add retro terminal experience to game-playing interface with:
-- 3 phosphor color themes (green, amber, white)
-- 4 terminal font options (IBM Plex Mono, VT323, IBM 3270, Share Tech Mono)
-- CRT effects (scanlines, glow, vignette, chromatic aberration)
-- 4 blur intensity levels (sharp, light, medium, heavy)
-- Settings persistence via localStorage
+**Retro Terminal Styling**:
+- ✅ 3 phosphor color themes (green, amber, white) with custom CSS properties
+- ✅ 4 terminal font options (IBM Plex Mono, VT323, IBM 3270, Share Tech Mono)
+- ✅ CRT effects (scanlines, glow, vignette, chromatic aberration, bezel)
+- ✅ 4 blur intensity levels via SVG filters (none, light, medium, heavy)
+- ✅ Collapsible visual settings panel with localStorage persistence
+- ✅ Collapsible control panels (Back to Library, Save, Load buttons)
 
-**IMPLEMENTATION APPROACH**:
-1. Add SVG filters and Google Fonts to `frontend/index.html`
-2. Copy CSS styling from `web/css/terminal.css` to `frontend/style.css`
-3. Add settings state management to `frontend/app.js`
-4. Create visual settings panel UI
-5. Apply styling classes to game output container
-6. Test on staging environment
+**Critical Gameplay Fixes**:
+- ✅ **CRT Effects Scrolling**: Fixed by applying effects to fixed-height container (70vh, responsive)
+  - Container stays fixed while content scrolls inside
+  - Vignette, scanlines, bezel effects remain stationary
+  - Responsive height: min 400px, height 70vh, max 800px
+- ✅ **WASM Import Path**: Fixed `./pkg/gruesome.js` → `./gruesome.js` to match S3 deployment
+- ✅ **Command Preservation**: Fixed commands being overwritten by converting input area to text before processing
+- ✅ **Input Integration**: Input field now inside terminal for authentic terminal feel
+- ✅ **Focus Management**: Keyboard focus maintained after command submission
 
-**TARGET**: Staging environment (staging.gruesome.skeptomai.com)
+**Authentication Improvements**:
+- ✅ **Error Messages**: Wrong password now shows "Invalid credentials" instead of "Cognito error: service error"
+- ✅ **Error Matching**: Case-insensitive pattern matching using debug format for AWS SDK errors
+- ✅ **Lambda Updates**: Deployed improved error handling to both staging and prod
+
+### **FILES MODIFIED**
+
+**Frontend**:
+- `frontend/index.html` - Added SVG filters, Google Fonts, collapsible control panels, removed static input
+- `frontend/style.css` - CRT effects, themes, fonts, responsive container, input styling, collapse animations
+- `frontend/app.js` - Visual settings state, toggle functions, dynamic input creation, command preservation
+
+**Backend**:
+- `infrastructure/lambda/gruesome-api/auth/src/cognito.rs` - Improved error matching with debug format
+
+### **DEPLOYMENT STATUS**
+
+**Both Environments Synchronized**:
+- ✅ **Staging**: https://staging.gruesome.skeptomai.com
+- ✅ **Production**: https://gruesome.skeptomai.com
+- ✅ **Git**: All changes committed and pushed (commits: 14f3578, ae63984)
+- ✅ **CloudFront**: Cache invalidated on both distributions
+
+### **VERIFICATION**
+
+- ✅ Games loading properly (WASM module accessible)
+- ✅ CRT effects stay fixed while scrolling
+- ✅ Commands preserved in output history
+- ✅ Visual settings toggles working
+- ✅ Control panels collapsible
+- ✅ Input focus maintained
+- ✅ Auth errors user-friendly
+- ✅ Responsive viewport sizing
+
+### **COMMITS**
+
+1. `14f3578` - fix: Resolve CRT scrolling and command preservation issues
+2. `e95d75b` - fix: Improve auth error messages for invalid credentials
+3. `ae63984` - fix: Use debug format for Cognito error matching
 
 ---
 
