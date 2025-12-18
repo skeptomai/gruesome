@@ -812,6 +812,12 @@ async function handleLoadGame() {
         // Run until input needed to show current game state
         runUntilInput();
 
+        // Recreate input area after restore
+        createInputArea();
+
+        // Focus input
+        if (gameInput) gameInput.focus();
+
     } catch (error) {
         showFlashMessage('Failed to load save: ' + error.message, 'error');
     }
