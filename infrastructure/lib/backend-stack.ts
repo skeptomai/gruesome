@@ -18,8 +18,12 @@ interface BackendStackProps extends cdk.StackProps {
   gamesBucket: s3.Bucket;
   userPool: cognito.UserPool;
   userPoolClient: cognito.UserPoolClient;
-  hostedZone: route53.IHostedZone;
-  certificate: acm.Certificate;
+  hostedZone?: route53.IHostedZone;  // Optional for staging without custom domain
+  certificate?: acm.ICertificate;     // Optional for staging without custom domain
+  apiDomainName?: string;             // Optional custom domain (e.g., 'api-staging.gruesome.skeptomai.com')
+  apiSubdomain?: string;              // Optional subdomain for Route53 record (e.g., 'api-staging.gruesome')
+  frontendUrl?: string;               // Frontend URL for CORS (e.g., 'https://staging.gruesome.skeptomai.com')
+  environmentName?: string;           // Optional environment name for unique resource naming (e.g., 'Staging')
 }
 
 export class BackendStack extends cdk.Stack {
@@ -74,7 +78,7 @@ export class BackendStack extends cdk.Stack {
     const httpApi = new apigatewayv2.HttpApi(this, 'GruesomeApi', {
       apiName: 'gruesome-api',
       corsPreflight: {
-        allowOrigins: ['https://gruesome.skeptomai.com'],
+        allowOrigins: [props.frontendUrl || 'https://gruesome.skeptomai.com'],
         allowMethods: [
           apigatewayv2.CorsHttpMethod.GET,
           apigatewayv2.CorsHttpMethod.POST,
@@ -194,67 +198,76 @@ export class BackendStack extends cdk.Stack {
     // Extract API Gateway URL (format: https://{api-id}.execute-api.{region}.amazonaws.com)
     const apiUrl = httpApi.apiEndpoint;
 
-    // CloudFront distribution in front of API Gateway
-    // Custom cache policy that forwards Authorization header (required for authenticated API requests)
-    const apiCachePolicy = new cloudfront.CachePolicy(this, 'ApiCachePolicy', {
-      cachePolicyName: 'GruesomeApiCachePolicy',
-      comment: 'Cache policy for Gruesome API with Authorization header support',
-      defaultTtl: cdk.Duration.seconds(0), // Don't cache API responses
-      minTtl: cdk.Duration.seconds(0),
-      maxTtl: cdk.Duration.seconds(1),
-      headerBehavior: cloudfront.CacheHeaderBehavior.allowList('Authorization', 'Content-Type'),
-      queryStringBehavior: cloudfront.CacheQueryStringBehavior.all(),
-      cookieBehavior: cloudfront.CacheCookieBehavior.none(),
-      enableAcceptEncodingGzip: false,
-      enableAcceptEncodingBrotli: false,
-    });
+    // Only create custom domain CloudFront distribution if certificate and hostedZone are provided
+    if (props.certificate && props.hostedZone) {
+      // CloudFront distribution in front of API Gateway
+      // Custom cache policy that forwards Authorization header (required for authenticated API requests)
+      const envSuffix = props.environmentName ? props.environmentName : '';
+      const apiCachePolicy = new cloudfront.CachePolicy(this, 'ApiCachePolicy', {
+        cachePolicyName: `GruesomeApiCachePolicy${envSuffix}`,
+        comment: `Cache policy for Gruesome API${envSuffix ? ' ' + envSuffix : ''} with Authorization header support`,
+        defaultTtl: cdk.Duration.seconds(0), // Don't cache API responses
+        minTtl: cdk.Duration.seconds(0),
+        maxTtl: cdk.Duration.seconds(1),
+        headerBehavior: cloudfront.CacheHeaderBehavior.allowList('Authorization', 'Content-Type'),
+        queryStringBehavior: cloudfront.CacheQueryStringBehavior.all(),
+        cookieBehavior: cloudfront.CacheCookieBehavior.none(),
+        enableAcceptEncodingGzip: false,
+        enableAcceptEncodingBrotli: false,
+      });
 
-    // Response headers policy to forward CORS headers from API Gateway
-    const apiResponseHeadersPolicy = new cloudfront.ResponseHeadersPolicy(this, 'ApiResponseHeadersPolicy', {
-      responseHeadersPolicyName: 'GruesomeApiResponseHeadersPolicy',
-      comment: 'Pass through CORS headers from API Gateway',
-      corsBehavior: {
-        accessControlAllowOrigins: ['https://gruesome.skeptomai.com'],
-        accessControlAllowHeaders: ['*'],
-        accessControlAllowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-        accessControlAllowCredentials: false,
-        originOverride: false, // Don't override - let API Gateway CORS headers pass through
-      },
-    });
+      // Response headers policy to forward CORS headers from API Gateway
+      const apiResponseHeadersPolicy = new cloudfront.ResponseHeadersPolicy(this, 'ApiResponseHeadersPolicy', {
+        responseHeadersPolicyName: `GruesomeApiResponseHeadersPolicy${envSuffix}`,
+        comment: `Pass through CORS headers from API Gateway${envSuffix ? ' for ' + envSuffix : ''}`,
+        corsBehavior: {
+          accessControlAllowOrigins: [props.frontendUrl || 'https://gruesome.skeptomai.com'],
+          accessControlAllowHeaders: ['*'],
+          accessControlAllowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+          accessControlAllowCredentials: false,
+          originOverride: false, // Don't override - let API Gateway CORS headers pass through
+        },
+      });
+      const apiDistribution = new cloudfront.Distribution(this, 'ApiDistribution', {
+        defaultBehavior: {
+          origin: new cloudfront_origins.HttpOrigin(
+            cdk.Fn.select(2, cdk.Fn.split('/', apiUrl)), // Extract domain from URL
+            {
+              protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
+            }
+          ),
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+          cachePolicy: apiCachePolicy,
+          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+          responseHeadersPolicy: apiResponseHeadersPolicy,
+        },
+        domainNames: [props.apiDomainName || 'api.gruesome.skeptomai.com'],
+        certificate: props.certificate,
+      });
 
-    const apiDistribution = new cloudfront.Distribution(this, 'ApiDistribution', {
-      defaultBehavior: {
-        origin: new cloudfront_origins.HttpOrigin(
-          cdk.Fn.select(2, cdk.Fn.split('/', apiUrl)), // Extract domain from URL
-          {
-            protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
-          }
+      // Route 53 record for API pointing to CloudFront
+      new route53.ARecord(this, 'ApiAliasRecord', {
+        zone: props.hostedZone,
+        recordName: props.apiSubdomain || 'api.gruesome',
+        target: route53.RecordTarget.fromAlias(
+          new route53_targets.CloudFrontTarget(apiDistribution)
         ),
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
-        cachePolicy: apiCachePolicy,
-        originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
-        responseHeadersPolicy: apiResponseHeadersPolicy,
-      },
-      domainNames: ['api.gruesome.skeptomai.com'],
-      certificate: props.certificate,
-    });
+      });
 
-    // Route 53 record for API pointing to CloudFront
-    new route53.ARecord(this, 'ApiAliasRecord', {
-      zone: props.hostedZone,
-      recordName: 'api.gruesome',
-      target: route53.RecordTarget.fromAlias(
-        new route53_targets.CloudFrontTarget(apiDistribution)
-      ),
-    });
-
-    // Outputs
-    new cdk.CfnOutput(this, 'ApiUrl', {
-      value: `https://api.gruesome.skeptomai.com`,
-    });
-    new cdk.CfnOutput(this, 'ApiDistributionId', {
-      value: apiDistribution.distributionId,
-    });
+      // Outputs for custom domain
+      new cdk.CfnOutput(this, 'ApiUrl', {
+        value: `https://${props.apiDomainName || 'api.gruesome.skeptomai.com'}`,
+      });
+      new cdk.CfnOutput(this, 'ApiDistributionId', {
+        value: apiDistribution.distributionId,
+      });
+    } else {
+      // For staging without custom domain, output the API Gateway URL directly
+      new cdk.CfnOutput(this, 'ApiUrl', {
+        value: apiUrl,
+        description: 'API Gateway direct URL (no custom domain)',
+      });
+    }
   }
 }

@@ -15,10 +15,218 @@ let currentGame = null;        // Currently loaded game ID
 let wasmInterpreter = null;    // WASM Z-Machine interpreter instance
 let authMode = 'login';        // Authentication mode: 'login', 'signup', 'reset', or 'confirm-reset'
 
+// Visual Settings State - Retro terminal styling
+let visualSettings = {
+    theme: 'green',
+    font: 'default',
+    crtEnabled: false,
+    blurLevel: 'medium',
+    collapsed: false,
+    controlsCollapsed: false
+};
+
 // DOM Elements - initialized after DOM is ready
 let loginSection, gameLibrary, gamePlayer, authStatus, gamesList, gameOutput, gameInput, logoutButton;
 let emailInput, usernameInput, passwordInput, authSubmit, toggleAuthLink, forgotPasswordLink;
 let resetCodeInput, newPasswordInput;
+
+// Flash Message Helper Functions
+function showFlashMessage(message, type = 'error') {
+    const container = document.getElementById('flash-messages');
+    const flash = document.createElement('div');
+    flash.className = `flash-message ${type}`;
+    flash.textContent = message;
+
+    container.appendChild(flash);
+
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        flash.style.opacity = '0';
+        flash.style.transform = 'translateY(-20px)';
+        flash.style.transition = 'all 0.3s ease-out';
+        setTimeout(() => flash.remove(), 300);
+    }, 5000);
+}
+
+// Visual Settings Functions
+function loadVisualSettings() {
+    const saved = localStorage.getItem('gruesome-visual-settings');
+    if (saved) {
+        try {
+            visualSettings = JSON.parse(saved);
+        } catch (e) {
+            console.log('Failed to load visual settings, using defaults');
+        }
+    }
+}
+
+function saveVisualSettings() {
+    localStorage.setItem('gruesome-visual-settings', JSON.stringify(visualSettings));
+}
+
+function applyVisualSettings() {
+    if (!gameOutput) return;
+
+    const crtContainer = gameOutput.parentElement?.classList.contains('crt-container')
+        ? gameOutput.parentElement
+        : null;
+
+    // Remove existing theme/font/CRT classes from gameOutput
+    gameOutput.className = gameOutput.className
+        .split(' ')
+        .filter(c => !c.startsWith('theme-') && !c.startsWith('font-') &&
+                     !c.startsWith('crt-') && c !== 'effects-enabled')
+        .join(' ');
+
+    // Apply theme and font to gameOutput
+    gameOutput.classList.add(`theme-${visualSettings.theme}`);
+    gameOutput.classList.add(`font-${visualSettings.font}`);
+
+    // Apply CRT effects to container (not scrolling element)
+    if (crtContainer) {
+        crtContainer.className = 'crt-container';
+        if (visualSettings.crtEnabled) {
+            crtContainer.classList.add('crt-enhanced');
+            crtContainer.classList.add(`crt-blur-${visualSettings.blurLevel}`);
+            crtContainer.classList.add('effects-enabled');
+        }
+    }
+}
+
+function updateTheme(theme) {
+    visualSettings.theme = theme;
+    saveVisualSettings();
+    applyVisualSettings();
+    renderVisualSettingsUI();
+}
+
+function updateFont(font) {
+    visualSettings.font = font;
+    saveVisualSettings();
+    applyVisualSettings();
+    renderVisualSettingsUI();
+}
+
+function updateCrtEnabled(enabled) {
+    visualSettings.crtEnabled = enabled;
+    saveVisualSettings();
+    applyVisualSettings();
+    renderVisualSettingsUI();
+}
+
+function updateBlurLevel(level) {
+    visualSettings.blurLevel = level;
+    saveVisualSettings();
+    applyVisualSettings();
+    renderVisualSettingsUI();
+}
+
+function toggleVisualSettings() {
+    visualSettings.collapsed = !visualSettings.collapsed;
+    saveVisualSettings();
+
+    const settingsContent = document.getElementById('settings-content');
+    const toggleIcon = document.getElementById('settings-toggle-icon');
+
+    if (visualSettings.collapsed) {
+        settingsContent.classList.add('collapsed');
+        toggleIcon.classList.add('collapsed');
+    } else {
+        settingsContent.classList.remove('collapsed');
+        toggleIcon.classList.remove('collapsed');
+    }
+}
+
+function toggleControlPanels() {
+    visualSettings.controlsCollapsed = !visualSettings.controlsCollapsed;
+    saveVisualSettings();
+
+    const controlsContent = document.getElementById('controls-content');
+    const toggleIcon = document.getElementById('controls-toggle-icon');
+
+    if (visualSettings.controlsCollapsed) {
+        controlsContent.classList.add('collapsed');
+        toggleIcon.classList.add('collapsed');
+    } else {
+        controlsContent.classList.remove('collapsed');
+        toggleIcon.classList.remove('collapsed');
+    }
+}
+
+function renderVisualSettingsUI() {
+    // Theme toggle
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) {
+        themeToggle.innerHTML = ['green', 'amber', 'white']
+            .map(theme => `
+                <button
+                    class="theme-button ${visualSettings.theme === theme ? 'active' : ''}"
+                    onclick="updateTheme('${theme}')"
+                >${theme.charAt(0).toUpperCase() + theme.slice(1)}</button>
+            `).join('');
+    }
+
+    // Font toggle
+    const fontToggle = document.getElementById('font-toggle');
+    if (fontToggle) {
+        const fonts = [
+            { id: 'default', label: 'Default' },
+            { id: 'vt323', label: 'VT323' },
+            { id: 'ibm3270', label: 'IBM 3270' },
+            { id: 'sharetech', label: 'Share Tech' }
+        ];
+        fontToggle.innerHTML = fonts
+            .map(font => `
+                <button
+                    class="font-button ${visualSettings.font === font.id ? 'active' : ''}"
+                    onclick="updateFont('${font.id}')"
+                >${font.label}</button>
+            `).join('');
+    }
+
+    // CRT toggle
+    const crtToggle = document.getElementById('crt-toggle');
+    if (crtToggle) {
+        crtToggle.innerHTML = `
+            <button
+                class="theme-button ${!visualSettings.crtEnabled ? 'active' : ''}"
+                onclick="updateCrtEnabled(false)"
+            >Off</button>
+            <button
+                class="theme-button ${visualSettings.crtEnabled ? 'active' : ''}"
+                onclick="updateCrtEnabled(true)"
+            >On</button>
+        `;
+    }
+
+    // Blur toggle
+    const blurToggle = document.getElementById('blur-toggle');
+    if (blurToggle) {
+        const levels = [
+            { id: 'none', label: 'Sharp' },
+            { id: 'light', label: 'Light' },
+            { id: 'medium', label: 'Medium' },
+            { id: 'heavy', label: 'Heavy' }
+        ];
+        blurToggle.className = `blur-toggle ${!visualSettings.crtEnabled ? 'disabled' : ''}`;
+        blurToggle.innerHTML = levels
+            .map(level => `
+                <button
+                    class="blur-button ${visualSettings.blurLevel === level.id ? 'active' : ''}"
+                    onclick="updateBlurLevel('${level.id}')"
+                    ${!visualSettings.crtEnabled ? 'disabled' : ''}
+                >${level.label}</button>
+            `).join('');
+    }
+}
+
+// Make visual settings functions global so onclick handlers work
+window.updateTheme = updateTheme;
+window.updateFont = updateFont;
+window.updateCrtEnabled = updateCrtEnabled;
+window.updateBlurLevel = updateBlurLevel;
+window.toggleVisualSettings = toggleVisualSettings;
+window.toggleControlPanels = toggleControlPanels;
 
 // Application Initialization
 // Sets up DOM references, event handlers, and checks for existing auth session
@@ -30,7 +238,7 @@ async function initApp() {
     authStatus = document.getElementById('auth-status');
     gamesList = document.getElementById('games-list');
     gameOutput = document.getElementById('game-output');
-    gameInput = document.getElementById('game-input');
+    gameInput = null;  // Will be created dynamically when game loads
     logoutButton = document.getElementById('logout-button');
 
     // Auth form elements
@@ -42,6 +250,24 @@ async function initApp() {
     authSubmit = document.getElementById('auth-submit');
     toggleAuthLink = document.getElementById('toggle-auth-mode');
     forgotPasswordLink = document.getElementById('forgot-password-link');
+
+    // Initialize visual settings
+    loadVisualSettings();
+    renderVisualSettingsUI();
+
+    // Apply collapsed state if saved
+    if (visualSettings.collapsed) {
+        const settingsContent = document.getElementById('settings-content');
+        const toggleIcon = document.getElementById('settings-toggle-icon');
+        if (settingsContent) settingsContent.classList.add('collapsed');
+        if (toggleIcon) toggleIcon.classList.add('collapsed');
+    }
+    if (visualSettings.controlsCollapsed) {
+        const controlsContent = document.getElementById('controls-content');
+        const controlsIcon = document.getElementById('controls-toggle-icon');
+        if (controlsContent) controlsContent.classList.add('collapsed');
+        if (controlsIcon) controlsIcon.classList.add('collapsed');
+    }
 
     // Set up logout button handler
     if (logoutButton) {
@@ -66,10 +292,7 @@ async function initApp() {
         forgotPasswordLink.addEventListener('click', handleForgotPasswordClick);
     }
 
-    // Set up game input handler
-    if (gameInput) {
-        gameInput.addEventListener('keypress', handleGameInput);
-    }
+    // Note: game input handler is set up dynamically in createInputArea() when game loads
 
     // Set up back button
     const backButton = document.getElementById('back-button');
@@ -240,17 +463,17 @@ async function handleSignup() {
         }
 
         // Success! Auto-login the user
-        alert('Account created successfully! Logging you in...');
+        showFlashMessage('Account created successfully! Logging you in...', 'success');
         await handleLogin();
     } catch (error) {
         // Check if it's a "user already exists" error
         if (error.message && error.message.toLowerCase().includes('already exists')) {
-            alert('This username or email is already registered. Try logging in instead.');
+            showFlashMessage('This username or email is already registered. Try logging in instead.', 'info');
             // Switch to login mode
             authMode = 'login';
             updateAuthUI();
         } else {
-            alert('Signup failed: ' + error.message);
+            showFlashMessage('Signup failed: ' + error.message, 'error');
         }
     }
 }
@@ -273,11 +496,11 @@ async function handleForgotPassword() {
         }
 
         // Success! Move to confirmation step
-        alert('Password reset code sent to your email. Please check your inbox.');
+        showFlashMessage('Password reset code sent to your email. Please check your inbox.', 'success');
         authMode = 'confirm-reset';
         updateAuthUI();
     } catch (error) {
-        alert('Failed to send reset code: ' + error.message);
+        showFlashMessage('Failed to send reset code: ' + error.message, 'error');
     }
 }
 
@@ -301,13 +524,13 @@ async function handleConfirmReset() {
         }
 
         // Success! Back to login
-        alert('Password reset successfully! Please login with your new password.');
+        showFlashMessage('Password reset successfully! Please login with your new password.', 'success');
         authMode = 'login';
         resetCodeInput.value = '';
         newPasswordInput.value = '';
         updateAuthUI();
     } catch (error) {
-        alert('Failed to reset password: ' + error.message);
+        showFlashMessage('Failed to reset password: ' + error.message, 'error');
     }
 }
 
@@ -335,7 +558,7 @@ async function handleLogin() {
             await loadGameLibrary();
         }
     } catch (error) {
-        alert('Login failed: ' + error.message);
+        showFlashMessage('Login failed: ' + error.message, 'error');
     }
 }
 
@@ -372,6 +595,32 @@ async function loadGameLibrary() {
     }
 }
 
+// Create and append input area to game output
+function createInputArea() {
+    // Remove existing input area if present
+    const existingInput = gameOutput.querySelector('.input-area');
+    if (existingInput) {
+        existingInput.remove();
+    }
+
+    // Create input area with prompt
+    const inputArea = document.createElement('div');
+    inputArea.className = 'input-area';
+    inputArea.innerHTML = '<span class="prompt" id="input-prompt">&gt;</span><input type="text" id="game-input" placeholder="" autocomplete="off">';
+
+    // Append to game output
+    gameOutput.appendChild(inputArea);
+
+    // Update gameInput reference
+    gameInput = document.getElementById('game-input');
+
+    // Set up event listeners
+    if (gameInput) {
+        gameInput.addEventListener('keypress', handleGameInput);
+        // Prompt stays visible - no need to hide/show
+    }
+}
+
 // Load and Start Game
 window.loadGame = async function(gameId) {
     try {
@@ -387,16 +636,35 @@ window.loadGame = async function(gameId) {
         wasmInterpreter = new WasmInterpreter(new Uint8Array(gameData));
         currentGame = gameId;
 
+        // Clear game output
+        gameOutput.textContent = '';
+
         // Show game player
         gameLibrary.style.display = 'none';
         gamePlayer.style.display = 'block';
 
+        // Wrap game output in CRT container if CRT is enabled
+        if (!gameOutput.parentElement.classList.contains('crt-container')) {
+            const crtContainer = document.createElement('div');
+            crtContainer.className = 'crt-container';
+            gameOutput.parentElement.insertBefore(crtContainer, gameOutput);
+            crtContainer.appendChild(gameOutput);
+        }
+
+        // Apply visual settings to game output
+        applyVisualSettings();
+
         // Start game - step until it needs input
         runUntilInput();
-        gameInput.focus();
+
+        // Create input area after game text
+        createInputArea();
+
+        // Focus input
+        if (gameInput) gameInput.focus();
 
     } catch (error) {
-        alert('Failed to load game: ' + error.message);
+        showFlashMessage('Failed to load game: ' + error.message, 'error');
     }
 };
 
@@ -406,7 +674,15 @@ function runUntilInput() {
     do {
         result = wasmInterpreter.step();
         if (result.output) {
-            gameOutput.textContent += result.output;
+            // Filter out duplicate ">" prompt at end of output
+            let output = result.output;
+            // Handle various prompt patterns: ">", "> ", "\n>", "\n> "
+            if (output.endsWith('> ')) {
+                output = output.slice(0, -2);
+            } else if (output.endsWith('>')) {
+                output = output.slice(0, -1);
+            }
+            gameOutput.textContent += output;
             gameOutput.scrollTop = gameOutput.scrollHeight;
         }
         if (result.error) {
@@ -423,17 +699,32 @@ function runUntilInput() {
 function handleGameInput(e) {
     if (e.key === 'Enter' && gameInput.value.trim()) {
         const command = gameInput.value.trim();
-        gameInput.value = '';
 
-        // Display command
-        gameOutput.textContent += `\n> ${command}\n\n`;
-        gameOutput.scrollTop = gameOutput.scrollHeight;
+        // Add command to output as text before removing input area
+        const inputArea = gameOutput.querySelector('.input-area');
+        if (inputArea) {
+            // Convert input area to plain text to preserve the command line
+            const commandText = '> ' + command + '\n';
+            const textNode = document.createTextNode(commandText);
+            inputArea.replaceWith(textNode);
+        }
 
-        // Provide input to interpreter
+        // Provide input to interpreter (game handles echo)
         wasmInterpreter.provide_input(command);
 
         // Run until next input needed
         runUntilInput();
+
+        // Re-create input area for next command
+        createInputArea();
+
+        // Restore focus to input
+        if (gameInput) {
+            gameInput.focus();
+        }
+
+        // Scroll to bottom
+        gameOutput.scrollTop = gameOutput.scrollHeight;
     }
 }
 
@@ -474,9 +765,9 @@ async function handleSaveGame() {
             body: saveData
         });
 
-        alert('Game saved successfully!');
+        showFlashMessage('Game saved successfully!', 'success');
     } catch (error) {
-        alert('Failed to save game: ' + error.message);
+        showFlashMessage('Failed to save game: ' + error.message, 'error');
     }
 }
 
@@ -493,7 +784,7 @@ async function handleLoadGame() {
         const data = await response.json();
 
         if (data.saves.length === 0) {
-            alert('No saves found for this game');
+            showFlashMessage('No saves found for this game', 'info');
             return;
         }
 
@@ -522,7 +813,7 @@ async function handleLoadGame() {
         runUntilInput();
 
     } catch (error) {
-        alert('Failed to load save: ' + error.message);
+        showFlashMessage('Failed to load save: ' + error.message, 'error');
     }
 }
 

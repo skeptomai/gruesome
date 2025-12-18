@@ -52,6 +52,55 @@ h2 {
     margin-bottom: 15px;
 }
 
+/* Flash Messages */
+#flash-messages {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    max-width: 600px;
+    width: 90%;
+}
+
+.flash-message {
+    padding: 15px 20px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+    font-family: inherit;
+    animation: slideIn 0.3s ease-out;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.flash-message.error {
+    background: rgba(139, 0, 0, 0.9);
+    color: #ffcccc;
+    border: 1px solid #8b0000;
+}
+
+.flash-message.success {
+    background: rgba(0, 100, 0, 0.9);
+    color: #ccffcc;
+    border: 1px solid #006400;
+}
+
+.flash-message.info {
+    background: rgba(139, 90, 0, 0.9);
+    color: #ffe4b3;
+    border: 1px solid #8b5a00;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 .section {
     background: #0a0a0a;
     border: 2px solid #00ff00;
@@ -154,31 +203,98 @@ button:hover {
     font-size: 0.9em;
 }
 
+.crt-container {
+    position: relative;
+    margin: 20px 0;
+    border-radius: 15px;
+    overflow: hidden;
+    min-height: 400px;
+    height: 70vh;
+    max-height: 800px;
+}
+
 #game-output {
     background: #000;
     border: 1px solid #00ff00;
     padding: 20px;
-    min-height: 400px;
-    max-height: 600px;
+    height: 100%;
     overflow-y: auto;
-    margin: 20px 0;
     white-space: pre-wrap;
     font-family: inherit;
 }
 
 .input-area {
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    margin: 0;
+    padding: 0;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    white-space: pre-wrap;
+    word-wrap: break-word;
 }
 
 .prompt {
-    color: #00ff00;
-    font-weight: bold;
+    color: inherit;
+    font-weight: normal;
 }
 
 #game-input {
-    flex: 1;
+    display: inline;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    caret-color: var(--terminal-fg, #00ff00);
+    padding: 0;
+    margin: 0 0 0 0.5ch;
+    width: 90%;
+    vertical-align: baseline;
+}
+
+#game-input::placeholder {
+    color: var(--terminal-dim, #666);
+}
+
+#game-input:focus {
+    outline: none;
+}
+
+.control-panels {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.control-panels h3:hover {
+    color: #ccc;
+    transition: color 0.2s ease;
+}
+
+#controls-toggle-icon {
+    display: inline-block;
+    transition: transform 0.3s ease;
+    font-size: 0.8em;
+}
+
+#controls-toggle-icon.collapsed {
+    transform: rotate(-90deg);
+}
+
+#controls-content {
+    max-height: 1000px;
+    overflow: hidden;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+    opacity: 1;
+}
+
+#controls-content.collapsed {
+    max-height: 0;
+    opacity: 0;
 }
 
 .game-controls {
@@ -272,4 +388,391 @@ button:hover {
     padding-top: 12px;
     border-top: 1px solid #222;
     font-style: italic;
+}
+
+/* ============================================
+   RETRO TERMINAL STYLING
+   CSS Custom Properties (Theme Configuration)
+   ============================================ */
+
+:root {
+  /* Green Phosphor (P1) - Classic Apple II / early terminal look */
+  --phosphor-green-bg: #0a0a0a;
+  --phosphor-green-fg: #33ff33;
+  --phosphor-green-dim: #1a8c1a;
+  --phosphor-green-glow: rgba(51, 255, 51, 0.4);
+
+  /* Amber Phosphor (P3) - IBM 3270 / PC monochrome */
+  --phosphor-amber-bg: #0a0800;
+  --phosphor-amber-fg: #ffb000;
+  --phosphor-amber-dim: #8c6000;
+  --phosphor-amber-glow: rgba(255, 176, 0, 0.4);
+
+  /* White Phosphor - Later terminals */
+  --phosphor-white-bg: #0a0a0a;
+  --phosphor-white-fg: #e0e0e0;
+  --phosphor-white-dim: #707070;
+  --phosphor-white-glow: rgba(224, 224, 224, 0.3);
+
+  /* Default theme: Green Phosphor */
+  --terminal-bg: var(--phosphor-green-bg);
+  --terminal-fg: var(--phosphor-green-fg);
+  --terminal-dim: var(--phosphor-green-dim);
+  --terminal-glow: var(--phosphor-green-glow);
+
+  /* Typography */
+  --font-terminal: "IBM Plex Mono", "Consolas", "Monaco", "Courier New", monospace;
+}
+
+/* Theme classes - apply to game output */
+.theme-green {
+  --terminal-bg: var(--phosphor-green-bg);
+  --terminal-fg: var(--phosphor-green-fg);
+  --terminal-dim: var(--phosphor-green-dim);
+  --terminal-glow: var(--phosphor-green-glow);
+}
+
+.theme-amber {
+  --terminal-bg: var(--phosphor-amber-bg);
+  --terminal-fg: var(--phosphor-amber-fg);
+  --terminal-dim: var(--phosphor-amber-dim);
+  --terminal-glow: var(--phosphor-amber-glow);
+}
+
+.theme-white {
+  --terminal-bg: var(--phosphor-white-bg);
+  --terminal-fg: var(--phosphor-white-fg);
+  --terminal-dim: var(--phosphor-white-dim);
+  --terminal-glow: var(--phosphor-white-glow);
+}
+
+/* Font classes */
+.font-default {
+  font-family: "IBM Plex Mono", "Consolas", "Monaco", "Courier New", monospace !important;
+}
+
+.font-vt323 {
+  font-family: "VT323", monospace !important;
+  font-size: 1.3em !important; /* VT323 renders small, scale up */
+  line-height: 1.2 !important;
+}
+
+.font-ibm3270 {
+  font-family: "IBM Plex Mono", monospace !important;
+}
+
+.font-sharetech {
+  font-family: "Share Tech Mono", monospace !important;
+}
+
+/* ============================================
+   Game Output Theming
+   ============================================ */
+
+#game-output {
+  font-family: var(--font-terminal);
+  background: var(--terminal-bg);
+  color: var(--terminal-fg);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Subtle text glow for phosphor effect */
+#game-output.effects-enabled {
+  text-shadow: 0 0 5px var(--terminal-glow);
+}
+
+/* ============================================
+   CRT Effects
+   ============================================ */
+
+/* Enhanced CRT effects */
+.crt-container.crt-enhanced {
+  position: relative;
+  filter: url(#crt-blur-medium);
+  border-radius: 15px;
+  overflow: hidden;
+}
+
+/* Blur level classes - override the filter */
+.crt-container.crt-enhanced.crt-blur-none {
+  filter: url(#crt-blur-none);
+}
+
+.crt-container.crt-enhanced.crt-blur-light {
+  filter: url(#crt-blur-light);
+}
+
+.crt-container.crt-enhanced.crt-blur-medium {
+  filter: url(#crt-blur-medium);
+}
+
+.crt-container.crt-enhanced.crt-blur-heavy {
+  filter: url(#crt-blur-heavy);
+}
+
+/* Vignette effect (darkened corners) */
+.crt-container.crt-enhanced::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 0%,
+    transparent 60%,
+    rgba(0, 0, 0, 0.3) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+  border-radius: 15px;
+}
+
+/* Screen bezel effect */
+.crt-container.crt-enhanced::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 15px;
+  box-shadow:
+    inset 0 0 100px rgba(0, 0, 0, 0.5),
+    inset 0 0 20px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Subtle flicker */
+.crt-container.crt-enhanced {
+  animation: crt-flicker 0.15s infinite;
+}
+
+@keyframes crt-flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.97; }
+}
+
+/* Chromatic aberration on text - applied to content, not container */
+.crt-container.crt-enhanced #game-output {
+  text-shadow:
+    0 0 8px var(--terminal-glow),
+    -0.5px 0 1px rgba(255, 0, 0, 0.15),
+    0.5px 0 1px rgba(0, 255, 255, 0.15);
+}
+
+/* Enhanced scanlines when CRT is on */
+.crt-container.crt-enhanced.effects-enabled::after {
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      rgba(0, 0, 0, 0.2) 2px,
+      rgba(0, 0, 0, 0.2) 4px
+    ),
+    radial-gradient(
+      ellipse at center,
+      transparent 0%,
+      transparent 50%,
+      rgba(0, 0, 0, 0.5) 100%
+    );
+  box-shadow:
+    inset 0 0 100px rgba(0, 0, 0, 0.5),
+    inset 0 0 20px rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================
+   Visual Settings Panel
+   ============================================ */
+
+.settings-panel {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 15px;
+  margin-bottom: 15px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.settings-panel h3 {
+  margin: 0 0 12px 0;
+  font-size: 0.9em;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  user-select: none;
+  transition: color 0.2s ease;
+}
+
+.settings-panel h3:hover {
+  color: #ccc;
+}
+
+#settings-toggle-icon {
+  display: inline-block;
+  transition: transform 0.3s ease;
+  font-size: 0.8em;
+}
+
+#settings-toggle-icon.collapsed {
+  transform: rotate(-90deg);
+}
+
+#settings-content {
+  max-height: 500px;
+  overflow: hidden;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+  opacity: 1;
+}
+
+#settings-content.collapsed {
+  max-height: 0;
+  opacity: 0;
+}
+
+.settings-row {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 10px;
+}
+
+.settings-row:last-child {
+  margin-bottom: 0;
+}
+
+.settings-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-group label {
+  font-size: 0.85em;
+  color: #aaa;
+  font-weight: 500;
+}
+
+/* Theme Toggle */
+.theme-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.theme-button {
+  flex: 1;
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+  border: 1px solid #444;
+  background: transparent;
+  color: #999;
+  transition: all 0.2s ease;
+  border-radius: 3px;
+}
+
+.theme-button:hover {
+  border-color: #00ff00;
+  color: #00ff00;
+}
+
+.theme-button.active {
+  border-color: #00ff00;
+  background: #00ff00;
+  color: #000;
+  font-weight: bold;
+}
+
+/* Font Toggle */
+.font-toggle {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.font-button {
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 0.8em;
+  cursor: pointer;
+  border: 1px solid #444;
+  background: transparent;
+  color: #999;
+  transition: all 0.2s ease;
+  border-radius: 3px;
+}
+
+.font-button:hover {
+  border-color: #00ff00;
+  color: #00ff00;
+}
+
+.font-button.active {
+  border-color: #00ff00;
+  background: #00ff00;
+  color: #000;
+  font-weight: bold;
+}
+
+/* CRT Toggle */
+.crt-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+/* Blur Toggle */
+.blur-toggle {
+  display: flex;
+  gap: 6px;
+}
+
+.blur-toggle.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.blur-button {
+  padding: 5px 10px;
+  font-family: inherit;
+  font-size: 0.8em;
+  cursor: pointer;
+  border: 1px solid #444;
+  background: transparent;
+  color: #999;
+  transition: all 0.2s ease;
+  border-radius: 3px;
+}
+
+.blur-button:hover:not(:disabled) {
+  border-color: #00ff00;
+  color: #00ff00;
+}
+
+.blur-button.active {
+  border-color: #00ff00;
+  background: #00ff00;
+  color: #000;
+  font-weight: bold;
+}
+
+.blur-button:disabled {
+  cursor: not-allowed;
+}
+
+/* ============================================
+   Responsive Adjustments
+   ============================================ */
+
+@media (max-width: 768px) {
+  .settings-row {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .theme-toggle, .font-toggle, .crt-toggle, .blur-toggle {
+    flex-wrap: wrap;
+  }
 }

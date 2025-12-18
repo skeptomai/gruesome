@@ -984,6 +984,33 @@ src/
 
 ---
 
+## 🎨 **IN PROGRESS: RETRO TERMINAL STYLING FOR WEB PLATFORM** (December 17, 2025)
+
+**STATUS**: **IMPLEMENTATION STARTING** 🚀
+
+**OBJECTIVE**: Transfer CRT terminal aesthetics and font styling from GitHub Pages demo to production web platform
+
+**PLAN FILE**: `/Users/christopherbrown/.claude/plans/retro-terminal-styling.md`
+
+**SCOPE**: Add retro terminal experience to game-playing interface with:
+- 3 phosphor color themes (green, amber, white)
+- 4 terminal font options (IBM Plex Mono, VT323, IBM 3270, Share Tech Mono)
+- CRT effects (scanlines, glow, vignette, chromatic aberration)
+- 4 blur intensity levels (sharp, light, medium, heavy)
+- Settings persistence via localStorage
+
+**IMPLEMENTATION APPROACH**:
+1. Add SVG filters and Google Fonts to `frontend/index.html`
+2. Copy CSS styling from `web/css/terminal.css` to `frontend/style.css`
+3. Add settings state management to `frontend/app.js`
+4. Create visual settings panel UI
+5. Apply styling classes to game output container
+6. Test on staging environment
+
+**TARGET**: Staging environment (staging.gruesome.skeptomai.com)
+
+---
+
 ## 📋 **MAINTENANCE NOTES**
 
 **Documentation**:
@@ -991,6 +1018,7 @@ src/
 - Historical analysis: `docs/` directory
 - Active development: This file (ONGOING_TASKS.md)
 - AWS Infrastructure: `/Users/christopherbrown/.claude/plans/gruesome-platform-infrastructure.md`
+- Retro Terminal Styling: `/Users/christopherbrown/.claude/plans/retro-terminal-styling.md`
 
 **Development Principles**:
 - No time estimates or completion percentages

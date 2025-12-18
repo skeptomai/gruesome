@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
-import { GruesomeDnsStack } from '../lib/dns-stack';
-import { GruesomeDataStack } from '../lib/data-stack';
-import { GruesomeAuthStack } from '../lib/auth-stack';
-import { GruesomeBackendStack } from '../lib/backend-stack';
-import { GruesomeFrontendStack } from '../lib/frontend-stack';
+import { DataStack } from '../lib/data-stack';
+import { AuthStack } from '../lib/auth-stack';
+import { BackendStack } from '../lib/backend-stack';
+import { FrontendStack } from '../lib/frontend-stack';
+import { DnsImportStack } from '../lib/dns-import-stack';
 
 const app = new cdk.App();
 
@@ -20,52 +20,57 @@ const frontendStagingEnv = {
   region: 'us-east-1', // CloudFront requires us-east-1
 };
 
-// DNS Stack (staging subdomain)
-const dnsStackStaging = new GruesomeDnsStack(app, 'GruesomeDnsStackStaging', {
+// Import existing DNS resources from production
+// The wildcard cert *.gruesome.skeptomai.com covers both production and staging
+const dnsImportStack = new DnsImportStack(app, 'GruesomeDnsImportStackStaging', {
   env: frontendStagingEnv,
-  crossRegionReferences: true,
+  certificateArn: 'arn:aws:acm:us-east-1:349145659387:certificate/33ae9627-b894-4edc-a480-201bc6e8b529',
   domainName: 'skeptomai.com',
-  subdomainPrefix: 'staging.gruesome', // staging.gruesome.skeptomai.com
-  apiSubdomainPrefix: 'api-staging.gruesome', // api-staging.gruesome.skeptomai.com
 });
 
 // Data Stack (staging - separate DynamoDB and S3)
-const dataStackStaging = new GruesomeDataStack(app, 'GruesomeDataStackStaging', {
+const dataStackStaging = new DataStack(app, 'GruesomeDataStackStaging', {
   env: stagingEnv,
-  stackPrefix: 'staging',
+  tableName: 'gruesome-platform-staging',
+  savesBucketName: 'gruesome-saves-staging',
+  gamesBucketName: 'gruesome-games-staging',
 });
 
 // Auth Stack (staging - separate Cognito)
-const authStackStaging = new GruesomeAuthStack(app, 'GruesomeAuthStackStaging', {
+const authStackStaging = new AuthStack(app, 'GruesomeAuthStackStaging', {
   env: stagingEnv,
-  stackPrefix: 'staging',
 });
 
-// Backend Stack (staging API)
-const backendStackStaging = new GruesomeBackendStack(app, 'GruesomeBackendStackStaging', {
+// Backend Stack (staging API with custom domain)
+const backendStackStaging = new BackendStack(app, 'GruesomeBackendStackStaging', {
   env: stagingEnv,
-  crossRegionReferences: true,
-  certificate: dnsStackStaging.certificate,
-  hostedZone: dnsStackStaging.hostedZone,
+  crossRegionReferences: true,  // Enable cross-region references for certificate
   table: dataStackStaging.table,
   savesBucket: dataStackStaging.savesBucket,
   gamesBucket: dataStackStaging.gamesBucket,
   userPool: authStackStaging.userPool,
   userPoolClient: authStackStaging.userPoolClient,
-  stackPrefix: 'staging',
+  hostedZone: dnsImportStack.hostedZone,
+  certificate: dnsImportStack.certificate,
   apiDomainName: 'api-staging.gruesome.skeptomai.com',
+  apiSubdomain: 'api-staging.gruesome',
+  frontendUrl: 'https://staging.gruesome.skeptomai.com',
+  environmentName: 'Staging',
 });
 
-// Frontend Stack (staging website)
-const frontendStackStaging = new GruesomeFrontendStack(app, 'GruesomeFrontendStackStaging', {
+// Frontend Stack (staging website with custom domain)
+const frontendStackStaging = new FrontendStack(app, 'GruesomeFrontendStackStaging', {
   env: frontendStagingEnv,
-  crossRegionReferences: true,
-  certificate: dnsStackStaging.certificate,
-  hostedZone: dnsStackStaging.hostedZone,
-  stackPrefix: 'staging',
+  crossRegionReferences: true,  // Enable cross-region references for certificate
+  bucketName: 'gruesome-frontend-staging',
+  hostedZone: dnsImportStack.hostedZone,
+  certificate: dnsImportStack.certificate,
   domainName: 'staging.gruesome.skeptomai.com',
+  subdomain: 'staging.gruesome',
 });
 
-// Add dependencies
-frontendStackStaging.addDependency(dnsStackStaging);
-backendStackStaging.addDependency(dnsStackStaging);
+// Dependencies
+backendStackStaging.addDependency(dataStackStaging);
+backendStackStaging.addDependency(authStackStaging);
+backendStackStaging.addDependency(dnsImportStack);
+frontendStackStaging.addDependency(dnsImportStack);

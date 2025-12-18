@@ -8,8 +8,11 @@ import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import { Construct } from 'constructs';
 
 interface FrontendStackProps extends cdk.StackProps {
-  hostedZone: route53.IHostedZone;
-  certificate: acm.Certificate;
+  hostedZone?: route53.IHostedZone;  // Optional for staging without custom domain
+  certificate?: acm.ICertificate;     // Optional for staging without custom domain
+  bucketName?: string;                // Optional custom bucket name for staging
+  domainName?: string;                // Optional custom domain (e.g., 'staging.gruesome.skeptomai.com')
+  subdomain?: string;                 // Optional subdomain for Route53 record (e.g., 'staging.gruesome')
 }
 
 export class FrontendStack extends cdk.Stack {
@@ -18,7 +21,7 @@ export class FrontendStack extends cdk.Stack {
 
     // S3 bucket for static website
     const websiteBucket = new s3.Bucket(this, 'WebsiteBucket', {
-      bucketName: 'gruesome-frontend',
+      bucketName: props.bucketName || 'gruesome-frontend',
       publicReadAccess: false,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
@@ -31,8 +34,8 @@ export class FrontendStack extends cdk.Stack {
 
     websiteBucket.grantRead(oai);
 
-    // CloudFront distribution
-    const distribution = new cloudfront.Distribution(this, 'Distribution', {
+    // CloudFront distribution configuration - conditionally include custom domain
+    const distributionConfig: cloudfront.DistributionProps = {
       defaultBehavior: {
         origin: new cloudfront_origins.S3Origin(websiteBucket, {
           originAccessIdentity: oai,
@@ -40,8 +43,6 @@ export class FrontendStack extends cdk.Stack {
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
       },
-      domainNames: ['gruesome.skeptomai.com'],
-      certificate: props.certificate,
       defaultRootObject: 'index.html',
       errorResponses: [
         {
@@ -51,20 +52,34 @@ export class FrontendStack extends cdk.Stack {
           ttl: cdk.Duration.seconds(0),
         },
       ],
-    });
+      // Add custom domain configuration if certificate and hostedZone are provided
+      ...(props.certificate && props.hostedZone
+        ? {
+            domainNames: [props.domainName || 'gruesome.skeptomai.com'],
+            certificate: props.certificate,
+          }
+        : {}),
+    };
 
-    // Route 53 record for frontend
-    new route53.ARecord(this, 'FrontendAliasRecord', {
-      zone: props.hostedZone,
-      recordName: 'gruesome',
-      target: route53.RecordTarget.fromAlias(
-        new route53_targets.CloudFrontTarget(distribution)
-      ),
-    });
+    const distribution = new cloudfront.Distribution(this, 'Distribution', distributionConfig);
+
+    // Route 53 record for frontend (only if hostedZone provided)
+    if (props.hostedZone) {
+      new route53.ARecord(this, 'FrontendAliasRecord', {
+        zone: props.hostedZone,
+        recordName: props.subdomain || 'gruesome',
+        target: route53.RecordTarget.fromAlias(
+          new route53_targets.CloudFrontTarget(distribution)
+        ),
+      });
+    }
 
     // Outputs
     new cdk.CfnOutput(this, 'WebsiteUrl', {
-      value: `https://gruesome.skeptomai.com`,
+      value: props.certificate
+        ? `https://${props.domainName || 'gruesome.skeptomai.com'}`
+        : `https://${distribution.distributionDomainName}`,
+      description: props.certificate ? 'Custom domain URL' : 'CloudFront distribution URL',
     });
     new cdk.CfnOutput(this, 'DistributionId', {
       value: distribution.distributionId,

@@ -11,6 +11,11 @@
     <title>Gruesome - Z-Machine Game Platform</title>
     <link rel="stylesheet" href="style.css">
     <script src="dev-config.js"></script>
+
+    <!-- Google Fonts - Terminal fonts for retro styling -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&family=Share+Tech+Mono&family=VT323&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="container">
@@ -21,6 +26,9 @@
                 <button id="logout-button" style="display:none;">Logout</button>
             </div>
         </header>
+
+        <!-- Flash Messages -->
+        <div id="flash-messages"></div>
 
         <!-- Login Section -->
         <div id="login-section" class="section">
@@ -91,18 +99,107 @@
 
         <!-- Game Player Section -->
         <div id="game-player" class="section" style="display:none;">
-            <div class="game-controls">
-                <button id="back-button">← Back to Library</button>
-                <button id="save-button">💾 Save Game</button>
-                <button id="load-button">📂 Load Save</button>
+            <!-- Control Panels -->
+            <div class="control-panels">
+                <h3 onclick="toggleControlPanels()" style="cursor: pointer; margin: 0 0 12px 0; font-size: 0.9em; color: #999; text-transform: uppercase; letter-spacing: 0.5px; user-select: none;">
+                    <span id="controls-toggle-icon">▼</span> Controls
+                </h3>
+                <div id="controls-content">
+                    <div class="game-controls">
+                        <button id="back-button">← Back to Library</button>
+                        <button id="save-button">💾 Save Game</button>
+                        <button id="load-button">📂 Load Save</button>
+                    </div>
+
+                    <!-- Visual Settings Panel -->
+                    <div id="visual-settings" class="settings-panel">
+                        <h3 onclick="toggleVisualSettings()" style="cursor: pointer;">
+                            <span id="settings-toggle-icon">▼</span> Visual Settings
+                        </h3>
+                        <div id="settings-content">
+                            <div class="settings-row">
+                                <div class="settings-group">
+                                    <label>Theme:</label>
+                                    <div id="theme-toggle" class="theme-toggle"></div>
+                                </div>
+                                <div class="settings-group">
+                                    <label>Font:</label>
+                                    <div id="font-toggle" class="font-toggle"></div>
+                                </div>
+                            </div>
+                            <div class="settings-row">
+                                <div class="settings-group">
+                                    <label>CRT Effect:</label>
+                                    <div id="crt-toggle" class="crt-toggle"></div>
+                                </div>
+                                <div class="settings-group">
+                                    <label>Blur:</label>
+                                    <div id="blur-toggle" class="blur-toggle"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
+
             <div id="game-output"></div>
-            <div class="input-area">
-                <span class="prompt">&gt;</span>
-                <input type="text" id="game-input" placeholder="Enter command..." autocomplete="off">
-            </div>
         </div>
     </div>
+
+    <!-- SVG Filters for CRT effects -->
+    <svg style="position: absolute; width: 0; height: 0;">
+        <defs>
+            <!-- CRT effect - No blur (sharp text, no glow) -->
+            <filter id="crt-blur-none" x="-5%" y="-5%" width="110%" height="110%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="0" result="softened"/>
+                <feGaussianBlur in="SourceGraphic" stdDeviation="0" result="glow"/>
+                <feMerge>
+                    <feMergeNode in="glow"/>
+                    <feMergeNode in="softened"/>
+                </feMerge>
+            </filter>
+
+            <!-- CRT effect - Light blur -->
+            <filter id="crt-blur-light" x="-5%" y="-5%" width="110%" height="110%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="0.2" result="softened"/>
+                <feGaussianBlur in="SourceGraphic" stdDeviation="1.0" result="glow"/>
+                <feMerge>
+                    <feMergeNode in="glow"/>
+                    <feMergeNode in="softened"/>
+                </feMerge>
+            </filter>
+
+            <!-- CRT effect - Medium blur -->
+            <filter id="crt-blur-medium" x="-5%" y="-5%" width="110%" height="110%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="0.5" result="softened"/>
+                <feGaussianBlur in="SourceGraphic" stdDeviation="2.0" result="glow"/>
+                <feMerge>
+                    <feMergeNode in="glow"/>
+                    <feMergeNode in="softened"/>
+                </feMerge>
+            </filter>
+
+            <!-- CRT effect - Heavy blur (very blurry CRT look) -->
+            <filter id="crt-blur-heavy" x="-5%" y="-5%" width="110%" height="110%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="1.0" result="softened"/>
+                <feGaussianBlur in="SourceGraphic" stdDeviation="4.0" result="glow"/>
+                <feMerge>
+                    <feMergeNode in="glow"/>
+                    <feMergeNode in="softened"/>
+                </feMerge>
+            </filter>
+
+            <!-- Combined CRT effect (legacy, kept for compatibility) -->
+            <filter id="crt-full" x="-5%" y="-5%" width="110%" height="110%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="0.3" result="softened"/>
+                <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="glow"/>
+                <feMerge>
+                    <feMergeNode in="glow"/>
+                    <feMergeNode in="softened"/>
+                </feMerge>
+            </filter>
+        </defs>
+    </svg>
 
     <script type="module" src="app.js"></script>
 </body>
