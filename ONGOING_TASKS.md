@@ -1063,6 +1063,7 @@ src/
 - ✅ **Focus Management**: Keyboard focus maintained after command submission
 - ✅ **Save/Restore Input Bug**: Fixed input area not being recreated after loading saved game (frontend/app.js:832-835)
 - ✅ **Save Button State**: Disabled Save button when game ends (Load remains enabled to restart from save) (frontend/app.js:700-701)
+- ✅ **In-Game Save/Restore**: Implemented handlers for typing 'save' and 'restore' commands (frontend/app.js:705-753)
 
 **Authentication Improvements**:
 - ✅ **Error Messages**: Wrong password now shows "Invalid credentials" instead of "Cognito error: service error"
@@ -1106,6 +1107,8 @@ src/
 4. `fbabfdb` - fix: Recreate input area after restoring saved game
 5. `84b091f` - fix: Disable Save/Load buttons when game ends
 6. `1ac206e` - fix: Only disable Save button on quit, keep Load enabled
+7. `4df10a3` - fix: Let game display natural state after restore
+8. `4eb4019` - fix: Implement in-game save/restore command handlers
 
 ---
 
