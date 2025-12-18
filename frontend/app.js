@@ -643,6 +643,12 @@ window.loadGame = async function(gameId) {
         gameLibrary.style.display = 'none';
         gamePlayer.style.display = 'block';
 
+        // Enable Save and Load buttons
+        const saveButton = document.getElementById('save-button');
+        const loadButton = document.getElementById('load-button');
+        if (saveButton) saveButton.disabled = false;
+        if (loadButton) loadButton.disabled = false;
+
         // Wrap game output in CRT container if CRT is enabled
         if (!gameOutput.parentElement.classList.contains('crt-container')) {
             const crtContainer = document.createElement('div');
@@ -690,6 +696,11 @@ function runUntilInput() {
         }
         if (result.quit) {
             gameOutput.textContent += '\n\n[Game Over]';
+            // Disable Save and Load buttons when game ends
+            const saveButton = document.getElementById('save-button');
+            const loadButton = document.getElementById('load-button');
+            if (saveButton) saveButton.disabled = true;
+            if (loadButton) loadButton.disabled = true;
             break;
         }
     } while (!result.needs_input && !result.quit);
@@ -808,6 +819,12 @@ async function handleLoadGame() {
         // Restore save state
         wasmInterpreter.restore_game(saveData);
         gameOutput.textContent = '\n[Save loaded successfully!]\n\n';
+
+        // Enable Save and Load buttons (in case they were disabled from previous game quit)
+        const saveButton = document.getElementById('save-button');
+        const loadButton = document.getElementById('load-button');
+        if (saveButton) saveButton.disabled = false;
+        if (loadButton) loadButton.disabled = false;
 
         // Run until input needed to show current game state
         runUntilInput();
