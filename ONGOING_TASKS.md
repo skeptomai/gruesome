@@ -1061,6 +1061,7 @@ src/
 - ✅ **Command Preservation**: Fixed commands being overwritten by converting input area to text before processing
 - ✅ **Input Integration**: Input field now inside terminal for authentic terminal feel
 - ✅ **Focus Management**: Keyboard focus maintained after command submission
+- ✅ **Save/Restore Input Bug**: Fixed input area not being recreated after loading saved game (frontend/app.js:816-819)
 
 **Authentication Improvements**:
 - ✅ **Error Messages**: Wrong password now shows "Invalid credentials" instead of "Cognito error: service error"
@@ -1101,6 +1102,7 @@ src/
 1. `14f3578` - fix: Resolve CRT scrolling and command preservation issues
 2. `e95d75b` - fix: Improve auth error messages for invalid credentials
 3. `ae63984` - fix: Use debug format for Cognito error matching
+4. `fbabfdb` - fix: Recreate input area after restoring saved game
 
 ---
 
