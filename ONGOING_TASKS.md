@@ -2,7 +2,16 @@
 
 ## 🎯 **CURRENT STATE** (December 18, 2025)
 
-**Latest Session**: Retro Terminal Styling & Gameplay Fixes - **COMPLETE** ✅
+**Latest Session**: Game Library Expansion & Debugging - **IN PROGRESS** 🔧
+
+### **Known Issues**
+
+**🔧 Enchanter Compatibility Issue** (December 18, 2025):
+- **Status**: Removed from both staging and production
+- **Symptom**: Game initialization exceeds 10,000 steps (infinite loop during startup)
+- **Other Games**: Hitchhiker's Guide, Planetfall, Wishbringer all working correctly
+- **Files**: Removed from S3 and DynamoDB in both environments
+- **Next Step**: Debug interpreter compatibility with Enchanter (runs locally but hangs in WASM)
 
 ### **Production Systems Status**
 

@@ -173,7 +173,7 @@ For uploading games to the platform:
 - ✅ Hitchhiker's Guide to the Galaxy (`hhgg`) - December 18, 2025
 - ✅ Planetfall (`planetfall`) - December 18, 2025
 - ✅ Wishbringer (`wishbringer`) - December 18, 2025
-- ✅ Enchanter (`enchanter`) - December 18, 2025
+- ❌ Enchanter (`enchanter`) - Removed December 18, 2025 (WASM compatibility issue - infinite loop during initialization)
 
 ### Pending Upload
 - 📋 Seastalker

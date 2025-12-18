@@ -385,6 +385,9 @@ function updateAuthUI() {
     newPasswordInput.style.display = 'none';
     newPasswordInput.required = false;
 
+    // Get password requirements element
+    const passwordRequirements = document.getElementById('password-requirements');
+
     if (authMode === 'signup') {
         // Signup mode: email + username + password
         emailInput.style.display = 'block';
@@ -396,6 +399,8 @@ function updateAuthUI() {
         authSubmit.textContent = 'Create Account';
         toggleAuthLink.textContent = 'Already have an account? Login';
         forgotPasswordLink.style.display = 'inline';
+        // Show password requirements for signup
+        if (passwordRequirements) passwordRequirements.style.display = 'block';
     } else if (authMode === 'reset') {
         // Password reset step 1: username only
         usernameInput.style.display = 'block';
@@ -403,6 +408,8 @@ function updateAuthUI() {
         authSubmit.textContent = 'Send Reset Code';
         toggleAuthLink.textContent = 'Back to Login';
         forgotPasswordLink.style.display = 'none';
+        // Hide password requirements
+        if (passwordRequirements) passwordRequirements.style.display = 'none';
     } else if (authMode === 'confirm-reset') {
         // Password reset step 2: username + code + new password
         usernameInput.style.display = 'block';
@@ -414,6 +421,8 @@ function updateAuthUI() {
         authSubmit.textContent = 'Reset Password';
         toggleAuthLink.textContent = 'Back to Login';
         forgotPasswordLink.style.display = 'none';
+        // Show password requirements for new password
+        if (passwordRequirements) passwordRequirements.style.display = 'block';
     } else {
         // Login mode: username + password
         usernameInput.style.display = 'block';
@@ -423,6 +432,8 @@ function updateAuthUI() {
         authSubmit.textContent = 'Login';
         toggleAuthLink.textContent = 'Need an account? Sign up';
         forgotPasswordLink.style.display = 'inline';
+        // Hide password requirements for login
+        if (passwordRequirements) passwordRequirements.style.display = 'none';
     }
 }
 
@@ -630,17 +641,25 @@ function createInputArea() {
 // Load and Start Game
 window.loadGame = async function(gameId) {
     try {
+        console.log(`loadGame: Starting to load game ${gameId}`);
+
         // Get download URL
+        console.log(`loadGame: Fetching download URL for ${gameId}`);
         const response = await fetch(`${API_BASE}/api/games/${gameId}/file`);
         const data = await response.json();
+        console.log(`loadGame: Got download URL`);
 
         // Download game file
+        console.log(`loadGame: Downloading game file from S3`);
         const gameResponse = await fetch(data.download_url);
         const gameData = await gameResponse.arrayBuffer();
+        console.log(`loadGame: Downloaded ${gameData.byteLength} bytes`);
 
         // Initialize WASM interpreter with game data
+        console.log(`loadGame: Initializing WASM interpreter`);
         wasmInterpreter = new WasmInterpreter(new Uint8Array(gameData));
         currentGame = gameId;
+        console.log(`loadGame: WASM interpreter initialized`);
 
         // Clear game output
         gameOutput.textContent = '';
@@ -667,7 +686,9 @@ window.loadGame = async function(gameId) {
         applyVisualSettings();
 
         // Start game - step until it needs input
+        console.log(`loadGame: Starting game execution`);
         runUntilInput();
+        console.log(`loadGame: Game ready for input`);
 
         // Create input area after game text
         createInputArea();
@@ -676,6 +697,7 @@ window.loadGame = async function(gameId) {
         if (gameInput) gameInput.focus();
 
     } catch (error) {
+        console.error(`loadGame: Error loading game ${gameId}:`, error);
         showFlashMessage('Failed to load game: ' + error.message, 'error');
     }
 };
@@ -683,8 +705,19 @@ window.loadGame = async function(gameId) {
 // Run interpreter until it needs input
 function runUntilInput() {
     let result;
+    let stepCount = 0;
+    const MAX_STEPS = 10000; // Prevent infinite loops
+
     do {
+        stepCount++;
+        if (stepCount > MAX_STEPS) {
+            console.error('runUntilInput: Maximum steps exceeded, possible infinite loop');
+            gameOutput.textContent += '\n\n[ERROR: Game initialization failed - too many steps]';
+            throw new Error('Game initialization exceeded maximum steps');
+        }
+
         result = wasmInterpreter.step();
+
         if (result.output) {
             // Filter out duplicate ">" prompt at end of output
             let output = result.output;
@@ -723,6 +756,8 @@ function runUntilInput() {
             break;
         }
     } while (!result.needs_input && !result.quit && !result.needs_restore_data);
+
+    console.log(`runUntilInput completed after ${stepCount} steps`);
 }
 
 // Handle in-game restore command (when user types "restore")

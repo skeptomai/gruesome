@@ -126,6 +126,42 @@ input[type="email"] {
     font-family: inherit;
 }
 
+/* Password Requirements */
+.password-requirements {
+    background: #0f0f0f;
+    border: 1px solid #00aa00;
+    border-radius: 4px;
+    padding: 12px;
+    margin-top: -5px;
+    font-size: 0.9em;
+}
+
+.password-requirements .requirements-title {
+    color: #00ff00;
+    font-weight: bold;
+    margin-bottom: 6px;
+}
+
+.password-requirements ul {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+}
+
+.password-requirements li {
+    color: #00cc00;
+    padding: 2px 0;
+    padding-left: 20px;
+    position: relative;
+}
+
+.password-requirements li:before {
+    content: "▸";
+    position: absolute;
+    left: 5px;
+    color: #00aa00;
+}
+
 button {
     padding: 10px 20px;
     background: #00ff00;
