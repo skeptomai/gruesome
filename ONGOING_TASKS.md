@@ -1064,6 +1064,7 @@ src/
 - ✅ **Save/Restore Input Bug**: Fixed input area not being recreated after loading saved game (frontend/app.js:832-835)
 - ✅ **Save Button State**: Disabled Save button when game ends (Load remains enabled to restart from save) (frontend/app.js:700-701)
 - ✅ **In-Game Save/Restore**: Implemented handlers for typing 'save' and 'restore' commands (frontend/app.js:705-753)
+- ✅ **Auto-Collapse Controls**: Controls default to collapsed and auto-collapse on input focus (frontend/app.js:25, 621-625)
 
 **Authentication Improvements**:
 - ✅ **Error Messages**: Wrong password now shows "Invalid credentials" instead of "Cognito error: service error"
@@ -1109,6 +1110,7 @@ src/
 6. `1ac206e` - fix: Only disable Save button on quit, keep Load enabled
 7. `4df10a3` - fix: Let game display natural state after restore
 8. `4eb4019` - fix: Implement in-game save/restore command handlers
+9. `db11e3b` - feat: Auto-collapse controls for cleaner gameplay UX
 
 ---
 
