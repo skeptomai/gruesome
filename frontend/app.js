@@ -22,7 +22,7 @@ let visualSettings = {
     crtEnabled: false,
     blurLevel: 'medium',
     collapsed: false,
-    controlsCollapsed: false
+    controlsCollapsed: true  // Default to collapsed for cleaner initial view
 };
 
 // DOM Elements - initialized after DOM is ready
@@ -617,6 +617,12 @@ function createInputArea() {
     // Set up event listeners
     if (gameInput) {
         gameInput.addEventListener('keypress', handleGameInput);
+        // Auto-collapse controls when input is focused (for more screen space)
+        gameInput.addEventListener('focus', () => {
+            if (!visualSettings.controlsCollapsed) {
+                toggleControlPanels();
+            }
+        });
         // Prompt stays visible - no need to hide/show
     }
 }
