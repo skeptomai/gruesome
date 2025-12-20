@@ -881,6 +881,11 @@ async function handleLoadGame() {
 
         const data = await response.json();
 
+        // Check for API errors
+        if (!response.ok || !data.saves) {
+            throw new Error(data.message || data.error || 'Failed to load saves');
+        }
+
         if (data.saves.length === 0) {
             showFlashMessage('No saves found for this game', 'info');
             return;
