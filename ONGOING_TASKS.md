@@ -67,9 +67,19 @@
   - `src/main.rs`: --unsafe-no-limits command-line flag
 - **Verification**:
   - ✅ Enchanter intro text prints completely ("richly woven spell")
-  - ✅ Game starts normally and is playable
+  - ✅ Game starts normally and is playable locally
   - ✅ --unsafe-no-limits flag works with warning message
-  - ✅ All existing games (Zork I, etc.) still work
+  - ✅ All existing games (Zork I, etc.) still work locally and online
+- **Frontend Integration Fix** (December 20, 2025):
+  - **Issue**: Frontend MAX_STEPS limit too low for Enchanter
+  - **Symptom**: "Game initialization exceeded maximum steps" when loading online
+  - **Root Cause**: `frontend/app.js:709` had `MAX_STEPS = 10000` (insufficient)
+  - **Solution**: Increased to `MAX_STEPS = 100000` with explanatory comment
+  - **Files Modified**: `frontend/app.js`
+  - **Deployment**: ✅ Deployed to both staging and production
+  - **Verification**: ✅ Enchanter works online (intro + first input confirmed)
+  - **Documentation**: Created `docs/WASM_JS_EXECUTION_ARCHITECTURE.md` explaining two-layer execution model
+  - **Status**: ✅ COMPLETE - Enchanter fully playable online
 
 - **Historical Investigation** (preserved for reference):
   - Step-by-step trace comparison: our interpreter vs Frotz

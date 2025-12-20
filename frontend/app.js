@@ -706,7 +706,7 @@ window.loadGame = async function(gameId) {
 function runUntilInput() {
     let result;
     let stepCount = 0;
-    const MAX_STEPS = 10000; // Prevent infinite loops
+    const MAX_STEPS = 100000; // Allow for long game intros like Enchanter (1116 chars)
 
     do {
         stepCount++;
