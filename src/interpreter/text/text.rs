@@ -12,7 +12,17 @@ pub fn decode_string(
     addr: usize,
     abbrev_table_addr: usize,
 ) -> Result<(String, usize), String> {
-    decode_string_recursive(memory, addr, abbrev_table_addr, 0)
+    decode_string_recursive(memory, addr, abbrev_table_addr, 0, false)
+}
+
+/// Decode a string with optional safety limit bypass (for debugging)
+pub fn decode_string_unsafe(
+    memory: &[u8],
+    addr: usize,
+    abbrev_table_addr: usize,
+    disable_limits: bool,
+) -> Result<(String, usize), String> {
+    decode_string_recursive(memory, addr, abbrev_table_addr, 0, disable_limits)
 }
 
 /// Internal recursive function with depth tracking
@@ -21,6 +31,7 @@ fn decode_string_recursive(
     addr: usize,
     abbrev_table_addr: usize,
     depth: u8,
+    disable_limits: bool,
 ) -> Result<(String, usize), String> {
     if depth > 3 {
         debug!(
@@ -31,7 +42,19 @@ fn decode_string_recursive(
     }
     let mut result = String::new();
     let mut offset = addr;
-    let max_string_length = 1000; // Prevent runaway string generation
+
+    // Calculate safe maximum based on memory size
+    // Theoretical max: every byte could be part of a Z-string word
+    // Each word (2 bytes) = 3 Z-chars, so max = (memory_size / 2) * 3
+    // This ensures we never reject a valid string while preventing runaway allocation
+    // Example: Enchanter (107KB) → 161K char limit (vs old hardcoded 1000)
+    // This fixes the bug where Enchanter's 1116-char intro was truncated at 1000 chars,
+    // causing PC to land in the middle of string data (0x5827) instead of after it (0x5875)
+    let max_string_length = if disable_limits {
+        usize::MAX // No limit when explicitly disabled for debugging
+    } else {
+        (memory.len() / 2) * 3
+    };
 
     // First, collect all z-characters
     let mut all_zchars = Vec::new();
@@ -106,7 +129,13 @@ fn decode_string_recursive(
             }
 
             // Recursively decode the abbreviation string
-            match decode_string_recursive(memory, abbrev_byte_addr, abbrev_table_addr, depth + 1) {
+            match decode_string_recursive(
+                memory,
+                abbrev_byte_addr,
+                abbrev_table_addr,
+                depth + 1,
+                disable_limits,
+            ) {
                 Ok((abbrev_str, _)) => {
                     // Check for obviously repetitive patterns
                     if abbrev_str.len() > 50 || abbrev_str.contains("rmyrmy") {

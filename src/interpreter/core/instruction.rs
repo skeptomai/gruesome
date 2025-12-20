@@ -99,6 +99,16 @@ pub struct Instruction {
 impl Instruction {
     /// Decode an instruction from memory at the given address
     pub fn decode(memory: &[u8], addr: usize, version: u8) -> Result<Self, String> {
+        Self::decode_with_options(memory, addr, version, false)
+    }
+
+    /// Decode an instruction with optional safety limit bypass
+    pub fn decode_with_options(
+        memory: &[u8],
+        addr: usize,
+        version: u8,
+        unsafe_no_limits: bool,
+    ) -> Result<Self, String> {
         if addr >= memory.len() {
             return Err(format!("Instruction address {addr} out of bounds"));
         }
@@ -447,7 +457,7 @@ impl Instruction {
             } else {
                 0x40 // Fallback
             };
-            match text::decode_string(memory, offset, abbrev_addr) {
+            match text::decode_string_unsafe(memory, offset, abbrev_addr, unsafe_no_limits) {
                 Ok((string, len)) => {
                     offset += len;
                     (Some(string), len)

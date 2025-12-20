@@ -232,7 +232,7 @@ impl VM {
                     .ok_or("No active routine for local variable access")?;
                 let index = (var - 1) as usize;
                 if index >= frame.num_locals as usize {
-                    debug!("WARNING: Reading local variable {} but routine only has {} locals - returning 0", 
+                    debug!("WARNING: Reading local variable {} but routine only has {} locals - returning 0",
                            var, frame.num_locals);
                     return Ok(0);
                 }

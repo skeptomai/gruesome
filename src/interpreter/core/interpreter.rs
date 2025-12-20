@@ -42,6 +42,8 @@ pub struct Interpreter {
     pub single_step: bool,
     /// PC range for single-stepping (start, end)
     pub step_range: Option<(u32, u32)>,
+    /// Disable safety limits (for debugging malformed files)
+    pub unsafe_no_limits: bool,
     /// V3 input handler (for v1-v3 games)
     pub(crate) v3_input: Option<V3Input>,
     /// V4+ input handler (for v4+ games)  
@@ -106,6 +108,7 @@ impl Interpreter {
             routine_names: RoutineNames::new(),
             single_step: false,
             step_range: None,
+            unsafe_no_limits: false,
             v3_input,
             v4_input,
             display,
@@ -116,6 +119,11 @@ impl Interpreter {
     /// Enable or disable debug mode
     pub fn set_debug(&mut self, debug: bool) {
         self.debug = debug;
+    }
+
+    /// Enable unsafe mode (disable safety limits for debugging)
+    pub fn enable_unsafe_mode(&mut self) {
+        self.unsafe_no_limits = true;
     }
 
     /// Enable single-step debugging for a PC range
@@ -375,10 +383,11 @@ impl Interpreter {
                 debug!("🚨 TRINITY EXECUTION at PC {:05x}", pc);
             }
 
-            let instruction = match Instruction::decode(
+            let instruction = match Instruction::decode_with_options(
                 &self.vm.game.memory,
                 pc as usize,
                 self.vm.game.header.version,
+                self.unsafe_no_limits,
             ) {
                 Ok(inst) => inst,
                 Err(e) => {
@@ -1822,6 +1831,7 @@ impl Interpreter {
                                 self.vm.pc, offset, new_pc
                             );
                         }
+
                         self.vm.pc = new_pc;
                         return Ok(ExecutionResult::Branched);
                     }

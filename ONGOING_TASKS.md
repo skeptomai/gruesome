@@ -1,17 +1,81 @@
 # ONGOING TASKS - PROJECT STATUS
 
-## 🎯 **CURRENT STATE** (December 18, 2025)
+## 🎯 **CURRENT STATE** (December 20, 2025)
 
-**Latest Session**: Game Library Expansion & Debugging - **IN PROGRESS** 🔧
+**Latest Session**: Enchanter Bug Fix - **COMPLETE** ✅
 
-### **Known Issues**
+### **Recently Fixed Issues**
 
-**🔧 Enchanter Compatibility Issue** (December 18, 2025):
-- **Status**: Removed from both staging and production
-- **Symptom**: Game initialization exceeds 10,000 steps (infinite loop during startup)
-- **Other Games**: Hitchhiker's Guide, Planetfall, Wishbringer all working correctly
-- **Files**: Removed from S3 and DynamoDB in both environments
-- **Next Step**: Debug interpreter compatibility with Enchanter (runs locally but hangs in WASM)
+**✅ Enchanter Compatibility Issue - FIXED** (December 20, 2025):
+- **Status**: Fixed - Z-string decoder had insufficient max_string_length limit
+- **Symptom**: Crashes with "Invalid Long form opcode 0x00 at address 5851" during intro text
+- **Game File**: Valid (checksum verified, works perfectly in Frotz)
+- **Root Cause Analysis**:
+  - Crash occurs at address 0x5851 which contains 0x00 (invalid opcode)
+  - Jumped there by JL (jump if less) instruction at 0x582e
+  - JL instruction: `22 71 b4 61` = "JL 113, Vb4, branch on false, offset 33"
+  - Variable 0xb4 (180) = global variable 164, which has value 0
+  - Comparison: 113 < 0 = false, branch on false = SHOULD branch
+  - Branch calculation: 0x582e + 4 bytes + (33 - 2) = 0x5851 ✅ CORRECT
+  - Address 0x5851 contains: `00 2a 70 d7` (string data, not code)
+- **The Bug**:
+  - Prior instruction at 0x582b: `clear_attr V02, #0048`
+  - Warning: "Reading local variable 2 but routine only has 0 locals - returning 0"
+  - This routine genuinely has 0 locals declared in its header
+  - Suggests call stack corruption or incorrect routine header parsing
+  - Branch target lands in what should be string data, not executable code
+- **Evidence**:
+  - Frotz runs Enchanter perfectly (game file is valid)
+  - Same crash occurs locally and in WASM
+  - Text cuts off mid-word: "intones a richl" (should be "richly")
+  - Crash happens during long intro text rendering
+- **Zork I Comparison**:
+  - Zork I: 270 JL instructions, no "0 locals" warnings, works perfectly
+  - Enchanter: 679 JL instructions, has routine at 0x581b with 0 locals
+  - Enchanter routine header: `0x581b: 00` (legitimately 0 locals)
+  - Instruction at 0x582b (15 bytes into routine): `clear_attr V02, #0048`
+  - This reads local variable 2 in a routine with 0 locals!
+  - Interpreter returns 0 (correct behavior per Z-Machine spec)
+  - But something after this causes PC corruption or wrong branch target
+- **The Mystery**:
+  - Frotz runs Enchanter perfectly with the same game file
+  - Our interpreter returns 0 for missing local (should be correct)
+  - Branch calculation appears correct (0x5832 + 31 = 0x5851)
+  - Target 0x5851 contains string data, not code
+  - **Hypothesis**: Returning 0 is correct, but we have a separate bug in:
+    - Call stack management?
+    - PC tracking?
+    - Branch offset calculation?
+    - Routine boundary detection?
+- **ACTUAL ROOT CAUSE DISCOVERED** (December 20, 2025):
+  - Print instruction at 0x558a prints inline Z-string
+  - String is 1116 Z-characters long (372 words)
+  - `text.rs:34` had `max_string_length = 1000` (hardcoded limit)
+  - Decoder stopped after 1000 chars = 334 words = 668 bytes
+  - PC incorrectly set to 0x558b + 668 = **0x5827** (middle of string!)
+  - String actually ends at 0x5873, PC should be 0x5875
+  - Execution at 0x5827 treats string bytes as code → crash
+- **THE FIX**:
+  - Changed limit to `(memory.len() / 2) * 3` (based on file size)
+  - For Enchanter: 107520 bytes → limit = 161,280 Z-chars ✅
+  - Added `--unsafe-no-limits` CLI flag to disable limits for debugging
+  - Threaded flag through Interpreter → Instruction → decode_string
+- **Files Modified**:
+  - `src/interpreter/text/text.rs`: Dynamic limit calculation
+  - `src/interpreter/core/instruction.rs`: decode_with_options() method
+  - `src/interpreter/core/interpreter.rs`: unsafe_no_limits field
+  - `src/main.rs`: --unsafe-no-limits command-line flag
+- **Verification**:
+  - ✅ Enchanter intro text prints completely ("richly woven spell")
+  - ✅ Game starts normally and is playable
+  - ✅ --unsafe-no-limits flag works with warning message
+  - ✅ All existing games (Zork I, etc.) still work
+
+- **Historical Investigation** (preserved for reference):
+  - Step-by-step trace comparison: our interpreter vs Frotz
+  - Verify call stack state before the crash
+  - Check if PC is being corrupted somewhere
+  - Investigate if address 0x5851 should actually be reachable code
 
 **✅ DNS Stack Cross-Region Export Issue - RESOLVED** (December 19, 2025):
 - **Status**: Fixed - Infrastructure updated successfully ✅
