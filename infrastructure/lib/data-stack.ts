@@ -7,6 +7,7 @@ interface DataStackProps extends cdk.StackProps {
   tableName?: string;         // Optional custom table name for staging
   savesBucketName?: string;   // Optional custom saves bucket name for staging
   gamesBucketName?: string;   // Optional custom games bucket name for staging
+  frontendOrigin?: string;    // Frontend origin for CORS (e.g., 'https://staging.gruesome.skeptomai.com')
 }
 
 export class DataStack extends cdk.Stack {
@@ -68,9 +69,15 @@ export class DataStack extends cdk.Stack {
       ],
       cors: [
         {
-          allowedOrigins: ['https://gruesome.skeptomai.com'],
+          // Avoid duplicate origins (CloudFormation validation error)
+          // Staging: allow both staging and production origins
+          // Production: allow only production origin
+          allowedOrigins: props?.frontendOrigin && props.frontendOrigin !== 'https://gruesome.skeptomai.com'
+            ? [props.frontendOrigin, 'https://gruesome.skeptomai.com']  // Staging: both origins
+            : ['https://gruesome.skeptomai.com'],  // Production: single origin
           allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT, s3.HttpMethods.DELETE],
           allowedHeaders: ['*'],
+          maxAge: 3000,
         },
       ],
       removalPolicy: cdk.RemovalPolicy.RETAIN,

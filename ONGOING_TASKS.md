@@ -13,6 +13,26 @@
 - **Files**: Removed from S3 and DynamoDB in both environments
 - **Next Step**: Debug interpreter compatibility with Enchanter (runs locally but hangs in WASM)
 
+**✅ DNS Stack Cross-Region Export Issue - RESOLVED** (December 19, 2025):
+- **Status**: Fixed - Infrastructure updated successfully ✅
+- **Root Cause**: CloudFormation exports immutable once in use - CDK crossRegionReferences uses exports underneath
+- **Solution Implemented**: Replaced DnsStack/crossRegionReferences with DnsImportStack hardcoding certificate ARN
+- **Changes Made**:
+  1. Created GruesomeDnsImportStack (production) and GruesomeDnsImportStackStaging (staging)
+  2. Hardcoded certificate ARN: `arn:aws:acm:us-east-1:349145659387:certificate/33ae9627-b894-4edc-a480-201bc6e8b529`
+  3. Removed all crossRegionReferences flags from backend and frontend stacks
+  4. Fixed CORS duplicate origin issue in DataStack
+  5. Deployed to both production and staging environments
+- **Result**:
+  - ✅ Production: GruesomeDnsImportStack + backend/frontend deployed without cross-region exports
+  - ✅ Staging: GruesomeDnsImportStackStaging + backend/frontend deployed without cross-region exports
+  - ✅ No more CloudFormation export limitations blocking infrastructure updates
+  - ✅ Infrastructure is now fully updatable and maintainable
+- **Legacy Cleanup**:
+  - ✅ Old GruesomeDnsStack successfully deleted using `--retain-resources` flag
+  - ✅ Certificate orphaned from CloudFormation management (remains in AWS, in use by CloudFront)
+  - ✅ Infrastructure fully cleaned up - no orphaned stacks
+
 ### **Production Systems Status**
 
 **Web Platform** (gruesome.skeptomai.com):

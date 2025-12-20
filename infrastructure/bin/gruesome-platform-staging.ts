@@ -22,6 +22,18 @@ const frontendStagingEnv = {
 
 // Import existing DNS resources from production
 // The wildcard cert *.gruesome.skeptomai.com covers both production and staging
+//
+// CERTIFICATE MANAGEMENT:
+// The certificate ARN is hardcoded per AWS best practices for static resources.
+// Certificate ARNs never change (renewal doesn't change the ARN).
+// The certificate is NOT managed by CloudFormation (orphaned resource).
+// It was created by the old GruesomeDnsStack and retained when that stack was deleted.
+// This is the ideal state for long-lived shared resources.
+//
+// ARCHITECTURE DECISION:
+// No crossRegionReferences flag - avoids CloudFormation export limitations.
+// Exports are immutable once in use, causing deployment failures.
+// Hardcoding the ARN allows clean infrastructure updates without workarounds.
 const dnsImportStack = new DnsImportStack(app, 'GruesomeDnsImportStackStaging', {
   env: frontendStagingEnv,
   certificateArn: 'arn:aws:acm:us-east-1:349145659387:certificate/33ae9627-b894-4edc-a480-201bc6e8b529',
@@ -34,6 +46,7 @@ const dataStackStaging = new DataStack(app, 'GruesomeDataStackStaging', {
   tableName: 'gruesome-platform-staging',
   savesBucketName: 'gruesome-saves-staging',
   gamesBucketName: 'gruesome-games-staging',
+  frontendOrigin: 'https://staging.gruesome.skeptomai.com',
 });
 
 // Auth Stack (staging - separate Cognito)
@@ -44,7 +57,6 @@ const authStackStaging = new AuthStack(app, 'GruesomeAuthStackStaging', {
 // Backend Stack (staging API with custom domain)
 const backendStackStaging = new BackendStack(app, 'GruesomeBackendStackStaging', {
   env: stagingEnv,
-  crossRegionReferences: true,  // Enable cross-region references for certificate
   table: dataStackStaging.table,
   savesBucket: dataStackStaging.savesBucket,
   gamesBucket: dataStackStaging.gamesBucket,
@@ -61,7 +73,6 @@ const backendStackStaging = new BackendStack(app, 'GruesomeBackendStackStaging',
 // Frontend Stack (staging website with custom domain)
 const frontendStackStaging = new FrontendStack(app, 'GruesomeFrontendStackStaging', {
   env: frontendStagingEnv,
-  crossRegionReferences: true,  // Enable cross-region references for certificate
   bucketName: 'gruesome-frontend-staging',
   hostedZone: dnsImportStack.hostedZone,
   certificate: dnsImportStack.certificate,

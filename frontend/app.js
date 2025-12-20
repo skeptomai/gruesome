@@ -857,11 +857,21 @@ async function handleSaveGame() {
 
         const data = await response.json();
 
+        // Check for API errors
+        if (!response.ok || !data.upload_url) {
+            throw new Error(data.message || data.error || 'Failed to get upload URL');
+        }
+
         // Upload save file to S3
-        await fetch(data.upload_url, {
+        const uploadResponse = await fetch(data.upload_url, {
             method: 'PUT',
             body: saveData
         });
+
+        // Verify upload succeeded
+        if (!uploadResponse.ok) {
+            throw new Error('Failed to upload save file to storage. Please try again.');
+        }
 
         showFlashMessage('Game saved successfully!', 'success');
     } catch (error) {
@@ -904,8 +914,16 @@ async function handleLoadGame() {
 
         const downloadData = await downloadResponse.json();
 
+        // Check for API errors (orphaned save detection)
+        if (!downloadResponse.ok || !downloadData.download_url) {
+            throw new Error(downloadData.message || downloadData.error || 'Failed to get save file');
+        }
+
         // Download save file
         const saveResponse = await fetch(downloadData.download_url);
+        if (!saveResponse.ok) {
+            throw new Error('Failed to download save file from storage');
+        }
         const saveData = new Uint8Array(await saveResponse.arrayBuffer());
 
         // Restore save state

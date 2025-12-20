@@ -65,7 +65,23 @@ impl SaveService {
         let mut saves = Vec::new();
         if let Some(items) = result.items {
             for item in items {
-                saves.push(Self::parse_save_metadata(item)?);
+                let save = Self::parse_save_metadata(item)?;
+
+                // Validate S3 file exists to prevent orphaned saves
+                let s3_exists = self.s3_client
+                    .head_object()
+                    .bucket(&self.saves_bucket)
+                    .key(&save.s3_key)
+                    .send()
+                    .await
+                    .is_ok();
+
+                if s3_exists {
+                    saves.push(save);
+                } else {
+                    eprintln!("WARNING: Orphaned save detected - metadata exists but S3 file missing: user_id={}, game_id={}, save_name={}, s3_key={}",
+                        user_id, game_id, save.save_name, save.s3_key);
+                }
             }
         }
 
@@ -81,6 +97,23 @@ impl SaveService {
     ) -> Result<String, GameError> {
         // Verify save exists
         let save = self.get_save_metadata(user_id, game_id, save_name).await?;
+
+        // Validate S3 file exists before generating presigned URL
+        let s3_exists = self.s3_client
+            .head_object()
+            .bucket(&self.saves_bucket)
+            .key(&save.s3_key)
+            .send()
+            .await
+            .is_ok();
+
+        if !s3_exists {
+            eprintln!("ERROR: Orphaned save - metadata exists but S3 file missing: user_id={}, game_id={}, save_name={}, s3_key={}",
+                user_id, game_id, save_name, save.s3_key);
+            return Err(GameError::InternalError(format!(
+                "Save file not found in storage. The save may have been corrupted or deleted."
+            )));
+        }
 
         // Generate presigned URL (valid for 5 minutes)
         let presigning_config = PresigningConfig::expires_in(Duration::from_secs(300))
