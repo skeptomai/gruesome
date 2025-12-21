@@ -80,25 +80,28 @@ function applyVisualSettings() {
         ? gameOutput.parentElement
         : null;
 
-    // Remove existing theme/font/CRT classes from gameOutput
+    // Remove existing theme/font/CRT classes from gameOutput and container
     gameOutput.className = gameOutput.className
         .split(' ')
         .filter(c => !c.startsWith('theme-') && !c.startsWith('font-') &&
                      !c.startsWith('crt-') && c !== 'effects-enabled')
         .join(' ');
 
-    // Apply theme and font to gameOutput
-    gameOutput.classList.add(`theme-${visualSettings.theme}`);
-    gameOutput.classList.add(`font-${visualSettings.font}`);
-
-    // Apply CRT effects to container (not scrolling element)
+    // Apply theme and font to CRT container (so both status line and game output inherit)
     if (crtContainer) {
         crtContainer.className = 'crt-container';
+        crtContainer.classList.add(`theme-${visualSettings.theme}`);
+        crtContainer.classList.add(`font-${visualSettings.font}`);
+
         if (visualSettings.crtEnabled) {
             crtContainer.classList.add('crt-enhanced');
             crtContainer.classList.add(`crt-blur-${visualSettings.blurLevel}`);
             crtContainer.classList.add('effects-enabled');
         }
+    } else {
+        // If no CRT container yet, apply to gameOutput directly
+        gameOutput.classList.add(`theme-${visualSettings.theme}`);
+        gameOutput.classList.add(`font-${visualSettings.font}`);
     }
 }
 
@@ -803,11 +806,18 @@ window.loadGame = async function(gameId) {
         if (saveButton) saveButton.disabled = false;
         if (loadButton) loadButton.disabled = false;
 
-        // Wrap game output in CRT container if CRT is enabled
+        // Wrap status line and game output in CRT container
         if (!gameOutput.parentElement.classList.contains('crt-container')) {
+            const statusLine = document.getElementById('status-line');
             const crtContainer = document.createElement('div');
             crtContainer.className = 'crt-container';
-            gameOutput.parentElement.insertBefore(crtContainer, gameOutput);
+
+            // Insert CRT container before status line (or game output if no status line)
+            const insertBefore = statusLine || gameOutput;
+            insertBefore.parentElement.insertBefore(crtContainer, insertBefore);
+
+            // Move both status line and game output into CRT container
+            if (statusLine) crtContainer.appendChild(statusLine);
             crtContainer.appendChild(gameOutput);
         }
 
@@ -859,6 +869,22 @@ function runUntilInput() {
             gameOutput.textContent += output;
             gameOutput.scrollTop = gameOutput.scrollHeight;
         }
+
+        // Update status line (V3 games like Zork)
+        if (result.status_location) {
+            const statusLine = document.getElementById('status-line');
+            const statusLocation = document.getElementById('status-location');
+            const statusScore = document.getElementById('status-score');
+            const statusMoves = document.getElementById('status-moves');
+
+            if (statusLine && statusLocation && statusScore && statusMoves) {
+                statusLine.style.display = 'flex';
+                statusLocation.textContent = result.status_location;
+                statusScore.textContent = result.status_score;
+                statusMoves.textContent = result.status_moves;
+            }
+        }
+
         if (result.error) {
             console.error('Game error:', result.error);
         }
