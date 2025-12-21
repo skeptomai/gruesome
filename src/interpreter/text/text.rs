@@ -5,6 +5,38 @@ pub const ALPHABET_A0: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
 const ALPHABET_A1: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const ALPHABET_A2_V3: &[u8] = b" \r0123456789.,!?_#'\"/\\-:()";
 
+/// Convert ZSCII code to Unicode character
+/// Implements the Z-Machine ZSCII character set (section 3.8 of spec)
+fn zscii_to_unicode(zscii: u8) -> char {
+    match zscii {
+        // Standard ASCII printable characters (32-126)
+        32..=126 => zscii as char,
+
+        // ZSCII 155-223: Accented characters and special symbols
+        // (Full mapping according to Z-Machine Standard 1.1, section 3.8.2.1)
+        155 => 'ä', 156 => 'ö', 157 => 'ü', 158 => 'Ä', 159 => 'Ö',
+        160 => 'Ü', 161 => 'ß', 162 => '»', 163 => '«', 164 => 'ë',
+        165 => 'ï', 166 => 'ÿ', 167 => 'Ë', 168 => 'Ï', 169 => 'á',
+        170 => 'é', 171 => 'í', 172 => 'ó', 173 => 'ú', 174 => 'ý',
+        175 => 'Á', 176 => 'É', 177 => 'Í', 178 => 'Ó', 179 => 'Ú',
+        180 => 'Ý', 181 => 'à', 182 => 'è', 183 => 'ì', 184 => 'ò',
+        185 => 'ù', 186 => 'À', 187 => 'È', 188 => 'Ì', 189 => 'Ò',
+        190 => 'Ù', 191 => 'â', 192 => 'ê', 193 => 'î', 194 => 'ô',
+        195 => 'û', 196 => 'Â', 197 => 'Ê', 198 => 'Î', 199 => 'Ô',
+        200 => 'Û', 201 => 'å', 202 => 'Å', 203 => 'ø', 204 => 'Ø',
+        205 => 'ã', 206 => 'ñ', 207 => 'õ', 208 => 'Ã', 209 => 'Ñ',
+        210 => 'Õ', 211 => 'æ', 212 => 'Æ', 213 => 'ç', 214 => 'Ç',
+        215 => 'þ', 216 => 'ð', 217 => 'Þ', 218 => 'Ð', 219 => '£',
+        220 => 'œ', 221 => 'Œ', 222 => '¡', 223 => '¿',
+
+        // Unknown/unsupported ZSCII codes - use '?' as fallback
+        _ => {
+            debug!("Unsupported ZSCII code {}", zscii);
+            '?'
+        }
+    }
+}
+
 /// Decode a Z-string from memory starting at the given address
 /// Returns the decoded string and the number of bytes consumed
 pub fn decode_string(
@@ -196,15 +228,10 @@ fn decode_string_recursive(
                                 );
                                 i += 2; // Skip the two chars we just read
 
-                                // Convert ZSCII to char
-                                if (32..=126).contains(&zscii_code) {
-                                    let ch = zscii_code as char;
-                                    debug!("ZSCII code {} = '{}'", zscii_code, ch);
-                                    ch
-                                } else {
-                                    debug!("ZSCII code {} out of printable range", zscii_code);
-                                    '?'
-                                }
+                                // Convert ZSCII to Unicode char
+                                let ch = zscii_to_unicode(zscii_code);
+                                debug!("ZSCII code {} = '{}'", zscii_code, ch);
+                                ch
                             } else {
                                 debug!("ZSCII escape at end of string");
                                 '?'
