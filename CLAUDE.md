@@ -178,6 +178,16 @@ When deploying code changes:
 
 **Rationale**: The 2025-12-20 incident where I deployed to production at 00:20:01 without permission. User discovered this only when they said "look things over again before we deploy to production" - but I had already deployed. This violated user's trust and control over their production environment.
 
+**Technical Safeguard**: The `deploy-frontend.sh` script now requires manual confirmation for production deployments. When deploying to production, the script prompts:
+```
+⚠️  WARNING: You are about to deploy to PRODUCTION ⚠️
+Type 'DEPLOY TO PRODUCTION' to continue:
+```
+
+This interactive prompt **cannot be bypassed by Claude** - production deployments now require the user to run the command manually. Staging deployments proceed without prompting.
+
+**As Claude**: I cannot deploy to production via `deploy-frontend.sh prod` because I cannot provide interactive input. I can only deploy to staging. For production, I must ask the user to run the deployment command themselves.
+
 ### Deployment Documentation
 
 See `infrastructure/LAMBDA_DEPLOYMENT.md` for complete Lambda deployment procedures.

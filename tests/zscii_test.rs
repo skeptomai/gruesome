@@ -21,10 +21,13 @@ fn test_zscii_extended_characters() {
     memory[addr + 2] = (word2 >> 8) as u8;
     memory[addr + 3] = (word2 & 0xFF) as u8;
 
-    let (decoded, _) = decode_string(&memory, addr, abbrev_table)
-        .expect("Should decode ZSCII 155");
+    let (decoded, _) = decode_string(&memory, addr, abbrev_table).expect("Should decode ZSCII 155");
 
-    assert_eq!(decoded.trim(), "ä", "ZSCII 155 should decode to ä (a-umlaut)");
+    assert_eq!(
+        decoded.trim(),
+        "ä",
+        "ZSCII 155 should decode to ä (a-umlaut)"
+    );
 }
 
 #[test]
@@ -45,10 +48,13 @@ fn test_zscii_inverted_question_mark() {
     memory[addr + 2] = (word2 >> 8) as u8;
     memory[addr + 3] = (word2 & 0xFF) as u8;
 
-    let (decoded, _) = decode_string(&memory, addr, abbrev_table)
-        .expect("Should decode ZSCII 223");
+    let (decoded, _) = decode_string(&memory, addr, abbrev_table).expect("Should decode ZSCII 223");
 
-    assert_eq!(decoded.trim(), "¿", "ZSCII 223 should decode to ¿ (inverted question mark)");
+    assert_eq!(
+        decoded.trim(),
+        "¿",
+        "ZSCII 223 should decode to ¿ (inverted question mark)"
+    );
 }
 
 #[test]
@@ -68,8 +74,11 @@ fn test_zscii_guillemet() {
     memory[addr + 2] = (word2 >> 8) as u8;
     memory[addr + 3] = (word2 & 0xFF) as u8;
 
-    let (decoded, _) = decode_string(&memory, addr, abbrev_table)
-        .expect("Should decode ZSCII 162");
+    let (decoded, _) = decode_string(&memory, addr, abbrev_table).expect("Should decode ZSCII 162");
 
-    assert_eq!(decoded.trim(), "»", "ZSCII 162 should decode to » (right guillemet)");
+    assert_eq!(
+        decoded.trim(),
+        "»",
+        "ZSCII 162 should decode to » (right guillemet)"
+    );
 }

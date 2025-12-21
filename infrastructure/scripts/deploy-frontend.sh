@@ -12,6 +12,21 @@ if [ "$ENV" != "staging" ] && [ "$ENV" != "prod" ]; then
     exit 1
 fi
 
+# Production deployment safety check
+if [ "$ENV" == "prod" ]; then
+    echo ""
+    echo "⚠️  WARNING: You are about to deploy to PRODUCTION ⚠️"
+    echo ""
+    echo "This will update the live site at gruesome.skeptomai.com"
+    echo ""
+    read -p "Type 'DEPLOY TO PRODUCTION' to continue: " confirm
+    if [ "$confirm" != "DEPLOY TO PRODUCTION" ]; then
+        echo "Production deployment cancelled."
+        exit 1
+    fi
+    echo ""
+fi
+
 # Configuration
 if [ "$ENV" == "staging" ]; then
     BUCKET="gruesome-frontend-staging"

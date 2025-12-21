@@ -1,22 +1,15 @@
 {
-  "name": "gruesome-frontend",
-  "version": "1.0.0",
-  "description": "Gruesome Z-Machine Platform Frontend",
-  "scripts": {
-    "dev": "browser-sync start --server --files '*.html,*.css,*.js' --no-open --port 3000",
-    "dev:api": "API_ENV=production npm run dev",
-    "dev:mock": "API_ENV=mock npm run dev",
-    "build": "echo 'No build step needed - static files'",
-    "deploy:staging": "../infrastructure/scripts/deploy-frontend.sh staging",
-    "deploy:prod": "../infrastructure/scripts/deploy-frontend.sh prod"
-  },
-  "devDependencies": {
-    "browser-sync": "^3.0.3"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/skeptomai/gruesome.git"
-  },
-  "author": "",
-  "license": "MIT"
+  "name": "gruesome",
+  "type": "module",
+  "version": "2.16.0",
+  "files": [
+    "gruesome_bg.wasm",
+    "gruesome.js",
+    "gruesome.d.ts"
+  ],
+  "main": "gruesome.js",
+  "types": "gruesome.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
 }
