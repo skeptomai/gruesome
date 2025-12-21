@@ -34,9 +34,27 @@ echo ""
 # Navigate to frontend directory
 cd "$(dirname "$0")/../../frontend"
 
+# Generate build version info (git commit hash + timestamp)
+COMMIT_HASH=$(git -C .. rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M UTC")
+BUILD_VERSION="${COMMIT_HASH} @ ${BUILD_TIME}"
+
+echo "Build version: $BUILD_VERSION"
+echo ""
+
+# Inject build version into HTML (only for staging)
+if [ "$ENV" == "staging" ]; then
+    # Create temporary HTML with build version injected
+    sed "s/<span id=\"build-version\">DEV<\/span>/<span id=\"build-version\">$BUILD_VERSION<\/span>/" index.html > index.tmp.html
+    mv index.tmp.html index.deploy.html
+else
+    # Use original HTML for production (no watermark)
+    cp index.html index.deploy.html
+fi
+
 # Upload files to S3
 echo "Uploading files to S3..."
-aws s3 cp index.html "s3://$BUCKET/index.html" \
+aws s3 cp index.deploy.html "s3://$BUCKET/index.html" \
     --content-type "text/html" \
     --cache-control "no-cache, no-store, must-revalidate" \
     --metadata-directive REPLACE
@@ -85,3 +103,6 @@ echo "URL: https://$DOMAIN"
 echo ""
 echo "Note: CloudFront invalidation may take 1-3 minutes"
 echo "Check status: aws cloudfront get-invalidation --distribution-id $DISTRIBUTION_ID --id $INVALIDATION_ID"
+
+# Cleanup temporary file
+rm -f index.deploy.html

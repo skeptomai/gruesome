@@ -450,6 +450,19 @@ async function initApp() {
         await loadGameLibrary();
         await checkAdminRole();  // Check if user is admin
     }
+
+    // Show version watermark on staging
+    const isStaging = API_BASE.includes('staging') || API_BASE.includes('localhost');
+    if (isStaging) {
+        const watermark = document.getElementById('version-watermark');
+        const buildVersion = document.getElementById('build-version');
+        if (watermark && buildVersion) {
+            // Build version will be injected by deployment script
+            // Format: COMMIT_HASH @ TIMESTAMP
+            buildVersion.textContent = buildVersion.textContent || 'DEV';
+            watermark.style.display = 'block';
+        }
+    }
 }
 
 // Logout
