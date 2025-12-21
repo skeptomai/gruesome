@@ -60,6 +60,44 @@
 - **Commit**: `276b42d` - "fix: Admin button not appearing on initial login"
 - **Verification**: ✅ Admin and logout buttons appear immediately on initial login
 
+**✅ Smart Auto-Scroll for Long Introductions - FIXED** (December 21, 2025) [Issue #1]:
+- **Status**: Fixed long game introductions scrolling away and becoming unrecoverable ✅
+- **GitHub Issue**: https://github.com/skeptomai/gruesome/issues/1
+- **Symptom**: Enchanter's long intro scrolls away, cannot be retrieved by scrolling up
+- **Root Cause**: Terminal output forced scroll to bottom on every output update
+  - `gameOutput.scrollTop = gameOutput.scrollHeight` forced scrolling regardless of user position
+  - Standard terminal emulators only auto-scroll when user is already at bottom
+  - Prevented users from reading earlier content during long output sequences
+- **Solution**: Implemented smart auto-scroll with standard terminal emulator behavior
+  - Added `isScrolledToBottom(element, threshold)` helper to detect user scroll position
+  - Added `smartScrollToBottom(element)` wrapper for conditional scrolling
+  - Only auto-scrolls when user is within 50px of bottom
+  - Preserves scroll position if user has scrolled up to read earlier content
+- **Implementation Details**:
+  ```javascript
+  function isScrolledToBottom(element, threshold = 50) {
+      if (!element) return false;
+      const scrollBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+      return scrollBottom < threshold;
+  }
+
+  function smartScrollToBottom(element) {
+      if (!element) return;
+      if (isScrolledToBottom(element)) {
+          element.scrollTop = element.scrollHeight;
+      }
+  }
+  ```
+- **Files Modified**: `frontend/app.js` (runUntilInput, handleGameInput)
+- **Deployment**:
+  - ✅ Tested on staging: https://staging.gruesome.skeptomai.com
+  - ✅ Deployed to production: https://gruesome.skeptomai.com
+  - ✅ Cache invalidation: Both staging and production CloudFront distributions
+- **Commits**:
+  - `6bb2327` - "fix: Implement smart auto-scroll for long introductions (Issue #1)"
+- **GitHub Issue**: ✅ Closed with detailed explanation and verification
+- **Verification**: ✅ Enchanter intro readable, scroll position preserved during long output
+
 **✅ Admin Panel Backend & DynamoDB Schema Compatibility - FIXED** (December 20, 2025):
 - **Status**: Complete admin Lambda backend implemented with schema compatibility fixes ✅
 - **Symptom**: Admin panel showed no games despite 7 games existing in DynamoDB
