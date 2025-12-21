@@ -1437,6 +1437,10 @@ button:disabled {
   background: var(--terminal-fg);
   color: var(--terminal-bg);
   transition: background-color 0.3s ease, color 0.3s ease;
+  /* Keep status line fixed at top while content scrolls */
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .status-location {
@@ -1450,10 +1454,4 @@ button:disabled {
 .status-right {
   text-align: right;
   white-space: nowrap;
-}
-
-/* Make status line work with CRT container */
-.crt-container .status-line {
-  position: relative;
-  z-index: 1;
 }

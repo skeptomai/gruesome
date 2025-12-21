@@ -1,10 +1,64 @@
 # ONGOING TASKS - PROJECT STATUS
 
-## 🎯 **CURRENT STATE** (December 20, 2025)
+## 🎯 **CURRENT STATE** (December 21, 2025)
 
-**Latest Session**: Admin Panel Backend Implementation - **COMPLETE** ✅
+**Latest Session**: Status Line & Admin Button Fixes - **COMPLETE** ✅
 
 ### **Recently Fixed Issues**
+
+**✅ Status Line Implementation - COMPLETE** (December 21, 2025):
+- **Status**: Classic Zork-style status line fully implemented and deployed ✅
+- **Feature**: Added header showing location (left), score/moves (right)
+- **Implementation Details**:
+  1. **Backend Already Complete**: WasmDisplay's show_status() sends StatusUpdate messages
+  2. **Frontend Display Added** (~40 minutes work):
+     - HTML structure: Status line div with location and score/moves spans
+     - JavaScript: Read status fields from StepResult, update DOM on each step
+     - CSS: Inverse video styling using CSS variables for theme support
+  3. **Styling Iterations**:
+     - **First Issue**: Status line missing CRT effects and theme styling
+       - **Fix**: Wrapped status line and game output in CRT container
+     - **Second Issue**: CRT effects worked but colors/fonts didn't match theme
+       - **Root Cause**: Theme classes applied to gameOutput, status line is sibling
+       - **Fix**: Apply theme/font classes to CRT container so both children inherit
+  4. **Theme Integration**:
+     - Uses CSS variables: --terminal-fg, --terminal-bg, --font-terminal
+     - Inverse video: background and foreground colors swapped
+     - Border bottom separating status line from game output
+     - Responsive layout with flex display
+- **Files Modified**:
+  - `frontend/index.html`: Added status line HTML structure
+  - `frontend/app.js`: Status update logic, CRT container wrapping, theme application
+  - `frontend/style.css`: Status line styling with theme support
+- **Deployment**:
+  - ✅ Tested on staging: https://staging.gruesome.skeptomai.com
+  - ✅ Deployed to production: https://gruesome.skeptomai.com
+  - ✅ Cache invalidation: Both staging (E3VWHUOBR5D259) and production (E2GRMKUTDD19Z6)
+- **Commit**: `9d235c5` - "feat: Add classic Zork-style status line to game display"
+- **Verification**: ✅ Status line shows location, score, moves with proper theme styling and CRT effects
+
+**✅ Admin Button Visibility Bug - FIXED** (December 21, 2025):
+- **Status**: Fixed admin/logout buttons not appearing on initial page load ✅
+- **Symptom**: When logging in as admin user, admin and logout buttons don't appear until page refresh
+- **Root Cause**: DOM reference staleness in checkAdminRole() function
+  - loadGameLibrary() re-fetches logout button element from DOM
+  - checkAdminRole() used stale reference to admin button without re-fetching
+  - Element exists in DOM but JavaScript variable holds stale reference
+- **Solution**: Added admin button element re-fetch in checkAdminRole()
+  ```javascript
+  async function checkAdminRole() {
+      // Re-get the admin button element in case reference was lost
+      adminButton = document.getElementById('admin-button');
+      // ... rest of function
+  }
+  ```
+- **Pattern Match**: Mirrors logout button re-fetch pattern in loadGameLibrary()
+- **Files Modified**: `frontend/app.js` (lines 1115-1140)
+- **Deployment**:
+  - ✅ Deployed to production: https://gruesome.skeptomai.com
+  - ✅ Cache invalidation: Production CloudFront distribution
+- **Commit**: `276b42d` - "fix: Admin button not appearing on initial login"
+- **Verification**: ✅ Admin and logout buttons appear immediately on initial login
 
 **✅ Admin Panel Backend & DynamoDB Schema Compatibility - FIXED** (December 20, 2025):
 - **Status**: Complete admin Lambda backend implemented with schema compatibility fixes ✅
