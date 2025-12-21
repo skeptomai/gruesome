@@ -1114,6 +1114,9 @@ async function handleLoadGame() {
 // Check if user has admin role
 async function checkAdminRole() {
     try {
+        // Re-get the admin button element in case reference was lost
+        adminButton = document.getElementById('admin-button');
+
         const response = await fetch(`${API_BASE}/api/auth/me`, {
             headers: { 'Authorization': `Bearer ${accessToken}` }
         });
