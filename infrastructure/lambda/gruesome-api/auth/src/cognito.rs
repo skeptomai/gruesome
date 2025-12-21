@@ -23,19 +23,16 @@ impl CognitoService {
     }
 
     /// Sign up a new user
-    pub async fn sign_up(
-        &self,
-        email: &str,
-        password: &str,
-        username: &str,
-    ) -> AuthResult<String> {
+    pub async fn sign_up(&self, email: &str, password: &str, username: &str) -> AuthResult<String> {
         info!("Signing up user: {}", email);
 
         let email_attr = AttributeType::builder()
             .name("email")
             .value(email)
             .build()
-            .map_err(|e| AuthError::InternalError(format!("Failed to build email attribute: {}", e)))?;
+            .map_err(|e| {
+                AuthError::InternalError(format!("Failed to build email attribute: {}", e))
+            })?;
 
         let result = self
             .client
@@ -207,9 +204,9 @@ impl CognitoService {
                 error!("Cognito ForgotPassword error: {:?}", e);
                 match e.to_string() {
                     s if s.contains("UserNotFoundException") => AuthError::UserNotFound,
-                    s if s.contains("LimitExceededException") => {
-                        AuthError::InvalidRequest("Too many password reset attempts. Please try again later.".to_string())
-                    }
+                    s if s.contains("LimitExceededException") => AuthError::InvalidRequest(
+                        "Too many password reset attempts. Please try again later.".to_string(),
+                    ),
                     _ => AuthError::CognitoError(e.to_string()),
                 }
             })?;

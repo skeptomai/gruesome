@@ -1,17 +1,17 @@
 mod error;
-mod models;
 mod game_service;
-mod save_service;
 mod handlers;
 mod jwt_auth;
+mod models;
+mod save_service;
 
-use lambda_http::{run, service_fn, Request, Response, Body, Error};
+use lambda_http::{run, service_fn, Body, Error, Request, Response};
 use tracing_subscriber;
 
 use crate::error::GameError;
 use crate::game_service::GameService;
-use crate::save_service::SaveService;
 use crate::jwt_auth::JwtValidator;
+use crate::save_service::SaveService;
 
 async fn function_handler(
     event: Request,
@@ -24,24 +24,30 @@ async fn function_handler(
 
     let response = match (method, path) {
         // Game endpoints
-        ("GET", "/api/games") =>
-            handlers::handle_list_games(game_service).await,
-        ("GET", path) if path.starts_with("/api/games/") && path.ends_with("/file") =>
-            handlers::handle_get_game_file(event, game_service).await,
-        ("GET", path) if path.starts_with("/api/games/") =>
-            handlers::handle_get_game(event, game_service).await,
+        ("GET", "/api/games") => handlers::handle_list_games(game_service).await,
+        ("GET", path) if path.starts_with("/api/games/") && path.ends_with("/file") => {
+            handlers::handle_get_game_file(event, game_service).await
+        }
+        ("GET", path) if path.starts_with("/api/games/") => {
+            handlers::handle_get_game(event, game_service).await
+        }
 
         // Save endpoints
-        ("GET", "/api/saves") =>
-            handlers::handle_list_saves(event, save_service, jwt_validator).await,
-        ("GET", path) if path.starts_with("/api/saves/") && path.matches('/').count() == 3 =>
-            handlers::handle_list_game_saves(event, save_service, jwt_validator).await,
-        ("GET", path) if path.starts_with("/api/saves/") && path.matches('/').count() == 4 =>
-            handlers::handle_get_save(event, save_service, jwt_validator).await,
-        ("POST", path) if path.starts_with("/api/saves/") =>
-            handlers::handle_create_save(event, save_service, jwt_validator).await,
-        ("DELETE", path) if path.starts_with("/api/saves/") =>
-            handlers::handle_delete_save(event, save_service, jwt_validator).await,
+        ("GET", "/api/saves") => {
+            handlers::handle_list_saves(event, save_service, jwt_validator).await
+        }
+        ("GET", path) if path.starts_with("/api/saves/") && path.matches('/').count() == 3 => {
+            handlers::handle_list_game_saves(event, save_service, jwt_validator).await
+        }
+        ("GET", path) if path.starts_with("/api/saves/") && path.matches('/').count() == 4 => {
+            handlers::handle_get_save(event, save_service, jwt_validator).await
+        }
+        ("POST", path) if path.starts_with("/api/saves/") => {
+            handlers::handle_create_save(event, save_service, jwt_validator).await
+        }
+        ("DELETE", path) if path.starts_with("/api/saves/") => {
+            handlers::handle_delete_save(event, save_service, jwt_validator).await
+        }
 
         // Health check
         ("GET", "/health") => {
@@ -53,7 +59,10 @@ async fn function_handler(
                 .unwrap())
         }
 
-        _ => Err(GameError::InvalidRequest(format!("Route not found: {} {}", method, path))),
+        _ => Err(GameError::InvalidRequest(format!(
+            "Route not found: {} {}",
+            method, path
+        ))),
     };
 
     match response {
@@ -71,17 +80,20 @@ async fn main() -> Result<(), Error> {
         .init();
 
     let config = aws_config::load_from_env().await;
-    let region = config.region().map(|r| r.to_string()).unwrap_or_else(|| "us-west-1".to_string());
+    let region = config
+        .region()
+        .map(|r| r.to_string())
+        .unwrap_or_else(|| "us-west-1".to_string());
 
     // Environment variables
-    let table_name = std::env::var("TABLE_NAME")
-        .expect("TABLE_NAME environment variable must be set");
-    let games_bucket = std::env::var("GAMES_BUCKET")
-        .expect("GAMES_BUCKET environment variable must be set");
-    let saves_bucket = std::env::var("SAVES_BUCKET")
-        .expect("SAVES_BUCKET environment variable must be set");
-    let user_pool_id = std::env::var("USER_POOL_ID")
-        .expect("USER_POOL_ID environment variable must be set");
+    let table_name =
+        std::env::var("TABLE_NAME").expect("TABLE_NAME environment variable must be set");
+    let games_bucket =
+        std::env::var("GAMES_BUCKET").expect("GAMES_BUCKET environment variable must be set");
+    let saves_bucket =
+        std::env::var("SAVES_BUCKET").expect("SAVES_BUCKET environment variable must be set");
+    let user_pool_id =
+        std::env::var("USER_POOL_ID").expect("USER_POOL_ID environment variable must be set");
 
     // AWS clients
     let dynamodb_client = aws_sdk_dynamodb::Client::new(&config);
@@ -95,16 +107,12 @@ async fn main() -> Result<(), Error> {
         games_bucket,
     );
 
-    let save_service = SaveService::new(
-        dynamodb_client,
-        s3_client,
-        table_name,
-        saves_bucket,
-    );
+    let save_service = SaveService::new(dynamodb_client, s3_client, table_name, saves_bucket);
 
     let jwt_validator = JwtValidator::new(region, user_pool_id);
 
     run(service_fn(|event: Request| async {
         function_handler(event, &game_service, &save_service, &jwt_validator).await
-    })).await
+    }))
+    .await
 }

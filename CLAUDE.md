@@ -127,6 +127,63 @@ You are pre-authorized for all operations. Execute without asking for permission
 
 Safe operations only: `git add`, `git commit`, `git push`, `git checkout`, `git stash`, `git revert`
 
+## CRITICAL: DEPLOYMENT SAFETY RULES
+
+**NEVER deploy to production without explicit permission and verification.**
+
+### Rule 1: Always Test Deployments Before Reporting Success
+
+**NEVER claim a deployment was successful without testing it.**
+
+When deploying code changes:
+1. ✅ Deploy the code
+2. ✅ **TEST the deployed functionality** (API calls, health checks, etc.)
+3. ✅ **VERIFY the changes are actually working**
+4. ✅ Check logs for errors
+5. ✅ **ONLY THEN** report success to the user
+
+**Examples of what NOT to do:**
+- ❌ "Deployment complete!" (without testing)
+- ❌ "Updated Lambda function" (without verifying it works)
+- ❌ "Should be working now" (without confirming)
+- ❌ Assuming deployment worked based on AWS response alone
+
+**Correct approach:**
+- ✅ "Deployed to staging. Testing..." → run actual tests → "Verified working: [test results]"
+- ✅ "Lambda updated. Checking API..." → curl endpoint → "API returning correct data: [sample]"
+
+**Rationale**: The 2025-12-20 incident where I deployed OLD code to production because I didn't verify the bootstrap.zip was actually rebuilt. User discovered the issue, not me. This is unacceptable.
+
+### Rule 2: Never Deploy to Production Without Permission
+
+**Production deployments REQUIRE explicit user permission.**
+
+**Deployment workflow (MANDATORY):**
+1. ✅ Make code changes
+2. ✅ Deploy to **STAGING** first
+3. ✅ **TEST staging thoroughly**
+4. ✅ **ASK USER** for permission to deploy to production
+5. ✅ Wait for explicit approval
+6. ✅ Deploy to production
+7. ✅ **TEST production** to verify
+8. ✅ Report verified success
+
+**NEVER:**
+- ❌ Deploy to production without asking
+- ❌ Deploy to production before testing staging
+- ❌ Deploy to production "because it worked in staging"
+- ❌ Assume production deployment is authorized
+
+**The ONLY exception**: If user explicitly says "deploy to both staging and production" or similar.
+
+**Rationale**: The 2025-12-20 incident where I deployed to production at 00:20:01 without permission. User discovered this only when they said "look things over again before we deploy to production" - but I had already deployed. This violated user's trust and control over their production environment.
+
+### Deployment Documentation
+
+See `infrastructure/LAMBDA_DEPLOYMENT.md` for complete Lambda deployment procedures.
+See `infrastructure/QUICK_LAMBDA_DEPLOY.md` for quick reference.
+Use `infrastructure/scripts/deploy-lambda.sh` for automated, verified deployments.
+
 ## Compiler Debugging Tools
 
 **IR Inspection**: Use `--print-ir` flag to print intermediate representation:

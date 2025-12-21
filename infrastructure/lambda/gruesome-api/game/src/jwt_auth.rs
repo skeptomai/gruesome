@@ -3,10 +3,10 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Claims {
-    pub sub: String,        // Subject (user ID)
-    pub exp: usize,         // Expiration time
-    pub iat: usize,         // Issued at
-    pub token_use: String,  // "access" or "id"
+    pub sub: String,       // Subject (user ID)
+    pub exp: usize,        // Expiration time
+    pub iat: usize,        // Issued at
+    pub token_use: String, // "access" or "id"
 }
 
 pub struct JwtValidator {
@@ -26,8 +26,8 @@ impl JwtValidator {
     /// Returns user_id (sub claim) on success
     pub fn validate_token(&self, token: &str) -> Result<String, String> {
         // Decode header to check algorithm
-        let header = decode_header(token)
-            .map_err(|e| format!("Failed to decode JWT header: {:?}", e))?;
+        let header =
+            decode_header(token).map_err(|e| format!("Failed to decode JWT header: {:?}", e))?;
 
         if header.alg != Algorithm::RS256 {
             return Err(format!("Unsupported algorithm: {:?}", header.alg));

@@ -1,7 +1,4 @@
-use aws_sdk_dynamodb::{
-    types::AttributeValue,
-    Client,
-};
+use aws_sdk_dynamodb::{types::AttributeValue, Client};
 use std::collections::HashMap;
 use tracing::{error, info};
 
@@ -82,14 +79,13 @@ impl DynamoDbService {
                 AuthError::DynamoDbError(e.to_string())
             })?;
 
-        let item = result
-            .item()
-            .ok_or_else(|| AuthError::UserNotFound)?;
+        let item = result.item().ok_or_else(|| AuthError::UserNotFound)?;
 
         let user_id = get_string_attr(item, "user_id")?;
         let email = get_string_attr(item, "email")?;
         let username = get_string_attr(item, "username")?;
         let display_name = get_string_attr(item, "display_name")?;
+        let role = get_optional_string_attr(item, "role");
 
         // Get created_at as number and convert to RFC3339 string
         let created_at_timestamp = get_number_attr(item, "created_at")?;
@@ -103,6 +99,7 @@ impl DynamoDbService {
             username,
             display_name,
             created_at,
+            role,
         })
     }
 
@@ -133,6 +130,52 @@ impl DynamoDbService {
         info!("User profile updated successfully");
         Ok(())
     }
+
+    /// Check if a username already exists
+    pub async fn username_exists(&self, username: &str) -> AuthResult<bool> {
+        info!("Checking if username exists: {}", username);
+
+        let result = self
+            .client
+            .scan()
+            .table_name(&self.table_name)
+            .filter_expression("username = :username AND SK = :sk")
+            .expression_attribute_values(":username", AttributeValue::S(username.to_string()))
+            .expression_attribute_values(":sk", AttributeValue::S("PROFILE".to_string()))
+            .send()
+            .await
+            .map_err(|e| {
+                error!("DynamoDB Scan error: {:?}", e);
+                AuthError::DynamoDbError(e.to_string())
+            })?;
+
+        let exists = !result.items().is_empty();
+        info!("Username exists: {}", exists);
+        Ok(exists)
+    }
+
+    /// Check if an email already exists
+    pub async fn email_exists(&self, email: &str) -> AuthResult<bool> {
+        info!("Checking if email exists: {}", email);
+
+        let result = self
+            .client
+            .scan()
+            .table_name(&self.table_name)
+            .filter_expression("email = :email AND SK = :sk")
+            .expression_attribute_values(":email", AttributeValue::S(email.to_string()))
+            .expression_attribute_values(":sk", AttributeValue::S("PROFILE".to_string()))
+            .send()
+            .await
+            .map_err(|e| {
+                error!("DynamoDB Scan error: {:?}", e);
+                AuthError::DynamoDbError(e.to_string())
+            })?;
+
+        let exists = !result.items().is_empty();
+        info!("Email exists: {}", exists);
+        Ok(exists)
+    }
 }
 
 /// Helper function to extract string attribute from DynamoDB item
@@ -140,9 +183,14 @@ fn get_string_attr(item: &HashMap<String, AttributeValue>, key: &str) -> AuthRes
     item.get(key)
         .and_then(|v| v.as_s().ok())
         .map(|s| s.to_string())
-        .ok_or_else(|| {
-            AuthError::InternalError(format!("Missing or invalid attribute: {}", key))
-        })
+        .ok_or_else(|| AuthError::InternalError(format!("Missing or invalid attribute: {}", key)))
+}
+
+/// Helper function to extract optional string attribute from DynamoDB item
+fn get_optional_string_attr(item: &HashMap<String, AttributeValue>, key: &str) -> Option<String> {
+    item.get(key)
+        .and_then(|v| v.as_s().ok())
+        .map(|s| s.to_string())
 }
 
 /// Helper function to extract number attribute from DynamoDB item

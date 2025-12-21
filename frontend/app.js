@@ -14,6 +14,10 @@ let accessToken = null;        // JWT authentication token
 let currentGame = null;        // Currently loaded game ID
 let wasmInterpreter = null;    // WASM Z-Machine interpreter instance
 let authMode = 'login';        // Authentication mode: 'login', 'signup', 'reset', or 'confirm-reset'
+let isAdmin = false;           // Whether current user has admin role
+let currentUploadData = null;  // Data for current file upload (for metadata form)
+let editingGameId = null;      // Game ID currently being edited
+let deletingGameId = null;     // Game ID pending deletion
 
 // Visual Settings State - Retro terminal styling
 let visualSettings = {
@@ -26,9 +30,14 @@ let visualSettings = {
 };
 
 // DOM Elements - initialized after DOM is ready
-let loginSection, gameLibrary, gamePlayer, authStatus, gamesList, gameOutput, gameInput, logoutButton;
+let loginSection, gameLibrary, gamePlayer, adminSection, authStatus, gamesList, gameOutput, gameInput, logoutButton, adminButton;
 let emailInput, usernameInput, passwordInput, authSubmit, toggleAuthLink, forgotPasswordLink;
 let resetCodeInput, newPasswordInput;
+
+// Admin DOM Elements
+let adminGamesList, adminSearchInput, adminTabButtons, adminTabContents;
+let uploadDropzone, fileInput, uploadProgress, metadataForm;
+let editGameModal, deleteGameModal;
 
 // Flash Message Helper Functions
 function showFlashMessage(message, type = 'error') {
@@ -235,11 +244,13 @@ async function initApp() {
     loginSection = document.getElementById('login-section');
     gameLibrary = document.getElementById('game-library');
     gamePlayer = document.getElementById('game-player');
+    adminSection = document.getElementById('admin-section');
     authStatus = document.getElementById('auth-status');
     gamesList = document.getElementById('games-list');
     gameOutput = document.getElementById('game-output');
     gameInput = null;  // Will be created dynamically when game loads
     logoutButton = document.getElementById('logout-button');
+    adminButton = document.getElementById('admin-button');
 
     // Auth form elements
     emailInput = document.getElementById('email');
@@ -312,6 +323,120 @@ async function initApp() {
         loadButton.addEventListener('click', handleLoadGame);
     }
 
+    // Admin elements
+    adminGamesList = document.getElementById('admin-games-list');
+    adminSearchInput = document.getElementById('admin-search');
+    adminTabButtons = document.querySelectorAll('.admin-tab');
+    adminTabContents = document.querySelectorAll('.admin-tab-content');
+    uploadDropzone = document.getElementById('upload-dropzone');
+    fileInput = document.getElementById('game-file-input');
+    uploadProgress = document.getElementById('upload-progress');
+    metadataForm = document.getElementById('metadata-form');
+    editGameModal = document.getElementById('edit-game-modal');
+    deleteGameModal = document.getElementById('delete-game-modal');
+
+    // Set up admin button
+    if (adminButton) {
+        adminButton.addEventListener('click', showAdminPanel);
+    }
+
+    // Set up admin back button
+    const adminBackButton = document.getElementById('admin-back-button');
+    if (adminBackButton) {
+        adminBackButton.addEventListener('click', handleAdminBackToLibrary);
+    }
+
+    // Set up admin tab switching
+    adminTabButtons.forEach(btn => {
+        btn.addEventListener('click', () => switchAdminTab(btn.dataset.tab));
+    });
+
+    // Set up file upload dropzone
+    if (uploadDropzone && fileInput) {
+        // Click to browse
+        uploadDropzone.addEventListener('click', () => fileInput.click());
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileUpload(e.target.files[0]);
+            }
+        });
+
+        // Drag and drop
+        uploadDropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadDropzone.classList.add('dragover');
+        });
+
+        uploadDropzone.addEventListener('dragleave', () => {
+            uploadDropzone.classList.remove('dragover');
+        });
+
+        uploadDropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadDropzone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleFileUpload(e.dataTransfer.files[0]);
+            }
+        });
+    }
+
+    // Set up upload form buttons
+    const cancelUploadBtn = document.getElementById('cancel-upload');
+    if (cancelUploadBtn) {
+        cancelUploadBtn.addEventListener('click', resetUploadForm);
+    }
+
+    const publishGameBtn = document.getElementById('publish-game');
+    if (publishGameBtn) {
+        publishGameBtn.addEventListener('click', handlePublishGame);
+    }
+
+    // Set up edit modal
+    const closeEditModal = document.getElementById('close-edit-modal');
+    if (closeEditModal) {
+        closeEditModal.addEventListener('click', () => {
+            editGameModal.style.display = 'none';
+            editingGameId = null;
+        });
+    }
+
+    const cancelEditBtn = document.getElementById('cancel-edit');
+    if (cancelEditBtn) {
+        cancelEditBtn.addEventListener('click', () => {
+            editGameModal.style.display = 'none';
+            editingGameId = null;
+        });
+    }
+
+    const saveEditBtn = document.getElementById('save-edit');
+    if (saveEditBtn) {
+        saveEditBtn.addEventListener('click', handleSaveEdit);
+    }
+
+    // Set up delete modal
+    const closeDeleteModal = document.getElementById('close-delete-modal');
+    if (closeDeleteModal) {
+        closeDeleteModal.addEventListener('click', () => {
+            deleteGameModal.style.display = 'none';
+            deletingGameId = null;
+        });
+    }
+
+    const cancelDeleteBtn = document.getElementById('cancel-delete');
+    if (cancelDeleteBtn) {
+        cancelDeleteBtn.addEventListener('click', () => {
+            deleteGameModal.style.display = 'none';
+            deletingGameId = null;
+        });
+    }
+
+    const confirmDeleteBtn = document.getElementById('confirm-delete');
+    if (confirmDeleteBtn) {
+        confirmDeleteBtn.addEventListener('click', handleConfirmDelete);
+    }
+
     // Initialize WASM
     await init();
 
@@ -320,6 +445,7 @@ async function initApp() {
     if (savedToken) {
         accessToken = savedToken;
         await loadGameLibrary();
+        await checkAdminRole();  // Check if user is admin
     }
 }
 
@@ -601,6 +727,9 @@ async function loadGameLibrary() {
                 <p>Version: ${game.version} | Size: ${(game.file_size / 1024).toFixed(1)}KB</p>
             </div>
         `).join('');
+
+        // Check if user has admin role (and show/hide admin button)
+        await checkAdminRole();
     } catch (error) {
         gamesList.innerHTML = `<div class="error">Failed to load games: ${error.message}</div>`;
     }
@@ -950,6 +1079,650 @@ async function handleLoadGame() {
     } catch (error) {
         showFlashMessage('Failed to load save: ' + error.message, 'error');
     }
+}
+
+// ===================================================================
+// ADMIN FUNCTIONALITY
+// ===================================================================
+
+// Check if user has admin role
+async function checkAdminRole() {
+    try {
+        const response = await fetch(`${API_BASE}/api/auth/me`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+
+        if (!response.ok) {
+            isAdmin = false;
+            return;
+        }
+
+        const data = await response.json();
+        isAdmin = data.profile && data.profile.role === 'admin';
+
+        // Show/hide admin button based on role
+        if (adminButton) {
+            adminButton.style.display = isAdmin ? 'inline-block' : 'none';
+        }
+    } catch (error) {
+        console.error('Failed to check admin role:', error);
+        isAdmin = false;
+    }
+}
+
+// Admin API: Get all games
+async function adminGetAllGames() {
+    const response = await fetch(`${API_BASE}/api/admin/games`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to fetch games');
+    }
+
+    return await response.json();
+}
+
+// Admin API: Get presigned upload URL
+async function adminGetUploadUrl(filename) {
+    const response = await fetch(`${API_BASE}/api/admin/games/upload-url`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({ filename })
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to get upload URL');
+    }
+
+    return await response.json();
+}
+
+// Admin API: Create game metadata
+async function adminCreateGame(gameData) {
+    const response = await fetch(`${API_BASE}/api/admin/games`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify(gameData)
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to create game');
+    }
+
+    return await response.json();
+}
+
+// Admin API: Update game metadata
+async function adminUpdateGame(gameId, gameData) {
+    const response = await fetch(`${API_BASE}/api/admin/games/${gameId}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify(gameData)
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to update game');
+    }
+
+    return await response.json();
+}
+
+// Admin API: Delete game
+async function adminDeleteGame(gameId) {
+    const response = await fetch(`${API_BASE}/api/admin/games/${gameId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to delete game');
+    }
+
+    return await response.json();
+}
+
+// Extract Z-Machine metadata from file bytes
+function extractZMachineMetadata(bytes) {
+    if (bytes.length < 64) {
+        throw new Error('File too small to be valid Z-Machine file');
+    }
+
+    const version = bytes[0];
+    if (![3, 4, 5, 8].includes(version)) {
+        throw new Error(`Unsupported Z-Machine version: ${version}`);
+    }
+
+    const release = (bytes[2] << 8) | bytes[3];
+    const serial = String.fromCharCode(...bytes.slice(18, 24));
+    const checksum = ((bytes[28] << 8) | bytes[29]).toString(16).padStart(4, '0');
+    const fileSize = bytes.length;
+
+    return { version, release, serial, checksum, fileSize };
+}
+
+// Generate game ID from filename
+function generateGameId(filename) {
+    return filename
+        .toLowerCase()
+        .replace(/\.(z3|z4|z5|z8)$/i, '')
+        .replace(/[^a-z0-9]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+}
+
+// Navigate to admin panel
+function showAdminPanel() {
+    if (!isAdmin) {
+        showFlashMessage('Admin access required', 'error');
+        return;
+    }
+
+    loginSection.style.display = 'none';
+    gameLibrary.style.display = 'none';
+    gamePlayer.style.display = 'none';
+    adminSection.style.display = 'block';
+
+    // Load admin games list
+    loadAdminGames();
+}
+
+// Navigate back to library from admin
+function handleAdminBackToLibrary() {
+    adminSection.style.display = 'none';
+    gameLibrary.style.display = 'block';
+    loadGameLibrary();
+}
+
+// Switch between admin tabs
+function switchAdminTab(tabName) {
+    // Update tab buttons
+    adminTabButtons.forEach(btn => {
+        if (btn.dataset.tab === tabName) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    // Update tab content
+    adminTabContents.forEach(content => {
+        if (content.id === `admin-${tabName}-tab`) {
+            content.classList.add('active');
+            content.style.display = 'block';
+        } else {
+            content.classList.remove('active');
+            content.style.display = 'none';
+        }
+    });
+
+    // Reset upload form if switching away from upload tab
+    if (tabName !== 'upload') {
+        resetUploadForm();
+    }
+}
+
+// Load and render admin games list
+async function loadAdminGames() {
+    try {
+        const data = await adminGetAllGames();
+        renderAdminGamesList(data.games);
+    } catch (error) {
+        showFlashMessage('Failed to load games: ' + error.message, 'error');
+    }
+}
+
+// Render admin games list as table
+function renderAdminGamesList(games) {
+    if (!adminGamesList) return;
+
+    if (games.length === 0) {
+        adminGamesList.innerHTML = '<p class="empty-message">No games found</p>';
+        return;
+    }
+
+    // Games are already sorted by display_order from backend (nulls at end, then by title)
+
+    // Add reorder controls
+    const controls = document.createElement('div');
+    controls.className = 'reorder-controls';
+    controls.innerHTML = `
+        <button id="save-order-btn" class="primary" style="display:none;">Save New Order</button>
+        <span id="reorder-hint" class="hint-text">Drag games to reorder</span>
+    `;
+
+    const table = document.createElement('table');
+    table.className = 'admin-games-table';
+    table.id = 'games-reorder-table';
+
+    // Table header
+    const thead = document.createElement('thead');
+    thead.innerHTML = `
+        <tr>
+            <th class="drag-handle-col">⋮⋮</th>
+            <th>Title</th>
+            <th>Author</th>
+            <th>Version</th>
+            <th>Size</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    `;
+    table.appendChild(thead);
+
+    // Table body
+    const tbody = document.createElement('tbody');
+    tbody.id = 'games-tbody';
+    games.forEach((game, index) => {
+        const row = document.createElement('tr');
+        row.draggable = true;
+        row.dataset.gameId = game.game_id;
+        row.dataset.originalOrder = index;
+        row.innerHTML = `
+            <td class="drag-handle">⋮⋮</td>
+            <td><strong>${escapeHtml(game.title)}</strong></td>
+            <td>${escapeHtml(game.author)}</td>
+            <td>v${game.version}.${game.release}</td>
+            <td>${formatFileSize(game.file_size)}</td>
+            <td>${game.archived ? '<span class="archived-badge">Archived</span>' : '<span class="active-badge">Active</span>'}</td>
+            <td class="actions">
+                <button class="btn-small btn-edit" data-game-id="${game.game_id}">Edit</button>
+                <button class="btn-small btn-delete" data-game-id="${game.game_id}">Delete</button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+
+    adminGamesList.innerHTML = '';
+    adminGamesList.appendChild(controls);
+    adminGamesList.appendChild(table);
+
+    // Setup drag-and-drop reordering
+    setupDragAndDrop(tbody, games);
+
+    // Add event listeners to action buttons
+    adminGamesList.querySelectorAll('.btn-edit').forEach(btn => {
+        btn.addEventListener('click', () => handleEditGame(btn.dataset.gameId));
+    });
+    adminGamesList.querySelectorAll('.btn-delete').forEach(btn => {
+        btn.addEventListener('click', () => handleDeleteGameClick(btn.dataset.gameId));
+    });
+}
+
+// Setup drag-and-drop for game reordering
+function setupDragAndDrop(tbody, games) {
+    let draggedRow = null;
+    let orderChanged = false;
+
+    tbody.querySelectorAll('tr').forEach(row => {
+        row.addEventListener('dragstart', (e) => {
+            draggedRow = row;
+            row.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        });
+
+        row.addEventListener('dragend', (e) => {
+            row.classList.remove('dragging');
+            tbody.querySelectorAll('tr').forEach(r => r.classList.remove('drag-over'));
+        });
+
+        row.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+
+            if (draggedRow && row !== draggedRow) {
+                const rect = row.getBoundingClientRect();
+                const midpoint = rect.top + rect.height / 2;
+
+                if (e.clientY < midpoint) {
+                    row.parentNode.insertBefore(draggedRow, row);
+                } else {
+                    row.parentNode.insertBefore(draggedRow, row.nextSibling);
+                }
+            }
+        });
+
+        row.addEventListener('drop', (e) => {
+            e.preventDefault();
+            orderChanged = true;
+            const saveBtn = document.getElementById('save-order-btn');
+            if (saveBtn) saveBtn.style.display = 'inline-block';
+        });
+    });
+
+    // Save order button handler - attach after a brief delay to ensure DOM is ready
+    setTimeout(() => {
+        const saveBtn = document.getElementById('save-order-btn');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async () => {
+                await saveNewOrder(tbody, games);
+            });
+        }
+    }, 0);
+}
+
+// Save new game order
+async function saveNewOrder(tbody, games) {
+    try {
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        const updates = [];
+
+        // Build update requests for all games with new display_order
+        for (let i = 0; i < rows.length; i++) {
+            const gameId = rows[i].dataset.gameId;
+            const game = games.find(g => g.game_id === gameId);
+
+            if (game) {
+                updates.push({
+                    game_id: gameId,
+                    display_order: i,
+                    title: game.title,
+                    author: game.author,
+                    description: game.description,
+                    category: game.category || null,
+                    year: game.year || null
+                });
+            }
+        }
+
+        // Show progress
+        const saveBtn = document.getElementById('save-order-btn');
+        const originalText = saveBtn.textContent;
+        saveBtn.textContent = 'Saving...';
+        saveBtn.disabled = true;
+
+        // Send updates sequentially
+        for (const update of updates) {
+            await adminUpdateGame(update.game_id, update);
+        }
+
+        // Success
+        saveBtn.style.display = 'none';
+        saveBtn.disabled = false;
+        saveBtn.textContent = originalText;
+        showFlashMessage('Game order saved successfully!', 'success');
+
+        // Reload games to reflect new order
+        await loadAdminGames();
+
+    } catch (error) {
+        showFlashMessage('Failed to save order: ' + error.message, 'error');
+        document.getElementById('save-order-btn').disabled = false;
+    }
+}
+
+// Handle file upload
+async function handleFileUpload(file) {
+    try {
+        // Validate file
+        if (!file.name.match(/\.(z3|z4|z5|z8)$/i)) {
+            throw new Error('Invalid file type. Only .z3, .z4, .z5, .z8 files are supported.');
+        }
+
+        if (file.size > 512 * 1024) {
+            throw new Error('File too large. Maximum size is 512 KB.');
+        }
+
+        // Show progress
+        uploadDropzone.style.display = 'none';
+        uploadProgress.style.display = 'block';
+        document.getElementById('upload-status').textContent = 'Reading file...';
+
+        // Read file
+        const arrayBuffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+
+        // Extract metadata
+        const metadata = extractZMachineMetadata(bytes);
+        const gameId = generateGameId(file.name);
+
+        // Update progress
+        document.getElementById('upload-status').textContent = 'Getting upload URL...';
+
+        // Get presigned URL
+        const uploadData = await adminGetUploadUrl(file.name);
+
+        // Update progress
+        document.getElementById('upload-status').textContent = 'Uploading file...';
+
+        // Upload to S3
+        const uploadResponse = await fetch(uploadData.upload_url, {
+            method: 'PUT',
+            body: file,
+            headers: {
+                'Content-Type': 'application/octet-stream'
+            }
+        });
+
+        if (!uploadResponse.ok) {
+            throw new Error('Failed to upload file to S3');
+        }
+
+        // Hide progress, show metadata form
+        uploadProgress.style.display = 'none';
+        metadataForm.style.display = 'block';
+
+        // Store upload data for later
+        currentUploadData = {
+            gameId,
+            s3Key: uploadData.s3_key,
+            ...metadata
+        };
+
+        // Pre-fill form
+        document.getElementById('game-id').value = gameId;
+        document.getElementById('meta-version').textContent = metadata.version;
+        document.getElementById('meta-release').textContent = metadata.release;
+        document.getElementById('meta-serial').textContent = metadata.serial;
+        document.getElementById('meta-checksum').textContent = metadata.checksum;
+        document.getElementById('meta-filesize').textContent = formatFileSize(metadata.fileSize);
+
+        // Clear editable fields
+        document.getElementById('game-title').value = '';
+        document.getElementById('game-author').value = '';
+        document.getElementById('game-description').value = '';
+        document.getElementById('game-category').value = '';
+        document.getElementById('game-year').value = '';
+
+        showFlashMessage('File uploaded successfully. Please enter game metadata.', 'success');
+
+    } catch (error) {
+        uploadProgress.style.display = 'none';
+        uploadDropzone.style.display = 'block';
+        showFlashMessage('Upload failed: ' + error.message, 'error');
+    }
+}
+
+// Handle publish game
+async function handlePublishGame() {
+    if (!currentUploadData) {
+        showFlashMessage('No file uploaded', 'error');
+        return;
+    }
+
+    try {
+        // Get form data
+        const title = document.getElementById('game-title').value.trim();
+        const author = document.getElementById('game-author').value.trim();
+        const description = document.getElementById('game-description').value.trim();
+        const category = document.getElementById('game-category').value || null;
+        const year = document.getElementById('game-year').value ? parseInt(document.getElementById('game-year').value) : null;
+
+        // Validate
+        if (!title || !author || !description) {
+            showFlashMessage('Please fill in all required fields', 'error');
+            return;
+        }
+
+        // Create game
+        const gameData = {
+            game_id: currentUploadData.gameId,
+            title,
+            author,
+            description,
+            category,
+            year_published: year,
+            s3_key: currentUploadData.s3Key,
+            file_size: currentUploadData.fileSize,
+            version: currentUploadData.version,
+            release: currentUploadData.release,
+            serial: currentUploadData.serial,
+            checksum: currentUploadData.checksum
+        };
+
+        await adminCreateGame(gameData);
+
+        showFlashMessage('Game published successfully!', 'success');
+        resetUploadForm();
+        switchAdminTab('games');
+        loadAdminGames();
+
+    } catch (error) {
+        showFlashMessage('Failed to publish game: ' + error.message, 'error');
+    }
+}
+
+// Reset upload form
+function resetUploadForm() {
+    currentUploadData = null;
+    uploadDropzone.style.display = 'block';
+    uploadProgress.style.display = 'none';
+    metadataForm.style.display = 'none';
+    fileInput.value = '';
+
+    // Clear form
+    ['game-title', 'game-author', 'game-description', 'game-category', 'game-year'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+}
+
+// Handle edit game
+async function handleEditGame(gameId) {
+    try {
+        editingGameId = gameId;
+
+        // Fetch game data
+        const response = await fetch(`${API_BASE}/api/admin/games/${gameId}`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch game data');
+        }
+
+        const game = await response.json();
+
+        // Pre-fill edit form
+        document.getElementById('edit-game-title').value = game.title;
+        document.getElementById('edit-game-author').value = game.author;
+        document.getElementById('edit-game-description').value = game.description;
+        document.getElementById('edit-game-category').value = game.category || '';
+        document.getElementById('edit-game-year').value = game.year || '';
+        document.getElementById('edit-game-display-order').value = game.display_order !== null && game.display_order !== undefined ? game.display_order : '';
+
+        // Show modal
+        editGameModal.style.display = 'flex';
+
+    } catch (error) {
+        showFlashMessage('Failed to load game: ' + error.message, 'error');
+    }
+}
+
+// Handle save edit
+async function handleSaveEdit() {
+    if (!editingGameId) return;
+
+    try {
+        const title = document.getElementById('edit-game-title').value.trim();
+        const author = document.getElementById('edit-game-author').value.trim();
+        const description = document.getElementById('edit-game-description').value.trim();
+        const category = document.getElementById('edit-game-category').value || null;
+        const year = document.getElementById('edit-game-year').value ? parseInt(document.getElementById('edit-game-year').value) : null;
+        const displayOrderValue = document.getElementById('edit-game-display-order').value.trim();
+        const display_order = displayOrderValue ? parseInt(displayOrderValue) : null;
+
+        if (!title || !author || !description) {
+            showFlashMessage('Please fill in all required fields', 'error');
+            return;
+        }
+
+        const gameData = {
+            title,
+            author,
+            description,
+            category,
+            year,
+            display_order
+        };
+
+        await adminUpdateGame(editingGameId, gameData);
+
+        showFlashMessage('Game updated successfully!', 'success');
+        editGameModal.style.display = 'none';
+        editingGameId = null;
+        loadAdminGames();
+
+    } catch (error) {
+        showFlashMessage('Failed to update game: ' + error.message, 'error');
+    }
+}
+
+// Handle delete game click
+function handleDeleteGameClick(gameId) {
+    deletingGameId = gameId;
+
+    // Find game title
+    const gameTitle = adminGamesList.querySelector(`[data-game-id="${gameId}"]`)?.closest('tr')?.querySelector('strong')?.textContent || gameId;
+
+    document.getElementById('delete-game-name').textContent = gameTitle;
+    deleteGameModal.style.display = 'flex';
+}
+
+// Handle confirm delete
+async function handleConfirmDelete() {
+    if (!deletingGameId) return;
+
+    try {
+        await adminDeleteGame(deletingGameId);
+
+        showFlashMessage('Game deleted successfully!', 'success');
+        deleteGameModal.style.display = 'none';
+        deletingGameId = null;
+        loadAdminGames();
+
+    } catch (error) {
+        showFlashMessage('Failed to delete game: ' + error.message, 'error');
+    }
+}
+
+// Utility: Format file size
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// Utility: Escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // Start the app

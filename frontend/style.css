@@ -354,16 +354,19 @@ button:disabled {
 }
 
 #logout-button {
-    background: transparent;
+    background: #1a1a1a;
     color: #00ff00;
     border: 1px solid #00ff00;
     padding: 8px 16px;
     font-size: 0.9em;
+    cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace;
+    transition: all 0.3s ease;
 }
 
 #logout-button:hover {
-    background: #00ff00;
-    color: #000;
+    background: #003300;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
 }
 
 .error {
@@ -817,5 +820,602 @@ button:disabled {
 
   .theme-toggle, .font-toggle, .crt-toggle, .blur-toggle {
     flex-wrap: wrap;
+  }
+}
+
+/* =============================================
+   ADMIN INTERFACE STYLES
+   ============================================= */
+
+#admin-button {
+  margin-right: 10px;
+  padding: 8px 16px;
+  background: #1a1a1a;
+  color: #00ff00;
+  border: 1px solid #00ff00;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.9em;
+  transition: all 0.3s ease;
+}
+
+#admin-button:hover {
+  background: #003300;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #00ff00;
+}
+
+.admin-header h2 {
+  margin: 0;
+  color: #00ff00;
+}
+
+#admin-back-button {
+  padding: 8px 16px;
+  background: #1a1a1a;
+  color: #00ff00;
+  border: 1px solid #00ff00;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  transition: all 0.3s ease;
+}
+
+#admin-back-button:hover {
+  background: #003300;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+/* Admin Tabs */
+.admin-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #333;
+}
+
+.admin-tab {
+  padding: 12px 24px;
+  background: #1a1a1a;
+  color: #666;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  transition: all 0.3s ease;
+}
+
+.admin-tab:hover {
+  color: #00ff00;
+}
+
+.admin-tab.active {
+  color: #00ff00;
+  border-bottom-color: #00ff00;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+.admin-tab-content {
+  display: none;
+}
+
+.admin-tab-content.active {
+  display: block;
+}
+
+/* Admin Games List */
+.admin-search {
+  margin-bottom: 20px;
+}
+
+.admin-search input {
+  width: 100%;
+  padding: 12px;
+  background: #1a1a1a;
+  color: #00ff00;
+  border: 1px solid #333;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 1em;
+}
+
+.admin-search input:focus {
+  outline: none;
+  border-color: #00ff00;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+.admin-games-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.9em;
+}
+
+.admin-games-table thead {
+  background: #1a1a1a;
+  border-bottom: 2px solid #00ff00;
+}
+
+.admin-games-table th {
+  padding: 12px;
+  text-align: left;
+  color: #00ff00;
+  font-weight: bold;
+}
+
+.admin-games-table tbody tr {
+  border-bottom: 1px solid #333;
+  transition: background 0.2s ease;
+}
+
+.admin-games-table tbody tr:hover {
+  background: #1a1a1a;
+}
+
+.admin-games-table td {
+  padding: 12px;
+  color: #999;
+}
+
+.admin-games-table td strong {
+  color: #00ff00;
+}
+
+.admin-games-table .actions {
+  white-space: nowrap;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  margin-right: 8px;
+  background: #1a1a1a;
+  border: 1px solid #00ff00;
+  color: #00ff00;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.85em;
+  transition: all 0.3s ease;
+}
+
+.btn-small:hover {
+  background: #003300;
+  box-shadow: 0 0 8px rgba(0, 255, 0, 0.5);
+}
+
+.btn-edit {
+  border-color: #00aaff;
+  color: #00aaff;
+}
+
+.btn-edit:hover {
+  background: #002233;
+  box-shadow: 0 0 8px rgba(0, 170, 255, 0.5);
+}
+
+.btn-delete {
+  border-color: #ff4444;
+  color: #ff4444;
+}
+
+.btn-delete:hover {
+  background: #331111;
+  box-shadow: 0 0 8px rgba(255, 68, 68, 0.5);
+}
+
+.active-badge {
+  color: #00ff00;
+  font-weight: bold;
+}
+
+.archived-badge {
+  color: #ff4444;
+  font-weight: bold;
+}
+
+.empty-message {
+  color: #666;
+  text-align: center;
+  padding: 40px;
+  font-style: italic;
+}
+
+/* Upload Form */
+.admin-upload-form {
+  max-width: 800px;
+}
+
+.upload-dropzone {
+  border: 2px dashed #333;
+  border-radius: 8px;
+  padding: 60px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: #0a0a0a;
+}
+
+.upload-dropzone:hover,
+.upload-dropzone.dragover {
+  border-color: #00ff00;
+  background: #111;
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
+}
+
+.upload-dropzone p {
+  margin: 10px 0;
+  color: #999;
+}
+
+.upload-hint {
+  font-size: 0.9em;
+  color: #666 !important;
+}
+
+.upload-progress {
+  padding: 20px;
+  text-align: center;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 30px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #003300, #00ff00);
+  width: 0%;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+}
+
+#upload-status {
+  color: #00ff00;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Metadata Form */
+#metadata-form h4 {
+  color: #00ff00;
+  margin-bottom: 20px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: #00ff00;
+  font-weight: bold;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+  width: 100%;
+  padding: 12px;
+  background: #1a1a1a;
+  color: #00ff00;
+  border: 1px solid #333;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 1em;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: #00ff00;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+.form-group input[readonly] {
+  background: #0a0a0a;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.form-group small {
+  display: block;
+  margin-top: 5px;
+  color: #666;
+  font-size: 0.85em;
+}
+
+.form-row {
+  display: flex;
+  gap: 20px;
+}
+
+.form-row .form-group {
+  flex: 1;
+}
+
+.metadata-readonly {
+  margin-top: 30px;
+  padding: 20px;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  border-radius: 4px;
+}
+
+.metadata-readonly h5 {
+  color: #00ff00;
+  margin-bottom: 15px;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+}
+
+.info-grid div {
+  color: #999;
+}
+
+.info-grid strong {
+  color: #00ff00;
+}
+
+.form-actions {
+  margin-top: 30px;
+  display: flex;
+  gap: 15px;
+  justify-content: flex-end;
+}
+
+.form-actions button {
+  padding: 12px 24px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 1em;
+  cursor: pointer;
+  border: 1px solid;
+  transition: all 0.3s ease;
+}
+
+.form-actions .primary {
+  background: #1a1a1a;
+  color: #00ff00;
+  border-color: #00ff00;
+}
+
+.form-actions .primary:hover {
+  background: #003300;
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+}
+
+.form-actions .secondary {
+  background: transparent;
+  color: #666;
+  border-color: #666;
+}
+
+.form-actions .secondary:hover {
+  color: #999;
+  border-color: #999;
+}
+
+/* Modals */
+.modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: #0a0a0a;
+  border: 2px solid #00ff00;
+  border-radius: 8px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 0 30px rgba(0, 255, 0, 0.5);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #333;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #00ff00;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: #00ff00;
+  font-size: 2em;
+  cursor: pointer;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  color: #ff4444;
+  text-shadow: 0 0 10px rgba(255, 68, 68, 0.8);
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.modal-body .warning {
+  color: #ff8800;
+  margin-top: 10px;
+  font-size: 0.9em;
+}
+
+.modal-footer {
+  padding: 20px;
+  border-top: 1px solid #333;
+  display: flex;
+  gap: 15px;
+  justify-content: flex-end;
+}
+
+.modal-footer button {
+  padding: 12px 24px;
+  font-family: 'IBM Plex Mono', monospace;
+  cursor: pointer;
+  border: 1px solid;
+  transition: all 0.3s ease;
+}
+
+.modal-footer .primary {
+  background: #1a1a1a;
+  color: #00ff00;
+  border-color: #00ff00;
+}
+
+.modal-footer .primary:hover {
+  background: #003300;
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+}
+
+.modal-footer .secondary {
+  background: transparent;
+  color: #666;
+  border-color: #666;
+}
+
+.modal-footer .secondary:hover {
+  color: #999;
+  border-color: #999;
+}
+
+.modal-footer .danger {
+  background: #1a1a1a;
+  color: #ff4444;
+  border-color: #ff4444;
+}
+
+.modal-footer .danger:hover {
+  background: #331111;
+  box-shadow: 0 0 15px rgba(255, 68, 68, 0.5);
+}
+
+/* Responsive Admin */
+@media (max-width: 768px) {
+  .admin-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+
+  .admin-tabs {
+    overflow-x: auto;
+  }
+
+  .admin-games-table {
+    font-size: 0.8em;
+  }
+
+  .admin-games-table th,
+  .admin-games-table td {
+    padding: 8px;
+  }
+
+  .form-row {
+    flex-direction: column;
+  }
+
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-content {
+    max-width: 95%;
+  }
+}
+
+/* =============================================
+   DRAG AND DROP REORDERING
+   ============================================= */
+
+.reorder-controls {
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.hint-text {
+  color: #00ff00;
+  opacity: 0.7;
+  font-size: 0.9em;
+}
+
+.drag-handle-col {
+  width: 40px;
+  text-align: center;
+  cursor: grab;
+  user-select: none;
+}
+
+.drag-handle {
+  cursor: grab;
+  user-select: none;
+  color: #00ff00;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+
+.drag-handle:hover {
+  opacity: 1;
+}
+
+.admin-games-table tr[draggable="true"] {
+  cursor: move;
+}
+
+.admin-games-table tr.dragging {
+  opacity: 0.5;
+  background: rgba(0, 255, 0, 0.1);
+}
+
+.admin-games-table tr.drag-over {
+  border-top: 2px solid #00ff00;
+}
+
+#save-order-btn {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 15px rgba(0, 255, 0, 0.8);
   }
 }

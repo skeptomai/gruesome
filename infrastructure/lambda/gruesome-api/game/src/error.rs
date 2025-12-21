@@ -1,5 +1,5 @@
+use lambda_http::{http::StatusCode, Body, Response};
 use thiserror::Error;
-use lambda_http::{Response, Body, http::StatusCode};
 
 #[derive(Error, Debug)]
 pub enum GameError {

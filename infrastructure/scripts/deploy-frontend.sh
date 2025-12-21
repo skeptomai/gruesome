@@ -15,7 +15,7 @@ fi
 # Configuration
 if [ "$ENV" == "staging" ]; then
     BUCKET="gruesome-frontend-staging"
-    DISTRIBUTION_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Aliases.Items[?contains(@, 'staging.gruesome')]].Id" --output text)
+    DISTRIBUTION_ID="E1M8DHMS3GCUDX"
     DOMAIN="staging.gruesome.skeptomai.com"
 else
     BUCKET="gruesome-frontend"

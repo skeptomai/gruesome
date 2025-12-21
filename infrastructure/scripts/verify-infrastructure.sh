@@ -8,11 +8,6 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo "========================================="
-echo "Infrastructure Verification"
-echo "========================================="
-echo ""
-
 # Function to print test result
 pass() {
     echo -e "${GREEN}✓ $1${NC}"
@@ -31,6 +26,41 @@ info() {
 warn() {
     echo -e "${YELLOW}⚠ $1${NC}"
 }
+
+# Parse command line arguments
+ENVIRONMENT=${1:-production}
+
+if [ "$ENVIRONMENT" != "production" ] && [ "$ENVIRONMENT" != "staging" ]; then
+    echo "Usage: $0 [production|staging]"
+    echo ""
+    echo "Examples:"
+    echo "  $0                  # Verify production (default)"
+    echo "  $0 production       # Verify production"
+    echo "  $0 staging          # Verify staging"
+    exit 1
+fi
+
+# Set environment-specific variables
+if [ "$ENVIRONMENT" = "staging" ]; then
+    STACK_SUFFIX="Staging"
+    TABLE_NAME_DEFAULT="gruesome-platform-staging"
+    GAMES_BUCKET="gruesome-games-staging"
+    SAVES_BUCKET="gruesome-saves-staging"
+    FRONTEND_BUCKET="gruesome-frontend-staging"
+else
+    STACK_SUFFIX=""
+    TABLE_NAME_DEFAULT="gruesome-platform"
+    GAMES_BUCKET="gruesome-games"
+    SAVES_BUCKET="gruesome-saves"
+    FRONTEND_BUCKET="gruesome-frontend"
+fi
+
+echo "========================================="
+echo "Infrastructure Verification"
+echo "========================================="
+echo ""
+info "Environment: $ENVIRONMENT"
+echo ""
 
 # Verify AWS CLI is available
 if ! command -v aws &> /dev/null; then
@@ -74,16 +104,16 @@ check_stack() {
     fi
 }
 
-check_stack "GruesomeDataStack" || true
-check_stack "GruesomeAuthStack" || true
-check_stack "GruesomeBackendStack" || true
-check_stack "GruesomeDnsStack" || true
-check_stack "GruesomeFrontendStack" || true
+check_stack "GruesomeDataStack${STACK_SUFFIX}" || true
+check_stack "GruesomeAuthStack${STACK_SUFFIX}" || true
+check_stack "GruesomeBackendStack${STACK_SUFFIX}" || true
+check_stack "GruesomeDnsStack${STACK_SUFFIX}" || true
+check_stack "GruesomeFrontendStack${STACK_SUFFIX}" || true
 echo ""
 
 # Check DynamoDB table
 info "Checking DynamoDB table..."
-TABLE_NAME="gruesome-platform"
+TABLE_NAME="${TABLE_NAME_DEFAULT}"
 TABLE_STATUS=$(aws dynamodb describe-table --table-name "$TABLE_NAME" --query 'Table.TableStatus' --output text 2>/dev/null || echo "NOT_FOUND")
 
 if [ "$TABLE_STATUS" = "ACTIVE" ]; then
@@ -123,14 +153,14 @@ check_bucket() {
     fi
 }
 
-check_bucket "gruesome-games" || true
-check_bucket "gruesome-saves" || true
-check_bucket "gruesome-frontend" || true
+check_bucket "$GAMES_BUCKET" || true
+check_bucket "$SAVES_BUCKET" || true
+check_bucket "$FRONTEND_BUCKET" || true
 echo ""
 
 # Check Cognito User Pool
 info "Checking Cognito User Pool..."
-USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name GruesomeAuthStack --query 'Stacks[0].Outputs[?OutputKey==`UserPoolId`].OutputValue' --output text 2>/dev/null || echo "")
+USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name "GruesomeAuthStack${STACK_SUFFIX}" --query 'Stacks[0].Outputs[?OutputKey==`UserPoolId`].OutputValue' --output text 2>/dev/null || echo "")
 
 if [ -n "$USER_POOL_ID" ] && [ "$USER_POOL_ID" != "None" ]; then
     # Just check if we can describe it (Cognito pools don't have a simple "Status" field)
@@ -177,16 +207,21 @@ check_lambda() {
 
 check_lambda "AuthFunction" "Auth Lambda" || true
 check_lambda "GameFunction" "Game Lambda" || true
+check_lambda "AdminApiFunction" "Admin API Lambda" || true
 echo ""
 
 # Check API Gateway
 info "Checking API Gateway..."
-API_ID=$(aws apigatewayv2 get-apis --query "Items[?Name=='gruesome-api'].ApiId | [0]" --output text 2>/dev/null || echo "")
 
-if [ -n "$API_ID" ] && [ "$API_ID" != "None" ]; then
-    API_ENDPOINT=$(aws apigatewayv2 get-apis --query "Items[?ApiId=='$API_ID'].ApiEndpoint | [0]" --output text 2>/dev/null || echo "")
-    pass "API Gateway: $API_ID"
+# Get API endpoint from CloudFormation stack output
+API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name "GruesomeBackendStack${STACK_SUFFIX}" --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' --output text 2>/dev/null || echo "")
+
+if [ -n "$API_ENDPOINT" ] && [ "$API_ENDPOINT" != "None" ]; then
+    pass "API Gateway endpoint found"
     echo "  Endpoint: $API_ENDPOINT"
+
+    # Extract API ID from endpoint or query by name
+    API_ID=$(aws apigatewayv2 get-apis --query "Items[?Name=='gruesome-api'].ApiId | [0]" --output text 2>/dev/null || echo "")
 
     # Check routes
     ROUTE_COUNT=$(aws apigatewayv2 get-routes --api-id "$API_ID" --query 'length(Items)' --output text 2>/dev/null || echo "0")
@@ -206,13 +241,109 @@ if [ -n "$API_ID" ] && [ "$API_ID" != "None" ]; then
     }
 
     check_route "POST /api/auth/login"
-    check_route "POST /api/games/start"
-    check_route "POST /api/games/command"
+    check_route "GET /api/games"
     check_route "GET /health"
+
+    # Check admin routes
+    info "Checking admin routes..."
+    check_route "POST /api/admin/games/upload-url"
+    check_route "POST /api/admin/games"
+    check_route "GET /api/admin/games"
+    check_route "GET /api/admin/games/{game_id}"
+    check_route "PUT /api/admin/games/{game_id}"
+    check_route "DELETE /api/admin/games/{game_id}"
 else
     warn "API Gateway not found"
 fi
 echo ""
+
+# Optional: Test admin API endpoints if credentials are provided
+if [ -n "$TEST_ADMIN_USERNAME" ] && [ -n "$TEST_ADMIN_PASSWORD" ]; then
+    info "Testing admin API endpoints..."
+
+    # Login to get access token
+    info "Authenticating as admin user..."
+    LOGIN_RESPONSE=$(curl -s -X POST "$API_ENDPOINT/api/auth/login" \
+        -H "Content-Type: application/json" \
+        -d "{\"username\":\"$TEST_ADMIN_USERNAME\",\"password\":\"$TEST_ADMIN_PASSWORD\"}")
+
+    ACCESS_TOKEN=$(echo "$LOGIN_RESPONSE" | jq -r '.access_token' 2>/dev/null || echo "")
+
+    if [ -n "$ACCESS_TOKEN" ] && [ "$ACCESS_TOKEN" != "null" ]; then
+        pass "Admin authentication successful"
+
+        # Test GET /api/admin/games (list all games)
+        info "Testing GET /api/admin/games..."
+        LIST_RESPONSE=$(curl -s -X GET "$API_ENDPOINT/api/admin/games" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -w "\n%{http_code}")
+
+        HTTP_CODE=$(echo "$LIST_RESPONSE" | tail -n1)
+        RESPONSE_BODY=$(echo "$LIST_RESPONSE" | head -n-1)
+
+        if [ "$HTTP_CODE" = "200" ]; then
+            GAME_COUNT=$(echo "$RESPONSE_BODY" | jq -r '.total' 2>/dev/null || echo "0")
+            pass "List games endpoint working (found $GAME_COUNT games)"
+        else
+            warn "List games endpoint returned HTTP $HTTP_CODE"
+            echo "  Response: $RESPONSE_BODY"
+        fi
+
+        # Test POST /api/admin/games/upload-url
+        info "Testing POST /api/admin/games/upload-url..."
+        UPLOAD_URL_RESPONSE=$(curl -s -X POST "$API_ENDPOINT/api/admin/games/upload-url" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"filename":"test-game.z3"}' \
+            -w "\n%{http_code}")
+
+        HTTP_CODE=$(echo "$UPLOAD_URL_RESPONSE" | tail -n1)
+        RESPONSE_BODY=$(echo "$UPLOAD_URL_RESPONSE" | head -n-1)
+
+        if [ "$HTTP_CODE" = "200" ]; then
+            S3_KEY=$(echo "$RESPONSE_BODY" | jq -r '.s3_key' 2>/dev/null || echo "")
+            if [ -n "$S3_KEY" ] && [ "$S3_KEY" != "null" ]; then
+                pass "Upload URL endpoint working (s3_key: $S3_KEY)"
+            else
+                warn "Upload URL endpoint returned 200 but missing s3_key"
+            fi
+        else
+            warn "Upload URL endpoint returned HTTP $HTTP_CODE"
+            echo "  Response: $RESPONSE_BODY"
+        fi
+
+        # Test unauthorized access (without admin role)
+        if [ -n "$TEST_USER_USERNAME" ] && [ -n "$TEST_USER_PASSWORD" ]; then
+            info "Testing unauthorized access (non-admin user)..."
+            USER_LOGIN=$(curl -s -X POST "$API_ENDPOINT/api/auth/login" \
+                -H "Content-Type: application/json" \
+                -d "{\"username\":\"$TEST_USER_USERNAME\",\"password\":\"$TEST_USER_PASSWORD\"}")
+
+            USER_TOKEN=$(echo "$USER_LOGIN" | jq -r '.access_token' 2>/dev/null || echo "")
+
+            if [ -n "$USER_TOKEN" ] && [ "$USER_TOKEN" != "null" ]; then
+                FORBIDDEN_RESPONSE=$(curl -s -X GET "$API_ENDPOINT/api/admin/games" \
+                    -H "Authorization: Bearer $USER_TOKEN" \
+                    -w "\n%{http_code}")
+
+                HTTP_CODE=$(echo "$FORBIDDEN_RESPONSE" | tail -n1)
+
+                if [ "$HTTP_CODE" = "403" ]; then
+                    pass "Admin authorization check working (non-admin user denied)"
+                else
+                    warn "Expected HTTP 403 for non-admin user, got $HTTP_CODE"
+                fi
+            fi
+        fi
+    else
+        warn "Admin authentication failed - cannot test endpoints"
+        echo "  Response: $LOGIN_RESPONSE"
+    fi
+    echo ""
+else
+    info "Skipping admin API endpoint tests (set TEST_ADMIN_USERNAME and TEST_ADMIN_PASSWORD to enable)"
+    echo ""
+fi
 
 # Check CloudFront distribution (if exists)
 info "Checking CloudFront distribution..."
@@ -242,4 +373,11 @@ echo "Next steps:"
 echo "  1. Run end-to-end tests: ./scripts/test-game-lambda.sh"
 echo "  2. Check CloudWatch logs for any errors"
 echo "  3. Verify custom domain (if configured)"
+echo ""
+echo "To test admin API endpoints, run with credentials:"
+echo "  TEST_ADMIN_USERNAME=admin TEST_ADMIN_PASSWORD=pass $0 production"
+echo ""
+echo "To test staging environment:"
+echo "  $0 staging"
+echo "  TEST_ADMIN_USERNAME=admin TEST_ADMIN_PASSWORD=pass $0 staging"
 echo ""

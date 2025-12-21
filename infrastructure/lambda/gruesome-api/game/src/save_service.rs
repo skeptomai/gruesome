@@ -1,5 +1,5 @@
-use aws_sdk_dynamodb::{Client as DynamoClient, types::AttributeValue};
-use aws_sdk_s3::{Client as S3Client, presigning::PresigningConfig};
+use aws_sdk_dynamodb::{types::AttributeValue, Client as DynamoClient};
+use aws_sdk_s3::{presigning::PresigningConfig, Client as S3Client};
 use chrono::Utc;
 use std::time::Duration;
 
@@ -30,7 +30,8 @@ impl SaveService {
 
     /// List all saves for a user
     pub async fn list_user_saves(&self, user_id: &str) -> Result<Vec<SaveMetadata>, GameError> {
-        let result = self.dynamodb_client
+        let result = self
+            .dynamodb_client
             .query()
             .table_name(&self.table_name)
             .key_condition_expression("PK = :pk AND begins_with(SK, :sk_prefix)")
@@ -51,13 +52,21 @@ impl SaveService {
     }
 
     /// List saves for a specific game
-    pub async fn list_game_saves(&self, user_id: &str, game_id: &str) -> Result<Vec<SaveMetadata>, GameError> {
-        let result = self.dynamodb_client
+    pub async fn list_game_saves(
+        &self,
+        user_id: &str,
+        game_id: &str,
+    ) -> Result<Vec<SaveMetadata>, GameError> {
+        let result = self
+            .dynamodb_client
             .query()
             .table_name(&self.table_name)
             .key_condition_expression("PK = :pk AND begins_with(SK, :sk_prefix)")
             .expression_attribute_values(":pk", AttributeValue::S(format!("USER#{}", user_id)))
-            .expression_attribute_values(":sk_prefix", AttributeValue::S(format!("SAVE#{}#", game_id)))
+            .expression_attribute_values(
+                ":sk_prefix",
+                AttributeValue::S(format!("SAVE#{}#", game_id)),
+            )
             .send()
             .await
             .map_err(|e| GameError::AwsError(format!("DynamoDB query error: {}", e)))?;
@@ -68,7 +77,8 @@ impl SaveService {
                 let save = Self::parse_save_metadata(item)?;
 
                 // Validate S3 file exists to prevent orphaned saves
-                let s3_exists = self.s3_client
+                let s3_exists = self
+                    .s3_client
                     .head_object()
                     .bucket(&self.saves_bucket)
                     .key(&save.s3_key)
@@ -99,7 +109,8 @@ impl SaveService {
         let save = self.get_save_metadata(user_id, game_id, save_name).await?;
 
         // Validate S3 file exists before generating presigned URL
-        let s3_exists = self.s3_client
+        let s3_exists = self
+            .s3_client
             .head_object()
             .bucket(&self.saves_bucket)
             .key(&save.s3_key)
@@ -119,7 +130,8 @@ impl SaveService {
         let presigning_config = PresigningConfig::expires_in(Duration::from_secs(300))
             .map_err(|e| GameError::InternalError(format!("Presigning config error: {}", e)))?;
 
-        let presigned_request = self.s3_client
+        let presigned_request = self
+            .s3_client
             .get_object()
             .bucket(&self.saves_bucket)
             .key(&save.s3_key)
@@ -142,21 +154,33 @@ impl SaveService {
         let s3_key = format!("{}/{}/{}.sav", user_id, game_id, save_name);
 
         // Check if save already exists
-        let existing = self.get_save_metadata(user_id, game_id, save_name).await.ok();
+        let existing = self
+            .get_save_metadata(user_id, game_id, save_name)
+            .await
+            .ok();
 
         // Create or update metadata in DynamoDB
         self.dynamodb_client
             .put_item()
             .table_name(&self.table_name)
             .item("PK", AttributeValue::S(format!("USER#{}", user_id)))
-            .item("SK", AttributeValue::S(format!("SAVE#{}#{}", game_id, save_name)))
+            .item(
+                "SK",
+                AttributeValue::S(format!("SAVE#{}#{}", game_id, save_name)),
+            )
             .item("entity_type", AttributeValue::S("SAVE".to_string()))
             .item("user_id", AttributeValue::S(user_id.to_string()))
             .item("game_id", AttributeValue::S(game_id.to_string()))
             .item("save_name", AttributeValue::S(save_name.to_string()))
             .item("s3_key", AttributeValue::S(s3_key.clone()))
-            .item("file_size", AttributeValue::N(file_size.unwrap_or(0).to_string()))
-            .item("created_at", AttributeValue::N(existing.map(|s| s.created_at).unwrap_or(now).to_string()))
+            .item(
+                "file_size",
+                AttributeValue::N(file_size.unwrap_or(0).to_string()),
+            )
+            .item(
+                "created_at",
+                AttributeValue::N(existing.map(|s| s.created_at).unwrap_or(now).to_string()),
+            )
             .item("last_updated", AttributeValue::N(now.to_string()))
             .send()
             .await
@@ -166,7 +190,8 @@ impl SaveService {
         let presigning_config = PresigningConfig::expires_in(Duration::from_secs(300))
             .map_err(|e| GameError::InternalError(format!("Presigning config error: {}", e)))?;
 
-        let presigned_request = self.s3_client
+        let presigned_request = self
+            .s3_client
             .put_object()
             .bucket(&self.saves_bucket)
             .key(&s3_key)
@@ -201,7 +226,10 @@ impl SaveService {
             .delete_item()
             .table_name(&self.table_name)
             .key("PK", AttributeValue::S(format!("USER#{}", user_id)))
-            .key("SK", AttributeValue::S(format!("SAVE#{}#{}", game_id, save_name)))
+            .key(
+                "SK",
+                AttributeValue::S(format!("SAVE#{}#{}", game_id, save_name)),
+            )
             .send()
             .await
             .map_err(|e| GameError::AwsError(format!("DynamoDB delete error: {}", e)))?;
@@ -216,11 +244,15 @@ impl SaveService {
         game_id: &str,
         save_name: &str,
     ) -> Result<SaveMetadata, GameError> {
-        let result = self.dynamodb_client
+        let result = self
+            .dynamodb_client
             .get_item()
             .table_name(&self.table_name)
             .key("PK", AttributeValue::S(format!("USER#{}", user_id)))
-            .key("SK", AttributeValue::S(format!("SAVE#{}#{}", game_id, save_name)))
+            .key(
+                "SK",
+                AttributeValue::S(format!("SAVE#{}#{}", game_id, save_name)),
+            )
             .send()
             .await
             .map_err(|e| GameError::AwsError(format!("DynamoDB error: {}", e)))?;
@@ -244,7 +276,9 @@ impl SaveService {
             item.get(key)
                 .and_then(|v| v.as_n().ok())
                 .and_then(|s| s.parse::<i64>().ok())
-                .ok_or_else(|| GameError::InternalError(format!("Missing or invalid field: {}", key)))
+                .ok_or_else(|| {
+                    GameError::InternalError(format!("Missing or invalid field: {}", key))
+                })
         };
 
         Ok(SaveMetadata {

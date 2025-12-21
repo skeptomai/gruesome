@@ -25,7 +25,7 @@ pub struct SignupResponse {
 
 #[derive(Deserialize, Debug)]
 pub struct LoginRequest {
-    pub username: String,  // USER_PASSWORD_AUTH requires username, not email
+    pub username: String, // USER_PASSWORD_AUTH requires username, not email
     pub password: String,
 }
 
@@ -66,6 +66,8 @@ pub struct UserProfile {
     pub username: String,
     pub display_name: String,
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -113,7 +115,7 @@ pub struct UserRecord {
     pub email: String,
     pub username: String,
     pub display_name: String,
-    pub created_at: i64, // Unix timestamp for DynamoDB GSI
+    pub created_at: i64,     // Unix timestamp for DynamoDB GSI
     pub entity_type: String, // Required for GSI
 }
 
@@ -146,6 +148,7 @@ impl UserRecord {
             username: self.username.clone(),
             display_name: self.display_name.clone(),
             created_at: created_at_str,
+            role: None, // UserRecord doesn't have role field, so default to None
         }
     }
 }

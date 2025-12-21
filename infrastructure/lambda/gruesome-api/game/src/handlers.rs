@@ -1,10 +1,10 @@
-use lambda_http::{Request, Response, Body, RequestExt};
+use lambda_http::{Body, Request, RequestExt, Response};
 
 use crate::error::GameError;
 use crate::game_service::GameService;
-use crate::save_service::SaveService;
-use crate::models::*;
 use crate::jwt_auth::JwtValidator;
+use crate::models::*;
+use crate::save_service::SaveService;
 
 /// Extract JWT from Authorization header and validate
 fn extract_user_id(request: &Request, jwt_validator: &JwtValidator) -> Result<String, GameError> {
@@ -18,7 +18,8 @@ fn extract_user_id(request: &Request, jwt_validator: &JwtValidator) -> Result<St
         .strip_prefix("Bearer ")
         .ok_or(GameError::Unauthorized)?;
 
-    jwt_validator.validate_token(token)
+    jwt_validator
+        .validate_token(token)
         .map_err(|_| GameError::Unauthorized)
 }
 
@@ -41,9 +42,7 @@ fn get_path_param(request: &Request, name: &str) -> Result<String, GameError> {
 // ========== Game Handlers ==========
 
 /// GET /api/games - List all available games
-pub async fn handle_list_games(
-    game_service: &GameService,
-) -> Result<Response<Body>, GameError> {
+pub async fn handle_list_games(game_service: &GameService) -> Result<Response<Body>, GameError> {
     let games = game_service.list_games().await?;
 
     let response = ListGamesResponse { games };
@@ -152,7 +151,9 @@ pub async fn handle_get_save(
     let game_id = get_path_param(&request, "game_id")?;
     let save_name = get_path_param(&request, "save_name")?;
 
-    let download_url = save_service.get_save_download_url(&user_id, &game_id, &save_name).await?;
+    let download_url = save_service
+        .get_save_download_url(&user_id, &game_id, &save_name)
+        .await?;
 
     let response = GetSaveDownloadResponse {
         download_url,
@@ -178,7 +179,8 @@ pub async fn handle_create_save(
     let game_id = get_path_param(&request, "game_id")?;
     let save_name = get_path_param(&request, "save_name")?;
 
-    let req_body: CreateSaveRequest = parse_body(&request).unwrap_or(CreateSaveRequest { file_size: None });
+    let req_body: CreateSaveRequest =
+        parse_body(&request).unwrap_or(CreateSaveRequest { file_size: None });
 
     let upload_url = save_service
         .get_save_upload_url(&user_id, &game_id, &save_name, req_body.file_size)
@@ -208,7 +210,9 @@ pub async fn handle_delete_save(
     let game_id = get_path_param(&request, "game_id")?;
     let save_name = get_path_param(&request, "save_name")?;
 
-    save_service.delete_save(&user_id, &game_id, &save_name).await?;
+    save_service
+        .delete_save(&user_id, &game_id, &save_name)
+        .await?;
 
     let response = DeleteSaveResponse { deleted: true };
     let json = serde_json::to_string(&response)

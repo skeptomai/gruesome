@@ -23,6 +23,7 @@
             <div class="header-spacer"></div>
             <h1>📜 Gruesome Z-Machine Platform</h1>
             <div id="auth-status">
+                <button id="admin-button" style="display:none;">🔧 Admin</button>
                 <button id="logout-button" style="display:none;">Logout</button>
             </div>
         </header>
@@ -107,6 +108,184 @@
         <div id="game-library" class="section" style="display:none;">
             <h2>Available Games</h2>
             <div id="games-list"></div>
+        </div>
+
+        <!-- Admin Section -->
+        <div id="admin-section" class="section" style="display:none;">
+            <div class="admin-header">
+                <h2>🔧 Admin Panel</h2>
+                <button id="admin-back-button">← Back to Library</button>
+            </div>
+
+            <!-- Admin Tab Navigation -->
+            <div class="admin-tabs">
+                <button class="admin-tab active" data-tab="games">Games</button>
+                <button class="admin-tab" data-tab="upload">Upload New Game</button>
+            </div>
+
+            <!-- Games Management Tab -->
+            <div id="admin-games-tab" class="admin-tab-content active">
+                <h3>Manage Games</h3>
+                <div class="admin-search">
+                    <input type="text" id="admin-search" placeholder="Search games...">
+                </div>
+                <div id="admin-games-list" class="admin-games-list">
+                    <!-- Game list will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Upload Game Tab -->
+            <div id="admin-upload-tab" class="admin-tab-content">
+                <h3>Upload New Game</h3>
+                <div id="upload-form" class="admin-upload-form">
+                    <!-- File upload -->
+                    <div class="upload-dropzone" id="upload-dropzone">
+                        <input type="file" id="game-file-input" accept=".z3,.z4,.z5,.z8" style="display:none;">
+                        <p>Drag and drop a Z-Machine file here, or click to browse</p>
+                        <p class="upload-hint">Supports: .z3, .z4, .z5, .z8 (max 512 KB)</p>
+                    </div>
+
+                    <!-- Upload progress -->
+                    <div id="upload-progress" class="upload-progress" style="display:none;">
+                        <div class="progress-bar">
+                            <div id="progress-fill" class="progress-fill"></div>
+                        </div>
+                        <p id="upload-status">Uploading...</p>
+                    </div>
+
+                    <!-- Metadata form (shown after upload) -->
+                    <div id="metadata-form" style="display:none;">
+                        <h4>Game Metadata</h4>
+                        <div class="form-group">
+                            <label for="game-id">Game ID *</label>
+                            <input type="text" id="game-id" readonly>
+                            <small>Auto-generated from filename</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="game-title">Title *</label>
+                            <input type="text" id="game-title" required maxlength="100">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="game-author">Author *</label>
+                            <input type="text" id="game-author" required maxlength="50">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="game-description">Description *</label>
+                            <textarea id="game-description" required maxlength="500" rows="4"></textarea>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="game-category">Category</label>
+                                <select id="game-category">
+                                    <option value="">Select category...</option>
+                                    <option value="Adventure">Adventure</option>
+                                    <option value="Mystery">Mystery</option>
+                                    <option value="Sci-Fi">Sci-Fi</option>
+                                    <option value="Fantasy">Fantasy</option>
+                                    <option value="Humor">Humor</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="game-year">Year Published</label>
+                                <input type="number" id="game-year" min="1977" max="2025">
+                            </div>
+                        </div>
+
+                        <div class="metadata-readonly">
+                            <h5>Z-Machine Header Info</h5>
+                            <div class="info-grid">
+                                <div><strong>Version:</strong> <span id="meta-version">-</span></div>
+                                <div><strong>Release:</strong> <span id="meta-release">-</span></div>
+                                <div><strong>Serial:</strong> <span id="meta-serial">-</span></div>
+                                <div><strong>Checksum:</strong> <span id="meta-checksum">-</span></div>
+                                <div><strong>File Size:</strong> <span id="meta-filesize">-</span></div>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button id="cancel-upload" type="button" class="secondary">Cancel</button>
+                            <button id="publish-game" type="button" class="primary">Publish Game</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Edit Game Modal (initially hidden) -->
+            <div id="edit-game-modal" class="modal" style="display:none;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Edit Game</h3>
+                        <button class="modal-close" id="close-edit-modal">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label for="edit-game-title">Title *</label>
+                            <input type="text" id="edit-game-title" required maxlength="100">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-game-author">Author *</label>
+                            <input type="text" id="edit-game-author" required maxlength="50">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-game-description">Description *</label>
+                            <textarea id="edit-game-description" required maxlength="500" rows="4"></textarea>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-game-category">Category</label>
+                                <select id="edit-game-category">
+                                    <option value="">Select category...</option>
+                                    <option value="Adventure">Adventure</option>
+                                    <option value="Mystery">Mystery</option>
+                                    <option value="Sci-Fi">Sci-Fi</option>
+                                    <option value="Fantasy">Fantasy</option>
+                                    <option value="Humor">Humor</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="edit-game-year">Year Published</label>
+                                <input type="number" id="edit-game-year" min="1977" max="2025">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="edit-game-display-order">Display Order</label>
+                                <input type="number" id="edit-game-display-order" min="0" step="1" placeholder="Optional">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="cancel-edit" class="secondary">Cancel</button>
+                        <button id="save-edit" class="primary">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Delete Confirmation Modal -->
+            <div id="delete-game-modal" class="modal" style="display:none;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Confirm Delete</h3>
+                        <button class="modal-close" id="close-delete-modal">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Are you sure you want to delete <strong id="delete-game-name"></strong>?</p>
+                        <p class="warning">This will remove the game from the library. The file will be archived but not permanently deleted.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="cancel-delete" class="secondary">Cancel</button>
+                        <button id="confirm-delete" class="danger">Delete Game</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Game Player Section -->

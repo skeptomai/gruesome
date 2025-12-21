@@ -8,10 +8,12 @@ pub struct GameMetadata {
     pub title: String,
     pub author: String,
     pub description: String,
-    pub version: u8,          // Z-Machine version
-    pub file_size: u64,       // File size in bytes
-    pub s3_key: String,       // S3 object key
-    pub created_at: i64,      // Unix timestamp
+    pub version: u8,     // Z-Machine version
+    pub file_size: u64,  // File size in bytes
+    pub s3_key: String,  // S3 object key
+    pub created_at: i64, // Unix timestamp
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_order: Option<i32>, // Custom display order (nulls sort to end)
 }
 
 #[derive(Serialize)]
@@ -28,7 +30,7 @@ pub struct GetGameResponse {
 #[derive(Serialize)]
 pub struct GetGameFileResponse {
     pub download_url: String,
-    pub expires_in: u64,  // Seconds until URL expires
+    pub expires_in: u64, // Seconds until URL expires
 }
 
 // ========== Save Models ==========

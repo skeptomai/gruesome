@@ -25,24 +25,47 @@ pub async fn handle_signup(
         return Err(AuthError::InvalidRequest("Email is required".to_string()));
     }
     if signup_req.password.is_empty() {
-        return Err(AuthError::InvalidRequest("Password is required".to_string()));
+        return Err(AuthError::InvalidRequest(
+            "Password is required".to_string(),
+        ));
     }
     if signup_req.username.is_empty() {
-        return Err(AuthError::InvalidRequest("Username is required".to_string()));
+        return Err(AuthError::InvalidRequest(
+            "Username is required".to_string(),
+        ));
+    }
+
+    // Check for duplicate username in DynamoDB
+    if dynamodb.username_exists(&signup_req.username).await? {
+        return Err(AuthError::UserAlreadyExists);
+    }
+
+    // Check for duplicate email in DynamoDB
+    if dynamodb.email_exists(&signup_req.email).await? {
+        return Err(AuthError::InvalidRequest(
+            "This email is already registered. Please use a different email or try logging in."
+                .to_string(),
+        ));
     }
 
     // Sign up user in Cognito
     let user_id = cognito
-        .sign_up(&signup_req.email, &signup_req.password, &signup_req.username)
+        .sign_up(
+            &signup_req.email,
+            &signup_req.password,
+            &signup_req.username,
+        )
         .await?;
 
     // Auto-confirm user for testing (remove in production)
-    cognito
-        .admin_confirm_sign_up(&signup_req.username)
-        .await?;
+    cognito.admin_confirm_sign_up(&signup_req.username).await?;
 
     // Create user record in DynamoDB
-    let user_record = UserRecord::new(user_id.clone(), signup_req.email.clone(), signup_req.username.clone());
+    let user_record = UserRecord::new(
+        user_id.clone(),
+        signup_req.email.clone(),
+        signup_req.username.clone(),
+    );
     dynamodb.create_user(&user_record).await?;
 
     // Build response
@@ -77,10 +100,14 @@ pub async fn handle_login(
 
     // Validate input
     if login_req.username.is_empty() {
-        return Err(AuthError::InvalidRequest("Username is required".to_string()));
+        return Err(AuthError::InvalidRequest(
+            "Username is required".to_string(),
+        ));
     }
     if login_req.password.is_empty() {
-        return Err(AuthError::InvalidRequest("Password is required".to_string()));
+        return Err(AuthError::InvalidRequest(
+            "Password is required".to_string(),
+        ));
     }
 
     // Authenticate with Cognito
@@ -167,7 +194,9 @@ pub async fn handle_forgot_password(
 
     // Validate input
     if forgot_req.username.is_empty() {
-        return Err(AuthError::InvalidRequest("Username is required".to_string()));
+        return Err(AuthError::InvalidRequest(
+            "Username is required".to_string(),
+        ));
     }
 
     // Send password reset code
@@ -175,7 +204,9 @@ pub async fn handle_forgot_password(
 
     // Build response
     let response = ForgotPasswordResponse {
-        message: "If this user exists, a password reset code has been sent to the registered email.".to_string(),
+        message:
+            "If this user exists, a password reset code has been sent to the registered email."
+                .to_string(),
     };
 
     let response_body = serde_json::to_string(&response)
@@ -202,13 +233,19 @@ pub async fn handle_confirm_forgot_password(
 
     // Validate input
     if confirm_req.username.is_empty() {
-        return Err(AuthError::InvalidRequest("Username is required".to_string()));
+        return Err(AuthError::InvalidRequest(
+            "Username is required".to_string(),
+        ));
     }
     if confirm_req.confirmation_code.is_empty() {
-        return Err(AuthError::InvalidRequest("Confirmation code is required".to_string()));
+        return Err(AuthError::InvalidRequest(
+            "Confirmation code is required".to_string(),
+        ));
     }
     if confirm_req.new_password.is_empty() {
-        return Err(AuthError::InvalidRequest("New password is required".to_string()));
+        return Err(AuthError::InvalidRequest(
+            "New password is required".to_string(),
+        ));
     }
 
     // Confirm password reset

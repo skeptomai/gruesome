@@ -2,7 +2,7 @@ use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
-use crate::error::{AuthError, AuthResult};
+use crate::error::{AdminError, AdminResult};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -32,39 +32,36 @@ impl JwtValidator {
     }
 
     /// Extract token from Authorization header
-    pub fn extract_token(auth_header: &str) -> AuthResult<String> {
+    pub fn extract_token(auth_header: &str) -> AdminResult<String> {
         if !auth_header.starts_with("Bearer ") {
-            return Err(AuthError::InvalidToken);
+            return Err(AdminError::Unauthorized("Missing Bearer token".to_string()));
         }
 
         let token = auth_header.trim_start_matches("Bearer ").trim();
         if token.is_empty() {
-            return Err(AuthError::InvalidToken);
+            return Err(AdminError::Unauthorized("Empty token".to_string()));
         }
 
         Ok(token.to_string())
     }
 
     /// Validate JWT token (simplified - in production, verify signature with Cognito public keys)
-    /// For now, we'll just decode and validate the structure
-    pub async fn validate_token(&self, token: &str) -> AuthResult<Claims> {
+    pub async fn validate_token(&self, token: &str) -> AdminResult<Claims> {
         info!("Validating JWT token");
 
         // Decode header to check algorithm
         let header = decode_header(token).map_err(|e| {
             error!("Failed to decode JWT header: {:?}", e);
-            AuthError::InvalidToken
+            AdminError::JwtError("Invalid token format".to_string())
         })?;
 
         if header.alg != Algorithm::RS256 {
             error!("Unsupported algorithm: {:?}", header.alg);
-            return Err(AuthError::InvalidToken);
+            return Err(AdminError::JwtError("Unsupported algorithm".to_string()));
         }
 
         // In production, we would fetch Cognito's public keys (JWKS) and verify signature
         // For development, we'll use insecure validation to decode claims
-        // TODO: Implement proper signature verification with Cognito JWKS
-
         let mut validation = Validation::new(Algorithm::RS256);
         validation.insecure_disable_signature_validation(); // DEVELOPMENT ONLY!
         validation.validate_exp = true;
@@ -82,8 +79,10 @@ impl JwtValidator {
         let token_data = decode::<Claims>(token, &decoding_key, &validation).map_err(|e| {
             error!("Failed to decode JWT: {:?}", e);
             match e.kind() {
-                jsonwebtoken::errors::ErrorKind::ExpiredSignature => AuthError::TokenExpired,
-                _ => AuthError::InvalidToken,
+                jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
+                    AdminError::Unauthorized("Token expired".to_string())
+                }
+                _ => AdminError::JwtError("Invalid token".to_string()),
             }
         })?;
 
@@ -95,7 +94,7 @@ impl JwtValidator {
     }
 
     /// Get user ID from token
-    pub async fn get_user_id_from_token(&self, auth_header: &str) -> AuthResult<String> {
+    pub async fn get_user_id_from_token(&self, auth_header: &str) -> AdminResult<String> {
         let token = Self::extract_token(auth_header)?;
         let claims = self.validate_token(&token).await?;
         Ok(claims.sub)

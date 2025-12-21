@@ -1,5 +1,5 @@
-use aws_sdk_dynamodb::{Client as DynamoClient, types::AttributeValue};
-use aws_sdk_s3::{Client as S3Client, presigning::PresigningConfig};
+use aws_sdk_dynamodb::{types::AttributeValue, Client as DynamoClient};
+use aws_sdk_s3::{presigning::PresigningConfig, Client as S3Client};
 use std::time::Duration;
 
 use crate::error::GameError;
@@ -29,7 +29,8 @@ impl GameService {
 
     /// List all available games
     pub async fn list_games(&self) -> Result<Vec<GameMetadata>, GameError> {
-        let result = self.dynamodb_client
+        let result = self
+            .dynamodb_client
             .query()
             .table_name(&self.table_name)
             .index_name("entity-type-index")
@@ -46,12 +47,21 @@ impl GameService {
             }
         }
 
+        // Sort by display_order (nulls/missing go to end), then by title
+        games.sort_by(|a, b| match (a.display_order, b.display_order) {
+            (Some(a_order), Some(b_order)) => a_order.cmp(&b_order),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => a.title.cmp(&b.title),
+        });
+
         Ok(games)
     }
 
     /// Get metadata for a specific game
     pub async fn get_game(&self, game_id: &str) -> Result<GameMetadata, GameError> {
-        let result = self.dynamodb_client
+        let result = self
+            .dynamodb_client
             .get_item()
             .table_name(&self.table_name)
             .key("PK", AttributeValue::S(format!("GAME#{}", game_id)))
@@ -60,7 +70,9 @@ impl GameService {
             .await
             .map_err(|e| GameError::AwsError(format!("DynamoDB error: {}", e)))?;
 
-        let item = result.item.ok_or(GameError::GameNotFound(game_id.to_string()))?;
+        let item = result
+            .item
+            .ok_or(GameError::GameNotFound(game_id.to_string()))?;
         Self::parse_game_metadata(item)
     }
 
@@ -73,7 +85,8 @@ impl GameService {
         let presigning_config = PresigningConfig::expires_in(Duration::from_secs(300))
             .map_err(|e| GameError::InternalError(format!("Presigning config error: {}", e)))?;
 
-        let presigned_request = self.s3_client
+        let presigned_request = self
+            .s3_client
             .get_object()
             .bucket(&self.games_bucket)
             .key(&game.s3_key)
@@ -99,8 +112,15 @@ impl GameService {
             item.get(key)
                 .and_then(|v| v.as_n().ok())
                 .and_then(|s| s.parse::<i64>().ok())
-                .ok_or_else(|| GameError::InternalError(format!("Missing or invalid field: {}", key)))
+                .ok_or_else(|| {
+                    GameError::InternalError(format!("Missing or invalid field: {}", key))
+                })
         };
+
+        let display_order = item
+            .get("display_order")
+            .and_then(|v| v.as_n().ok())
+            .and_then(|s| s.parse::<i32>().ok());
 
         Ok(GameMetadata {
             game_id: get_str("game_id")?,
@@ -111,6 +131,7 @@ impl GameService {
             file_size: get_num("file_size")? as u64,
             s3_key: get_str("s3_key")?,
             created_at: get_num("created_at")?,
+            display_order,
         })
     }
 }

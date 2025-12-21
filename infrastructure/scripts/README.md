@@ -13,19 +13,92 @@ Verifies that all AWS infrastructure components are properly deployed and config
 - DynamoDB table existence and configuration (including TTL)
 - S3 buckets and object counts
 - Cognito User Pool and user counts
-- Lambda functions (Auth and Game)
-- API Gateway routes
+- Lambda functions (Auth, Game, and Admin API)
+- API Gateway routes (including admin routes)
 - CloudFront distribution (optional)
+- **Admin API endpoints (optional with credentials)**
 
-**Usage:**
+**Basic Usage:**
 ```bash
+# Verify production environment (default)
 ./scripts/verify-infrastructure.sh
+
+# Verify production explicitly
+./scripts/verify-infrastructure.sh production
+
+# Verify staging environment
+./scripts/verify-infrastructure.sh staging
 ```
+
+**With Admin API Tests:**
+```bash
+# Production with admin endpoint tests
+TEST_ADMIN_USERNAME=admin TEST_ADMIN_PASSWORD=pass ./scripts/verify-infrastructure.sh
+
+# Staging with admin tests
+TEST_ADMIN_USERNAME=admin TEST_ADMIN_PASSWORD=pass ./scripts/verify-infrastructure.sh staging
+
+# With non-admin user for authorization testing
+TEST_ADMIN_USERNAME=admin TEST_ADMIN_PASSWORD=adminpass \
+TEST_USER_USERNAME=user TEST_USER_PASSWORD=userpass \
+./scripts/verify-infrastructure.sh staging
+```
+
+**Arguments:**
+- First argument: `production` or `staging` (default: `production`)
+
+**Environment Variables:**
+- `TEST_ADMIN_USERNAME` - Admin username for API testing (optional)
+- `TEST_ADMIN_PASSWORD` - Admin password for API testing (optional)
+- `TEST_USER_USERNAME` - Non-admin username for authorization testing (optional)
+- `TEST_USER_PASSWORD` - Non-admin password for authorization testing (optional)
 
 **Requirements:**
 - AWS CLI configured with valid credentials
 - `jq` installed (`brew install jq`)
 - Appropriate IAM permissions to describe resources
+
+### `test-admin-api.sh`
+
+**NEW:** Dedicated script for testing admin API endpoints with detailed output and step-by-step verification.
+
+**Tests:**
+1. Admin authentication (POST /api/auth/login)
+2. List all games (GET /api/admin/games)
+3. Generate presigned upload URL (POST /api/admin/games/upload-url)
+4. Get specific game metadata (GET /api/admin/games/{id})
+5. Authorization check with non-admin user (expects 403)
+
+**Usage:**
+```bash
+# Test production admin API (default)
+TEST_ADMIN_USERNAME=admin TEST_ADMIN_PASSWORD=pass ./scripts/test-admin-api.sh
+
+# Test production explicitly
+TEST_ADMIN_USERNAME=admin TEST_ADMIN_PASSWORD=pass ./scripts/test-admin-api.sh production
+
+# Test staging admin API
+TEST_ADMIN_USERNAME=admin TEST_ADMIN_PASSWORD=pass ./scripts/test-admin-api.sh staging
+
+# Test with non-admin user for authorization checks
+TEST_ADMIN_USERNAME=admin TEST_ADMIN_PASSWORD=adminpass \
+TEST_USER_USERNAME=user TEST_USER_PASSWORD=userpass \
+./scripts/test-admin-api.sh staging
+```
+
+**Arguments:**
+- First argument: `production` or `staging` (default: `production`)
+
+**Environment Variables:**
+- `TEST_ADMIN_USERNAME` - Admin username (required)
+- `TEST_ADMIN_PASSWORD` - Admin password (required)
+- `TEST_USER_USERNAME` - Non-admin username for auth testing (optional)
+- `TEST_USER_PASSWORD` - Non-admin password for auth testing (optional)
+
+**Note:** The following endpoints require test data creation and are not automatically tested:
+- PUT /api/admin/games/{id} (update game metadata)
+- POST /api/admin/games (create new game metadata)
+- DELETE /api/admin/games/{id} (soft delete game)
 
 ### `test-game-lambda.sh`
 
@@ -62,22 +135,45 @@ API_URL=https://custom-api.example.com ./scripts/test-game-lambda.sh
 
 ## Typical Workflow
 
-After deploying infrastructure:
+### After Deploying Infrastructure
 
 1. **Verify infrastructure is deployed correctly:**
    ```bash
    ./scripts/verify-infrastructure.sh
    ```
 
-2. **Run end-to-end tests:**
+2. **Test admin API (if you have admin credentials):**
+   ```bash
+   TEST_ADMIN_USERNAME=admin TEST_ADMIN_PASSWORD=pass ./scripts/test-admin-api.sh
+   ```
+
+3. **Run end-to-end game tests:**
    ```bash
    ./scripts/test-game-lambda.sh
    ```
 
-3. **Check logs if tests fail:**
+4. **Check logs if tests fail:**
    ```bash
    aws logs tail /aws/lambda/GruesomeBackendStack-GameFunction* --follow
    ```
+
+### Staging Environment Testing
+
+Before deploying to production, verify staging works:
+
+```bash
+# 1. Verify staging infrastructure
+./scripts/verify-infrastructure.sh staging
+
+# 2. Test staging admin API
+TEST_ADMIN_USERNAME=admin TEST_ADMIN_PASSWORD=pass ./scripts/test-admin-api.sh staging
+
+# 3. Test staging game functionality
+API_URL=https://api-staging.gruesome.skeptomai.com ./scripts/test-game-lambda.sh
+
+# 4. If everything passes, deploy to production
+npx cdk deploy --all
+```
 
 ## Exit Codes
 

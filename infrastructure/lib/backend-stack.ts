@@ -82,6 +82,7 @@ export class BackendStack extends cdk.Stack {
         allowMethods: [
           apigatewayv2.CorsHttpMethod.GET,
           apigatewayv2.CorsHttpMethod.POST,
+          apigatewayv2.CorsHttpMethod.PUT,
           apigatewayv2.CorsHttpMethod.DELETE,
         ],
         allowHeaders: ['Authorization', 'Content-Type'],
@@ -193,6 +194,56 @@ export class BackendStack extends cdk.Stack {
         apigatewayv2.HttpMethod.DELETE,
       ],
       integration: gameIntegration,
+    });
+
+    // Admin API Lambda function
+    const adminApiFunction = new lambda.Function(this, 'AdminApiFunction', {
+      runtime: lambda.Runtime.PROVIDED_AL2023,
+      handler: 'bootstrap',
+      code: lambda.Code.fromAsset('./lambda/gruesome-api/target/lambda/admin'),
+      environment: {
+        TABLE_NAME: props.table.tableName,
+        BUCKET_NAME: props.gamesBucket.bucketName,
+        USER_POOL_ID: props.userPool.userPoolId,
+      },
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 512,
+      architecture: lambda.Architecture.ARM_64,
+    });
+
+    // Grant permissions for admin Lambda
+    props.table.grantReadWriteData(adminApiFunction);
+    props.gamesBucket.grantReadWrite(adminApiFunction); // For presigned URLs and file uploads
+
+    // Admin API integration
+    const adminApiIntegration = new apigatewayv2_integrations.HttpLambdaIntegration(
+      'AdminApiIntegration',
+      adminApiFunction
+    );
+
+    // Admin API routes - presigned upload URL
+    httpApi.addRoutes({
+      path: '/api/admin/games/upload-url',
+      methods: [apigatewayv2.HttpMethod.POST],
+      integration: adminApiIntegration,
+    });
+
+    // Admin API routes - create game
+    httpApi.addRoutes({
+      path: '/api/admin/games',
+      methods: [apigatewayv2.HttpMethod.POST, apigatewayv2.HttpMethod.GET],
+      integration: adminApiIntegration,
+    });
+
+    // Admin API routes - get/update/delete specific game
+    httpApi.addRoutes({
+      path: '/api/admin/games/{game_id}',
+      methods: [
+        apigatewayv2.HttpMethod.GET,
+        apigatewayv2.HttpMethod.PUT,
+        apigatewayv2.HttpMethod.DELETE,
+      ],
+      integration: adminApiIntegration,
     });
 
     // Extract API Gateway URL (format: https://{api-id}.execute-api.{region}.amazonaws.com)
