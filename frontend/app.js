@@ -57,6 +57,24 @@ function showFlashMessage(message, type = 'error') {
     }, 5000);
 }
 
+// Smart Auto-Scroll Helper
+// Detects if user is scrolled to bottom of an element
+// Standard terminal emulator behavior: only auto-scroll if already at bottom
+function isScrolledToBottom(element, threshold = 50) {
+    if (!element) return false;
+    const scrollBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+    return scrollBottom < threshold;
+}
+
+// Conditionally scroll to bottom only if user is already there
+// Preserves scroll position if user has scrolled up to read earlier content
+function smartScrollToBottom(element) {
+    if (!element) return;
+    if (isScrolledToBottom(element)) {
+        element.scrollTop = element.scrollHeight;
+    }
+}
+
 // Visual Settings Functions
 function loadVisualSettings() {
     const saved = localStorage.getItem('gruesome-visual-settings');
@@ -880,7 +898,7 @@ function runUntilInput() {
                 output = output.slice(0, -1);
             }
             gameOutput.textContent += output;
-            gameOutput.scrollTop = gameOutput.scrollHeight;
+            smartScrollToBottom(gameOutput);
         }
 
         // Update status line (V3 games like Zork)
@@ -989,8 +1007,8 @@ function handleGameInput(e) {
             gameInput.focus();
         }
 
-        // Scroll to bottom
-        gameOutput.scrollTop = gameOutput.scrollHeight;
+        // Smart scroll to bottom (only if user is already at bottom)
+        smartScrollToBottom(gameOutput);
     }
 }
 
