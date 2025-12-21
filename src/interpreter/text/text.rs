@@ -29,6 +29,37 @@ fn zscii_to_unicode(zscii: u8) -> char {
         215 => 'þ', 216 => 'ð', 217 => 'Þ', 218 => 'Ð', 219 => '£',
         220 => 'œ', 221 => 'Œ', 222 => '¡', 223 => '¿',
 
+        // ZSCII 224-251: Extended special characters
+        // (Implementation-specific, based on common Z-Machine conventions)
+        224 => '©', // copyright
+        225 => '®', // registered trademark
+        226 => '™', // trademark
+        227 => '°', // degree
+        228 => '±', // plus-minus
+        229 => '×', // multiplication
+        230 => '÷', // division
+        231 => '¢', // cent
+        232 => '¤', // currency
+        233 => '¥', // yen
+        234 => '§', // section
+        235 => '¶', // paragraph
+        236 => 'µ', // micro
+        237 => '¹', // superscript 1
+        238 => '²', // superscript 2
+        239 => '³', // superscript 3
+        240 => '¼', // fraction 1/4
+        241 => '½', // fraction 1/2
+        242 => '¾', // fraction 3/4
+        243 => '«', // left guillemet (duplicate for safety)
+        244 => '»', // right guillemet (duplicate for safety)
+        245 => '─', // box drawing horizontal
+        246 => '│', // box drawing vertical
+        247 => '┌', // box drawing top-left
+        248 => '┐', // box drawing top-right
+        249 => '└', // box drawing bottom-left
+        250 => '┘', // box drawing bottom-right
+        251 => '·', // middle dot
+
         // Unknown/unsupported ZSCII codes - use '?' as fallback
         _ => {
             debug!("Unsupported ZSCII code {}", zscii);
