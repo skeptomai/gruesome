@@ -7,10 +7,11 @@ const ALPHABET_A2_V3: &[u8] = b" \r0123456789.,!?_#'\"/\\-:()";
 
 /// Convert ZSCII code to Unicode character
 /// Implements the Z-Machine ZSCII character set (section 3.8 of spec)
-fn zscii_to_unicode(zscii: u8) -> char {
+/// ZSCII codes are 10-bit values (0-1023), not 8-bit!
+fn zscii_to_unicode(zscii: u16) -> char {
     match zscii {
         // Standard ASCII printable characters (32-126)
-        32..=126 => zscii as char,
+        32..=126 => (zscii as u8) as char,
 
         // ZSCII 155-223: Accented characters and special symbols
         // (Full mapping according to Z-Machine Standard 1.1, section 3.8.2.1)
@@ -252,7 +253,9 @@ fn decode_string_recursive(
                             if i + 1 < all_zchars.len() {
                                 let high = all_zchars[i];
                                 let low = all_zchars[i + 1];
-                                let zscii_code = (high << 5) | low;
+                                // ZSCII codes are 10-bit: high 5 bits + low 5 bits
+                                // Must cast to u16 to avoid overflow
+                                let zscii_code = ((high as u16) << 5) | (low as u16);
                                 debug!(
                                     "ZSCII escape: high={}, low={}, code={}",
                                     high, low, zscii_code
