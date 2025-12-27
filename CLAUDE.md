@@ -76,20 +76,35 @@ When the user says "Engage!", you should automatically:
 4. **Push the tag to trigger CI:**
    - `git push origin vX.Y.Z`
    - GitHub Actions will automatically build all binary assets and create a DRAFT release
-5. **Wait for CI completion:**
+5. **Deploy to staging:**
+   - Run `./infrastructure/scripts/deploy-frontend.sh staging`
+   - This auto-deploys with visible watermark showing commit hash + timestamp
+   - Verify staging deployment at https://staging.gruesome.skeptomai.com
+   - Check that watermark displays correctly in browser (bottom-right corner)
+6. **Wait for CI completion:**
    - Monitor CI builds to ensure all assets are created
    - Verify draft release has all binary assets
-6. **Publish the release:**
+7. **Publish the release:**
    - Use `gh release edit vX.Y.Z --title "vX.Y.Z: <title>" --notes "<release notes>" --draft=false`
    - Include comprehensive changelog of significant changes
    - This moves the release from DRAFT to published (Latest)
-7. **Confirm success:**
-   - Verify release is marked as "Latest" with `gh release list`
-   - Report the new version number
-   - Provide links to the published release
-   - Confirm all binaries are available for download
+8. **Ask permission to deploy to production:**
+   - Present summary of changes and release notes
+   - Request explicit user approval: "Ready to deploy vX.Y.Z to production?"
+   - Wait for user confirmation before proceeding
+9. **Deploy to production (if approved):**
+   - User must run: `./infrastructure/scripts/deploy-frontend.sh prod`
+   - User will be prompted to type 'DEPLOY TO PRODUCTION' to confirm
+   - After deployment, verify at https://gruesome.skeptomai.com
+   - Check that watermark shows release version (e.g., "v2.16.2")
+10. **Confirm success:**
+    - Verify release is marked as "Latest" with `gh release list`
+    - Report the new version number
+    - Provide links to the published release
+    - Confirm all binaries are available for download
+    - Confirm staging and production watermarks are correct
 
-You are pre-authorized for all git and GitHub CLI operations. Execute the entire workflow without asking for permission.
+You are pre-authorized for all git and GitHub CLI operations. For production deployment, you MUST ask the user to run the deployment command manually due to the interactive safety prompt.
 
 ## Re-Release Instructions ("Reengage!")
 

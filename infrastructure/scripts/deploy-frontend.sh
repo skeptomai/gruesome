@@ -57,14 +57,18 @@ BUILD_VERSION="${COMMIT_HASH} @ ${BUILD_TIME}"
 echo "Build version: $BUILD_VERSION"
 echo ""
 
-# Inject build version into HTML (only for staging)
+# Inject build version into HTML
 if [ "$ENV" == "staging" ]; then
-    # Create temporary HTML with build version injected
-    sed "s/<span id=\"build-version\">DEV<\/span>/<span id=\"build-version\">$BUILD_VERSION<\/span>/" index.html > index.tmp.html
-    mv index.tmp.html index.deploy.html
+    # Staging: Show commit hash + timestamp (visible watermark)
+    sed -e "s/<span id=\"build-version\">DEV<\/span>/<span id=\"build-version\">$BUILD_VERSION<\/span>/" \
+        -e 's/style="position: fixed; bottom: 0; right: 0; background: rgba(0,0,0,0.7); color: #666; padding: 5px 10px; font-size: 10px; font-family: monospace; z-index: 9999; display: none;"/style="position: fixed; bottom: 0; right: 0; background: rgba(0,0,0,0.7); color: #666; padding: 5px 10px; font-size: 10px; font-family: monospace; z-index: 9999; display: block;"/' \
+        index.html > index.deploy.html
 else
-    # Use original HTML for production (no watermark)
-    cp index.html index.deploy.html
+    # Production: Show release version from git tag (visible watermark)
+    RELEASE_VERSION=$(git -C .. describe --tags --abbrev=0 2>/dev/null || echo "unknown")
+    sed -e "s/<span id=\"build-version\">DEV<\/span>/<span id=\"build-version\">$RELEASE_VERSION<\/span>/" \
+        -e 's/style="position: fixed; bottom: 0; right: 0; background: rgba(0,0,0,0.7); color: #666; padding: 5px 10px; font-size: 10px; font-family: monospace; z-index: 9999; display: none;"/style="position: fixed; bottom: 0; right: 0; background: rgba(0,0,0,0.7); color: #666; padding: 5px 10px; font-size: 10px; font-family: monospace; z-index: 9999; display: block;"/' \
+        index.html > index.deploy.html
 fi
 
 # Upload files to S3
