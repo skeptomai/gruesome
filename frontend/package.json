@@ -1,0 +1,15 @@
+{
+  "name": "gruesome",
+  "type": "module",
+  "version": "2.16.0",
+  "files": [
+    "gruesome_bg.wasm",
+    "gruesome.js",
+    "gruesome.d.ts"
+  ],
+  "main": "gruesome.js",
+  "types": "gruesome.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

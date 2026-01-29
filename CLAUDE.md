@@ -76,20 +76,35 @@ When the user says "Engage!", you should automatically:
 4. **Push the tag to trigger CI:**
    - `git push origin vX.Y.Z`
    - GitHub Actions will automatically build all binary assets and create a DRAFT release
-5. **Wait for CI completion:**
+5. **Deploy to staging:**
+   - Run `./infrastructure/scripts/deploy-frontend.sh staging`
+   - This auto-deploys with visible watermark showing commit hash + timestamp
+   - Verify staging deployment at https://staging.gruesome.skeptomai.com
+   - Check that watermark displays correctly in browser (bottom-right corner)
+6. **Wait for CI completion:**
    - Monitor CI builds to ensure all assets are created
    - Verify draft release has all binary assets
-6. **Publish the release:**
+7. **Publish the release:**
    - Use `gh release edit vX.Y.Z --title "vX.Y.Z: <title>" --notes "<release notes>" --draft=false`
    - Include comprehensive changelog of significant changes
    - This moves the release from DRAFT to published (Latest)
-7. **Confirm success:**
-   - Verify release is marked as "Latest" with `gh release list`
-   - Report the new version number
-   - Provide links to the published release
-   - Confirm all binaries are available for download
+8. **Ask permission to deploy to production:**
+   - Present summary of changes and release notes
+   - Request explicit user approval: "Ready to deploy vX.Y.Z to production?"
+   - Wait for user confirmation before proceeding
+9. **Deploy to production (if approved):**
+   - User must run: `./infrastructure/scripts/deploy-frontend.sh prod`
+   - User will be prompted to type 'DEPLOY TO PRODUCTION' to confirm
+   - After deployment, verify at https://gruesome.skeptomai.com
+   - Check that watermark shows release version (e.g., "v2.16.2")
+10. **Confirm success:**
+    - Verify release is marked as "Latest" with `gh release list`
+    - Report the new version number
+    - Provide links to the published release
+    - Confirm all binaries are available for download
+    - Confirm staging and production watermarks are correct
 
-You are pre-authorized for all git and GitHub CLI operations. Execute the entire workflow without asking for permission.
+You are pre-authorized for all git and GitHub CLI operations. For production deployment, you MUST ask the user to run the deployment command manually due to the interactive safety prompt.
 
 ## Re-Release Instructions ("Reengage!")
 
@@ -126,6 +141,73 @@ You are pre-authorized for all operations. Execute without asking for permission
 **NEVER use `git reset --hard` or any destructive git operation that could lose commits.**
 
 Safe operations only: `git add`, `git commit`, `git push`, `git checkout`, `git stash`, `git revert`
+
+## CRITICAL: DEPLOYMENT SAFETY RULES
+
+**NEVER deploy to production without explicit permission and verification.**
+
+### Rule 1: Always Test Deployments Before Reporting Success
+
+**NEVER claim a deployment was successful without testing it.**
+
+When deploying code changes:
+1. ✅ Deploy the code
+2. ✅ **TEST the deployed functionality** (API calls, health checks, etc.)
+3. ✅ **VERIFY the changes are actually working**
+4. ✅ Check logs for errors
+5. ✅ **ONLY THEN** report success to the user
+
+**Examples of what NOT to do:**
+- ❌ "Deployment complete!" (without testing)
+- ❌ "Updated Lambda function" (without verifying it works)
+- ❌ "Should be working now" (without confirming)
+- ❌ Assuming deployment worked based on AWS response alone
+
+**Correct approach:**
+- ✅ "Deployed to staging. Testing..." → run actual tests → "Verified working: [test results]"
+- ✅ "Lambda updated. Checking API..." → curl endpoint → "API returning correct data: [sample]"
+
+**Rationale**: The 2025-12-20 incident where I deployed OLD code to production because I didn't verify the bootstrap.zip was actually rebuilt. User discovered the issue, not me. This is unacceptable.
+
+### Rule 2: Never Deploy to Production Without Permission
+
+**Production deployments REQUIRE explicit user permission.**
+
+**Deployment workflow (MANDATORY):**
+1. ✅ Make code changes
+2. ✅ Deploy to **STAGING** first
+3. ✅ **TEST staging thoroughly**
+4. ✅ **ASK USER** for permission to deploy to production
+5. ✅ Wait for explicit approval
+6. ✅ Deploy to production
+7. ✅ **TEST production** to verify
+8. ✅ Report verified success
+
+**NEVER:**
+- ❌ Deploy to production without asking
+- ❌ Deploy to production before testing staging
+- ❌ Deploy to production "because it worked in staging"
+- ❌ Assume production deployment is authorized
+
+**The ONLY exception**: If user explicitly says "deploy to both staging and production" or similar.
+
+**Rationale**: The 2025-12-20 incident where I deployed to production at 00:20:01 without permission. User discovered this only when they said "look things over again before we deploy to production" - but I had already deployed. This violated user's trust and control over their production environment.
+
+**Technical Safeguard**: The `deploy-frontend.sh` script now requires manual confirmation for production deployments. When deploying to production, the script prompts:
+```
+⚠️  WARNING: You are about to deploy to PRODUCTION ⚠️
+Type 'DEPLOY TO PRODUCTION' to continue:
+```
+
+This interactive prompt **cannot be bypassed by Claude** - production deployments now require the user to run the command manually. Staging deployments proceed without prompting.
+
+**As Claude**: I cannot deploy to production via `deploy-frontend.sh prod` because I cannot provide interactive input. I can only deploy to staging. For production, I must ask the user to run the deployment command themselves.
+
+### Deployment Documentation
+
+See `infrastructure/LAMBDA_DEPLOYMENT.md` for complete Lambda deployment procedures.
+See `infrastructure/QUICK_LAMBDA_DEPLOY.md` for quick reference.
+Use `infrastructure/scripts/deploy-lambda.sh` for automated, verified deployments.
 
 ## Compiler Debugging Tools
 

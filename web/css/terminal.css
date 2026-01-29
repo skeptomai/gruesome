@@ -96,7 +96,8 @@ body {
 }
 
 #app {
-  height: 100%;
+  height: 100vh;
+  overflow: hidden;
 }
 
 /* ============================================
@@ -106,12 +107,14 @@ body {
 .terminal {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  height: 100vh;
+  max-height: 100vh;
   background: var(--terminal-bg);
   color: var(--terminal-fg);
   font-family: var(--font-terminal);
   font-size: var(--font-size);
   line-height: var(--line-height);
+  overflow: hidden;
 }
 
 /* Subtle text glow for phosphor effect */
@@ -184,22 +187,14 @@ body {
   font-weight: bold;
 }
 
-/* Scrollbar styling */
+/* Hide scrollbar while maintaining scroll functionality */
+.output-area {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
 .output-area::-webkit-scrollbar {
-  width: 8px;
-}
-
-.output-area::-webkit-scrollbar-track {
-  background: var(--terminal-bg);
-}
-
-.output-area::-webkit-scrollbar-thumb {
-  background: var(--terminal-dim);
-  border-radius: 4px;
-}
-
-.output-area::-webkit-scrollbar-thumb:hover {
-  background: var(--terminal-fg);
+  display: none; /* Chrome, Safari, Opera */
 }
 
 /* ============================================
@@ -207,20 +202,17 @@ body {
    ============================================ */
 
 .input-area {
-  display: flex;
-  align-items: center;
-  padding: var(--terminal-padding);
-  padding-top: 10px;
-  flex-shrink: 0;
-}
-
-.input-area .prompt {
-  margin-right: 8px;
-  user-select: none;
+  margin: 0;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .input-area input {
-  flex: 1;
+  display: inline;
   background: transparent;
   border: none;
   outline: none;
@@ -230,6 +222,9 @@ body {
   line-height: inherit;
   caret-color: var(--terminal-fg);
   padding: 0;
+  margin: 0;
+  width: calc(100% - 2ch);
+  vertical-align: baseline;
 }
 
 /* Remove default input styling */
@@ -239,6 +234,25 @@ body {
 
 .input-area input:focus {
   outline: none;
+}
+
+/* ============================================
+   Footer (Version Display)
+   ============================================ */
+
+.footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 6px var(--terminal-padding);
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.footer .version {
+  font-size: 12px;
+  color: var(--terminal-dim);
+  text-align: center;
 }
 
 /* ============================================
@@ -398,8 +412,17 @@ body {
   padding: var(--terminal-padding);
   max-width: 700px;
   margin: 0 auto;
+  box-sizing: border-box;
   overflow-y: auto;
-  height: 100%;
+  max-height: 100vh;
+  /* Hide scrollbar while maintaining scroll functionality */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+/* Hide scrollbar for Chrome, Safari, and Opera */
+.disclaimer::-webkit-scrollbar {
+  display: none;
 }
 
 .disclaimer-title {
@@ -413,7 +436,16 @@ body {
   text-align: center;
   color: var(--terminal-dim);
   margin-top: 5px;
+  margin-bottom: 5px;
+}
+
+.build-info {
+  text-align: center;
+  color: var(--terminal-dim);
+  font-size: 0.8em;
+  margin-top: 0;
   margin-bottom: 20px;
+  opacity: 0.7;
 }
 
 /* ============================================

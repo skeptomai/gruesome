@@ -26,16 +26,17 @@ export function StatusBar({ location, score, moves, time, isTimeGame }) {
 /**
  * Output Area Component
  * Displays game output with auto-scroll
+ * Now includes the input area inline at the bottom for traditional terminal feel
  */
-export function OutputArea({ lines, upperWindow }) {
+export function OutputArea({ lines, upperWindow, waitingForInput, onSubmit, prompt }) {
   const outputRef = useRef(null);
 
-  // Auto-scroll to bottom when new content is added
+  // Auto-scroll to bottom when new content is added or input state changes
   useEffect(() => {
     if (outputRef.current) {
       outputRef.current.scrollTop = outputRef.current.scrollHeight;
     }
-  }, [lines]);
+  }, [lines, waitingForInput]);
 
   return html`
     ${upperWindow && upperWindow.length > 0 && html`
@@ -45,6 +46,13 @@ export function OutputArea({ lines, upperWindow }) {
     `}
     <div class="output-area" ref=${outputRef}>
       ${lines.map((line, i) => html`<pre key=${i}>${line}</pre>`)}
+      ${waitingForInput && html`
+        <${InputArea}
+          onSubmit=${onSubmit}
+          disabled=${!waitingForInput}
+          prompt=${prompt}
+        />
+      `}
     </div>
   `;
 }
@@ -104,9 +112,7 @@ export function InputArea({ onSubmit, disabled, prompt }) {
   };
 
   return html`
-    <div class="input-area">
-      <span class="prompt">${prompt || '>'}</span>
-      <input
+    <pre class="input-area">${prompt || '>'} <input
         ref=${inputRef}
         type="text"
         value=${value}
@@ -116,8 +122,7 @@ export function InputArea({ onSubmit, disabled, prompt }) {
         autocomplete="off"
         autocapitalize="off"
         spellcheck="false"
-      />
-    </div>
+      /></pre>
   `;
 }
 
@@ -151,6 +156,22 @@ export function ErrorDisplay({ title, message, details }) {
 }
 
 /**
+ * Footer Component
+ * Displays interpreter version at bottom of terminal
+ *
+ * Version is fetched from WASM on app load and automatically
+ * updated when a new release is deployed (no manual updates needed).
+ * Shows empty string if version hasn't loaded yet.
+ */
+export function Footer({ version }) {
+  return html`
+    <div class="footer">
+      <span class="version">Gruesome ${version ? `v${version}` : ''}</span>
+    </div>
+  `;
+}
+
+/**
  * Main Terminal Component
  * Orchestrates the full terminal interface
  */
@@ -171,6 +192,7 @@ export function Terminal({
   effectsEnabled = false,
   blurLevel = 'medium',
   prompt = '>',
+  interpreterVersion = null,
 }) {
   const themeClass = `theme-${theme}`;
   const fontClass = `font-${font}`;
@@ -203,12 +225,11 @@ export function Terminal({
       <${OutputArea}
         lines=${outputLines}
         upperWindow=${upperWindow}
-      />
-      <${InputArea}
+        waitingForInput=${waitingForInput}
         onSubmit=${handleCommand}
-        disabled=${!waitingForInput}
         prompt=${prompt}
       />
+      <${Footer} version=${interpreterVersion} />
     </div>
   `;
 }
@@ -325,4 +346,5 @@ window.GruesomeTerminal = {
   StatusBar,
   OutputArea,
   InputArea,
+  Footer,
 };

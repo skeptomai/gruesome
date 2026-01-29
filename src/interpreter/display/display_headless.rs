@@ -47,6 +47,12 @@ impl HeadlessDisplay {
         output
     }
 
+    /// Clear all buffered output (useful for Lambda execution)
+    pub fn clear_output(&mut self) {
+        self.buffer.clear();
+        self.current_line.clear();
+    }
+
     /// Flush the current line to the buffer
     fn flush_line(&mut self) {
         if !self.current_line.is_empty() || self.buffer.is_empty() {

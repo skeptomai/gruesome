@@ -27,9 +27,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("       {} [--help | --version]", args[0]);
                 println!();
                 println!("Options:");
-                println!("  --help, -h     Show this help message");
-                println!("  --version, -v  Show version information");
-                println!("  --step         Enable single-step debugging for PC range");
+                println!("  --help, -h            Show this help message");
+                println!("  --version, -v         Show version information");
+                println!("  --step                Enable single-step debugging for PC range");
+                println!(
+                    "  --unsafe-no-limits    Disable safety limits (for debugging malformed files)"
+                );
                 println!();
                 println!("Examples:");
                 println!("  {} resources/test/zork1/DATA/ZORK1.DAT", args[0]);
@@ -90,6 +93,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
+    // Check for --unsafe-no-limits option (can be anywhere in args)
+    let unsafe_no_limits = args.iter().any(|arg| arg == "--unsafe-no-limits");
+    if unsafe_no_limits {
+        log::warn!("⚠️  UNSAFE MODE: Safety limits disabled - use only for debugging!");
+    }
+
     // Load the game file with user-friendly error handling
     // Use explicit match instead of ? operator to provide clean, formatted error messages
     // that guide users to solve common problems like incorrect paths or wrong directories
@@ -135,6 +144,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Enable single-stepping if requested
     if let Some((start, end)) = step_range {
         interpreter.enable_single_step(start, end);
+    }
+
+    // Enable unsafe mode if requested
+    if unsafe_no_limits {
+        interpreter.enable_unsafe_mode();
     }
 
     debug!("Z-Machine Interpreter v0.1.0");

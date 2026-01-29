@@ -71,12 +71,9 @@ self.code_address
         }
 
         // Create end-of-function label for jump target resolution
-        // Generate unique label based on verb name to avoid conflicts
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        verb.hash(&mut hasher);
-        let end_function_label = 90000 + (hasher.finish() % 9999) as u32;
+        // Use monotonic counter for deterministic label IDs (refactoring-safe)
+        let end_function_label = self.next_string_id;
+        self.next_string_id += 1;
 
         // Phase 3.1: Extract tokens from parse buffer for object resolution
         // Parse buffer layout after SREAD:
@@ -829,7 +826,7 @@ verb, func_id
                             Operand::SmallConstant(2), // Must be exactly 2 words
                         ],
                         None,
-                        Some(0xBFFF_u16 as i16), // Branch-on-FALSE: skip if not equal to 2
+                        Some(0x7FFF_u16 as i16), // Branch on FALSE (not equal) - skip if word count != 2
                     )?;
 
                     // Register branch to skip this literal pattern if word count != 2
@@ -848,16 +845,19 @@ verb, func_id
                         panic!("BUG: emit_instruction didn't return branch_location for je instruction");
                     }
 
-                    // Load word 1 from parse buffer (the literal word to match)
+                    // Load word 2 from parse buffer (the literal word to match)
+                    // For 2-word patterns like "look around", we need word 2 ("around"), not word 1 ("look")
+                    // Parse buffer: [header(2), word1_data(4), word2_data(4), ...]
+                    // Word 2 dict_addr is at byte offset 6-7 → word offset 3
                     debug!(
-                        "🔍 LITERAL_LOAD_WORD1: Loading word 1 dictionary address for literal '{}'",
+                        "🔍 LITERAL_LOAD_WORD2: Loading word 2 dictionary address for literal '{}'",
                         literal_word
                     );
                     self.emit_instruction_typed(
                         Opcode::Op2(Op2::Loadw), // loadw: load word from array
                         &[
                             Operand::Variable(PARSE_BUFFER_GLOBAL), // Parse buffer address
-                            Operand::SmallConstant(1),              // Offset 1 = word 1 dict addr
+                            Operand::SmallConstant(3), // FIXED: Offset 3 = word 2 dict addr (was 1)
                         ],
                         Some(7), // Store in local variable 7 (temporary for literal matching)
                         None,
@@ -885,31 +885,43 @@ verb, func_id
                             ))
                         })? as u32;
 
+                    let dict_ref_operand = Operand::LargeConstant(placeholder_word());
                     let layout = self.emit_instruction_typed(
-                        Opcode::Op2(Op2::Je), // je: jump if equal
+                        Opcode::Op2(Op2::Je),
                         &[
-                            Operand::Variable(7),                       // word 1 dict addr from parse buffer
-                            Operand::LargeConstant(placeholder_word()), // literal dict addr (placeholder)
+                            Operand::Variable(7), // Word from parse buffer (stored in variable 7)
+                            dict_ref_operand,     // Literal word dictionary address
                         ],
                         None,
-                        Some(0x4000_u16 as i16), // Branch-on-TRUE (match found)
+                        Some(0x7FFF_u16 as i16), // Branch on FALSE (not equal) - skip if no match
                     )?;
                     debug!("🔍 LITERAL_COMPARE_EMITTED: JE instruction emitted for literal '{}' comparison", literal_word);
 
-                    // Register dictionary reference for the literal word
-                    if let Some(mut operand_location) = layout.operand_location {
-                        operand_location += 1; // Skip first operand (Variable(7) = 1 byte)
-                        debug!(
-                            "📝 LITERAL_DICT_REF: Creating DictionaryRef at location 0x{:04x} for word '{}' (position {})",
-                            operand_location, literal_word, position
-                        );
+                    // Register branch to skip_literal_label for word mismatch
+                    if let Some(branch_location) = layout.branch_location {
+                        self.reference_context
+                            .unresolved_refs
+                            .push(UnresolvedReference {
+                                reference_type: LegacyReferenceType::Branch,
+                                location: branch_location,
+                                target_id: skip_literal_label,
+                                is_packed_address: false,
+                                offset_size: 2,
+                                location_space: MemorySpace::Code,
+                            });
+                    }
+
+                    // Register dictionary reference for literal word
+                    if let Some(operand_base) = layout.operand_location {
+                        let dict_operand_location = operand_base + 1; // Second operand location
+                        debug!("🔍 DICT_REF: Registering dictionary reference for literal word '{}' at location 0x{:04x}", literal_word, dict_operand_location);
                         self.reference_context
                             .unresolved_refs
                             .push(UnresolvedReference {
                                 reference_type: LegacyReferenceType::DictionaryRef {
                                     word: literal_word.clone(),
                                 },
-                                location: operand_location,
+                                location: dict_operand_location,
                                 target_id: position,
                                 is_packed_address: false,
                                 offset_size: 2,
@@ -917,52 +929,7 @@ verb, func_id
                             });
                     }
 
-                    // Register branch to execute handler if match
-                    let execute_literal_label = self.next_string_id;
-                    self.next_string_id += 1;
-
-                    if let Some(branch_location) = layout.branch_location {
-                        self.reference_context
-                            .unresolved_refs
-                            .push(UnresolvedReference {
-                                reference_type: LegacyReferenceType::Branch,
-                                location: branch_location,
-                                target_id: execute_literal_label,
-                                is_packed_address: false,
-                                offset_size: 2,
-                                location_space: MemorySpace::Code,
-                            });
-                    } else {
-                        panic!("BUG: emit_instruction didn't return branch_location for je instruction");
-                    }
-
-                    // Jump to skip this pattern (no match)
-                    let layout = self.emit_instruction_typed(
-                        Opcode::Op1(Op1::Jump),
-                        &[Operand::LargeConstant(placeholder_word())],
-                        None,
-                        None,
-                    )?;
-
-                    if let Some(operand_location) = layout.operand_location {
-                        self.reference_context
-                            .unresolved_refs
-                            .push(UnresolvedReference {
-                                reference_type: LegacyReferenceType::Jump,
-                                location: operand_location,
-                                target_id: skip_literal_label,
-                                is_packed_address: false,
-                                offset_size: 2,
-                                location_space: MemorySpace::Code,
-                            });
-                    } else {
-                        panic!("BUG: emit_instruction didn't return operand_location for jump");
-                    }
-
-                    // Label for executing literal pattern handler
-                    self.reference_context
-                        .ir_id_to_address
-                        .insert(execute_literal_label, self.code_address);
+                    // If we get here, the literal pattern matched - fall through to handler
 
                     // Execute handler function
                     if let crate::grue_compiler::ir::IrHandler::FunctionCall(func_id, args) =
@@ -1006,7 +973,7 @@ verb, func_id
                     // This is reached by branches that don't match the word count or literal word
                     debug!("🏷️ LITERAL_LABEL_DEFINE: Defining skip_literal_label={} at address 0x{:04x}", skip_literal_label, self.code_address);
 
-                    // Register label in ir_id_to_address for branch resolution (this is what the resolver looks for)
+                    // Register label in ir_id_to_address for branch resolution (pre-refactoring method)
                     self.reference_context
                         .ir_id_to_address
                         .insert(skip_literal_label, self.code_address);
@@ -1041,7 +1008,14 @@ verb, func_id
                     );
 
                     // Check if we have at least 3 words (verb + literal + noun)
-                    let skip_insufficient_words = (83000 + (self.code_address * 19) % 9999) as u32;
+                    // Use monotonic counter for deterministic label IDs (refactoring-safe)
+                    let skip_insufficient_words = self.next_string_id;
+                    self.next_string_id += 1;
+                    log::warn!(
+                        "🔧 LITERAL+NOUN: Generated skip_insufficient_words label ID={} at code_addr=0x{:04x}",
+                        skip_insufficient_words,
+                        self.code_address
+                    );
                     let layout = self.emit_instruction_typed(
                         Opcode::Op2(Op2::Jl), // jl: jump if less than
                         &[
@@ -1054,6 +1028,11 @@ verb, func_id
 
                     // Register branch to skip this pattern if insufficient words
                     if let Some(branch_location) = layout.branch_location {
+                        log::warn!(
+                            "🔧 LITERAL+NOUN: JL branch at location=0x{:04x} will jump to label ID={} (skip_insufficient_words)",
+                            branch_location,
+                            skip_insufficient_words
+                        );
                         self.reference_context
                             .unresolved_refs
                             .push(UnresolvedReference {
@@ -1067,8 +1046,14 @@ verb, func_id
                     }
 
                     // Generate unique label IDs for this literal+noun pattern
-                    let unique_seed = (self.code_address * 17) % 9999;
-                    let skip_literal_noun_label = (82000 + unique_seed) as u32;
+                    // Use monotonic counter for deterministic label IDs (refactoring-safe)
+                    let skip_literal_noun_label = self.next_string_id;
+                    self.next_string_id += 1;
+                    log::warn!(
+                        "🔧 LITERAL+NOUN: Generated skip_literal_noun_label ID={} at code_addr=0x{:04x}",
+                        skip_literal_noun_label,
+                        self.code_address
+                    );
 
                     // Load word 1 (offset 3) from parse buffer - this should be the literal "at"
                     self.emit_instruction_typed(
@@ -1103,12 +1088,17 @@ verb, func_id
 
                     // Register dictionary reference for literal word
                     // Look up the word's position in the sorted dictionary
+                    log::warn!(
+                        "🔍 DICT_WORDS_LIST: dictionary_words contains {} words: {:?}",
+                        self.dictionary_words.len(),
+                        self.dictionary_words
+                    );
                     let word_position = self.dictionary_words.iter().position(|w| w == literal_word)
                         .unwrap_or_else(|| {
                             panic!("FATAL: Literal word '{}' not found in dictionary_words! Available words: {:?}",
                                    literal_word, self.dictionary_words);
                         });
-                    debug!("🔍 DICT_REF_REGISTER: Registering dictionary reference for literal word '{}' at location 0x{:04x}, position={}", literal_word, dict_operand_location, word_position);
+                    log::warn!("🔍 DICT_REF_REGISTER: Registering dictionary reference for literal word '{}' at location 0x{:04x}, position={} (calculated from dictionary_words list)", literal_word, dict_operand_location, word_position);
                     self.reference_context
                         .unresolved_refs
                         .push(UnresolvedReference {
@@ -1124,6 +1114,12 @@ verb, func_id
 
                     // Register branch to skip this pattern if literal doesn't match
                     if let Some(branch_location) = layout.branch_location {
+                        log::warn!(
+                            "🔧 LITERAL+NOUN: JE branch at location=0x{:04x} will jump to label ID={} if '{}' doesn't match (skip_literal_noun_label)",
+                            branch_location,
+                            skip_literal_noun_label,
+                            literal_word
+                        );
                         self.reference_context
                             .unresolved_refs
                             .push(UnresolvedReference {
@@ -1145,12 +1141,14 @@ verb, func_id
                             func_id, literal_word
                         );
 
-                        // Load word 2 (offset 3) from parse buffer - this is the noun
+                        // Load word 2 (the noun) from parse buffer
+                        // For "look at mailbox": word 2 in pattern = parse buffer word 3 ("mailbox") at byte offset 10-11
+                        // loadw uses word addressing, so word offset = byte_offset / 2 = 10 / 2 = 5
                         self.emit_instruction_typed(
                             Opcode::Op2(Op2::Loadw),
                             &[
                                 Operand::Variable(PARSE_BUFFER_GLOBAL),
-                                Operand::SmallConstant(5), // Word 2 dict addr at offset 5
+                                Operand::SmallConstant(5), // Word 3 dict addr at word offset 5 (byte offset 10-11)
                             ],
                             Some(7), // Store in local variable 7 (temporary for grammar operations)
                             None,
@@ -1218,9 +1216,19 @@ verb, func_id
                     }
 
                     // Register the skip_literal_noun_label at current address
+                    log::warn!(
+                        "🔧 LITERAL+NOUN: Defining skip_literal_noun_label ID={} at final address=0x{:04x}",
+                        skip_literal_noun_label,
+                        self.code_address
+                    );
                     self.record_final_address(skip_literal_noun_label, self.code_address);
 
                     // Register the skip_insufficient_words label at the same address (both conditions skip this pattern)
+                    log::warn!(
+                        "🔧 LITERAL+NOUN: Defining skip_insufficient_words ID={} at final address=0x{:04x}",
+                        skip_insufficient_words,
+                        self.code_address
+                    );
                     self.record_final_address(skip_insufficient_words, self.code_address);
                 }
             }

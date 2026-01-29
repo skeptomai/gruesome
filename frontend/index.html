@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<!--
+    Gruesome Z-Machine Platform
+    Web-based Z-Machine game player with cloud save/load
+    Features: WASM interpreter, JWT auth, S3 storage
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gruesome - Z-Machine Game Platform</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="dev-config.js"></script>
+
+    <!-- Google Fonts - Terminal fonts for retro styling -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&family=Share+Tech+Mono&family=VT323&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-spacer"></div>
+            <h1>📜 Gruesome Z-Machine Platform</h1>
+            <div id="auth-status">
+                <button id="admin-button" style="display:none;">🔧 Admin</button>
+                <button id="logout-button" style="display:none;">Logout</button>
+            </div>
+        </header>
+
+        <!-- Flash Messages -->
+        <div id="flash-messages"></div>
+
+        <!-- Login Section -->
+        <div id="login-section" class="section">
+            <h2>Login</h2>
+
+            <!-- Welcoming introduction - kept brief to not overwhelm users -->
+            <p class="intro">
+                Play classic interactive fiction games in your browser. Create an account to get started.
+            </p>
+
+            <form id="auth-form">
+                <input type="email" id="email" placeholder="Email" style="display:none;">
+                <input type="text" id="username" placeholder="Username">
+                <input type="password" id="password" placeholder="Password">
+
+                <!-- Password Requirements (shown during signup) -->
+                <div id="password-requirements" class="password-requirements" style="display:none;">
+                    <p class="requirements-title">Password must contain:</p>
+                    <ul>
+                        <li>At least 8 characters</li>
+                        <li>At least one uppercase letter (A-Z)</li>
+                        <li>At least one lowercase letter (a-z)</li>
+                        <li>At least one number (0-9)</li>
+                    </ul>
+                </div>
+
+                <input type="text" id="reset-code" placeholder="Verification Code" style="display:none;">
+                <input type="password" id="new-password" placeholder="New Password" style="display:none;">
+                <button type="submit" id="auth-submit">Login</button>
+            </form>
+
+            <p class="auth-toggle">
+                <a href="#" id="toggle-auth-mode">Need an account? Sign up</a>
+                <span class="auth-divider">|</span>
+                <a href="#" id="forgot-password-link">Forgot password?</a>
+            </p>
+
+            <!-- Educational Disclaimer -->
+            <div class="disclaimer-box">
+                <h3>About This Project</h3>
+                <p>
+                    This is an educational project demonstrating Z-Machine interpreter
+                    implementation in Rust, compiled to WebAssembly for in-browser gameplay.
+                </p>
+
+                <h3>Legal Notice</h3>
+                <p>
+                    Zork I and other Infocom games are copyrighted by Activision Publishing, Inc.
+                    This site is not affiliated with or endorsed by Activision.
+                </p>
+                <p>
+                    This interpreter is provided for educational and preservation purposes.
+                </p>
+
+                <h3>Acquire Zork Legally</h3>
+                <ul class="disclaimer-links">
+                    <li><a href="https://www.gog.com/en/game/the_zork_anthology" target="_blank" rel="noopener">GOG.com - The Zork Anthology</a></li>
+                    <li><a href="https://store.steampowered.com/app/570580/Zork_Anthology/" target="_blank" rel="noopener">Steam - Zork Anthology</a></li>
+                    <li><a href="https://www.infocom-if.org/games/games.html" target="_blank" rel="noopener">Infocom-IF.org - Game Information</a></li>
+                </ul>
+
+                <h3>Free Alternatives</h3>
+                <p>
+                    The <a href="https://www.ifarchive.org/" target="_blank" rel="noopener">Interactive Fiction Archive</a> hosts
+                    hundreds of free Z-Machine games you can play legally.
+                </p>
+
+                <p class="disclaimer-footer">
+                    By logging in, you acknowledge this notice and accept responsibility
+                    for your use of any copyrighted material.
+                </p>
+            </div>
+        </div>
+
+        <!-- Game Library Section -->
+        <div id="game-library" class="section" style="display:none;">
+            <h2>Available Games</h2>
+            <div id="games-list"></div>
+        </div>
+
+        <!-- Admin Section -->
+        <div id="admin-section" class="section" style="display:none;">
+            <div class="admin-header">
+                <h2>🔧 Admin Panel</h2>
+                <button id="admin-back-button">← Back to Library</button>
+            </div>
+
+            <!-- Admin Tab Navigation -->
+            <div class="admin-tabs">
+                <button class="admin-tab active" data-tab="games">Games</button>
+                <button class="admin-tab" data-tab="upload">Upload New Game</button>
+            </div>
+
+            <!-- Games Management Tab -->
+            <div id="admin-games-tab" class="admin-tab-content active">
+                <h3>Manage Games</h3>
+                <div class="admin-search">
+                    <input type="text" id="admin-search" placeholder="Search games...">
+                </div>
+                <div id="admin-games-list" class="admin-games-list">
+                    <!-- Game list will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Upload Game Tab -->
+            <div id="admin-upload-tab" class="admin-tab-content">
+                <h3>Upload New Game</h3>
+                <div id="upload-form" class="admin-upload-form">
+                    <!-- File upload -->
+                    <div class="upload-dropzone" id="upload-dropzone">
+                        <input type="file" id="game-file-input" accept=".z3,.z4,.z5,.z8" style="display:none;">
+                        <p>Drag and drop a Z-Machine file here, or click to browse</p>
+                        <p class="upload-hint">Supports: .z3, .z4, .z5, .z8 (max 512 KB)</p>
+                    </div>
+
+                    <!-- Upload progress -->
+                    <div id="upload-progress" class="upload-progress" style="display:none;">
+                        <div class="progress-bar">
+                            <div id="progress-fill" class="progress-fill"></div>
+                        </div>
+                        <p id="upload-status">Uploading...</p>
+                    </div>
+
+                    <!-- Metadata form (shown after upload) -->
+                    <div id="metadata-form" style="display:none;">
+                        <h4>Game Metadata</h4>
+                        <div class="form-group">
+                            <label for="game-id">Game ID *</label>
+                            <input type="text" id="game-id" readonly>
+                            <small>Auto-generated from filename</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="game-title">Title *</label>
+                            <input type="text" id="game-title" required maxlength="100">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="game-author">Author *</label>
+                            <input type="text" id="game-author" required maxlength="50">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="game-description">Description *</label>
+                            <textarea id="game-description" required maxlength="500" rows="4"></textarea>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="game-category">Category</label>
+                                <select id="game-category">
+                                    <option value="">Select category...</option>
+                                    <option value="Adventure">Adventure</option>
+                                    <option value="Mystery">Mystery</option>
+                                    <option value="Sci-Fi">Sci-Fi</option>
+                                    <option value="Fantasy">Fantasy</option>
+                                    <option value="Humor">Humor</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="game-year">Year Published</label>
+                                <input type="number" id="game-year" min="1977" max="2025">
+                            </div>
+                        </div>
+
+                        <div class="metadata-readonly">
+                            <h5>Z-Machine Header Info</h5>
+                            <div class="info-grid">
+                                <div><strong>Version:</strong> <span id="meta-version">-</span></div>
+                                <div><strong>Release:</strong> <span id="meta-release">-</span></div>
+                                <div><strong>Serial:</strong> <span id="meta-serial">-</span></div>
+                                <div><strong>Checksum:</strong> <span id="meta-checksum">-</span></div>
+                                <div><strong>File Size:</strong> <span id="meta-filesize">-</span></div>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button id="cancel-upload" type="button" class="secondary">Cancel</button>
+                            <button id="publish-game" type="button" class="primary">Publish Game</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Edit Game Modal (initially hidden) -->
+            <div id="edit-game-modal" class="modal" style="display:none;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Edit Game</h3>
+                        <button class="modal-close" id="close-edit-modal">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label for="edit-game-title">Title *</label>
+                            <input type="text" id="edit-game-title" required maxlength="100">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-game-author">Author *</label>
+                            <input type="text" id="edit-game-author" required maxlength="50">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-game-description">Description *</label>
+                            <textarea id="edit-game-description" required maxlength="500" rows="4"></textarea>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-game-category">Category</label>
+                                <select id="edit-game-category">
+                                    <option value="">Select category...</option>
+                                    <option value="Adventure">Adventure</option>
+                                    <option value="Mystery">Mystery</option>
+                                    <option value="Sci-Fi">Sci-Fi</option>
+                                    <option value="Fantasy">Fantasy</option>
+                                    <option value="Humor">Humor</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="edit-game-year">Year Published</label>
+                                <input type="number" id="edit-game-year" min="1977" max="2025">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="edit-game-display-order">Display Order</label>
+                                <input type="number" id="edit-game-display-order" min="0" step="1" placeholder="Optional">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="cancel-edit" class="secondary">Cancel</button>
+                        <button id="save-edit" class="primary">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Delete Confirmation Modal -->
+            <div id="delete-game-modal" class="modal" style="display:none;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Confirm Delete</h3>
+                        <button class="modal-close" id="close-delete-modal">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Are you sure you want to delete <strong id="delete-game-name"></strong>?</p>
+                        <p class="warning">This will remove the game from the library. The file will be archived but not permanently deleted.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="cancel-delete" class="secondary">Cancel</button>
+                        <button id="confirm-delete" class="danger">Delete Game</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Player Section -->
+        <div id="game-player" class="section" style="display:none;">
+            <!-- Control Panels -->
+            <div class="control-panels">
+                <h3 onclick="toggleControlPanels()" style="cursor: pointer; margin: 0 0 12px 0; font-size: 0.9em; color: #999; text-transform: uppercase; letter-spacing: 0.5px; user-select: none;">
+                    <span id="controls-toggle-icon">▼</span> Controls
+                </h3>
+                <div id="controls-content">
+                    <div class="game-controls">
+                        <button id="back-button">← Back to Library</button>
+                        <button id="save-button">💾 Save Game</button>
+                        <button id="load-button">📂 Load Save</button>
+                    </div>
+
+                    <!-- Visual Settings Panel -->
+                    <div id="visual-settings" class="settings-panel">
+                        <h3 onclick="toggleVisualSettings()" style="cursor: pointer;">
+                            <span id="settings-toggle-icon">▼</span> Visual Settings
+                        </h3>
+                        <div id="settings-content">
+                            <div class="settings-row">
+                                <div class="settings-group">
+                                    <label>Theme:</label>
+                                    <div id="theme-toggle" class="theme-toggle"></div>
+                                </div>
+                                <div class="settings-group">
+                                    <label>Font:</label>
+                                    <div id="font-toggle" class="font-toggle"></div>
+                                </div>
+                            </div>
+                            <div class="settings-row">
+                                <div class="settings-group">
+                                    <label>CRT Effect:</label>
+                                    <div id="crt-toggle" class="crt-toggle"></div>
+                                </div>
+                                <div class="settings-group">
+                                    <label>Blur:</label>
+                                    <div id="blur-toggle" class="blur-toggle"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status Line (classic Zork-style) -->
+            <div id="status-line" class="status-line" style="display:none;">
+                <span id="status-location" class="status-location"></span>
+                <span id="status-right" class="status-right">
+                    Score: <span id="status-score">0</span>  Moves: <span id="status-moves">0</span>
+                </span>
+            </div>
+
+            <div id="game-output"></div>
+        </div>
+    </div>
+
+    <!-- SVG Filters for CRT effects -->
+    <svg style="position: absolute; width: 0; height: 0;">
+        <defs>
+            <!-- CRT effect - No blur (sharp text, no glow) -->
+            <filter id="crt-blur-none" x="-5%" y="-5%" width="110%" height="110%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="0" result="softened"/>
+                <feGaussianBlur in="SourceGraphic" stdDeviation="0" result="glow"/>
+                <feMerge>
+                    <feMergeNode in="glow"/>
+                    <feMergeNode in="softened"/>
+                </feMerge>
+            </filter>
+
+            <!-- CRT effect - Light blur -->
+            <filter id="crt-blur-light" x="-5%" y="-5%" width="110%" height="110%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="0.2" result="softened"/>
+                <feGaussianBlur in="SourceGraphic" stdDeviation="1.0" result="glow"/>
+                <feMerge>
+                    <feMergeNode in="glow"/>
+                    <feMergeNode in="softened"/>
+                </feMerge>
+            </filter>
+
+            <!-- CRT effect - Medium blur -->
+            <filter id="crt-blur-medium" x="-5%" y="-5%" width="110%" height="110%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="0.5" result="softened"/>
+                <feGaussianBlur in="SourceGraphic" stdDeviation="2.0" result="glow"/>
+                <feMerge>
+                    <feMergeNode in="glow"/>
+                    <feMergeNode in="softened"/>
+                </feMerge>
+            </filter>
+
+            <!-- CRT effect - Heavy blur (very blurry CRT look) -->
+            <filter id="crt-blur-heavy" x="-5%" y="-5%" width="110%" height="110%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="1.0" result="softened"/>
+                <feGaussianBlur in="SourceGraphic" stdDeviation="4.0" result="glow"/>
+                <feMerge>
+                    <feMergeNode in="glow"/>
+                    <feMergeNode in="softened"/>
+                </feMerge>
+            </filter>
+
+            <!-- Combined CRT effect (legacy, kept for compatibility) -->
+            <filter id="crt-full" x="-5%" y="-5%" width="110%" height="110%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="0.3" result="softened"/>
+                <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="glow"/>
+                <feMerge>
+                    <feMergeNode in="glow"/>
+                    <feMergeNode in="softened"/>
+                </feMerge>
+            </filter>
+        </defs>
+    </svg>
+
+    <!-- Version watermark for staging (shows deployment info) -->
+    <div id="version-watermark" style="position: fixed; bottom: 0; right: 0; background: rgba(0,0,0,0.7); color: #666; padding: 5px 10px; font-size: 10px; font-family: monospace; z-index: 9999; display: none;">
+        Build: <span id="build-version">DEV</span>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>

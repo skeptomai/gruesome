@@ -5,6 +5,133 @@ pub const ALPHABET_A0: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
 const ALPHABET_A1: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const ALPHABET_A2_V3: &[u8] = b" \r0123456789.,!?_#'\"/\\-:()";
 
+/// Convert ZSCII code to Unicode character
+/// Implements the Z-Machine ZSCII character set (section 3.8 of spec)
+/// ZSCII codes are 10-bit values (0-1023), not 8-bit!
+fn zscii_to_unicode(zscii: u16) -> char {
+    match zscii {
+        // ZSCII 0-31: Control characters (section 3.8.2.2)
+        0 => '\0',        // Null character
+        8 => '\u{0008}',  // Delete/Backspace
+        9 => '\t',        // Tab
+        10 => '\n',       // Line feed (might be used in some games)
+        13 => '\r',       // Carriage return
+        27 => '\u{001B}', // Escape
+
+        // Standard ASCII printable characters (32-126)
+        32..=126 => (zscii as u8) as char,
+
+        // ZSCII 155-223: Accented characters and special symbols
+        // (Full mapping according to Z-Machine Standard 1.1, section 3.8.2.1)
+        155 => 'ä',
+        156 => 'ö',
+        157 => 'ü',
+        158 => 'Ä',
+        159 => 'Ö',
+        160 => 'Ü',
+        161 => 'ß',
+        162 => '»',
+        163 => '«',
+        164 => 'ë',
+        165 => 'ï',
+        166 => 'ÿ',
+        167 => 'Ë',
+        168 => 'Ï',
+        169 => 'á',
+        170 => 'é',
+        171 => 'í',
+        172 => 'ó',
+        173 => 'ú',
+        174 => 'ý',
+        175 => 'Á',
+        176 => 'É',
+        177 => 'Í',
+        178 => 'Ó',
+        179 => 'Ú',
+        180 => 'Ý',
+        181 => 'à',
+        182 => 'è',
+        183 => 'ì',
+        184 => 'ò',
+        185 => 'ù',
+        186 => 'À',
+        187 => 'È',
+        188 => 'Ì',
+        189 => 'Ò',
+        190 => 'Ù',
+        191 => 'â',
+        192 => 'ê',
+        193 => 'î',
+        194 => 'ô',
+        195 => 'û',
+        196 => 'Â',
+        197 => 'Ê',
+        198 => 'Î',
+        199 => 'Ô',
+        200 => 'Û',
+        201 => 'å',
+        202 => 'Å',
+        203 => 'ø',
+        204 => 'Ø',
+        205 => 'ã',
+        206 => 'ñ',
+        207 => 'õ',
+        208 => 'Ã',
+        209 => 'Ñ',
+        210 => 'Õ',
+        211 => 'æ',
+        212 => 'Æ',
+        213 => 'ç',
+        214 => 'Ç',
+        215 => 'þ',
+        216 => 'ð',
+        217 => 'Þ',
+        218 => 'Ð',
+        219 => '£',
+        220 => 'œ',
+        221 => 'Œ',
+        222 => '¡',
+        223 => '¿',
+
+        // ZSCII 224-251: Extended special characters
+        // (Implementation-specific, based on common Z-Machine conventions)
+        224 => '©', // copyright
+        225 => '®', // registered trademark
+        226 => '™', // trademark
+        227 => '°', // degree
+        228 => '±', // plus-minus
+        229 => '×', // multiplication
+        230 => '÷', // division
+        231 => '¢', // cent
+        232 => '¤', // currency
+        233 => '¥', // yen
+        234 => '§', // section
+        235 => '¶', // paragraph
+        236 => 'µ', // micro
+        237 => '¹', // superscript 1
+        238 => '²', // superscript 2
+        239 => '³', // superscript 3
+        240 => '¼', // fraction 1/4
+        241 => '½', // fraction 1/2
+        242 => '¾', // fraction 3/4
+        243 => '«', // left guillemet (duplicate for safety)
+        244 => '»', // right guillemet (duplicate for safety)
+        245 => '─', // box drawing horizontal
+        246 => '│', // box drawing vertical
+        247 => '┌', // box drawing top-left
+        248 => '┐', // box drawing top-right
+        249 => '└', // box drawing bottom-left
+        250 => '┘', // box drawing bottom-right
+        251 => '·', // middle dot
+
+        // Unknown/unsupported ZSCII codes - use '?' as fallback
+        _ => {
+            debug!("Unsupported ZSCII code {}", zscii);
+            '?'
+        }
+    }
+}
+
 /// Decode a Z-string from memory starting at the given address
 /// Returns the decoded string and the number of bytes consumed
 pub fn decode_string(
@@ -12,7 +139,17 @@ pub fn decode_string(
     addr: usize,
     abbrev_table_addr: usize,
 ) -> Result<(String, usize), String> {
-    decode_string_recursive(memory, addr, abbrev_table_addr, 0)
+    decode_string_recursive(memory, addr, abbrev_table_addr, 0, false)
+}
+
+/// Decode a string with optional safety limit bypass (for debugging)
+pub fn decode_string_unsafe(
+    memory: &[u8],
+    addr: usize,
+    abbrev_table_addr: usize,
+    disable_limits: bool,
+) -> Result<(String, usize), String> {
+    decode_string_recursive(memory, addr, abbrev_table_addr, 0, disable_limits)
 }
 
 /// Internal recursive function with depth tracking
@@ -21,6 +158,7 @@ fn decode_string_recursive(
     addr: usize,
     abbrev_table_addr: usize,
     depth: u8,
+    disable_limits: bool,
 ) -> Result<(String, usize), String> {
     if depth > 3 {
         debug!(
@@ -31,7 +169,19 @@ fn decode_string_recursive(
     }
     let mut result = String::new();
     let mut offset = addr;
-    let max_string_length = 1000; // Prevent runaway string generation
+
+    // Calculate safe maximum based on memory size
+    // Theoretical max: every byte could be part of a Z-string word
+    // Each word (2 bytes) = 3 Z-chars, so max = (memory_size / 2) * 3
+    // This ensures we never reject a valid string while preventing runaway allocation
+    // Example: Enchanter (107KB) → 161K char limit (vs old hardcoded 1000)
+    // This fixes the bug where Enchanter's 1116-char intro was truncated at 1000 chars,
+    // causing PC to land in the middle of string data (0x5827) instead of after it (0x5875)
+    let max_string_length = if disable_limits {
+        usize::MAX // No limit when explicitly disabled for debugging
+    } else {
+        (memory.len() / 2) * 3
+    };
 
     // First, collect all z-characters
     let mut all_zchars = Vec::new();
@@ -106,7 +256,13 @@ fn decode_string_recursive(
             }
 
             // Recursively decode the abbreviation string
-            match decode_string_recursive(memory, abbrev_byte_addr, abbrev_table_addr, depth + 1) {
+            match decode_string_recursive(
+                memory,
+                abbrev_byte_addr,
+                abbrev_table_addr,
+                depth + 1,
+                disable_limits,
+            ) {
                 Ok((abbrev_str, _)) => {
                     // Check for obviously repetitive patterns
                     if abbrev_str.len() > 50 || abbrev_str.contains("rmyrmy") {
@@ -160,22 +316,19 @@ fn decode_string_recursive(
                             if i + 1 < all_zchars.len() {
                                 let high = all_zchars[i];
                                 let low = all_zchars[i + 1];
-                                let zscii_code = (high << 5) | low;
+                                // ZSCII codes are 10-bit: high 5 bits + low 5 bits
+                                // Must cast to u16 to avoid overflow
+                                let zscii_code = ((high as u16) << 5) | (low as u16);
                                 debug!(
                                     "ZSCII escape: high={}, low={}, code={}",
                                     high, low, zscii_code
                                 );
                                 i += 2; // Skip the two chars we just read
 
-                                // Convert ZSCII to char
-                                if (32..=126).contains(&zscii_code) {
-                                    let ch = zscii_code as char;
-                                    debug!("ZSCII code {} = '{}'", zscii_code, ch);
-                                    ch
-                                } else {
-                                    debug!("ZSCII code {} out of printable range", zscii_code);
-                                    '?'
-                                }
+                                // Convert ZSCII to Unicode char
+                                let ch = zscii_to_unicode(zscii_code);
+                                debug!("ZSCII code {} = '{}'", zscii_code, ch);
+                                ch
                             } else {
                                 debug!("ZSCII escape at end of string");
                                 '?'

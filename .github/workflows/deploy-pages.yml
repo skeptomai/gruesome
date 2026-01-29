@@ -34,6 +34,11 @@ jobs:
       - name: Build WASM
         run: wasm-pack build --target web --out-dir web/pkg --no-default-features --features wasm
 
+      - name: Create build info
+        run: |
+          echo "{\"commit\":\"${GITHUB_SHA:0:7}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > web/buildinfo.json
+          cat web/buildinfo.json
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 

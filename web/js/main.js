@@ -112,13 +112,16 @@ function BlurToggle({ blurLevel, onToggle, disabled }) {
  * Disclaimer Component
  * Shown before loading the game with legal notices
  */
-function Disclaimer({ onContinue, onLoadOwn, theme, onThemeChange, font, onFontChange, crtEnabled, onCrtChange, blurLevel, onBlurChange }) {
+function Disclaimer({ onContinue, onLoadOwn, theme, onThemeChange, font, onFontChange, crtEnabled, onCrtChange, blurLevel, onBlurChange, version, buildInfo }) {
   const crtClass = crtEnabled ? `crt-enhanced crt-blur-${blurLevel || 'medium'}` : '';
   return html`
     <div class="terminal theme-${theme} font-${font} ${crtClass}">
       <div class="disclaimer">
         <h1 class="disclaimer-title">GRUESOME</h1>
-        <p class="disclaimer-subtitle">Z-Machine Interpreter</p>
+        <p class="disclaimer-subtitle">Z-Machine Interpreter${version ? ` v${version}` : ''}</p>
+        ${buildInfo && html`
+          <p class="build-info">Build: ${buildInfo.commit} @ ${new Date(buildInfo.timestamp).toLocaleString()}</p>
+        `}
 
         <${ThemeToggle} theme=${theme} onToggle=${onThemeChange} />
         <${FontToggle} font=${font} onToggle=${onFontChange} />
@@ -201,6 +204,12 @@ function App() {
   // WASM interpreter instance
   const interpreterRef = useRef(null);
 
+  // Interpreter version - fetch from WASM on load
+  const [interpreterVersion, setInterpreterVersion] = useState(null);
+
+  // Build info for deployment tracking
+  const [buildInfo, setBuildInfo] = useState(null);
+
   // Game state (when playing with real WASM)
   const [gameState, setGameState] = useState({
     status: { location: '', score: 0, moves: 0 },
@@ -208,6 +217,50 @@ function App() {
     waitingForInput: false,
     quit: false,
   });
+
+  // Load build info on app startup for deployment tracking
+  useEffect(() => {
+    async function loadBuildInfo() {
+      try {
+        const response = await fetch('./buildinfo.json');
+        if (response.ok) {
+          const info = await response.json();
+          setBuildInfo(info);
+          console.log('Build info:', info);
+        }
+      } catch (err) {
+        console.log('Could not load build info:', err);
+      }
+    }
+    loadBuildInfo();
+  }, []);
+
+  // Load WASM module on app startup to fetch version
+  // This runs once when the app loads, before the user clicks "Play Zork"
+  // Version is pulled from Cargo.toml via CARGO_PKG_VERSION at build time
+  // Single source of truth - no need to manually update version in JavaScript
+  useEffect(() => {
+    async function loadVersion() {
+      try {
+        // Check if WASM package exists
+        const response = await fetch('./pkg/gruesome.js', { method: 'HEAD' });
+        if (response.ok) {
+          // Load and initialize WASM module
+          const wasm = await import('../pkg/gruesome.js');
+          await wasm.default();
+
+          // Fetch version from Rust code (compiled from Cargo.toml)
+          const version = wasm.get_interpreter_version();
+          setInterpreterVersion(version);
+          console.log('Gruesome version:', version);
+        }
+      } catch (err) {
+        // Non-critical - version display is optional
+        console.log('Could not load version:', err);
+      }
+    }
+    loadVersion();
+  }, []);
 
   // Settings - load from localStorage if available
   const [settings, setSettings] = useState(() => {
@@ -361,8 +414,8 @@ function App() {
       // Run interpreter until it needs input or finishes
       const result = interpreter.step();
 
-      // Parse output - split by newlines
-      const newOutput = result.output ? result.output.split('\n') : [];
+      // Parse output - split by newlines and filter out standalone prompts
+      const newOutput = result.output ? result.output.split('\n').filter(line => line !== '>') : [];
 
       // Update game state from result
       setGameState(prev => ({
@@ -460,6 +513,12 @@ function App() {
     if (!interpreter) return;
 
     try {
+      // Echo the command to output with prompt (since WASM no longer does this)
+      setGameState(prev => ({
+        ...prev,
+        outputLines: [...prev.outputLines, `>${command}`],
+      }));
+
       // Send command to WASM interpreter
       interpreter.provide_input(command);
 
@@ -517,6 +576,8 @@ function App() {
           onCrtChange=${handleCrtChange}
           blurLevel=${settings.blurLevel || 'medium'}
           onBlurChange=${handleBlurChange}
+          version=${interpreterVersion}
+          buildInfo=${buildInfo}
         />
       `;
 
@@ -568,6 +629,7 @@ function App() {
           crtEnabled=${settings.crtEnabled || false}
           effectsEnabled=${settings.effectsEnabled}
           blurLevel=${settings.blurLevel || 'medium'}
+          interpreterVersion=${interpreterVersion}
         />
       `;
 

@@ -662,9 +662,11 @@ impl ZMachineCodeGen {
                 );
 
                 // Step 1: Generate unique labels for branch logic
-                let unique_seed = (self.code_address * 7919) % 100000;
-                let true_label_id: u32 = (50000 + unique_seed) as u32;
-                let end_label_id: u32 = (60000 + unique_seed) as u32;
+                // Use monotonic counter for deterministic label IDs (refactoring-safe)
+                let true_label_id = self.next_string_id;
+                self.next_string_id += 1;
+                let end_label_id = self.next_string_id;
+                self.next_string_id += 1;
 
                 // Step 2: Emit test_attr as branch instruction with CORRECT SmallConstant
                 let layout = self.emit_instruction_typed(
@@ -822,9 +824,11 @@ impl ZMachineCodeGen {
                 );
 
                 // Generate unique labels for the branch pattern
-                let unique_seed = (self.code_address * 7919) % 100000;
-                let attr_set_label_id: u32 = (40000 + unique_seed) as u32;
-                let end_label_id: u32 = (50000 + unique_seed) as u32;
+                // Use monotonic counter for deterministic label IDs (refactoring-safe)
+                let attr_set_label_id = self.next_string_id;
+                self.next_string_id += 1;
+                let end_label_id = self.next_string_id;
+                self.next_string_id += 1;
 
                 // Allocate storage for the result
                 let store_var = self.allocate_global_variable();

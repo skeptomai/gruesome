@@ -1,0 +1,1 @@
+/home/cb/Projects/gruesome/tests/mini_zork_debug_20251215_085003.z3

@@ -99,6 +99,16 @@ pub struct Instruction {
 impl Instruction {
     /// Decode an instruction from memory at the given address
     pub fn decode(memory: &[u8], addr: usize, version: u8) -> Result<Self, String> {
+        Self::decode_with_options(memory, addr, version, false)
+    }
+
+    /// Decode an instruction with optional safety limit bypass
+    pub fn decode_with_options(
+        memory: &[u8],
+        addr: usize,
+        version: u8,
+        unsafe_no_limits: bool,
+    ) -> Result<Self, String> {
         if addr >= memory.len() {
             return Err(format!("Instruction address {addr} out of bounds"));
         }
@@ -345,6 +355,15 @@ impl Instruction {
                         return Err("Large constant out of bounds".to_string());
                     }
                     let value = ((memory[offset] as u16) << 8) | (memory[offset + 1] as u16);
+
+                    // DEBUG: Log operand reading at 0x0ec2 for JE at 0x0ebf
+                    if addr == 0x0ebf || offset == 0x0ec2 {
+                        log::warn!(
+                            "🔍 OPERAND_READ at instruction_addr=0x{:04x}, reading LargeConstant at offset=0x{:04x}: memory[0x{:04x}]=0x{:02x}, memory[0x{:04x}]=0x{:02x}, value=0x{:04x}",
+                            addr, offset, offset, memory[offset], offset + 1, memory[offset + 1], value
+                        );
+                    }
+
                     operands.push(value);
                     offset += 2;
                 }
@@ -352,7 +371,17 @@ impl Instruction {
                     if offset >= memory.len() {
                         return Err("Small constant/variable out of bounds".to_string());
                     }
-                    operands.push(memory[offset] as u16);
+                    let value = memory[offset] as u16;
+
+                    // DEBUG: Log operand reading at 0x0ec1 for JE at 0x0ebf
+                    if addr == 0x0ebf || offset == 0x0ec1 {
+                        log::warn!(
+                            "🔍 OPERAND_READ at instruction_addr=0x{:04x}, reading Variable/SmallConstant at offset=0x{:04x}: memory[0x{:04x}]=0x{:02x}, value=0x{:04x}",
+                            addr, offset, offset, memory[offset], value
+                        );
+                    }
+
+                    operands.push(value);
                     offset += 1;
                 }
                 OperandType::Omitted => break,
@@ -428,7 +457,7 @@ impl Instruction {
             } else {
                 0x40 // Fallback
             };
-            match text::decode_string(memory, offset, abbrev_addr) {
+            match text::decode_string_unsafe(memory, offset, abbrev_addr, unsafe_no_limits) {
                 Ok((string, len)) => {
                     offset += len;
                     (Some(string), len)

@@ -1,0 +1,75 @@
+// Regression test for literal pattern matching with proper branch encoding
+// Tests the fix for mixed 1-byte/2-byte branch encoding bug (Dec 14, 2025)
+//
+// This test validates that literal patterns like "look around" work correctly
+// with 2-byte branch encoding (0x7FFF for branch-on-FALSE).
+//
+// Bug history:
+// - Literal patterns use branch-to-skip on mismatch
+// - Original bug: Mixed 1-byte/2-byte branch encoding caused failures
+// - Fix: Enforce consistent 2-byte encoding (bit 6=0 always)
+// - Placeholder semantics: bit 15 encodes polarity, not format
+
+world {
+    room test_room "Test Room" {
+        desc: "A test room for literal pattern matching."
+    }
+}
+
+grammar {
+    verb "look" {
+        default => look_default(),
+        "around" => look_around_literal(),
+        "at" + noun => look_at_noun($2)
+    }
+
+    verb "examine" {
+        "carefully" => examine_carefully(),
+        noun => examine_noun($noun)
+    }
+
+    verb "quit" {
+        default => quit_game()
+    }
+}
+
+fn look_default() {
+    print("DEFAULT: You glance around briefly.")
+}
+
+fn look_around_literal() {
+    print("LITERAL: You look around carefully.")
+}
+
+fn look_at_noun(target) {
+    print("NOUN: You examine the target.")
+}
+
+fn examine_carefully() {
+    print("LITERAL: You examine things carefully.")
+}
+
+fn examine_noun(obj) {
+    print("NOUN: You examine object " + obj + ".")
+}
+
+fn quit_game() {
+    print("Thanks for testing literal pattern matching!")
+    quit()
+}
+
+init {
+    player.location = test_room
+
+    print("=== LITERAL PATTERN MATCHING TEST ===")
+    print("")
+    print("Testing literal patterns with proper branch encoding:")
+    print("- Verb-only: 'look' -> look_default()")
+    print("- Literal: 'look around' -> look_around_literal()")
+    print("- Literal+noun: 'look at X' -> look_at_noun(X)")
+    print("")
+    print("All patterns use 2-byte branch encoding with:")
+    print("- 0x7FFF (branch on FALSE) for literal mismatch -> skip")
+    print("- Proper placeholder resolution to offset bytes")
+    print("")
+}

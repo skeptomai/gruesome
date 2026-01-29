@@ -1,0 +1,1457 @@
+/*
+ * Gruesome Z-Machine Platform - Stylesheet
+ * Retro terminal green-on-black theme
+ * Responsive layout for game player interface
+ */
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Courier New', monospace;
+    background: #1a1a1a;
+    color: #00ff00;
+    line-height: 1.6;
+    padding: 20px;
+}
+
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid #00ff00;
+}
+
+header h1 {
+    margin: 0;
+    flex: 1;
+    text-align: center;
+}
+
+.header-spacer {
+    min-width: 100px;
+}
+
+h1 {
+    color: #00ff00;
+    margin-bottom: 10px;
+}
+
+h2 {
+    color: #00ff00;
+    margin-bottom: 15px;
+}
+
+/* Flash Messages */
+#flash-messages {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    max-width: 600px;
+    width: 90%;
+}
+
+.flash-message {
+    padding: 15px 20px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+    font-family: inherit;
+    animation: slideIn 0.3s ease-out;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.flash-message.error {
+    background: rgba(139, 0, 0, 0.9);
+    color: #ffcccc;
+    border: 1px solid #8b0000;
+}
+
+.flash-message.success {
+    background: rgba(0, 100, 0, 0.9);
+    color: #ccffcc;
+    border: 1px solid #006400;
+}
+
+.flash-message.info {
+    background: rgba(139, 90, 0, 0.9);
+    color: #ffe4b3;
+    border: 1px solid #8b5a00;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.section {
+    background: #0a0a0a;
+    border: 2px solid #00ff00;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 5px;
+}
+
+#auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 400px;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="email"] {
+    padding: 10px;
+    background: #1a1a1a;
+    border: 1px solid #00ff00;
+    color: #00ff00;
+    font-family: inherit;
+}
+
+/* Password Requirements */
+.password-requirements {
+    background: #0f0f0f;
+    border: 1px solid #00aa00;
+    border-radius: 4px;
+    padding: 12px;
+    margin-top: -5px;
+    font-size: 0.9em;
+}
+
+.password-requirements .requirements-title {
+    color: #00ff00;
+    font-weight: bold;
+    margin-bottom: 6px;
+}
+
+.password-requirements ul {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+}
+
+.password-requirements li {
+    color: #00cc00;
+    padding: 2px 0;
+    padding-left: 20px;
+    position: relative;
+}
+
+.password-requirements li:before {
+    content: "▸";
+    position: absolute;
+    left: 5px;
+    color: #00aa00;
+}
+
+button {
+    padding: 10px 20px;
+    background: #00ff00;
+    color: #000;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: bold;
+}
+
+button:hover {
+    background: #00cc00;
+}
+
+button:disabled {
+    background: #333;
+    color: #666;
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.info {
+    margin-top: 10px;
+    color: #888;
+    font-size: 0.9em;
+}
+
+.intro {
+    color: #00ff00;
+    font-size: 1.1em;
+    line-height: 1.8;
+    margin-bottom: 20px;
+}
+
+.auth-toggle {
+    text-align: center;
+    margin-top: 15px;
+}
+
+.auth-toggle a {
+    color: #00ff00;
+    text-decoration: none;
+    font-size: 0.9em;
+}
+
+.auth-toggle a:hover {
+    text-decoration: underline;
+}
+
+.auth-divider {
+    color: #00ff00;
+    margin: 0 10px;
+    font-size: 0.9em;
+}
+
+#games-list {
+    display: grid;
+    gap: 15px;
+}
+
+.game-card {
+    background: #1a1a1a;
+    border: 1px solid #00ff00;
+    padding: 15px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.game-card:hover {
+    background: #2a2a2a;
+    border-color: #00ff00;
+    box-shadow: 0 0 10px #00ff00;
+}
+
+.game-card h3 {
+    color: #00ff00;
+    margin-bottom: 5px;
+}
+
+.game-card p {
+    color: #888;
+    font-size: 0.9em;
+}
+
+.crt-container {
+    position: relative;
+    margin: 20px 0;
+    border-radius: 15px;
+    overflow: hidden;
+    min-height: 400px;
+    height: 70vh;
+    max-height: 800px;
+}
+
+#game-output {
+    background: #000;
+    border: 1px solid #00ff00;
+    padding: 20px;
+    height: 100%;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-family: inherit;
+}
+
+.input-area {
+    margin: 0;
+    padding: 0;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.prompt {
+    color: inherit;
+    font-weight: normal;
+}
+
+#game-input {
+    display: inline;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    caret-color: var(--terminal-fg, #00ff00);
+    padding: 0;
+    margin: 0 0 0 0.5ch;
+    width: 90%;
+    vertical-align: baseline;
+}
+
+#game-input::placeholder {
+    color: var(--terminal-dim, #666);
+}
+
+#game-input:focus {
+    outline: none;
+}
+
+.control-panels {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.control-panels h3:hover {
+    color: #ccc;
+    transition: color 0.2s ease;
+}
+
+#controls-toggle-icon {
+    display: inline-block;
+    transition: transform 0.3s ease;
+    font-size: 0.8em;
+}
+
+#controls-toggle-icon.collapsed {
+    transform: rotate(-90deg);
+}
+
+#controls-content {
+    max-height: 1000px;
+    overflow: hidden;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+    opacity: 1;
+}
+
+#controls-content.collapsed {
+    max-height: 0;
+    opacity: 0;
+}
+
+.game-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+#auth-status {
+    display: flex;
+    align-items: center;
+    min-width: 100px;
+    justify-content: flex-end;
+}
+
+#logout-button {
+    background: #1a1a1a;
+    color: #00ff00;
+    border: 1px solid #00ff00;
+    padding: 8px 16px;
+    font-size: 0.9em;
+    cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace;
+    transition: all 0.3s ease;
+}
+
+#logout-button:hover {
+    background: #003300;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+.error {
+    color: #ff0000;
+    padding: 10px;
+    border: 1px solid #ff0000;
+    margin-top: 10px;
+}
+
+/* Educational Disclaimer Styling
+ * Intentionally muted to avoid overwhelming users before login
+ * Legal information is available but not visually dominant
+ */
+.disclaimer-box {
+    background: #0a0a0a;
+    border: 1px solid #333;
+    padding: 15px;
+    margin-top: 30px;
+    line-height: 1.5;
+}
+
+.disclaimer-box h3 {
+    color: #666;
+    font-size: 0.9em;
+    margin-top: 12px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.disclaimer-box h3:first-child {
+    margin-top: 0;
+}
+
+.disclaimer-box p {
+    color: #555;
+    margin-bottom: 8px;
+    font-size: 0.85em;
+}
+
+.disclaimer-box ul.disclaimer-links {
+    list-style: none;
+    padding-left: 0;
+    margin: 8px 0;
+}
+
+.disclaimer-box ul.disclaimer-links li {
+    margin: 4px 0;
+}
+
+.disclaimer-box a {
+    color: #666;
+    text-decoration: underline;
+    font-size: 0.85em;
+}
+
+.disclaimer-box a:hover {
+    color: #888;
+}
+
+.disclaimer-footer {
+    color: #444;
+    font-size: 0.8em;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #222;
+    font-style: italic;
+}
+
+/* ============================================
+   RETRO TERMINAL STYLING
+   CSS Custom Properties (Theme Configuration)
+   ============================================ */
+
+:root {
+  /* Green Phosphor (P1) - Classic Apple II / early terminal look */
+  --phosphor-green-bg: #0a0a0a;
+  --phosphor-green-fg: #33ff33;
+  --phosphor-green-dim: #1a8c1a;
+  --phosphor-green-glow: rgba(51, 255, 51, 0.4);
+
+  /* Amber Phosphor (P3) - IBM 3270 / PC monochrome */
+  --phosphor-amber-bg: #0a0800;
+  --phosphor-amber-fg: #ffb000;
+  --phosphor-amber-dim: #8c6000;
+  --phosphor-amber-glow: rgba(255, 176, 0, 0.4);
+
+  /* White Phosphor - Later terminals */
+  --phosphor-white-bg: #0a0a0a;
+  --phosphor-white-fg: #e0e0e0;
+  --phosphor-white-dim: #707070;
+  --phosphor-white-glow: rgba(224, 224, 224, 0.3);
+
+  /* Default theme: Green Phosphor */
+  --terminal-bg: var(--phosphor-green-bg);
+  --terminal-fg: var(--phosphor-green-fg);
+  --terminal-dim: var(--phosphor-green-dim);
+  --terminal-glow: var(--phosphor-green-glow);
+
+  /* Typography */
+  --font-terminal: "IBM Plex Mono", "Consolas", "Monaco", "Courier New", monospace;
+}
+
+/* Theme classes - apply to game output */
+.theme-green {
+  --terminal-bg: var(--phosphor-green-bg);
+  --terminal-fg: var(--phosphor-green-fg);
+  --terminal-dim: var(--phosphor-green-dim);
+  --terminal-glow: var(--phosphor-green-glow);
+}
+
+.theme-amber {
+  --terminal-bg: var(--phosphor-amber-bg);
+  --terminal-fg: var(--phosphor-amber-fg);
+  --terminal-dim: var(--phosphor-amber-dim);
+  --terminal-glow: var(--phosphor-amber-glow);
+}
+
+.theme-white {
+  --terminal-bg: var(--phosphor-white-bg);
+  --terminal-fg: var(--phosphor-white-fg);
+  --terminal-dim: var(--phosphor-white-dim);
+  --terminal-glow: var(--phosphor-white-glow);
+}
+
+/* Font classes */
+.font-default {
+  font-family: "IBM Plex Mono", "Consolas", "Monaco", "Courier New", monospace !important;
+}
+
+.font-vt323 {
+  font-family: "VT323", monospace !important;
+  font-size: 1.3em !important; /* VT323 renders small, scale up */
+  line-height: 1.2 !important;
+}
+
+.font-ibm3270 {
+  font-family: "IBM Plex Mono", monospace !important;
+}
+
+.font-sharetech {
+  font-family: "Share Tech Mono", monospace !important;
+}
+
+/* ============================================
+   Game Output Theming
+   ============================================ */
+
+#game-output {
+  font-family: var(--font-terminal);
+  background: var(--terminal-bg);
+  color: var(--terminal-fg);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Subtle text glow for phosphor effect */
+#game-output.effects-enabled {
+  text-shadow: 0 0 5px var(--terminal-glow);
+}
+
+/* ============================================
+   CRT Effects
+   ============================================ */
+
+/* Enhanced CRT effects */
+.crt-container.crt-enhanced {
+  position: relative;
+  filter: url(#crt-blur-medium);
+  border-radius: 15px;
+  overflow: hidden;
+}
+
+/* Blur level classes - override the filter */
+.crt-container.crt-enhanced.crt-blur-none {
+  filter: url(#crt-blur-none);
+}
+
+.crt-container.crt-enhanced.crt-blur-light {
+  filter: url(#crt-blur-light);
+}
+
+.crt-container.crt-enhanced.crt-blur-medium {
+  filter: url(#crt-blur-medium);
+}
+
+.crt-container.crt-enhanced.crt-blur-heavy {
+  filter: url(#crt-blur-heavy);
+}
+
+/* Vignette effect (darkened corners) */
+.crt-container.crt-enhanced::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 0%,
+    transparent 60%,
+    rgba(0, 0, 0, 0.3) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+  border-radius: 15px;
+}
+
+/* Screen bezel effect */
+.crt-container.crt-enhanced::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 15px;
+  box-shadow:
+    inset 0 0 100px rgba(0, 0, 0, 0.5),
+    inset 0 0 20px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Subtle flicker */
+.crt-container.crt-enhanced {
+  animation: crt-flicker 0.15s infinite;
+}
+
+@keyframes crt-flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.97; }
+}
+
+/* Chromatic aberration on text - applied to content, not container */
+.crt-container.crt-enhanced #game-output {
+  text-shadow:
+    0 0 8px var(--terminal-glow),
+    -0.5px 0 1px rgba(255, 0, 0, 0.15),
+    0.5px 0 1px rgba(0, 255, 255, 0.15);
+}
+
+/* Enhanced scanlines when CRT is on */
+.crt-container.crt-enhanced.effects-enabled::after {
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      rgba(0, 0, 0, 0.2) 2px,
+      rgba(0, 0, 0, 0.2) 4px
+    ),
+    radial-gradient(
+      ellipse at center,
+      transparent 0%,
+      transparent 50%,
+      rgba(0, 0, 0, 0.5) 100%
+    );
+  box-shadow:
+    inset 0 0 100px rgba(0, 0, 0, 0.5),
+    inset 0 0 20px rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================
+   Visual Settings Panel
+   ============================================ */
+
+.settings-panel {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 15px;
+  margin-bottom: 15px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.settings-panel h3 {
+  margin: 0 0 12px 0;
+  font-size: 0.9em;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  user-select: none;
+  transition: color 0.2s ease;
+}
+
+.settings-panel h3:hover {
+  color: #ccc;
+}
+
+#settings-toggle-icon {
+  display: inline-block;
+  transition: transform 0.3s ease;
+  font-size: 0.8em;
+}
+
+#settings-toggle-icon.collapsed {
+  transform: rotate(-90deg);
+}
+
+#settings-content {
+  max-height: 500px;
+  overflow: hidden;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+  opacity: 1;
+}
+
+#settings-content.collapsed {
+  max-height: 0;
+  opacity: 0;
+}
+
+.settings-row {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 10px;
+}
+
+.settings-row:last-child {
+  margin-bottom: 0;
+}
+
+.settings-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-group label {
+  font-size: 0.85em;
+  color: #aaa;
+  font-weight: 500;
+}
+
+/* Theme Toggle */
+.theme-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.theme-button {
+  flex: 1;
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+  border: 1px solid #444;
+  background: transparent;
+  color: #999;
+  transition: all 0.2s ease;
+  border-radius: 3px;
+}
+
+.theme-button:hover {
+  border-color: #00ff00;
+  color: #00ff00;
+}
+
+.theme-button.active {
+  border-color: #00ff00;
+  background: #00ff00;
+  color: #000;
+  font-weight: bold;
+}
+
+/* Font Toggle */
+.font-toggle {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.font-button {
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 0.8em;
+  cursor: pointer;
+  border: 1px solid #444;
+  background: transparent;
+  color: #999;
+  transition: all 0.2s ease;
+  border-radius: 3px;
+}
+
+.font-button:hover {
+  border-color: #00ff00;
+  color: #00ff00;
+}
+
+.font-button.active {
+  border-color: #00ff00;
+  background: #00ff00;
+  color: #000;
+  font-weight: bold;
+}
+
+/* CRT Toggle */
+.crt-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+/* Blur Toggle */
+.blur-toggle {
+  display: flex;
+  gap: 6px;
+}
+
+.blur-toggle.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.blur-button {
+  padding: 5px 10px;
+  font-family: inherit;
+  font-size: 0.8em;
+  cursor: pointer;
+  border: 1px solid #444;
+  background: transparent;
+  color: #999;
+  transition: all 0.2s ease;
+  border-radius: 3px;
+}
+
+.blur-button:hover:not(:disabled) {
+  border-color: #00ff00;
+  color: #00ff00;
+}
+
+.blur-button.active {
+  border-color: #00ff00;
+  background: #00ff00;
+  color: #000;
+  font-weight: bold;
+}
+
+.blur-button:disabled {
+  cursor: not-allowed;
+}
+
+/* ============================================
+   Responsive Adjustments
+   ============================================ */
+
+@media (max-width: 768px) {
+  .settings-row {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .theme-toggle, .font-toggle, .crt-toggle, .blur-toggle {
+    flex-wrap: wrap;
+  }
+}
+
+/* =============================================
+   ADMIN INTERFACE STYLES
+   ============================================= */
+
+#admin-button {
+  margin-right: 10px;
+  padding: 8px 16px;
+  background: #1a1a1a;
+  color: #00ff00;
+  border: 1px solid #00ff00;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.9em;
+  transition: all 0.3s ease;
+}
+
+#admin-button:hover {
+  background: #003300;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #00ff00;
+}
+
+.admin-header h2 {
+  margin: 0;
+  color: #00ff00;
+}
+
+#admin-back-button {
+  padding: 8px 16px;
+  background: #1a1a1a;
+  color: #00ff00;
+  border: 1px solid #00ff00;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  transition: all 0.3s ease;
+}
+
+#admin-back-button:hover {
+  background: #003300;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+/* Admin Tabs */
+.admin-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #333;
+}
+
+.admin-tab {
+  padding: 12px 24px;
+  background: #1a1a1a;
+  color: #666;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  transition: all 0.3s ease;
+}
+
+.admin-tab:hover {
+  color: #00ff00;
+}
+
+.admin-tab.active {
+  color: #00ff00;
+  border-bottom-color: #00ff00;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+.admin-tab-content {
+  display: none;
+}
+
+.admin-tab-content.active {
+  display: block;
+}
+
+/* Admin Games List */
+.admin-search {
+  margin-bottom: 20px;
+}
+
+.admin-search input {
+  width: 100%;
+  padding: 12px;
+  background: #1a1a1a;
+  color: #00ff00;
+  border: 1px solid #333;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 1em;
+}
+
+.admin-search input:focus {
+  outline: none;
+  border-color: #00ff00;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+.admin-games-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.9em;
+}
+
+.admin-games-table thead {
+  background: #1a1a1a;
+  border-bottom: 2px solid #00ff00;
+}
+
+.admin-games-table th {
+  padding: 12px;
+  text-align: left;
+  color: #00ff00;
+  font-weight: bold;
+}
+
+.admin-games-table tbody tr {
+  border-bottom: 1px solid #333;
+  transition: background 0.2s ease;
+}
+
+.admin-games-table tbody tr:hover {
+  background: #1a1a1a;
+}
+
+.admin-games-table td {
+  padding: 12px;
+  color: #999;
+}
+
+.admin-games-table td strong {
+  color: #00ff00;
+}
+
+.admin-games-table .actions {
+  white-space: nowrap;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  margin-right: 8px;
+  background: #1a1a1a;
+  border: 1px solid #00ff00;
+  color: #00ff00;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.85em;
+  transition: all 0.3s ease;
+}
+
+.btn-small:hover {
+  background: #003300;
+  box-shadow: 0 0 8px rgba(0, 255, 0, 0.5);
+}
+
+.btn-edit {
+  border-color: #00aaff;
+  color: #00aaff;
+}
+
+.btn-edit:hover {
+  background: #002233;
+  box-shadow: 0 0 8px rgba(0, 170, 255, 0.5);
+}
+
+.btn-delete {
+  border-color: #ff4444;
+  color: #ff4444;
+}
+
+.btn-delete:hover {
+  background: #331111;
+  box-shadow: 0 0 8px rgba(255, 68, 68, 0.5);
+}
+
+.active-badge {
+  color: #00ff00;
+  font-weight: bold;
+}
+
+.archived-badge {
+  color: #ff4444;
+  font-weight: bold;
+}
+
+.empty-message {
+  color: #666;
+  text-align: center;
+  padding: 40px;
+  font-style: italic;
+}
+
+/* Upload Form */
+.admin-upload-form {
+  max-width: 800px;
+}
+
+.upload-dropzone {
+  border: 2px dashed #333;
+  border-radius: 8px;
+  padding: 60px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: #0a0a0a;
+}
+
+.upload-dropzone:hover,
+.upload-dropzone.dragover {
+  border-color: #00ff00;
+  background: #111;
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
+}
+
+.upload-dropzone p {
+  margin: 10px 0;
+  color: #999;
+}
+
+.upload-hint {
+  font-size: 0.9em;
+  color: #666 !important;
+}
+
+.upload-progress {
+  padding: 20px;
+  text-align: center;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 30px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #003300, #00ff00);
+  width: 0%;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+}
+
+#upload-status {
+  color: #00ff00;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Metadata Form */
+#metadata-form h4 {
+  color: #00ff00;
+  margin-bottom: 20px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: #00ff00;
+  font-weight: bold;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+  width: 100%;
+  padding: 12px;
+  background: #1a1a1a;
+  color: #00ff00;
+  border: 1px solid #333;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 1em;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: #00ff00;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+.form-group input[readonly] {
+  background: #0a0a0a;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.form-group small {
+  display: block;
+  margin-top: 5px;
+  color: #666;
+  font-size: 0.85em;
+}
+
+.form-row {
+  display: flex;
+  gap: 20px;
+}
+
+.form-row .form-group {
+  flex: 1;
+}
+
+.metadata-readonly {
+  margin-top: 30px;
+  padding: 20px;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  border-radius: 4px;
+}
+
+.metadata-readonly h5 {
+  color: #00ff00;
+  margin-bottom: 15px;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+}
+
+.info-grid div {
+  color: #999;
+}
+
+.info-grid strong {
+  color: #00ff00;
+}
+
+.form-actions {
+  margin-top: 30px;
+  display: flex;
+  gap: 15px;
+  justify-content: flex-end;
+}
+
+.form-actions button {
+  padding: 12px 24px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 1em;
+  cursor: pointer;
+  border: 1px solid;
+  transition: all 0.3s ease;
+}
+
+.form-actions .primary {
+  background: #1a1a1a;
+  color: #00ff00;
+  border-color: #00ff00;
+}
+
+.form-actions .primary:hover {
+  background: #003300;
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+}
+
+.form-actions .secondary {
+  background: transparent;
+  color: #666;
+  border-color: #666;
+}
+
+.form-actions .secondary:hover {
+  color: #999;
+  border-color: #999;
+}
+
+/* Modals */
+.modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: #0a0a0a;
+  border: 2px solid #00ff00;
+  border-radius: 8px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 0 30px rgba(0, 255, 0, 0.5);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #333;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #00ff00;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: #00ff00;
+  font-size: 2em;
+  cursor: pointer;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  color: #ff4444;
+  text-shadow: 0 0 10px rgba(255, 68, 68, 0.8);
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.modal-body .warning {
+  color: #ff8800;
+  margin-top: 10px;
+  font-size: 0.9em;
+}
+
+.modal-footer {
+  padding: 20px;
+  border-top: 1px solid #333;
+  display: flex;
+  gap: 15px;
+  justify-content: flex-end;
+}
+
+.modal-footer button {
+  padding: 12px 24px;
+  font-family: 'IBM Plex Mono', monospace;
+  cursor: pointer;
+  border: 1px solid;
+  transition: all 0.3s ease;
+}
+
+.modal-footer .primary {
+  background: #1a1a1a;
+  color: #00ff00;
+  border-color: #00ff00;
+}
+
+.modal-footer .primary:hover {
+  background: #003300;
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+}
+
+.modal-footer .secondary {
+  background: transparent;
+  color: #666;
+  border-color: #666;
+}
+
+.modal-footer .secondary:hover {
+  color: #999;
+  border-color: #999;
+}
+
+.modal-footer .danger {
+  background: #1a1a1a;
+  color: #ff4444;
+  border-color: #ff4444;
+}
+
+.modal-footer .danger:hover {
+  background: #331111;
+  box-shadow: 0 0 15px rgba(255, 68, 68, 0.5);
+}
+
+/* Responsive Admin */
+@media (max-width: 768px) {
+  .admin-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+
+  .admin-tabs {
+    overflow-x: auto;
+  }
+
+  .admin-games-table {
+    font-size: 0.8em;
+  }
+
+  .admin-games-table th,
+  .admin-games-table td {
+    padding: 8px;
+  }
+
+  .form-row {
+    flex-direction: column;
+  }
+
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-content {
+    max-width: 95%;
+  }
+}
+
+/* =============================================
+   DRAG AND DROP REORDERING
+   ============================================= */
+
+.reorder-controls {
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.hint-text {
+  color: #00ff00;
+  opacity: 0.7;
+  font-size: 0.9em;
+}
+
+.drag-handle-col {
+  width: 40px;
+  text-align: center;
+  cursor: grab;
+  user-select: none;
+}
+
+.drag-handle {
+  cursor: grab;
+  user-select: none;
+  color: #00ff00;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+
+.drag-handle:hover {
+  opacity: 1;
+}
+
+.admin-games-table tr[draggable="true"] {
+  cursor: move;
+}
+
+.admin-games-table tr.dragging {
+  opacity: 0.5;
+  background: rgba(0, 255, 0, 0.1);
+}
+
+.admin-games-table tr.drag-over {
+  border-top: 2px solid #00ff00;
+}
+
+#save-order-btn {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 15px rgba(0, 255, 0, 0.8);
+  }
+}
+
+/* ============================================
+   Status Line (Classic Zork-style)
+   ============================================ */
+
+.status-line {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 16px;
+  margin-bottom: 0;
+  font-family: var(--font-terminal);
+  font-weight: bold;
+  font-size: 1em;
+  border-bottom: 1px solid var(--terminal-fg);
+  /* Inverse video: swap background and foreground */
+  background: var(--terminal-fg);
+  color: var(--terminal-bg);
+  transition: background-color 0.3s ease, color 0.3s ease;
+  /* Keep status line fixed at top while content scrolls */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.status-location {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-right {
+  text-align: right;
+  white-space: nowrap;
+}

@@ -21,6 +21,16 @@ pub fn init() {
     console_log::init_with_level(log::Level::Debug).ok();
 }
 
+/// Get the interpreter version string (e.g., "2.16.0")
+///
+/// Returns the version from Cargo.toml at compile time.
+/// This is exposed to JavaScript so the web interface can display
+/// the current interpreter version without hardcoding it.
+#[wasm_bindgen]
+pub fn get_interpreter_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 /// Result returned from stepping the interpreter
 #[wasm_bindgen]
 pub struct StepResult {
@@ -423,9 +433,7 @@ impl WasmInterpreter {
 
     /// Process text input
     fn process_input(&mut self, inst: &Instruction, input: &str) -> Result<(), String> {
-        self.display.print(">").ok();
-        self.display.print(input).ok();
-        self.display.print_char('\n').ok();
+        // Note: Web UI handles echoing the prompt and command, so we don't print it here
 
         let text_buffer = self.get_operand(inst, 0)?;
         let parse_buffer = if inst.operands.len() > 1 {

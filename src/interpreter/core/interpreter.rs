@@ -42,6 +42,8 @@ pub struct Interpreter {
     pub single_step: bool,
     /// PC range for single-stepping (start, end)
     pub step_range: Option<(u32, u32)>,
+    /// Disable safety limits (for debugging malformed files)
+    pub unsafe_no_limits: bool,
     /// V3 input handler (for v1-v3 games)
     pub(crate) v3_input: Option<V3Input>,
     /// V4+ input handler (for v4+ games)  
@@ -106,6 +108,7 @@ impl Interpreter {
             routine_names: RoutineNames::new(),
             single_step: false,
             step_range: None,
+            unsafe_no_limits: false,
             v3_input,
             v4_input,
             display,
@@ -116,6 +119,11 @@ impl Interpreter {
     /// Enable or disable debug mode
     pub fn set_debug(&mut self, debug: bool) {
         self.debug = debug;
+    }
+
+    /// Enable unsafe mode (disable safety limits for debugging)
+    pub fn enable_unsafe_mode(&mut self) {
+        self.unsafe_no_limits = true;
     }
 
     /// Enable single-step debugging for a PC range
@@ -375,10 +383,11 @@ impl Interpreter {
                 debug!("🚨 TRINITY EXECUTION at PC {:05x}", pc);
             }
 
-            let instruction = match Instruction::decode(
+            let instruction = match Instruction::decode_with_options(
                 &self.vm.game.memory,
                 pc as usize,
                 self.vm.game.header.version,
+                self.unsafe_no_limits,
             ) {
                 Ok(inst) => inst,
                 Err(e) => {
@@ -966,8 +975,18 @@ impl Interpreter {
                 self.do_branch(inst, condition)
             }
             0x02 => {
-                // jl
+                // jl - Jump if Less
+                let pc = self.vm.pc - inst.size as u32;
                 let condition = (op1 as i16) < (op2 as i16);
+                let branch_on_true = inst.branch.as_ref().map(|b| b.on_true).unwrap_or(true);
+                log::info!(
+                    "🔍 JL at {:04x}: {} < {} ? {} (will branch: {})",
+                    pc,
+                    op1 as i16,
+                    op2 as i16,
+                    condition,
+                    (condition && branch_on_true) || (!condition && !branch_on_true)
+                );
                 self.do_branch(inst, condition)
             }
             0x03 => {
@@ -1145,6 +1164,14 @@ impl Interpreter {
                 // Jump if a is equal to any of the subsequent operands (b, c, or d)
                 let pc = self.vm.pc - inst.size as u32;
 
+                // Debug output for pattern matching debugging
+                log::info!(
+                    "🔍 JE at {:04x}: comparing {:04x} with {:?}",
+                    pc,
+                    operands[0],
+                    &operands[1..]
+                );
+
                 // Debug output for the problematic JE at 13fd7
                 if pc == 0x13fd7 {
                     debug!(
@@ -1163,6 +1190,14 @@ impl Interpreter {
                         break;
                     }
                 }
+
+                let branch_on_true = inst.branch.as_ref().map(|b| b.on_true).unwrap_or(true);
+                log::info!(
+                    "🔍 JE at {:04x}: condition={}, will branch={}",
+                    pc,
+                    condition,
+                    (condition && branch_on_true) || (!condition && !branch_on_true)
+                );
 
                 if pc == 0x13fd7 {
                     debug!(
@@ -1796,6 +1831,7 @@ impl Interpreter {
                                 self.vm.pc, offset, new_pc
                             );
                         }
+
                         self.vm.pc = new_pc;
                         return Ok(ExecutionResult::Branched);
                     }

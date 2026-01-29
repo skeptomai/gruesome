@@ -19,3 +19,23 @@ build.out
 # WASM build output
 pkg/
 web/pkg/
+
+# Private AWS configuration
+.aws-config
+.aws-infrastructure
+
+# CDK Infrastructure
+infrastructure/node_modules/
+infrastructure/cdk.out/
+infrastructure/.env
+infrastructure/*.js
+!infrastructure/lib/*.js
+!infrastructure/bin/*.js
+infrastructure/**/*.d.ts
+infrastructure/**/*.js.map
+infrastructure/lambda/**/target/
+infrastructure/lambda/**/*.lock
+
+# Frontend build artifacts
+frontend/node_modules/
+frontend/.parcel-cache/
