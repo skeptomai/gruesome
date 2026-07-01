@@ -1,0 +1,40 @@
+# Container image for the self-hosted Gruesome platform.
+#
+# One image serves everything: the axum API server + the static SPA (index.html,
+# app.js, the WASM interpreter). Build from the REPO ROOT so both `selfhost/` and
+# `frontend/` are in the context:
+#
+#   pelagos build -t <registry>/gruesome-platform:<tag> --file selfhost/Remfile .
+#   pelagos image push <registry>/gruesome-platform:<tag>
+#
+# SQLite migrations are compiled into the binary (sqlx::migrate!), so nothing else
+# ships. The committed frontend/ already contains the built WASM artifacts
+# (gruesome.js + gruesome_bg.wasm); rebuild them with wasm-pack if the interpreter
+# changes.
+
+FROM rust:1-bookworm AS builder
+WORKDIR /build
+COPY selfhost/server/Cargo.toml ./Cargo.toml
+COPY selfhost/server/Cargo.lock ./Cargo.lock
+COPY selfhost/server/src ./src
+COPY selfhost/server/migrations ./migrations
+RUN cargo build --release --locked
+
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=builder /build/target/release/gruesome-platform-server /usr/local/bin/gruesome-platform-server
+COPY frontend /app/frontend
+
+# Defaults; override the rest (JWT_SECRET, S3_*, buckets, CORS) via the Deployment.
+# NOTE: one ENV per line — pelagos does not split the `ENV A=x B=y` multi-var form
+# (it assigns the whole remainder to the first var).
+ENV BIND_ADDR=0.0.0.0:8080
+ENV FRONTEND_DIR=/app/frontend
+ENV DATABASE_URL=sqlite:///data/gruesome.db
+ENV RUST_LOG=info
+
+EXPOSE 8080
+CMD ["gruesome-platform-server"]

@@ -1,0 +1,121 @@
+# Self-hosted Gruesome platform — Kubernetes manifests (generic template).
+#
+# Replace the __PLACEHOLDERS__ (registry, image tag, hostname, MinIO endpoint) and
+# create the Secret from k8s/secret.example.yaml first. The server serves both the
+# SPA and the /api routes, so a single Deployment/Service/Ingress is all you need.
+#
+#   kubectl apply -f k8s/secret.yaml     # your real secret (not committed)
+#   kubectl apply -f k8s/deploy.yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gruesome
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gruesome-data
+  namespace: gruesome
+spec:
+  accessModes: ["ReadWriteOnce"] # SQLite → single writer → single replica
+  resources:
+    requests:
+      storage: 1Gi
+  # storageClassName: local-path   # or your preferred class
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gruesome-platform
+  namespace: gruesome
+spec:
+  replicas: 1 # SQLite is single-writer; do not scale beyond 1
+  strategy:
+    type: Recreate # never two pods on one RWO SQLite volume
+  selector:
+    matchLabels: { app: gruesome-platform }
+  template:
+    metadata:
+      labels: { app: gruesome-platform }
+    spec:
+      containers:
+        - name: server
+          image: __REGISTRY__/gruesome-platform:__TAG__
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DATABASE_URL
+              value: "sqlite:///data/gruesome.db"
+            - name: FRONTEND_DIR
+              value: "/app/frontend"
+            # MinIO (on nazgul). Endpoint + buckets are non-secret; keys come from
+            # the Secret below.
+            - name: S3_ENDPOINT
+              value: "http://__MINIO_HOST__:9000"
+            - name: S3_REGION
+              value: "us-east-1"
+            - name: GAMES_BUCKET
+              value: "gruesome-games"
+            - name: SAVES_BUCKET
+              value: "gruesome-saves"
+            # Same-origin frontend → CORS not needed; set a host if you split them.
+            - name: CORS_ORIGIN
+              value: "*"
+            - name: RUST_LOG
+              value: "info"
+          envFrom:
+            - secretRef:
+                name: gruesome-secrets # JWT_SECRET, S3_ACCESS_KEY, S3_SECRET_KEY
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet: { path: /health, port: 8080 }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: gruesome-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gruesome-platform
+  namespace: gruesome
+spec:
+  selector: { app: gruesome-platform }
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+# Traefik ingress (the cluster's default). Exposed via the Traefik LoadBalancer
+# (MetalLB), reachable at http://__HOST__/ once __HOST__ resolves to the Traefik IP.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gruesome-platform
+  namespace: gruesome
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: __HOST__ # e.g. gruesome.<your-home-domain>
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gruesome-platform
+                port:
+                  number: 80
