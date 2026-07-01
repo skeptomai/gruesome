@@ -308,6 +308,23 @@ async function initApp() {
         console.error('ERROR: logout button element not found in DOM!');
     }
 
+    // Set up change-password button + modal
+    const changePasswordButton = document.getElementById('change-password-button');
+    const changePasswordModal = document.getElementById('change-password-modal');
+    const changePasswordForm = document.getElementById('change-password-form');
+    if (changePasswordButton && changePasswordModal) {
+        changePasswordButton.addEventListener('click', () => {
+            if (changePasswordForm) changePasswordForm.reset();
+            changePasswordModal.style.display = 'block';
+        });
+        const closeCp = document.getElementById('close-change-password-modal');
+        if (closeCp) closeCp.addEventListener('click', () => { changePasswordModal.style.display = 'none'; });
+        changePasswordModal.addEventListener('click', (e) => {
+            if (e.target === changePasswordModal) changePasswordModal.style.display = 'none';
+        });
+        if (changePasswordForm) changePasswordForm.addEventListener('submit', handleChangePassword);
+    }
+
     // Set up auth form handler (login/signup)
     const authForm = document.getElementById('auth-form');
     if (authForm) {
@@ -483,6 +500,39 @@ async function initApp() {
     }
 }
 
+// Change password (authenticated self-service)
+async function handleChangePassword(e) {
+    e.preventDefault();
+    const current = document.getElementById('cp-current').value;
+    const newPw = document.getElementById('cp-new').value;
+    const confirmPw = document.getElementById('cp-confirm').value;
+    if (newPw.length < 8) {
+        showFlashMessage('New password must be at least 8 characters', 'error');
+        return;
+    }
+    if (newPw !== confirmPw) {
+        showFlashMessage('New passwords do not match', 'error');
+        return;
+    }
+    try {
+        const resp = await fetch(`${API_BASE}/api/auth/change-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+            body: JSON.stringify({ current_password: current, new_password: newPw })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            showFlashMessage(data.error || 'Failed to change password', 'error');
+            return;
+        }
+        document.getElementById('change-password-modal').style.display = 'none';
+        e.target.reset();
+        showFlashMessage('Password changed successfully', 'success');
+    } catch (err) {
+        showFlashMessage('Network error while changing password', 'error');
+    }
+}
+
 // Logout
 function handleLogout() {
     console.log('handleLogout called');
@@ -496,6 +546,8 @@ function handleLogout() {
     gamePlayer.style.display = 'none';
     authStatus.textContent = '';
     logoutButton.style.display = 'none';
+    const cpBtnOut = document.getElementById('change-password-button');
+    if (cpBtnOut) cpBtnOut.style.display = 'none';
 
     // Clear form
     emailInput.value = '';
@@ -749,6 +801,8 @@ async function loadGameLibrary() {
     } else {
         console.error('Logout button element not found in DOM');
     }
+    const cpBtnIn = document.getElementById('change-password-button');
+    if (cpBtnIn) cpBtnIn.style.display = 'inline-block';
 
     try {
         const response = await fetch(`${API_BASE}/api/games`);

@@ -79,6 +79,7 @@ async fn main() -> anyhow::Result<()> {
             post(auth::confirm_forgot_password),
         )
         .route("/api/auth/me", get(auth::me))
+        .route("/api/auth/change-password", post(auth::change_password))
         // Games (public)
         .route("/api/games", get(games::list_games))
         .route("/api/games/:game_id", get(games::get_game))

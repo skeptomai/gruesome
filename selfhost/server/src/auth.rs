@@ -384,3 +384,33 @@ pub async fn me(State(state): State<AppState>, auth: AuthUser) -> AppResult<Json
         },
     }))
 }
+
+#[derive(Deserialize)]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+/// Authenticated self-service password change (verifies the current password).
+pub async fn change_password(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(req): Json<ChangePasswordRequest>,
+) -> AppResult<Json<MessageResponse>> {
+    if req.new_password.len() < 8 {
+        return Err(AppError::BadRequest(
+            "new password must be at least 8 characters".into(),
+        ));
+    }
+    let user = state.db.get_user_by_id(&auth.user_id).await?;
+    if !verify_password(&req.current_password, &user.password_hash) {
+        return Err(AppError::BadRequest("current password is incorrect".into()));
+    }
+    state
+        .db
+        .update_password(&user.user_id, &hash_password(&req.new_password)?)
+        .await?;
+    Ok(Json(MessageResponse {
+        message: "password changed".into(),
+    }))
+}
