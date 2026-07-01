@@ -1,29 +1,21 @@
-// Development configuration
-// Controls whether to use production API or mock API
+// Frontend API configuration.
+//
+// Self-hosted deployment: the platform server serves BOTH this SPA and the
+// `/api/*` routes on the same origin, so the API base is empty (relative) — e.g.
+// `fetch('/api/games')`. That needs no per-environment URLs and no CORS.
+//
+// Set apiMode to 'mock' to develop the UI against frontend/mock-api.js without a
+// backend. (The old AWS CloudFront/API-Gateway URLs have been removed.)
 
 const DEV_CONFIG = {
-    // Set to 'mock' for local testing without backend, 'production' to test against real API
-    apiMode: 'production',
+    // 'same-origin' (self-hosted, default) or 'mock'
+    apiMode: 'same-origin',
 
-    // API endpoints
-    productionApi: 'https://api.gruesome.skeptomai.com',
-    stagingApi: 'https://api-staging.gruesome.skeptomai.com',
     mockApi: 'http://localhost:3001',
+    selfHostedApi: '', // same origin — server hosts the SPA and /api together
 
-    // Get current API base URL
     getApiBase() {
-        // Check if running locally
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            return this.apiMode === 'mock' ? this.mockApi : this.productionApi;
-        }
-
-        // Check if on staging
-        if (window.location.hostname === 'staging.gruesome.skeptomai.com') {
-            return this.stagingApi;
-        }
-
-        // Production
-        return this.productionApi;
+        return this.apiMode === 'mock' ? this.mockApi : this.selfHostedApi;
     }
 };
 
