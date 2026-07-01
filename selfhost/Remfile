@@ -14,7 +14,8 @@
 
 FROM rust:1-bookworm AS builder
 WORKDIR /build
-COPY selfhost/server/Cargo.toml selfhost/server/Cargo.lock ./
+COPY selfhost/server/Cargo.toml ./Cargo.toml
+COPY selfhost/server/Cargo.lock ./Cargo.lock
 COPY selfhost/server/src ./src
 COPY selfhost/server/migrations ./migrations
 RUN cargo build --release --locked
@@ -28,10 +29,12 @@ COPY --from=builder /build/target/release/gruesome-platform-server /usr/local/bi
 COPY frontend /app/frontend
 
 # Defaults; override the rest (JWT_SECRET, S3_*, buckets, CORS) via the Deployment.
-ENV BIND_ADDR=0.0.0.0:8080 \
-    FRONTEND_DIR=/app/frontend \
-    DATABASE_URL=sqlite:///data/gruesome.db \
-    RUST_LOG=info
+# NOTE: one ENV per line — pelagos does not split the `ENV A=x B=y` multi-var form
+# (it assigns the whole remainder to the first var).
+ENV BIND_ADDR=0.0.0.0:8080
+ENV FRONTEND_DIR=/app/frontend
+ENV DATABASE_URL=sqlite:///data/gruesome.db
+ENV RUST_LOG=info
 
 EXPOSE 8080
 CMD ["gruesome-platform-server"]
