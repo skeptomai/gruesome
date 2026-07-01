@@ -291,6 +291,11 @@
 
         <!-- Game Player Section -->
         <div id="game-player" class="section" style="display:none;">
+            <!-- Persistent navigation (always visible, unlike the collapsible controls) -->
+            <div class="game-topbar">
+                <button id="nav-back-button" class="nav-back">← Games</button>
+                <span id="now-playing-title"></span>
+            </div>
             <!-- Control Panels -->
             <div class="control-panels">
                 <h3 onclick="toggleControlPanels()" style="cursor: pointer; margin: 0 0 12px 0; font-size: 0.9em; color: #999; text-transform: uppercase; letter-spacing: 0.5px; user-select: none;">

@@ -346,6 +346,38 @@ button:disabled {
     margin-bottom: 15px;
 }
 
+/* Persistent player navigation bar (always visible above the collapsible controls) */
+.game-topbar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #333;
+}
+
+.nav-back {
+    background: #1a1a1a;
+    color: #00ff00;
+    border: 1px solid #00ff00;
+    padding: 8px 16px;
+    font-size: 0.95em;
+    cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace;
+    transition: all 0.3s ease;
+}
+
+.nav-back:hover {
+    background: #00ff00;
+    color: #000;
+}
+
+#now-playing-title {
+    color: #999;
+    font-size: 0.95em;
+    letter-spacing: 0.3px;
+}
+
 #auth-status {
     display: flex;
     align-items: center;
