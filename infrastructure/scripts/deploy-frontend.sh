@@ -105,6 +105,16 @@ if [ -f "gruesome.js" ]; then
         --cache-control "public, max-age=31536000"
 fi
 
+# Upload self-hosted fonts if present (style.css @font-face references fonts/*.woff2).
+# Long-lived cache: font files are content-stable and named per subset/weight.
+if [ -d "fonts" ]; then
+    echo "Uploading self-hosted fonts..."
+    aws s3 sync fonts/ "s3://$BUCKET/fonts/" \
+        --content-type "font/woff2" \
+        --cache-control "public, max-age=31536000" \
+        --delete
+fi
+
 echo ""
 echo "Creating CloudFront invalidation..."
 INVALIDATION_ID=$(aws cloudfront create-invalidation \
