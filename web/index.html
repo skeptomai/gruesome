@@ -5,11 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gruesome - Z-Machine Interpreter</title>
 
-  <!-- Google Fonts - Terminal fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&family=Share+Tech+Mono&family=VT323&display=swap" rel="stylesheet">
-
+  <!-- Terminal fonts are self-hosted via @font-face in css/terminal.css (see fonts/).
+       The external Google Fonts CDN <link> was removed: as a render-blocking external
+       resource it could stall the whole page render (~127s, TCP SYN timeout) whenever
+       a visitor's path to the font CDN blackholed. Now zero external render-blocking deps. -->
   <link rel="stylesheet" href="css/terminal.css">
 </head>
 <body>
