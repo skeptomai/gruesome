@@ -55,7 +55,9 @@ impl S3Store {
     }
 
     /// Create a bucket if absent (idempotent, best-effort — logged, never fatal).
-    pub async fn ensure_bucket(&self, bucket: &str) {
+    /// Returns `true` if the bucket is present or was created (i.e. S3 is
+    /// reachable), `false` if it could not be ensured.
+    pub async fn ensure_bucket(&self, bucket: &str) -> bool {
         if self
             .client
             .head_bucket()
@@ -64,11 +66,17 @@ impl S3Store {
             .await
             .is_ok()
         {
-            return;
+            return true;
         }
         match self.client.create_bucket().bucket(bucket).send().await {
-            Ok(_) => tracing::info!("created bucket '{bucket}'"),
-            Err(e) => tracing::warn!("could not ensure bucket '{bucket}': {e}"),
+            Ok(_) => {
+                tracing::info!("created bucket '{bucket}'");
+                true
+            }
+            Err(e) => {
+                tracing::warn!("could not ensure bucket '{bucket}': {e}");
+                false
+            }
         }
     }
 

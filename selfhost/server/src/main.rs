@@ -57,9 +57,22 @@ async fn main() -> anyhow::Result<()> {
     let s3 = s3::S3Store::new(&cfg);
     // Best-effort bucket bootstrap, time-boxed so a down MinIO never blocks
     // startup (presigning is a local op and works regardless).
+    let mut s3_ok = true;
     for bucket in [&cfg.games_bucket, &cfg.saves_bucket] {
-        let _ =
-            tokio::time::timeout(std::time::Duration::from_secs(5), s3.ensure_bucket(bucket)).await;
+        match tokio::time::timeout(std::time::Duration::from_secs(5), s3.ensure_bucket(bucket)).await
+        {
+            Ok(true) => {}
+            _ => s3_ok = false,
+        }
+    }
+    if s3_ok {
+        tracing::info!(
+            "connected to S3 successfully (buckets: {}, {})",
+            cfg.games_bucket,
+            cfg.saves_bucket
+        );
+    } else {
+        tracing::warn!("S3 not fully reachable at startup; some buckets could not be ensured");
     }
 
     let state = AppState {

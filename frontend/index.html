@@ -9,13 +9,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gruesome - Z-Machine Game Platform</title>
+    <!-- Terminal fonts are self-hosted via @font-face in style.css (see fonts/).
+         The external Google Fonts CDN <link> was removed: as a render-blocking
+         external resource it stalled the whole page for ~2min whenever the
+         client's path to the font CDN blackholed (TCP SYN timeout). Now zero
+         external render-blocking deps — loads at tailnet speed. -->
     <link rel="stylesheet" href="style.css">
     <script src="dev-config.js"></script>
-
-    <!-- Google Fonts - Terminal fonts for retro styling -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&family=Share+Tech+Mono&family=VT323&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="container">
@@ -291,6 +291,11 @@
 
         <!-- Game Player Section -->
         <div id="game-player" class="section" style="display:none;">
+            <!-- Persistent navigation (always visible, unlike the collapsible controls) -->
+            <div class="game-topbar">
+                <button id="nav-back-button" class="nav-back">← Games</button>
+                <span id="now-playing-title"></span>
+            </div>
             <!-- Control Panels -->
             <div class="control-panels">
                 <h3 onclick="toggleControlPanels()" style="cursor: pointer; margin: 0 0 12px 0; font-size: 0.9em; color: #999; text-transform: uppercase; letter-spacing: 0.5px; user-select: none;">

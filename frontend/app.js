@@ -348,6 +348,11 @@ async function initApp() {
     if (backButton) {
         backButton.addEventListener('click', handleBackToLibrary);
     }
+    // Persistent nav-bar "← Games" button (always visible while playing).
+    const navBackButton = document.getElementById('nav-back-button');
+    if (navBackButton) {
+        navBackButton.addEventListener('click', handleBackToLibrary);
+    }
 
     // Set up save button
     const saveButton = document.getElementById('save-button');
@@ -808,8 +813,12 @@ async function loadGameLibrary() {
         const response = await fetch(`${API_BASE}/api/games`);
         const data = await response.json();
 
+        // Cache by id so the player nav can show titles (and for the router).
+        window.__gamesById = {};
+        data.games.forEach(g => { window.__gamesById[g.game_id] = g; });
+
         gamesList.innerHTML = data.games.map(game => `
-            <div class="game-card" onclick="loadGame('${game.game_id}')">
+            <div class="game-card" onclick="navigateToGame('${game.game_id}')">
                 <h3>${game.title}</h3>
                 <p>${game.description}</p>
                 <p>Version: ${game.version} | Size: ${(game.file_size / 1024).toFixed(1)}KB</p>
@@ -821,6 +830,9 @@ async function loadGameLibrary() {
     } catch (error) {
         gamesList.innerHTML = `<div class="error">Failed to load games: ${error.message}</div>`;
     }
+
+    // Honour a deep-link / restored hash (#/play/<id>) now that the library is ready.
+    handleRoute();
 }
 
 // Create and append input area to game output
@@ -855,6 +867,36 @@ function createInputArea() {
     }
 }
 
+// Navigate to a game by updating the URL hash — this pushes a browser history
+// entry so Back/Forward work and games are deep-linkable. The hashchange handler
+// (handleRoute) does the actual loading.
+window.navigateToGame = function(gameId) {
+    location.hash = '#/play/' + encodeURIComponent(gameId);
+};
+
+// Hash router: '' (or #) = library, '#/play/<id>' = playing a game. Keeps the URL,
+// the browser Back/Forward buttons, and the in-app nav in sync.
+function handleRoute() {
+    if (!accessToken) return; // routing only matters once logged in
+    const m = location.hash.match(/^#\/play\/(.+)$/);
+    if (m) {
+        const id = decodeURIComponent(m[1]);
+        if (currentGame === id && wasmInterpreter) {
+            gameLibrary.style.display = 'none';
+            gamePlayer.style.display = 'block';
+        } else {
+            loadGame(id);
+        }
+    } else {
+        // Library view (also where the browser Back button lands from a game).
+        gamePlayer.style.display = 'none';
+        gameLibrary.style.display = 'block';
+        currentGame = null;
+        wasmInterpreter = null;
+    }
+}
+window.addEventListener('hashchange', handleRoute);
+
 // Load and Start Game
 window.loadGame = async function(gameId) {
     try {
@@ -884,6 +926,13 @@ window.loadGame = async function(gameId) {
         // Show game player
         gameLibrary.style.display = 'none';
         gamePlayer.style.display = 'block';
+
+        // Persistent nav bar: show which game is playing.
+        const nowPlaying = document.getElementById('now-playing-title');
+        if (nowPlaying) {
+            const g = window.__gamesById && window.__gamesById[gameId];
+            nowPlaying.textContent = g ? `▶ ${g.title}` : `▶ ${gameId}`;
+        }
 
         // Enable Save and Load buttons
         const saveButton = document.getElementById('save-button');
@@ -1066,12 +1115,18 @@ function handleGameInput(e) {
     }
 }
 
-// Back to Library
+// Back to Library — drive via the hash so the URL + browser history stay in sync
+// (handleRoute does the view switch). If we're already at the library hash, switch
+// directly.
 function handleBackToLibrary() {
-    gamePlayer.style.display = 'none';
-    gameLibrary.style.display = 'block';
-    currentGame = null;
-    wasmInterpreter = null;
+    if (location.hash) {
+        location.hash = '';
+    } else {
+        gamePlayer.style.display = 'none';
+        gameLibrary.style.display = 'block';
+        currentGame = null;
+        wasmInterpreter = null;
+    }
 }
 
 // Save Game
